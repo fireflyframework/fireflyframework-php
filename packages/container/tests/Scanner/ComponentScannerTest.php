@@ -7,6 +7,7 @@ use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Container\Scope;
 use Firefly\Container\Tests\Fixtures\AppConfig;
 use Firefly\Container\Tests\Fixtures\Clock;
+use Firefly\Container\Tests\Fixtures\EdgeConfig;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
 use Firefly\Container\Tests\Fixtures\Greeter;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
@@ -72,4 +73,34 @@ it('captures #[Bean] methods on #[Configuration] classes', function () {
         ->and($config->beans[0]->returns)->toBe(Clock::class)
         ->and($config->beans[0]->name)->toBe('utcClock')
         ->and($config->beans[0]->scope)->toBe(Scope::Singleton);
+});
+
+it('records the empty-string return-type contract for builtin/untyped #[Bean] returns', function () {
+    $edge = null;
+    foreach (scanFixtures() as $d) {
+        if ($d->class === EdgeConfig::class) {
+            $edge = $d;
+        }
+    }
+
+    expect($edge)->not->toBeNull();
+
+    if (! $edge instanceof ComponentDescriptor) {
+        throw new RuntimeException('EdgeConfig descriptor not found in scan results.');
+    }
+
+    $byMethod = [];
+    foreach ($edge->beans as $bean) {
+        $byMethod[$bean->method] = $bean;
+    }
+
+    expect($byMethod['typedClass']->returns)->toBe(Clock::class)
+        ->and($byMethod['builtinReturn']->returns)->toBe('')
+        ->and($byMethod['nullableClass']->returns)->toBe(Clock::class);
+});
+
+it('scans cleanly when the directory does not exist', function () {
+    $result = (new ComponentScanner)->scan(['Nope\\' => __DIR__.'/does-not-exist']);
+
+    expect($result)->toBe([]);
 });

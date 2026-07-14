@@ -20,7 +20,14 @@ use ReflectionNamedType;
 final class ComponentScanner
 {
     /**
-     * @param  array<string,string>  $psr4  namespace-prefix (trailing \\) => absolute directory
+     * Scan PSR-4 namespaces for #[Component]-annotated classes.
+     *
+     * Discovery uses class_exists(), which autoloads — so each prefix => dir
+     * mapping must also be registered with the active Composer autoloader
+     * (in production, pass Composer's own PSR-4 map). A trailing "\\" on the
+     * prefix is optional; it is normalized internally.
+     *
+     * @param  array<string,string>  $psr4  namespace-prefix => absolute directory
      * @return list<ComponentDescriptor>
      */
     public function scan(array $psr4): array
@@ -47,6 +54,8 @@ final class ComponentScanner
         if (! is_dir($dir)) {
             return [];
         }
+
+        $prefix = rtrim($prefix, '\\').'\\';
 
         $classes = [];
         $realDir = rtrim((string) realpath($dir), DIRECTORY_SEPARATOR);
