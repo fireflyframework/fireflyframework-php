@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Component;
 use Firefly\Container\Attributes\Configuration;
+use Firefly\Container\Attributes\Order;
+use Firefly\Container\Attributes\Primary;
+use Firefly\Container\Attributes\Qualifier;
 use Firefly\Container\Attributes\Repository;
 use Firefly\Container\Attributes\Service;
 use Firefly\Container\Scope;
@@ -39,22 +43,26 @@ it('treats Configuration as a Component too', function () {
 });
 
 it('carries #[Bean], #[Primary], #[Order], #[Lazy], #[Qualifier] metadata', function () {
-    $config = new class {
-        #[\Firefly\Container\Attributes\Bean('clock', \Firefly\Container\Scope::Transient)]
-        #[\Firefly\Container\Attributes\Primary]
-        #[\Firefly\Container\Attributes\Order(10)]
-        public function clock(): string { return 'x'; }
+    $config = new class
+    {
+        #[Bean('clock', Scope::Transient)]
+        #[Primary]
+        #[Order(10)]
+        public function clock(): string
+        {
+            return 'x';
+        }
     };
     $method = (new ReflectionObject($config))->getMethod('clock');
 
-    $bean = $method->getAttributes(\Firefly\Container\Attributes\Bean::class)[0]->newInstance();
-    $order = $method->getAttributes(\Firefly\Container\Attributes\Order::class)[0]->newInstance();
+    $bean = $method->getAttributes(Bean::class)[0]->newInstance();
+    $order = $method->getAttributes(Order::class)[0]->newInstance();
 
     expect($bean->name)->toBe('clock')
-        ->and($bean->scope)->toBe(\Firefly\Container\Scope::Transient)
-        ->and($method->getAttributes(\Firefly\Container\Attributes\Primary::class))->toHaveCount(1)
+        ->and($bean->scope)->toBe(Scope::Transient)
+        ->and($method->getAttributes(Primary::class))->toHaveCount(1)
         ->and($order->order)->toBe(10);
 
-    $q = new #[\Firefly\Container\Attributes\Qualifier('main')] class {};
-    expect((new ReflectionObject($q))->getAttributes(\Firefly\Container\Attributes\Qualifier::class)[0]->newInstance()->name)->toBe('main');
+    $q = new #[Qualifier('main')] class {};
+    expect((new ReflectionObject($q))->getAttributes(Qualifier::class)[0]->newInstance()->name)->toBe('main');
 });
