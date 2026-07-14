@@ -8,10 +8,10 @@
         "firefly/kernel": "*@dev"
     },
     "require-dev": {
+        "deptrac/deptrac": "^4.6",
+        "laravel/pint": "^1.20",
         "pestphp/pest": "^3.7",
         "phpstan/phpstan": "^2.1",
-        "laravel/pint": "^1.20",
-        "qossmic/deptrac-shim": "^1.0",
         "symplify/monorepo-builder": "^11.2"
     },
     "autoload-dev": {
