@@ -19,10 +19,15 @@ it('compiles a scan to a cached array file and loads it back without reflection'
 
     $manifest = ConfigPropertiesManifest::load($path);
     $classes = array_map(static fn ($d) => $d->class, $manifest->properties);
+    $prefixesByClass = array_combine(
+        array_map(static fn ($d) => $d->class, $manifest->properties),
+        array_map(static fn ($d) => $d->prefix, $manifest->properties),
+    );
 
     expect($manifest)->toBeInstanceOf(ConfigPropertiesManifest::class)
         ->and($classes)->toContain(MailProperties::class)
-        ->and(count($manifest->properties))->toBe(count($descriptors));
+        ->and(count($manifest->properties))->toBe(count($descriptors))
+        ->and($prefixesByClass[MailProperties::class])->toBe('mail');
 
     unlink($path);
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Config\Binder\ReflectionConfigBinder;
 use Firefly\Config\Tests\Fixtures\DatabaseProperties;
 use Firefly\Config\Tests\Fixtures\MailProperties;
+use Firefly\Config\Tests\Fixtures\OptionalProperties;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 
 it('binds a flat config array onto a readonly DTO with coercion + defaults', function () {
@@ -36,3 +37,26 @@ it('binds a nested object-typed parameter recursively', function () {
 it('throws when a required property is missing', function () {
     (new ReflectionConfigBinder)->bind(MailProperties::class, ['port' => 25]);
 })->throws(ConfigurationException::class);
+
+it('binds an absent nullable parameter to null', function () {
+    $optional = (new ReflectionConfigBinder)->bind(OptionalProperties::class, [
+        'name' => 'x',
+    ]);
+
+    expect($optional)->toBeInstanceOf(OptionalProperties::class)
+        ->and($optional->name)->toBe('x')
+        ->and($optional->nickname)->toBeNull();
+});
+
+it('falls back to the nested object\'s own defaults when its sub-array is empty', function () {
+    $db = (new ReflectionConfigBinder)->bind(DatabaseProperties::class, [
+        'driver' => 'pgsql',
+        'pool' => [],
+    ]);
+
+    expect($db)->toBeInstanceOf(DatabaseProperties::class)
+        ->and($db->driver)->toBe('pgsql')
+        ->and($db->pool->min)->toBe(1)
+        ->and($db->pool->max)->toBe(10)
+        ->and($db->replicas)->toBe([]);
+});

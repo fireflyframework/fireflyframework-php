@@ -25,7 +25,11 @@ final class ConfigPropertiesScanner
         $descriptors = [];
         foreach ($psr4 as $prefix => $dir) {
             foreach ($this->classesIn($prefix, $dir) as $class) {
-                $attrs = (new ReflectionClass($class))->getAttributes(ConfigProperties::class);
+                $reflection = new ReflectionClass($class);
+                if ($reflection->isAbstract() || $reflection->isInterface()) {
+                    continue;
+                }
+                $attrs = $reflection->getAttributes(ConfigProperties::class);
                 if ($attrs === []) {
                     continue;
                 }

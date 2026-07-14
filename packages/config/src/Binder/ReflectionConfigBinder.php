@@ -36,7 +36,14 @@ final class ReflectionConfigBinder implements ConfigBinder
             $args[] = $this->resolveParameter($class, $parameter, $config);
         }
 
-        return $reflection->newInstanceArgs($args);
+        try {
+            return $reflection->newInstanceArgs($args);
+        } catch (\TypeError $e) {
+            throw new ConfigurationException(
+                "Configuration for {$class} could not be bound: {$e->getMessage()}",
+                previous: $e,
+            );
+        }
     }
 
     /**
