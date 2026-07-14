@@ -22,3 +22,4 @@ nav:
       - Foundation:
           - Error Handling: modules/error-handling.md
           - Dependency Injection: modules/dependency-injection.md
+          - Configuration: modules/configuration.md
