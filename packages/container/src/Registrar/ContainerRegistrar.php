@@ -44,6 +44,9 @@ final class ContainerRegistrar
     {
         $name = $component->name ?? $component->qualifier;
         if ($name !== null && $name !== $component->class) {
+            // Alias registration is last-registration-wins by design, mirroring
+            // Illuminate's Container::alias(): if two components register the
+            // same name/qualifier, the later one silently rebinds the alias.
             $this->container->alias($component->class, $name);
         }
     }
@@ -78,6 +81,7 @@ final class ContainerRegistrar
             };
 
             if ($bean->name !== null && $bean->name !== $bean->returns) {
+                // Same last-registration-wins semantics as registerName() above.
                 $this->container->alias($bean->returns, $bean->name);
             }
         }
@@ -101,6 +105,13 @@ final class ContainerRegistrar
             );
 
             // Bind the interface to a single default: the #[Primary], else the sole implementation.
+            //
+            // The interface is bound to a single default ONLY when unambiguous:
+            // exactly one #[Primary] implementation, or exactly one implementation
+            // total. With zero-or-multiple #[Primary] implementations among
+            // multiple candidates, the choice is inherently ambiguous, so the
+            // interface is intentionally left UNBOUND — callers must resolve it
+            // by name/qualifier or via the ordered tagged list (see tagFor()).
             $primary = array_values(array_filter($impls, static fn (ComponentDescriptor $c): bool => $c->primary));
             if (count($primary) === 1) {
                 $this->container->bind($interface, $primary[0]->class);

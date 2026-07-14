@@ -5,10 +5,15 @@ declare(strict_types=1);
 use Firefly\Container\Registrar\ContainerRegistrar;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scanner\ComponentScanner;
+use Firefly\Container\Tests\Fixtures\Beeper;
 use Firefly\Container\Tests\Fixtures\Clock;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
+use Firefly\Container\Tests\Fixtures\FireSiren;
 use Firefly\Container\Tests\Fixtures\Greeter;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
+use Firefly\Container\Tests\Fixtures\PoliceSiren;
+use Firefly\Container\Tests\Fixtures\Siren;
+use Firefly\Container\Tests\Fixtures\SoloBeeper;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
 use Illuminate\Container\Container as IlluminateContainer;
 
@@ -74,4 +79,35 @@ it('registers #[Bean] methods under their return type and name', function () {
     expect($clock)->toBeInstanceOf(Clock::class)
         ->and($clock->zone)->toBe('UTC')
         ->and($namedClock)->toBeInstanceOf(Clock::class);
+});
+
+it('binds an interface to its sole implementation when none is #[Primary]', function () {
+    $c = registeredContainer();
+    // SoloBeeper is the only Beeper implementation and carries no #[Primary];
+    // wireInterfaces() falls back to "exactly one implementation total".
+    expect($c->make(Beeper::class))->toBeInstanceOf(SoloBeeper::class);
+});
+
+it('leaves an interface unbound when multiple implementations have no #[Primary]', function () {
+    $c = registeredContainer();
+    // PoliceSiren and FireSiren both implement Siren; neither is #[Primary],
+    // so the binding is intentionally ambiguous and left unbound.
+    expect($c->bound(Siren::class))->toBeFalse();
+
+    $registrar = new ContainerRegistrar($c);
+    $tag = $registrar->tagFor(Siren::class);
+
+    /** @var list<Siren> $tagged */
+    $tagged = iterator_to_array($c->tagged($tag));
+    $classes = array_map(static fn (Siren $o): string => $o::class, $tagged);
+
+    expect($classes)->toContain(PoliceSiren::class)
+        ->toContain(FireSiren::class);
+});
+
+it('skips beans with an empty return type without binding an empty abstract', function () {
+    $c = registeredContainer();
+    // EdgeConfig::builtinReturn(): string has a builtin return type, so the
+    // scanner records returns === '' and registerBeans() skips it entirely.
+    expect($c->bound(''))->toBeFalse();
 });

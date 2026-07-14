@@ -13,6 +13,13 @@ final readonly class BeanDescriptor
         public string $returns,
         public ?string $name,
         public Scope $scope,
+        /**
+         * Captured from #[Primary] on the #[Bean] method, but NOT yet
+         * consulted during registration in this milestone (registerBeans()
+         * ignores it). Reserved for future bean-collision disambiguation,
+         * analogous to how ContainerRegistrar::wireInterfaces() uses
+         * ComponentDescriptor::$primary to pick a default interface impl.
+         */
         public bool $primary,
         public int $order,
     ) {}
