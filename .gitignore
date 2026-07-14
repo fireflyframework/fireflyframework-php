@@ -8,6 +8,7 @@ composer.lock
 .phpunit.result.cache
 .phpunit.cache/
 /.php-cs-fixer.cache
+/.phpstan-cache/
 # Never commit design docs (specs/plans) per project policy
 /docs/superpowers/
 .DS_Store
