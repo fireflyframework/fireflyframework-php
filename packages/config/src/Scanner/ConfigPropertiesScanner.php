@@ -10,17 +10,14 @@ use RecursiveIteratorIterator;
 use ReflectionClass;
 
 /**
- * Discovers #[ConfigProperties] DTOs under PSR-4 namespaces. Mirrors firefly/container's ComponentScanner:
- * discovery uses class_exists() (autoloads), so each prefix => dir must also be registered with the active
- * Composer autoloader; a trailing "\\" on the prefix is optional (normalized internally).
- *
- * @see \Firefly\Container\Scanner\ComponentScanner
+ * Discovers #[ConfigProperties] DTOs under PSR-4 namespaces. Mirrors firefly/container's ComponentScanner
+ * idiom: discovery uses class_exists() (autoloads), so each prefix => dir must also be registered with the
+ * active Composer autoloader; a trailing "\\" on the prefix is optional (normalized internally).
  */
 final class ConfigPropertiesScanner
 {
     /**
      * @param  array<string,string>  $psr4  namespace-prefix => absolute directory
-     *
      * @return list<ConfigPropertiesDescriptor>
      */
     public function scan(array $psr4): array

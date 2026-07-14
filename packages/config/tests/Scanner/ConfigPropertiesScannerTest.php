@@ -6,9 +6,10 @@ use Firefly\Config\Scanner\ConfigPropertiesDescriptor;
 use Firefly\Config\Scanner\ConfigPropertiesScanner;
 use Firefly\Config\Tests\Fixtures\DatabaseProperties;
 use Firefly\Config\Tests\Fixtures\MailProperties;
+use Firefly\Config\Tests\Fixtures\Pool;
 
 it('discovers #[ConfigProperties] classes and their prefixes', function () {
-    $descriptors = (new ConfigPropertiesScanner())->scan([
+    $descriptors = (new ConfigPropertiesScanner)->scan([
         'Firefly\\Config\\Tests\\Fixtures\\' => __DIR__.'/../Fixtures',
     ]);
 
@@ -20,7 +21,7 @@ it('discovers #[ConfigProperties] classes and their prefixes', function () {
     expect($byClass[MailProperties::class])->toBe('mail')
         ->and($byClass[DatabaseProperties::class])->toBe('database')
         // Pool has no #[ConfigProperties] — not discovered:
-        ->and($byClass)->not->toHaveKey(\Firefly\Config\Tests\Fixtures\Pool::class);
+        ->and($byClass)->not->toHaveKey(Pool::class);
 });
 
 it('round-trips a descriptor', function () {

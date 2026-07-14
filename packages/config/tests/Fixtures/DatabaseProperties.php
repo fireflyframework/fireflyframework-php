@@ -18,7 +18,7 @@ final readonly class Pool
 final readonly class DatabaseProperties
 {
     /**
-     * @param list<string> $replicas
+     * @param  list<string>  $replicas
      */
     public function __construct(
         public string $driver,

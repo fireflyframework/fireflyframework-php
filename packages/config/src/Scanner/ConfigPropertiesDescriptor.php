@@ -20,7 +20,7 @@ final readonly class ConfigPropertiesDescriptor
     }
 
     /**
-     * @param array{class: string, prefix: string} $d
+     * @param  array{class: string, prefix: string}  $d
      */
     public static function fromArray(array $d): self
     {
