@@ -37,3 +37,9 @@ it('evaluates #{expr} and returns literals unchanged', function () {
     expect($r->resolve('#{3 * 4}'))->toBe(12)
         ->and($r->resolve('plain'))->toBe('plain');
 });
+
+it('evaluates #{config()} against application config', function () {
+    $r = resolver(['app' => ['name' => 'Ember']]);
+
+    expect($r->resolve('#{config("app.name")}'))->toBe('Ember');
+});

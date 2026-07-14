@@ -84,7 +84,9 @@ final class Config
 
     private function required(string $key, mixed $default): mixed
     {
-        if (! $this->repository->has($key)) {
+        $value = $this->repository->has($key) ? $this->repository->get($key) : null;
+
+        if ($value === null) {
             if ($default !== null) {
                 return $default;
             }
@@ -92,7 +94,7 @@ final class Config
             throw new ConfigurationException("Required configuration key [{$key}] is not set.");
         }
 
-        return $this->repository->get($key);
+        return $value;
     }
 
     private function mismatch(string $key, string $expected, mixed $actual): ConfigurationException

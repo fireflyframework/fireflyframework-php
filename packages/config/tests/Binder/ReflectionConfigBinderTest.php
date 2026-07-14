@@ -48,6 +48,16 @@ it('binds an absent nullable parameter to null', function () {
         ->and($optional->nickname)->toBeNull();
 });
 
+it('falls back to the constructor default when a property is present but explicitly null', function () {
+    $mail = (new ReflectionConfigBinder)->bind(MailProperties::class, [
+        'host' => 'h',
+        'port' => null,
+    ]);
+
+    expect($mail->host)->toBe('h')
+        ->and($mail->port)->toBe(25); // declared default, not null-coerced
+});
+
 it('falls back to the nested object\'s own defaults when its sub-array is empty', function () {
     $db = (new ReflectionConfigBinder)->bind(DatabaseProperties::class, [
         'driver' => 'pgsql',

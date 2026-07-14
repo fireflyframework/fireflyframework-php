@@ -54,3 +54,23 @@ it('binds DTOs from a cached manifest and keeps the config resolver under the co
 
     unlink($path);
 });
+
+it('keeps the config-backed resolver in place even when the container registrar runs first', function () {
+    $config = new Config(new Repository([
+        'mail' => ['host' => 'smtp.example.com'],
+    ]));
+    $manifest = new ConfigPropertiesManifest([]);
+
+    $container = new Container;
+
+    // 1. The M2 container registrar runs first — installs DefaultValueResolver.
+    (new ContainerRegistrar($container))->register(new ComponentManifest([]));
+
+    // 2. Config registers afterward; its instance() binding rebinds the resolver
+    //    regardless of what the container registrar already bound, proving the
+    //    seam is order-independent.
+    (new ConfigRegistrar($container, $config))->register($manifest);
+
+    expect($container->make(ValueResolver::class))->toBeInstanceOf(ConfigValueResolver::class)
+        ->and($container->make(ValueResolver::class)->resolve('${mail.host}'))->toBe('smtp.example.com');
+});

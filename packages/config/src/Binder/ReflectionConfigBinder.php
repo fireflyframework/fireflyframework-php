@@ -53,8 +53,9 @@ final class ReflectionConfigBinder implements ConfigBinder
     private function resolveParameter(string $class, ReflectionParameter $parameter, array $config): mixed
     {
         $name = $parameter->getName();
+        $value = array_key_exists($name, $config) ? $config[$name] : null;
 
-        if (! array_key_exists($name, $config)) {
+        if ($value === null) {
             if ($parameter->isDefaultValueAvailable()) {
                 return $parameter->getDefaultValue();
             }
@@ -65,7 +66,6 @@ final class ReflectionConfigBinder implements ConfigBinder
             throw new ConfigurationException("Missing required configuration property [{$name}] for {$class}.");
         }
 
-        $value = $config[$name];
         $type = $parameter->getType();
         if (! $type instanceof ReflectionNamedType) {
             return $value;

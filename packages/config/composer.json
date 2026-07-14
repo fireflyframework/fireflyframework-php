@@ -8,7 +8,9 @@
         "firefly/kernel": "*@dev",
         "firefly/container": "*@dev",
         "illuminate/config": "^13.0",
-        "illuminate/contracts": "^13.0"
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "symfony/expression-language": "^8.0"
     },
     "autoload": {
         "psr-4": { "Firefly\\Config\\": "src/" }

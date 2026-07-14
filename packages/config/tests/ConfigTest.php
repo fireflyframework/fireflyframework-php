@@ -47,3 +47,12 @@ it('coerces common boolean spellings', function () {
     expect($c->bool('flags.on'))->toBeTrue()
         ->and($c->bool('flags.off'))->toBeFalse();
 });
+
+it('uses the default when a key is present but explicitly null', function () {
+    expect(makeConfig(['mail' => ['port' => null]])->int('mail.port', 587))->toBe(587)
+        ->and(makeConfig(['mail' => ['host' => null]])->string('mail.host', 'localhost'))->toBe('localhost');
+});
+
+it('throws when a present-but-null required key has no default', function () {
+    makeConfig(['mail' => ['host' => null]])->string('mail.host');
+})->throws(ConfigurationException::class);
