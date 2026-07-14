@@ -6,6 +6,8 @@ use Firefly\Container\Registrar\ContainerRegistrar;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
+use Firefly\Container\Tests\Fixtures\Greeter;
+use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
 use Illuminate\Container\Container as IlluminateContainer;
 
@@ -38,4 +40,24 @@ it('registers a named alias from the stereotype name', function () {
     /** @var SpanishGreeter $resolved */
     $resolved = $c->make('spanish');
     expect($resolved)->toBeInstanceOf(SpanishGreeter::class);
+});
+
+it('binds an interface to its #[Primary] implementation', function () {
+    $c = registeredContainer();
+    // EnglishGreeter is #[Primary] among the Greeter implementations.
+    expect($c->make(Greeter::class))->toBeInstanceOf(EnglishGreeter::class);
+});
+
+it('tags every implementation of an interface for list resolution', function () {
+    $c = registeredContainer();
+    $registrar = new ContainerRegistrar($c);
+    $tag = $registrar->tagFor(Greeter::class);
+
+    /** @var list<Greeter> $tagged */
+    $tagged = iterator_to_array($c->tagged($tag));
+    $classes = array_map(static fn (Greeter $o): string => $o::class, $tagged);
+
+    expect($classes)->toContain(EnglishGreeter::class)
+        ->toContain(SpanishGreeter::class)
+        ->toContain(LoudGreeter::class);
 });
