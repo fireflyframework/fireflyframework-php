@@ -1,0 +1,13 @@
+deptrac:
+  paths:
+    - ./packages
+  layers:
+    - name: Kernel
+      collectors:
+        - type: directory
+          value: packages/kernel/src/.*
+  ruleset:
+    # Kernel is the zero-dependency foundation: it may depend on nothing else
+    # in the framework. Additional layers (Container, Config, Web, ...) are
+    # added in later milestones with their allowed-dependency edges.
+    Kernel: ~
