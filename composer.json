@@ -19,7 +19,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Firefly\\Tests\\": "tests/"
+            "Firefly\\Tests\\": "tests/",
+            "Firefly\\Container\\Tests\\": "packages/container/tests/"
         }
     },
     "repositories": [
