@@ -8,6 +8,7 @@ use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
 use Firefly\Container\Tests\Fixtures\Greeter;
+use Firefly\Container\Tests\Fixtures\GreetingProbe;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
 use Illuminate\Container\Container as IlluminateContainer;
@@ -40,4 +41,14 @@ it('resolves all implementations sorted by #[Order] (lower first)', function () 
 
     // Orders: Loud=5, English=10, Spanish=20.
     expect($classes)->toBe([LoudGreeter::class, EnglishGreeter::class, SpanishGreeter::class]);
+});
+
+it('injects a #[Value] constructor parameter via the container', function () {
+    putenv('FIREFLY_GREETING=Salut');
+    $illuminate = new IlluminateContainer;
+    (new ContainerRegistrar($illuminate))->register(new ComponentManifest([]));
+
+    expect($illuminate->make(GreetingProbe::class)->greeting)->toBe('Salut');
+
+    putenv('FIREFLY_GREETING');
 });

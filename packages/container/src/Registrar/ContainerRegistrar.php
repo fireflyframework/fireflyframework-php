@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Firefly\Container\Registrar;
 
+use Firefly\Container\Attributes\Value;
 use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scope;
+use Firefly\Container\Value\DefaultValueResolver;
+use Firefly\Container\Value\ValueResolver;
 use Illuminate\Contracts\Container\Container;
 
 final class ContainerRegistrar
@@ -15,6 +18,8 @@ final class ContainerRegistrar
 
     public function register(ComponentManifest $manifest): void
     {
+        $this->registerValueSupport();
+
         foreach ($manifest->components as $component) {
             $this->bindClass($component);
             $this->registerName($component);
@@ -85,6 +90,19 @@ final class ContainerRegistrar
                 $this->container->alias($bean->returns, $bean->name);
             }
         }
+    }
+
+    private function registerValueSupport(): void
+    {
+        if (! $this->container->bound(ValueResolver::class)) {
+            $this->container->singleton(ValueResolver::class, DefaultValueResolver::class);
+        }
+
+        // Resolve #[Value] parameters through the bound ValueResolver.
+        $this->container->whenHasAttribute(
+            Value::class,
+            fn (Value $attribute): mixed => $this->container->make(ValueResolver::class)->resolve($attribute->expression),
+        );
     }
 
     private function wireInterfaces(ComponentManifest $manifest): void
