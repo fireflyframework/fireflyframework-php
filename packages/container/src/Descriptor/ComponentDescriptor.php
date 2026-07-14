@@ -71,22 +71,12 @@ final readonly class ComponentDescriptor
             $data['class'],
             $data['stereotype'],
             $data['name'],
-            self::scopeFromName($data['scope']),
+            Scope::fromName($data['scope']),
             $data['primary'],
             $data['order'],
             $data['qualifier'],
             $data['interfaces'],
             array_map(static fn (array $b): BeanDescriptor => BeanDescriptor::fromArray($b), $data['beans']),
         );
-    }
-
-    private static function scopeFromName(string $name): Scope
-    {
-        return match ($name) {
-            'Singleton' => Scope::Singleton,
-            'Transient' => Scope::Transient,
-            'Scoped' => Scope::Scoped,
-            default => throw new \ValueError("Unknown Scope case: {$name}"),
-        };
     }
 }

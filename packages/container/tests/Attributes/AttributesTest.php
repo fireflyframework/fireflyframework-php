@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Component;
 use Firefly\Container\Attributes\Configuration;
+use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Attributes\Order;
 use Firefly\Container\Attributes\Primary;
 use Firefly\Container\Attributes\Qualifier;
@@ -48,6 +49,7 @@ it('carries #[Bean], #[Primary], #[Order], #[Lazy], #[Qualifier] metadata', func
         #[Bean('clock', Scope::Transient)]
         #[Primary]
         #[Order(10)]
+        #[Lazy]
         public function clock(): string
         {
             return 'x';
@@ -61,7 +63,8 @@ it('carries #[Bean], #[Primary], #[Order], #[Lazy], #[Qualifier] metadata', func
     expect($bean->name)->toBe('clock')
         ->and($bean->scope)->toBe(Scope::Transient)
         ->and($method->getAttributes(Primary::class))->toHaveCount(1)
-        ->and($order->order)->toBe(10);
+        ->and($order->order)->toBe(10)
+        ->and($method->getAttributes(Lazy::class))->toHaveCount(1);
 
     $q = new #[Qualifier('main')] class {};
     expect((new ReflectionObject($q))->getAttributes(Qualifier::class)[0]->newInstance()->name)->toBe('main');

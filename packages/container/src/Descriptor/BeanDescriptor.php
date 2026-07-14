@@ -41,19 +41,9 @@ final readonly class BeanDescriptor
             $data['method'],
             $data['returns'],
             $data['name'],
-            self::scopeFromName($data['scope']),
+            Scope::fromName($data['scope']),
             $data['primary'],
             $data['order'],
         );
-    }
-
-    private static function scopeFromName(string $name): Scope
-    {
-        return match ($name) {
-            'Singleton' => Scope::Singleton,
-            'Transient' => Scope::Transient,
-            'Scoped' => Scope::Scoped,
-            default => throw new \ValueError("Unknown Scope case: {$name}"),
-        };
     }
 }

@@ -27,3 +27,8 @@ it('round-trips a ComponentDescriptor through toArray/fromArray', function () {
         ->and($restored->beans[0]->scope)->toBe(Scope::Transient)
         ->and($restored->scope)->toBe(Scope::Singleton);
 });
+
+it('round-trips a BeanDescriptor through toArray/fromArray', function () {
+    $bean = new BeanDescriptor('clock', 'App\\Clock', 'clock', Scope::Scoped, false, 3);
+    expect(BeanDescriptor::fromArray($bean->toArray()))->toEqual($bean);
+});
