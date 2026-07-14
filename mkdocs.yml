@@ -1,5 +1,9 @@
 site_name: LaraFly — Firefly Framework for PHP
 site_description: Spring Boot's cohesion, native to Laravel.
+# Internal design docs (specs/plans) live under docs/superpowers/ and must never
+# be built into the published site. They are also git-ignored from the repo.
+exclude_docs: |
+  superpowers/
 theme:
   name: material
   features:
