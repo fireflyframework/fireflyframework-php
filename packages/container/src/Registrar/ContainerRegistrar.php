@@ -71,15 +71,10 @@ final class ContainerRegistrar
                 return $c->call($callable);
             };
 
-            // Use the *If variants: the first bean registered under a given
-            // return type wins. Without this, two #[Configuration] classes
-            // that happen to declare a bean with the same return type would
-            // have the later one silently clobber the earlier one's binding
-            // (Illuminate\Container's bind()/singleton() always overwrite).
             match ($bean->scope) {
-                Scope::Singleton => $this->container->singletonIf($bean->returns, $factory),
-                Scope::Transient => $this->container->bindIf($bean->returns, $factory),
-                Scope::Scoped => $this->container->scopedIf($bean->returns, $factory),
+                Scope::Singleton => $this->container->singleton($bean->returns, $factory),
+                Scope::Transient => $this->container->bind($bean->returns, $factory),
+                Scope::Scoped => $this->container->scoped($bean->returns, $factory),
             };
 
             if ($bean->name !== null && $bean->name !== $bean->returns) {

@@ -11,9 +11,9 @@ use Firefly\Container\Attributes\Configuration;
 final class EdgeConfig
 {
     #[Bean]
-    public function typedClass(): Clock
+    public function typedClass(): Gadget
     {
-        return new Clock('UTC');
+        return new Gadget;
     }
 
     #[Bean]
@@ -23,8 +23,8 @@ final class EdgeConfig
     }
 
     #[Bean]
-    public function nullableClass(?string $zone = null): ?Clock
+    public function nullableClass(?bool $make = null): ?Widget
     {
-        return $zone === null ? null : new Clock($zone);
+        return $make === true ? new Widget : null;
     }
 }

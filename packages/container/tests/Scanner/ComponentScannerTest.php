@@ -9,9 +9,11 @@ use Firefly\Container\Tests\Fixtures\AppConfig;
 use Firefly\Container\Tests\Fixtures\Clock;
 use Firefly\Container\Tests\Fixtures\EdgeConfig;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
+use Firefly\Container\Tests\Fixtures\Gadget;
 use Firefly\Container\Tests\Fixtures\Greeter;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
+use Firefly\Container\Tests\Fixtures\Widget;
 
 /**
  * @return list<ComponentDescriptor>
@@ -94,9 +96,9 @@ it('records the empty-string return-type contract for builtin/untyped #[Bean] re
         $byMethod[$bean->method] = $bean;
     }
 
-    expect($byMethod['typedClass']->returns)->toBe(Clock::class)
+    expect($byMethod['typedClass']->returns)->toBe(Gadget::class)
         ->and($byMethod['builtinReturn']->returns)->toBe('')
-        ->and($byMethod['nullableClass']->returns)->toBe(Clock::class);
+        ->and($byMethod['nullableClass']->returns)->toBe(Widget::class);
 });
 
 it('scans cleanly when the directory does not exist', function () {
