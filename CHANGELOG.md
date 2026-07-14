@@ -2,6 +2,20 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.2] - 2026-07-15
+### Added
+- **`firefly/config`** — Spring-style configuration over Laravel's config repository:
+  - **Profiles** — `Profiles`/`ProfileResolver` (active profiles from `FIREFLY_PROFILES_ACTIVE`, else `APP_ENV`,
+    else `default`) and a `#[Profile]` marker.
+  - **Typed `Config` accessor** — `string()`/`int()`/`bool()`/`array()`/`get()`/`has()` with fail-fast
+    `ConfigurationException` on missing-required or type-mismatched keys.
+  - **`#[ConfigProperties]` binding** — a first-party `ReflectionConfigBinder` (behind a `ConfigBinder` seam)
+    maps a config subtree onto a plain readonly DTO, with recursive nested binding, discovered by
+    `ConfigPropertiesScanner` and compiled to a cached, Octane-safe manifest.
+  - **`ConfigValueResolver`** — a config→env→default `ValueResolver` bound over `firefly/container`'s default,
+    closing the resolver seam so `#[Value]` reads application config.
+- Harness: a `Config` Deptrac layer (may depend on `Kernel` + `Container`).
+
 ## [26.07.1] - 2026-07-14
 ### Added
 - **`firefly/container`** — attribute-driven dependency injection over `Illuminate\Container`:
