@@ -11,4 +11,6 @@ composer.lock
 /.phpstan-cache/
 # Never commit design docs (specs/plans) per project policy
 /docs/superpowers/
+# Subagent-driven-development scratch (ledger + review packages)
+/.superpowers/
 .DS_Store
