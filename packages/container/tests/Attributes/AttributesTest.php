@@ -37,3 +37,24 @@ it('treats Configuration as a Component too', function () {
     expect($instance)->toBeInstanceOf(Configuration::class)
         ->and($instance)->toBeInstanceOf(Component::class);
 });
+
+it('carries #[Bean], #[Primary], #[Order], #[Lazy], #[Qualifier] metadata', function () {
+    $config = new class {
+        #[\Firefly\Container\Attributes\Bean('clock', \Firefly\Container\Scope::Transient)]
+        #[\Firefly\Container\Attributes\Primary]
+        #[\Firefly\Container\Attributes\Order(10)]
+        public function clock(): string { return 'x'; }
+    };
+    $method = (new ReflectionObject($config))->getMethod('clock');
+
+    $bean = $method->getAttributes(\Firefly\Container\Attributes\Bean::class)[0]->newInstance();
+    $order = $method->getAttributes(\Firefly\Container\Attributes\Order::class)[0]->newInstance();
+
+    expect($bean->name)->toBe('clock')
+        ->and($bean->scope)->toBe(\Firefly\Container\Scope::Transient)
+        ->and($method->getAttributes(\Firefly\Container\Attributes\Primary::class))->toHaveCount(1)
+        ->and($order->order)->toBe(10);
+
+    $q = new #[\Firefly\Container\Attributes\Qualifier('main')] class {};
+    expect((new ReflectionObject($q))->getAttributes(\Firefly\Container\Attributes\Qualifier::class)[0]->newInstance()->name)->toBe('main');
+});
