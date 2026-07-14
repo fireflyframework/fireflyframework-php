@@ -15,5 +15,5 @@ namespace Firefly\Kernel;
  */
 final class Version
 {
-    public const string VERSION = '26.07.0';
+    public const string VERSION = '26.07.1';
 }

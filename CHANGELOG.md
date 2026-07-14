@@ -2,6 +2,18 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.1] - 2026-07-14
+### Added
+- **`firefly/container`** — attribute-driven dependency injection over `Illuminate\Container`:
+  - Stereotype attributes `#[Service]`/`#[Repository]`/`#[Configuration]` (specialising `#[Component]`) and
+    modifiers `#[Bean]`/`#[Primary]`/`#[Order]`/`#[Lazy]`/`#[Qualifier]`.
+  - `ComponentScanner` + `ManifestCompiler` — PSR-4 scanning compiled to a cached, Octane-safe manifest.
+  - `ContainerRegistrar` — Singleton/Transient/Scoped scopes, interface auto-binding, `#[Primary]` defaults,
+    named aliases, tagged ordered lists, and `#[Bean]` factories with method injection.
+  - `Firefly\Container\Container` facade — resolve by type/interface/name and `#[Order]`-sorted `getAll()`.
+  - `#[Value]` injection (`${ENV:default}` + `#{expr}`) via a pluggable `ValueResolver`.
+- Harness: Larastan added to PHPStan; a `Container` Deptrac layer (may depend on `Kernel` only).
+
 ## [26.07.0] - 2026-07-14
 
 First milestone of the LaraFly Foundation cycle: the Composer monorepo, the quality harness, and the
