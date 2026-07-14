@@ -1,0 +1,41 @@
+{
+    "name": "firefly/monorepo",
+    "description": "LaraFly — the Firefly Framework for PHP. Development monorepo.",
+    "type": "project",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3"
+    },
+    "require-dev": {
+        "pestphp/pest": "^3.7",
+        "phpstan/phpstan": "^2.1",
+        "laravel/pint": "^1.20",
+        "qossmic/deptrac-shim": "^1.0",
+        "symplify/monorepo-builder": "^11.2"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Tests\\": "tests/"
+        }
+    },
+    "repositories": [
+        { "type": "path", "url": "packages/*", "options": { "symlink": true } }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "pint": "pint",
+        "pint-test": "pint --test",
+        "stan": "phpstan analyse --no-progress",
+        "test": "pest",
+        "deptrac": "deptrac analyse --no-progress --config-file=deptrac.yaml",
+        "mono-validate": "monorepo-builder validate",
+        "check": [ "@pint-test", "@stan", "@test", "@deptrac" ]
+    }
+}
