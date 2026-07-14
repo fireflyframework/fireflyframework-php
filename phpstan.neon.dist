@@ -2,6 +2,7 @@ parameters:
     level: max
     paths:
         - packages
+        - tests
     excludePaths:
         - packages/*/vendor
     tmpDir: .phpstan-cache
