@@ -9,6 +9,7 @@ composer.lock
 .phpunit.cache/
 /.php-cs-fixer.cache
 /.phpstan-cache/
+/.deptrac.cache
 # Never commit design docs (specs/plans) per project policy
 /docs/superpowers/
 # Subagent-driven-development scratch (ledger + review packages)
