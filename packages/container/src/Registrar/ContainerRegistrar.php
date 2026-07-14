@@ -18,6 +18,7 @@ final class ContainerRegistrar
         foreach ($manifest->components as $component) {
             $this->bindClass($component);
             $this->registerName($component);
+            $this->registerBeans($component);
         }
 
         $this->wireInterfaces($manifest);
@@ -44,6 +45,46 @@ final class ContainerRegistrar
         $name = $component->name ?? $component->qualifier;
         if ($name !== null && $name !== $component->class) {
             $this->container->alias($component->class, $name);
+        }
+    }
+
+    private function registerBeans(ComponentDescriptor $component): void
+    {
+        foreach ($component->beans as $bean) {
+            if ($bean->returns === '') {
+                continue;
+            }
+
+            $configClass = $component->class;
+            $method = $bean->method;
+            $factory = function (Container $c) use ($configClass, $method): mixed {
+                /** @var object $config */
+                $config = $c->make($configClass);
+
+                // The scanner only records #[Bean] on public methods that
+                // exist on $configClass (see ComponentScanner::beansOf()),
+                // so this array is guaranteed to be a valid callable; PHPStan
+                // cannot verify that from a dynamic method-name string alone.
+                /** @var callable $callable */
+                $callable = [$config, $method];
+
+                return $c->call($callable);
+            };
+
+            // Use the *If variants: the first bean registered under a given
+            // return type wins. Without this, two #[Configuration] classes
+            // that happen to declare a bean with the same return type would
+            // have the later one silently clobber the earlier one's binding
+            // (Illuminate\Container's bind()/singleton() always overwrite).
+            match ($bean->scope) {
+                Scope::Singleton => $this->container->singletonIf($bean->returns, $factory),
+                Scope::Transient => $this->container->bindIf($bean->returns, $factory),
+                Scope::Scoped => $this->container->scopedIf($bean->returns, $factory),
+            };
+
+            if ($bean->name !== null && $bean->name !== $bean->returns) {
+                $this->container->alias($bean->returns, $bean->name);
+            }
         }
     }
 

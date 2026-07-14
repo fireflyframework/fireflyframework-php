@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Container\Registrar\ContainerRegistrar;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scanner\ComponentScanner;
+use Firefly\Container\Tests\Fixtures\Clock;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
 use Firefly\Container\Tests\Fixtures\Greeter;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
@@ -60,4 +61,17 @@ it('tags every implementation of an interface for list resolution', function () 
     expect($classes)->toContain(EnglishGreeter::class)
         ->toContain(SpanishGreeter::class)
         ->toContain(LoudGreeter::class);
+});
+
+it('registers #[Bean] methods under their return type and name', function () {
+    $c = registeredContainer();
+
+    /** @var Clock $clock */
+    $clock = $c->make(Clock::class);
+    /** @var Clock $namedClock */
+    $namedClock = $c->make('utcClock');
+
+    expect($clock)->toBeInstanceOf(Clock::class)
+        ->and($clock->zone)->toBe('UTC')
+        ->and($namedClock)->toBeInstanceOf(Clock::class);
 });
