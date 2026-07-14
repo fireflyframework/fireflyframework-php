@@ -10,9 +10,17 @@ deptrac:
       collectors:
         - type: directory
           value: packages/container/src/.*
+    - name: Config
+      collectors:
+        - type: directory
+          value: packages/config/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
     # Container may depend on Kernel (and on external Illuminate/Symfony, which Deptrac ignores as unlayered).
     Container:
       - Kernel
+    # Config layers on Kernel (errors) and Container (ValueResolver seam + DTO registration).
+    Config:
+      - Kernel
+      - Container
