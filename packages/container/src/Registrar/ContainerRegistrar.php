@@ -14,10 +14,23 @@ use Illuminate\Container\Container;
 
 final class ContainerRegistrar
 {
+    private const REGISTERED = 'firefly.container.registered';
+
     public function __construct(private readonly Container $container) {}
 
     public function register(ComponentManifest $manifest): void
     {
+        // Illuminate's tag() APPENDS rather than replaces, so a second call to
+        // register() on the same container would duplicate every tagged binding
+        // (e.g. getAll() returning 6 instances instead of 3). Providers can be
+        // register()/boot()-invoked more than once, so guard with a per-container
+        // sentinel: a fresh container is never bound here, making register() a
+        // no-op on repeat calls against an already-registered container.
+        if ($this->container->bound(self::REGISTERED)) {
+            return;
+        }
+        $this->container->instance(self::REGISTERED, true);
+
         $this->registerValueSupport();
 
         foreach ($manifest->components as $component) {

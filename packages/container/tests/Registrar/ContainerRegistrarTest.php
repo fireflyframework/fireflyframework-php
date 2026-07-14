@@ -111,3 +111,19 @@ it('skips beans with an empty return type without binding an empty abstract', fu
     // scanner records returns === '' and registerBeans() skips it entirely.
     expect($c->bound(''))->toBeFalse();
 });
+
+it('is idempotent: a second register() does not duplicate tagged bindings', function () {
+    $components = (new ComponentScanner)->scan([
+        'Firefly\\Container\\Tests\\Fixtures\\' => __DIR__.'/../Fixtures',
+    ]);
+    $manifest = new ComponentManifest($components);
+    $c = new IlluminateContainer;
+    $registrar = new ContainerRegistrar($c);
+
+    $registrar->register($manifest);
+    $registrar->register($manifest); // second call must be a no-op
+
+    $tagged = iterator_to_array($c->tagged($registrar->tagFor(Greeter::class)));
+
+    expect($tagged)->toHaveCount(3);
+});

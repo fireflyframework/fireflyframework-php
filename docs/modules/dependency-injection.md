@@ -59,6 +59,12 @@ $container->getAll(Greeter::class);      // all implementations, sorted by #[Ord
 
 `#[Order]` sets list precedence (lower first, Spring convention). `getAll()` returns implementations sorted by it.
 
+## `#[Lazy]` (reserved)
+
+`#[Lazy]` is accepted on components for forward-compatibility but is currently a **no-op**: `Illuminate\Container`
+already resolves bindings lazily by default, so there is nothing extra to defer today. Explicit-lazy semantics
+(e.g. proxying construction) are reserved for a future milestone.
+
 ## `#[Bean]` factory methods
 
 A `#[Configuration]` class exposes `#[Bean]` methods; each is registered under its return type, with parameters
