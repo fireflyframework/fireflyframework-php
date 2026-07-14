@@ -63,6 +63,7 @@ it('fixes code/status/category/severity per typed exception', function (
     ErrorSeverity $severity,
 ) {
     $e = new $class('something happened');
+    assert($e instanceof FireflyException);
 
     expect($e)->toBeInstanceOf(FireflyException::class)
         ->and($e->errorCode())->toBe($code)

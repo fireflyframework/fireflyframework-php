@@ -12,7 +12,7 @@ use Throwable;
 class ValidationException extends BusinessException
 {
     /**
-     * @param list<FieldError> $fieldErrors
+     * @param  list<FieldError>  $fieldErrors
      */
     public function __construct(
         string $message = 'Validation failed',
