@@ -3,6 +3,8 @@
 /node_modules/
 # mkdocs build output
 /site/
+# local docs build venv (mkdocs-material install; PEP-668 workaround)
+/.venv-docs/
 # library monorepo: do not commit the root lock
 composer.lock
 .phpunit.result.cache

@@ -1,0 +1,19 @@
+site_name: LaraFly — Firefly Framework for PHP
+site_description: Spring Boot's cohesion, native to Laravel.
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Modules:
+      - Foundation:
+          - Error Handling: modules/error-handling.md
