@@ -10,7 +10,7 @@ use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Container\Scope;
 use Firefly\Container\Value\DefaultValueResolver;
 use Firefly\Container\Value\ValueResolver;
-use Illuminate\Contracts\Container\Container;
+use Illuminate\Container\Container;
 
 final class ContainerRegistrar
 {
