@@ -560,8 +560,8 @@ resolution almost always happens *inside* a request, building it into that reque
 — so it is **rebuilt from scratch on every request that resolves it, not built once**, making
 `#[Lazy]` + `Scope::Singleton` behave like a request-scoped bean rather than a true singleton, and
 its `#[PreDestroy]` never runs as a corollary of that same identity loss — see "Lifecycle", above, for
-the full mechanism, the measured before/after-fix behavior pinned by
-`LazySingletonOctaneIdentityTest`, and why this is disclosed rather than fixed in this milestone.
+the full mechanism, the measured eager-vs-`#[Lazy]` behavior pinned by `LazySingletonOctaneIdentityTest`,
+and why this is disclosed rather than fixed in this milestone.
 
 `StateResetter` first drains `DisposableBeanRegistry`'s scoped ledger — running `#[PreDestroy]` on
 every tracked scoped bean, in reverse registration order — and only then calls
