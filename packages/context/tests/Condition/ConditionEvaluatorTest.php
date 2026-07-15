@@ -230,18 +230,43 @@ it('does NOT evaluate a bean condition during pass one', function () {
     expect($evaluator->matches($definition, beanPhase: false, registry: new BeanDefinitionRegistry))->toBeTrue();
 });
 
-it('does NOT evaluate a non-bean condition during pass two', function () {
+// M4 review #5 (Important): this test used to be named "does NOT evaluate a non-bean condition
+// during pass two" and pass beanPhase: true. That is NOT what real pass two does — real pass two
+// (ConditionPassTwoPass.php:138,181) always calls beanPhase: null, never true (grep
+// packages/context/src/Pass/*.php: the four production call sites are `false`, in
+// ConditionPassOnePass, and `null`, in ConditionPassTwoPass — `true` has zero callers). Over the
+// IDENTICAL definition below, beanPhase: true and beanPhase: null produce OPPOSITE results (true vs
+// false) — this test now correctly names/labels the `true` case for what it actually is (the
+// reserved bean-only filter mode, see ConditionEvaluator::matches()'s own docblock), and the test
+// immediately below it pins what real pass two (beanPhase: null) actually does over the same input.
+it('beanPhase: true (the reserved bean-only filter mode — no production caller) skips a non-bean condition entirely; this is NOT pass two', function () {
     $evaluator = makeEvaluator(['firefly' => ['flag' => 'false']]);
     $definition = new BeanDefinition(
         evaluatorDescriptor('App\AutoThing'),
-        // Would fail if (wrongly) evaluated: firefly.flag=false does not equal 'true'.
+        // Would fail if evaluated: firefly.flag=false does not equal 'true'. beanPhase: true skips
+        // it (it is not a bean condition), so the definition matches vacuously.
         conditions: [new ConditionalOnProperty('firefly.flag', havingValue: 'true')],
         source: DefinitionSource::AutoConfiguration,
     );
 
-    // Pass two (beanPhase: true): the ONLY condition is a non-bean condition, so it is skipped —
-    // the definition matches vacuously.
     expect($evaluator->matches($definition, beanPhase: true, registry: new BeanDefinitionRegistry))->toBeTrue();
+});
+
+it('matches() with beanPhase: null — REAL pass two — DOES evaluate a non-bean condition, over the SAME definition as the test above, and it fails', function () {
+    $evaluator = makeEvaluator(['firefly' => ['flag' => 'false']]);
+    $definition = new BeanDefinition(
+        evaluatorDescriptor('App\AutoThing'),
+        conditions: [new ConditionalOnProperty('firefly.flag', havingValue: 'true')],
+        source: DefinitionSource::AutoConfiguration,
+    );
+
+    // ConditionPassTwoPass.php:138 and :181 both call beanPhase: null ("evaluate EVERY condition,
+    // of either kind"), never true. Over the identical definition the test above uses, real pass
+    // two does NOT skip this non-bean condition — it evaluates it, firefly.flag=false does not
+    // equal the required 'true', and the definition fails to match. Same input, opposite
+    // beanPhase, opposite result — the discriminating pair the old test's name falsely claimed for
+    // itself.
+    expect($evaluator->matches($definition, beanPhase: null, registry: new BeanDefinitionRegistry))->toBeFalse();
 });
 
 // --- the user-component rule ---

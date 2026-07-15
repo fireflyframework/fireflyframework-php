@@ -74,7 +74,14 @@ final class ConditionEvaluator
      * semantics):
      *  - $beanPhase === false: evaluate only registry-independent conditions, skipping bean
      *    conditions — ConditionPassOnePass's mode, over DefinitionSource::User definitions.
-     *  - $beanPhase === true: evaluate only bean conditions, skipping registry-independent ones.
+     *  - $beanPhase === true: evaluate only bean conditions, skipping registry-independent ones —
+     *    the mirror image of $beanPhase === false. RESERVED, no production caller today: grep
+     *    packages/context/src/Pass/*.php for `beanPhase:` — the four call sites are `false`
+     *    (ConditionPassOnePass) and `null` (ConditionPassTwoPass); nothing passes `true`. Kept as a
+     *    deliberately complete, symmetric tri-state rather than narrowed to a bool, for a future
+     *    pass that needs "bean conditions only" in isolation without reimplementing this method's
+     *    AND-semantics/user-component exception rules. Do NOT read "no caller" as "dead code to
+     *    delete" — see ConditionEvaluatorTest's own note on this mode (M4 review #5).
      *  - $beanPhase === null: evaluate EVERY condition, of either kind — ConditionPassTwoPass's
      *    mode, over DefinitionSource::AutoConfiguration definitions, whose registry-independent
      *    conditions were never evaluated at pass one (those definitions didn't exist yet) and
