@@ -15,6 +15,7 @@ use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Definition\DefinitionSource;
 use Firefly\Context\Pass\ConditionPassTwoPass;
 use Firefly\Context\Tests\Fixtures\Cache;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -146,4 +147,4 @@ it('propagates ConfigurationException, unsoftened, for a bean condition on a Def
     ));
 
     (new ConditionPassTwoPass)->run($context);
-})->throws(Firefly\Kernel\Exception\Framework\ConfigurationException::class);
+})->throws(ConfigurationException::class);
