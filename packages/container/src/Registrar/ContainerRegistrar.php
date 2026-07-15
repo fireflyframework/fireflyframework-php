@@ -33,13 +33,17 @@ final class ContainerRegistrar
 
         $this->registerValueSupport();
 
+        /** @var array<string, true> $beanBoundTypes */
+        $beanBoundTypes = [];
         foreach ($manifest->components as $component) {
             $this->bindClass($component);
             $this->registerName($component);
-            $this->registerBeans($component);
+            foreach ($this->registerBeans($component) as $type) {
+                $beanBoundTypes[$type] = true;
+            }
         }
 
-        $this->wireInterfaces($manifest);
+        $this->wireInterfaces($manifest, $beanBoundTypes);
     }
 
     public function tagFor(string $interface): string
@@ -69,8 +73,13 @@ final class ContainerRegistrar
         }
     }
 
-    private function registerBeans(ComponentDescriptor $component): void
+    /**
+     * @return list<string> the non-empty $bean->returns type-keys actually bound
+     */
+    private function registerBeans(ComponentDescriptor $component): array
     {
+        $boundTypes = [];
+
         foreach ($component->beans as $bean) {
             if ($bean->returns === '') {
                 continue;
@@ -102,7 +111,11 @@ final class ContainerRegistrar
                 // Same last-registration-wins semantics as registerName() above.
                 $this->container->alias($bean->returns, $bean->name);
             }
+
+            $boundTypes[] = $bean->returns;
         }
+
+        return $boundTypes;
     }
 
     private function registerValueSupport(): void
@@ -118,7 +131,10 @@ final class ContainerRegistrar
         );
     }
 
-    private function wireInterfaces(ComponentManifest $manifest): void
+    /**
+     * @param  array<string, true>  $beanBoundTypes  interface/type keys already bound by a #[Bean] factory
+     */
+    private function wireInterfaces(ComponentManifest $manifest, array $beanBoundTypes): void
     {
         /** @var array<string, list<ComponentDescriptor>> $byInterface */
         $byInterface = [];
@@ -129,11 +145,22 @@ final class ContainerRegistrar
         }
 
         foreach ($byInterface as $interface => $impls) {
-            // Tag all implementations for ordered list resolution.
+            // Tag all implementations for ordered list resolution. This must
+            // happen unconditionally — getAll()/tagged() behavior is unaffected
+            // by whether a #[Bean] also claims this interface.
             $this->container->tag(
                 array_map(static fn (ComponentDescriptor $c): string => $c->class, $impls),
                 $this->tagFor($interface),
             );
+
+            // An explicit #[Bean] factory takes precedence over auto-wired interface
+            // binding: registerBeans() runs first and, when a #[Bean] method's return
+            // type IS this interface, already bound a Closure factory on $interface.
+            // Without this guard, the default bind() below would silently clobber
+            // that factory with the scanned implementation's class binding.
+            if (isset($beanBoundTypes[$interface])) {
+                continue;
+            }
 
             // Bind the interface to a single default: the #[Primary], else the sole implementation.
             //

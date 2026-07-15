@@ -2,6 +2,13 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.3] - 2026-07-15
+### Fixed
+- **`firefly/container`** — an explicit `#[Bean]` factory whose return type is an interface is no longer silently
+  clobbered by interface auto-binding. `ContainerRegistrar::wireInterfaces()` now skips the single-default binding for
+  any interface already bound by a `#[Bean]`, so an explicit bean definition takes precedence over an auto-wired
+  `#[Primary]`/sole implementation (matching Spring semantics). Implementations are still tagged for `getAll()`.
+
 ## [26.07.2] - 2026-07-15
 ### Added
 - **`firefly/config`** — Spring-style configuration over Laravel's config repository:
