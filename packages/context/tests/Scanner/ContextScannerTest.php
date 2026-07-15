@@ -130,3 +130,12 @@ it('throws at SCAN time (never at boot) when #[AsEventListener] has no explicit 
         'Firefly\\Context\\Tests\\BadListenerFixtures\\' => __DIR__.'/../BadListenerFixtures',
     ]);
 })->throws(ConfigurationException::class);
+
+it('throws ConfigurationException, naming the class and method, when #[AsEventListener] has no explicit event and NO parameters at all', function () {
+    (new ContextScanner)->scan([
+        'Firefly\\Context\\Tests\\BadListenerNoParamsFixtures\\' => __DIR__.'/../BadListenerNoParamsFixtures',
+    ]);
+})->throws(
+    ConfigurationException::class,
+    'Firefly\Context\Tests\BadListenerNoParamsFixtures\NoParamsListenerWidget::onSomething() has no explicit event and no parameters to infer one from.',
+);

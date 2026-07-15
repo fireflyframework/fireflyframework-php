@@ -216,7 +216,16 @@ final class ContextScanner
 
     private function inferEventType(ReflectionMethod $method, string $declaringClass): string
     {
-        $type = $method->getParameters()[0]->getType() ?? null;
+        $parameters = $method->getParameters();
+
+        if ($parameters === []) {
+            throw new ConfigurationException(
+                "#[AsEventListener] on {$declaringClass}::{$method->getName()}() has no explicit event and no ".
+                'parameters to infer one from.',
+            );
+        }
+
+        $type = $parameters[0]->getType();
 
         if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
             return $type->getName();
