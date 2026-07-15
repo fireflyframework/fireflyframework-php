@@ -20,8 +20,10 @@ use Firefly\Context\Scanner\ContextManifest;
 use Firefly\Context\Scanner\ContextScanner;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\CacheA;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\CacheB;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ChildCache;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerFireRecorder;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerPort;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ParentCache;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ProbeEvent;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
@@ -29,13 +31,16 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Events\Dispatcher as IlluminateDispatcher;
 
 /**
- * M4 review #6, Important 1 — THE FAULT-INJECTION CONTROL.
+ * M4 review #6, Important 1, and review #7, Important — THE FAULT-INJECTION CONTROL.
  *
- * Reuses review #6's exact discriminating shape: two structurally IDENTICAL `#[Bean]`-produced
- * classes (CacheA/CacheB — same #[AsEventListener]/#[PreDestroy] method names and bodies), the ONLY
- * variable between them being the declared return type of the `#[Bean]` factory method that produces
- * each one (`ConfigA::makeA(): CacheA` — concrete — vs `ConfigB::makeB(): ListenerPort` — an
- * interface, "the canonical hexagonal shape" per docs/modules/context.md).
+ * Reuses review #6's exact discriminating shape, widened by review #7 to a full one-variable control
+ * over the THREE shapes `$bean->returns` can take relative to the runtime concrete class: three
+ * structurally IDENTICAL `#[Bean]`-produced classes (CacheA/CacheB/ChildCache — same
+ * #[AsEventListener]/#[PreDestroy] method names and bodies), the ONLY variable between them being the
+ * declared return type of the `#[Bean]` factory method that produces each one:
+ *   - `ConfigA::makeA(): CacheA`        — identical (concrete self)
+ *   - `ConfigB::makeB(): ListenerPort`  — an INTERFACE, "the canonical hexagonal shape"
+ *   - `ConfigC::makeC(): ParentCache`   — a concrete SUPERCLASS (the factory returns a ChildCache)
  *
  * This is a REAL scan (Firefly\Container\Scanner\ComponentScanner + Firefly\Context\Scanner\
  * ContextScanner) over REAL fixture files, through a REAL Firefly\Container\Registrar\
@@ -46,7 +51,10 @@ use Illuminate\Events\Dispatcher as IlluminateDispatcher;
  * `contextManifest->forClass($bean->returns)`, and `$bean->returns` for ConfigB's factory is
  * `ListenerPort::class` — an interface `ContextScanner` never scans, so the lookup silently returns
  * null. 'A:listener' fires throughout, both before and after the fix — it is the concrete-return
- * arm's job to prove the fix didn't regress the already-working shape.
+ * arm's job to prove the fix didn't regress the already-working shape. 'C:listener' is the review #7
+ * regression: fix #6's `$concreteClass === $declaredClass` gate is false for ARM C too (ChildCache !==
+ * ParentCache), but unlike ARM B the boot sweep already registered ARM C's listener (ParentCache is
+ * concrete, so it IS scanned) — so the late-bound path registering it again fires it TWICE per event.
  */
 /**
  * @return array{0: ComponentManifest, 1: ContextManifest}
@@ -131,6 +139,42 @@ it('registers #[AsEventListener] for a #[Bean] method whose declared return type
     // ARM B (interface #[Bean] return type) — THE FAULT. Before the Important-1 fix this assertion
     // fails: 'B:listener' is never recorded because forClass(ListenerPort::class) is null.
     expect($recorder->events)->toContain('B:listener');
+});
+
+it('fires an #[AsEventListener] recovered from a #[Bean] method EXACTLY ONCE per event, regardless of whether the declared return type is identical, an interface, or a concrete superclass — M4 review #7, Important, one-variable control', function () {
+    [$componentManifest, $contextManifest] = scanBeanListenerInterfaceFixtures();
+
+    // Sanity: ContextScanner captured ParentCache (concrete, scanned directly) AND ChildCache
+    // (concrete, inherits ParentCache's #[AsEventListener] via ReflectionClass::getMethods()) — this
+    // is precisely the shape that made fix #6's `$concreteClass === $declaredClass` gate unsound:
+    // the boot sweep already found this listener under ParentCache (forClass($bean->returns)), so
+    // the late-bound recovery path must recognise that and NOT register it again under ChildCache.
+    $parentDescriptor = $contextManifest->forClass(ParentCache::class);
+    $childDescriptor = $contextManifest->forClass(ChildCache::class);
+
+    expect($parentDescriptor)->not->toBeNull()
+        ->and($parentDescriptor?->listeners)->toHaveCount(1)
+        ->and($childDescriptor)->not->toBeNull()
+        ->and($childDescriptor?->listeners)->toHaveCount(1);
+
+    [, $container, $recorder] = bootBeanListenerInterfacePipeline($componentManifest, $contextManifest);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $container->make('events');
+    $dispatcher->dispatch(new ProbeEvent('probe'));
+
+    $counts = array_count_values($recorder->events);
+
+    // ONE event dispatched. The ONLY variable across the three arms is the #[Bean] factory's declared
+    // return type (identical / interface / concrete superclass) — every arm must fire EXACTLY ONCE.
+    // Before the review #7 fix, ARM C (superclass) fires TWICE: once from RegisterEventListenersPass's
+    // boot-time sweep (which already found it via forClass(ParentCache::class)), and once more from
+    // RegisterBeanPostProcessorsPass's late-bound recovery path, whose `$concreteClass ===
+    // $declaredClass` gate is false for this shape (ChildCache !== ParentCache) exactly like the
+    // interface arm, but WITHOUT that arm's justification (the sweep already handled it here).
+    expect($counts['A:listener'] ?? 0)->toBe(1)
+        ->and($counts['B:listener'] ?? 0)->toBe(1)
+        ->and($counts['C:listener'] ?? 0)->toBe(1);
 });
 
 it('still runs #[PreDestroy] for the interface-produced bean after the fix (no regression of the d3a7688/Critical-2 lifecycle fix)', function () {

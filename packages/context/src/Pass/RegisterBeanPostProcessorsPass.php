@@ -64,12 +64,17 @@ use Illuminate\Contracts\Events\Dispatcher;
  * gap fixed above by this same $concreteClass capture): RegisterEventListenersPass's own boot-time
  * sweep can only ever look up `contextManifest->forClass($bean->returns)`, and for that shape
  * `$bean->returns` IS the interface, which ContextScanner never scans — so this is the ONLY place
- * $concreteClass becomes knowable at all. $concreteClass === $declaredClass is exactly the signal
- * that RegisterEventListenersPass's sweep already handled this abstract (every plain #[Component]
- * and every #[Bean] method whose declared return type is its own concrete class), so this only ever
- * acts on the genuinely-unhandled interface shape — see registerLateBoundListeners()'s own docblock
- * for the registration-timing/#[Order] trade-off this implies, and RegisterEventListenersPass's
- * docblock for why this is NOT a second, parallel registration mechanism.
+ * $concreteClass becomes knowable at all. Whether that sweep already handled $declaredClass is asked
+ * of the MANIFEST directly (`contextManifest->forClass($declaredClass)` already carrying listeners),
+ * never inferred from `$concreteClass === $declaredClass` (M4 review #7, Important: fix #6 shipped
+ * that identity comparison as the gate, and it is UNSOUND — a #[Bean] method whose declared return
+ * type is a concrete SUPERCLASS also has $concreteClass !== $declaredClass, exactly like the
+ * interface shape, but for THAT shape the sweep already found and registered the listener, so
+ * registering it again here fired it twice per event; see registerLateBoundListeners()'s own
+ * docblock for the full account). See registerLateBoundListeners()'s own docblock for the
+ * registration-timing/#[Order] trade-off recovering the interface case implies, and
+ * RegisterEventListenersPass's docblock for why this is NOT a second, parallel registration
+ * mechanism.
  *
  * BPP classes never post-process themselves into existence: they are resolved BEFORE any composite
  * extender is installed (so none of them can run through a chain, including their own, that does not
@@ -191,19 +196,37 @@ final class RegisterBeanPostProcessorsPass implements BootPass
     }
 
     /**
-     * Recovers RegisterEventListenersPass::registerListenersFor() for the ONE shape its own
-     * boot-time sweep structurally cannot reach: a #[Bean] method whose declared return type is an
-     * INTERFACE (M4 review #6, Important 1). See this class's own docblock for why this seam — and
-     * not a second container->extend() — is the correct, reused place to do it.
+     * Recovers RegisterEventListenersPass::registerListenersFor() for the shape its own boot-time
+     * sweep structurally cannot reach: a #[Bean] method whose declared return type is an INTERFACE
+     * (M4 review #6, Important 1). See this class's own docblock for why this seam — and not a
+     * second container->extend() — is the correct, reused place to do it.
      *
-     * $concreteClass === $declaredClass is the exact signal that RegisterEventListenersPass's sweep
-     * already handled this abstract completely: every plain #[Component] and every #[Bean] method
-     * whose declared return type IS its own concrete class resolves to itself, and
-     * `forClass($declaredClass)` there already found (or correctly found nothing for) whatever this
-     * class carries. Only when the two differ — which, per invariant 4, can only happen for a
-     * #[Bean] method returning an interface — could that sweep NOT have found it (forClass() on an
-     * interface is structurally null; ContextScanner never scans one), so only that case is worth
-     * checking here at all.
+     * THE GATE ASKS THE MANIFEST, NOT CLASS IDENTITY (M4 review #7, Important). Fix #6 shipped
+     * `$concreteClass === $declaredClass` as the signal that RegisterEventListenersPass's sweep
+     * already handled this abstract, on the claim that the two can only differ for a #[Bean] method
+     * returning an interface. That claim was FALSE, and the false claim WAS the bug: `$declaredClass`
+     * (i.e. `$bean->returns`) has THREE shapes relative to `$concreteClass`, not two —
+     *   - identical      — a plain #[Component], or a #[Bean] method returning its own concrete class
+     *   - INTERFACE       — unscanned; `forClass()` is structurally null; the sweep never found it
+     *   - concrete SUPERCLASS/abstract — e.g. `#[Bean] fn(): ParentCache { return new ChildCache; }`
+     * `$concreteClass !== $declaredClass` is equally true for the last two shapes, but the sweep
+     * (`RegisterEventListenersPass::collectListenersFor()`) visits `$bean->returns` directly — i.e.
+     * `$declaredClass`, never `$concreteClass` — so for the superclass shape it DOES already find and
+     * register the listener: `ContextScanner` scans every concrete class, including a concrete
+     * parent, and PHP's own method inheritance means the child's public methods, attributes
+     * included, are read as if declared on the child too, so the parent's descriptor already carries
+     * the `#[AsEventListener]` method the child merely inherits. The old identity gate let this
+     * method register that SAME listener a second time, firing it twice per event — a regression
+     * caught by M4 review #7's one-variable control (identical / interface / superclass all
+     * differing only in the #[Bean] method's declared return type).
+     *
+     * The correct predicate is therefore asked of the shared source of truth instead of inferred from
+     * a property of the inputs: has `$contextManifest->forClass($declaredClass)` already got
+     * listeners? Non-empty means the sweep already handled it (true for BOTH identical-return and
+     * superclass-return); empty means it did not (true for interface-return, the actual gap this
+     * method exists to close) — and this also gets a #[Bean] fn(): AbstractCache right for the right
+     * reason (abstract classes are unscanned too, so `forClass()` is null there as well), which the
+     * old identity gate only got right by accident.
      *
      * $registered is keyed by concrete class and passed BY REFERENCE from the ONE composite
      * extender closure created in run() for this abstract. Under Octane that SAME closure instance
@@ -237,7 +260,9 @@ final class RegisterBeanPostProcessorsPass implements BootPass
         string $concreteClass,
         array &$registered,
     ): void {
-        if ($concreteClass === $declaredClass || isset($registered[$concreteClass])) {
+        $swept = $contextManifest->forClass($declaredClass);
+        $sweptListeners = $swept === null ? [] : $swept->listeners;
+        if ($sweptListeners !== [] || isset($registered[$concreteClass])) {
             return;
         }
         $registered[$concreteClass] = true;
