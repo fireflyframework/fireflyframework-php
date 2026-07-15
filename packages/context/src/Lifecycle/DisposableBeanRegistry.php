@@ -31,6 +31,34 @@ use WeakReference;
  *
  * Both ledgers destroy in REVERSE registration order — dependents (registered later) are torn
  * down before the dependencies (registered earlier) they may still be using.
+ *
+ * 🔴 KNOWN GAP, OCTANE ONLY (M4 review #5, Important — disclosed, not fixed; see
+ * docs/modules/context.md's Lifecycle and Octane sections for the user-facing version): the
+ * singleton ledger's WeakReference is only safe to drain at `drainSingletons()` time (context
+ * close, once per worker) if something ELSE holds a STRONG reference to the bean for the whole
+ * worker's life. That is true for every EAGERLY resolved singleton (`EagerSingletonsPass` builds
+ * it into the WORKER's own container at boot, before any request is served — Octane's `clone
+ * $this->app` per request then shares that same object by reference into every sandbox) and for
+ * every singleton under PHP-FPM (no worker/sandbox split exists there — the resolving container
+ * IS the terminating one). It is NOT true for a `#[Lazy]` singleton whose FIRST resolution happens
+ * INSIDE an Octane request: that resolution builds into the per-request SANDBOX
+ * (`Laravel\Octane\Worker::handle()`'s `clone $this->app`), so the sandbox's own container cache
+ * — not the worker's — is the only strong reference. `register()` here still runs (via the same
+ * `Container::extend()` seam every bean passes through) and records a WeakReference exactly as
+ * always, but once that sandbox is discarded (`$sandbox->flush()`, end of request) nothing keeps
+ * the bean alive, and it is silently garbage-collected long before `drainSingletons()` ever runs —
+ * so its `#[PreDestroy]` never fires. A genuine fix would need to distinguish "this resolution
+ * will become the resolving container's own durable shared instance" from "this is a throwaway
+ * `needsContextualBuild` resolution" (the exact case the WeakReference above exists to tolerate) —
+ * a distinction Illuminate's container does not expose at the `extend()` seam this package is
+ * committed to as the ONLY BeanPostProcessor extension point, only after the fact via
+ * `Container::resolved()`, from OUTSIDE that seam. Reaching for that distinction under Octane
+ * requires a new per-request promotion mechanism (enumerate `#[Lazy]` singleton abstracts, check
+ * `resolved()` on the dying sandbox before it flushes, promote into the worker) rather than a
+ * narrow, obviously-correct change — exactly the kind of reach that introduced two of this
+ * milestone's own bugs. Disclosed honestly instead: `#[Lazy]` + `#[PreDestroy]` on a singleton
+ * first touched inside a request does not run its destroy callback under Octane. Avoid that
+ * combination under Octane until a future milestone closes this gap.
  */
 final class DisposableBeanRegistry
 {
@@ -65,6 +93,19 @@ final class DisposableBeanRegistry
         $entry = ['ref' => WeakReference::create($bean), 'declaredClass' => $declaredClass];
 
         if ($scope === Scope::Singleton) {
+            // Compact already-dead entries before appending. This does NOT close the gap
+            // documented in the class docblock above (a dead entry here was ALREADY silently
+            // unreachable at #[PreDestroy] time either way) — it only bounds *memory*, converting
+            // "one entry per request, forever, under Octane" (every #[Lazy] singleton
+            // sandbox-resolved and immediately GC'd — see the docblock) into "one entry per
+            // DISTINCT tracked abstract, steady-state". Cheap (proportional to the current ledger
+            // size, itself now bounded) and behaviorally invisible: drain() already silently skips
+            // a dead ref, so pruning it earlier changes nothing about what fires, only how much
+            // dead weight sits in the array between now and the one-time drainSingletons() call.
+            $this->singletons = array_values(array_filter(
+                $this->singletons,
+                static fn (array $e): bool => $e['ref']->get() !== null,
+            ));
             $this->singletons[] = $entry;
         } elseif ($scope === Scope::Scoped) {
             $this->scoped[] = $entry;

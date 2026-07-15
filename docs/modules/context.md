@@ -99,7 +99,9 @@ boot order silently depend on that accident.
 
 Ordinals are gapped so a later milestone can slot a new phase between two existing ones without
 renumbering. Phases up to `FlushDefinitions` are the **definition stage** — pure `BeanDefinitionRegistry`
-data, no container writes, run from Laravel's `booting()`; everything after is the **instance stage** —
+data, no container writes *before* `FlushDefinitions` itself, which *is* a container write (the single
+`ContainerRegistrar::register()` flush point) — run from Laravel's `booting()`; everything after is the
+**instance stage** —
 operates on resolved objects, run from `booted()`. That split guarantees every provider's own `boot()`
 method sees a fully-wired Firefly container, regardless of which provider Laravel happens to construct
 first.
@@ -358,7 +360,9 @@ concrete class — you do not need to do anything differently for either shape.
 
 `#[PostConstruct]` and `#[PreDestroy]` mark methods run once at initialization and once at teardown —
 Spring's annotations of the same name, ported as inert metadata: the attributes themselves carry no
-logic, `InitDestroyInvoker` supplies all discovery and dispatch.
+logic. `ContextScanner` is the sole DISCOVERER — the only class in this package allowed to reflect —
+and captures method names onto the compiled `ContextManifest` at scan time; `InitDestroyInvoker` never
+reflects a class at invocation time, only DISPATCHES against that already-compiled manifest.
 
 `ApplicationContext::close()` — which runs every tracked `#[PreDestroy]` and `Lifecycle::stop()` (see
 below) — is called automatically, at real application shutdown, without any application code having
@@ -405,6 +409,25 @@ drained once, at context close; `Scope::Scoped` beans are tracked separately and
 (see Octane, below). `Scope::Transient` beans are never tracked — prototype-scoped beans are not
 lifecycle-managed.
 
+**Known gap, Octane only (a `#[Lazy]` singleton resolved for the first time inside a request):**
+the promise above assumes the singleton was resolved into the *worker* application. That is true
+for every eagerly-resolved singleton — `EagerSingletonsPass` (phase 900) builds it into the worker
+once, at boot, before any request is served, and Octane's per-request `clone $this->app` then shares
+that same object by reference into every sandbox — and true for every singleton under PHP-FPM,
+where no worker/sandbox split exists at all. It is **not** true for a `#[Lazy]` singleton whose
+*first* resolution happens inside a request: Octane builds it into the per-request **sandbox**
+(`Laravel\Octane\Worker::handle()`'s `clone $this->app`), so the only strong reference to it lives in
+that sandbox's own container state, never the worker's. `DisposableBeanRegistry` still records it —
+the same `WeakReference`, via the same seam every bean passes through — but once the sandbox is
+discarded at the end of that request, nothing keeps the bean alive, and it is silently
+garbage-collected long before the worker's one-time `drainSingletons()` ever runs. **Its
+`#[PreDestroy]` does not run.** Under PHP-FPM the identical bean's `#[PreDestroy]` fires correctly,
+because there the resolving container and the terminating one are the same object — the gap is
+Octane-specific, and it applies precisely to `#[Lazy]` + `#[PreDestroy]` on a Singleton, the
+canonical "don't connect at boot, close at shutdown" shape. There is no supported workaround today
+beyond avoiding that combination under Octane; see `DisposableBeanRegistry`'s own docblock for why
+this is disclosed rather than fixed in this milestone.
+
 ## Events
 
 Application code publishes and listens for events through one hexagonal port, never through Laravel's
@@ -423,8 +446,11 @@ from the container **fresh on every call** rather than caching it — this is wh
 constructed before the fake was installed.
 
 `FireflyServiceProvider::register()` binds `ApplicationEventPublisher` to `DispatcherEventPublisher`
-as a singleton automatically — a `#[Component]` that constructor-injects the interface above (exactly
-like `BootLogger` below) resolves it with no further wiring required from application code.
+as a singleton automatically — a `#[Component]` that constructor-injects the interface above resolves
+it with no further wiring required from application code. `BootLogger` below shows the other common
+shape: a plain `#[Component]` with no constructor at all, whose methods are wired as listeners purely
+via `#[AsEventListener]` — publishing and listening are independent, and a class is free to do only
+one of them.
 
 ```php
 use Firefly\Container\Attributes\Component;
@@ -488,8 +514,11 @@ docblock: package presence alone was a real regression — M4 review #4 — beca
 `schedule:run`, artisan commands, and this package's own tests all have the package on their
 classpath without ever starting a worker or dispatching `WorkerStopping`; every one of those still
 gets `terminating()`, same as plain PHP-FPM). `WorkerStopping` carries only `$app` — there is no
-per-worker-shutdown sandbox — so this is the one Octane event this package targets `$event->app`
-rather than `$event->sandbox`; see the `$event->app`-vs-`$event->sandbox` note above and
+per-worker-shutdown sandbox — but the listener closure doesn't read `$event` at all: it takes no
+`$event` parameter and simply closes over the `ApplicationContext` built from this worker's own
+`boot()`, captured once at worker-boot time. There is nothing on `WorkerStopping` worth reading in
+the first place, which is *why* it carrying no `$sandbox` (unlike `RequestReceived`/
+`RequestTerminated`/`TaskTerminated`/`TickTerminated`, see the invariant above) is a non-issue; see
 `FireflyServiceProvider::bootApplicationContext()`'s own docblock.
 
 By contrast, what *does* need resetting between requests is per-request state: `Scope::Scoped` bean
@@ -501,7 +530,11 @@ below are only ever dispatched by a real worker) to Octane's `RequestReceived`,
 `StateResetter::reset($event->sandbox)` — the **sandbox**, Octane's fresh-per-request container
 clone, never `$event->app`, the original long-lived worker application; resetting the wrong one would
 be a silent no-op on a container nothing is ever served from. In short: **scoped beans drain per
-request; singletons drain once, at worker (or, under PHP-FPM, application) shutdown.**
+request; singletons drain once, at worker (or, under PHP-FPM, application) shutdown** — **for every
+singleton resolved into the worker itself**, which is every eagerly-resolved one, and every one
+under PHP-FPM. A `#[Lazy]` singleton first resolved *inside* a request is sandbox-lifetime instead,
+and its `#[PreDestroy]` never runs — see "Lifecycle", above, for the full mechanism and why this is
+disclosed rather than fixed in this milestone.
 
 `StateResetter` first drains `DisposableBeanRegistry`'s scoped ledger — running `#[PreDestroy]` on
 every tracked scoped bean, in reverse registration order — and only then calls

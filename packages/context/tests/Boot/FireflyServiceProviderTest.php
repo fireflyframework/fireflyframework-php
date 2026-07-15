@@ -440,10 +440,17 @@ final class ShutdownProbeBroker implements Lifecycle
  * not #[Lazy]).
  *
  * Forces octaneIsAvailable() to FALSE, exactly like OctaneAbsentProvider — this is the PHP-FPM half
- * of a one-variable control (see OctaneShutdownPipelineProviderStub below for the other half). The
- * real laravel/octane package IS installed in this repo (it is this package's own dev dependency),
- * so without this override octaneIsAvailable() would ambiently return true here too and this
- * "FPM control" would silently stop testing what its name claims.
+ * of a one-variable control (see OctaneShutdownPipelineProviderStub below for the other half).
+ * CORRECTED CLAIM (M4 review #5, Minor): an earlier version of this comment claimed that without
+ * this override, octaneIsAvailable() would "ambiently return true here too" because
+ * laravel/octane the package IS installed in this repo. That is FALSE — see the "[REAL GATE]" test
+ * below ("...is FALSE when the LARAVEL_OCTANE marker is absent, even though laravel/octane the
+ * package IS installed in this repo"), which asserts the exact opposite against the REAL,
+ * unstubbed gate. The override is harmless and kept deliberately (a stated, non-relitigated
+ * choice — see the class-level test file docblock and M4 review #4), but its actual purpose is:
+ * it pins this control's branch independently of the ambient `$_SERVER['LARAVEL_OCTANE']` marker,
+ * so this "FPM control" cannot be silently perturbed by a leaked marker value from another test
+ * (or from the real process environment) — not because the real gate would otherwise misfire here.
  */
 final class ShutdownPipelineProviderStub extends FireflyServiceProvider
 {
@@ -647,6 +654,156 @@ it('[OCTANE control] does NOT close the context at the end of request #1 — sin
     expect($state->poolDisconnected)->toBeTrue()
         ->and($state->brokerStopped)->toBeTrue()
         ->and($app->make(ApplicationContext::class)->isActive())->toBeFalse();
+});
+
+// --- M4 review #5 (Important, disclosed not fixed): a #[Lazy] singleton's #[PreDestroy] does NOT
+// run under Octane when it is first resolved INSIDE a request (into the per-request sandbox) rather
+// than eagerly, at worker boot (into the worker itself). One-variable control: same worker, same
+// pass list, only #[Lazy] differs between the two probe beans below — plus a PHP-FPM control
+// proving the SAME lazy bean class behaves correctly outside Octane. See DisposableBeanRegistry's
+// own docblock and docs/modules/context.md's Lifecycle/Octane sections for the disclosed contract.
+
+final class LazyPreDestroyProbeState
+{
+    public bool $eagerDisconnected = false;
+
+    public bool $lazyDisconnected = false;
+}
+
+final class EagerPreDestroyProbeBean
+{
+    public function __construct(private readonly LazyPreDestroyProbeState $state) {}
+
+    #[PreDestroy]
+    public function disconnect(): void
+    {
+        $this->state->eagerDisconnected = true;
+    }
+}
+
+final class LazyPreDestroyProbeBean
+{
+    public function __construct(private readonly LazyPreDestroyProbeState $state) {}
+
+    #[PreDestroy]
+    public function disconnect(): void
+    {
+        $this->state->lazyDisconnected = true;
+    }
+}
+
+it('[OCTANE] EAGER singleton #[PreDestroy] FIRES at WorkerStopping, but the IDENTICAL-SHAPED #[Lazy] singleton first resolved inside a request NEVER fires — same worker, only #[Lazy] differs', function () {
+    $app = freshApplication();
+
+    $contextManifest = new ContextManifest([
+        new ContextDescriptor(class: EagerPreDestroyProbeBean::class, preDestroy: ['disconnect']),
+        new ContextDescriptor(class: LazyPreDestroyProbeBean::class, preDestroy: ['disconnect']),
+    ]);
+
+    $kernel = bindFireflyKernel($app, $contextManifest);
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: EagerPreDestroyProbeBean::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+        lazy: false,
+    )));
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: LazyPreDestroyProbeBean::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+        lazy: true,
+    )));
+
+    $app->singleton(LazyPreDestroyProbeState::class);
+
+    // Reuses the existing OCTANE-forced provider stub (identical pass list to the [OCTANE control]
+    // test above) — the worker boots exactly once.
+    $app->register(OctaneShutdownPipelineProviderStub::class);
+    $app->boot();
+
+    /** @var LazyPreDestroyProbeState $state */
+    $state = $app->make(LazyPreDestroyProbeState::class);
+
+    // EagerSingletonsPass (phase 900, part of boot()) already resolved the non-#[Lazy] bean INTO
+    // THE WORKER — before any sandbox exists. The #[Lazy] bean was skipped entirely; nothing has
+    // resolved it yet.
+    expect($state->eagerDisconnected)->toBeFalse()
+        ->and($state->lazyDisconnected)->toBeFalse();
+
+    // --- Request #1: Octane's real per-request shape — clone the worker into a sandbox, and the
+    // #[Lazy] bean is resolved for the FIRST TIME here, INSIDE the sandbox, not the worker.
+    $sandbox1 = clone $app;
+    $sandbox1->make(LazyPreDestroyProbeBean::class);
+
+    // End of request #1: Octane flushes the sandbox (clears ITS OWN bindings/instances — the only
+    // strong reference to the bean just built) and discards it. Mirrors
+    // DisposableBeanRegistryTest's own "\WeakReference: a garbage-collected bean is silently
+    // skipped" pattern, over the REAL Octane clone/flush shape instead of a bare unset().
+    $sandbox1->flush();
+    unset($sandbox1);
+    gc_collect_cycles();
+
+    // --- Only the real once-per-worker shutdown event closes the context. ---
+    $app->make(Dispatcher::class)->dispatch(new WorkerStopping($app));
+
+    // THE DISCLOSED GAP: the eager bean's #[PreDestroy] fires (the worker itself has held a strong
+    // reference to it since boot); the lazy bean's does not — its only strong reference died with
+    // sandbox1, long before this drain ever ran, so DisposableBeanRegistry's WeakReference is
+    // already dead and silently skipped.
+    expect($state->eagerDisconnected)->toBeTrue()
+        ->and($state->lazyDisconnected)->toBeFalse();
+});
+
+it('[FPM control] the SAME #[Lazy] singleton class DOES have its #[PreDestroy] fire under PHP-FPM — the gap above is Octane-specific, not a #[Lazy] defect in general', function () {
+    $app = freshApplication();
+
+    $contextManifest = new ContextManifest([
+        new ContextDescriptor(class: LazyPreDestroyProbeBean::class, preDestroy: ['disconnect']),
+    ]);
+
+    $kernel = bindFireflyKernel($app, $contextManifest);
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: LazyPreDestroyProbeBean::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+        lazy: true,
+    )));
+
+    $app->singleton(LazyPreDestroyProbeState::class);
+
+    // Reuses the existing FPM-forced provider stub (octaneIsAvailable() = false).
+    $app->register(ShutdownPipelineProviderStub::class);
+    $app->boot();
+
+    /** @var LazyPreDestroyProbeState $state */
+    $state = $app->make(LazyPreDestroyProbeState::class);
+    expect($state->lazyDisconnected)->toBeFalse();
+
+    // No sandbox at all under PHP-FPM: the SAME application both resolves the lazy bean and later
+    // terminates — the resolving container and the terminating one are the same object, so the
+    // strong reference the container itself holds survives all the way to terminate().
+    $app->make(LazyPreDestroyProbeBean::class);
+    $app->terminate();
+
+    expect($state->lazyDisconnected)->toBeTrue();
 });
 
 // --- [REAL GATE] M4 review #4 (Important): octaneIsAvailable() itself, unstubbed, against the real

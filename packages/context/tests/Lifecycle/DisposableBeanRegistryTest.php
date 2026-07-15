@@ -163,3 +163,37 @@ it('a GC\'d bean does not break destruction of its still-alive, later-registered
 
     expect($log->entries)->toBe(['alive']);
 });
+
+// --- M4 review #5 (Important, "related" finding): register() compacts dead singleton entries ---
+// --- so the ledger does not grow one dead entry per request forever under Octane. ---
+
+it('register() PRUNES already-dead singleton entries from the ledger — bounds memory to distinct live/tracked entries, not total registrations', function () {
+    $log = new DisposalLog;
+    $registry = makeDisposableRegistry();
+
+    // Simulate many Octane requests each first-resolving (and immediately discarding) a #[Lazy]
+    // singleton: register, then let it die, before the NEXT registration happens.
+    for ($i = 0; $i < 50; $i++) {
+        $bean = new DisposableBean($log, "churned-{$i}");
+        $registry->register($bean, DisposableBean::class, Scope::Singleton);
+        unset($bean);
+        gc_collect_cycles();
+    }
+
+    $alive = new DisposableBean($log, 'alive');
+    $registry->register($alive, DisposableBean::class, Scope::Singleton);
+
+    // A ReflectionProperty peek (test-only — the standing "no Reflection in packages/context/src/"
+    // invariant governs production code, not tests) is the only way to observe the internal ledger
+    // size directly: proves compaction actually shrinks the array as churn happens, not merely that
+    // drain() still behaves correctly either way (drain() would look identical with or without
+    // compaction — see the two tests above — so THIS is the test that actually discriminates the
+    // improvement from a no-op).
+    $singletons = new ReflectionProperty(DisposableBeanRegistry::class, 'singletons');
+    $ledger = $singletons->getValue($registry);
+
+    expect($ledger)->toHaveCount(1);
+
+    $registry->drainSingletons();
+    expect($log->entries)->toBe(['alive']);
+});
