@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 namespace Firefly\Context\Boot;
 
+use Closure;
+use Firefly\Container\Container as FireflyContainer;
+use Firefly\Container\Scanner\ComponentManifest;
+use Firefly\Context\Event\DispatcherEventPublisher;
+use Firefly\Context\Lifecycle\DisposableBeanRegistry;
+use Firefly\Context\Lifecycle\InitDestroyInvoker;
+use Firefly\Context\Lifecycle\LifecycleRegistry;
+use Illuminate\Container\Container;
+
 /**
  * Runs the ordered boot pipeline. The kernel is the ONLY source of pass ordering — passes are
  * merely *contributed* via addPass(); later milestones (M5–M14) extend the pipeline exclusively
@@ -74,17 +83,70 @@ final class FireflyKernel
     }
 
     /**
-     * Runs every phase, in full pipeline order. Shares run()'s per-phase idempotency bookkeeping,
-     * so a phase already completed via a prior run() call is not re-run here.
+     * Runs every phase, in full pipeline order, then assembles the ApplicationContext. Shares
+     * run()'s per-phase idempotency bookkeeping, so a phase already completed via a prior run()
+     * call is not re-run here.
+     *
+     * Assembling the ApplicationContext NEVER requires any particular pass to have been
+     * contributed: FireflyContainer/DisposableBeanRegistry/LifecycleRegistry are each bound with a
+     * safe, empty default if the pass that would normally bind them (FlushDefinitionsPass,
+     * RegisterBeanPostProcessorsPass, InfrastructureStartPass respectively) never ran — e.g. a
+     * partial kernel assembled for a focused unit test. When those passes DID run, they already
+     * bound the real objects via $container->instance(), so bound() is true and the real state
+     * (not the default) is what gets fetched here.
      */
-    public function boot(): void
+    public function boot(): ApplicationContext
     {
         $this->run(...BootPhase::cases());
+
+        return $this->buildApplicationContext();
     }
 
     public function context(): BootContext
     {
         return $this->context;
+    }
+
+    private function buildApplicationContext(): ApplicationContext
+    {
+        $container = $this->context->container;
+
+        $facade = $this->boundOrDefault(
+            $container,
+            FireflyContainer::class,
+            static fn (): FireflyContainer => new FireflyContainer($container, new ComponentManifest([])),
+        );
+
+        $disposables = $this->boundOrDefault(
+            $container,
+            DisposableBeanRegistry::class,
+            static fn (): DisposableBeanRegistry => new DisposableBeanRegistry(new InitDestroyInvoker($container)),
+        );
+
+        $lifecycles = $this->boundOrDefault(
+            $container,
+            LifecycleRegistry::class,
+            static fn (): LifecycleRegistry => new LifecycleRegistry,
+        );
+
+        return new ApplicationContext($facade, new DispatcherEventPublisher($container), $disposables, $lifecycles);
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param  class-string<T>  $abstract
+     * @param  Closure(): T  $default
+     * @return T
+     */
+    private function boundOrDefault(Container $container, string $abstract, Closure $default): object
+    {
+        if (! $container->bound($abstract)) {
+            $container->instance($abstract, $default());
+        }
+
+        /** @var T */
+        return $container->make($abstract);
     }
 
     /**

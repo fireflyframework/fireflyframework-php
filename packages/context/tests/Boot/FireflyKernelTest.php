@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Config\Profile\Profiles;
+use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
@@ -260,6 +261,16 @@ it('boot() runs every contributed pass exactly once, in full pipeline order', fu
     $kernel->boot(); // a second boot() must be a no-op, not a double-run
 
     expect($log->entries)->toBe(['config', 'user', 'eager', 'refreshed']);
+});
+
+// --- boot() returns an ApplicationContext (widened from void once its dependencies existed) ---
+
+it('boot() returns an ApplicationContext, even when no Firefly passes were contributed', function () {
+    $kernel = new FireflyKernel(makeBootContext());
+
+    $context = $kernel->boot();
+
+    expect($context)->toBeInstanceOf(ApplicationContext::class);
 });
 
 // --- context() accessor ---
