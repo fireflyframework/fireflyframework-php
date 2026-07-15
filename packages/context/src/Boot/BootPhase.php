@@ -8,8 +8,9 @@ namespace Firefly\Context\Boot;
  * The ordered boot pipeline (spec §2.2, as amended by the M4 design decisions doc).
  *
  * Ordinals are GAPPED so a later milestone can slot a phase between two existing ones without renumbering.
- * Phases up to FlushDefinitions are the DEFINITION stage (pure data, no container writes); everything after
- * operates on INSTANCES.
+ * Phases up to FlushDefinitions are the DEFINITION stage (pure BeanDefinitionRegistry data — no container
+ * writes BEFORE FlushDefinitions itself, which IS a container write, the single
+ * ContainerRegistrar::register() flush point); everything after FlushDefinitions operates on INSTANCES.
  *
  * Four deliberate deltas vs the spec draft, each fixing a real bug:
  *  - BeanPostProcessors (700) precedes InfrastructureStart: the spec resolved Lifecycle beans before any

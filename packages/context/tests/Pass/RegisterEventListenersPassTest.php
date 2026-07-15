@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Config\Profile\Profiles;
+use Firefly\Container\Descriptor\BeanDescriptor;
 use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scope;
 use Firefly\Context\Boot\BootContext;
@@ -92,6 +93,22 @@ final class OrderedSecondListener
     }
 }
 
+/**
+ * M4 review #5, Minor 5: the canonical shape a `#[Bean]` factory produces — never itself a
+ * `#[Component]`/`#[Configuration]`, only ever reachable via the FACTORY's declaring class
+ * (`BeanFactoryConfigFixture` below, never referenced directly by orderedListeners()).
+ */
+final class BeanProducedListener
+{
+    public function __construct(private readonly ListenerPassLog $log) {}
+
+    #[AsEventListener(order: 0)]
+    public function onHalt(ListenerHaltEvent $event): void
+    {
+        $this->log->record('bean-produced');
+    }
+}
+
 function listenerDescriptor(string $class): ComponentDescriptor
 {
     return new ComponentDescriptor(
@@ -130,6 +147,13 @@ function listenerContextManifest(): ContextManifest
         new ContextDescriptor(
             class: OrderedSecondListener::class,
             listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 20]],
+        ),
+        // Keyed by the PRODUCED class (BeanProducedListener), exactly as a real ContextScanner scan
+        // would capture it — never by the #[Bean] factory's declaring class ('App\BeanFactoryConfig'
+        // below, which never appears as a manifest key at all).
+        new ContextDescriptor(
+            class: BeanProducedListener::class,
+            listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 0]],
         ),
     ]);
 }
@@ -192,4 +216,89 @@ it('registers listeners in #[Order] read from the manifest, regardless of defini
     $dispatcher->dispatch(new ListenerHaltEvent('probe'));
 
     expect($log->entries)->toBe(['ordered-first', 'ordered-second']);
+});
+
+// --- M4 review #5 (Minor 5): #[AsEventListener] on a #[Bean]-PRODUCED class, not just a component's ---
+// --- own class — this pass used to look up ONLY $definition->class(), silently never finding the ---
+// --- manifest entry keyed under the produced type. ---
+
+it('registers a listener declared on a #[Bean]-PRODUCED class, not just on the #[Configuration]\'s own declaring class', function () {
+    $context = listenerContext();
+    $log = new ListenerPassLog;
+    $context->container->instance(ListenerPassLog::class, $log);
+
+    // The #[Configuration]-shaped definition's OWN class ('App\BeanFactoryConfig') has NO manifest
+    // entry at all — only its #[Bean] method's return type (BeanProducedListener) does. Before the
+    // fix, orderedListeners() only ever queried forClass($definition->class()) — i.e.
+    // forClass('App\BeanFactoryConfig') — which is null, so BeanProducedListener's listener was
+    // scanned, stored, and never read.
+    $configDescriptor = new ComponentDescriptor(
+        class: 'App\BeanFactoryConfig',
+        stereotype: 'Configuration',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [
+            new BeanDescriptor(
+                method: 'redisCache',
+                returns: BeanProducedListener::class,
+                name: null,
+                scope: Scope::Singleton,
+                primary: false,
+                order: 0,
+            ),
+        ],
+    );
+    $context->definitions->add(new BeanDefinition($configDescriptor));
+
+    (new RegisterEventListenersPass)->run($context);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $context->container->make('events');
+    $dispatcher->dispatch(new ListenerHaltEvent('probe'));
+
+    expect($log->entries)->toBe(['bean-produced']);
+});
+
+it('never registers the SAME class\'s listeners twice, even when reachable both as a definition\'s own class AND as another definition\'s #[Bean] return type', function () {
+    $context = listenerContext();
+    $log = new ListenerPassLog;
+    $context->container->instance(ListenerPassLog::class, $log);
+
+    // BeanProducedListener reachable as a plain #[Component] itself...
+    $context->definitions->add(new BeanDefinition(listenerDescriptor(BeanProducedListener::class)));
+
+    // ...AND (contrived, but must not double-fire) as a #[Bean] return type of a second definition.
+    $configDescriptor = new ComponentDescriptor(
+        class: 'App\BeanFactoryConfig',
+        stereotype: 'Configuration',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [
+            new BeanDescriptor(
+                method: 'redisCache',
+                returns: BeanProducedListener::class,
+                name: null,
+                scope: Scope::Singleton,
+                primary: false,
+                order: 0,
+            ),
+        ],
+    );
+    $context->definitions->add(new BeanDefinition($configDescriptor));
+
+    (new RegisterEventListenersPass)->run($context);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $context->container->make('events');
+    $dispatcher->dispatch(new ListenerHaltEvent('probe'));
+
+    expect($log->entries)->toBe(['bean-produced']);
 });

@@ -198,8 +198,13 @@ abstract class FireflyServiceProvider extends ServiceProvider
         $this->app->instance(ApplicationContext::class, $context);
 
         if ($this->octaneIsAvailable()) {
-            // $event->app, not $event->sandbox — see the docblock above: WorkerStopping carries no
-            // sandbox at all, so $event->app IS the worker being stopped.
+            // This closure takes NO $event parameter at all — it doesn't need one. It simply
+            // closes over $context, the ApplicationContext built from THIS worker's own boot()
+            // above, captured once at worker-boot time. See the docblock above: WorkerStopping
+            // carries no $sandbox (unlike RequestReceived/RequestTerminated/TaskTerminated/
+            // TickTerminated), so there is nothing on the event worth reading anyway — the worker
+            // being stopped is already sitting in $context, not something we'd need to fish out of
+            // $event->app.
             $this->app->make(Dispatcher::class)->listen(
                 WorkerStopping::class,
                 static function () use ($context): void {
@@ -279,7 +284,11 @@ abstract class FireflyServiceProvider extends ServiceProvider
     }
 
     /**
-     * Phases 100–650 (see BootPhase): pure BeanDefinitionRegistry data, no container writes.
+     * Phases 100–650 (see BootPhase): pure BeanDefinitionRegistry data — no container writes
+     * BEFORE 650. Phase 650 (FlushDefinitions) itself IS a container write — the single
+     * `ContainerRegistrar::register()` flush point (see FlushDefinitionsPass) — so it is still
+     * correctly included in THIS half of the split (definitionStagePhases() must run it before any
+     * instance-stage phase can resolve anything), just not "no writes at all".
      *
      * Built by APPENDING to a fresh array — never array_filter()+array_values() — so the
      * `list<BootPhase>` contract holds by construction, not merely because BootPhase's cases

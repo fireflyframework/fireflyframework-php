@@ -39,6 +39,23 @@ use Illuminate\Contracts\Events\Dispatcher;
  * it at registration time) — mirroring DispatcherEventPublisher's own per-call dispatcher
  * resolution — so it always observes the bean's current, fully post-processed (possibly proxied)
  * form.
+ *
+ * Listeners are looked up not only for each definition's OWN class, but for every non-empty
+ * `#[Bean]` method return type too (M4 review #5, Minor 5 — a real gap, not merely a documented
+ * limitation): `ContextScanner::describe()` captures `#[AsEventListener]` for ANY concrete class in
+ * a scanned root, including one that is never itself a `#[Component]` but is instead PRODUCED by a
+ * `#[Bean]` factory method (`#[Configuration] class C { #[Bean] fn(): RedisCache {...} }`) — for
+ * that shape, the manifest holds an entry keyed `forClass('App\RedisCache')`, never `forClass('C')`.
+ * `EagerSingletonsPass` and `RegisterBeanPostProcessorsPass` both already iterate
+ * `$descriptor->beans`/`$bean->returns` for exactly this reason (a `#[Bean]` output is a
+ * first-class lifecycle-managed thing, not merely its declaring class); this pass now does the
+ * same, so `#[PostConstruct]`/`#[PreDestroy]`/`#[AsEventListener]` are symmetric across every
+ * `#[Bean]` output. `$bean->returns` is resolved via `$container->make($bean->returns)` — the same
+ * abstract `ContainerRegistrar::registerBeans()` bound the factory under — so the listener always
+ * observes the fully post-processed (possibly proxied) bean, exactly like a plain `#[Component]`.
+ * A class already visited (as either a definition's own class OR an earlier bean's return type) is
+ * never visited twice, so a class reachable both ways cannot register the same listener method
+ * twice.
  */
 final class RegisterEventListenersPass implements BootPass
 {
@@ -78,19 +95,42 @@ final class RegisterEventListenersPass implements BootPass
     {
         $entries = [];
 
-        foreach ($context->definitions->all() as $definition) {
-            $descriptor = $context->contextManifest->forClass($definition->class());
-            if ($descriptor === null) {
-                continue;
-            }
+        /** @var array<string, true> $visited guards against visiting the same class twice */
+        $visited = [];
 
-            foreach ($descriptor->listeners as $listener) {
-                $entries[] = [$definition->class(), $listener['method'], $listener['event'], $listener['order']];
+        foreach ($context->definitions->all() as $definition) {
+            $this->collectListenersFor($context, $definition->class(), $visited, $entries);
+
+            foreach ($definition->descriptor->beans as $bean) {
+                if ($bean->returns !== '') {
+                    $this->collectListenersFor($context, $bean->returns, $visited, $entries);
+                }
             }
         }
 
         usort($entries, static fn (array $a, array $b): int => $a[3] <=> $b[3] ?: $a[0] <=> $b[0] ?: $a[1] <=> $b[1]);
 
         return $entries;
+    }
+
+    /**
+     * @param  array<string, true>  $visited
+     * @param  list<array{0: string, 1: string, 2: string, 3: int}>  $entries
+     */
+    private function collectListenersFor(BootContext $context, string $class, array &$visited, array &$entries): void
+    {
+        if (isset($visited[$class])) {
+            return;
+        }
+        $visited[$class] = true;
+
+        $descriptor = $context->contextManifest->forClass($class);
+        if ($descriptor === null) {
+            return;
+        }
+
+        foreach ($descriptor->listeners as $listener) {
+            $entries[] = [$class, $listener['method'], $listener['event'], $listener['order']];
+        }
     }
 }

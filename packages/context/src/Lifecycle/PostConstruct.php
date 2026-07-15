@@ -12,7 +12,10 @@ use Attribute;
  * Spring's PostConstruct annotation.
  *
  * INERT METADATA ONLY, same rule as M2's attributes and M4's condition attributes: this class
- * carries no invocation logic. InitDestroyInvoker supplies all discovery/dispatch behaviour.
+ * carries no invocation logic. ContextScanner is the sole DISCOVERER (the only class in this
+ * package allowed to reflect), capturing method names onto the compiled manifest at scan time;
+ * InitDestroyInvoker never reflects a class at invocation time, only DISPATCHES against that
+ * already-compiled manifest.
  */
 #[Attribute(Attribute::TARGET_METHOD)]
 final readonly class PostConstruct {}
