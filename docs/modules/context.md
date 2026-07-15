@@ -77,9 +77,18 @@ register the same two callbacks: only the first one to fire actually runs each p
   under PHP-FPM (a *fresh* application per request) Laravel's `$app->terminating()` hook genuinely IS
   application shutdown, so `close()` is wired there. Under Octane the *same* `terminating()` hook
   fires at the end of **every request**, because Octane clones the worker application into a
-  per-request sandbox and `Application::terminate()` runs through that clone — so when
-  `laravel/octane` is present, `close()` is wired to Octane's `WorkerStopping` event instead, which
-  fires exactly once per worker.
+  per-request sandbox and `Application::terminate()` runs through that clone — so `close()` is wired
+  to Octane's `WorkerStopping` event instead, which fires exactly once per worker. The split is
+  decided by whether this process is **actually running inside an Octane worker right now** — the
+  `LARAVEL_OCTANE` process environment marker Octane's own start commands inject before PHP even
+  starts (the same signal, read the same way, Laravel's own framework uses for this exact decision:
+  `Illuminate\Foundation\Exceptions\Renderer\Listener::registerListeners()`) — **not** merely whether
+  `laravel/octane` is installed: `composer require laravel/octane` puts the package on the classpath
+  of every process (`queue:work`, `schedule:run`, artisan commands, this package's own test suite,
+  any FPM-served route in a hybrid deploy), and none of those ever start a worker or dispatch
+  `WorkerStopping`, so gating on presence alone would silently strand them in the `WorkerStopping`
+  branch. Every one of those non-worker processes takes the `terminating()` path, same as plain
+  PHP-FPM.
 
 The kernel deliberately does **not** derive ordering from the order Laravel registers service
 providers in — Laravel registers auto-discovered (package) providers *before* application providers,
@@ -353,9 +362,12 @@ logic, `InitDestroyInvoker` supplies all discovery and dispatch.
 
 `ApplicationContext::close()` — which runs every tracked `#[PreDestroy]` and `Lifecycle::stop()` (see
 below) — is called automatically, at real application shutdown, without any application code having
-to call it: `FireflyServiceProvider` wires it against Laravel's `$app->terminating()` hook under
-PHP-FPM, and against Octane's `WorkerStopping` event under Octane (see "The boot pipeline", above, and
-"Octane", below, for why the hook must differ by runtime).
+to call it: `FireflyServiceProvider` wires it against Laravel's `$app->terminating()` hook in every
+process that is **not** actually running inside an Octane worker (PHP-FPM, `queue:work`,
+`schedule:run`, artisan commands, tests — `laravel/octane` may or may not even be installed there),
+and against Octane's `WorkerStopping` event only when this process **is** an Octane worker right now
+(see "The boot pipeline", above, and "Octane", below, for why the hook must differ by runtime, and for
+why that split is decided by a runtime marker rather than merely whether the package is installed).
 
 ```php
 use Firefly\Container\Attributes\Component;
@@ -468,17 +480,23 @@ and Octane's `ApplicationGateway::terminate()` calls it through the **per-reques
 the end of *every request*. Wiring `close()` there would drain every singleton's `#[PreDestroy]` and
 stop every `Lifecycle` component after the worker's very first request, then keep serving requests
 2..N against disconnected/stopped singletons — silently, since `close()` is idempotent and never
-errors or repeats. So when `laravel/octane` is present, `FireflyServiceProvider` instead wires
-`close()` to Octane's `WorkerStopping` event, which `Laravel\Octane\Worker` dispatches exactly once,
-at real worker shutdown. `WorkerStopping` carries only `$app` — there is no per-worker-shutdown
-sandbox — so this is the one Octane event this package targets `$event->app` rather than
-`$event->sandbox`; see the `$event->app`-vs-`$event->sandbox` note above and
+errors or repeats. So `FireflyServiceProvider` instead wires `close()` to Octane's `WorkerStopping`
+event, which `Laravel\Octane\Worker` dispatches exactly once, at real worker shutdown — but **only**
+when this process is actually running inside an Octane worker right now, not merely when
+`laravel/octane` happens to be installed (see `FireflyServiceProvider::octaneIsAvailable()`'s own
+docblock: package presence alone was a real regression — M4 review #4 — because `queue:work`,
+`schedule:run`, artisan commands, and this package's own tests all have the package on their
+classpath without ever starting a worker or dispatching `WorkerStopping`; every one of those still
+gets `terminating()`, same as plain PHP-FPM). `WorkerStopping` carries only `$app` — there is no
+per-worker-shutdown sandbox — so this is the one Octane event this package targets `$event->app`
+rather than `$event->sandbox`; see the `$event->app`-vs-`$event->sandbox` note above and
 `FireflyServiceProvider::bootApplicationContext()`'s own docblock.
 
 By contrast, what *does* need resetting between requests is per-request state: `Scope::Scoped` bean
 instances, and any `#[PreDestroy]` callbacks owed to them — never singletons. `FireflyServiceProvider`
-wires an `OctaneListener` (only when `laravel/octane` is actually installed — it is a dev dependency,
-not a runtime requirement, since LaraFly's baseline runtime is PHP-FPM) to Octane's `RequestReceived`,
+wires an `OctaneListener` (only when this process is actually running inside an Octane worker — the
+same `octaneIsAvailable()` gate as `close()`'s wiring above; harmless either way, since the events
+below are only ever dispatched by a real worker) to Octane's `RequestReceived`,
 `RequestTerminated`, `TaskTerminated`, and `TickTerminated` events. Each delegates to
 `StateResetter::reset($event->sandbox)` — the **sandbox**, Octane's fresh-per-request container
 clone, never `$event->app`, the original long-lived worker application; resetting the wrong one would

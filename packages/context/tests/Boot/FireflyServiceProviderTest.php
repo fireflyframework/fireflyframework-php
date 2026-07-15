@@ -148,9 +148,54 @@ final class OctaneAbsentProvider extends FireflyServiceProvider
     }
 }
 
+/**
+ * Does NOT override octaneIsAvailable() at all — exposes it publicly so tests can exercise the REAL
+ * gate function directly against the real $_SERVER['LARAVEL_OCTANE'] marker, rather than one of the
+ * hard-coded [FPM control]/[OCTANE control] stubs below (M4 review #4's decisive finding: both of
+ * those stubs override octaneIsAvailable(), so neither one ever exercises the real check).
+ */
+final class RealGateProbeProvider extends FireflyServiceProvider
+{
+    public function isOctaneAvailable(): bool
+    {
+        return $this->octaneIsAvailable();
+    }
+}
+
 function freshApplication(): Application
 {
     return new Application;
+}
+
+/**
+ * Sets/restores $_SERVER['LARAVEL_OCTANE'] around a test body — the process environment marker
+ * Octane's own start commands inject into the server process before PHP even starts (verified
+ * against the installed source: laravel/octane v2.17.5's Commands/StartSwooleCommand.php:89,
+ * StartRoadRunnerCommand.php:101, StartFrankenPhpCommand.php:96), and the same signal, read the same
+ * `isset($_SERVER[...])` way, Laravel's own framework uses for this exact decision
+ * (Illuminate\Foundation\Exceptions\Renderer\Listener::registerListeners()). Always restores the
+ * PRIOR value (present or absent) afterward, even if the body throws, so no test leaks this global
+ * into the rest of the suite (M4 review #4).
+ */
+function withLaravelOctaneMarker(?string $value, callable $body): void
+{
+    $original = $_SERVER['LARAVEL_OCTANE'] ?? null;
+
+    if ($value === null) {
+        unset($_SERVER['LARAVEL_OCTANE']);
+    } else {
+        $_SERVER['LARAVEL_OCTANE'] = $value;
+    }
+
+    try {
+        $body();
+    } finally {
+        if ($original === null) {
+            unset($_SERVER['LARAVEL_OCTANE']);
+        } else {
+            $_SERVER['LARAVEL_OCTANE'] = $original;
+        }
+    }
 }
 
 function bindFireflyKernel(Container $container, ContextManifest $contextManifest = new ContextManifest([])): FireflyKernel
@@ -441,6 +486,26 @@ final class OctaneShutdownPipelineProviderStub extends FireflyServiceProvider
     }
 }
 
+/**
+ * Identical pass list again — but, critically, does NOT override octaneIsAvailable() at all. This is
+ * what lets the "[REAL GATE]" tests below exercise the ACTUAL gate (package presence AND the
+ * $_SERVER['LARAVEL_OCTANE'] runtime marker) instead of a hard-coded stub — the exact untested seam
+ * M4 review #4 found: both controls above hard-code the gate, so neither ever proves the real
+ * function picks the right branch on its own.
+ */
+final class RealGateShutdownPipelineProviderStub extends FireflyServiceProvider
+{
+    public function passes(): array
+    {
+        return [
+            new FlushDefinitionsPass,
+            new RegisterBeanPostProcessorsPass,
+            new InfrastructureStartPass,
+            new EagerSingletonsPass,
+        ];
+    }
+}
+
 it('[FPM control] runs #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook — Application::terminate() — not a manual drain', function (): void {
     $app = freshApplication();
 
@@ -584,25 +649,157 @@ it('[OCTANE control] does NOT close the context at the end of request #1 — sin
         ->and($app->make(ApplicationContext::class)->isActive())->toBeFalse();
 });
 
+// --- [REAL GATE] M4 review #4 (Important): octaneIsAvailable() itself, unstubbed, against the real
+// $_SERVER['LARAVEL_OCTANE'] marker. The two controls above both HARD-CODE octaneIsAvailable(), so
+// neither one exercises the actual gate — this is the untested seam the regression shipped through.
+
+it('the REAL octaneIsAvailable() gate is TRUE when the LARAVEL_OCTANE marker is set', function (): void {
+    withLaravelOctaneMarker('1', function (): void {
+        $provider = new RealGateProbeProvider(freshApplication());
+
+        expect($provider->isOctaneAvailable())->toBeTrue();
+    });
+});
+
+it('the REAL octaneIsAvailable() gate is FALSE when the LARAVEL_OCTANE marker is absent, even though laravel/octane the package IS installed in this repo', function (): void {
+    withLaravelOctaneMarker(null, function (): void {
+        $provider = new RealGateProbeProvider(freshApplication());
+
+        expect($provider->isOctaneAvailable())->toBeFalse();
+    });
+});
+
+it('[REAL GATE] octane package present but NO worker running (an artisan/queue-style process) — terminating() still fires #[PreDestroy]/Lifecycle::stop() — proves the M4 review #4 regression is closed', function (): void {
+    withLaravelOctaneMarker(null, function (): void {
+        $app = freshApplication();
+
+        $contextManifest = new ContextManifest([
+            new ContextDescriptor(class: ShutdownProbePool::class, preDestroy: ['disconnect']),
+        ]);
+
+        $kernel = bindFireflyKernel($app, $contextManifest);
+        $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+            class: ShutdownProbePool::class,
+            stereotype: 'Service',
+            name: null,
+            scope: Scope::Singleton,
+            primary: false,
+            order: 0,
+            qualifier: null,
+            interfaces: [],
+            beans: [],
+        )));
+        $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+            class: ShutdownProbeBroker::class,
+            stereotype: 'Service',
+            name: null,
+            scope: Scope::Singleton,
+            primary: false,
+            order: 0,
+            qualifier: null,
+            interfaces: [Lifecycle::class],
+            beans: [],
+        )));
+
+        $app->singleton(ShutdownProbeState::class);
+
+        $app->register(RealGateShutdownPipelineProviderStub::class);
+        $app->boot();
+
+        /** @var ShutdownProbeState $state */
+        $state = $app->make(ShutdownProbeState::class);
+
+        expect($state->poolDisconnected)->toBeFalse()
+            ->and($state->brokerStopped)->toBeFalse();
+
+        // No worker, no sandbox — a plain artisan/queue-style process ending the ordinary way.
+        // Pre-fix, octaneIsAvailable() returned true purely because laravel/octane is installed (a
+        // dev dependency of THIS package), so close() was wired to WorkerStopping — an event nothing
+        // in this process ever dispatches — and #[PreDestroy]/Lifecycle::stop() NEVER ran here.
+        $app->terminate();
+
+        expect($state->poolDisconnected)->toBeTrue()
+            ->and($state->brokerStopped)->toBeTrue();
+    });
+});
+
+it('[REAL GATE] octane package present AND the LARAVEL_OCTANE marker set — a mid-worker request terminate() must NOT close; only the real WorkerStopping event does', function (): void {
+    withLaravelOctaneMarker('1', function (): void {
+        $app = freshApplication();
+
+        $contextManifest = new ContextManifest([
+            new ContextDescriptor(class: ShutdownProbePool::class, preDestroy: ['disconnect']),
+        ]);
+
+        $kernel = bindFireflyKernel($app, $contextManifest);
+        $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+            class: ShutdownProbePool::class,
+            stereotype: 'Service',
+            name: null,
+            scope: Scope::Singleton,
+            primary: false,
+            order: 0,
+            qualifier: null,
+            interfaces: [],
+            beans: [],
+        )));
+        $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+            class: ShutdownProbeBroker::class,
+            stereotype: 'Service',
+            name: null,
+            scope: Scope::Singleton,
+            primary: false,
+            order: 0,
+            qualifier: null,
+            interfaces: [Lifecycle::class],
+            beans: [],
+        )));
+
+        $app->singleton(ShutdownProbeState::class);
+
+        $app->register(RealGateShutdownPipelineProviderStub::class);
+        $app->boot();
+
+        /** @var ShutdownProbeState $state */
+        $state = $app->make(ShutdownProbeState::class);
+
+        // The real per-request shape: clone the worker into a sandbox and terminate THAT — must NOT
+        // close the worker-lifetime context.
+        $sandbox = clone $app;
+        $sandbox->terminate();
+
+        expect($state->poolDisconnected)->toBeFalse()
+            ->and($state->brokerStopped)->toBeFalse();
+
+        // Only the real once-per-worker shutdown event closes the context.
+        $app->make(Dispatcher::class)->dispatch(new WorkerStopping($app));
+
+        expect($state->poolDisconnected)->toBeTrue()
+            ->and($state->brokerStopped)->toBeTrue();
+    });
+});
+
 // --- Octane wiring: conditional on presence, must never fatal in its absence ---
 
 it('wires OctaneListener when Octane IS available — a real RequestReceived event resets scoped state', function (): void {
-    $app = freshApplication();
-    bindFireflyKernel($app);
+    withLaravelOctaneMarker('1', function (): void {
+        $app = freshApplication();
+        bindFireflyKernel($app);
 
-    $app->register(BarePassthroughProvider::class);
-    $app->boot();
+        $app->register(BarePassthroughProvider::class);
+        $app->boot();
 
-    expect($app->bound(OctaneListener::class))->toBeTrue();
+        expect($app->bound(OctaneListener::class))->toBeTrue();
 
-    $sandbox = clone $app;
-    $sandbox->scoped(OctaneProbeMarker::class, static fn (): OctaneProbeMarker => new OctaneProbeMarker);
-    $probe = $sandbox->make(OctaneProbeMarker::class);
+        $sandbox = clone $app;
+        $sandbox->scoped(OctaneProbeMarker::class, static fn (): OctaneProbeMarker => new OctaneProbeMarker);
+        $probe = $sandbox->make(OctaneProbeMarker::class);
 
-    $app->make(Dispatcher::class)->dispatch(new RequestReceived($app, $sandbox, Request::create('/')));
+        $app->make(Dispatcher::class)->dispatch(new RequestReceived($app, $sandbox, Request::create('/')));
 
-    $rebuilt = $sandbox->make(OctaneProbeMarker::class);
-    expect($rebuilt)->not->toBe($probe);
+        $rebuilt = $sandbox->make(OctaneProbeMarker::class);
+        expect($rebuilt)->not->toBe($probe);
+    });
 });
 
 it('does NOT wire OctaneListener, and does NOT fatal, when Octane is absent', function (): void {

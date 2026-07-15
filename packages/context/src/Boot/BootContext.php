@@ -23,6 +23,14 @@ use Illuminate\Container\Container;
  * RegisterEventListenersPass and InitDestroyInvoker read this metadata, so neither reflects a
  * declared class at boot. Defaults to an empty manifest (via "new in initializers") so every
  * existing named-argument BootContext construction site keeps compiling unchanged.
+ *
+ * $profiles is a RESERVED EXTENSION POINT, not dead weight: no shipped BootPass reads it today
+ * (ConditionEvaluator carries its own constructor-injected Profiles for condition evaluation, so
+ * nothing production-facing needs to reach through BootContext for it), but it is a field on this
+ * pass-facing DTO precisely so a user-authored BootPass can read `$context->profiles` directly — the
+ * same "accept pre-resolved data" shape as $config and $contextManifest. This is documented
+ * explicitly, rather than left silently unconsumed, so it reads as a deliberate extension seam and
+ * not an accidental one (M4 review #4, Minor).
  */
 final class BootContext
 {

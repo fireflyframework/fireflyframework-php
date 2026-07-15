@@ -177,10 +177,15 @@ abstract class FireflyServiceProvider extends ServiceProvider
      * invariant 7, which governs only the per-request/task/tick events where Octane actually serves
      * traffic through a cloned sandbox and the original `$app` is never the one in use.
      *
-     * Guarded the same way as registerOctaneListener(): `laravel/octane` is a dev dependency of this
-     * package (the baseline runtime is PHP-FPM, where Octane is typically never installed at all),
-     * so wiring WorkerStopping MUST NOT fatal when Octane is absent — octaneIsAvailable() is the same
-     * presence check used throughout this class.
+     * THE OCTANE BRANCH IS SELECTED BY octaneIsAvailable() — see that method's own docblock (M4
+     * review #4, Important): the check is package presence AND the `LARAVEL_OCTANE` runtime marker,
+     * NOT package presence alone, precisely so that `composer require laravel/octane` (the package's
+     * only documented install path, which puts the class on every process's classpath — `queue:work`,
+     * `schedule:run`, artisan commands, tests, and any FPM-served route in a hybrid deploy included)
+     * does not silently route every one of those non-worker processes into the WorkerStopping branch,
+     * where `close()` would never run because nothing in that process ever dispatches
+     * `WorkerStopping`. Guarded the same way as registerOctaneListener() so this MUST NOT fatal when
+     * Octane is absent either.
      */
     private function bootApplicationContext(FireflyKernel $kernel): void
     {
@@ -209,21 +214,54 @@ abstract class FireflyServiceProvider extends ServiceProvider
     }
 
     /**
-     * Whether laravel/octane is installed. Overridable ONLY so tests can exercise the "must not
-     * fatal when Octane is absent" contract without literally uninstalling a composer package —
-     * production subclasses have no reason to override this.
+     * Whether this process is ACTUALLY RUNNING INSIDE an Octane worker right now — not merely
+     * whether the laravel/octane PACKAGE is installed. Overridable ONLY so tests can exercise the
+     * "must not fatal when Octane is absent" contract without literally uninstalling a composer
+     * package — production subclasses have no reason to override this.
+     *
+     * REGRESSION (M4 review #4, Important): an earlier version of this method returned
+     * `class_exists(RequestReceived::class)` alone. `composer require laravel/octane` (non-dev) is
+     * the package's only documented install path, so in a real Octane app the class exists on the
+     * classpath of EVERY process — not just the worker — including `php artisan queue:work`,
+     * `schedule:run`, plain migrations/console commands, this package's own test suite, and any
+     * FPM-served route in a hybrid deploy. Gating on presence alone therefore routed every one of
+     * those non-worker processes into the WorkerStopping branch below, where `close()` never ran
+     * (nothing in those processes ever dispatches `WorkerStopping`) — silently skipping
+     * `#[PreDestroy]`/`Lifecycle::stop()` in every one of them.
+     *
+     * The fix adds the RUNTIME half: `$_SERVER['LARAVEL_OCTANE']`, a process environment variable
+     * injected by Octane's OWN start commands into the server process BEFORE PHP even starts —
+     * verified against the installed source (laravel/octane v2.17.5): `Commands/StartSwooleCommand.
+     * php:89`, `Commands/StartRoadRunnerCommand.php:101`, and `Commands/StartFrankenPhpCommand.php:96`
+     * all set `'LARAVEL_OCTANE' => 1` in the spawned server `Process`'s env. Because it is set before
+     * PHP executes, there is no "not yet set" window at `register()` time to worry about — it is
+     * simply already there, or it never will be.
+     *
+     * This is NOT a bespoke signal invented for this check: Laravel's OWN framework reads this exact
+     * marker, via this exact `isset($_SERVER[...])` idiom, to make this exact decision ("is Octane
+     * actually running right now"), from a service provider's `boot()`-adjacent code — verified
+     * against the installed source (laravel/framework v13.20.0):
+     * `Illuminate/Foundation/Exceptions/Renderer/Listener.php:37` and
+     * `Illuminate/Routing/ResponseFactory.php:201`. Do not "simplify" this back to
+     * `class_exists()` alone — that is precisely the regression this docblock exists to prevent.
      */
     protected function octaneIsAvailable(): bool
     {
-        return class_exists(RequestReceived::class);
+        return isset($_SERVER['LARAVEL_OCTANE']) && class_exists(RequestReceived::class);
     }
 
     /**
-     * Wires OctaneListener to the event dispatcher — but ONLY when Octane is actually present.
-     * laravel/octane is a dev dependency, not a runtime requirement (LaraFly's baseline runtime is
-     * PHP-FPM, where Octane is never installed at all), so this MUST NOT fatal when it's absent.
-     * Guarded a second time by whether OctaneListener is already bound, so registering several
-     * FireflyServiceProvider subclasses (one per package) wires the listener exactly once.
+     * Wires OctaneListener to the event dispatcher — but ONLY when octaneIsAvailable() is true, i.e.
+     * this process is actually running inside an Octane worker (see that method's own docblock).
+     * That is also the ONLY runtime that ever dispatches the events this listener subscribes to
+     * (`RequestReceived`/`RequestTerminated`/`TaskTerminated`/`TickTerminated` are dispatched
+     * exclusively by `Laravel\Octane\Worker`), so requiring the runtime marker here — not merely
+     * package presence — changes nothing observable: those events could never have fired in a
+     * non-worker process anyway, worker or not. laravel/octane is a dev dependency, not a runtime
+     * requirement (LaraFly's baseline runtime is PHP-FPM, where Octane is never installed at all), so
+     * this MUST NOT fatal when it's absent. Guarded a second time by whether OctaneListener is
+     * already bound, so registering several FireflyServiceProvider subclasses (one per package) wires
+     * the listener exactly once.
      */
     private function registerOctaneListener(): void
     {
