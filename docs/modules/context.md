@@ -92,7 +92,7 @@ first.
 
 | Ordinal | Phase | What happens |
 |---|---|---|
-| 100 | `ConfigAndProfiles` | `firefly/config` resolves active profiles and configuration. |
+| 100 | `ConfigAndProfiles` | `firefly/config` resolves active profiles and configuration. *(no pass ships for this phase yet — see below.)* |
 | 200 | `AutoConfigDiscovery` | *(seam reserved for a later milestone)* discover auto-configuration candidates only — must not add definitions here. |
 | 300 | `UserConfigurations` | Your `#[Configuration]`/`#[Bean]` definitions enter the `BeanDefinitionRegistry`, tagged `DefinitionSource::User`. |
 | 400 | `ConditionPassOne` | Evaluate registry-independent conditions over **user** definitions (Spring's `PARSE_CONFIGURATION`). |
@@ -124,6 +124,16 @@ into that list — a caller must build it by hand (see `IntegrationTest`'s `inte
 for the exact shape). Until a later milestone wires that bridge, phase 300 adds nothing on its own.
 The same is true of `FlushDefinitionsPass`'s `ConfigPropertiesManifest` parameter — M3's
 `#[ConfigProperties]` scanner is not wired into the boot pipeline either.
+
+Phase 100 (`ConfigAndProfiles`) deserves the same disclosure, for consistency, even though it is the
+smallest gap of the three: no `BootPass` ships for it at all. The row's prose ("`firefly/config`
+resolves active profiles and configuration") is substantively true — `Config`/`Profiles` genuinely
+are what `BootContext` carries into every other pass — it just does not happen *in this phase*; the
+caller constructs both and hands them to `BootContext` directly (see `freshIntegrationBootContext()`
+in `IntegrationTest`), the same "accept pre-resolved data" shape as phases 300 and 650's
+`ConfigPropertiesManifest`. A future milestone that wires phase 100 for real would resolve profiles
+and configuration from a genuine source (e.g. environment/`.env`, config files) as an explicit pass,
+rather than trusting whatever the caller happened to construct.
 
 ## Conditional registration
 
