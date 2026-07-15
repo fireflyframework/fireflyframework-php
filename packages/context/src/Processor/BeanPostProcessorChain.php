@@ -27,10 +27,21 @@ use WeakMap;
  * honest — this class never derives ordering from anything but the list it was built with.
  *
  * $declaredClass must be the DECLARED class from the bean's definition, threaded through
- * verbatim — never recomputed from $bean::class. A bean wrapped into a proxy by
- * afterInitialization() has a ::class that is the proxy's, which has no manifest entry; by
- * construction, #[PostConstruct] above always runs before any BPP has had the chance to wrap the
- * bean, so it always sees the correct declared class for the pre-proxy instance.
+ * verbatim — never recomputed from $bean::class — and is passed to EVERY
+ * BeanPostProcessor::before/afterInitialization() call. That is the manifest's declared abstract
+ * (a component's own class, OR a #[Bean] method's declared RETURN TYPE, which for the canonical
+ * hexagonal shape `#[Bean] fn(): SomePort` is an INTERFACE) — BPPs key their own logic off it (see
+ * e.g. the proxy example in docs/modules/context.md), and that contract does not change here.
+ *
+ * $lifecycleClass is a SEPARATE, narrower concern: the key used to look up #[PostConstruct]/
+ * #[PreDestroy] METHOD NAMES in the compiled ContextManifest (via InitDestroyInvoker). It defaults
+ * to $declaredClass, which is correct whenever they're the same class (every #[Component] and every
+ * #[Bean] method whose declared return type IS its own concrete class) — but for a #[Bean] method
+ * returning an INTERFACE, $declaredClass is the interface, and ContextScanner NEVER scans an
+ * interface (see its class docblock), so the manifest has no entry for it and a lookup keyed on
+ * $declaredClass silently finds nothing. The caller (RegisterBeanPostProcessorsPass) resolves this
+ * by capturing $bean::class BEFORE calling process() — see invariant 4's refined statement there —
+ * and passing it as $lifecycleClass explicitly.
  */
 final class BeanPostProcessorChain
 {
@@ -58,20 +69,22 @@ final class BeanPostProcessorChain
 
     /**
      * @param  class-string  $declaredClass
+     * @param  class-string|null  $lifecycleClass  defaults to $declaredClass — see the class docblock
      */
-    public function process(object $bean, string $declaredClass): object
+    public function process(object $bean, string $declaredClass, ?string $lifecycleClass = null): object
     {
         if ($this->done->offsetExists($bean)) {
             return $this->done[$bean];
         }
 
         $original = $bean;
+        $lifecycleClass ??= $declaredClass;
 
         foreach ($this->ordered as $processor) {
             $bean = $processor->beforeInitialization($bean, $declaredClass);
         }
 
-        $this->invoker->invokeInit($bean, $declaredClass);
+        $this->invoker->invokeInit($bean, $lifecycleClass);
 
         foreach ($this->ordered as $processor) {
             $bean = $processor->afterInitialization($bean, $declaredClass);

@@ -10,16 +10,30 @@ use Illuminate\Container\Container;
 /**
  * Invokes #[PostConstruct]/#[PreDestroy] methods on a bean.
  *
- * Method names come from the compiled ContextManifest, keyed by the DECLARED class threaded in
- * from the bean's definition — NEVER $bean::class — and NEVER by reflecting that class at
- * invocation time (see the class docblock of Firefly\Context\Scanner\ContextScanner: reflection
- * happens ONCE, at scan time; our baseline runtime is PHP-FPM, which boots on every request, so
- * "reflect here" would be per-request reflection). A BeanPostProcessor may replace $bean with a
- * wrapper/proxy in afterInitialization() (see BeanPostProcessorChain), and by the time
- * #[PreDestroy] runs (at context close or end of request) $bean may already BE such a wrapper.
- * Looking up $bean::class in the manifest at that point would inspect the wrapper's own class —
- * which carries no manifest entry of its own — and silently skip every lifecycle callback.
- * Callers MUST thread $declaredClass through rather than recomputing it from the instance.
+ * Method names come from the compiled ContextManifest, keyed by a class threaded in by the caller —
+ * NEVER by reflecting a class at invocation time (see the class docblock of
+ * Firefly\Context\Scanner\ContextScanner: reflection happens ONCE, at scan time; our baseline
+ * runtime is PHP-FPM, which boots on every request, so "reflect here" would be per-request
+ * reflection). ContextScanner itself only ever scans CONCRETE, instantiable classes — never an
+ * interface or abstract class (see ContextScanner::describe()) — so every key this manifest
+ * actually carries is a concrete class.
+ *
+ * INVARIANT 4, PRECISELY STATED: the key threaded in here must NEVER be recomputed from $bean::class
+ * AT INVOCATION TIME — that is the part that must never be "simplified" back. The reason is proxy
+ * identity, not the concrete/declared distinction itself: a BeanPostProcessor may replace $bean with
+ * a wrapper/proxy in afterInitialization() (see BeanPostProcessorChain), and by the time
+ * #[PreDestroy] runs (at context close or end of request) $bean may already BE such a wrapper —
+ * reading $bean::class AT THAT POINT would inspect the wrapper's own runtime class, which carries no
+ * manifest entry of its own, and silently skip every lifecycle callback. This does NOT mean the
+ * caller must always pass the manifest's "declared" abstract, though: at BEAN INITIALIZATION time —
+ * BEFORE any BeanPostProcessor has had the chance to wrap it (proxies are only ever created in
+ * afterInitialization(), never earlier) — $bean is guaranteed to be the real, pre-proxy instance, so
+ * $bean::class captured THERE is both safe and, for a #[Bean] method whose declared return type is
+ * an INTERFACE, the ONLY correct key: the interface itself was never scanned, so the manifest has no
+ * entry for it at all. See RegisterBeanPostProcessorsPass, which captures $bean::class once, at
+ * exactly that pre-proxy moment, and threads it through as the lifecycle key for BOTH invokeInit()
+ * here and DisposableBeanRegistry (for invokeDestroy() later, when the instance MAY by then be
+ * proxied) — never recomputing it from the instance a second time.
  *
  * Invocation goes through $container->call([$bean, $method]) — NOT $bean->$method() — so
  * lifecycle method parameters get dependency injection, exactly like M2's #[Bean] factory

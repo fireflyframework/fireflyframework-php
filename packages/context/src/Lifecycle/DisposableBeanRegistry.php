@@ -43,6 +43,17 @@ final class DisposableBeanRegistry
     public function __construct(private readonly InitDestroyInvoker $invoker) {}
 
     /**
+     * $declaredClass here is the LIFECYCLE lookup key — the class InitDestroyInvoker's compiled
+     * manifest actually carries #[PreDestroy] method names under. For an ordinary component that IS
+     * the manifest's declared class; for a #[Bean] method returning an INTERFACE, the caller
+     * (RegisterBeanPostProcessorsPass) passes the CONCRETE class captured at initialization time
+     * (guaranteed non-proxy then — see that pass's invariant-4 note), never the interface, because
+     * ContextScanner never scans interfaces and the manifest would have no entry for one. Callers
+     * MUST NOT re-derive this from $bean::class here or at drain() time: by the time drainSingletons()/
+     * drainScoped() run, $bean may already be a proxy (created in afterInitialization()), whose
+     * runtime class carries no manifest entry of its own — the whole reason this value must be
+     * captured once, up front, and threaded through rather than recomputed later.
+     *
      * @param  class-string  $declaredClass
      */
     public function register(object $bean, string $declaredClass, Scope $scope): void

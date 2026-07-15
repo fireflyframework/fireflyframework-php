@@ -30,8 +30,27 @@ use Illuminate\Container\Container;
  * care either way.
  *
  * $declaredClass threaded into every extender is the MANIFEST's declared class (component class or
- * #[Bean] return type) — never $o::class (INVARIANT 4: a proxy's runtime class has no manifest
- * entry).
+ * #[Bean] return type) — never $o::class — and is what gets passed to every
+ * BeanPostProcessor::before/afterInitialization() call.
+ *
+ * INVARIANT 4, REFINED — "key on the declared class, never $bean::class" exists to be PROXY-safe:
+ * a proxy's runtime class has no manifest entry, so using it as a lookup key silently finds nothing.
+ * But its own corollary contract (see docs/modules/context.md's "proxy contract") is that a proxy is
+ * ONLY ever created inside afterInitialization() (pass 2) — never earlier. That means the raw $bean
+ * this extender closure receives, BEFORE chain->process() runs, is GUARANTEED non-proxy: capturing
+ * $bean::class right here is therefore both safe and, for the #[PostConstruct]/#[PreDestroy]
+ * LIFECYCLE lookup specifically, uniformly MORE correct than $declaredClass — for an ordinary
+ * #[Component] the two are identical, but for a #[Bean] method whose declared return type is an
+ * INTERFACE (the canonical hexagonal shape `#[Bean] fn(): SomePort`), $declaredClass IS that
+ * interface, and ContextScanner never scans interfaces (see its class docblock), so the compiled
+ * manifest has NO entry for it — a lookup keyed on $declaredClass in that case silently finds
+ * nothing, which is exactly how a #[Bean]-returning-an-interface used to lose both
+ * #[PostConstruct] and #[PreDestroy] with no error. $concreteClass is threaded through
+ * BeanPostProcessorChain::process() as $lifecycleClass (the lookup key for InitDestroyInvoker
+ * ONLY) and forward into DisposableBeanRegistry::register() so #[PreDestroy] still resolves at
+ * context close, when the drained instance MAY by then be a proxy. Do NOT re-derive the class from
+ * the instance at destroy time — see DisposableBeanRegistry's own docblock for why a WeakReference'd
+ * bean's ::class cannot be trusted that late.
  *
  * The same extender ALSO registers the processed bean into the shared DisposableBeanRegistry (for
  * #[PreDestroy] at context close, see ApplicationContext::close()) — this is the ONE seam every bean
@@ -87,8 +106,15 @@ final class RegisterBeanPostProcessorsPass implements BootPass
             [$declaredClass, $scope] = $target;
 
             $container->extend($abstract, static function (object $bean) use ($chain, $declaredClass, $scope, $disposables): object {
-                $processed = $chain->process($bean, $declaredClass);
-                $disposables->register($processed, $declaredClass, $scope);
+                // INVARIANT 4, REFINED (see class docblock): $bean here is guaranteed pre-proxy — a
+                // proxy is only ever created inside afterInitialization(), below, inside
+                // chain->process(). $bean::class is therefore safe AND, for the lifecycle lookup
+                // specifically, more correct than $declaredClass whenever the two differ (a #[Bean]
+                // method returning an interface).
+                $concreteClass = $bean::class;
+
+                $processed = $chain->process($bean, $declaredClass, $concreteClass);
+                $disposables->register($processed, $concreteClass, $scope);
 
                 return $processed;
             });
