@@ -15,14 +15,14 @@ use Firefly\Context\Boot\BootPhase;
 /**
  * The single flush point of the definition stage — THE MOST IMPORTANT PASS IN THE MILESTONE.
  *
- * Passes 300 (ConditionPassOnePass) and 500 (ConditionPassTwoPass) have already removed every
+ * Passes 400 (ConditionPassOnePass) and 600 (ConditionPassTwoPass) have already removed every
  * definition whose conditions didn't match. This pass builds exactly ONE condition-filtered
  * ComponentManifest from what remains and hands it to M2's ContainerRegistrar::register() —
  * EXACTLY ONCE, ever.
  *
  * INVARIANT 6 (design decisions doc): ContainerRegistrar carries a per-container sentinel
  * ("firefly.container.registered") — a SECOND register() call is a silent no-op, not an error.
- * Conditions MUST therefore filter the manifest upstream (they do, in passes 300/500), and this
+ * Conditions MUST therefore filter the manifest upstream (they do, in passes 400/600), and this
  * pass MUST be the only call site. If the kernel ever runs this pass twice (e.g. a bug in phase
  * idempotency), the sentinel makes the repeat a safe no-op rather than a duplicate registration —
  * but that safety net is not a license to call register() more than once on purpose.

@@ -5,9 +5,16 @@ declare(strict_types=1);
 use Firefly\Context\Boot\BootPhase;
 
 it('orders phases: definitions, then the single flush, then instances', function () {
-    expect(BootPhase::ConfigAndProfiles->value)->toBeLessThan(BootPhase::ConditionPassOne->value)
-        ->and(BootPhase::ConditionPassOne->value)->toBeLessThan(BootPhase::UserConfigurations->value)
-        ->and(BootPhase::UserConfigurations->value)->toBeLessThan(BootPhase::ConditionPassTwo->value)
+    expect(BootPhase::ConfigAndProfiles->value)->toBeLessThan(BootPhase::AutoConfigDiscovery->value)
+        ->and(BootPhase::AutoConfigDiscovery->value)->toBeLessThan(BootPhase::UserConfigurations->value)
+        // Each condition pass must FOLLOW its own definition source (see BootPhase's class
+        // docblock): a condition pass placed before its definitions exist evaluates against an
+        // empty/partial registry, so every condition vacuously "passes" — the exact bug this order
+        // fixes for both ConditionPassOne (over User definitions) and ConditionPassTwo (over
+        // AutoConfiguration definitions).
+        ->and(BootPhase::UserConfigurations->value)->toBeLessThan(BootPhase::ConditionPassOne->value)
+        ->and(BootPhase::ConditionPassOne->value)->toBeLessThan(BootPhase::AutoConfigurations->value)
+        ->and(BootPhase::AutoConfigurations->value)->toBeLessThan(BootPhase::ConditionPassTwo->value)
         ->and(BootPhase::ConditionPassTwo->value)->toBeLessThan(BootPhase::FlushDefinitions->value)
         // BPP extenders MUST be installed before any bean is resolved (Lifecycle/eager),
         // else those beans permanently escape post-processing.

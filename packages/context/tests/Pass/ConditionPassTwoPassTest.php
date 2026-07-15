@@ -8,6 +8,7 @@ use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scope;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
 use Firefly\Context\Definition\BeanDefinition;
@@ -15,7 +16,6 @@ use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Definition\DefinitionSource;
 use Firefly\Context\Pass\ConditionPassTwoPass;
 use Firefly\Context\Tests\Fixtures\Cache;
-use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -37,9 +37,12 @@ function passTwoDescriptor(string $class, array $interfaces = []): ComponentDesc
     );
 }
 
-function passTwoContext(): BootContext
+/**
+ * @param  array<string, mixed>  $configItems
+ */
+function passTwoContext(array $configItems = []): BootContext
 {
-    $config = new Config(new Repository([]));
+    $config = new Config(new Repository($configItems));
     $profiles = new Profiles([]);
 
     return new BootContext(
@@ -138,13 +141,47 @@ it('is snapshot-stable: two definitions with mutually-referencing bean condition
         ->and($remainingBA)->toBe([]);
 });
 
-it('propagates ConfigurationException, unsoftened, for a bean condition on a DefinitionSource::User definition', function () {
+it('does NOT touch a DefinitionSource::User definition — not this pass\'s job, ConditionPassOnePass already decided it', function () {
+    // A User definition with a bean condition is a structural error the pipeline can only ever
+    // observe at ConditionPassOnePass (see ConditionEvaluator's user-component rule): by the time
+    // ConditionPassTwoPass runs, such a definition could never legitimately still be here. This
+    // test proves the pass does not even attempt to evaluate it — it is filtered out by
+    // DefinitionSource, not merely tolerated.
     $context = passTwoContext();
-    $context->definitions->add(new BeanDefinition(
+    $definition = new BeanDefinition(
         passTwoDescriptor('App\UserThing'),
         conditions: [new ConditionalOnMissingBean(Cache::class)],
         source: DefinitionSource::User,
-    ));
+    );
+    $context->definitions->add($definition);
 
     (new ConditionPassTwoPass)->run($context);
-})->throws(ConfigurationException::class);
+
+    expect($context->definitions->all())->toBe([$definition])
+        ->and($context->report->all())->toBe([]);
+});
+
+it('evaluates an AutoConfiguration definition\'s REGISTRY-INDEPENDENT condition — the latent bug this pass\'s reorder fixes', function () {
+    // Before the M4 reorder, AutoConfigurations (600) ran AFTER ConditionPassTwo (500): an
+    // auto-configuration's non-bean conditions never existed in the registry when any condition
+    // pass ran, so they were never evaluated and always silently survived. ConditionPassTwoPass
+    // now runs strictly after AutoConfigurations (BootPhase 500 < 600) and evaluates BOTH kinds of
+    // condition for every AutoConfiguration definition — this proves the non-bean half.
+    $context = passTwoContext(['firefly' => ['autoconfig' => ['on' => false]]]);
+    $definition = new BeanDefinition(
+        passTwoDescriptor('App\AutoThing'),
+        conditions: [new ConditionalOnProperty('firefly.autoconfig.on', havingValue: 'true')],
+        source: DefinitionSource::AutoConfiguration,
+    );
+    $context->definitions->add($definition);
+
+    (new ConditionPassTwoPass)->run($context);
+
+    expect($context->definitions->all())->toBe([]);
+
+    $entries = $context->report->all();
+    expect($entries)->toHaveCount(1)
+        ->and($entries[0]['class'])->toBe('App\AutoThing')
+        ->and($entries[0]['attribute'])->toBe(ConditionalOnProperty::class)
+        ->and($entries[0]['outcome']->matched)->toBeFalse();
+});

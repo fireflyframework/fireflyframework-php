@@ -186,10 +186,12 @@ function freshIntegrationContainer(): Container
 
 /**
  * DefaultCacheAutoConfig is pre-seeded into the registry BEFORE boot(): M4 ships no
- * AutoConfigDiscovery pass yet (that lands in M5), so — exactly like UserConfigurationsPass
- * documents for the user seam — the caller supplies already-scanned auto-configuration definitions
- * directly. ConditionPassTwoPass (500) still evaluates it correctly because it operates on
- * whatever is in the registry at phase entry, regardless of when each definition was added.
+ * AutoConfigDiscovery/AutoConfigurations pass yet (that lands in M5), so — exactly like
+ * UserConfigurationsPass documents for the user seam — the caller supplies already-scanned
+ * auto-configuration definitions directly. ConditionPassOnePass (400) correctly leaves it alone
+ * (scoped to DefinitionSource::User) and ConditionPassTwoPass (600) still evaluates it correctly
+ * because it operates on whatever DefinitionSource::AutoConfiguration definitions are in the
+ * registry at phase entry, regardless of when each one was added.
  */
 function freshIntegrationBootContext(Container $container, ComponentManifest $components, ContextManifest $context): BootContext
 {
@@ -345,22 +347,17 @@ it('boots a real application end-to-end through the compiled, zero-reflection ma
 
         // --- Conditions gated definitions ---
         //
-        // 🔴 KNOWN ENGINE BUG (found by this integration test, not fixed here — see the task's
-        // report): BootPhase::ConditionPassOne = 300 runs BEFORE BootPhase::UserConfigurations =
-        // 400 adds ANY user-sourced BeanDefinition to the registry. ConditionPassOnePass only
-        // evaluates whatever is ALREADY in Firefly\Context\Definition\BeanDefinitionRegistry at the
-        // moment it runs, so a user #[Component]/#[Configuration]'s own registry-independent
-        // #[ConditionalOnProperty]/#[ConditionalOnClass]/#[ConditionalOnMissingClass]/
-        // #[ConditionalOnProfile] is NEVER evaluated by the real boot pipeline — the definition
-        // always survives regardless of whether the condition actually matches. Verified in
-        // isolation: running (new UserConfigurationsPass($defs))->run($context) BEFORE (new
-        // ConditionPassOnePass)->run($context) — the reverse of the shipped phase order — correctly
-        // filters GatedComponentRemoved; running them in the SHIPPED order does not.
-        // packages/context/tests/Boot/BootPhaseTest.php itself asserts ConditionPassOne <
-        // UserConfigurations, so this is the pipeline's deliberate, tested phase order — not a stray
-        // typo — and is left unmodified here per this task's brief ("do NOT weaken the assertion to
-        // get green; report BLOCKED"). This assertion is intentionally left exactly as the checklist
-        // requires and is expected to FAIL until the engine is fixed.
+        // This assertion is the CAPSTONE regression test for a real engine bug this integration
+        // test caught: BootPhase::ConditionPassOne used to run BEFORE BootPhase::UserConfigurations
+        // added ANY user-sourced BeanDefinition to the registry, so ConditionPassOnePass evaluated
+        // against an empty/partial registry and a user #[Component]/#[Configuration]'s own
+        // registry-independent #[ConditionalOnProperty]/#[ConditionalOnClass]/
+        // #[ConditionalOnMissingClass]/#[ConditionalOnProfile] was NEVER evaluated — the definition
+        // always survived regardless of whether the condition actually matched. Fixed by reordering
+        // BootPhase so each condition pass FOLLOWS its own definition source — see BootPhase's class
+        // docblock and packages/context/tests/Boot/BootPhaseTest.php for the corrected chain
+        // (UserConfigurations < ConditionPassOne < AutoConfigurations < ConditionPassTwo). Do not
+        // "simplify" that order back — that is precisely how this bug shipped the first time.
         $survivingClasses = array_map(
             static fn (BeanDefinition $d): string => $d->class(),
             $bootContext->definitions->all(),

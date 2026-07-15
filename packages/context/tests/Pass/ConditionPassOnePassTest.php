@@ -16,6 +16,7 @@ use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Definition\DefinitionSource;
 use Firefly\Context\Pass\ConditionPassOnePass;
 use Firefly\Context\Tests\Fixtures\Cache;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -112,3 +113,37 @@ it('does NOT evaluate bean conditions — a definition with only a bean conditio
         ->and($context->definitions->all()[0])->toBe($definition)
         ->and($context->report->all())->toBe([]);
 });
+
+it('does NOT touch a DefinitionSource::AutoConfiguration definition\'s REGISTRY-INDEPENDENT condition either — that is ConditionPassTwoPass\'s job now', function () {
+    // Scoped to DefinitionSource::User by design (see the class docblock): an AutoConfiguration
+    // definition is left completely alone here, even one carrying a non-bean condition that would
+    // fail if evaluated — proving the scope is by SOURCE, not merely by condition type.
+    $context = passOneContext(['firefly' => ['autoconfig' => ['on' => false]]]);
+
+    $definition = new BeanDefinition(
+        passOneDescriptor('App\AutoThing'),
+        conditions: [new ConditionalOnProperty('firefly.autoconfig.on', havingValue: 'true')],
+        source: DefinitionSource::AutoConfiguration,
+    );
+    $context->definitions->add($definition);
+
+    (new ConditionPassOnePass)->run($context);
+
+    expect($context->definitions->all())->toHaveCount(1)
+        ->and($context->definitions->all()[0])->toBe($definition)
+        ->and($context->report->all())->toBe([]);
+});
+
+it('propagates ConfigurationException, unsoftened, for a bean condition on a DefinitionSource::User definition', function () {
+    // ConditionPassOnePass is now the pass that actually processes User definitions in the real
+    // pipeline (it runs after UserConfigurations, before AutoConfigurations even exist), so this is
+    // where the pipeline first — and only — ever encounters this structural error.
+    $context = passOneContext();
+    $context->definitions->add(new BeanDefinition(
+        passOneDescriptor('App\UserThing'),
+        conditions: [new ConditionalOnMissingBean(Cache::class)],
+        source: DefinitionSource::User,
+    ));
+
+    (new ConditionPassOnePass)->run($context);
+})->throws(ConfigurationException::class);

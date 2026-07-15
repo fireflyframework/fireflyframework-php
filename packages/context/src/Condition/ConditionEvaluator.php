@@ -70,16 +70,24 @@ final class ConditionEvaluator
     }
 
     /**
-     * A definition matches only if ALL of its conditions belonging to the CURRENT phase match
-     * (AND semantics). A condition belonging to the OTHER phase is skipped — never re-evaluated.
+     * A definition matches only if ALL of its conditions selected by $beanPhase match (AND
+     * semantics):
+     *  - $beanPhase === false: evaluate only registry-independent conditions, skipping bean
+     *    conditions — ConditionPassOnePass's mode, over DefinitionSource::User definitions.
+     *  - $beanPhase === true: evaluate only bean conditions, skipping registry-independent ones.
+     *  - $beanPhase === null: evaluate EVERY condition, of either kind — ConditionPassTwoPass's
+     *    mode, over DefinitionSource::AutoConfiguration definitions, whose registry-independent
+     *    conditions were never evaluated at pass one (those definitions didn't exist yet) and
+     *    whose bean conditions are only decidable now that the registry holds the surviving user
+     *    beans. A condition excluded by the filter is skipped — never re-evaluated.
      *
-     * A BeanConditionAttribute on a User definition is a structural error regardless of which
-     * phase is being run: user components are all registered in the same phase, so a bean
-     * condition between two of them has no deterministic answer (it would depend on filesystem
-     * scan order). Auto-configurations are fine because they run strictly after all user
-     * definitions, so "does this user bean exist?" always has a well-defined answer.
+     * A BeanConditionAttribute on a User definition is a structural error regardless of $beanPhase:
+     * user components are all registered in the same phase, so a bean condition between two of
+     * them has no deterministic answer (it would depend on filesystem scan order). Auto-
+     * configurations are fine because they run strictly after all user definitions, so "does this
+     * user bean exist?" always has a well-defined answer.
      */
-    public function matches(BeanDefinition $definition, bool $beanPhase, BeanDefinitionRegistry $registry): bool
+    public function matches(BeanDefinition $definition, ?bool $beanPhase, BeanDefinitionRegistry $registry): bool
     {
         foreach ($definition->conditions as $condition) {
             $isBeanCondition = $condition instanceof BeanConditionAttribute;
@@ -94,7 +102,7 @@ final class ConditionEvaluator
                 ));
             }
 
-            if ($isBeanCondition !== $beanPhase) {
+            if ($beanPhase !== null && $isBeanCondition !== $beanPhase) {
                 continue;
             }
 
