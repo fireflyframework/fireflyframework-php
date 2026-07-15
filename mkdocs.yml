@@ -23,3 +23,4 @@ nav:
           - Error Handling: modules/error-handling.md
           - Dependency Injection: modules/dependency-injection.md
           - Configuration: modules/configuration.md
+          - Application Context: modules/context.md
