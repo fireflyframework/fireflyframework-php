@@ -567,6 +567,18 @@ the full mechanism, the measured before/after-fix behavior pinned by
 every tracked scoped bean, in reverse registration order — and only then calls
 `Container::forgetScopedInstances()`, which has no destruction callback of its own and would otherwise
 silently drop anything not drained first (a scoped bean holding a database transaction or file handle
-would leak it). Resetting on both `RequestReceived` and `RequestTerminated` makes the reset
-crash-resilient: a request that dies mid-flight cannot poison the next one, because the next request's
-own `RequestReceived` resets before it runs.
+would leak it). Resetting on both `RequestReceived` and `RequestTerminated` cleans two different
+things: `RequestReceived` strips scoped state that a *boot-time* resolution left sitting in the
+long-lived worker application (every sandbox is a fresh `clone $this->app`, so it inherits whatever
+was resolved onto `$app` before any sandbox existed) before the *next* request runs; `RequestTerminated`
+does the equivalent cleanup for that same request's own sandbox once it completes normally.
+
+This does **not** make the reset crash-resilient for the request that actually dies. Octane's
+`Worker::handle()` dispatches `RequestTerminated` only on the success path; a request that throws
+instead dispatches only `WorkerErrorOccurred` — which nothing here subscribes to — and then discards
+the sandbox outright. That crashed request's own scoped `#[PreDestroy]` callbacks (e.g. an explicit
+transaction rollback) never run: by the time the next request's `RequestReceived` resets anything,
+the dead sandbox has already been garbage-collected, so `drainScoped()` finds dead `WeakReference`s
+and silently skips them. The *next* request is still unpoisoned — that guarantee comes from Octane's
+per-request `clone $this->app`, independent of this reset — but the crashed request's own scoped
+teardown is simply lost.
