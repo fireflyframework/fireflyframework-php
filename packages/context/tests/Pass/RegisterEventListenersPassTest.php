@@ -1,0 +1,165 @@
+<?php
+
+declare(strict_types=1);
+
+use Firefly\Config\Config;
+use Firefly\Config\Profile\Profiles;
+use Firefly\Container\Descriptor\ComponentDescriptor;
+use Firefly\Container\Scope;
+use Firefly\Context\Boot\BootContext;
+use Firefly\Context\Condition\ConditionEvaluationReport;
+use Firefly\Context\Condition\ConditionEvaluator;
+use Firefly\Context\Definition\BeanDefinition;
+use Firefly\Context\Definition\BeanDefinitionRegistry;
+use Firefly\Context\Event\AsEventListener;
+use Firefly\Context\Pass\RegisterEventListenersPass;
+use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Events\Dispatcher as IlluminateDispatcher;
+
+/**
+ * RegisterEventListenersPass is exercised against a REAL Illuminate\Events\Dispatcher over a REAL
+ * Illuminate\Container\Container — never a mock of our own interfaces. This is also the home of THE
+ * BLOCKING REQUIREMENT test: guardListener() must be PROVEN wired end-to-end here, not merely
+ * present and unit-tested in isolation (see DispatcherEventPublisherTest for the isolated unit test
+ * of guardListener() itself).
+ */
+final class ListenerPassLog
+{
+    /** @var list<string> */
+    public array $entries = [];
+
+    public function record(string $entry): void
+    {
+        $this->entries[] = $entry;
+    }
+}
+
+final class ListenerHaltEvent
+{
+    public function __construct(public string $tag) {}
+}
+
+final class FalseReturningListener
+{
+    public function __construct(private readonly ListenerPassLog $log) {}
+
+    #[AsEventListener(order: 0)]
+    public function onHalt(ListenerHaltEvent $event): bool
+    {
+        $this->log->record('first');
+
+        // Deliberately falsy — a naive listener that happens to return the result of some other
+        // call. Without the guard, Illuminate's dispatch loop breaks HERE and SecondListener below
+        // never runs, regardless of $halt.
+        return false;
+    }
+}
+
+final class SecondListener
+{
+    public function __construct(private readonly ListenerPassLog $log) {}
+
+    #[AsEventListener(order: 10)]
+    public function onHalt(ListenerHaltEvent $event): void
+    {
+        $this->log->record('second');
+    }
+}
+
+final class OrderedFirstListener
+{
+    public function __construct(private readonly ListenerPassLog $log) {}
+
+    #[AsEventListener(order: 1)]
+    public function onHalt(ListenerHaltEvent $event): void
+    {
+        $this->log->record('ordered-first');
+    }
+}
+
+final class OrderedSecondListener
+{
+    public function __construct(private readonly ListenerPassLog $log) {}
+
+    #[AsEventListener(order: 20)]
+    public function onHalt(ListenerHaltEvent $event): void
+    {
+        $this->log->record('ordered-second');
+    }
+}
+
+function listenerDescriptor(string $class): ComponentDescriptor
+{
+    return new ComponentDescriptor(
+        class: $class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+    );
+}
+
+function listenerContext(): BootContext
+{
+    $config = new Config(new Repository([]));
+    $profiles = new Profiles([]);
+    $container = new Container;
+    $container->instance('events', new IlluminateDispatcher($container));
+
+    return new BootContext(
+        container: $container,
+        definitions: new BeanDefinitionRegistry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+    );
+}
+
+// --- 🔴 THE BLOCKING REQUIREMENT: guardListener() wired end-to-end ---
+
+it('wires guardListener(): a registered listener returning false does NOT stop a later registered listener from running', function () {
+    $context = listenerContext();
+    $log = new ListenerPassLog;
+    $context->container->instance(ListenerPassLog::class, $log);
+
+    $context->definitions->add(new BeanDefinition(listenerDescriptor(FalseReturningListener::class)));
+    $context->definitions->add(new BeanDefinition(listenerDescriptor(SecondListener::class)));
+
+    (new RegisterEventListenersPass)->run($context);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $context->container->make('events');
+    $dispatcher->dispatch(new ListenerHaltEvent('probe'));
+
+    // If guardListener() were NOT wired, Illuminate's dispatch loop would break the instant
+    // FalseReturningListener returns false, and 'second' would never be recorded — every unit test
+    // of guardListener() in isolation would still pass green while this exact bug ships live.
+    expect($log->entries)->toBe(['first', 'second']);
+});
+
+// --- listeners run in #[Order], regardless of manifest/definition registration order ---
+
+it('registers listeners in #[Order] read from the manifest, regardless of definition registration order', function () {
+    $context = listenerContext();
+    $log = new ListenerPassLog;
+    $context->container->instance(ListenerPassLog::class, $log);
+
+    // Registered in the REVERSE of the intended dispatch order.
+    $context->definitions->add(new BeanDefinition(listenerDescriptor(OrderedSecondListener::class)));
+    $context->definitions->add(new BeanDefinition(listenerDescriptor(OrderedFirstListener::class)));
+
+    (new RegisterEventListenersPass)->run($context);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $context->container->make('events');
+    $dispatcher->dispatch(new ListenerHaltEvent('probe'));
+
+    expect($log->entries)->toBe(['ordered-first', 'ordered-second']);
+});
