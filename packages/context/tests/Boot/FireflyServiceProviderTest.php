@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Config\Profile\Profiles;
+use Firefly\Container\Descriptor\ComponentDescriptor;
+use Firefly\Container\Scope;
+use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
@@ -11,8 +14,20 @@ use Firefly\Context\Boot\FireflyKernel;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
+use Firefly\Context\Definition\BeanDefinition;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
+use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Event\ContextClosedEvent;
+use Firefly\Context\Event\DispatcherEventPublisher;
+use Firefly\Context\Lifecycle\PreDestroy;
 use Firefly\Context\Octane\OctaneListener;
+use Firefly\Context\Pass\EagerSingletonsPass;
+use Firefly\Context\Pass\FlushDefinitionsPass;
+use Firefly\Context\Pass\InfrastructureStartPass;
+use Firefly\Context\Pass\RegisterBeanPostProcessorsPass;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
+use Firefly\Kernel\Lifecycle;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -137,7 +152,7 @@ function freshApplication(): Application
     return new Application;
 }
 
-function bindFireflyKernel(Container $container): FireflyKernel
+function bindFireflyKernel(Container $container, ContextManifest $contextManifest = new ContextManifest([])): FireflyKernel
 {
     $config = new Config(new Repository([]));
     $profiles = new Profiles(['test']);
@@ -149,6 +164,7 @@ function bindFireflyKernel(Container $container): FireflyKernel
         profiles: $profiles,
         conditions: new ConditionEvaluator($config, $profiles),
         report: new ConditionEvaluationReport,
+        contextManifest: $contextManifest,
     );
 
     $kernel = new FireflyKernel($context);
@@ -233,6 +249,217 @@ it('does not re-run phases on a second boot() call', function (): void {
     $app->boot();
 
     expect($log->entries)->toBe(['definition-pass', 'definition-stub-boot']);
+});
+
+// --- ApplicationEventPublisher: the M4 re-review's Critical finding ---
+
+/**
+ * The exact documented shape a user application is told to write (see docs/modules/context.md's
+ * Events section): a plain #[Component]-shaped class constructor-injecting the
+ * ApplicationEventPublisher PORT, never the concrete DispatcherEventPublisher adapter.
+ */
+final class OrderServiceFixture
+{
+    public function __construct(public readonly ApplicationEventPublisher $publisher) {}
+}
+
+/**
+ * Contributes ONLY EagerSingletonsPass — enough to reproduce the exact failure the re-review
+ * documented: phase 900 resolves every non-#[Lazy] singleton eagerly, so a missing
+ * ApplicationEventPublisher binding aborts boot() itself rather than merely failing at first use.
+ */
+final class EagerPublisherProviderStub extends FireflyServiceProvider
+{
+    public function passes(): array
+    {
+        return [new EagerSingletonsPass];
+    }
+}
+
+it('resolves a user #[Component]-shaped class injecting ApplicationEventPublisher during EAGER singleton resolution — the documented happy path must not abort boot', function (): void {
+    $app = freshApplication();
+    $kernel = bindFireflyKernel($app);
+
+    // Hand-registered directly into the BeanDefinitionRegistry — standing in for what a real
+    // #[Component] scan would produce (see BootContext's own docblock: this is the same
+    // "accept pre-scanned data, do not fake a scan" pattern used throughout this milestone).
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: OrderServiceFixture::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+    )));
+
+    $app->register(EagerPublisherProviderStub::class);
+    $app->boot();
+
+    expect($app->bound(ApplicationEventPublisher::class))->toBeTrue();
+
+    $service = $app->make(OrderServiceFixture::class);
+    expect($service)->toBeInstanceOf(OrderServiceFixture::class)
+        ->and($service->publisher)->toBeInstanceOf(DispatcherEventPublisher::class);
+});
+
+// --- ApplicationContext: singleton identity + genuinely idempotent close() ---
+
+/**
+ * Contributes exactly the three passes that bind ApplicationContext's OTHER three collaborators
+ * (the FireflyContainer facade, DisposableBeanRegistry, LifecycleRegistry) over an otherwise EMPTY
+ * BeanDefinitionRegistry — so that, combined with FireflyServiceProvider's own
+ * ApplicationEventPublisher binding, EVERY constructor dependency ApplicationContext needs is
+ * genuinely resolvable, and Illuminate's auto-wiring alone (absent the singleton binding this test
+ * exists to prove) really would succeed — just with a FRESH instance on every resolution. That is
+ * what makes this a discriminating test rather than one that merely fails to resolve at all.
+ */
+final class MinimalRealPipelineProviderStub extends FireflyServiceProvider
+{
+    public function passes(): array
+    {
+        return [
+            new FlushDefinitionsPass,
+            new RegisterBeanPostProcessorsPass,
+            new InfrastructureStartPass,
+        ];
+    }
+}
+
+it('binds ApplicationContext as a SINGLETON — resolving twice returns the SAME instance, and close() is genuinely idempotent', function (): void {
+    $app = freshApplication();
+    bindFireflyKernel($app);
+
+    $closedCount = 0;
+    $app->make(Dispatcher::class)->listen(ContextClosedEvent::class, function () use (&$closedCount): void {
+        $closedCount++;
+    });
+
+    $app->register(MinimalRealPipelineProviderStub::class);
+    $app->boot();
+
+    $first = $app->make(ApplicationContext::class);
+    $second = $app->make(ApplicationContext::class);
+
+    expect($first)->toBe($second)
+        ->and($first->isActive())->toBeTrue();
+
+    $first->close();
+    // Same underlying instance — a second close(), even called through the "other" resolved
+    // reference, must be a genuine no-op, not merely coincidentally harmless.
+    $second->close();
+
+    expect($closedCount)->toBe(1)
+        ->and($first->isActive())->toBeFalse();
+});
+
+// --- Shutdown wiring: #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook ---
+
+final class ShutdownProbeState
+{
+    public bool $poolDisconnected = false;
+
+    public bool $brokerStopped = false;
+}
+
+final class ShutdownProbePool
+{
+    public function __construct(private readonly ShutdownProbeState $state) {}
+
+    #[PreDestroy]
+    public function disconnect(): void
+    {
+        $this->state->poolDisconnected = true;
+    }
+}
+
+final class ShutdownProbeBroker implements Lifecycle
+{
+    public function __construct(private readonly ShutdownProbeState $state) {}
+
+    public function start(): void {}
+
+    public function stop(): void
+    {
+        $this->state->brokerStopped = true;
+    }
+}
+
+/**
+ * The full real instance-stage lifecycle pipeline: FlushDefinitions (binds the classes into the
+ * container), BeanPostProcessors (installs #[PreDestroy] tracking), InfrastructureStart (starts the
+ * Lifecycle component), EagerSingletons (actually resolves both, since they are Scope::Singleton and
+ * not #[Lazy]).
+ */
+final class ShutdownPipelineProviderStub extends FireflyServiceProvider
+{
+    public function passes(): array
+    {
+        return [
+            new FlushDefinitionsPass,
+            new RegisterBeanPostProcessorsPass,
+            new InfrastructureStartPass,
+            new EagerSingletonsPass,
+        ];
+    }
+}
+
+it('runs #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook — Application::terminate() — not a manual drain', function (): void {
+    $app = freshApplication();
+
+    $contextManifest = new ContextManifest([
+        new ContextDescriptor(class: ShutdownProbePool::class, preDestroy: ['disconnect']),
+    ]);
+
+    $kernel = bindFireflyKernel($app, $contextManifest);
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: ShutdownProbePool::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+    )));
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: ShutdownProbeBroker::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [Lifecycle::class],
+        beans: [],
+    )));
+
+    $app->singleton(ShutdownProbeState::class);
+
+    $app->register(ShutdownPipelineProviderStub::class);
+    $app->boot();
+
+    /** @var ShutdownProbeState $state */
+    $state = $app->make(ShutdownProbeState::class);
+
+    expect($state->poolDisconnected)->toBeFalse()
+        ->and($state->brokerStopped)->toBeFalse();
+
+    // THE REAL shutdown path: Illuminate\Foundation\Application::terminate() — the same method
+    // Illuminate\Foundation\Http\Kernel::terminate() calls at the end of every PHP-FPM request
+    // (public/index.php's `$kernel->terminate($request, $response)`), and Laravel\Octane\
+    // ApplicationGateway::terminate() calls through the request's sandboxed Kernel. Deliberately
+    // NOT $applicationContext->close() called directly — that would only prove close()'s own
+    // ordering (already covered elsewhere), not that a real application actually triggers it, which
+    // is precisely the M4 re-review's Important finding: FireflyKernel::boot() had zero production
+    // callers, so nothing ever closed the context in a real application.
+    $app->terminate();
+
+    expect($state->poolDisconnected)->toBeTrue()
+        ->and($state->brokerStopped)->toBeTrue();
 });
 
 // --- Octane wiring: conditional on presence, must never fatal in its absence ---

@@ -62,6 +62,20 @@ final class ReportingServiceProvider extends FireflyServiceProvider
 `FireflyKernel::run()` is idempotent per phase, so every `FireflyServiceProvider` subclass can safely
 register the same two callbacks: only the first one to fire actually runs each phase's passes.
 
+`register()` does three more things, each guarded so several `FireflyServiceProvider` subclasses
+(one per Firefly package) can safely coexist and only the first one actually performs the write:
+
+- Binds the `ApplicationEventPublisher` port (see Events, below) to the shipped
+  `DispatcherEventPublisher` adapter, as a singleton.
+- After the instance-stage phases finish (inside the `booted()` callback), binds the resulting
+  `ApplicationContext` into the container as a singleton — so every resolution returns the *same*
+  instance, making `isActive()` and `close()`'s idempotency genuinely true, not merely documented.
+- Registers `ApplicationContext::close()` against Laravel's `$app->terminating()` hook — the same
+  hook `Illuminate\Foundation\Http\Kernel::terminate()` fires at the end of every PHP-FPM request, and
+  Octane's `ApplicationGateway::terminate()` fires through the request's sandboxed kernel — so
+  `#[PreDestroy]`/`Lifecycle::stop()` actually run at real application shutdown, not only when
+  something remembers to call `close()` by hand.
+
 The kernel deliberately does **not** derive ordering from the order Laravel registers service
 providers in — Laravel registers auto-discovered (package) providers *before* application providers,
 the inverse of what a predictable pipeline needs. Deriving order from provider registration would make
@@ -322,6 +336,11 @@ concrete class — you do not need to do anything differently for either shape.
 Spring's annotations of the same name, ported as inert metadata: the attributes themselves carry no
 logic, `InitDestroyInvoker` supplies all discovery and dispatch.
 
+`ApplicationContext::close()` — which runs every tracked `#[PreDestroy]` and `Lifecycle::stop()` (see
+below) — is called automatically: `FireflyServiceProvider` registers it against Laravel's
+`$app->terminating()` hook (see "The boot pipeline", above), so it fires at real application shutdown
+without any application code having to call it.
+
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Lifecycle\{PostConstruct, PreDestroy};
@@ -374,6 +393,10 @@ interface ApplicationEventPublisher
 from the container **fresh on every call** rather than caching it — this is what lets `Event::fake()`
 (which swaps the `'events'` container binding) intercept publishes made through a publisher instance
 constructed before the fake was installed.
+
+`FireflyServiceProvider::register()` binds `ApplicationEventPublisher` to `DispatcherEventPublisher`
+as a singleton automatically — a `#[Component]` that constructor-injects the interface above (exactly
+like `BootLogger` below) resolves it with no further wiring required from application code.
 
 ```php
 use Firefly\Container\Attributes\Component;

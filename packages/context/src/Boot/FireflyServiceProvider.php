@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Firefly\Context\Boot;
 
+use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Event\DispatcherEventPublisher;
 use Firefly\Context\Octane\OctaneListener;
 use Firefly\Context\Octane\StateResetter;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Octane\Events\RequestReceived;
@@ -64,15 +67,105 @@ abstract class FireflyServiceProvider extends ServiceProvider
             $kernel->addPass($pass);
         }
 
+        $this->bindApplicationEventPublisher();
+
         $this->app->booting(static function () use ($kernel): void {
             $kernel->run(...self::definitionStagePhases());
         });
 
-        $this->app->booted(static function () use ($kernel): void {
+        $this->app->booted(function () use ($kernel): void {
             $kernel->run(...self::instanceStagePhases());
+
+            $this->bootApplicationContext($kernel);
         });
 
         $this->registerOctaneListener();
+    }
+
+    /**
+     * Binds the ApplicationEventPublisher PORT to the shipped DispatcherEventPublisher ADAPTER — the
+     * documented primary way application code publishes/observes events (docs/modules/context.md's
+     * Events section). Without this, a `#[Component]` constructor-injecting the documented port
+     * cannot resolve, and because EagerSingletonsPass (phase 900) resolves every non-`#[Lazy]`
+     * singleton eagerly, that failure aborts boot rather than merely failing at first use.
+     *
+     * DELIBERATELY bound HERE, as an explicit container write, rather than by giving
+     * DispatcherEventPublisher a `#[Component]` attribute: a framework adapter class living in
+     * packages/context/src/Event/ is never on any application's scanned PSR-4 root, so `#[Component]`
+     * on it would never actually be discovered by ComponentScanner — and even if it somehow were,
+     * turning that discovery into a container binding depends on the phase 200/500
+     * AutoConfigDiscovery/AutoConfigurations bootstrap-layer seam this milestone deliberately defers
+     * (see docs/modules/context.md). Attaching `#[Component]` today would just be a SECOND instance
+     * of the exact "authored but never consumed" shape this fix closes. An explicit binding in
+     * framework glue code is the same choice `Firefly\Container\Registrar\ContainerRegistrar::
+     * registerValueSupport()` already makes for `ValueResolver` — a foundational port bound by the
+     * framework itself, not discovered by scanning the framework's own classes.
+     *
+     * Guarded by bound(), same pattern as registerOctaneListener(): several FireflyServiceProvider
+     * subclasses (one per Firefly package) may all call register(), but only the first one actually
+     * binds it.
+     *
+     * Bound as a singleton ADAPTER INSTANCE, never a cached Dispatcher: DispatcherEventPublisher
+     * itself still resolves the 'events' binding FRESH on every publish() call (see its own
+     * docblock) — this binding only avoids re-constructing the thin wrapper object on every
+     * resolution, and must NEVER be changed to inject/cache the Dispatcher, or Event::fake()
+     * interception breaks.
+     */
+    private function bindApplicationEventPublisher(): void
+    {
+        if ($this->app->bound(ApplicationEventPublisher::class)) {
+            return;
+        }
+
+        $this->app->singleton(
+            ApplicationEventPublisher::class,
+            static fn (Container $container): ApplicationEventPublisher => new DispatcherEventPublisher($container),
+        );
+    }
+
+    /**
+     * Runs the kernel to completion and binds the resulting ApplicationContext as a singleton, then
+     * wires ApplicationContext::close() to Laravel's real application-shutdown hook — so
+     * `#[PreDestroy]`/`Lifecycle::stop()` actually fire in a real application instead of never
+     * running at all.
+     *
+     * `$kernel->boot()` is safe to call unconditionally here: it runs every BootPhase, but
+     * FireflyKernel::run() is idempotent per phase (see its own docblock), so every phase already
+     * completed by the booting()/booted() calls above — from THIS provider or any other
+     * FireflyServiceProvider subclass — is skipped, and boot() proceeds straight to assembling the
+     * ApplicationContext.
+     *
+     * Guarded by bound(), same pattern as registerOctaneListener()/bindApplicationEventPublisher():
+     * every FireflyServiceProvider subclass's booted() callback reaches this method, but only the
+     * FIRST one to run it builds+binds the context and registers the shutdown hook — every
+     * subsequent call is a no-op. This is safe because, by the time ANY booted() callback fires,
+     * every provider's register() has already run (Laravel calls every provider's register() before
+     * any provider's boot()/booted() callback), so every pass from every FireflyServiceProvider
+     * subclass is already contributed to this SAME shared kernel — kernel->boot() here always sees
+     * the complete, final pass list regardless of which subclass's callback reaches this line first.
+     *
+     * Verified against the installed laravel/framework source (see
+     * vendor/laravel/framework/src/Illuminate/Foundation/Application.php): terminating() appends to
+     * $terminatingCallbacks; terminate() invokes every one of them. terminate() itself is called by
+     * Illuminate\Foundation\Http\Kernel::terminate() — the real end-of-request hook every PHP-FPM
+     * request reaches via public/index.php's `$kernel->terminate($request, $response)` — and, under
+     * Octane, by Laravel\Octane\ApplicationGateway::terminate() through the request's sandboxed
+     * Kernel. This is the real, framework-verified application-shutdown mechanism, not a manual
+     * drain the application would otherwise have to remember to trigger itself.
+     */
+    private function bootApplicationContext(FireflyKernel $kernel): void
+    {
+        if ($this->app->bound(ApplicationContext::class)) {
+            return;
+        }
+
+        $context = $kernel->boot();
+
+        $this->app->instance(ApplicationContext::class, $context);
+
+        $this->app->terminating(static function () use ($context): void {
+            $context->close();
+        });
     }
 
     /**

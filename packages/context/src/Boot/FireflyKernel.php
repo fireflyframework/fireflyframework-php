@@ -7,6 +7,7 @@ namespace Firefly\Context\Boot;
 use Closure;
 use Firefly\Container\Container as FireflyContainer;
 use Firefly\Container\Scanner\ComponentManifest;
+use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\Context\Event\DispatcherEventPublisher;
 use Firefly\Context\Lifecycle\DisposableBeanRegistry;
 use Firefly\Context\Lifecycle\InitDestroyInvoker;
@@ -131,7 +132,19 @@ final class FireflyKernel
             static fn (): LifecycleRegistry => new LifecycleRegistry,
         );
 
-        return new ApplicationContext($facade, new DispatcherEventPublisher($container), $disposables, $lifecycles);
+        // Resolved from the container — never `new`-ed unconditionally — so that
+        // FireflyServiceProvider's ApplicationEventPublisher binding (see its own docblock) is what
+        // actually supplies this instance whenever it exists, making that binding load-bearing
+        // rather than incidental. Falls back to a fresh DispatcherEventPublisher only for a partial
+        // kernel assembled without going through FireflyServiceProvider at all (e.g. a focused unit
+        // test), exactly like the facade/disposables/lifecycles fallbacks above.
+        $publisher = $this->boundOrDefault(
+            $container,
+            ApplicationEventPublisher::class,
+            static fn (): ApplicationEventPublisher => new DispatcherEventPublisher($container),
+        );
+
+        return new ApplicationContext($facade, $publisher, $disposables, $lifecycles);
     }
 
     /**
