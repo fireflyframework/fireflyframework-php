@@ -101,6 +101,16 @@ As of this milestone, phases 200 and 500 are reserved seams with no contributed 
 milestone's starter mechanism populates them. `firefly/context` ships the enforcement rules and the
 two-pass evaluator ready for that mechanism to plug into (see below).
 
+Phase 300 itself is not fully wired yet either, and this is worth being just as honest about:
+`UserConfigurationsPass` does not scan `#[Configuration]`/`#[Bean]` classes itself — it accepts an
+already-assembled `list<BeanDefinition>` via constructor injection (empty by default), the same
+"accept pre-scanned data, do not fake a scan" pattern used throughout this milestone. In a real
+application today, nothing automatically bridges `ComponentScanner`'s and `ContextScanner`'s output
+into that list — a caller must build it by hand (see `IntegrationTest`'s `integrationUserDefinitions()`
+for the exact shape). Until a later milestone wires that bridge, phase 300 adds nothing on its own.
+The same is true of `FlushDefinitionsPass`'s `ConfigPropertiesManifest` parameter — M3's
+`#[ConfigProperties]` scanner is not wired into the boot pipeline either.
+
 ## Conditional registration
 
 Six attributes gate whether a component or a single `#[Bean]` method survives into the running
@@ -150,6 +160,35 @@ interface CachePort {}
 final class InMemoryCacheAutoConfig implements CachePort {}
 ```
 
+### Gating a single `#[Bean]` method
+
+Either kind of attribute may also be placed on ONE `#[Bean]` method rather than on the
+`#[Configuration]` class itself. A method-level condition failing removes only that method from the
+`beans` `firefly/container` sees for the class — never the whole definition, and never any other
+`#[Bean]` method declared alongside it:
+
+```php
+use Firefly\Container\Attributes\{Bean, Configuration};
+use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+
+#[Configuration]
+final class CacheAutoConfiguration
+{
+    #[Bean]
+    #[ConditionalOnMissingBean(CachePort::class)]
+    public function defaultCache(): CachePort
+    {
+        return new InMemoryCacheAutoConfig;
+    }
+
+    #[Bean]
+    public function cacheWarmer(): CacheWarmer // NOT gated — always registers regardless of defaultCache()'s outcome
+    {
+        return new CacheWarmer;
+    }
+}
+```
+
 ### The user-component rule
 
 **Bean conditions are only valid on auto-configurations.** Attaching `#[ConditionalOnBean]` or
@@ -173,9 +212,10 @@ Spring does — it rejects it outright, at evaluation time, so the bug can never
 Because phases 200/500 (auto-configuration discovery/registration) are reserved seams with no
 contributed pass yet, `DefinitionSource::AutoConfiguration` definitions are not yet reachable through
 the standard `#[Component]` scan — only a caller that constructs a `BeanDefinition` directly with
-`source: DefinitionSource::AutoConfiguration` can use bean conditions today. The rule above is fully
-implemented and enforced now so that a later milestone's starter mechanism has a safe, tested seam to
-build on.
+`source: DefinitionSource::AutoConfiguration` can use bean conditions today, whether the condition is
+attached to the class or to one of its `#[Bean]` methods. The rule above is fully implemented and
+enforced now — at both granularities — so that a later milestone's starter mechanism has a safe,
+tested seam to build on.
 
 ## `BeanPostProcessor`
 
@@ -264,6 +304,17 @@ final class CachingReportGenerator extends ReportGenerator
 `$declaredClass` is always the class recorded on the bean's *definition* (the manifest's declared
 class), threaded through by the caller — never `$bean::class`. Once a bean has been replaced by a
 proxy, `$bean::class` is the proxy's class, which has no entry in the component manifest.
+
+This is about `BeanPostProcessor`'s own contract, though — it is a *separate* question from how
+`#[PostConstruct]`/`#[PreDestroy]` are looked up internally. For the canonical hexagonal shape
+`#[Bean] fn(): SomePort`, the manifest's declared class IS the interface `SomePort` — and
+`ContextScanner` never scans an interface, so there is no lifecycle entry to find under that key.
+Internally, the engine captures the bean's *concrete* class once, at the moment it is built —
+guaranteed non-proxy, since a proxy can only be created from `afterInitialization()`, which has not
+run yet — and uses that for the `#[PostConstruct]`/`#[PreDestroy]` lookup instead, carrying it
+forward into `DisposableBeanRegistry` so `#[PreDestroy]` still resolves at context close. The net
+effect: a `#[Bean]` method returning an interface is lifecycle-managed exactly like one returning a
+concrete class — you do not need to do anything differently for either shape.
 
 ## Lifecycle
 
