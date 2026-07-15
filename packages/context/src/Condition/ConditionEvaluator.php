@@ -86,19 +86,39 @@ final class ConditionEvaluator
      * them has no deterministic answer (it would depend on filesystem scan order). Auto-
      * configurations are fine because they run strictly after all user definitions, so "does this
      * user bean exist?" always has a well-defined answer.
+     *
+     * Delegates entirely to matchesList() — this method only supplies the four values that come
+     * from the definition itself ($definition->conditions/source/class()). matchesList() is what
+     * ConditionPassOnePass/ConditionPassTwoPass use directly to gate ONE #[Bean] method's own
+     * conditions independently of its declaring definition's (class-level) conditions.
      */
     public function matches(BeanDefinition $definition, ?bool $beanPhase, BeanDefinitionRegistry $registry): bool
     {
-        foreach ($definition->conditions as $condition) {
+        return $this->matchesList($definition->conditions, $definition->source, $definition->class(), $beanPhase, $registry);
+    }
+
+    /**
+     * Same rules and semantics as matches(), for an arbitrary list of ConditionAttributes not
+     * necessarily attached to a whole BeanDefinition — the seam that lets a single #[Bean] method's
+     * own #[ConditionalOn*] attributes be gated independently of its declaring class's (class-level)
+     * conditions. $ownerLabel identifies the owner ONLY for the ConfigurationException message
+     * (a class name for a class-level check, "Class::method()" for a method-level one) and is never
+     * otherwise consulted.
+     *
+     * @param  list<ConditionAttribute>  $conditions
+     */
+    public function matchesList(array $conditions, DefinitionSource $source, string $ownerLabel, ?bool $beanPhase, BeanDefinitionRegistry $registry): bool
+    {
+        foreach ($conditions as $condition) {
             $isBeanCondition = $condition instanceof BeanConditionAttribute;
 
-            if ($isBeanCondition && $definition->source === DefinitionSource::User) {
+            if ($isBeanCondition && $source === DefinitionSource::User) {
                 throw new ConfigurationException(sprintf(
                     '#[%s] is not supported on user component [%s] — bean conditions are only valid on '.
                     'auto-configurations, which run after all user beans. Use #[ConditionalOnProperty] or '.
                     '#[ConditionalOnClass] instead.',
                     class_basename($condition),
-                    $definition->class(),
+                    $ownerLabel,
                 ));
             }
 

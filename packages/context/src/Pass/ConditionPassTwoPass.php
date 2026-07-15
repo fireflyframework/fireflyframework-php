@@ -82,6 +82,17 @@ use Firefly\Context\Definition\DefinitionSource;
  * self-seeing (a definition is never present while its own conditions run) and turns "both removed"
  * into "first, by (order, FQCN), wins" — matching what Spring itself does and what every starter
  * author assumes #[ConditionalOnMissingBean] means.
+ *
+ * METHOD-LEVEL conditions (BeanDefinition::$beanConditions, one #[Bean] method's own
+ * #[ConditionalOn*] attributes) are handled here too, via applyBeanMethodConditions() — evaluated
+ * (and, if kept, added to the registry) ONLY once the candidate's own class-level conditions have
+ * already been decided to keep it; a candidate removed at the class level takes every one of its
+ * #[Bean] methods with it. Evaluating method-level conditions BEFORE add()ing the (possibly
+ * bean-filtered) definition back to the registry preserves the same self-seeing avoidance the
+ * class-level algorithm above depends on: a method's own #[Bean] contribution is never visible while
+ * that SAME method's own condition is being decided, because the definition simply is not in the
+ * registry yet. A method-level condition failing removes ONLY that #[Bean] method from the
+ * descriptor's `beans` list — never the whole definition, and never any OTHER #[Bean] method on it.
  */
 final class ConditionPassTwoPass implements BootPass
 {
@@ -129,7 +140,7 @@ final class ConditionPassTwoPass implements BootPass
             $this->recordOutcomes($definition, $context);
 
             if ($keep) {
-                $context->definitions->add($definition);
+                $context->definitions->add($this->applyBeanMethodConditions($definition, $context));
             }
         }
     }
@@ -150,5 +161,35 @@ final class ConditionPassTwoPass implements BootPass
             $outcome = $context->conditions->evaluate($condition, $context->definitions);
             $context->report->record($definition->class(), $condition::class, $outcome);
         }
+    }
+
+    /**
+     * Evaluates every #[Bean] method's own conditions — of EITHER kind, beanPhase: null, exactly
+     * like this pass evaluates its class-level conditions, and for the same reason: an
+     * AutoConfiguration's method-level conditions are still entirely unevaluated at this point —
+     * records every outcome, and returns a NEW BeanDefinition with any non-matching method removed
+     * from `beans`, or $definition itself, UNCHANGED, when every method-level condition matches (or
+     * there are none).
+     */
+    private function applyBeanMethodConditions(BeanDefinition $definition, BootContext $context): BeanDefinition
+    {
+        $methodsToRemove = [];
+
+        foreach ($definition->beanConditions as $method => $conditions) {
+            $owner = $definition->class()."::{$method}()";
+
+            $keep = $context->conditions->matchesList($conditions, $definition->source, $owner, beanPhase: null, registry: $context->definitions);
+
+            foreach ($conditions as $condition) {
+                $outcome = $context->conditions->evaluate($condition, $context->definitions);
+                $context->report->record($owner, $condition::class, $outcome);
+            }
+
+            if (! $keep) {
+                $methodsToRemove[] = $method;
+            }
+        }
+
+        return $definition->withoutBeanMethods($methodsToRemove);
     }
 }

@@ -8,6 +8,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Condition\BeanConditionAttribute;
+use Firefly\Context\Condition\ConditionAttribute;
 use Firefly\Context\Definition\BeanDefinition;
 use Firefly\Context\Definition\DefinitionSource;
 
@@ -28,9 +29,16 @@ use Firefly\Context\Definition\DefinitionSource;
  * completely untouched: it is ConditionPassTwoPass's job, not this pass's, once it exists.
  *
  * Bean conditions (#[ConditionalOnBean], #[ConditionalOnMissingBean]) are illegal on a User
- * definition by design — ConditionEvaluator::matches() throws a ConfigurationException for one,
- * regardless of phase — so there is nothing else for THIS pass to do with a bean condition; see
- * recordOutcomes()'s instanceof guard, which keeps that partition concrete in the report too.
+ * definition by design — ConditionEvaluator::matches()/matchesList() throw a ConfigurationException
+ * for one, regardless of phase — so there is nothing else for THIS pass to do with a bean condition;
+ * see recordOutcomes()'s instanceof guard, which keeps that partition concrete in the report too.
+ *
+ * METHOD-LEVEL conditions (BeanDefinition::$beanConditions, one #[Bean] method's own
+ * #[ConditionalOn*] attributes) are handled here too, via applyBeanMethodConditions() — AFTER the
+ * definition's own class-level keep/remove decision, and only when the definition itself survives
+ * (a removed definition takes every one of its #[Bean] methods with it; there is nothing left to
+ * filter). A method-level condition failing removes ONLY that #[Bean] method from the descriptor's
+ * `beans` list — never the whole definition, and never any OTHER #[Bean] method on it.
  */
 final class ConditionPassOnePass implements BootPass
 {
@@ -61,6 +69,14 @@ final class ConditionPassOnePass implements BootPass
 
             if (! $keep) {
                 $context->definitions->remove($definition->class());
+
+                continue; // the whole definition is gone — every #[Bean] method went with it
+            }
+
+            $filtered = $this->applyBeanMethodConditions($definition, $context);
+            if ($filtered !== $definition) {
+                $context->definitions->remove($definition->class());
+                $context->definitions->add($filtered);
             }
         }
     }
@@ -75,5 +91,39 @@ final class ConditionPassOnePass implements BootPass
             $outcome = $context->conditions->evaluate($condition);
             $context->report->record($definition->class(), $condition::class, $outcome);
         }
+    }
+
+    /**
+     * Evaluates every #[Bean] method's own conditions (registry-independent only, beanPhase:
+     * false — a method-level bean condition on a User definition is exactly as illegal as a
+     * class-level one, and matchesList() enforces that unconditionally), records every outcome, and
+     * returns a NEW BeanDefinition with any non-matching method removed from `beans` — or $definition
+     * itself, UNCHANGED, when every method-level condition matches (or there are none).
+     */
+    private function applyBeanMethodConditions(BeanDefinition $definition, BootContext $context): BeanDefinition
+    {
+        $methodsToRemove = [];
+
+        foreach ($definition->beanConditions as $method => $conditions) {
+            $owner = $definition->class()."::{$method}()";
+
+            $keep = $context->conditions->matchesList($conditions, $definition->source, $owner, beanPhase: false, registry: $context->definitions);
+
+            /** @var ConditionAttribute $condition */
+            foreach ($conditions as $condition) {
+                if ($condition instanceof BeanConditionAttribute) {
+                    continue; // phase partition: bean conditions are ConditionPassTwoPass's job
+                }
+
+                $outcome = $context->conditions->evaluate($condition);
+                $context->report->record($owner, $condition::class, $outcome);
+            }
+
+            if (! $keep) {
+                $methodsToRemove[] = $method;
+            }
+        }
+
+        return $definition->withoutBeanMethods($methodsToRemove);
     }
 }

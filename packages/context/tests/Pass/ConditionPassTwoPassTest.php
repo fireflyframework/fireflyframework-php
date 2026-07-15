@@ -303,6 +303,82 @@ it('mutual back-off / first-wins: two auto-configs both supplying the same type,
         ->and($remainingBThenA)->toBe(['App\AAutoConfiguration']);
 });
 
+// --- Critical 1 regression: method-level #[ConditionalOn*] on a #[Bean] method ---
+//
+// Same structural bug as ConditionPassOnePassTest, over AutoConfiguration definitions instead:
+// a method-level condition failing must remove ONLY that #[Bean] method, never the whole
+// definition — the canonical Spring Boot starter shape from this pass's own docblock
+// (`#[Bean] #[ConditionalOnMissingBean(CachePort::class)] defaultCache(): CachePort`) is exactly
+// this shape when the gate lives on the METHOD rather than the class.
+
+it('method-level #[ConditionalOnMissingBean] on ONE #[Bean] method removes only THAT bean, keeping the rest of the auto-configuration definition (Critical 1 regression)', function () {
+    $existing = new BeanDefinition(
+        passTwoDescriptor('App\Existing', interfaces: [Cache::class]),
+        source: DefinitionSource::User,
+    );
+    $autoConfiguration = new BeanDefinition(
+        passTwoDescriptor('App\CacheAutoConfiguration', beans: [
+            passTwoBean('defaultCache', Cache::class),
+            passTwoBean('otherBean', 'App\OtherType'),
+        ]),
+        beanConditions: [
+            'defaultCache' => [new ConditionalOnMissingBean(Cache::class)],
+        ],
+        source: DefinitionSource::AutoConfiguration,
+    );
+
+    $context = passTwoContext();
+    $context->definitions->add($existing);
+    $context->definitions->add($autoConfiguration);
+
+    (new ConditionPassTwoPass)->run($context);
+
+    $byClass = [];
+    foreach ($context->definitions->all() as $definition) {
+        $byClass[$definition->class()] = $definition;
+    }
+
+    expect($byClass)->toHaveKey('App\CacheAutoConfiguration');
+    $survivingMethods = array_map(
+        fn (BeanDescriptor $b): string => $b->method,
+        $byClass['App\CacheAutoConfiguration']->descriptor->beans,
+    );
+    expect($survivingMethods)->toBe(['otherBean']);
+
+    $methodEntry = null;
+    foreach ($context->report->all() as $entry) {
+        if ($entry['class'] === 'App\CacheAutoConfiguration::defaultCache()') {
+            $methodEntry = $entry;
+        }
+    }
+    if ($methodEntry === null) {
+        throw new RuntimeException('Expected a report entry for App\CacheAutoConfiguration::defaultCache().');
+    }
+
+    expect($methodEntry['attribute'])->toBe(ConditionalOnMissingBean::class)
+        ->and($methodEntry['outcome']->matched)->toBeFalse();
+});
+
+it('self-seeing avoidance also holds for method-level conditions: a #[Bean] method gated on the type it itself supplies IS kept when nothing else supplies it', function () {
+    $autoConfiguration = new BeanDefinition(
+        passTwoDescriptor('App\CacheAutoConfiguration', beans: [passTwoBean('defaultCache', Cache::class)]),
+        beanConditions: [
+            'defaultCache' => [new ConditionalOnMissingBean(Cache::class)],
+        ],
+        source: DefinitionSource::AutoConfiguration,
+    );
+
+    $context = passTwoContext();
+    $context->definitions->add($autoConfiguration);
+
+    (new ConditionPassTwoPass)->run($context);
+
+    $remaining = $context->definitions->all();
+    expect($remaining)->toHaveCount(1)
+        ->and(array_map(fn (BeanDescriptor $b): string => $b->method, $remaining[0]->descriptor->beans))
+        ->toBe(['defaultCache']);
+});
+
 it('mutual back-off honors #[Order] BEFORE FQCN: a lower #[Order] wins even with an alphabetically later class name', function () {
     $higherOrderEarlierName = new BeanDefinition(
         passTwoDescriptor('App\AAutoConfiguration', beans: [passTwoBean('cache', Cache::class)], order: 5),

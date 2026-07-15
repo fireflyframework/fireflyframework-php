@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Config\Profile\Profiles;
+use Firefly\Container\Descriptor\BeanDescriptor;
 use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scope;
 use Firefly\Context\Boot\BootContext;
@@ -30,8 +31,9 @@ function passOneConfig(array $items = []): Config
 
 /**
  * @param  list<class-string>  $interfaces
+ * @param  list<BeanDescriptor>  $beans
  */
-function passOneDescriptor(string $class, array $interfaces = []): ComponentDescriptor
+function passOneDescriptor(string $class, array $interfaces = [], array $beans = []): ComponentDescriptor
 {
     return new ComponentDescriptor(
         class: $class,
@@ -42,8 +44,31 @@ function passOneDescriptor(string $class, array $interfaces = []): ComponentDesc
         order: 0,
         qualifier: null,
         interfaces: $interfaces,
-        beans: [],
+        beans: $beans,
     );
+}
+
+/**
+ * A #[Bean] factory method descriptor, mirroring passTwoBean() in ConditionPassTwoPassTest.
+ */
+function passOneBean(string $method, string $returns): BeanDescriptor
+{
+    return new BeanDescriptor(
+        method: $method,
+        returns: $returns,
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+    );
+}
+
+/**
+ * @return list<string>
+ */
+function beanMethodsOf(BeanDefinition $definition): array
+{
+    return array_map(static fn (BeanDescriptor $bean): string => $bean->method, $definition->descriptor->beans);
 }
 
 /**
@@ -143,6 +168,83 @@ it('propagates ConfigurationException, unsoftened, for a bean condition on a Def
         passOneDescriptor('App\UserThing'),
         conditions: [new ConditionalOnMissingBean(Cache::class)],
         source: DefinitionSource::User,
+    ));
+
+    (new ConditionPassOnePass)->run($context);
+})->throws(ConfigurationException::class);
+
+// --- Critical 1 regression: method-level #[ConditionalOn*] on a #[Bean] method ---
+//
+// A method-level condition failing to match must remove ONLY that #[Bean] method from the
+// descriptor's `beans` list — never the whole definition (that would over-remove; a #[Configuration]
+// class routinely has other, unrelated #[Bean] methods, or is itself also a #[Component]). Before
+// this fix, ConditionPassOnePass never even looked at BeanDefinition::$beanConditions: a #[Bean]
+// method's own #[ConditionalOn*] was captured by ContextScanner, stored, documented as working
+// (docs/modules/context.md:106), and simply never consumed — the definition (and every one of its
+// #[Bean] methods) always survived condition evaluation completely untouched.
+
+it('removes ONLY the #[Bean] method whose method-level #[ConditionalOnProperty] does not match, keeping the definition and its other #[Bean] methods (Critical 1 regression)', function () {
+    $context = passOneContext();
+
+    $definition = new BeanDefinition(
+        passOneDescriptor('App\PaymentsConfig', beans: [
+            passOneBean('gatedBean', 'App\GatedType'),
+            passOneBean('keptBean', 'App\KeptType'),
+        ]),
+        beanConditions: [
+            'gatedBean' => [new ConditionalOnProperty('firefly.never.set')],
+        ],
+    );
+    $context->definitions->add($definition);
+
+    (new ConditionPassOnePass)->run($context);
+
+    $remaining = $context->definitions->all();
+    expect($remaining)->toHaveCount(1)
+        ->and($remaining[0]->class())->toBe('App\PaymentsConfig')
+        ->and(beanMethodsOf($remaining[0]))->toBe(['keptBean']);
+
+    $entries = $context->report->all();
+    expect($entries)->toHaveCount(1)
+        ->and($entries[0]['class'])->toBe('App\PaymentsConfig::gatedBean()')
+        ->and($entries[0]['attribute'])->toBe(ConditionalOnProperty::class)
+        ->and($entries[0]['outcome']->matched)->toBeFalse();
+});
+
+it('keeps a #[Bean] method whose method-level condition DOES match, and records the match', function () {
+    $context = passOneContext(['firefly' => ['on' => 'true']]);
+
+    $definition = new BeanDefinition(
+        passOneDescriptor('App\PaymentsConfig', beans: [
+            passOneBean('gatedBean', 'App\GatedType'),
+        ]),
+        beanConditions: [
+            'gatedBean' => [new ConditionalOnProperty('firefly.on', havingValue: 'true')],
+        ],
+    );
+    $context->definitions->add($definition);
+
+    (new ConditionPassOnePass)->run($context);
+
+    $remaining = $context->definitions->all();
+    expect($remaining)->toHaveCount(1)
+        ->and(beanMethodsOf($remaining[0]))->toBe(['gatedBean']);
+
+    $entries = $context->report->all();
+    expect($entries)->toHaveCount(1)
+        ->and($entries[0]['class'])->toBe('App\PaymentsConfig::gatedBean()')
+        ->and($entries[0]['outcome']->matched)->toBeTrue();
+});
+
+it('propagates ConfigurationException for a method-level bean condition on a DefinitionSource::User definition', function () {
+    $context = passOneContext();
+    $context->definitions->add(new BeanDefinition(
+        passOneDescriptor('App\UserConfig', beans: [
+            passOneBean('gatedBean', 'App\GatedType'),
+        ]),
+        beanConditions: [
+            'gatedBean' => [new ConditionalOnMissingBean(Cache::class)],
+        ],
     ));
 
     (new ConditionPassOnePass)->run($context);

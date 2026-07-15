@@ -48,6 +48,7 @@ final class UserConfigurationsPass implements BootPass
                 $definition->descriptor,
                 $definition->conditions,
                 DefinitionSource::User,
+                $definition->beanConditions,
             ));
         }
     }
