@@ -34,6 +34,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
 use Laravel\Octane\Events\RequestReceived;
+use Laravel\Octane\Events\WorkerStopping;
 
 /**
  * FireflyServiceProvider is exercised over a REAL Illuminate\Foundation\Application — a bare one,
@@ -392,6 +393,12 @@ final class ShutdownProbeBroker implements Lifecycle
  * container), BeanPostProcessors (installs #[PreDestroy] tracking), InfrastructureStart (starts the
  * Lifecycle component), EagerSingletons (actually resolves both, since they are Scope::Singleton and
  * not #[Lazy]).
+ *
+ * Forces octaneIsAvailable() to FALSE, exactly like OctaneAbsentProvider — this is the PHP-FPM half
+ * of a one-variable control (see OctaneShutdownPipelineProviderStub below for the other half). The
+ * real laravel/octane package IS installed in this repo (it is this package's own dev dependency),
+ * so without this override octaneIsAvailable() would ambiently return true here too and this
+ * "FPM control" would silently stop testing what its name claims.
  */
 final class ShutdownPipelineProviderStub extends FireflyServiceProvider
 {
@@ -404,9 +411,37 @@ final class ShutdownPipelineProviderStub extends FireflyServiceProvider
             new EagerSingletonsPass,
         ];
     }
+
+    protected function octaneIsAvailable(): bool
+    {
+        return false;
+    }
 }
 
-it('runs #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook — Application::terminate() — not a manual drain', function (): void {
+/**
+ * Identical pass list to ShutdownPipelineProviderStub — the ONLY difference is octaneIsAvailable()
+ * forced to TRUE. That single-variable difference is what makes the PHP-FPM test above and the
+ * Octane-worker test below a genuine one-variable control over the SAME provider/pass/fixture shape.
+ */
+final class OctaneShutdownPipelineProviderStub extends FireflyServiceProvider
+{
+    public function passes(): array
+    {
+        return [
+            new FlushDefinitionsPass,
+            new RegisterBeanPostProcessorsPass,
+            new InfrastructureStartPass,
+            new EagerSingletonsPass,
+        ];
+    }
+
+    protected function octaneIsAvailable(): bool
+    {
+        return true;
+    }
+}
+
+it('[FPM control] runs #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook — Application::terminate() — not a manual drain', function (): void {
     $app = freshApplication();
 
     $contextManifest = new ContextManifest([
@@ -448,18 +483,105 @@ it('runs #[PreDestroy]/Lifecycle::stop() via the REAL application-shutdown hook 
     expect($state->poolDisconnected)->toBeFalse()
         ->and($state->brokerStopped)->toBeFalse();
 
-    // THE REAL shutdown path: Illuminate\Foundation\Application::terminate() — the same method
+    // THE REAL shutdown path FOR PHP-FPM (this test's runtime, via octaneIsAvailable()=false above):
+    // Illuminate\Foundation\Application::terminate() — the same method
     // Illuminate\Foundation\Http\Kernel::terminate() calls at the end of every PHP-FPM request
-    // (public/index.php's `$kernel->terminate($request, $response)`), and Laravel\Octane\
-    // ApplicationGateway::terminate() calls through the request's sandboxed Kernel. Deliberately
-    // NOT $applicationContext->close() called directly — that would only prove close()'s own
-    // ordering (already covered elsewhere), not that a real application actually triggers it, which
-    // is precisely the M4 re-review's Important finding: FireflyKernel::boot() had zero production
+    // (public/index.php's `$kernel->terminate($request, $response)`). Deliberately NOT
+    // $applicationContext->close() called directly — that would only prove close()'s own ordering
+    // (already covered elsewhere), not that a real application actually triggers it, which is
+    // precisely the M4 re-review's Important finding: FireflyKernel::boot() had zero production
     // callers, so nothing ever closed the context in a real application.
+    //
+    // CORRECTED CLAIM: an earlier version of this comment additionally claimed this test also
+    // exercises Octane's shutdown path via "Laravel\Octane\ApplicationGateway::terminate() ... through
+    // the request's sandboxed Kernel" — that claim was FALSE. This test builds and terminates ONE
+    // application ONCE; it never clones a sandbox and never serves a second request, so it cannot
+    // discriminate the Octane per-request-teardown bug the M4 review #3 found (terminating() firing
+    // at the end of EVERY Octane request, not once per worker). This is the FPM half of a
+    // one-variable control; see the "[OCTANE control]" tests below for the runtime-varying half that
+    // this test's own comment used to falsely claim to cover.
     $app->terminate();
 
     expect($state->poolDisconnected)->toBeTrue()
         ->and($state->brokerStopped)->toBeTrue();
+});
+
+it('[OCTANE control] does NOT close the context at the end of request #1 — singleton #[PreDestroy]/Lifecycle::stop() must survive across requests within one worker', function (): void {
+    $app = freshApplication();
+
+    $contextManifest = new ContextManifest([
+        new ContextDescriptor(class: ShutdownProbePool::class, preDestroy: ['disconnect']),
+    ]);
+
+    $kernel = bindFireflyKernel($app, $contextManifest);
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: ShutdownProbePool::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+    )));
+    $kernel->context()->definitions->add(new BeanDefinition(new ComponentDescriptor(
+        class: ShutdownProbeBroker::class,
+        stereotype: 'Service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [Lifecycle::class],
+        beans: [],
+    )));
+
+    $app->singleton(ShutdownProbeState::class);
+
+    // The WORKER application boots exactly ONCE — Octane's real shape (Laravel\Octane\Worker::boot()
+    // runs the framework's booting/booted bootstrappers a single time for the whole worker process).
+    $app->register(OctaneShutdownPipelineProviderStub::class);
+    $app->boot();
+
+    /** @var ShutdownProbeState $state */
+    $state = $app->make(ShutdownProbeState::class);
+
+    expect($state->poolDisconnected)->toBeFalse()
+        ->and($state->brokerStopped)->toBeFalse();
+
+    $pool = $app->make(ShutdownProbePool::class);
+
+    // --- Request #1: Octane's REAL per-request shape (Laravel\Octane\Worker::handle() +
+    // Laravel\Octane\ApplicationGateway::terminate()) — clone the worker app into a per-request
+    // sandbox and terminate THAT SANDBOX, never the worker app itself. A clone copies the worker's
+    // $terminatingCallbacks array by value, so this is exactly what would carry the bug forward if
+    // ApplicationContext::close() were (still, wrongly) wired to $app->terminating().
+    $sandbox1 = clone $app;
+    $sandbox1->terminate();
+
+    // THE regression this test exists to catch: request #1 ending must NOT close the worker-lifetime
+    // ApplicationContext. Under the pre-fix code (close() wired unconditionally to terminating()),
+    // this fails: poolDisconnected/brokerStopped both flip true here, one request into the worker's
+    // life.
+    expect($state->poolDisconnected)->toBeFalse()
+        ->and($state->brokerStopped)->toBeFalse()
+        ->and($app->make(ApplicationContext::class)->isActive())->toBeTrue();
+
+    // --- Request #2 must be served by the SAME, still-live singleton — not a torn-down one. ---
+    $sandbox2 = clone $app;
+    expect($sandbox2->make(ShutdownProbePool::class))->toBe($pool);
+    $sandbox2->terminate();
+
+    expect($state->poolDisconnected)->toBeFalse()
+        ->and($state->brokerStopped)->toBeFalse();
+
+    // --- Only Octane's real once-per-worker shutdown event closes the context. ---
+    $app->make(Dispatcher::class)->dispatch(new WorkerStopping($app));
+
+    expect($state->poolDisconnected)->toBeTrue()
+        ->and($state->brokerStopped)->toBeTrue()
+        ->and($app->make(ApplicationContext::class)->isActive())->toBeFalse();
 });
 
 // --- Octane wiring: conditional on presence, must never fatal in its absence ---

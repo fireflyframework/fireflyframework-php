@@ -70,11 +70,16 @@ register the same two callbacks: only the first one to fire actually runs each p
 - After the instance-stage phases finish (inside the `booted()` callback), binds the resulting
   `ApplicationContext` into the container as a singleton — so every resolution returns the *same*
   instance, making `isActive()` and `close()`'s idempotency genuinely true, not merely documented.
-- Registers `ApplicationContext::close()` against Laravel's `$app->terminating()` hook — the same
-  hook `Illuminate\Foundation\Http\Kernel::terminate()` fires at the end of every PHP-FPM request, and
-  Octane's `ApplicationGateway::terminate()` fires through the request's sandboxed kernel — so
-  `#[PreDestroy]`/`Lifecycle::stop()` actually run at real application shutdown, not only when
-  something remembers to call `close()` by hand.
+- Registers `ApplicationContext::close()` against the runtime's *actual* shutdown hook — so
+  `#[PreDestroy]`/`Lifecycle::stop()` run at real application shutdown, not only when something
+  remembers to call `close()` by hand — but which hook that is **differs by runtime**, and getting
+  this backwards was this milestone's own capstone bug (see "Octane", below, for the full story):
+  under PHP-FPM (a *fresh* application per request) Laravel's `$app->terminating()` hook genuinely IS
+  application shutdown, so `close()` is wired there. Under Octane the *same* `terminating()` hook
+  fires at the end of **every request**, because Octane clones the worker application into a
+  per-request sandbox and `Application::terminate()` runs through that clone — so when
+  `laravel/octane` is present, `close()` is wired to Octane's `WorkerStopping` event instead, which
+  fires exactly once per worker.
 
 The kernel deliberately does **not** derive ordering from the order Laravel registers service
 providers in — Laravel registers auto-discovered (package) providers *before* application providers,
@@ -347,9 +352,10 @@ Spring's annotations of the same name, ported as inert metadata: the attributes 
 logic, `InitDestroyInvoker` supplies all discovery and dispatch.
 
 `ApplicationContext::close()` — which runs every tracked `#[PreDestroy]` and `Lifecycle::stop()` (see
-below) — is called automatically: `FireflyServiceProvider` registers it against Laravel's
-`$app->terminating()` hook (see "The boot pipeline", above), so it fires at real application shutdown
-without any application code having to call it.
+below) — is called automatically, at real application shutdown, without any application code having
+to call it: `FireflyServiceProvider` wires it against Laravel's `$app->terminating()` hook under
+PHP-FPM, and against Octane's `WorkerStopping` event under Octane (see "The boot pipeline", above, and
+"Octane", below, for why the hook must differ by runtime).
 
 ```php
 use Firefly\Container\Attributes\Component;
@@ -454,14 +460,30 @@ once when the long-lived worker application boots — not on every request it th
 scanning, condition evaluation, `BeanPostProcessor` installation, and eager singleton resolution all
 happen exactly once per worker process.
 
-What *does* need resetting between requests is per-request state: `Scope::Scoped` bean instances, and
-any `#[PreDestroy]` callbacks owed to them. `FireflyServiceProvider` wires an `OctaneListener` (only
-when `laravel/octane` is actually installed — it is a dev dependency, not a runtime requirement, since
-LaraFly's baseline runtime is PHP-FPM) to Octane's `RequestReceived`, `RequestTerminated`,
-`TaskTerminated`, and `TickTerminated` events. Each delegates to `StateResetter::reset($event->sandbox)`
-— the **sandbox**, Octane's fresh-per-request container clone, never `$event->app`, the original
-long-lived worker application; resetting the wrong one would be a silent no-op on a container nothing
-is ever served from.
+Singleton teardown must be symmetric with that: it must also happen exactly once per worker, not once
+per request — getting this backwards was M4's own capstone bug. `ApplicationContext::close()` cannot
+be wired to Laravel's `$app->terminating()` hook under Octane: that hook is `Application::terminate()`,
+and Octane's `ApplicationGateway::terminate()` calls it through the **per-request sandbox** (a
+`clone $this->app` made fresh by `Laravel\Octane\Worker` for every request/task/tick), so it fires at
+the end of *every request*. Wiring `close()` there would drain every singleton's `#[PreDestroy]` and
+stop every `Lifecycle` component after the worker's very first request, then keep serving requests
+2..N against disconnected/stopped singletons — silently, since `close()` is idempotent and never
+errors or repeats. So when `laravel/octane` is present, `FireflyServiceProvider` instead wires
+`close()` to Octane's `WorkerStopping` event, which `Laravel\Octane\Worker` dispatches exactly once,
+at real worker shutdown. `WorkerStopping` carries only `$app` — there is no per-worker-shutdown
+sandbox — so this is the one Octane event this package targets `$event->app` rather than
+`$event->sandbox`; see the `$event->app`-vs-`$event->sandbox` note above and
+`FireflyServiceProvider::bootApplicationContext()`'s own docblock.
+
+By contrast, what *does* need resetting between requests is per-request state: `Scope::Scoped` bean
+instances, and any `#[PreDestroy]` callbacks owed to them — never singletons. `FireflyServiceProvider`
+wires an `OctaneListener` (only when `laravel/octane` is actually installed — it is a dev dependency,
+not a runtime requirement, since LaraFly's baseline runtime is PHP-FPM) to Octane's `RequestReceived`,
+`RequestTerminated`, `TaskTerminated`, and `TickTerminated` events. Each delegates to
+`StateResetter::reset($event->sandbox)` — the **sandbox**, Octane's fresh-per-request container
+clone, never `$event->app`, the original long-lived worker application; resetting the wrong one would
+be a silent no-op on a container nothing is ever served from. In short: **scoped beans drain per
+request; singletons drain once, at worker (or, under PHP-FPM, application) shutdown.**
 
 `StateResetter` first drains `DisposableBeanRegistry`'s scoped ledger — running `#[PreDestroy]` on
 every tracked scoped bean, in reverse registration order — and only then calls

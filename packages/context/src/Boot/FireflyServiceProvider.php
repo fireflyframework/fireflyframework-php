@@ -12,6 +12,7 @@ use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Octane\Events\RequestReceived;
+use Laravel\Octane\Events\WorkerStopping;
 
 /**
  * Base provider every application and later-milestone package extends to plug into the
@@ -125,9 +126,11 @@ abstract class FireflyServiceProvider extends ServiceProvider
 
     /**
      * Runs the kernel to completion and binds the resulting ApplicationContext as a singleton, then
-     * wires ApplicationContext::close() to Laravel's real application-shutdown hook — so
-     * `#[PreDestroy]`/`Lifecycle::stop()` actually fire in a real application instead of never
-     * running at all.
+     * wires ApplicationContext::close() to the runtime's ACTUAL shutdown hook — which hook that is
+     * DIFFERS BY RUNTIME. Treating one hook as "application shutdown" everywhere is exactly the bug
+     * an earlier version of this docblock caused (M4 review #3, Critical): it cited Octane's own
+     * call path as *proof* `$app->terminating()` meant shutdown, when Octane calling `terminate()`
+     * on every request is proof of the opposite.
      *
      * `$kernel->boot()` is safe to call unconditionally here: it runs every BootPhase, but
      * FireflyKernel::run() is idempotent per phase (see its own docblock), so every phase already
@@ -144,14 +147,40 @@ abstract class FireflyServiceProvider extends ServiceProvider
      * subclass is already contributed to this SAME shared kernel — kernel->boot() here always sees
      * the complete, final pass list regardless of which subclass's callback reaches this line first.
      *
-     * Verified against the installed laravel/framework source (see
-     * vendor/laravel/framework/src/Illuminate/Foundation/Application.php): terminating() appends to
-     * $terminatingCallbacks; terminate() invokes every one of them. terminate() itself is called by
-     * Illuminate\Foundation\Http\Kernel::terminate() — the real end-of-request hook every PHP-FPM
-     * request reaches via public/index.php's `$kernel->terminate($request, $response)` — and, under
-     * Octane, by Laravel\Octane\ApplicationGateway::terminate() through the request's sandboxed
-     * Kernel. This is the real, framework-verified application-shutdown mechanism, not a manual
-     * drain the application would otherwise have to remember to trigger itself.
+     * THE TWO RUNTIMES, VERIFIED AGAINST INSTALLED SOURCE (laravel/framework v13.20.0,
+     * laravel/octane v2.17.5):
+     *
+     * - PHP-FPM (this package's baseline runtime — a FRESH `Illuminate\Foundation\Application` per
+     *   request): `Illuminate\Foundation\Http\Kernel::terminate()` calls `$this->app->terminate()`
+     *   once per request, via public/index.php's `$kernel->terminate($request, $response)`. Because
+     *   the application itself is fresh per request, "this request ended" and "this application
+     *   instance is shutting down" are THE SAME EVENT — `$app->terminating(...)` is correct here.
+     * - Octane: `Laravel\Octane\Worker::handle()` clones the long-lived WORKER application into a
+     *   per-request `$sandbox` (`CurrentApplication::set($sandbox = clone $this->app)`), and
+     *   `Laravel\Octane\ApplicationGateway::terminate()` then calls `Application::terminate()` on
+     *   THAT SANDBOX at the end of EVERY request. A PHP clone copies the worker's
+     *   `$terminatingCallbacks` array by value, so a callback registered via `$app->terminating()`
+     *   would fire once per REQUEST, not once per WORKER — closing every singleton's
+     *   `#[PreDestroy]`/`Lifecycle::stop()` after the worker's first request and silently serving
+     *   requests 2..N against disconnected/stopped objects (close() is idempotent, so this never
+     *   errors or repeats; it just goes quiet). So under Octane, `terminating()` MUST NOT be used —
+     *   `close()` is wired to `Laravel\Octane\Events\WorkerStopping` instead, which
+     *   `Laravel\Octane\Worker` dispatches exactly ONCE per worker, at real worker shutdown (see
+     *   `vendor/laravel/octane/src/Worker.php`).
+     *
+     * `$event->app` vs `$event->sandbox`, verified directly against the installed source
+     * (`vendor/laravel/octane/src/Events/WorkerStopping.php`): WorkerStopping's constructor is
+     * `__construct(public Application $app)` — there is NO `$sandbox` property on this event, unlike
+     * RequestReceived/RequestTerminated/TaskTerminated/TickTerminated (see OctaneListener's own
+     * docblock, invariant 7). There is no per-worker-shutdown clone to speak of, so `$event->app`
+     * IS the worker and is the only, correct target — this is deliberately NOT a violation of
+     * invariant 7, which governs only the per-request/task/tick events where Octane actually serves
+     * traffic through a cloned sandbox and the original `$app` is never the one in use.
+     *
+     * Guarded the same way as registerOctaneListener(): `laravel/octane` is a dev dependency of this
+     * package (the baseline runtime is PHP-FPM, where Octane is typically never installed at all),
+     * so wiring WorkerStopping MUST NOT fatal when Octane is absent — octaneIsAvailable() is the same
+     * presence check used throughout this class.
      */
     private function bootApplicationContext(FireflyKernel $kernel): void
     {
@@ -163,9 +192,20 @@ abstract class FireflyServiceProvider extends ServiceProvider
 
         $this->app->instance(ApplicationContext::class, $context);
 
-        $this->app->terminating(static function () use ($context): void {
-            $context->close();
-        });
+        if ($this->octaneIsAvailable()) {
+            // $event->app, not $event->sandbox — see the docblock above: WorkerStopping carries no
+            // sandbox at all, so $event->app IS the worker being stopped.
+            $this->app->make(Dispatcher::class)->listen(
+                WorkerStopping::class,
+                static function () use ($context): void {
+                    $context->close();
+                },
+            );
+        } else {
+            $this->app->terminating(static function () use ($context): void {
+                $context->close();
+            });
+        }
     }
 
     /**
