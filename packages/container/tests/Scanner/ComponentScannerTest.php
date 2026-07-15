@@ -11,6 +11,7 @@ use Firefly\Container\Tests\Fixtures\EdgeConfig;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
 use Firefly\Container\Tests\Fixtures\Gadget;
 use Firefly\Container\Tests\Fixtures\Greeter;
+use Firefly\Container\Tests\Fixtures\LazyWidget;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
 use Firefly\Container\Tests\Fixtures\Widget;
@@ -99,6 +100,16 @@ it('records the empty-string return-type contract for builtin/untyped #[Bean] re
     expect($byMethod['typedClass']->returns)->toBe(Gadget::class)
         ->and($byMethod['builtinReturn']->returns)->toBe('')
         ->and($byMethod['nullableClass']->returns)->toBe(Widget::class);
+});
+
+it('captures #[Lazy] on a component, defaulting to false when the attribute is absent', function () {
+    $byClass = [];
+    foreach (scanFixtures() as $d) {
+        $byClass[$d->class] = $d;
+    }
+
+    expect($byClass[LazyWidget::class]->lazy)->toBeTrue()
+        ->and($byClass[EnglishGreeter::class]->lazy)->toBeFalse();
 });
 
 it('scans cleanly when the directory does not exist', function () {

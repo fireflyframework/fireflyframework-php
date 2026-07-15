@@ -6,6 +6,7 @@ namespace Firefly\Container\Scanner;
 
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Component;
+use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Attributes\Order;
 use Firefly\Container\Attributes\Primary;
 use Firefly\Container\Attributes\Qualifier;
@@ -111,6 +112,7 @@ final class ComponentScanner
             qualifier: $this->qualifierOf($reflection->getAttributes(Qualifier::class)),
             interfaces: $interfaces,
             beans: $shortAttr === 'configuration' ? $this->beansOf($reflection) : [],
+            lazy: $reflection->getAttributes(Lazy::class) !== [],
         );
     }
 

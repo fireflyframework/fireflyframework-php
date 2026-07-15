@@ -22,6 +22,7 @@ final readonly class ComponentDescriptor
         public ?string $qualifier,
         public array $interfaces,
         public array $beans,
+        public bool $lazy = false,
     ) {}
 
     /**
@@ -35,6 +36,7 @@ final readonly class ComponentDescriptor
      *     qualifier: string|null,
      *     interfaces: list<class-string>,
      *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>,
+     *     lazy: bool,
      * }
      */
     public function toArray(): array
@@ -49,6 +51,7 @@ final readonly class ComponentDescriptor
             'qualifier' => $this->qualifier,
             'interfaces' => $this->interfaces,
             'beans' => array_map(static fn (BeanDescriptor $b): array => $b->toArray(), $this->beans),
+            'lazy' => $this->lazy,
         ];
     }
 
@@ -63,6 +66,7 @@ final readonly class ComponentDescriptor
      *     qualifier: string|null,
      *     interfaces: list<class-string>,
      *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>,
+     *     lazy?: bool,
      * } $data
      */
     public static function fromArray(array $data): self
@@ -77,6 +81,10 @@ final readonly class ComponentDescriptor
             $data['qualifier'],
             $data['interfaces'],
             array_map(static fn (array $b): BeanDescriptor => BeanDescriptor::fromArray($b), $data['beans']),
+            // Absent on a manifest cached before #[Lazy] support shipped — default false rather
+            // than fatal, so an old cached manifest on disk still loads (see ComponentScanner /
+            // Firefly\Container\Attributes\Lazy).
+            $data['lazy'] ?? false,
         );
     }
 }

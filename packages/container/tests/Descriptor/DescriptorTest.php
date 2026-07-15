@@ -18,6 +18,7 @@ it('round-trips a ComponentDescriptor through toArray/fromArray', function () {
         qualifier: 'main',
         interfaces: [Stringable::class],
         beans: [$bean],
+        lazy: true,
     );
 
     $restored = ComponentDescriptor::fromArray($desc->toArray());
@@ -25,10 +26,46 @@ it('round-trips a ComponentDescriptor through toArray/fromArray', function () {
     expect($restored)->toEqual($desc)
         ->and($restored->beans[0])->toBeInstanceOf(BeanDescriptor::class)
         ->and($restored->beans[0]->scope)->toBe(Scope::Transient)
-        ->and($restored->scope)->toBe(Scope::Singleton);
+        ->and($restored->scope)->toBe(Scope::Singleton)
+        ->and($restored->lazy)->toBeTrue();
 });
 
 it('round-trips a BeanDescriptor through toArray/fromArray', function () {
     $bean = new BeanDescriptor('clock', 'App\\Clock', 'clock', Scope::Scoped, false, 3);
     expect(BeanDescriptor::fromArray($bean->toArray()))->toEqual($bean);
+});
+
+it('defaults $lazy to false when a ComponentDescriptor is constructed without it', function () {
+    $desc = new ComponentDescriptor(
+        class: 'App\\Greeter',
+        stereotype: 'service',
+        name: null,
+        scope: Scope::Singleton,
+        primary: false,
+        order: 0,
+        qualifier: null,
+        interfaces: [],
+        beans: [],
+    );
+
+    expect($desc->lazy)->toBeFalse();
+});
+
+it('fromArray() defaults lazy to false for an OLD-SHAPE array with no "lazy" key (backward compatibility with a manifest cached before #[Lazy] support shipped)', function () {
+    $oldShape = [
+        'class' => 'App\\Greeter',
+        'stereotype' => 'service',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [],
+        'beans' => [],
+        // deliberately no 'lazy' key.
+    ];
+
+    $restored = ComponentDescriptor::fromArray($oldShape);
+
+    expect($restored->lazy)->toBeFalse();
 });
