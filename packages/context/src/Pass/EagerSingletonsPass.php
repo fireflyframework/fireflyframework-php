@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Firefly\Context\Pass;
 
-use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Scope;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
-use ReflectionClass;
 
 /**
  * Eagerly resolves every non-#[Lazy] Scope::Singleton component and #[Bean] factory, sorted from the
@@ -22,12 +20,10 @@ use ReflectionClass;
  * BeanPostProcessors (700) for the same reason InfrastructureStartPass does: every eagerly resolved
  * bean must already have its composite extender installed.
  *
- * #[Lazy] on a #[Component] CLASS is read straight off ComponentDescriptor::$lazy — no reflection,
- * no boot-time attribute lookup at all (see ComponentScanner, which now captures it). #[Lazy] on a
- * #[Bean] factory METHOD is still read via reflection off the declared method: BeanDescriptor
- * carries no "lazy" field of its own yet (see Firefly\Container\Attributes\Lazy's docblock for the
- * boundary) — that residual per-request reflection is a known, deliberately out-of-scope gap for a
- * later dispatch, not an oversight here.
+ * #[Lazy] on a #[Component] CLASS is read straight off ComponentDescriptor::$lazy, and #[Lazy] on a
+ * #[Bean] factory METHOD is read straight off BeanDescriptor::$lazy — no reflection, no boot-time
+ * attribute lookup at all in either case (see ComponentScanner, which captures both onto the
+ * manifest at scan time).
  */
 final class EagerSingletonsPass implements BootPass
 {
@@ -66,7 +62,7 @@ final class EagerSingletonsPass implements BootPass
             foreach ($descriptor->beans as $bean) {
                 $isEager = $bean->returns !== ''
                     && $bean->scope === Scope::Singleton
-                    && ! $this->methodIsLazy($descriptor->class, $bean->method);
+                    && ! $bean->lazy;
 
                 if ($isEager) {
                     $entries[] = [$bean->order, $bean->returns];
@@ -77,13 +73,5 @@ final class EagerSingletonsPass implements BootPass
         usort($entries, static fn (array $a, array $b): int => $a[0] <=> $b[0] ?: $a[1] <=> $b[1]);
 
         return array_map(static fn (array $entry): string => $entry[1], $entries);
-    }
-
-    private function methodIsLazy(string $class, string $method): bool
-    {
-        /** @var class-string $declaredClass */
-        $declaredClass = $class;
-
-        return (new ReflectionClass($declaredClass))->getMethod($method)->getAttributes(Lazy::class) !== [];
     }
 }

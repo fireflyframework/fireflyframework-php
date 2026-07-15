@@ -142,6 +142,7 @@ final class ComponentScanner
                 scope: $bean->scope,
                 primary: $method->getAttributes(Primary::class) !== [],
                 order: $this->orderOf($method->getAttributes(Order::class)),
+                lazy: $method->getAttributes(Lazy::class) !== [],
             );
         }
 

@@ -16,9 +16,8 @@ use Attribute;
  * On a #[Component] CLASS: captured by ComponentScanner onto ComponentDescriptor::$lazy, so
  * EagerSingletonsPass reads it from the compiled manifest — zero reflection at boot.
  *
- * On a #[Bean] factory METHOD: not yet captured into a manifest field of its own
- * (BeanDescriptor carries no $lazy); EagerSingletonsPass still reflects the declared method
- * directly for that case (see its docblock).
+ * On a #[Bean] factory METHOD: captured by ComponentScanner onto BeanDescriptor::$lazy, so
+ * EagerSingletonsPass reads it from the compiled manifest too — zero reflection at boot either way.
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final class Lazy {}

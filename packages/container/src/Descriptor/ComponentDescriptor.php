@@ -35,7 +35,7 @@ final readonly class ComponentDescriptor
      *     order: int,
      *     qualifier: string|null,
      *     interfaces: list<class-string>,
-     *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>,
+     *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy: bool}>,
      *     lazy: bool,
      * }
      */
@@ -65,7 +65,7 @@ final readonly class ComponentDescriptor
      *     order: int,
      *     qualifier: string|null,
      *     interfaces: list<class-string>,
-     *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>,
+     *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}>,
      *     lazy?: bool,
      * } $data
      */

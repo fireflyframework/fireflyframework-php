@@ -22,10 +22,17 @@ final readonly class BeanDescriptor
          */
         public bool $primary,
         public int $order,
+        /**
+         * Captured from #[Lazy] on the #[Bean] factory method. Consulted by
+         * EagerSingletonsPass, which skips eagerly resolving this bean at boot when true —
+         * read straight off this field, never via reflection (see ComponentScanner, which
+         * captures it, and Firefly\Container\Attributes\Lazy's docblock).
+         */
+        public bool $lazy = false,
     ) {}
 
     /**
-     * @return array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}
+     * @return array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy: bool}
      */
     public function toArray(): array
     {
@@ -36,11 +43,12 @@ final readonly class BeanDescriptor
             'scope' => $this->scope->name,
             'primary' => $this->primary,
             'order' => $this->order,
+            'lazy' => $this->lazy,
         ];
     }
 
     /**
-     * @param  array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}  $data
+     * @param  array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}  $data
      */
     public static function fromArray(array $data): self
     {
@@ -51,6 +59,10 @@ final readonly class BeanDescriptor
             Scope::fromName($data['scope']),
             $data['primary'],
             $data['order'],
+            // Absent on a manifest cached before #[Lazy]-on-#[Bean]-method support shipped —
+            // default false rather than fatal, so an old cached manifest on disk still loads
+            // (see ComponentScanner / Firefly\Container\Attributes\Lazy).
+            $data['lazy'] ?? false,
         );
     }
 }

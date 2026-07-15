@@ -164,6 +164,26 @@ it('resolves non-#[Lazy] Scope::Singleton components in #[Order] from the manife
     expect($log->entries)->toBe(['A', 'B']);
 });
 
+it('resolves non-#[Lazy] #[Bean] factory methods eagerly, skipping ones marked #[Lazy] — read straight off BeanDescriptor, no reflection', function () {
+    $context = eagerContext();
+    $log = new EagerLog;
+    $context->container->instance(EagerLog::class, $log);
+
+    $beans = [
+        new BeanDescriptor('makeA', EagerWidgetA::class, null, Scope::Singleton, false, 0, lazy: false),
+        new BeanDescriptor('makeB', EagerWidgetB::class, null, Scope::Singleton, false, 0, lazy: true),
+    ];
+
+    // Outer holder deliberately Scope::Transient so only the #[Bean] entries are under test here.
+    $context->definitions->add(new BeanDefinition(
+        eagerDescriptor('App\\BeanHolder', scope: Scope::Transient, beans: $beans)
+    ));
+
+    (new EagerSingletonsPass)->run($context);
+
+    expect($log->entries)->toBe(['A']);
+});
+
 it('never eagerly resolves a Scope::Transient or Scope::Scoped component', function () {
     $context = eagerContext();
     $log = new EagerLog;

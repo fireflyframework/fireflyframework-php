@@ -11,6 +11,7 @@ use Firefly\Container\Tests\Fixtures\EdgeConfig;
 use Firefly\Container\Tests\Fixtures\EnglishGreeter;
 use Firefly\Container\Tests\Fixtures\Gadget;
 use Firefly\Container\Tests\Fixtures\Greeter;
+use Firefly\Container\Tests\Fixtures\LazyBeanConfig;
 use Firefly\Container\Tests\Fixtures\LazyWidget;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
@@ -110,6 +111,29 @@ it('captures #[Lazy] on a component, defaulting to false when the attribute is a
 
     expect($byClass[LazyWidget::class]->lazy)->toBeTrue()
         ->and($byClass[EnglishGreeter::class]->lazy)->toBeFalse();
+});
+
+it('captures #[Lazy] on a #[Bean] method, defaulting to false when the attribute is absent', function () {
+    $config = null;
+    foreach (scanFixtures() as $d) {
+        if ($d->class === LazyBeanConfig::class) {
+            $config = $d;
+        }
+    }
+
+    expect($config)->not->toBeNull();
+
+    if (! $config instanceof ComponentDescriptor) {
+        throw new RuntimeException('LazyBeanConfig descriptor not found in scan results.');
+    }
+
+    $byMethod = [];
+    foreach ($config->beans as $bean) {
+        $byMethod[$bean->method] = $bean;
+    }
+
+    expect($byMethod['lazyGadget']->lazy)->toBeTrue()
+        ->and($byMethod['eagerGadget']->lazy)->toBeFalse();
 });
 
 it('scans cleanly when the directory does not exist', function () {

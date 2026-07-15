@@ -15,7 +15,7 @@ final class ComponentManifest
     public function __construct(public array $components) {}
 
     /**
-     * @param  array<int, array{class: string, stereotype: string, name: string|null, scope: string, primary: bool, order: int, qualifier: string|null, interfaces: list<class-string>, beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>}>  $data
+     * @param  array<int, array{class: string, stereotype: string, name: string|null, scope: string, primary: bool, order: int, qualifier: string|null, interfaces: list<class-string>, beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}>, lazy?: bool}>  $data
      */
     public static function fromArray(array $data): self
     {
@@ -37,7 +37,7 @@ final class ComponentManifest
             throw new ConfigurationException("Component manifest at {$path} did not return an array.");
         }
 
-        /** @var array<int, array{class: string, stereotype: string, name: string|null, scope: string, primary: bool, order: int, qualifier: string|null, interfaces: list<class-string>, beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int}>}> $data */
+        /** @var array<int, array{class: string, stereotype: string, name: string|null, scope: string, primary: bool, order: int, qualifier: string|null, interfaces: list<class-string>, beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}>, lazy?: bool}> $data */
         return self::fromArray($data);
     }
 }
