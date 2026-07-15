@@ -120,7 +120,9 @@ final class FireflyKernel
         $disposables = $this->boundOrDefault(
             $container,
             DisposableBeanRegistry::class,
-            static fn (): DisposableBeanRegistry => new DisposableBeanRegistry(new InitDestroyInvoker($container)),
+            fn (): DisposableBeanRegistry => new DisposableBeanRegistry(
+                new InitDestroyInvoker($container, $this->context->contextManifest),
+            ),
         );
 
         $lifecycles = $this->boundOrDefault(

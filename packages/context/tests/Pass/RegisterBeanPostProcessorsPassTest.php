@@ -16,6 +16,8 @@ use Firefly\Context\Lifecycle\PostConstruct;
 use Firefly\Context\Lifecycle\PreDestroy;
 use Firefly\Context\Pass\RegisterBeanPostProcessorsPass;
 use Firefly\Context\Processor\BeanPostProcessor;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -138,6 +140,14 @@ function bppContext(): BootContext
     $config = new Config(new Repository([]));
     $profiles = new Profiles([]);
 
+    // Hand-built ContextManifest standing in for a real ContextScanner scan: TargetWidget and
+    // DisposableBppWidget are declared inline in this test file (not under a scannable PSR-4
+    // directory).
+    $contextManifest = new ContextManifest([
+        new ContextDescriptor(class: TargetWidget::class, postConstruct: ['init']),
+        new ContextDescriptor(class: DisposableBppWidget::class, preDestroy: ['shutdown']),
+    ]);
+
     return new BootContext(
         container: new Container,
         definitions: new BeanDefinitionRegistry,
@@ -145,6 +155,7 @@ function bppContext(): BootContext
         profiles: $profiles,
         conditions: new ConditionEvaluator($config, $profiles),
         report: new ConditionEvaluationReport,
+        contextManifest: $contextManifest,
     );
 }
 

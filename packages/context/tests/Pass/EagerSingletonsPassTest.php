@@ -19,6 +19,8 @@ use Firefly\Context\Lifecycle\PostConstruct;
 use Firefly\Context\Pass\EagerSingletonsPass;
 use Firefly\Context\Pass\RegisterBeanPostProcessorsPass;
 use Firefly\Context\Pass\RegisterEventListenersPass;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher as IlluminateDispatcher;
@@ -93,7 +95,7 @@ final class PublishingEagerWidget
 /**
  * @param  list<BeanDescriptor>  $beans
  */
-function eagerDescriptor(string $class, int $order = 0, Scope $scope = Scope::Singleton, array $beans = []): ComponentDescriptor
+function eagerDescriptor(string $class, int $order = 0, Scope $scope = Scope::Singleton, array $beans = [], bool $lazy = false): ComponentDescriptor
 {
     return new ComponentDescriptor(
         class: $class,
@@ -105,7 +107,28 @@ function eagerDescriptor(string $class, int $order = 0, Scope $scope = Scope::Si
         qualifier: null,
         interfaces: [],
         beans: $beans,
+        lazy: $lazy,
     );
+}
+
+/**
+ * Hand-built ContextManifest standing in for a real ContextScanner scan: EagerListenerReceiver's
+ * #[AsEventListener] and PublishingEagerWidget's #[PostConstruct] are declared inline in this test
+ * file (not under a scannable PSR-4 directory), matching this suite's established pattern of
+ * hand-building descriptors instead of scanning.
+ */
+function eagerContextManifest(): ContextManifest
+{
+    return new ContextManifest([
+        new ContextDescriptor(
+            class: EagerListenerReceiver::class,
+            listeners: [['method' => 'onPublished', 'event' => EagerPublishedEvent::class, 'order' => 0]],
+        ),
+        new ContextDescriptor(
+            class: PublishingEagerWidget::class,
+            postConstruct: ['announce'],
+        ),
+    ]);
 }
 
 function eagerContext(): BootContext
@@ -122,6 +145,7 @@ function eagerContext(): BootContext
         profiles: $profiles,
         conditions: new ConditionEvaluator($config, $profiles),
         report: new ConditionEvaluationReport,
+        contextManifest: eagerContextManifest(),
     );
 }
 
@@ -133,7 +157,7 @@ it('resolves non-#[Lazy] Scope::Singleton components in #[Order] from the manife
     // Registered out of order deliberately.
     $context->definitions->add(new BeanDefinition(eagerDescriptor(EagerWidgetB::class, order: 5)));
     $context->definitions->add(new BeanDefinition(eagerDescriptor(EagerWidgetA::class, order: 1)));
-    $context->definitions->add(new BeanDefinition(eagerDescriptor(LazyEagerWidget::class, order: 0)));
+    $context->definitions->add(new BeanDefinition(eagerDescriptor(LazyEagerWidget::class, order: 0, lazy: true)));
 
     (new EagerSingletonsPass)->run($context);
 

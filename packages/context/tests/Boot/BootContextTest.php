@@ -8,6 +8,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -26,5 +27,25 @@ it('threads container, definitions, config, profiles, conditions, and report thr
         ->and($context->config)->toBe($config)
         ->and($context->profiles)->toBe($profiles)
         ->and($context->conditions)->toBe($conditions)
-        ->and($context->report)->toBe($report);
+        ->and($context->report)->toBe($report)
+        ->and($context->contextManifest)->toBeInstanceOf(ContextManifest::class)
+        ->and($context->contextManifest->descriptors)->toBe([]);
+});
+
+it('threads an explicitly supplied ContextManifest through the boot pipeline', function () {
+    $config = new Config(new Repository([]));
+    $profiles = new Profiles([]);
+    $manifest = new ContextManifest([]);
+
+    $context = new BootContext(
+        container: new Container,
+        definitions: new BeanDefinitionRegistry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+        contextManifest: $manifest,
+    );
+
+    expect($context->contextManifest)->toBe($manifest);
 });

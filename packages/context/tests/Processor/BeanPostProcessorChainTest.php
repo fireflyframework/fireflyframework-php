@@ -6,6 +6,8 @@ use Firefly\Context\Lifecycle\InitDestroyInvoker;
 use Firefly\Context\Lifecycle\PostConstruct;
 use Firefly\Context\Processor\BeanPostProcessor;
 use Firefly\Context\Processor\BeanPostProcessorChain;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Container\Container;
 
 /**
@@ -129,7 +131,13 @@ final class WrappingBpp implements BeanPostProcessor
  */
 function makeChain(array $ordered): BeanPostProcessorChain
 {
-    return new BeanPostProcessorChain($ordered, new InitDestroyInvoker(new Container));
+    // Hand-built ContextManifest standing in for a real ContextScanner scan: ChainBean is declared
+    // inline in this test file (not under a scannable PSR-4 directory).
+    $manifest = new ContextManifest([
+        new ContextDescriptor(class: ChainBean::class, postConstruct: ['init']),
+    ]);
+
+    return new BeanPostProcessorChain($ordered, new InitDestroyInvoker(new Container, $manifest));
 }
 
 // --- invariant 5: per-bean sequencing, not a global two-sweep ---

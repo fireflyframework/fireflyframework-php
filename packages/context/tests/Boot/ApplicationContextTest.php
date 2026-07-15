@@ -13,6 +13,8 @@ use Firefly\Context\Lifecycle\DisposableBeanRegistry;
 use Firefly\Context\Lifecycle\InitDestroyInvoker;
 use Firefly\Context\Lifecycle\LifecycleRegistry;
 use Firefly\Context\Lifecycle\PreDestroy;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Firefly\Kernel\Lifecycle;
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher;
@@ -94,6 +96,17 @@ function contextIlluminateContainer(): Container
     $container->instance('events', new Dispatcher($container));
 
     return $container;
+}
+
+/**
+ * Hand-built ContextManifest standing in for a real ContextScanner scan: DisposableContextService
+ * is declared inline in this test file (not under a scannable PSR-4 directory).
+ */
+function disposableContextManifest(): ContextManifest
+{
+    return new ContextManifest([
+        new ContextDescriptor(class: DisposableContextService::class, preDestroy: ['shutdown']),
+    ]);
 }
 
 function makeApplicationContext(
@@ -205,7 +218,7 @@ it('close() runs #[PreDestroy] beans and Lifecycle::stop() in REVERSE order, the
     $illuminate = contextIlluminateContainer();
     $log = new ContextLog;
 
-    $disposables = new DisposableBeanRegistry(new InitDestroyInvoker($illuminate));
+    $disposables = new DisposableBeanRegistry(new InitDestroyInvoker($illuminate, disposableContextManifest()));
     $first = new DisposableContextService($log, 'first');
     $second = new DisposableContextService($log, 'second');
     $disposables->register($first, DisposableContextService::class, Scope::Singleton);
@@ -229,7 +242,7 @@ it('close() is idempotent: a second call re-runs nothing', function () {
     $illuminate = contextIlluminateContainer();
     $log = new ContextLog;
 
-    $disposables = new DisposableBeanRegistry(new InitDestroyInvoker($illuminate));
+    $disposables = new DisposableBeanRegistry(new InitDestroyInvoker($illuminate, disposableContextManifest()));
     // Held in a local var deliberately: DisposableBeanRegistry holds only a \WeakReference, so
     // without a surviving strong reference here PHP's refcounting would free the bean the instant
     // register() returns — before close() ever ran (see DisposableBeanRegistryTest).

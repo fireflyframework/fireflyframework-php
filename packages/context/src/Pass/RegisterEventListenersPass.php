@@ -7,13 +7,8 @@ namespace Firefly\Context\Pass;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
-use Firefly\Context\Event\AsEventListener;
 use Firefly\Context\Event\DispatcherEventPublisher;
-use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Contracts\Events\Dispatcher;
-use ReflectionClass;
-use ReflectionMethod;
-use ReflectionNamedType;
 
 /**
  * Registers every #[AsEventListener] method against Illuminate's event dispatcher, in ONE
@@ -23,14 +18,14 @@ use ReflectionNamedType;
  * later-discovered listener silently append at the tail and defeat #[Order] — the same reasoning
  * RegisterBeanPostProcessorsPass documents for its composite extenders.
  *
- * #[AsEventListener] methods are discovered by reflecting each component's DECLARED class listed in
- * the manifest — never a resolved instance. ComponentDescriptor carries no field for this attribute
- * (there is no compiled context scanner yet — that lands in a later milestone), so this pass reflects
- * declared classes directly, the same pattern InitDestroyInvoker already uses for
- * #[PostConstruct]/#[PreDestroy] discovery. The order sorted on is the attribute's OWN $order (the
- * #[Order] convention applied per listener method, since one class may declare several listener
- * methods needing independent ordering) — read purely from static method metadata, never from a
- * resolved bean.
+ * #[AsEventListener] methods are read from the compiled ContextManifest (BootContext::$contextManifest)
+ * — never by reflecting a component's declared class at boot. ContextScanner already resolved each
+ * listener's $event (inferring it from the listener method's first parameter type ONCE, at scan
+ * time, if it was left null) and its $order, so this pass does nothing but look the descriptor up
+ * per definition and register what it finds — the same zero-reflection-at-load contract every other
+ * Firefly manifest keeps. The order sorted on is the attribute's OWN $order (the #[Order] convention
+ * applied per listener method, since one class may declare several listener methods needing
+ * independent ordering), read purely from the manifest, never from a resolved bean.
  *
  * 🔴 THE BLOCKING REQUIREMENT this pass exists to satisfy: every raw listener is routed through
  * DispatcherEventPublisher::guardListener(). Illuminate\Events\Dispatcher::invokeListeners() breaks
@@ -84,42 +79,18 @@ final class RegisterEventListenersPass implements BootPass
         $entries = [];
 
         foreach ($context->definitions->all() as $definition) {
-            $descriptor = $definition->descriptor;
-            /** @var class-string $declaredClass */
-            $declaredClass = $descriptor->class;
-            $reflection = new ReflectionClass($declaredClass);
+            $descriptor = $context->contextManifest->forClass($definition->class());
+            if ($descriptor === null) {
+                continue;
+            }
 
-            foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-                foreach ($method->getAttributes(AsEventListener::class) as $attribute) {
-                    /** @var AsEventListener $asEventListener */
-                    $asEventListener = $attribute->newInstance();
-
-                    $entries[] = [
-                        $descriptor->class,
-                        $method->getName(),
-                        $asEventListener->event ?? $this->inferEventType($method, $descriptor->class),
-                        $asEventListener->order,
-                    ];
-                }
+            foreach ($descriptor->listeners as $listener) {
+                $entries[] = [$definition->class(), $listener['method'], $listener['event'], $listener['order']];
             }
         }
 
         usort($entries, static fn (array $a, array $b): int => $a[3] <=> $b[3] ?: $a[0] <=> $b[0] ?: $a[1] <=> $b[1]);
 
         return $entries;
-    }
-
-    private function inferEventType(ReflectionMethod $method, string $declaringClass): string
-    {
-        $type = $method->getParameters()[0]->getType() ?? null;
-
-        if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
-            return $type->getName();
-        }
-
-        throw new ConfigurationException(
-            "#[AsEventListener] on {$declaringClass}::{$method->getName()}() has no explicit event and its first ".
-            'parameter has no inferable class type.',
-        );
     }
 }

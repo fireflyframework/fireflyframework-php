@@ -22,10 +22,12 @@ use ReflectionClass;
  * BeanPostProcessors (700) for the same reason InfrastructureStartPass does: every eagerly resolved
  * bean must already have its composite extender installed.
  *
- * #[Lazy] is read directly off the DECLARED class (for a component) or DECLARED method (for a
- * #[Bean] factory) via reflection — never off a resolved instance — because ComponentDescriptor
- * carries no "lazy" field of its own (Firefly\Container\Attributes\Lazy is presently a bare,
- * reflectable marker; see its docblock).
+ * #[Lazy] on a #[Component] CLASS is read straight off ComponentDescriptor::$lazy — no reflection,
+ * no boot-time attribute lookup at all (see ComponentScanner, which now captures it). #[Lazy] on a
+ * #[Bean] factory METHOD is still read via reflection off the declared method: BeanDescriptor
+ * carries no "lazy" field of its own yet (see Firefly\Container\Attributes\Lazy's docblock for the
+ * boundary) — that residual per-request reflection is a known, deliberately out-of-scope gap for a
+ * later dispatch, not an oversight here.
  */
 final class EagerSingletonsPass implements BootPass
 {
@@ -57,7 +59,7 @@ final class EagerSingletonsPass implements BootPass
         foreach ($context->definitions->all() as $definition) {
             $descriptor = $definition->descriptor;
 
-            if ($descriptor->scope === Scope::Singleton && ! $this->classIsLazy($descriptor->class)) {
+            if ($descriptor->scope === Scope::Singleton && ! $descriptor->lazy) {
                 $entries[] = [$descriptor->order, $descriptor->class];
             }
 
@@ -75,14 +77,6 @@ final class EagerSingletonsPass implements BootPass
         usort($entries, static fn (array $a, array $b): int => $a[0] <=> $b[0] ?: $a[1] <=> $b[1]);
 
         return array_map(static fn (array $entry): string => $entry[1], $entries);
-    }
-
-    private function classIsLazy(string $class): bool
-    {
-        /** @var class-string $declaredClass */
-        $declaredClass = $class;
-
-        return (new ReflectionClass($declaredClass))->getAttributes(Lazy::class) !== [];
     }
 
     private function methodIsLazy(string $class, string $method): bool

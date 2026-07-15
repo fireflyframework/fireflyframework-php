@@ -6,6 +6,8 @@ use Firefly\Container\Scope;
 use Firefly\Context\Lifecycle\DisposableBeanRegistry;
 use Firefly\Context\Lifecycle\InitDestroyInvoker;
 use Firefly\Context\Lifecycle\PreDestroy;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Container\Container;
 
 /**
@@ -38,7 +40,13 @@ final class NoPreDestroyBean {}
 
 function makeDisposableRegistry(): DisposableBeanRegistry
 {
-    return new DisposableBeanRegistry(new InitDestroyInvoker(new Container));
+    // Hand-built ContextManifest standing in for a real ContextScanner scan: DisposableBean is
+    // declared inline in this test file (not under a scannable PSR-4 directory).
+    $manifest = new ContextManifest([
+        new ContextDescriptor(class: DisposableBean::class, preDestroy: ['shutdown']),
+    ]);
+
+    return new DisposableBeanRegistry(new InitDestroyInvoker(new Container, $manifest));
 }
 
 it('drainSingletons() invokes #[PreDestroy] on a registered Singleton-scope bean', function () {

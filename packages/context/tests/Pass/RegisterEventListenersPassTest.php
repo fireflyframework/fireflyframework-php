@@ -13,6 +13,8 @@ use Firefly\Context\Definition\BeanDefinition;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Event\AsEventListener;
 use Firefly\Context\Pass\RegisterEventListenersPass;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -105,6 +107,33 @@ function listenerDescriptor(string $class): ComponentDescriptor
     );
 }
 
+/**
+ * Hand-built ContextManifest standing in for a real ContextScanner scan: these listener fixtures
+ * are declared inline in this test file (not under a scannable PSR-4 directory), matching the
+ * established pattern in this suite of hand-building ComponentDescriptor instead of scanning.
+ */
+function listenerContextManifest(): ContextManifest
+{
+    return new ContextManifest([
+        new ContextDescriptor(
+            class: FalseReturningListener::class,
+            listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 0]],
+        ),
+        new ContextDescriptor(
+            class: SecondListener::class,
+            listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 10]],
+        ),
+        new ContextDescriptor(
+            class: OrderedFirstListener::class,
+            listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 1]],
+        ),
+        new ContextDescriptor(
+            class: OrderedSecondListener::class,
+            listeners: [['method' => 'onHalt', 'event' => ListenerHaltEvent::class, 'order' => 20]],
+        ),
+    ]);
+}
+
 function listenerContext(): BootContext
 {
     $config = new Config(new Repository([]));
@@ -119,6 +148,7 @@ function listenerContext(): BootContext
         profiles: $profiles,
         conditions: new ConditionEvaluator($config, $profiles),
         report: new ConditionEvaluationReport,
+        contextManifest: listenerContextManifest(),
     );
 }
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Firefly\Context\Lifecycle\InitDestroyInvoker;
 use Firefly\Context\Lifecycle\PostConstruct;
 use Firefly\Context\Lifecycle\PreDestroy;
+use Firefly\Context\Scanner\ContextDescriptor;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Container\Container;
 
 /**
@@ -78,7 +80,15 @@ final class InvokerOverridingProxy extends InvokerMultiDestroyBean
 
 function makeInvoker(): InitDestroyInvoker
 {
-    return new InitDestroyInvoker(new Container);
+    // Hand-built ContextManifest standing in for a real ContextScanner scan: these fixtures are
+    // declared inline in this test file (not under a scannable PSR-4 directory). InvokerNoLifecycleBean
+    // deliberately has NO entry, proving a missing manifest row means "nothing to invoke", not an error.
+    $manifest = new ContextManifest([
+        new ContextDescriptor(class: InvokerBean::class, postConstruct: ['init']),
+        new ContextDescriptor(class: InvokerMultiDestroyBean::class, preDestroy: ['closeFirst', 'closeSecond']),
+    ]);
+
+    return new InitDestroyInvoker(new Container, $manifest);
 }
 
 it('invokes #[PostConstruct] via $container->call(), injecting the method\'s parameters', function () {
@@ -116,11 +126,11 @@ it('hasDestroyMethods() reports whether the DECLARED class declares any #[PreDes
 it('invokeDestroy() discovers #[PreDestroy] methods from the DECLARED class even when $bean is a proxy subclass overriding one WITHOUT repeating the attribute (invariant 4)', function () {
     $proxy = new InvokerOverridingProxy;
 
-    // Reflecting $proxy::class directly would silently MISS closeSecond(): its override on
-    // InvokerOverridingProxy carries no #[PreDestroy] attribute of its own (attributes are not
-    // inherited to an overriding method) — exactly the proxy-identity bug invariant 4 exists to
-    // prevent. Passing the DECLARED class finds both methods; invocation still dispatches
-    // polymorphically to the proxy's overridden implementation.
+    // Looking the manifest up by $proxy::class would silently MISS closeSecond(): the manifest
+    // carries an entry for InvokerMultiDestroyBean, not for InvokerOverridingProxy (which has none
+    // of its own) — exactly the proxy-identity bug invariant 4 exists to prevent. Passing the
+    // DECLARED class finds both methods; invocation still dispatches polymorphically to the
+    // proxy's overridden implementation.
     makeInvoker()->invokeDestroy($proxy, InvokerMultiDestroyBean::class);
 
     expect($proxy->calls)->toBe(['closeSecond', 'closeFirst'])

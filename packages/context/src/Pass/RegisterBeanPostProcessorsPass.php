@@ -57,7 +57,7 @@ final class RegisterBeanPostProcessorsPass implements BootPass
     public function run(BootContext $context): void
     {
         $container = $context->container;
-        $invoker = new InitDestroyInvoker($container);
+        $invoker = new InitDestroyInvoker($container, $context->contextManifest);
         $disposables = $this->disposableBeanRegistry($container, $invoker);
 
         /** @var list<ComponentDescriptor> $descriptors */
