@@ -60,6 +60,16 @@ use Illuminate\Container\Container;
  * BPP classes never post-process themselves into existence: they are resolved BEFORE any composite
  * extender is installed (so none of them can run through a chain, including their own, that does not
  * exist yet), and are explicitly excluded from the set of abstracts that get an extender at all.
+ *
+ * KNOWN, DELIBERATELY UNHANDLED LIMITATION — flush()+reboot over the SAME container: Illuminate's
+ * Container::flush() does not clear installed extenders (see KernelContractTest, which pins this
+ * unpublished behavior). If a future caller ever flush()es an already-booted container and then
+ * reboots the SAME FireflyKernel over it, this pass would install a SECOND composite extender per
+ * abstract on top of the surviving one — two distinct chains, so #[PostConstruct] would run twice
+ * per bean. This is currently safe to leave unhandled because no shipped caller does that (Octane
+ * never flush()es the long-lived worker application — only its per-request sandbox is discarded, and
+ * StateResetter handles per-request state separately). It is NOT handled here; see
+ * KernelContractTest for the full characterization before assuming otherwise.
  */
 final class RegisterBeanPostProcessorsPass implements BootPass
 {

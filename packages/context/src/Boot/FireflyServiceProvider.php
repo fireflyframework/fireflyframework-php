@@ -110,26 +110,49 @@ abstract class FireflyServiceProvider extends ServiceProvider
     /**
      * Phases 100–650 (see BootPhase): pure BeanDefinitionRegistry data, no container writes.
      *
+     * Built by APPENDING to a fresh array — never array_filter()+array_values() — so the
+     * `list<BootPhase>` contract holds by construction, not merely because BootPhase's cases
+     * happen, today, to already declare a contiguous run of low-to-high ordinals for this half of
+     * the pipeline. array_filter() preserves the SOURCE keys of whatever it keeps; keeping a
+     * PREFIX of BootPhase::cases() (as this filter does today) happens to leave 0-based, contiguous
+     * keys behind on its own, with no array_values() needed — which is exactly why a later
+     * maintainer could "simplify" this by dropping array_values() (as an earlier version of this
+     * method did) without ANY test or static-analysis tool catching it, right up until a future
+     * milestone declares a new case with a low ordinal at the END of the enum (BootPhase's ordinals
+     * are deliberately gapped for exactly that kind of insertion), at which point array_filter()
+     * would silently hand back non-contiguous keys and the declared `list` return type would quietly
+     * become false. Appending element-by-element cannot have that failure mode, for any future
+     * ordering of BootPhase's cases whatsoever.
+     *
      * @return list<BootPhase>
      */
     private static function definitionStagePhases(): array
     {
-        return array_filter(
-            BootPhase::cases(),
-            static fn (BootPhase $phase): bool => $phase->value <= BootPhase::FlushDefinitions->value,
-        );
+        $phases = [];
+        foreach (BootPhase::cases() as $phase) {
+            if ($phase->value <= BootPhase::FlushDefinitions->value) {
+                $phases[] = $phase;
+            }
+        }
+
+        return $phases;
     }
 
     /**
-     * Phases 700–1200 (see BootPhase): operate on resolved instances.
+     * Phases 700–1200 (see BootPhase): operate on resolved instances. See definitionStagePhases()'s
+     * docblock for why this is built the same append-only way rather than via array_filter().
      *
      * @return list<BootPhase>
      */
     private static function instanceStagePhases(): array
     {
-        return array_values(array_filter(
-            BootPhase::cases(),
-            static fn (BootPhase $phase): bool => $phase->value > BootPhase::FlushDefinitions->value,
-        ));
+        $phases = [];
+        foreach (BootPhase::cases() as $phase) {
+            if ($phase->value > BootPhase::FlushDefinitions->value) {
+                $phases[] = $phase;
+            }
+        }
+
+        return $phases;
     }
 }
