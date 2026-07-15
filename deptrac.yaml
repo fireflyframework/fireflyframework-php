@@ -14,6 +14,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/config/src/.*
+    - name: Context
+      collectors:
+        - type: directory
+          value: packages/context/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -24,3 +28,8 @@ deptrac:
     Config:
       - Kernel
       - Container
+    # Context is the boot engine: it composes Container + Config and reports Kernel errors.
+    Context:
+      - Kernel
+      - Container
+      - Config

@@ -7,11 +7,13 @@
         "php": "^8.3",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
         "firefly/kernel": "*@dev"
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
         "larastan/larastan": "^3.9",
+        "laravel/octane": "^2.0",
         "laravel/pint": "^1.20",
         "orchestra/testbench": "^11.1",
         "pestphp/pest": "^3.7",
@@ -22,7 +24,8 @@
         "psr-4": {
             "Firefly\\Tests\\": "tests/",
             "Firefly\\Config\\Tests\\": "packages/config/tests/",
-            "Firefly\\Container\\Tests\\": "packages/container/tests/"
+            "Firefly\\Container\\Tests\\": "packages/container/tests/",
+            "Firefly\\Context\\Tests\\": "packages/context/tests/"
         }
     },
     "repositories": [
