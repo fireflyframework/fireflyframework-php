@@ -15,6 +15,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Boot\FireflyKernel;
+use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Condition\ConditionAttribute;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
@@ -47,7 +48,7 @@ use Firefly\Context\Tests\IntegrationFixtures\UserCache;
 use Firefly\Context\Tests\IntegrationFixtures\WidgetRecorder;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
-use Illuminate\Events\Dispatcher as IlluminateDispatcher;
+use Illuminate\Foundation\Application;
 
 /**
  * THE CAPSTONE END-TO-END TEST for firefly/context's boot engine.
@@ -62,11 +63,16 @@ use Illuminate\Events\Dispatcher as IlluminateDispatcher;
  *   3. LOAD them back via ComponentManifest::load()/ContextManifest::load() — require()+map, the
  *      SAME zero-reflection path Octane workers use in production. Nothing here is an in-memory
  *      descriptor built by hand.
- *   4. BOOT a real FireflyKernel over a real Illuminate\Container\Container and a real
- *      Firefly\Config\Config(new Illuminate\Config\Repository([...])), with the real boot passes
- *      contributed — the same passes a real FireflyServiceProvider would add.
+ *   4. BOOT through a REAL Illuminate\Foundation\Application and a REAL FireflyServiceProvider
+ *      subclass (IntegrationPipelineProvider, below) contributing the real boot passes — register()
+ *      + Application::boot(), never FireflyKernel::boot() called directly. FireflyServiceProvider's
+ *      OWN wiring (the ApplicationEventPublisher binding, the booting()/booted() phase split, the
+ *      ApplicationContext singleton) all run for real; only FireflyKernel's construction from a real
+ *      Firefly\Config\Config(new Illuminate\Config\Repository([...])) is still hand-assembled (see
+ *      bootIntegrationPipeline()'s own docblock for exactly why that part remains out of scope).
  *   5. Assert the whole pipeline: conditions, the single ContainerRegistrar write, BeanPostProcessor
- *      ordering (through a REAL proxy), lifecycle callbacks, application events, eager/lazy
+ *      ordering (through a REAL proxy), lifecycle callbacks, application events (including the
+ *      ApplicationEventPublisher port itself being bound by the provider, not by this test), eager/lazy
  *      resolution, shutdown ordering, and boot-plan determinism.
  *
  * If any assertion below fails, that is a signal of a REAL bug in the engine, not a test to be
@@ -166,22 +172,26 @@ function integrationAutoConfigurationDefinition(ComponentManifest $components, C
 }
 
 /**
- * A real Illuminate\Container\Container, self-bound (so any fixture type-hinting the concrete
- * container resolves) with a real event dispatcher and the ApplicationEventPublisher port bound —
- * exactly the bootstrap wiring a real FireflyServiceProvider performs before handing the container
- * to the kernel.
+ * A real Illuminate\Foundation\Application — NOT a bare Illuminate\Container\Container — because
+ * this file now boots through the REAL FireflyServiceProvider (see bootIntegrationPipeline()
+ * below), and only Illuminate\Foundation\Application has booting()/booted()/terminating() hooks for
+ * it to register against. Illuminate\Foundation\Application's own constructor already
+ * self-binds Container::class (registerBaseBindings()) and registers Illuminate's EventServiceProvider
+ * (registerBaseServiceProviders()), which binds 'events' — both verified against the installed
+ * laravel/framework source, so neither needs to be hand-bound here the way the old bare-Container
+ * version of this helper had to.
+ *
+ * Deliberately does NOT bind ApplicationEventPublisher itself: a previous version of this file did,
+ * under a docblock that (falsely) claimed the hand-binding was "exactly the bootstrap wiring a real
+ * FireflyServiceProvider performs" — it was not, FireflyServiceProvider performed none of it, and
+ * the hand-bind is what let this capstone test pass while the port stayed genuinely unwired in
+ * production (see FireflyServiceProvider::register() and the M4 re-review). Now that
+ * FireflyServiceProvider really does bind the port (see bootIntegrationPipeline()), no test-side
+ * shortcut is needed — or permitted.
  */
-function freshIntegrationContainer(): Container
+function freshIntegrationApplication(): Application
 {
-    $container = new Container;
-    $container->instance(Container::class, $container);
-    $container->instance('events', new IlluminateDispatcher($container));
-    $container->bind(
-        ApplicationEventPublisher::class,
-        static fn (Container $c): ApplicationEventPublisher => new DispatcherEventPublisher($c),
-    );
-
-    return $container;
+    return new Application;
 }
 
 /**
@@ -232,13 +242,53 @@ function integrationRealPasses(ComponentManifest $components, ContextManifest $c
 }
 
 /**
- * Builds a completely FRESH container/registry/kernel, contributes the real pipeline plus any
- * extra passes, boots it, and returns the resulting collaborators. $reversed flips the ENTIRE
- * addPass() call order — used by the determinism test to prove the resolved boot plan does not
- * depend on it.
+ * Contributes an EXACT, caller-supplied list of BootPass instances via passes() — the only reason
+ * this subclass exists is so bootIntegrationPipeline() below keeps full control over which passes
+ * run and in what CONTRIBUTED order (needed by the determinism test's $reversed flip) while still
+ * registering through the REAL FireflyServiceProvider machinery: register()'s
+ * ApplicationEventPublisher binding, the booting()/booted() phase split, and booted()'s
+ * ApplicationContext singleton + terminating() shutdown wiring. A real production
+ * FireflyServiceProvider subclass would instead return a fixed list from passes(); this one accepts
+ * it via the constructor purely because this test needs several DIFFERENT pass lists across its
+ * scenarios, over a single shared base class.
+ */
+final class IntegrationPipelineProvider extends FireflyServiceProvider
+{
+    /**
+     * @param  list<BootPass>  $providedPasses
+     */
+    public function __construct($app, private readonly array $providedPasses)
+    {
+        parent::__construct($app);
+    }
+
+    public function passes(): array
+    {
+        return $this->providedPasses;
+    }
+}
+
+/**
+ * Builds a completely FRESH application, contributes the real pipeline plus any extra passes
+ * through a real FireflyServiceProvider subclass, boots it THROUGH THE PROVIDER (register() + a
+ * real Application::boot()) — never by constructing FireflyKernel and calling boot() on it
+ * directly — and returns the resulting collaborators. $reversed flips the ENTIRE addPass() call
+ * order — used by the determinism test to prove the resolved boot plan does not depend on it.
+ *
+ * FireflyKernel itself is still hand-built and hand-bound below, BEFORE the provider registers —
+ * that part is genuinely unavoidable in this milestone and is NOT the shortcut this file used to
+ * take. Building a REAL BootContext from a fresh Laravel application means bridging
+ * ComponentScanner's/ContextScanner's compiled output into a populated BeanDefinitionRegistry
+ * (plus resolving config/profiles), which is the still-deferred phase 200/500
+ * AutoConfigDiscovery/AutoConfigurations bootstrap-layer seam (see docs/modules/context.md and
+ * FireflyServiceProvider's own class docblock) — a later milestone's job, not
+ * FireflyServiceProvider's. What IS FireflyServiceProvider's job — and what it now actually does,
+ * exercised for real below — is binding ApplicationEventPublisher, running the kernel's
+ * definition/instance phases from booting()/booted(), and binding+closing ApplicationContext. None
+ * of that is hand-wired here anymore.
  *
  * @param  list<BootPass>  $extraPasses
- * @return array{0: ApplicationContext, 1: BootContext, 2: Container}
+ * @return array{0: ApplicationContext, 1: BootContext, 2: Application}
  */
 function bootIntegrationPipeline(
     ComponentManifest $components,
@@ -246,22 +296,23 @@ function bootIntegrationPipeline(
     array $extraPasses = [],
     bool $reversed = false,
 ): array {
-    $container = freshIntegrationContainer();
-    $bootContext = freshIntegrationBootContext($container, $components, $context);
+    $app = freshIntegrationApplication();
+    $bootContext = freshIntegrationBootContext($app, $components, $context);
     $kernel = new FireflyKernel($bootContext);
+    $app->instance(FireflyKernel::class, $kernel);
 
     $passes = array_merge(integrationRealPasses($components, $context), $extraPasses);
     if ($reversed) {
         $passes = array_reverse($passes);
     }
 
-    foreach ($passes as $pass) {
-        $kernel->addPass($pass);
-    }
+    $app->register(new IntegrationPipelineProvider($app, $passes));
+    $app->boot();
 
-    $applicationContext = $kernel->boot();
+    /** @var ApplicationContext $applicationContext */
+    $applicationContext = $app->make(ApplicationContext::class);
 
-    return [$applicationContext, $bootContext, $container];
+    return [$applicationContext, $bootContext, $app];
 }
 
 /**
@@ -340,10 +391,24 @@ it('boots a real application end-to-end through the compiled, zero-reflection ma
         $componentManifest = ComponentManifest::load($componentPath);
         $contextManifest = ContextManifest::load($contextPath);
 
-        [$applicationContext, $bootContext, $container] = bootIntegrationPipeline($componentManifest, $contextManifest);
+        [$applicationContext, $bootContext, $app] = bootIntegrationPipeline($componentManifest, $contextManifest);
 
         /** @var WidgetRecorder $recorder */
-        $recorder = $container->make(WidgetRecorder::class);
+        $recorder = $app->make(WidgetRecorder::class);
+
+        // --- ApplicationEventPublisher is bound by FireflyServiceProvider — not hand-bound here ---
+        //
+        // This is the capstone regression test for the M4 re-review's Critical finding: nothing in
+        // shipped code bound the ApplicationEventPublisher port, so a #[Component] injecting it (the
+        // exact documented shape — see DuringEagerPublisher below) crashed boot the moment
+        // EagerSingletonsPass tried to resolve it eagerly. A previous version of this test hand-bound
+        // the port itself, under a docblock falsely claiming that was "exactly the bootstrap wiring a
+        // real FireflyServiceProvider performs" — which hid the bug instead of catching it. There is
+        // no hand-binding left anywhere in this file now: DuringEagerPublisher resolving successfully
+        // below (via the real EagerSingletonsPass) IS the proof the provider's own binding is
+        // load-bearing.
+        expect($app->bound(ApplicationEventPublisher::class))->toBeTrue()
+            ->and($app->make(ApplicationEventPublisher::class))->toBeInstanceOf(DispatcherEventPublisher::class);
 
         // --- Conditions gated definitions ---
         //
@@ -365,17 +430,17 @@ it('boots a real application end-to-end through the compiled, zero-reflection ma
 
         expect($survivingClasses)->toContain(GatedComponentKept::class)
             ->and($survivingClasses)->not->toContain(GatedComponentRemoved::class)
-            ->and($container->bound(GatedComponentRemoved::class))->toBeFalse();
+            ->and($app->bound(GatedComponentRemoved::class))->toBeFalse();
 
         expect($applicationContext->get(GatedComponentKept::class))->toBeInstanceOf(GatedComponentKept::class);
 
         // A #[ConditionalOnMissingBean] auto-configuration backs off once a user bean supplies the type.
         expect($survivingClasses)->not->toContain(DefaultCacheAutoConfig::class)
-            ->and($container->bound(DefaultCacheAutoConfig::class))->toBeFalse()
+            ->and($app->bound(DefaultCacheAutoConfig::class))->toBeFalse()
             ->and($applicationContext->get(CachePort::class))->toBeInstanceOf(UserCache::class);
 
         // --- Exactly ONE ContainerRegistrar::register() write, with the FILTERED manifest ---
-        expect($container->bound('firefly.container.registered'))->toBeTrue();
+        expect($app->bound('firefly.container.registered'))->toBeTrue();
 
         // A second register() call, made directly against the already-booted container with a
         // manifest that was never part of the real scan, MUST be a silent no-op (M2's sentinel) —
@@ -393,9 +458,9 @@ it('boots a real application end-to-end through the compiled, zero-reflection ma
                 beans: [],
             ),
         ]);
-        (new ContainerRegistrar($container))->register($secondManifest);
+        (new ContainerRegistrar($app))->register($secondManifest);
 
-        expect($container->bound(IntegrationSecondRegistrationMarker::class))->toBeFalse();
+        expect($app->bound(IntegrationSecondRegistrationMarker::class))->toBeFalse();
 
         // --- BPPs ran in #[Order], including a proxying BPP (invariant 3/4) ---
         $bppTrace = array_values(array_filter(
@@ -481,13 +546,13 @@ it('produces an identical execution sequence regardless of the order passes were
         // WidgetRecorder fresh from whatever BootContext they are given at run() time.
         $tieBreakPasses = [new IntegrationDeterminismPassZzz, new IntegrationDeterminismPassAaa];
 
-        [, , $containerA] = bootIntegrationPipeline($componentManifest, $contextManifest, $tieBreakPasses, reversed: false);
-        [, , $containerB] = bootIntegrationPipeline($componentManifest, $contextManifest, $tieBreakPasses, reversed: true);
+        [, , $appA] = bootIntegrationPipeline($componentManifest, $contextManifest, $tieBreakPasses, reversed: false);
+        [, , $appB] = bootIntegrationPipeline($componentManifest, $contextManifest, $tieBreakPasses, reversed: true);
 
         /** @var WidgetRecorder $recorderA */
-        $recorderA = $containerA->make(WidgetRecorder::class);
+        $recorderA = $appA->make(WidgetRecorder::class);
         /** @var WidgetRecorder $recorderB */
-        $recorderB = $containerB->make(WidgetRecorder::class);
+        $recorderB = $appB->make(WidgetRecorder::class);
 
         expect($recorderA->events)->not->toBeEmpty()
             ->and($recorderB->events)->toBe($recorderA->events);
