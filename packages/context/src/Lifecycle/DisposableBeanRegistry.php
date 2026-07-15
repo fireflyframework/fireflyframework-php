@@ -32,33 +32,52 @@ use WeakReference;
  * Both ledgers destroy in REVERSE registration order — dependents (registered later) are torn
  * down before the dependencies (registered earlier) they may still be using.
  *
- * 🔴 KNOWN GAP, OCTANE ONLY (M4 review #5, Important — disclosed, not fixed; see
- * docs/modules/context.md's Lifecycle and Octane sections for the user-facing version): the
+ * 🔴 KNOWN GAP, OCTANE ONLY (M4 review #5, Important; completed by M4 review #6, Important 2 —
+ * disclosed, not fixed; see docs/modules/context.md's Lifecycle and Octane sections for the
+ * user-facing version, and `LazySingletonOctaneIdentityTest` for the measured, executable proof):
+ * a `#[Lazy]` `Scope::Singleton` first resolved INSIDE an Octane request is not merely missing its
+ * `#[PreDestroy]` — it is not a singleton AT ALL under Octane. It is rebuilt from scratch on EVERY
+ * request that resolves it. `EagerSingletonsPass` builds a non-#[Lazy] singleton into the WORKER's
+ * own container at boot, before any request is served, and Octane's per-request `clone $this->app`
+ * then shares that SAME object by reference into every sandbox — genuinely once, for the worker's
+ * whole life (true for every singleton under PHP-FPM too: no worker/sandbox split exists there at
+ * all). A `#[Lazy]` singleton skips that eager step by design, so its first resolution is deferred
+ * until something actually asks for it — and under Octane, that first ask almost always happens
+ * INSIDE a request, building it into that request's SANDBOX (`Laravel\Octane\Worker::handle()`'s
+ * `clone $this->app`), never into the worker. The sandbox's own container cache is a NEW, empty one
+ * every request, so this repeats on every request that resolves it: NOT built once, but once PER
+ * REQUEST — silently, with no error, defeating the entire reason `#[Lazy]` + `Scope::Singleton` is
+ * chosen together (build once, but not at boot).
+ *
+ * Losing `#[PreDestroy]` is a COROLLARY of that identity loss, not a separate failure: the
  * singleton ledger's WeakReference is only safe to drain at `drainSingletons()` time (context
  * close, once per worker) if something ELSE holds a STRONG reference to the bean for the whole
- * worker's life. That is true for every EAGERLY resolved singleton (`EagerSingletonsPass` builds
- * it into the WORKER's own container at boot, before any request is served — Octane's `clone
- * $this->app` per request then shares that same object by reference into every sandbox) and for
- * every singleton under PHP-FPM (no worker/sandbox split exists there — the resolving container
- * IS the terminating one). It is NOT true for a `#[Lazy]` singleton whose FIRST resolution happens
- * INSIDE an Octane request: that resolution builds into the per-request SANDBOX
- * (`Laravel\Octane\Worker::handle()`'s `clone $this->app`), so the sandbox's own container cache
- * — not the worker's — is the only strong reference. `register()` here still runs (via the same
- * `Container::extend()` seam every bean passes through) and records a WeakReference exactly as
- * always, but once that sandbox is discarded (`$sandbox->flush()`, end of request) nothing keeps
- * the bean alive, and it is silently garbage-collected long before `drainSingletons()` ever runs —
- * so its `#[PreDestroy]` never fires. A genuine fix would need to distinguish "this resolution
- * will become the resolving container's own durable shared instance" from "this is a throwaway
- * `needsContextualBuild` resolution" (the exact case the WeakReference above exists to tolerate) —
- * a distinction Illuminate's container does not expose at the `extend()` seam this package is
- * committed to as the ONLY BeanPostProcessor extension point, only after the fact via
- * `Container::resolved()`, from OUTSIDE that seam. Reaching for that distinction under Octane
- * requires a new per-request promotion mechanism (enumerate `#[Lazy]` singleton abstracts, check
- * `resolved()` on the dying sandbox before it flushes, promote into the worker) rather than a
- * narrow, obviously-correct change — exactly the kind of reach that introduced two of this
- * milestone's own bugs. Disclosed honestly instead: `#[Lazy]` + `#[PreDestroy]` on a singleton
- * first touched inside a request does not run its destroy callback under Octane. Avoid that
- * combination under Octane until a future milestone closes this gap.
+ * worker's life — true for the worker-resolved/PHP-FPM cases above, NOT true for a `#[Lazy]`
+ * singleton resolved into a sandbox, whose own container state is the only strong reference.
+ * `register()` here still runs (via the same `Container::extend()` seam every bean passes through)
+ * and records a WeakReference exactly as always, but once that sandbox is discarded
+ * (`$sandbox->flush()`, end of request) nothing keeps the bean alive, and it is silently
+ * garbage-collected long before `drainSingletons()` ever runs — so its `#[PreDestroy]` never fires
+ * either.
+ *
+ * A genuine fix would need to distinguish "this resolution will become the resolving container's
+ * own durable shared instance" from "this is a throwaway `needsContextualBuild` resolution" (the
+ * exact case the WeakReference above exists to tolerate) — a distinction Illuminate's container
+ * does not expose at the `extend()` seam this package is committed to as the ONLY BeanPostProcessor
+ * extension point (`Container.php:940-961`: the extender runs strictly pre-cache and receives only
+ * `($object, $this)`, verified directly against the installed source before writing this). CANDIDATE
+ * FOR A LATER MILESTONE, not attempted now: `fireResolvingCallbacks()` runs POST-cache but still
+ * IN-BAND, inside the same `resolve()` call (`Container.php:952-954`) — so `Container::afterResolving()`
+ * callbacks see the object AFTER it is already cached, in the same call that built it, without
+ * needing a new per-request enumeration/promotion pass hooked to `RequestTerminated`/
+ * `TaskTerminated`/`TickTerminated`. That would not violate invariant 1 (which governs BeanPostProcessor
+ * *substitution* via `extend()`/`fireCallbackArray`, not lifecycle *observation*). It is NOT obviously
+ * correct as-is (`resolved()` is also true for a contextual rebuild of an already-resolved abstract,
+ * which must NOT be promoted), so it remains a candidate to investigate, not a narrow, obviously-safe
+ * change to make now — exactly the kind of reach that introduced two of this milestone's own bugs.
+ * Disclosed honestly instead: under Octane, `#[Lazy]` + `Scope::Singleton` is rebuilt every request
+ * (not a singleton) and its `#[PreDestroy]` never runs. Treat that combination as effectively
+ * unsupported under Octane until a future milestone closes this gap.
  */
 final class DisposableBeanRegistry
 {

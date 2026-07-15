@@ -409,24 +409,31 @@ drained once, at context close; `Scope::Scoped` beans are tracked separately and
 (see Octane, below). `Scope::Transient` beans are never tracked — prototype-scoped beans are not
 lifecycle-managed.
 
-**Known gap, Octane only (a `#[Lazy]` singleton resolved for the first time inside a request):**
-the promise above assumes the singleton was resolved into the *worker* application. That is true
-for every eagerly-resolved singleton — `EagerSingletonsPass` (phase 900) builds it into the worker
-once, at boot, before any request is served, and Octane's per-request `clone $this->app` then shares
-that same object by reference into every sandbox — and true for every singleton under PHP-FPM,
-where no worker/sandbox split exists at all. It is **not** true for a `#[Lazy]` singleton whose
-*first* resolution happens inside a request: Octane builds it into the per-request **sandbox**
-(`Laravel\Octane\Worker::handle()`'s `clone $this->app`), so the only strong reference to it lives in
-that sandbox's own container state, never the worker's. `DisposableBeanRegistry` still records it —
-the same `WeakReference`, via the same seam every bean passes through — but once the sandbox is
-discarded at the end of that request, nothing keeps the bean alive, and it is silently
-garbage-collected long before the worker's one-time `drainSingletons()` ever runs. **Its
-`#[PreDestroy]` does not run.** Under PHP-FPM the identical bean's `#[PreDestroy]` fires correctly,
-because there the resolving container and the terminating one are the same object — the gap is
-Octane-specific, and it applies precisely to `#[Lazy]` + `#[PreDestroy]` on a Singleton, the
-canonical "don't connect at boot, close at shutdown" shape. There is no supported workaround today
-beyond avoiding that combination under Octane; see `DisposableBeanRegistry`'s own docblock for why
-this is disclosed rather than fixed in this milestone.
+**Known gap, Octane only — `#[Lazy]` + `Scope::Singleton` is not actually a singleton under Octane:**
+the promise above assumes the singleton was resolved into the *worker* application. That is true for
+every eagerly-resolved singleton — `EagerSingletonsPass` (phase 900) builds it into the worker once,
+at boot, before any request is served, and Octane's per-request `clone $this->app` then shares that
+same object by reference into every sandbox — and true for every singleton under PHP-FPM, where no
+worker/sandbox split exists at all. It is **not** true for a `#[Lazy]` singleton, whose *first*
+resolution is deferred until something actually asks for it: under Octane, that first ask almost
+always happens *inside a request*, and Octane builds it into that request's **sandbox**
+(`Laravel\Octane\Worker::handle()`'s `clone $this->app`), never into the worker application itself.
+The measured, larger consequence: **the bean is rebuilt from scratch on every request that resolves
+it, not built once** — `#[Lazy]` + `Scope::Singleton` under Octane behaves like `Scope::Transient`
+scoped to one request, silently, with no error. `LazySingletonOctaneIdentityTest` pins this exactly:
+an eagerly-resolved probe reports the SAME instance across three simulated requests (constructed
+once); a `#[Lazy]`-equivalent probe reports a DIFFERENT instance on every one of the three (constructed
+three times). Losing teardown is a corollary of that identity loss, not a separate failure: since the
+only strong reference to the bean lives in the sandbox's own container state, once that sandbox is
+discarded at the end of the request, nothing keeps the bean alive, and it is silently
+garbage-collected long before the worker's one-time `drainSingletons()` ever runs — so on top of
+never being a true singleton, **its `#[PreDestroy]` also never runs.** Under PHP-FPM neither half of
+this applies: the resolving container and the terminating one are the same object, so the identical
+bean is both a real singleton for the life of the request and runs `#[PreDestroy]` correctly. There is
+no supported workaround today beyond avoiding `#[Lazy]` + `Scope::Singleton` under Octane entirely —
+treat the combination as effectively unsupported until a future milestone closes this gap; see
+`DisposableBeanRegistry`'s own docblock for why this is disclosed rather than fixed now, including the
+candidate direction (`afterResolving()`) a later milestone could investigate.
 
 ## Events
 
@@ -548,9 +555,13 @@ clone, never `$event->app`, the original long-lived worker application; resettin
 be a silent no-op on a container nothing is ever served from. In short: **scoped beans drain per
 request; singletons drain once, at worker (or, under PHP-FPM, application) shutdown** — **for every
 singleton resolved into the worker itself**, which is every eagerly-resolved one, and every one
-under PHP-FPM. A `#[Lazy]` singleton first resolved *inside* a request is sandbox-lifetime instead,
-and its `#[PreDestroy]` never runs — see "Lifecycle", above, for the full mechanism and why this is
-disclosed rather than fixed in this milestone.
+under PHP-FPM. A `#[Lazy]` singleton is not resolved into the worker at all: under Octane its first
+resolution almost always happens *inside* a request, building it into that request's sandbox instead
+— so it is **rebuilt from scratch on every request that resolves it, not built once**, making
+`#[Lazy]` + `Scope::Singleton` behave like a request-scoped bean rather than a true singleton, and
+its `#[PreDestroy]` never runs as a corollary of that same identity loss — see "Lifecycle", above, for
+the full mechanism, the measured before/after-fix behavior pinned by
+`LazySingletonOctaneIdentityTest`, and why this is disclosed rather than fixed in this milestone.
 
 `StateResetter` first drains `DisposableBeanRegistry`'s scoped ledger — running `#[PreDestroy]` on
 every tracked scoped bean, in reverse registration order — and only then calls
