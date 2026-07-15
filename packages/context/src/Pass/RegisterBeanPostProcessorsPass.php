@@ -13,7 +13,9 @@ use Firefly\Context\Lifecycle\DisposableBeanRegistry;
 use Firefly\Context\Lifecycle\InitDestroyInvoker;
 use Firefly\Context\Processor\BeanPostProcessor;
 use Firefly\Context\Processor\BeanPostProcessorChain;
+use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher;
 
 /**
  * Installs exactly ONE composite Illuminate extender per abstract (INVARIANT 2), delegating to a
@@ -57,6 +59,18 @@ use Illuminate\Container\Container;
  * (component or #[Bean] factory output, eager or lazily resolved later during a request) passes
  * through, so it is the correct place to observe "a bean was just built" for lifecycle bookkeeping.
  *
+ * It ALSO recovers #[AsEventListener] registration for a #[Bean] method whose declared return type
+ * is an INTERFACE (M4 review #6, Important 1 — the untreated twin of the interface-blind lifecycle
+ * gap fixed above by this same $concreteClass capture): RegisterEventListenersPass's own boot-time
+ * sweep can only ever look up `contextManifest->forClass($bean->returns)`, and for that shape
+ * `$bean->returns` IS the interface, which ContextScanner never scans — so this is the ONLY place
+ * $concreteClass becomes knowable at all. $concreteClass === $declaredClass is exactly the signal
+ * that RegisterEventListenersPass's sweep already handled this abstract (every plain #[Component]
+ * and every #[Bean] method whose declared return type is its own concrete class), so this only ever
+ * acts on the genuinely-unhandled interface shape — see registerLateBoundListeners()'s own docblock
+ * for the registration-timing/#[Order] trade-off this implies, and RegisterEventListenersPass's
+ * docblock for why this is NOT a second, parallel registration mechanism.
+ *
  * BPP classes never post-process themselves into existence: they are resolved BEFORE any composite
  * extender is installed (so none of them can run through a chain, including their own, that does not
  * exist yet), and are explicitly excluded from the set of abstracts that get an extender at all.
@@ -86,8 +100,18 @@ final class RegisterBeanPostProcessorsPass implements BootPass
     public function run(BootContext $context): void
     {
         $container = $context->container;
-        $invoker = new InitDestroyInvoker($container, $context->contextManifest);
+        $contextManifest = $context->contextManifest;
+        $invoker = new InitDestroyInvoker($container, $contextManifest);
         $disposables = $this->disposableBeanRegistry($container, $invoker);
+
+        // 'events' is unconditionally bound in real applications (Illuminate\Foundation\
+        // Application's base bindings) and is what RegisterEventListenersPass itself resolves
+        // unconditionally — but several of THIS pass's own unit tests build a bare
+        // Illuminate\Container\Container with no 'events' binding at all, since this pass never
+        // needed one before. Guard rather than assume, so late-bound listener recovery below is
+        // simply a no-op wherever no dispatcher exists, instead of a hard dependency this pass
+        // never had.
+        $dispatcher = $container->bound('events') ? $container->make('events') : null;
 
         /** @var list<ComponentDescriptor> $descriptors */
         $descriptors = array_map(
@@ -112,10 +136,22 @@ final class RegisterBeanPostProcessorsPass implements BootPass
 
         $bppClassSet = array_fill_keys($bppClasses, true);
 
+        /** @var array<string, true> $listenersRegisteredFor keyed by concrete class — see registerLateBoundListeners() */
+        $listenersRegisteredFor = [];
+
         foreach ($this->abstractsToExtend($descriptors, $bppClassSet) as $abstract => $target) {
             [$declaredClass, $scope] = $target;
 
-            $container->extend($abstract, static function (object $bean) use ($chain, $declaredClass, $scope, $disposables): object {
+            $container->extend($abstract, static function (object $bean) use (
+                $chain,
+                $declaredClass,
+                $scope,
+                $disposables,
+                $container,
+                $dispatcher,
+                $contextManifest,
+                &$listenersRegisteredFor,
+            ): object {
                 // INVARIANT 4, REFINED (see class docblock): $bean here is guaranteed pre-proxy — a
                 // proxy is only ever created inside afterInitialization(), below, inside
                 // chain->process(). $bean::class is therefore safe AND, for the lifecycle lookup
@@ -125,6 +161,17 @@ final class RegisterBeanPostProcessorsPass implements BootPass
 
                 $processed = $chain->process($bean, $declaredClass, $concreteClass);
                 $disposables->register($processed, $concreteClass, $scope);
+
+                if ($dispatcher !== null) {
+                    self::registerLateBoundListeners(
+                        $dispatcher,
+                        $contextManifest,
+                        $container,
+                        $declaredClass,
+                        $concreteClass,
+                        $listenersRegisteredFor,
+                    );
+                }
 
                 return $processed;
             });
@@ -141,6 +188,61 @@ final class RegisterBeanPostProcessorsPass implements BootPass
         $registry = $container->make(DisposableBeanRegistry::class);
 
         return $registry;
+    }
+
+    /**
+     * Recovers RegisterEventListenersPass::registerListenersFor() for the ONE shape its own
+     * boot-time sweep structurally cannot reach: a #[Bean] method whose declared return type is an
+     * INTERFACE (M4 review #6, Important 1). See this class's own docblock for why this seam — and
+     * not a second container->extend() — is the correct, reused place to do it.
+     *
+     * $concreteClass === $declaredClass is the exact signal that RegisterEventListenersPass's sweep
+     * already handled this abstract completely: every plain #[Component] and every #[Bean] method
+     * whose declared return type IS its own concrete class resolves to itself, and
+     * `forClass($declaredClass)` there already found (or correctly found nothing for) whatever this
+     * class carries. Only when the two differ — which, per invariant 4, can only happen for a
+     * #[Bean] method returning an interface — could that sweep NOT have found it (forClass() on an
+     * interface is structurally null; ContextScanner never scans one), so only that case is worth
+     * checking here at all.
+     *
+     * $registered is keyed by concrete class and passed BY REFERENCE from the ONE composite
+     * extender closure created in run() for this abstract. Under Octane that SAME closure instance
+     * (installed once, at worker boot) survives for the worker's entire life — a shallow
+     * `clone $this->app` per request copies the extenders array's closure REFERENCES, never
+     * deep-clones them (see OctaneListener's own invariant-7 note on Illuminate\Container's clone
+     * semantics) — so this guard is what stops a Scope::Singleton or Scope::Scoped bean's listeners
+     * from being registered again on every later request that happens to trigger another
+     * resolution: without it, the SAME shared, worker-lifetime Dispatcher (also resolved once, on
+     * the original $app, and shared by reference into every sandbox) would accumulate one duplicate
+     * registration per resolution and fire the listener multiple times per event. For
+     * Scope::Transient, every make() call rebuilds and re-invokes this extender; if the factory
+     * returns a DIFFERENT concrete class across calls (unusual, but not forbidden), only the
+     * FIRST-seen concrete class's listeners are ever registered — a narrow, disclosed edge case.
+     *
+     * KNOWN, DISCLOSED LIMITATION — registration TIMING, not correctness: this runs at the bean's
+     * FIRST resolution (EagerSingletonsPass, for a non-#[Lazy] bean — still well before the
+     * application ever dispatches a real domain event — or first real use, for a #[Lazy] one),
+     * never in RegisterEventListenersPass's single #[Order]-sorted boot sweep. A listener recovered
+     * here therefore always ends up registered AFTER every listener that sweep already registered
+     * for the same event, regardless of its own #[Order] value — see docs/modules/context.md's
+     * Events section.
+     *
+     * @param  array<string, true>  $registered
+     */
+    private static function registerLateBoundListeners(
+        Dispatcher $dispatcher,
+        ContextManifest $contextManifest,
+        Container $container,
+        string $declaredClass,
+        string $concreteClass,
+        array &$registered,
+    ): void {
+        if ($concreteClass === $declaredClass || isset($registered[$concreteClass])) {
+            return;
+        }
+        $registered[$concreteClass] = true;
+
+        RegisterEventListenersPass::registerListenersFor($dispatcher, $contextManifest, $container, $concreteClass, $declaredClass);
     }
 
     /**

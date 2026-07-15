@@ -1,0 +1,167 @@
+<?php
+
+declare(strict_types=1);
+
+use Firefly\Config\Config;
+use Firefly\Config\Profile\Profiles;
+use Firefly\Container\Registrar\ContainerRegistrar;
+use Firefly\Container\Scanner\ComponentManifest;
+use Firefly\Container\Scanner\ComponentScanner;
+use Firefly\Context\Boot\BootContext;
+use Firefly\Context\Condition\ConditionEvaluationReport;
+use Firefly\Context\Condition\ConditionEvaluator;
+use Firefly\Context\Definition\BeanDefinition;
+use Firefly\Context\Definition\BeanDefinitionRegistry;
+use Firefly\Context\Lifecycle\DisposableBeanRegistry;
+use Firefly\Context\Pass\EagerSingletonsPass;
+use Firefly\Context\Pass\RegisterBeanPostProcessorsPass;
+use Firefly\Context\Pass\RegisterEventListenersPass;
+use Firefly\Context\Scanner\ContextManifest;
+use Firefly\Context\Scanner\ContextScanner;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\CacheA;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\CacheB;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerFireRecorder;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerPort;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ProbeEvent;
+use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Events\Dispatcher as IlluminateDispatcher;
+
+/**
+ * M4 review #6, Important 1 — THE FAULT-INJECTION CONTROL.
+ *
+ * Reuses review #6's exact discriminating shape: two structurally IDENTICAL `#[Bean]`-produced
+ * classes (CacheA/CacheB — same #[AsEventListener]/#[PreDestroy] method names and bodies), the ONLY
+ * variable between them being the declared return type of the `#[Bean]` factory method that produces
+ * each one (`ConfigA::makeA(): CacheA` — concrete — vs `ConfigB::makeB(): ListenerPort` — an
+ * interface, "the canonical hexagonal shape" per docs/modules/context.md).
+ *
+ * This is a REAL scan (Firefly\Container\Scanner\ComponentScanner + Firefly\Context\Scanner\
+ * ContextScanner) over REAL fixture files, through a REAL Firefly\Container\Registrar\
+ * ContainerRegistrar, a REAL Illuminate\Container\Container, and a REAL Illuminate\Events\Dispatcher
+ * — never hand-built descriptors standing in for a scan, and never a mock dispatcher. Before the
+ * Important-1 fix this test FAILS: 'B:listener' is never recorded, because
+ * RegisterEventListenersPass's boot-time sweep looks listeners up via
+ * `contextManifest->forClass($bean->returns)`, and `$bean->returns` for ConfigB's factory is
+ * `ListenerPort::class` — an interface `ContextScanner` never scans, so the lookup silently returns
+ * null. 'A:listener' fires throughout, both before and after the fix — it is the concrete-return
+ * arm's job to prove the fix didn't regress the already-working shape.
+ */
+/**
+ * @return array{0: ComponentManifest, 1: ContextManifest}
+ */
+function scanBeanListenerInterfaceFixtures(): array
+{
+    $psr4 = ['Firefly\\Context\\Tests\\BeanListenerInterfaceFixtures\\' => __DIR__.'/BeanListenerInterfaceFixtures'];
+
+    $componentManifest = new ComponentManifest((new ComponentScanner)->scan($psr4));
+    $contextManifest = new ContextManifest((new ContextScanner)->scan($psr4));
+
+    return [$componentManifest, $contextManifest];
+}
+
+/**
+ * @return array{0: BootContext, 1: Container, 2: ListenerFireRecorder}
+ */
+function bootBeanListenerInterfacePipeline(ComponentManifest $componentManifest, ContextManifest $contextManifest): array
+{
+    $container = new Container;
+    $container->instance('events', new IlluminateDispatcher($container));
+
+    (new ContainerRegistrar($container))->register($componentManifest);
+
+    $config = new Config(new Repository([]));
+    $profiles = new Profiles([]);
+    $registry = new BeanDefinitionRegistry;
+
+    foreach ($componentManifest->components as $component) {
+        $registry->add(new BeanDefinition($component));
+    }
+
+    $context = new BootContext(
+        container: $container,
+        definitions: $registry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+        contextManifest: $contextManifest,
+    );
+
+    // The real M4 instance-stage order: BeanPostProcessors(700) installs the composite extender ->
+    // EventListeners(800) does its boot-time sweep -> EagerSingletons(900) resolves both #[Bean]
+    // factories (Scope::Singleton, not #[Lazy]) — which is what triggers the composite extender for
+    // ConfigB's ListenerPort abstract, the ONLY place `CacheB::class` (the concrete class) becomes
+    // knowable.
+    (new RegisterBeanPostProcessorsPass)->run($context);
+    (new RegisterEventListenersPass)->run($context);
+    (new EagerSingletonsPass)->run($context);
+
+    /** @var ListenerFireRecorder $recorder */
+    $recorder = $container->make(ListenerFireRecorder::class);
+
+    return [$context, $container, $recorder];
+}
+
+it('registers #[AsEventListener] for a #[Bean] method whose declared return type is an INTERFACE — control: only the return type differs from the concrete-return arm', function () {
+    [$componentManifest, $contextManifest] = scanBeanListenerInterfaceFixtures();
+
+    // Sanity: ContextScanner captured BOTH concrete classes fully, keyed by their OWN class name —
+    // confirms any failure below is about the LOOKUP KEY used by RegisterEventListenersPass, not
+    // about scanning.
+    $cacheADescriptor = $contextManifest->forClass(CacheA::class);
+    $cacheBDescriptor = $contextManifest->forClass(CacheB::class);
+
+    expect($cacheADescriptor)->not->toBeNull()
+        ->and($cacheADescriptor?->listeners)->toHaveCount(1)
+        ->and($cacheBDescriptor)->not->toBeNull()
+        ->and($cacheBDescriptor?->listeners)->toHaveCount(1)
+        ->and($contextManifest->forClass(ListenerPort::class))->toBeNull();
+
+    [, $container, $recorder] = bootBeanListenerInterfacePipeline($componentManifest, $contextManifest);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $container->make('events');
+    $dispatcher->dispatch(new ProbeEvent('probe'));
+
+    // ARM A (concrete #[Bean] return type) fires — unaffected by the fix, proves no regression.
+    expect($recorder->events)->toContain('A:listener');
+
+    // ARM B (interface #[Bean] return type) — THE FAULT. Before the Important-1 fix this assertion
+    // fails: 'B:listener' is never recorded because forClass(ListenerPort::class) is null.
+    expect($recorder->events)->toContain('B:listener');
+});
+
+it('still runs #[PreDestroy] for the interface-produced bean after the fix (no regression of the d3a7688/Critical-2 lifecycle fix)', function () {
+    [$componentManifest, $contextManifest] = scanBeanListenerInterfaceFixtures();
+
+    [, $container] = bootBeanListenerInterfacePipeline($componentManifest, $contextManifest);
+
+    /** @var ListenerFireRecorder $recorder */
+    $recorder = $container->make(ListenerFireRecorder::class);
+
+    /** @var DisposableBeanRegistry $disposables */
+    $disposables = $container->make(DisposableBeanRegistry::class);
+    $disposables->drainSingletons();
+
+    expect($recorder->events)->toContain('A:predestroy')
+        ->and($recorder->events)->toContain('B:predestroy');
+});
+
+it('never registers the interface-produced bean\'s listener twice, even when resolved more than once', function () {
+    [$componentManifest, $contextManifest] = scanBeanListenerInterfaceFixtures();
+
+    [, $container, $recorder] = bootBeanListenerInterfacePipeline($componentManifest, $contextManifest);
+
+    // ListenerPort is Scope::Singleton, so a second make() returns the cached instance and must NOT
+    // re-invoke the composite extender (and so must not register the listener again).
+    $container->make(ListenerPort::class);
+    $container->make(ListenerPort::class);
+
+    /** @var Dispatcher $dispatcher */
+    $dispatcher = $container->make('events');
+    $dispatcher->dispatch(new ProbeEvent('probe'));
+
+    expect(array_count_values($recorder->events)['B:listener'] ?? 0)->toBe(1);
+});

@@ -8,6 +8,8 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Event\DispatcherEventPublisher;
+use Firefly\Context\Scanner\ContextManifest;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 
 /**
@@ -48,14 +50,38 @@ use Illuminate\Contracts\Events\Dispatcher;
  * that shape, the manifest holds an entry keyed `forClass('App\RedisCache')`, never `forClass('C')`.
  * `EagerSingletonsPass` and `RegisterBeanPostProcessorsPass` both already iterate
  * `$descriptor->beans`/`$bean->returns` for exactly this reason (a `#[Bean]` output is a
- * first-class lifecycle-managed thing, not merely its declaring class); this pass now does the
- * same, so `#[PostConstruct]`/`#[PreDestroy]`/`#[AsEventListener]` are symmetric across every
- * `#[Bean]` output. `$bean->returns` is resolved via `$container->make($bean->returns)` — the same
- * abstract `ContainerRegistrar::registerBeans()` bound the factory under — so the listener always
- * observes the fully post-processed (possibly proxied) bean, exactly like a plain `#[Component]`.
- * A class already visited (as either a definition's own class OR an earlier bean's return type) is
- * never visited twice, so a class reachable both ways cannot register the same listener method
- * twice.
+ * first-class lifecycle-managed thing, not merely its declaring class); this pass does the same
+ * here in its own boot-time sweep. `$bean->returns` is resolved via `$container->make($bean->returns)`
+ * — the same abstract `ContainerRegistrar::registerBeans()` bound the factory under — so the
+ * listener always observes the fully post-processed (possibly proxied) bean, exactly like a plain
+ * `#[Component]`. A class already visited (as either a definition's own class OR an earlier bean's
+ * return type) is never visited twice, so a class reachable both ways cannot register the same
+ * listener method twice.
+ *
+ * 🔴 THE CANONICAL HEXAGONAL SHAPE IS NOT HANDLED BY THIS SWEEP (M4 review #6, Important 1 — the
+ * untreated twin of `d3a7688`, corrected here; do NOT reintroduce the false claim this replaces).
+ * For `#[Bean] fn(): SomePort` — an INTERFACE declared return type, the shape `docs/modules/
+ * context.md` calls canonical — `$bean->returns` IS the interface, and `ContextScanner` NEVER scans
+ * an interface (see its class docblock), so `forClass($bean->returns)` above is structurally
+ * guaranteed to return null: this sweep can only ever find listeners for a `#[Bean]` method whose
+ * declared return type IS a concrete class (or a plain `#[Component]`'s own class). It is NOT
+ * symmetric with `#[PostConstruct]`/`#[PreDestroy]`, which recover the interface case via the
+ * concrete class captured at `RegisterBeanPostProcessorsPass`'s `extend()` seam (invariant 4,
+ * REFINED — see that pass's docblock).
+ *
+ * The interface case is instead recovered by `self::registerListenersFor()` below, called from
+ * `RegisterBeanPostProcessorsPass`'s SAME composite extender that already captures the concrete
+ * class for lifecycle — reusing that established mechanism rather than inventing a parallel one
+ * (a second `container->extend()` per abstract would violate invariant 2). Because the concrete
+ * class of an interface-declared `#[Bean]` is only knowable once the factory actually runs,
+ * registration for THAT shape happens at the bean's first resolution — eagerly, during
+ * `EagerSingletonsPass` (900), for a non-`#[Lazy]` bean (still well before the application ever
+ * dispatches a real event), or lazily, at first use, for a `#[Lazy]` one — rather than in this
+ * pass's single pre-sorted sweep. KNOWN, DISCLOSED LIMITATION: a listener recovered that way is not
+ * `#[Order]`-comparable against listeners this sweep already registered for the same event — it
+ * always ends up registered AFTER them on the dispatcher, regardless of its own `#[Order]` value.
+ * That is a real, narrower guarantee than the concrete-return case gets, but strictly better than
+ * the prior behavior (never registered, ever) — see docs/modules/context.md's Events section.
  */
 final class RegisterEventListenersPass implements BootPass
 {
@@ -131,6 +157,53 @@ final class RegisterEventListenersPass implements BootPass
 
         foreach ($descriptor->listeners as $listener) {
             $entries[] = [$class, $listener['method'], $listener['event'], $listener['order']];
+        }
+    }
+
+    /**
+     * Registers every `#[AsEventListener]` found on `$lookupClass` in the compiled `ContextManifest`
+     * onto the dispatcher, invoking through `$invokeThrough` at dispatch time (never at registration
+     * time — the bean is resolved fresh on every dispatch, exactly like `run()`'s own closures
+     * above, so it always observes the fully post-processed, possibly proxied, form).
+     *
+     * The SOLE reason this is a public static entry point rather than staying private to this
+     * class: `RegisterBeanPostProcessorsPass`'s composite extender is the ONLY place a `#[Bean]`
+     * method's declared-INTERFACE-return concrete class becomes knowable (see that pass's
+     * invariant-4 note and this class's own docblock, "THE CANONICAL HEXAGONAL SHAPE IS NOT HANDLED
+     * BY THIS SWEEP"). `$lookupClass` there is the concrete class captured at init; `$invokeThrough`
+     * is the declared abstract (interface) the container actually bound the factory under, so
+     * invocation still goes through the SAME binding/scope every other caller resolves — never the
+     * concrete class directly, which the container may never have bound at all. This is NOT a
+     * second, parallel registration mechanism: it is the exact same guardListener()-wrapped,
+     * manifest-driven, per-call-resolved closure shape built above, called from a second call site
+     * instead of reimplemented at one.
+     */
+    public static function registerListenersFor(
+        Dispatcher $dispatcher,
+        ContextManifest $contextManifest,
+        Container $container,
+        string $lookupClass,
+        string $invokeThrough,
+    ): void {
+        $descriptor = $contextManifest->forClass($lookupClass);
+        if ($descriptor === null) {
+            return;
+        }
+
+        $listeners = $descriptor->listeners;
+        usort($listeners, static fn (array $a, array $b): int => $a['order'] <=> $b['order']);
+
+        foreach ($listeners as $listener) {
+            $method = $listener['method'];
+
+            $raw = static function (mixed ...$arguments) use ($container, $invokeThrough, $method): mixed {
+                /** @var object $bean */
+                $bean = $container->make($invokeThrough);
+
+                return $bean->{$method}(...$arguments);
+            };
+
+            $dispatcher->listen($listener['event'], DispatcherEventPublisher::guardListener($raw));
         }
     }
 }

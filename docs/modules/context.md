@@ -478,6 +478,22 @@ listener registered after the current one the instant any listener returns exact
 silent accident (e.g. `return $repository->delete($id);`). Firefly's events are notifications, not
 filters, so that hazard is closed for every `#[AsEventListener]` automatically.
 
+`#[AsEventListener]` also works on a class that is never itself a `#[Component]`, but is instead
+*produced* by a `#[Bean]` factory method — exactly like `#[PostConstruct]`/`#[PreDestroy]` above, and
+regardless of whether the factory's declared return type is a concrete class or an interface (the
+canonical hexagonal shape `#[Bean] fn(): SomePort`). Internally, the two shapes are **not** handled
+identically: a `#[Bean]` method whose declared return type is its own concrete class is registered in
+the same single, `#[Order]`-sorted boot sweep as every plain `#[Component]`'s listeners. A `#[Bean]`
+method returning an *interface* cannot be — `ContextScanner` never scans an interface, so there is
+nothing to find under that key at boot — so that case is instead recovered the moment the bean is
+actually built (mirroring the concrete-class capture `#[PostConstruct]`/`#[PreDestroy]` already use):
+eagerly, during `EagerSingletonsPass`, for a non-`#[Lazy]` bean — still well before the application
+ever dispatches a real event — or at first real use, for a `#[Lazy]` one. The net effect for your own
+code is the same as for lifecycle: you do not need to do anything differently for either shape. The
+one honest difference: a listener recovered this second way is not `#[Order]`-comparable against
+listeners the boot sweep already registered for the same event — it always ends up registered *after*
+them, regardless of its own `#[Order]` value, since it is discovered later than that sweep runs.
+
 Three lifecycle events fire over the same port, at the times below. They are deliberately flat
 (`final readonly`, no shared base class) — Illuminate's dispatcher matches listeners against an event's
 *concrete* class (and its interfaces), never by walking parent classes, so a shared "ApplicationEvent"
