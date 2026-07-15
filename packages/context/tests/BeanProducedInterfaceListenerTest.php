@@ -25,6 +25,7 @@ use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerFireRecorder;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ListenerPort;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ParentCache;
 use Firefly\Context\Tests\BeanListenerInterfaceFixtures\ProbeEvent;
+use Firefly\Context\Tests\BeanListenerInterfaceFixtures\TransientListenerPort;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -193,19 +194,30 @@ it('still runs #[PreDestroy] for the interface-produced bean after the fix (no r
         ->and($recorder->events)->toContain('B:predestroy');
 });
 
-it('never registers the interface-produced bean\'s listener twice, even when resolved more than once', function () {
+it('never registers an interface-produced Scope::Transient bean\'s listener more than once, even when resolved several times — M4 review #7, Minor 1', function () {
     [$componentManifest, $contextManifest] = scanBeanListenerInterfaceFixtures();
 
     [, $container, $recorder] = bootBeanListenerInterfacePipeline($componentManifest, $contextManifest);
 
-    // ListenerPort is Scope::Singleton, so a second make() returns the cached instance and must NOT
-    // re-invoke the composite extender (and so must not register the listener again).
-    $container->make(ListenerPort::class);
-    $container->make(ListenerPort::class);
+    // TransientListenerPort is Scope::Transient (unlike ARM B's Scope::Singleton ListenerPort): every
+    // make() call rebuilds a NEW CacheT and re-invokes the composite extender, which is what actually
+    // exercises the $registered[$concreteClass] dedupe guard. A prior version of this test resolved
+    // the Scope::Singleton ListenerPort instead, whose second make() call is served from the
+    // container's cached instance and never re-invokes the extender at all — so that version passed
+    // identically with the guard deleted (see fault injection below). Resolving three times here is
+    // deliberately MORE than the two calls the original test made, to make the discrimination obvious
+    // regardless of exactly how many extra resolutions occur.
+    $container->make(TransientListenerPort::class);
+    $container->make(TransientListenerPort::class);
+    $container->make(TransientListenerPort::class);
 
     /** @var Dispatcher $dispatcher */
     $dispatcher = $container->make('events');
     $dispatcher->dispatch(new ProbeEvent('probe'));
 
-    expect(array_count_values($recorder->events)['B:listener'] ?? 0)->toBe(1);
+    // ONE event dispatched, after THREE resolutions. With the guard: registered once, at the FIRST
+    // resolution (EagerSingletonsPass never touches a Transient bean, so the first make() above is
+    // genuinely the first resolution) — fires exactly once. Without the guard (fault-injected below):
+    // fires three times, once per resolution.
+    expect(array_count_values($recorder->events)['T:listener'] ?? 0)->toBe(1);
 });
