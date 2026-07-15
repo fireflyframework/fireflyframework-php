@@ -8,15 +8,13 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Definition\BeanDefinition;
-use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Definition\DefinitionSource;
 
 /**
  * Spring's ConfigurationPhase.REGISTER_BEAN, concretely: evaluates EVERY condition — registry-
  * independent (config presence, class presence, active profiles) AND bean
  * (#[ConditionalOnBean]/#[ConditionalOnMissingBean]) — belonging to DefinitionSource::AutoConfiguration
- * definitions, against the now user-filtered registry, and removes any whose conditions do not all
- * match.
+ * definitions, and adds back only the ones whose conditions all match.
  *
  * RUNS AT BootPhase::ConditionPassTwo (600), strictly AFTER BootPhase::AutoConfigurations (500) adds
  * every auto-configuration definition to the registry, and after ConditionPassOnePass (400) has
@@ -36,16 +34,54 @@ use Firefly\Context\Definition\DefinitionSource;
  * have a decided outcome, corrupting the ConditionEvaluationReport with duplicate entries. Scoping
  * to DefinitionSource::AutoConfiguration keeps each definition evaluated by exactly one pass.
  *
- * SNAPSHOT STABILITY (load-bearing — see the M4 design decisions doc, §Conditions): removing
- * definition A partway through this pass can change whether definition B's
- * #[ConditionalOnMissingBean] matches, purely as a function of which one the registry happens to
- * iterate first. That would make the result of this pass depend on registry insertion/iteration
- * order — exactly the kind of thing a later maintainer "simplifies" into a filesystem-order-
- * dependent bug. To make the result order-INDEPENDENT, every definition's conditions are evaluated
- * against a FROZEN SNAPSHOT of the registry taken at pass entry, and every definition's fate is
- * decided against that same snapshot; only once every decision is made are the removals applied to
- * the live registry. Two definitions whose bean conditions reference each other therefore always
- * produce the SAME outcome, regardless of which was added to the registry first.
+ * INCREMENTAL evaluation, NOT batch (this is a deliberate REVERSAL of an earlier "frozen snapshot"
+ * design — read this before reintroducing it):
+ *
+ * An earlier version of this pass evaluated every AutoConfiguration definition's conditions against
+ * a single snapshot of the registry taken at pass entry — the WHOLE registry, definitions-under-
+ * evaluation included — then applied every removal at the end. That is Spring's
+ * ConfigurationClassParser applied batch-wise, and it breaks in two ways a starter author actually
+ * hits on day one:
+ *
+ *  1. SELF-SEEING: BeanDefinitionRegistry::containsType() does not exclude "the definition currently
+ *     being evaluated" from its own scan. A definition whose own #[Bean] method (or `implements`
+ *     clause) supplies type X, gated by #[ConditionalOnMissingBean(X::class)] — the canonical Spring
+ *     Boot starter shape, e.g. `#[Bean] #[ConditionalOnMissingBean(CachePort::class)] public function
+ *     defaultCache(): CachePort {...}` — sees ITS OWN contribution in the batch snapshot and always
+ *     backs off from itself. The fallback never registers, ever, even with zero competing beans.
+ *  2. MUTUAL BACK-OFF: two AutoConfigurations both supplying type X, both gated by
+ *     #[ConditionalOnMissingBean(X::class)], both see "X present" in the same frozen snapshot (each
+ *     sees the OTHER's contribution) and BOTH back off — the worst possible outcome: the user ends
+ *     up with neither implementation and no error to explain why.
+ *
+ * Spring's actual model is INCREMENTAL: each auto-configuration is registered in a deterministic
+ * order, and its conditions are evaluated against the registry AS IT STANDS immediately before that
+ * definition itself is (re-)added — so a definition never sees its own contribution, and an already-
+ * accepted earlier definition IS visible to a later one (first-registered, first-served: "first
+ * wins" on a mutual #[ConditionalOnMissingBean] tie). This class now does the same:
+ *
+ *  1. Every DefinitionSource::AutoConfiguration definition is pulled OUT of the registry up front.
+ *     The registry now holds exactly the surviving DefinitionSource::User definitions — nothing
+ *     from this pass's own input set is present in it yet.
+ *  2. The pulled-out definitions are sorted by the SAME deterministic total order FireflyKernel uses
+ *     for boot passes: (#[Order] value, FQCN). #[Order] is read off the ComponentDescriptor captured
+ *     at scan time (BeanDefinition::$descriptor->order) — NEVER off a resolved instance, because
+ *     resolving an instance is exactly what condition evaluation must happen BEFORE. FQCN is the
+ *     final tiebreak so the result does not depend on filesystem scan order (the same reasoning
+ *     FireflyKernel::sortedPasses() documents for boot passes).
+ *  3. Each definition, in that order, has ALL of its conditions evaluated against the registry AS IT
+ *     CURRENTLY STANDS — which holds every surviving User definition plus every AutoConfiguration
+ *     definition already accepted earlier in this same loop. A match adds the definition back to the
+ *     registry (visible to every later definition in the loop); a non-match drops it (recorded in the
+ *     ConditionEvaluationReport, never added back).
+ *
+ * Determinism now comes from the explicit (order, FQCN) sort, NOT from a frozen snapshot: swapping
+ * the registry insertion order of two competing AutoConfiguration definitions cannot change the
+ * result, because sorting happens before any of them are evaluated. This is strictly MORE correct
+ * than the snapshot approach it replaces, not merely differently deterministic: it fixes
+ * self-seeing (a definition is never present while its own conditions run) and turns "both removed"
+ * into "first, by (order, FQCN), wins" — matching what Spring itself does and what every starter
+ * author assumes #[ConditionalOnMissingBean] means.
  */
 final class ConditionPassTwoPass implements BootPass
 {
@@ -61,40 +97,57 @@ final class ConditionPassTwoPass implements BootPass
 
     public function run(BootContext $context): void
     {
-        $snapshot = new BeanDefinitionRegistry;
-        foreach ($context->definitions->all() as $definition) {
-            $snapshot->add($definition);
-        }
-
-        /** @var list<string> $toRemove */
-        $toRemove = [];
+        /** @var list<BeanDefinition> $candidates this pass's own input set, pulled out of the registry below */
+        $candidates = [];
         foreach ($context->definitions->all() as $definition) {
             if ($definition->source !== DefinitionSource::AutoConfiguration) {
                 continue; // not this pass's job — ConditionPassOnePass already decided User definitions
             }
 
+            $candidates[] = $definition;
+        }
+
+        // Pull EVERY candidate out before evaluating ANY of them: this is what makes evaluation
+        // incremental rather than batch — a candidate's own conditions can never see its own
+        // contribution, because the candidate simply is not in the registry yet when they run.
+        foreach ($candidates as $definition) {
+            $context->definitions->remove($definition->class());
+        }
+
+        usort($candidates, self::compareByOrderThenClass(...));
+
+        foreach ($candidates as $definition) {
             // ConditionEvaluator::matches() is the single source of truth for the keep/remove
             // decision. beanPhase: null means "evaluate every condition, of either kind" — correct
             // here because BOTH kinds of an AutoConfiguration definition's conditions are still
-            // unevaluated at this point. Do not reimplement its logic here.
-            $keep = $context->conditions->matches($definition, beanPhase: null, registry: $snapshot);
+            // unevaluated at this point. Do not reimplement its logic here. $context->definitions is
+            // the LIVE registry: at this point it holds every surviving User definition plus every
+            // AutoConfiguration candidate already accepted earlier in this loop — never this
+            // candidate itself.
+            $keep = $context->conditions->matches($definition, beanPhase: null, registry: $context->definitions);
 
-            $this->recordOutcomes($definition, $context, $snapshot);
+            $this->recordOutcomes($definition, $context);
 
-            if (! $keep) {
-                $toRemove[] = $definition->class();
+            if ($keep) {
+                $context->definitions->add($definition);
             }
-        }
-
-        foreach ($toRemove as $class) {
-            $context->definitions->remove($class);
         }
     }
 
-    private function recordOutcomes(BeanDefinition $definition, BootContext $context, BeanDefinitionRegistry $snapshot): void
+    private static function compareByOrderThenClass(BeanDefinition $a, BeanDefinition $b): int
+    {
+        $orderComparison = $a->descriptor->order <=> $b->descriptor->order;
+        if ($orderComparison !== 0) {
+            return $orderComparison;
+        }
+
+        return $a->class() <=> $b->class();
+    }
+
+    private function recordOutcomes(BeanDefinition $definition, BootContext $context): void
     {
         foreach ($definition->conditions as $condition) {
-            $outcome = $context->conditions->evaluate($condition, $snapshot);
+            $outcome = $context->conditions->evaluate($condition, $context->definitions);
             $context->report->record($definition->class(), $condition::class, $outcome);
         }
     }

@@ -188,19 +188,21 @@ it('removes an AutoConfiguration definition whose #[ConditionalOnProperty] does 
 
 // --- Regression #3: the #[ConditionalOnMissingBean] starter mechanism, end-to-end ---
 //
-// NOTE ON FIXTURE SHAPE: the AutoConfiguration candidate below deliberately does NOT declare
-// `interfaces: [Cache::class]` on its OWN descriptor, even though conceptually it "is" a Cache
-// fallback. This is intentional, not an oversight — see the task report's "concerns" section:
-// BeanDefinitionRegistry::containsType() does not exclude the definition currently being
-// evaluated from its own snapshot, so a definition that BOTH declares an interface AND is
-// #[ConditionalOnMissingBean]-gated on that same interface always finds ITSELF and is always
-// removed, regardless of whether any other definition provides the type. That is a real,
-// pre-existing gap (independent of the phase-ordering bug this file otherwise regression-tests)
-// which this test suite deliberately does not paper over. Keeping this AutoConfiguration
-// candidate interface-free isolates the ONE thing these two tests exist to prove: that
-// ConditionPassTwoPass now actually evaluates an AutoConfiguration's bean condition against the
-// real, user-filtered registry — backing off when ANOTHER definition supplies the type, and
-// applying when nothing else does.
+// NOTE ON FIXTURE SHAPE: the AutoConfiguration candidate in the next two tests deliberately does
+// NOT declare `interfaces: [Cache::class]` on its OWN descriptor, even though conceptually it "is"
+// a Cache fallback. This isolates the ONE thing these two tests exist to prove: that
+// ConditionPassTwoPass evaluates an AutoConfiguration's bean condition against the real,
+// user-filtered registry — backing off when ANOTHER definition supplies the type, and applying
+// when nothing else does.
+//
+// A THIRD scenario — where the candidate's OWN descriptor ALSO declares the interface it is
+// gated on (the "self-seeing" shape) — used to be a known, unfixed gap: BeanDefinitionRegistry::
+// containsType() does not exclude the definition currently being evaluated, so a batch-filtering
+// ConditionPassTwoPass would find the candidate's own contribution and always back off from
+// itself, regardless of whether any OTHER definition provided the type. ConditionPassTwoPass no
+// longer batch-filters — see its class docblock for the incremental (order, FQCN) model that
+// fixes this — so that scenario is now covered explicitly below, through the same real composed
+// FireflyKernel pipeline, rather than deliberately avoided.
 
 it("an AutoConfiguration's #[ConditionalOnMissingBean] backs off when a user bean supplies the type", function () {
     $bootContext = phaseOrderingBootContext();
@@ -256,4 +258,70 @@ it("an AutoConfiguration's #[ConditionalOnMissingBean] applies when no user bean
 
     expect($survivingClasses)->toBe(['App\DefaultCache'])
         ->and($bootContext->container->bound('App\DefaultCache'))->toBeTrue();
+});
+
+// --- Regression #4: the "self-seeing" shape, through the REAL composed pipeline ---
+//
+// Here the AutoConfiguration candidate's OWN descriptor declares `interfaces: [Cache::class]` —
+// exactly like a real `final class DefaultCacheAutoConfig implements CachePort {}` starter, or a
+// `#[Bean] public function defaultCache(): CachePort {...}` factory method. Under the pre-fix
+// batch-filtering ConditionPassTwoPass, BeanDefinitionRegistry::containsType() would see THIS
+// candidate's own `interfaces` entry in the batch snapshot and back it off from itself, in BOTH
+// scenarios below — including the one with no competing user bean at all, where the candidate is
+// the only thing that could ever supply Cache.
+
+it("an AutoConfiguration's #[ConditionalOnMissingBean] applies even when its OWN declared interface supplies the very type it is gated on — the self-seeing regression", function () {
+    $bootContext = phaseOrderingBootContext();
+    $kernel = new FireflyKernel($bootContext);
+
+    $autoConfig = new BeanDefinition(
+        phaseOrderingDescriptor('App\SelfSeeingDefaultCache', interfaces: [Cache::class]),
+        conditions: [new ConditionalOnMissingBean(Cache::class)],
+        source: DefinitionSource::AutoConfiguration,
+    );
+
+    $kernel->addPass(new UserConfigurationsPass([]))
+        ->addPass(new ConditionPassOnePass)
+        ->addPass(new ConditionPhaseOrderingAutoConfigPass([$autoConfig]))
+        ->addPass(new ConditionPassTwoPass)
+        ->addPass(new FlushDefinitionsPass);
+
+    $kernel->boot();
+
+    $survivingClasses = array_map(
+        static fn (BeanDefinition $d): string => $d->class(),
+        $bootContext->definitions->all(),
+    );
+
+    expect($survivingClasses)->toBe(['App\SelfSeeingDefaultCache'])
+        ->and($bootContext->container->bound('App\SelfSeeingDefaultCache'))->toBeTrue();
+});
+
+it("an AutoConfiguration's #[ConditionalOnMissingBean] STILL correctly backs off when its own declared interface AND a user bean both supply the same type", function () {
+    $bootContext = phaseOrderingBootContext();
+    $kernel = new FireflyKernel($bootContext);
+
+    $userCache = new BeanDefinition(phaseOrderingDescriptor('App\UserCache', interfaces: [Cache::class]));
+    $autoConfig = new BeanDefinition(
+        phaseOrderingDescriptor('App\SelfSeeingDefaultCache', interfaces: [Cache::class]),
+        conditions: [new ConditionalOnMissingBean(Cache::class)],
+        source: DefinitionSource::AutoConfiguration,
+    );
+
+    $kernel->addPass(new UserConfigurationsPass([$userCache]))
+        ->addPass(new ConditionPassOnePass)
+        ->addPass(new ConditionPhaseOrderingAutoConfigPass([$autoConfig]))
+        ->addPass(new ConditionPassTwoPass)
+        ->addPass(new FlushDefinitionsPass);
+
+    $kernel->boot();
+
+    $survivingClasses = array_map(
+        static fn (BeanDefinition $d): string => $d->class(),
+        $bootContext->definitions->all(),
+    );
+
+    expect($survivingClasses)->toBe(['App\UserCache'])
+        ->and($bootContext->container->bound('App\UserCache'))->toBeTrue()
+        ->and($bootContext->container->bound('App\SelfSeeingDefaultCache'))->toBeFalse();
 });
