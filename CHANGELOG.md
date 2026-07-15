@@ -2,6 +2,38 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.4] - 2026-07-15
+### Added
+- **`firefly/context`** — the boot engine:
+  - `FireflyKernel` — an ordered boot pipeline (`BootPhase`/`BootPass`) that later packages extend
+    exclusively via `addPass()`, sorted by a deterministic `(phase, order(), FQCN)` total order —
+    never by service-provider registration order — with a `FireflyServiceProvider` base class every
+    package contributes passes through.
+  - Two-pass conditional registration — `#[ConditionalOnProperty]`/`#[ConditionalOnClass]`/
+    `#[ConditionalOnMissingClass]`/`#[ConditionalOnProfile]` (registry-independent) and
+    `#[ConditionalOnBean]`/`#[ConditionalOnMissingBean]` (evaluated incrementally against the
+    `BeanDefinitionRegistry`, never against resolved instances) — with bean conditions rejected with a
+    `ConfigurationException` on a user component, since only auto-configurations run late enough for
+    "does this bean exist?" to have a deterministic answer.
+  - `BeanPostProcessor` — a two-pass `beforeInitialization`/`afterInitialization` chain, `#[Order]`-sorted
+    and frozen from the compiled manifest, with `#[PostConstruct]` invoked strictly between the two
+    passes and proxy substitution confined to `afterInitialization()`.
+  - `#[PostConstruct]`/`#[PreDestroy]` lifecycle callbacks, dependency-injected via `$container->call()`,
+    destroyed in reverse order at `ApplicationContext::close()`.
+  - `ApplicationEventPublisher` over Laravel's event dispatcher, `#[AsEventListener]`, and the
+    `ContextRefreshedEvent`/`ApplicationReadyEvent`/`ContextClosedEvent` lifecycle events.
+  - Octane state hygiene: `OctaneListener`/`StateResetter` drain scoped beans' `#[PreDestroy]`
+    callbacks and reset scoped instances on the request sandbox, per request/task/tick, while the boot
+    pipeline itself runs once per worker.
+- Harness: a `Context` Deptrac layer (may depend on `Kernel` + `Container` + `Config`).
+
+### Fixed
+- **`firefly/container`** — `#[Lazy]` was silently ignored. The attribute was scanned-but-discarded:
+  `ComponentScanner` never read it and `ComponentDescriptor` had no field for it, so marking a
+  component or `#[Bean]` method `#[Lazy]` had no effect whatsoever. It is now captured through the
+  compiled manifest and honored by the boot engine's eager-singleton phase. (Cached manifests written
+  by earlier versions still load; the field defaults to `false`.)
+
 ## [26.07.3] - 2026-07-15
 ### Fixed
 - **`firefly/container`** — an explicit `#[Bean]` factory whose return type is an interface is no longer silently
