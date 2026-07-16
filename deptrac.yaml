@@ -18,6 +18,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/context/src/.*
+    - name: AutoConfigure
+      collectors:
+        - type: directory
+          value: packages/autoconfigure/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -33,3 +37,11 @@ deptrac:
       - Kernel
       - Container
       - Config
+
+    # AutoConfigure drives the M4 engine: it assembles BeanDefinitions from Container+Context manifests,
+    # binds the kernel, and contributes Context passes. It must NOT depend on any capability package.
+    AutoConfigure:
+      - Kernel
+      - Container
+      - Config
+      - Context

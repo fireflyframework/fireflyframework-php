@@ -5,6 +5,7 @@
     "license": "Apache-2.0",
     "require": {
         "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
@@ -23,6 +24,7 @@
     "autoload-dev": {
         "psr-4": {
             "Firefly\\Tests\\": "tests/",
+            "Firefly\\AutoConfigure\\Tests\\": "packages/autoconfigure/tests/",
             "Firefly\\Config\\Tests\\": "packages/config/tests/",
             "Firefly\\Container\\Tests\\": "packages/container/tests/",
             "Firefly\\Context\\Tests\\": "packages/context/tests/"
