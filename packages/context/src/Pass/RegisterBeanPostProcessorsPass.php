@@ -141,7 +141,7 @@ final class RegisterBeanPostProcessorsPass implements BootPass
 
         $bppClassSet = array_fill_keys($bppClasses, true);
 
-        /** @var array<string, true> $listenersRegisteredFor keyed by concrete class — see registerLateBoundListeners() */
+        /** @var array<string, true> $listenersRegisteredFor keyed by the ABSTRACT ($declaredClass) — see registerLateBoundListeners() */
         $listenersRegisteredFor = [];
 
         foreach ($this->abstractsToExtend($descriptors, $bppClassSet) as $abstract => $target) {
@@ -228,19 +228,35 @@ final class RegisterBeanPostProcessorsPass implements BootPass
      * reason (abstract classes are unscanned too, so `forClass()` is null there as well), which the
      * old identity gate only got right by accident.
      *
-     * $registered is keyed by concrete class and passed BY REFERENCE from the ONE composite
-     * extender closure created in run() for this abstract. Under Octane that SAME closure instance
-     * (installed once, at worker boot) survives for the worker's entire life — a shallow
-     * `clone $this->app` per request copies the extenders array's closure REFERENCES, never
-     * deep-clones them (see OctaneListener's own invariant-7 note on Illuminate\Container's clone
-     * semantics) — so this guard is what stops a Scope::Singleton or Scope::Scoped bean's listeners
-     * from being registered again on every later request that happens to trigger another
-     * resolution: without it, the SAME shared, worker-lifetime Dispatcher (also resolved once, on
-     * the original $app, and shared by reference into every sandbox) would accumulate one duplicate
-     * registration per resolution and fire the listener multiple times per event. For
-     * Scope::Transient, every make() call rebuilds and re-invokes this extender; if the factory
-     * returns a DIFFERENT concrete class across calls (unusual, but not forbidden), only the
-     * FIRST-seen concrete class's listeners are ever registered — a narrow, disclosed edge case.
+     * $registered is keyed by the ABSTRACT ($declaredClass) — NOT the runtime concrete class (M4
+     * review #8, Minor; the prior version keyed on $concreteClass, the same inferred-vs-asked
+     * substitution review #7 fixed one guard above: this dedupe question is "have listeners already
+     * been registered FOR THIS ABSTRACT", never "has this runtime class been seen under ANY
+     * abstract", and only the abstract answers that. Keying on $concreteClass was too COARSE across
+     * abstracts — two #[Bean] factories producing distinct singletons of the very SAME concrete class
+     * but bound under two DIFFERENT abstracts (e.g. `#[Bean] fn(): ReadPort` and
+     * `#[Bean] fn(): WritePort`, both implemented by one `Repo` class) shared one
+     * `$registered[Repo::class]` entry, so the SECOND abstract's extender found it already `true`
+     * and silently never registered that bean's listener at all — undisclosed, and measured false
+     * (see DedupeKeyTest's cross-abstract case). Keying on $declaredClass fixes it: each abstract's
+     * own extender consults its own entry, so both abstracts register.
+     *
+     * $registered is passed BY REFERENCE from the ONE composite extender closure created in run()
+     * for this abstract. Under Octane that SAME closure instance (installed once, at worker boot)
+     * survives for the worker's entire life — a shallow `clone $this->app` per request copies the
+     * extenders array's closure REFERENCES, never deep-clones them (see OctaneListener's own
+     * invariant-7 note on Illuminate\Container's clone semantics) — so this guard is what stops a
+     * Scope::Singleton or Scope::Scoped bean's listeners from being registered again on every later
+     * request that happens to trigger another resolution: without it, the SAME shared,
+     * worker-lifetime Dispatcher (also resolved once, on the original $app, and shared by reference
+     * into every sandbox) would accumulate one duplicate registration per resolution and fire the
+     * listener multiple times per event. For Scope::Transient, every make() call rebuilds and
+     * re-invokes this extender for the SAME abstract; if the factory returns a DIFFERENT concrete
+     * class across calls (unusual, but not forbidden), keying on $declaredClass means only the
+     * FIRST-seen concrete class's listeners are ever registered — a narrow, disclosed edge case,
+     * measured TRUE (see DedupeKeyTest's varying-concrete-class case): unlike $concreteClass-keying,
+     * where each new runtime class got its OWN key and both registered regardless of the guard —
+     * exactly the opposite of what the prior version of this docblock claimed.
      *
      * KNOWN, DISCLOSED LIMITATION — registration TIMING, not correctness: this runs at the bean's
      * FIRST resolution (EagerSingletonsPass, for a non-#[Lazy] bean — still well before the
@@ -262,10 +278,10 @@ final class RegisterBeanPostProcessorsPass implements BootPass
     ): void {
         $swept = $contextManifest->forClass($declaredClass);
         $sweptListeners = $swept === null ? [] : $swept->listeners;
-        if ($sweptListeners !== [] || isset($registered[$concreteClass])) {
+        if ($sweptListeners !== [] || isset($registered[$declaredClass])) {
             return;
         }
-        $registered[$concreteClass] = true;
+        $registered[$declaredClass] = true;
 
         RegisterEventListenersPass::registerListenersFor($dispatcher, $contextManifest, $container, $concreteClass, $declaredClass);
     }
