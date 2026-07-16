@@ -2,6 +2,27 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.5] - 2026-07-16
+### Added
+- **`firefly/autoconfigure`** — the auto-configuration engine:
+  - `AutoConfiguration` — a discovered provider base that records only its candidacy into a container-bound
+    `AutoConfigurationCollector` at `register()` time (never touching the kernel), so provider-registration
+    order cannot affect wiring.
+  - `DefinitionAssembler` — joins M2 `ComponentManifest` + M4 `ContextManifest` into conditioned
+    `BeanDefinition`s (closing M4's deferred scanner→definition seam), and `AutoConfigManifestCompiler`, the
+    compile façade over the M2/M4 scanners.
+  - `AutoConfigDiscoveryPass` (phase 200, discover + assemble, no registry write) and `AutoConfigurationsPass`
+    (phase 500, drain into the registry as `DefinitionSource::AutoConfiguration`), consumed by M4's incremental
+    `ConditionPassTwoPass` for `#[ConditionalOnMissingBean]` back-off and `(order, FQCN)` first-wins.
+  - `FireflyAutoConfigureServiceProvider` — the auto-discovered bootstrap that binds `FireflyKernel` +
+    `BootContext` and contributes the full boot pipeline, scanning the app by convention from
+    `firefly.scan.paths`. No modification to the frozen `firefly/context`.
+- **`firefly/validation`** — a `Validator` port with a `validate(data, rules)` primitive over
+  `Illuminate\Validation`, an inert `#[Valid]` marker (interception lands in M6), ~16 financial-domain `Rule`
+  objects (IBAN, BIC, Luhn, ISIN, CUSIP, ...), and a `ValidationAutoConfiguration` that installs the default
+  adapter and backs off when the app binds its own `Validator` — the first real end-to-end consumer of the
+  auto-configuration engine. Failures throw the kernel's `ValidationException` (HTTP 422) carrying `FieldError`s.
+
 ## [26.07.4] - 2026-07-15
 ### Added
 - **`firefly/context`** — the boot engine:

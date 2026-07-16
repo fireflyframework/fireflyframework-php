@@ -24,3 +24,5 @@ nav:
           - Dependency Injection: modules/dependency-injection.md
           - Configuration: modules/configuration.md
           - Application Context: modules/context.md
+          - Auto-Configuration: modules/starters.md
+          - Validation: modules/validation.md
