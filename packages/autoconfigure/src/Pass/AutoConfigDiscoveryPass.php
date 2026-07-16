@@ -49,6 +49,17 @@ final class AutoConfigDiscoveryPass implements BootPass
 
         $definitions = [];
         foreach ($candidates as $candidate) {
+            // Degrade gracefully instead of crashing the whole app: a capability package may be
+            // installed (and its provider auto-discovered) BEFORE its manifests are compiled — e.g.
+            // before M15's `firefly:cache` has run. ComponentManifest/ContextManifest::load() throw a
+            // ConfigurationException on a missing file, which would abort boot for every OTHER package
+            // too. An uncompiled candidate is simply a no-op here; it contributes nothing until its
+            // manifests exist. (Candidates that HAVE both manifests are unaffected — this is a pure
+            // no-op for them, so existing discovery/e2e behaviour is preserved exactly.)
+            if (! is_file($candidate->componentManifestPath) || ! is_file($candidate->contextManifestPath)) {
+                continue;
+            }
+
             $components = ComponentManifest::load($candidate->componentManifestPath);
             $manifest = ContextManifest::load($candidate->contextManifestPath);
 
