@@ -22,6 +22,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/autoconfigure/src/.*
+    - name: Validation
+      collectors:
+        - type: directory
+          value: packages/validation/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -44,4 +48,13 @@ deptrac:
       - Kernel
       - Container
       - Config
+      - Context
+
+    # Validation core (Validator/IlluminateValidator/Rule/*) needs only Kernel + illuminate/validation.
+    # Container: ValidationAutoConfiguration's #[Configuration]/#[Bean]/#[Order] attributes.
+    # Context: its #[ConditionalOnMissingBean]. AutoConfigure: the AutoConfiguration base its provider extends.
+    Validation:
+      - Kernel
+      - Container
+      - AutoConfigure
       - Context
