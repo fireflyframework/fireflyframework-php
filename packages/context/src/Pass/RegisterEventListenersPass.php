@@ -75,13 +75,26 @@ use Illuminate\Contracts\Events\Dispatcher;
  * (a second `container->extend()` per abstract would violate invariant 2). Because the concrete
  * class of an interface-declared `#[Bean]` is only knowable once the factory actually runs,
  * registration for THAT shape happens at the bean's first resolution — eagerly, during
- * `EagerSingletonsPass` (900), for a non-`#[Lazy]` bean (still well before the application ever
- * dispatches a real event), or lazily, at first use, for a `#[Lazy]` one — rather than in this
- * pass's single pre-sorted sweep. KNOWN, DISCLOSED LIMITATION: a listener recovered that way is not
- * `#[Order]`-comparable against listeners this sweep already registered for the same event — it
- * always ends up registered AFTER them on the dispatcher, regardless of its own `#[Order]` value.
- * That is a real, narrower guarantee than the concrete-return case gets, but strictly better than
- * the prior behavior (never registered, ever) — see docs/modules/context.md's Events section.
+ * `EagerSingletonsPass` (900), for a non-`#[Lazy]` `Scope::Singleton` bean, or at first real use,
+ * for every other shape (`#[Lazy]` `Scope::Singleton`, `Scope::Scoped`, `Scope::Transient`) — rather
+ * than in this pass's single pre-sorted sweep.
+ *
+ * MEASURED LIMITATION, corrected here (M4 review #8, Important — this docblock previously claimed
+ * the recovery happens "still well before the application ever dispatches a real event"; false,
+ * execution-measured): the eager-`Scope::Singleton` row is a real correctness gap, not merely a
+ * timing quirk — `EagerSingletonsPass` resolves eager beans one at a time, in manifest order, so an
+ * event published earlier in that same pass (e.g. from another eager bean's `#[PostConstruct]` — the
+ * exact scenario `EagerSingletonsPass`'s own class docblock names as the reason it runs after this
+ * pass) is silently missed by an interface-produced listener whose own turn has not yet arrived; any
+ * event after that turn, including every post-boot dispatch, is heard normally. For every other row
+ * — `#[Lazy]` `Scope::Singleton`, `Scope::Scoped`, `Scope::Transient` — nothing ever resolves the
+ * bean at boot, so the listener never registers and never fires until application code happens to
+ * resolve it by some other path; silently, with no error. `#[Order]`-comparability against this
+ * sweep's listeners is a real, secondary consequence of the eager row alone (a listener recovered
+ * there, when it registers in time, always lands after this sweep's) — it is not the limitation; the
+ * two failure modes above are. See `RegisterBeanPostProcessorsPass::registerLateBoundListeners()`'s
+ * own docblock for the full account and docs/modules/context.md's Events section for the user-facing
+ * one.
  */
 final class RegisterEventListenersPass implements BootPass
 {

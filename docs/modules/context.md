@@ -489,17 +489,34 @@ filters, so that hazard is closed for every `#[AsEventListener]` automatically.
 *produced* by a `#[Bean]` factory method — exactly like `#[PostConstruct]`/`#[PreDestroy]` above, and
 regardless of whether the factory's declared return type is a concrete class or an interface (the
 canonical hexagonal shape `#[Bean] fn(): SomePort`). Internally, the two shapes are **not** handled
-identically: a `#[Bean]` method whose declared return type is its own concrete class is registered in
-the same single, `#[Order]`-sorted boot sweep as every plain `#[Component]`'s listeners. A `#[Bean]`
-method returning an *interface* cannot be — `ContextScanner` never scans an interface, so there is
-nothing to find under that key at boot — so that case is instead recovered the moment the bean is
-actually built (mirroring the concrete-class capture `#[PostConstruct]`/`#[PreDestroy]` already use):
-eagerly, during `EagerSingletonsPass`, for a non-`#[Lazy]` bean — still well before the application
-ever dispatches a real event — or at first real use, for a `#[Lazy]` one. The net effect for your own
-code is the same as for lifecycle: you do not need to do anything differently for either shape. The
-one honest difference: a listener recovered this second way is not `#[Order]`-comparable against
-listeners the boot sweep already registered for the same event — it always ends up registered *after*
-them, regardless of its own `#[Order]` value, since it is discovered later than that sweep runs.
+identically, and the difference is a real correctness gap for the interface shape, not just a matter
+of registration order. A `#[Bean]` method whose declared return type is its own concrete class is
+registered in the same single, `#[Order]`-sorted boot sweep as every plain `#[Component]`'s listeners
+— **regardless of that bean's scope or `#[Lazy]`**, since the sweep reads the compiled manifest
+without resolving anything. A `#[Bean]` method returning an *interface* cannot be handled that way —
+`ContextScanner` never scans an interface, so there is nothing to find under that key at boot — so
+that case is instead recovered the moment the bean is actually built, and **only then**:
+
+- For the default case — `Scope::Singleton`, not `#[Lazy]` — the bean is resolved eagerly during
+  boot, but eager beans are resolved **one at a time, in a fixed order**, not all at once. If some
+  *other* eager bean's `#[PostConstruct]` publishes an event **before this bean's own turn in that
+  order arrives**, an interface-produced listener silently misses it — including a boot-time event
+  published this way, which a concrete-return listener always hears. Once its own turn has passed,
+  it hears every later event normally, including every request/response-cycle event your application
+  publishes afterwards.
+- For `#[Lazy] Scope::Singleton`, `Scope::Scoped`, and `Scope::Transient`, nothing resolves the bean
+  at boot at all, so the listener is **never registered and never fires** — silently, with no error
+  — unless your own code happens to resolve that bean through some other path first. A bean whose
+  only purpose is to listen for events is exactly the kind of bean nothing else ever injects, so in
+  practice this shape does not deliver events at all under these three scopes today.
+
+If you need an `#[AsEventListener]` on a `#[Bean]`-produced class to reliably receive every event —
+including ones published during boot — declare the factory's return type as the **concrete class**
+instead of an interface (this is the only variable that matters; everything else about the shape is
+identical), or resolve the bean yourself early enough that its listener is wired before the events you
+care about are published. A listener recovered via the interface path is also not `#[Order]`-comparable
+against listeners the boot sweep already registered for the same event, when it does end up
+registering — a secondary, narrower consequence of the same gap, not the gap itself.
 
 Three lifecycle events fire over the same port, at the times below. They are deliberately flat
 (`final readonly`, no shared base class) — Illuminate's dispatcher matches listeners against an event's

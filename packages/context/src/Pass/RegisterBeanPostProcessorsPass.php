@@ -72,9 +72,9 @@ use Illuminate\Contracts\Events\Dispatcher;
  * interface shape, but for THAT shape the sweep already found and registered the listener, so
  * registering it again here fired it twice per event; see registerLateBoundListeners()'s own
  * docblock for the full account). See registerLateBoundListeners()'s own docblock for the
- * registration-timing/#[Order] trade-off recovering the interface case implies, and
- * RegisterEventListenersPass's docblock for why this is NOT a second, parallel registration
- * mechanism.
+ * correctness gap (not merely a timing/#[Order] trade-off) recovering the interface case this way
+ * implies, and RegisterEventListenersPass's docblock for why this is NOT a second, parallel
+ * registration mechanism.
  *
  * BPP classes never post-process themselves into existence: they are resolved BEFORE any composite
  * extender is installed (so none of them can run through a chain, including their own, that does not
@@ -258,13 +258,29 @@ final class RegisterBeanPostProcessorsPass implements BootPass
      * where each new runtime class got its OWN key and both registered regardless of the guard —
      * exactly the opposite of what the prior version of this docblock claimed.
      *
-     * KNOWN, DISCLOSED LIMITATION — registration TIMING, not correctness: this runs at the bean's
-     * FIRST resolution (EagerSingletonsPass, for a non-#[Lazy] bean — still well before the
-     * application ever dispatches a real domain event — or first real use, for a #[Lazy] one),
-     * never in RegisterEventListenersPass's single #[Order]-sorted boot sweep. A listener recovered
-     * here therefore always ends up registered AFTER every listener that sweep already registered
-     * for the same event, regardless of its own #[Order] value — see docs/modules/context.md's
-     * Events section.
+     * MEASURED LIMITATION — a correctness gap, not merely a registration-TIMING quirk (M4 review #8,
+     * Important; corrects this docblock's prior claim that the recovery is "registration TIMING, not
+     * correctness" and that it runs "still well before the application ever dispatches a real domain
+     * event" — both false, execution-measured). This method runs at the bean's FIRST resolution —
+     * EagerSingletonsPass (900), for a non-#[Lazy] Scope::Singleton bean, or first real use, for every
+     * other shape — never in RegisterEventListenersPass's single #[Order]-sorted boot sweep (800).
+     * Two failure modes follow, both execution-measured (see LateBoundListenerBootEventTest and
+     * LateBoundListenerScopeMatrixTest):
+     *   - Scope::Singleton, eager (non-#[Lazy]): EagerSingletonsPass resolves eager beans one at a
+     *     time, in the MANIFEST's (order, abstract) order, so THIS bean's listener registers only
+     *     once its own turn in that loop arrives. An event published before that turn — e.g. from an
+     *     earlier eager bean's #[PostConstruct], including the exact boot-time event
+     *     EagerSingletonsPass's own class docblock names as the reason it runs after EventListeners
+     *     (800) — is silently missed. Any event published after that turn, including every post-boot
+     *     dispatch, is heard normally.
+     *   - #[Lazy] Scope::Singleton, Scope::Scoped, Scope::Transient: EagerSingletonsPass never
+     *     resolves any of these at boot, so unless application code happens to resolve the bean by
+     *     some other path first, this method never runs for it at all — the listener never registers
+     *     and never fires, silently, with no error, for the life of the worker/request.
+     * #[Order]-comparability against the boot sweep's listeners is a real, secondary consequence — a
+     * listener recovered here, when it does register, always lands after every listener the 800
+     * sweep already registered — but it is not the limitation; the two failure modes above are. See
+     * docs/modules/context.md's Events section for the user-facing account.
      *
      * @param  array<string, true>  $registered
      */
