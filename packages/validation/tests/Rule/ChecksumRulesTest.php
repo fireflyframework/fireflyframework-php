@@ -49,6 +49,7 @@ it('rejects invalid values with a message', function (ValidationRule $rule, mixe
     'iban bad csum' => [new Iban, 'DE89370400440532013001'],
     'iban garbage' => [new Iban, 'not-an-iban'],
     'bic short' => [new Bic, 'ABC'],
+    'swift short' => [new Swift, 'ABC'],
     'isin bad' => [new Isin, 'US0378331006'],
     'cusip bad' => [new Cusip, '037833101'],
     'routing bad' => [new RoutingNumber, '021000020'],
