@@ -60,4 +60,16 @@ it('rejects invalid values with a message', function (ValidationRule $rule, mixe
     'money zero' => [new PositiveMoney, '0'],
     'money 3dp' => [new PositiveMoney, '1.234'],
     'scale 2 over' => [new DecimalScale(2), '3.141'],
+    // Trailing-newline REJECT rows: a bare `$` matches before a trailing "\n" (PCRE without /D) and
+    // is_numeric("50\n") is true in PHP 8, so an otherwise-valid value with a trailing newline must
+    // NOT be accepted — locks in the /D anchoring and the Percentage strict-decimal guard.
+    'currency newline' => [new Currency, "EUR\n"],
+    'country newline' => [new CountryCode, "ES\n"],
+    'lang newline' => [new LanguageTag, "en-GB\n"],
+    'uuid newline' => [new Uuid, "9b2e4f7a-3c1d-4e5f-8a6b-0c1d2e3f4a5b\n"],
+    'e164 newline' => [new E164, "+14155552671\n"],
+    'postal newline' => [new PostalCode, "28013\n"],
+    'percentage newline' => [new Percentage, "50\n"],
+    'money newline' => [new PositiveMoney, "19.99\n"],
+    'scale newline' => [new DecimalScale(2), "3.14\n"],
 ]);

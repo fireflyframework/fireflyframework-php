@@ -19,7 +19,7 @@ final class CountryCode implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^[A-Z]{2}$/', $value) !== 1 || ! in_array($value, self::KNOWN, true)) {
+        if (! is_string($value) || preg_match('/^[A-Z]{2}$/D', $value) !== 1 || ! in_array($value, self::KNOWN, true)) {
             $fail('The :attribute must be a valid ISO 3166-1 alpha-2 country code.');
         }
     }

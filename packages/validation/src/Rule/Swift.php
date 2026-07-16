@@ -12,7 +12,7 @@ final class Swift implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', strtoupper($value)) !== 1) {
+        if (! is_string($value) || preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/D', strtoupper($value)) !== 1) {
             $fail('The :attribute must be a valid SWIFT code.');
         }
     }

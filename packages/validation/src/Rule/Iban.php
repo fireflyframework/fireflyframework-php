@@ -12,14 +12,18 @@ final class Iban implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value)) {
+        // IBANs are legitimately written with internal spaces for readability, but nothing else:
+        // restricting the RAW value to letters/digits/spaces (D-anchored) preserves that display
+        // tolerance while rejecting a trailing newline or any other control char BEFORE the \s+ strip
+        // below would silently swallow it — otherwise "GB82...\n" would checksum and pass as valid.
+        if (! is_string($value) || preg_match('/^[A-Za-z0-9 ]+$/D', $value) !== 1) {
             $fail('The :attribute must be a valid IBAN.');
 
             return;
         }
 
         $iban = strtoupper((string) preg_replace('/\s+/', '', $value));
-        if (preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/', $iban) !== 1) {
+        if (preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/D', $iban) !== 1) {
             $fail('The :attribute must be a valid IBAN.');
 
             return;

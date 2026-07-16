@@ -12,7 +12,7 @@ final class LanguageTag implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/', $value) !== 1) {
+        if (! is_string($value) || preg_match('/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/D', $value) !== 1) {
             $fail('The :attribute must be a valid BCP-47 language tag.');
         }
     }

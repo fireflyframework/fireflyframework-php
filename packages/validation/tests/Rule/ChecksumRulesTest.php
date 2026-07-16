@@ -54,4 +54,14 @@ it('rejects invalid values with a message', function (ValidationRule $rule, mixe
     'cusip bad' => [new Cusip, '037833101'],
     'routing bad' => [new RoutingNumber, '021000020'],
     'routing len' => [new RoutingNumber, '12345'],
+    // Trailing-newline REJECT rows: a bare `$` matches before a trailing "\n" (PCRE without /D), so
+    // an otherwise-valid value with a trailing newline must NOT be accepted — locks in the /D fix and
+    // the Iban/Luhn control-char guards so a newline-bearing identifier cannot reach validated().
+    'bic newline' => [new Bic, "DEUTDEFF\n"],
+    'swift newline' => [new Swift, "NEDSZAJJXXX\n"],
+    'isin newline' => [new Isin, "US0378331005\n"],
+    'cusip newline' => [new Cusip, "037833100\n"],
+    'routing newline' => [new RoutingNumber, "021000021\n"],
+    'iban newline' => [new Iban, "DE89370400440532013000\n"],
+    'luhn newline' => [new Luhn, "4111111111111111\n"],
 ]);

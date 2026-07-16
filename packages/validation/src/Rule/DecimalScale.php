@@ -16,8 +16,8 @@ final class DecimalScale implements ValidationRule
     {
         $normalized = is_int($value) || is_float($value) ? (string) $value : (is_string($value) ? $value : '');
         $pattern = $this->scale > 0
-            ? '/^-?\d+(\.\d{1,'.$this->scale.'})?$/'
-            : '/^-?\d+$/';
+            ? '/^-?\d+(\.\d{1,'.$this->scale.'})?$/D'
+            : '/^-?\d+$/D';
 
         if (preg_match($pattern, $normalized) !== 1) {
             $fail("The :attribute must be a decimal with at most {$this->scale} fractional digit(s).");

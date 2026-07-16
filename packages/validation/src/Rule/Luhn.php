@@ -18,6 +18,15 @@ final class Luhn implements ValidationRule
             return;
         }
 
+        // The \D strip below would silently drop a trailing newline (or any control char), so
+        // "…13\n" would checksum and pass. Reject control chars up front while still tolerating the
+        // legitimate space/dash separators of card-style input, which the \D strip normalises away.
+        if (is_string($value) && preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+            $fail('The :attribute must pass the Luhn checksum.');
+
+            return;
+        }
+
         $digits = (string) preg_replace('/\D/', '', (string) $value);
         if (strlen($digits) < 2) {
             $fail('The :attribute must pass the Luhn checksum.');

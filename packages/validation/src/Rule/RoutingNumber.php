@@ -13,7 +13,7 @@ final class RoutingNumber implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $normalized = is_int($value) ? (string) $value : (is_string($value) ? $value : '');
-        if (preg_match('/^\d{9}$/', $normalized) !== 1) {
+        if (preg_match('/^\d{9}$/D', $normalized) !== 1) {
             $fail('The :attribute must be a valid ABA routing number.');
 
             return;

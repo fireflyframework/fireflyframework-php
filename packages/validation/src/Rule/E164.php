@@ -12,7 +12,7 @@ final class E164 implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^\+[1-9]\d{1,14}$/', $value) !== 1) {
+        if (! is_string($value) || preg_match('/^\+[1-9]\d{1,14}$/D', $value) !== 1) {
             $fail('The :attribute must be a valid E.164 phone number.');
         }
     }

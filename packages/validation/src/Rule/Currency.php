@@ -18,7 +18,7 @@ final class Currency implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^[A-Z]{3}$/', $value) !== 1 || ! in_array($value, self::KNOWN, true)) {
+        if (! is_string($value) || preg_match('/^[A-Z]{3}$/D', $value) !== 1 || ! in_array($value, self::KNOWN, true)) {
             $fail('The :attribute must be a valid ISO 4217 currency code.');
         }
     }

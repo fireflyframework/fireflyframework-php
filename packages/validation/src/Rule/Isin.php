@@ -12,7 +12,7 @@ final class Isin implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (! is_string($value) || preg_match('/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/', strtoupper($value)) !== 1) {
+        if (! is_string($value) || preg_match('/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/D', strtoupper($value)) !== 1) {
             $fail('The :attribute must be a valid ISIN.');
 
             return;
