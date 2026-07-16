@@ -201,7 +201,7 @@ it('never registers an interface-produced Scope::Transient bean\'s listener more
 
     // TransientListenerPort is Scope::Transient (unlike ARM B's Scope::Singleton ListenerPort): every
     // make() call rebuilds a NEW CacheT and re-invokes the composite extender, which is what actually
-    // exercises the $registered[$concreteClass] dedupe guard. A prior version of this test resolved
+    // exercises the $registered[$declaredClass] dedupe guard. A prior version of this test resolved
     // the Scope::Singleton ListenerPort instead, whose second make() call is served from the
     // container's cached instance and never re-invokes the extender at all — so that version passed
     // identically with the guard deleted (see fault injection below). Resolving three times here is

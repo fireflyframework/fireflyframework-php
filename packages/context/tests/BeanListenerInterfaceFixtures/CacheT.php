@@ -14,7 +14,7 @@ use Firefly\Context\Event\AsEventListener;
  * `ListenerPort`), whose second `make()` call returns the cached instance and never re-invokes
  * anything. That is precisely why `BeanProducedInterfaceListenerTest`'s old "never registers ...
  * twice" test — built on the Singleton `ListenerPort` — could not fail even with the
- * `$registered[$concreteClass]` guard deleted: the extender it meant to re-trigger was never
+ * `$registered[$declaredClass]` guard deleted: the extender it meant to re-trigger was never
  * re-triggered at all. Resolving `TransientListenerPort::class` several times and dispatching ONE
  * event is what actually exercises the guard: with it, `'T:listener'` fires once per event no matter
  * how many times the bean was resolved beforehand; without it, it fires once MORE per resolution.
