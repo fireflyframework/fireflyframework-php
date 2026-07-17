@@ -12,6 +12,11 @@ final class DecimalScale implements ValidationRule
 {
     public function __construct(private readonly int $scale) {}
 
+    public function scale(): int
+    {
+        return $this->scale;
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $normalized = is_int($value) || is_float($value) ? (string) $value : (is_string($value) ? $value : '');
