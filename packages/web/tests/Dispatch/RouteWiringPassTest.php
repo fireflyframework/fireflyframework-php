@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Config\Config;
 use Firefly\Config\Profile\Profiles;
 use Firefly\Context\Boot\BootContext;
+use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
@@ -75,4 +76,11 @@ it('registers a matchable native route whose closure binds args and negotiates t
 
     expect($response->getStatusCode())->toBe(200)
         ->and(json_decode((string) $response->getContent(), true))->toBe(['id' => 7, 'view' => 'full', 'trace' => null]);
+});
+
+it('registers its native routes at the WiringPasses boot phase', function () {
+    // Guards the boot ordinal: the pass must fire at the instance stage (WiringPasses/1000), AFTER the
+    // ControllerDispatcher's deps are wired. Mutating phase() to any earlier phase (e.g. EagerSingletons)
+    // must fail here — otherwise a wrong phase ships green.
+    expect((new RouteWiringPass)->phase())->toBe(BootPhase::WiringPasses);
 });
