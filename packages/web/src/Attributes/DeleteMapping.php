@@ -19,4 +19,19 @@ final class DeleteMapping implements Mapping
     {
         return 'DELETE';
     }
+
+    public function path(): string
+    {
+        return $this->path;
+    }
+
+    public function status(): int
+    {
+        return $this->status;
+    }
+
+    public function name(): ?string
+    {
+        return $this->name;
+    }
 }

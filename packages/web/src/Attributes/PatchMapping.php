@@ -19,4 +19,19 @@ final class PatchMapping implements Mapping
     {
         return 'PATCH';
     }
+
+    public function path(): string
+    {
+        return $this->path;
+    }
+
+    public function status(): int
+    {
+        return $this->status;
+    }
+
+    public function name(): ?string
+    {
+        return $this->name;
+    }
 }

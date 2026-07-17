@@ -19,4 +19,19 @@ final class GetMapping implements Mapping
     {
         return 'GET';
     }
+
+    public function path(): string
+    {
+        return $this->path;
+    }
+
+    public function status(): int
+    {
+        return $this->status;
+    }
+
+    public function name(): ?string
+    {
+        return $this->name;
+    }
 }
