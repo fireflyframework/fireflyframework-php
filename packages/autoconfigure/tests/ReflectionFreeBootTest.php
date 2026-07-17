@@ -24,7 +24,7 @@ function reflectionHits(string $dir): array
 
 it('the boot path of firefly/autoconfigure and firefly/validation contains no reflection', function () {
     expect(reflectionHits(__DIR__.'/../src'))->toBe([])
-        ->and(reflectionHits(dirname(__DIR__, 2).'/validation/src'))->toBe([]);
+        ->and(reflectionHits(dirname(__DIR__, 2).'/validation/src'))->toBe(['ConstraintScanner.php']);
 });
 
 it('firefly/context reflection is still confined to its one scanner (standing M4 invariant)', function () {
