@@ -26,3 +26,6 @@ nav:
           - Application Context: modules/context.md
           - Auto-Configuration: modules/starters.md
           - Validation: modules/validation.md
+      - Web & API:
+          - Web Layer: modules/web.md
+          - Web Filters: modules/web-filters.md

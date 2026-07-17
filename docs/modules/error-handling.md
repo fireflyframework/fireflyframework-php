@@ -73,3 +73,29 @@ $payload  = $response->toArray(); // omits null/empty optionals
   "traceId": "..."
 }
 ```
+
+## Web rendering (M6)
+
+`firefly/web` ([Web Layer](web.md)) is the concrete renderer this document promised: every
+`FireflyException` thrown while handling a request is turned into an `application/problem+json` response
+by `Firefly\Web\Exception\ProblemDetailsRenderer`, via `ErrorResponse::fromException(...)`, at the
+exception's own `httpStatus()` — the shape is exactly the payload above, produced by the same
+kernel-level `ErrorResponse` this page documents. A generic (non-`FireflyException`) `Throwable` is
+first wrapped as a category-`Internal`, HTTP-500 `FireflyException` before being rendered the same way,
+whenever the request expects JSON (`$request->expectsJson()`).
+
+Before that generic rendering happens, LaraFly gives the application a chance to handle the exception
+itself:
+
+- **`#[ExceptionHandler(SomeException::class)]`** marks a method — on the throwing `#[RestController]`
+  itself, or on a **`#[ControllerAdvice]`** bean — as the renderer for a specific exception class (or any
+  of its subclasses).
+- A **controller-local** handler (declared directly on the controller that threw) always beats a
+  **global** `#[ControllerAdvice]` handler for the same exception.
+- Within whichever scope wins, the **most-specific** matching handler by class hierarchy is chosen — a
+  handler for a more-derived exception class outranks one for an ancestor class.
+- A matched handler's return value is content-negotiated like any other controller return, but rendered
+  at the **exception's** `httpStatus()` rather than the route's default status.
+- If no handler matches at any scope, the exception propagates to the RFC-7807 renderer described above —
+  so an unhandled 404/422/500 always still comes back as `application/problem+json`, never an uncaught
+  framework error page.
