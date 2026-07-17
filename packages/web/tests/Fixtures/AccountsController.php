@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Firefly\Web\Tests\Fixtures;
 
+use Firefly\Kernel\Exception\Business\BusinessException;
 use Firefly\Validation\Valid;
+use Firefly\Web\Attributes\ExceptionHandler;
 use Firefly\Web\Attributes\GetMapping;
 use Firefly\Web\Attributes\PathVariable;
 use Firefly\Web\Attributes\PostMapping;
@@ -33,5 +35,12 @@ final class AccountsController
     public function create(#[Valid] #[RequestBody] CreateAccountRequest $body): array
     {
         return ['iban' => $body->iban, 'owner' => $body->owner];
+    }
+
+    /** @return array<string,string> */
+    #[ExceptionHandler(BusinessException::class)]
+    public function onBusiness(BusinessException $e): array
+    {
+        return ['handled' => 'local-business'];
     }
 }

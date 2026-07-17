@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Firefly\Web\Route;
 
 use Firefly\Validation\Valid;
+use Firefly\Web\Attributes\ControllerAdvice;
+use Firefly\Web\Attributes\ExceptionHandler;
 use Firefly\Web\Attributes\Mapping;
 use Firefly\Web\Attributes\PathVariable;
 use Firefly\Web\Attributes\QueryParam;
@@ -13,6 +15,7 @@ use Firefly\Web\Attributes\RequestHeader;
 use Firefly\Web\Attributes\RequestMapping;
 use Firefly\Web\Attributes\RestController;
 use Firefly\Web\Attributes\UploadedFile;
+use Firefly\Web\Exception\ExceptionHandlerDescriptor;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionMethod;
@@ -58,6 +61,73 @@ final class RouteScanner
         }
 
         return $descriptors;
+    }
+
+    /**
+     * @param  array<string,string>  $psr4
+     * @return list<ExceptionHandlerDescriptor>
+     */
+    public function scanExceptionHandlers(array $psr4): array
+    {
+        $handlers = [];
+
+        foreach ($this->handlerClasses($psr4) as $class => $global) {
+            $reflection = new ReflectionClass($class);
+            foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+                foreach ($method->getAttributes(ExceptionHandler::class) as $attribute) {
+                    $handler = $attribute->newInstance();
+                    $handlers[] = new ExceptionHandlerDescriptor(
+                        exceptionClass: $handler->exceptionClass,
+                        handlerClass: $class,
+                        methodName: $method->getName(),
+                        global: $global,
+                    );
+                }
+            }
+        }
+
+        return $handlers;
+    }
+
+    /**
+     * @param  array<string,string>  $psr4
+     * @return array<class-string, bool> class => isGlobal (#[ControllerAdvice] => true; #[RestController] => false)
+     */
+    private function handlerClasses(array $psr4): array
+    {
+        $classes = [];
+        foreach ($psr4 as $prefix => $dir) {
+            $prefix = rtrim($prefix, '\\').'\\';
+            if (! is_dir($dir)) {
+                continue;
+            }
+            $realDir = rtrim((string) realpath($dir), DIRECTORY_SEPARATOR);
+            /** @var iterable<\SplFileInfo> $files */
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($realDir, \RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($files as $file) {
+                if (! $file->isFile() || $file->getExtension() !== 'php') {
+                    continue;
+                }
+                $relative = substr((string) $file->getRealPath(), strlen($realDir) + 1, -4);
+                $class = $prefix.str_replace(DIRECTORY_SEPARATOR, '\\', $relative);
+                if (! class_exists($class)) {
+                    continue;
+                }
+                $reflection = new ReflectionClass($class);
+                if ($reflection->isAbstract() || $reflection->isInterface()) {
+                    continue;
+                }
+                if ($reflection->getAttributes(ControllerAdvice::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
+                    /** @var class-string $class */
+                    $classes[$class] = true;
+                } elseif ($reflection->getAttributes(RestController::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
+                    /** @var class-string $class */
+                    $classes[$class] = false;
+                }
+            }
+        }
+
+        return $classes;
     }
 
     /**
