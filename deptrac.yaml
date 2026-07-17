@@ -26,6 +26,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/validation/src/.*
+    - name: Web
+      collectors:
+        - type: directory
+          value: packages/web/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -58,3 +62,13 @@ deptrac:
       - Container
       - AutoConfigure
       - Context
+
+    # Web is the HTTP layer: it triggers Bean Validation (=> Validation), assembles BeanDefinitions via
+    # AutoConfigure's seam, contributes Context passes, and reads Config. Validation must NOT depend on Web.
+    Web:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation

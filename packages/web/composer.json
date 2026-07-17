@@ -1,0 +1,30 @@
+{
+    "name": "firefly/web",
+    "description": "LaraFly web layer: #[RestController] routing compiled to a RouteManifest, parameter binding, #[Valid] interception, JSON-native content negotiation, RFC-7807 rendering, and an ordered WebFilter to Laravel-middleware chain.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/validation": "*@dev",
+        "illuminate/contracts": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Web\\WebServiceProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Web\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Web\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}
