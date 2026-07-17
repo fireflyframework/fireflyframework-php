@@ -70,6 +70,15 @@ it('breaks a q-value tie by Accept header order', function () {
         ->and($registry->findWriter('application/json, application/xml')?->mediaTypes()[0])->toBe('application/json');
 });
 
+it('honours q-value over header order, not header order over q-value', function () {
+    $registry = new MessageConverterRegistry([new JsonMessageConverter, fakeXmlConverter()]);
+
+    // json appears first in the header but has the lower q; xml has the higher q and must win.
+    // A naive first-token/header-order selector would incorrectly return json here.
+    expect($registry->findWriter('application/json;q=0.2, application/xml;q=0.9')?->mediaTypes())
+        ->toContain('application/xml');
+});
+
 it('falls back to the first converter when nothing matches Accept', function () {
     $registry = new MessageConverterRegistry([new JsonMessageConverter, fakeXmlConverter()]);
 
