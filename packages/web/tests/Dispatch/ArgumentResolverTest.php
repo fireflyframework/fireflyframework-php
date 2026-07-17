@@ -146,3 +146,45 @@ it('throws a ValidationException (=> 422) for an invalid #[Valid] body', functio
         ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
     ], $request, new Container);
 })->throws(ValidationException::class);
+
+it('throws MALFORMED_BODY (400), not an uncaught JsonException, for an empty request body', function () {
+    $request = Request::create('/accounts', 'POST', content: '');
+    $request->headers->set('Content-Type', 'application/json');
+
+    try {
+        resolverFor(CreateAccountRequest::class)->resolve([
+            ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
+        ], $request, new Container);
+        $this->fail('Expected InvalidRequestException');
+    } catch (InvalidRequestException $e) {
+        expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MALFORMED_BODY');
+    }
+});
+
+it('throws MALFORMED_BODY (400), not an uncaught JsonException, for a syntactically-broken request body', function () {
+    $request = Request::create('/accounts', 'POST', content: '{not json');
+    $request->headers->set('Content-Type', 'application/json');
+
+    try {
+        resolverFor(CreateAccountRequest::class)->resolve([
+            ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
+        ], $request, new Container);
+        $this->fail('Expected InvalidRequestException');
+    } catch (InvalidRequestException $e) {
+        expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MALFORMED_BODY');
+    }
+});
+
+it('still throws INVALID_REQUEST (400) via the is_array guard for valid-but-non-object JSON', function () {
+    $request = Request::create('/accounts', 'POST', content: '42');
+    $request->headers->set('Content-Type', 'application/json');
+
+    try {
+        resolverFor(CreateAccountRequest::class)->resolve([
+            ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
+        ], $request, new Container);
+        $this->fail('Expected InvalidRequestException');
+    } catch (InvalidRequestException $e) {
+        expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('INVALID_REQUEST');
+    }
+});

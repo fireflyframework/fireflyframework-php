@@ -107,8 +107,14 @@ final class ArgumentResolver
             throw new InvalidRequestException('Unsupported request Content-Type.', 'INVALID_REQUEST');
         }
 
-        /** @var mixed $decoded */
-        $decoded = $reader->read($request->getContent(), (string) $binding['type'], (string) $request->header('Content-Type', 'application/json'));
+        try {
+            /** @var mixed $decoded */
+            $decoded = $reader->read($request->getContent(), (string) $binding['type'], (string) $request->header('Content-Type', 'application/json'));
+        } catch (\JsonException $e) {
+            // Malformed/empty client JSON is a CLIENT error, not a server fault: convert the converter's
+            // JSON_THROW_ON_ERROR JsonException into a clean 400 instead of letting it surface as a 500.
+            throw new InvalidRequestException('Malformed request body.', 'MALFORMED_BODY', $e);
+        }
         if (! is_array($decoded)) {
             throw new InvalidRequestException('Malformed request body.', 'INVALID_REQUEST');
         }
