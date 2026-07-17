@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Web\Http;
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Kernel\Exception\Infrastructure\InfrastructureException;
 use Illuminate\Http\UploadedFile as IlluminateUploadedFile;
 
 /**
@@ -23,11 +24,16 @@ final readonly class UploadedFile
 
     public static function fromIlluminate(IlluminateUploadedFile $file): self
     {
+        $realPath = $file->getRealPath();
+        if ($realPath === false) {
+            throw new InfrastructureException('Uploaded file has no readable temporary path.');
+        }
+
         return new self(
             filename: $file->getClientOriginalName(),
             mimeType: (string) $file->getClientMimeType(),
             size: (int) $file->getSize(),
-            temporaryPath: (string) $file->getRealPath(),
+            temporaryPath: $realPath,
         );
     }
 
@@ -35,18 +41,28 @@ final readonly class UploadedFile
     {
         $data = file_get_contents($this->temporaryPath);
 
-        return $data === false ? '' : $data;
+        if ($data === false) {
+            throw new InfrastructureException("Could not read uploaded file at {$this->temporaryPath}.");
+        }
+
+        return $data;
     }
 
     public function store(string $directory, ?string $name = null): string
     {
-        if (! is_dir($directory) && ! mkdir($directory, 0o775, true) && ! is_dir($directory)) {
-            throw new ConfigurationException("Could not create upload directory {$directory}.");
+        $filename = $name ?? $this->filename;
+        if ($filename === '' || $filename === '.' || $filename === '..'
+            || str_contains($filename, '/') || str_contains($filename, '\\') || str_contains($filename, "\0")) {
+            throw new ConfigurationException("Refusing to store an uploaded file under an unsafe name: {$filename}.");
         }
 
-        $target = rtrim($directory, '/').'/'.($name ?? $this->filename);
+        if (! is_dir($directory) && ! mkdir($directory, 0o775, true) && ! is_dir($directory)) {
+            throw new InfrastructureException("Could not create upload directory {$directory}.");
+        }
+
+        $target = rtrim($directory, '/').'/'.$filename;
         if (file_put_contents($target, $this->contents()) === false) {
-            throw new ConfigurationException("Could not store uploaded file to {$target}.");
+            throw new InfrastructureException("Could not store uploaded file to {$target}.");
         }
 
         return $target;
