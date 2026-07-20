@@ -1,0 +1,28 @@
+{
+    "name": "firefly/resilience",
+    "description": "LaraFly resilience: cache-backed Retry, CircuitBreaker, RateLimiter, Fallback, Bulkhead and TimeLimiter primitives (a Resilience4j analog) driven by a config-built ResilienceRegistry.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "illuminate/cache": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Resilience\\ResilienceServiceProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Resilience\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Resilience\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

@@ -30,6 +30,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/web/src/.*
+    - name: Resilience
+      collectors:
+        - type: directory
+          value: packages/resilience/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -72,3 +76,13 @@ deptrac:
       - Context
       - AutoConfigure
       - Validation
+
+    # Resilience is a leaf capability: cache-backed primitives + a config-built registry. It reads Config,
+    # reuses Kernel infra exceptions, carries Container/Context attributes, and extends AutoConfigure's base.
+    # No capability layer (Web/Validation) may depend on it; it must not depend on them.
+    Resilience:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
