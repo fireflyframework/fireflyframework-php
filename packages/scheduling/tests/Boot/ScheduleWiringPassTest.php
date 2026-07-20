@@ -63,6 +63,29 @@ it('lazily registers each scheduled task only when a Schedule is resolved', func
         ->and($schedule->events()[0]->expression)->toBe('0 3 * * *'); // cron applied verbatim (default is '* * * * *')
 });
 
+it('applies the #[Scheduled] zone to the registered Event as its timezone', function () {
+    $container = new Container;
+    Container::setInstance($container);
+    $container->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
+    {
+        public function store($name = null)
+        {
+            return new CacheRepository(new ArrayStore);
+        }
+    });
+    $container->instance(DistributedLock::class, new NoneLock);
+    $container->instance(ScheduledManifest::class, new ScheduledManifest([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', cron: '0 3 * * *', zone: 'America/New_York'),
+    ]));
+
+    (new ScheduleWiringPass)->run(scheduleWiringContext($container));
+
+    $schedule = $container->make(Schedule::class); // resolving the Schedule fires the hook
+
+    expect($schedule->events())->toHaveCount(1)
+        ->and($schedule->events()[0]->timezone)->toBe('America/New_York'); // was captured but never applied
+});
+
 it('runs at the WiringPasses boot phase, order 0', function () {
     // Guards the ordinal: the deferred hook must be wired at the instance stage (WiringPasses/1000), after the
     // DistributedLock bean is resolvable. Mutating phase() to an earlier phase must fail here.

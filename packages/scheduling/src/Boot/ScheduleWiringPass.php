@@ -85,25 +85,28 @@ final class ScheduleWiringPass implements BootPass
     {
         if ($descriptor->cron !== null) {
             $event->cron($descriptor->cron);
+        } else {
+            // fixedRate/fixedDelay are parsed to seconds then mapped to the NEAREST native Laravel frequency.
+            // Laravel has no arbitrary-interval DSL, so a rate between the buckets rounds up to the next
+            // supported cadence; precise sub-minute / arbitrary-second scheduling is a documented known-latent
+            // until SP-5's cron shims.
+            $seconds = Duration::parse((string) ($descriptor->fixedRate ?? $descriptor->fixedDelay));
 
-            return;
+            match (true) {
+                $seconds <= 60.0 => $event->everyMinute(),
+                $seconds <= 300.0 => $event->everyFiveMinutes(),
+                $seconds <= 600.0 => $event->everyTenMinutes(),
+                $seconds <= 900.0 => $event->everyFifteenMinutes(),
+                $seconds <= 1800.0 => $event->everyThirtyMinutes(),
+                $seconds <= 3600.0 => $event->hourly(),
+                $seconds <= 86400.0 => $event->daily(),
+                default => $event->weekly(),
+            };
         }
 
-        // fixedRate/fixedDelay are parsed to seconds then mapped to the NEAREST native Laravel frequency. Laravel
-        // has no arbitrary-interval DSL, so a rate between the buckets rounds up to the next supported cadence;
-        // precise sub-minute / arbitrary-second scheduling is a documented known-latent until SP-5's cron shims.
-        $seconds = Duration::parse((string) ($descriptor->fixedRate ?? $descriptor->fixedDelay));
-
-        match (true) {
-            $seconds <= 60.0 => $event->everyMinute(),
-            $seconds <= 300.0 => $event->everyFiveMinutes(),
-            $seconds <= 600.0 => $event->everyTenMinutes(),
-            $seconds <= 900.0 => $event->everyFifteenMinutes(),
-            $seconds <= 1800.0 => $event->everyThirtyMinutes(),
-            $seconds <= 3600.0 => $event->hourly(),
-            $seconds <= 86400.0 => $event->daily(),
-            default => $event->weekly(),
-        };
+        if ($descriptor->zone !== null) {
+            $event->timezone($descriptor->zone);
+        }
     }
 
     private function lockTtl(ScheduledDescriptor $descriptor): float

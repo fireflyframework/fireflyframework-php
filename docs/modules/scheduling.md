@@ -96,10 +96,15 @@ final class Reconciliation
 }
 ```
 
-`initialDelay` and `zone` are accepted by the attribute and carried through the compiled descriptor
-(`ScheduledDescriptor`) for forward compatibility, but **`ScheduleWiringPass` does not yet apply either of
-them** to the registered Laravel `Event` — no initial-delay offset and no `->timezone()` call are wired in
-M7. Set them if you like for self-documentation, but they currently have no runtime effect.
+- **`zone`** — an IANA timezone name (e.g. `'America/New_York'`), applied to the registered `Event` via
+  Laravel's own `$event->timezone(...)` (`Illuminate\Console\Scheduling\ManagesFrequencies::timezone()`), so
+  the cron/frequency expression is evaluated in that timezone instead of the scheduler's default.
+
+`initialDelay` is accepted by the attribute and carried through the compiled descriptor
+(`ScheduledDescriptor`) for forward compatibility, but **`ScheduleWiringPass` does not yet apply it** to the
+registered Laravel `Event` — Laravel's frequency DSL has no native initial-delay-before-first-run primitive
+to wire it onto. Set it if you like for self-documentation, but it currently has no runtime effect (see
+[Known-latent](#known-latent)).
 
 ## Discovery: `ScheduledScanner` → `ScheduledManifest`
 
@@ -173,10 +178,11 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   supported cadences rounds up to the next one (`applyFrequency()`'s bucket table above), so e.g.
   `fixedRate: '7m'` runs `everyTenMinutes()`, not every 7 minutes. Precise cron generation and sub-minute
   scheduling are documented as landing with **SP-5**'s cron shims.
-- **`initialDelay` and `zone` are accepted but not yet applied.** As noted above, both attribute parameters
-  are captured through to the compiled descriptor but `ScheduleWiringPass` does not currently read either
-  one when registering the Laravel `Event` — no initial-delay offset, no explicit timezone is set on the
-  event (Laravel's scheduler default timezone applies).
+- **`initialDelay` is accepted but not yet applied.** As noted above, the attribute parameter is captured
+  through to the compiled descriptor but `ScheduleWiringPass` does not currently read it when registering the
+  Laravel `Event` — no initial-delay offset is set. Laravel's frequency DSL has no native way to express "run
+  once after an initial delay, then resume the normal cadence", so this is deferred to **SP-5** alongside the
+  cron shims above. (`zone` **is** applied — see `#[Scheduled]` above.)
 - **The app's `ScheduledManifest` compiles via `firefly:cache` — landing in M15.** Until then, an
   application supplies its compiled manifest inline (bind `ScheduledManifest` yourself, e.g. from a hand-run
   `ScheduledScanner` + `ScheduledManifestCompiler`, or bind descriptors directly) rather than through the
