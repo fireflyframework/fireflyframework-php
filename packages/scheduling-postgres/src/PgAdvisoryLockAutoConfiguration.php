@@ -13,11 +13,20 @@ use Firefly\Scheduling\Lock\DistributedLock;
 /**
  * Opts a DistributedLock bean into the Postgres advisory-lock backend, but ONLY when the app explicitly
  * asks for it via firefly.scheduling.lock.provider=postgres — installing this package is otherwise inert.
- * #[Order(1000)] matches SchedulingAutoConfiguration's own #[Order(1000)] default bean (which backs off via
- * #[ConditionalOnMissingBean] if this bean already bound DistributedLock).
+ *
+ * #[Order(900)] is DELIBERATELY lower than SchedulingAutoConfiguration's #[Order(1000)] default bean, and
+ * that gap is load-bearing, not cosmetic. When provider=postgres BOTH auto-configs are condition-eligible
+ * to supply DistributedLock: this one via #[ConditionalOnProperty], scheduling's via
+ * #[ConditionalOnMissingBean]. The incremental condition pass (Firefly\Context\Pass\ConditionPassTwoPass)
+ * evaluates auto-config definitions sorted by (class-level #[Order], then FQCN), lowest FIRST, and adds
+ * each survivor back to the registry before the next is evaluated. A lower #[Order] here GUARANTEES this
+ * bean registers DistributedLock first, so scheduling's #[ConditionalOnMissingBean] then deterministically
+ * sees it and backs off — the more-specific provider wins the race EXPLICITLY, independent of the FQCN
+ * tiebreak (which today happens to favour this class but must not be relied on: a rename or a shift in the
+ * sort would otherwise silently hand a provider=postgres app a NoneLock — no cross-node locking, no error).
  */
 #[Configuration]
-#[Order(1000)]
+#[Order(900)]
 final class PgAdvisoryLockAutoConfiguration
 {
     #[Bean]

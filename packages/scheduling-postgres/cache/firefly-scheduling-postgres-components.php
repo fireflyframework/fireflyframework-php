@@ -11,7 +11,7 @@ return [
         'name' => null,
         'scope' => 'Singleton',
         'primary' => false,
-        'order' => 1000,
+        'order' => 900,
         'qualifier' => null,
         'interfaces' => [
         ],
