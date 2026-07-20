@@ -2,6 +2,16 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.7] - 2026-07-17
+### Added
+- **`firefly/resilience`** — programmatic, cache-backed resilience: `ResilienceRegistry` (config-driven named
+  instances) + Retry, CircuitBreaker, RateLimiter, Bulkhead, TimeLimiter, Fallback; `Duration` parser;
+  `BulkheadFullException`; always-on auto-configuration.
+- **`firefly/scheduling`** — `DistributedLock` port with `NoneLock`/`CacheLock`; `#[Scheduled]` attribute +
+  `ScheduledScanner`/`ScheduledManifest`; `ScheduleWiringPass` (deferred, lock-guarded registration onto Laravel's
+  scheduler); config-selected lock backend.
+- **`firefly/scheduling-postgres`** — `PgAdvisoryLock` (session-scoped Postgres advisory lock), `#[ConditionalOnProperty]`-gated.
+
 ## [26.07.6] - 2026-07-17
 ### Added
 - **`firefly/web`** — the HTTP layer: `#[RestController]` (a `#[Component]` stereotype, so controllers get

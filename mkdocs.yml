@@ -29,3 +29,6 @@ nav:
       - Web & API:
           - Web Layer: modules/web.md
           - Web Filters: modules/web-filters.md
+      - Resilience & Scheduling:
+          - Resilience: modules/resilience.md
+          - Scheduling: modules/scheduling.md
