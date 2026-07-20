@@ -22,10 +22,8 @@ function schedulingReflectionHits(string $dir): array
     return $hits;
 }
 
-it('keeps firefly/scheduling free of boot-time attribute introspection until the scanner lands', function () {
-    // Task 8 ships no scanner yet, so the SOLE reflection site does not exist: the scan is empty. Task 10
-    // introduces packages/scheduling/src/Scanner/ScheduledScanner.php (the ONLY sanctioned reflection file in
-    // this package) and re-points this assertion to ['ScheduledScanner.php']. Docblocks count — no other
-    // scheduling/src file (comments included) may name ReflectionClass/ReflectionMethod/getAttributes.
-    expect(schedulingReflectionHits(__DIR__.'/../src'))->toBe([]);
+it('confines firefly/scheduling reflection to the single sanctioned ScheduledScanner', function () {
+    // ScheduledScanner is the SOLE sanctioned reflection site in packages/scheduling/src. Docblocks count —
+    // no other scheduling/src file (comments included) may name ReflectionClass/ReflectionMethod/getAttributes.
+    expect(schedulingReflectionHits(__DIR__.'/../src'))->toBe(['ScheduledScanner.php']);
 });
