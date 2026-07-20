@@ -36,3 +36,19 @@ it('shares one token bucket across separate store instances over one cache', fun
     expect($limiterA->tryAcquire())->toBeTrue()
         ->and($limiterB->tryAcquire())->toBeFalse(); // A drained the only token, in the shared cache
 });
+
+it('caps the refill at max-tokens no matter how long the bucket sat idle', function () {
+    $store = new InMemoryResilienceStore;
+    $key = 'rl:cap';
+
+    // Seed an empty bucket with a timestamp 1000s in the past. At refillRate 1000/s, an UNCAPPED refill
+    // would compute 0 + 1000 * 1000 = 1,000,000 tokens - far beyond maxTokens (2). If the cap were removed,
+    // a third acquisition would wrongly succeed after the first two drain only 2 of those tokens.
+    $store->put($key, ['tokens' => 0.0, 'ts' => microtime(true) - 1000.0]);
+
+    $limiter = new RateLimiter($key, $store, maxTokens: 2, refillRate: 1000.0);
+
+    expect($limiter->tryAcquire())->toBeTrue()
+        ->and($limiter->tryAcquire())->toBeTrue()
+        ->and($limiter->tryAcquire())->toBeFalse();
+});
