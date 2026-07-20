@@ -34,6 +34,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/resilience/src/.*
+    - name: Scheduling
+      collectors:
+        - type: directory
+          value: packages/scheduling/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -86,3 +90,15 @@ deptrac:
       - Config
       - Context
       - AutoConfigure
+
+    # Scheduling is a leaf capability: a DistributedLock port + adapters, a #[Scheduled] scanner/manifest, and a
+    # ScheduleWiringPass. It reads Config, reuses Kernel infra exceptions (CacheLock's unsupported-store guard),
+    # carries Container/Context attributes, extends AutoConfigure's base, and depends on Resilience for
+    # Duration::parse (fixed-rate/lock-ttl durations). No capability layer (Web/Validation) may depend on it.
+    Scheduling:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Resilience

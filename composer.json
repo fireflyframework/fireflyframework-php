@@ -11,6 +11,7 @@
         "firefly/context": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",
+        "firefly/scheduling": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev"
     },
@@ -32,6 +33,7 @@
             "Firefly\\Container\\Tests\\": "packages/container/tests/",
             "Firefly\\Context\\Tests\\": "packages/context/tests/",
             "Firefly\\Resilience\\Tests\\": "packages/resilience/tests/",
+            "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/"
         }
