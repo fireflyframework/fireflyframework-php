@@ -20,7 +20,8 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Firefly\\Scheduling\\SchedulingServiceProvider"
+                "Firefly\\Scheduling\\SchedulingServiceProvider",
+                "Firefly\\Scheduling\\SchedulingWiringProvider"
             ]
         }
     },
