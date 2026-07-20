@@ -38,6 +38,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/scheduling/src/.*
+    - name: SchedulingPostgres
+      collectors:
+        - type: directory
+          value: packages/scheduling-postgres/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -102,3 +106,15 @@ deptrac:
       - Context
       - AutoConfigure
       - Resilience
+
+    # SchedulingPostgres is the Postgres advisory-lock adapter for Scheduling's DistributedLock port: it ships
+    # in its own package (every backend its own package) so the core scheduling package stays free of the
+    # pdo_pgsql dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context
+    # attributes, extends AutoConfigure's base, and implements Scheduling's DistributedLock interface.
+    SchedulingPostgres:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Scheduling
