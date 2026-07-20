@@ -4,11 +4,22 @@ declare(strict_types=1);
 
 namespace Firefly\Resilience;
 
-use Firefly\Context\Boot\FireflyServiceProvider;
+use Firefly\AutoConfigure\AutoConfiguration;
 
 /**
- * The discovered resilience provider. Placeholder in Task 1 (contributes no passes, binds nothing) so the
- * package is green and discoverable; Task 7 re-parents it onto AutoConfiguration, pointing the engine at the
- * compiled manifests that describe ResilienceAutoConfiguration.
+ * The discovered resilience provider. Extending AutoConfiguration means its final register() records
+ * candidacy ONLY — it binds nothing and touches no kernel; the #[Configuration] bean-source is the separate
+ * ResilienceAutoConfiguration. The cache files are produced by firefly:cache (M15); they are committed here.
  */
-final class ResilienceServiceProvider extends FireflyServiceProvider {}
+final class ResilienceServiceProvider extends AutoConfiguration
+{
+    protected function componentManifestPath(): string
+    {
+        return __DIR__.'/../cache/firefly-resilience-components.php';
+    }
+
+    protected function contextManifestPath(): string
+    {
+        return __DIR__.'/../cache/firefly-resilience-context.php';
+    }
+}
