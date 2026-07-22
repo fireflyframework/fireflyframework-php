@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Data\Scanner;
 
 use Firefly\Data\Proxy\ProxyMethod;
+use Firefly\Data\Proxy\UnsupportedTransactionalMethodException;
 use Firefly\Data\Repository\Attributes\Query;
 use Firefly\Data\Transaction\Attributes\Transactional;
 use Firefly\Data\Transaction\TransactionalDescriptor;
@@ -81,6 +82,10 @@ final class TransactionalScanner
      * effective descriptor plus its rendered signature (param source, call args, return type). This is the ONLY
      * place signatures are reflected, keeping ProxyClassGenerator free of the reflection substrings.
      *
+     * Known-latent: by-reference parameters (`&$out`) are NOT supported on #[Transactional] methods — the proxy's
+     * arrow-closure captures them by value, silently dropping the writeback. Such a method throws
+     * UnsupportedTransactionalMethodException here (fail-loud at scan time); wrap the value in an object/DTO.
+     *
      * @param  array<string,string>  $psr4
      * @return array<class-string, array<string, ProxyMethod>>
      */
@@ -104,7 +109,7 @@ final class TransactionalScanner
                     continue;
                 }
 
-                [$paramSource, $argSource] = $this->renderParameters($method);
+                [$paramSource, $argSource] = $this->renderParameters($method, $class);
                 $methods[$method->getName()] = new ProxyMethod(
                     name: $method->getName(),
                     paramSource: $paramSource,
@@ -123,17 +128,26 @@ final class TransactionalScanner
     }
 
     /**
+     * By-reference parameters FAIL LOUD here (compile-time): the generated override would wrap the call in
+     * `fn () => parent::m($p)`, an arrow closure that captures `$p` BY VALUE, so a by-ref writeback would be
+     * silently dropped. isPassedByReference() is a ReflectionParameter method, so this detection MUST stay in
+     * this sanctioned scanner (the generator/exception remain reflection-free).
+     *
+     * @param  class-string  $class
      * @return array{0: string, 1: string} [paramSource, argSource]
      */
-    private function renderParameters(ReflectionMethod $method): array
+    private function renderParameters(ReflectionMethod $method, string $class): array
     {
         $params = [];
         $args = [];
 
         foreach ($method->getParameters() as $parameter) {
+            if ($parameter->isPassedByReference()) {
+                throw UnsupportedTransactionalMethodException::byReferenceParameter($class, $method->getName(), $parameter->getName());
+            }
+
             $piece = $this->renderType($parameter->getType());
             $piece = $piece === '' ? '' : $piece.' ';
-            $piece .= $parameter->isPassedByReference() ? '&' : '';
             $piece .= $parameter->isVariadic() ? '...' : '';
             $piece .= '$'.$parameter->getName();
 

@@ -18,6 +18,13 @@ use Firefly\Data\Transaction\TransactionInterceptor;
  * __fireflyTxDescriptor() built from baked-in literals; it declares NO constructor (the ProxyFactory instantiates
  * it via newInstanceWithoutConstructor). Generated classes are app artifacts (firefly:cache, M15); load() writes
  * + requires them for tests.
+ *
+ * Known-latent signature edges (rare; the scanner renders `self`/`static`/`never` correctly): a method declared
+ * with a `: parent` return type resolves `parent` against the PROXY's parent (the target class) rather than the
+ * target's own parent, so it may bind to the wrong class; likewise a parameter default that references a
+ * cross-namespace class constant (e.g. `= OtherNs\Thing::CONST`) is rendered verbatim and may not resolve in the
+ * generated proxy's namespace. Wrap the value or use a fully-qualified constant if you hit these. By-reference
+ * parameters are rejected outright at scan time (see UnsupportedTransactionalMethodException).
  */
 final class ProxyClassGenerator
 {

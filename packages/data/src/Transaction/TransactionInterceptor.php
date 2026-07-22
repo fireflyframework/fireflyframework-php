@@ -10,8 +10,12 @@ use Closure;
  * The thin advice the generated proxy calls: run() wraps a `parent::method(...)` closure in the transaction
  * semantics by delegating to the TransactionTemplate (the single source of truth). Held by the proxy in a
  * private $__fireflyTxInterceptor property set by the ProxyFactory.
+ *
+ * NOT `final`: it is designed to be extended (a recording spy proves the generated override actually ROUTES
+ * through run() rather than calling parent:: directly; future advice composition may decorate it). The concrete
+ * type is what the generated proxy's typed property accepts, so any stand-in must be a subclass.
  */
-final class TransactionInterceptor
+class TransactionInterceptor
 {
     public function __construct(private readonly TransactionTemplate $template) {}
 
