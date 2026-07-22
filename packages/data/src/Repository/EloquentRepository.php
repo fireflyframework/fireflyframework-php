@@ -401,6 +401,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     }
 
     /**
+     * Paged variant: the specification is applied to a fresh builder twice — once for the total count, once for the
+     * sorted slice — for the same `Specification<Model>` / `narrow()`-at-terminal reason as findBySpecification.
+     *
      * @param  Specification<Model>  $specification
      * @return Page<TModel>
      */

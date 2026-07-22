@@ -64,3 +64,11 @@ it('pages a specification with correct totals', function () use ($amountAbove100
         ->and($page->totalPages())->toBe(2)
         ->and($page->hasNext())->toBeTrue();
 });
+
+it('folds zero specifications to the match-all identity', function () {
+    // Specifications::allOf() with no arguments is the empty AND — no constraints, every row. This exercises the
+    // matchAll() identity path; a matchAll() that constrained anything (WHERE false / a stray column) drops the count.
+    $rows = (new RecordRepository)->findBySpecification(Specifications::allOf());
+
+    expect($rows)->toHaveCount(4);
+});
