@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Firefly\Data\Repository;
 
+use BadMethodCallException;
+use Firefly\Data\Repository\Query\DerivedQueryParser;
+use Firefly\Data\Repository\Query\ParsedQuery;
+use Firefly\Data\Repository\Query\Predicate;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 
 /**
  * The Eloquent-backed base for a #[Repository]. A concrete repository sets `protected string $model = X::class;`
@@ -28,6 +33,250 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     protected string $model;
 
     public function __construct(protected readonly ?TransactionalManifest $manifest = null) {}
+
+    /** @var array<string, ParsedQuery> */
+    private static array $parsedCache = [];
+
+    /**
+     * The dynamic entry for UNDECLARED derived-query methods (declared #[Query] methods call dispatchQuery directly).
+     *
+     * @param  list<mixed>  $args
+     */
+    public function __call(string $method, array $args): mixed
+    {
+        return $this->dispatchQuery($method, $args);
+    }
+
+    /**
+     * The single dispatcher shared by __call (derived) and declared #[Query] method bodies: explicit SQL from the
+     * manifest wins; otherwise the method name is parsed into a derived query and drives the Builder.
+     *
+     * @param  list<mixed>  $args
+     */
+    protected function dispatchQuery(string $method, array $args): mixed
+    {
+        $queries = $this->manifest?->queriesFor(static::class) ?? [];
+        if (isset($queries[$method])) {
+            return $this->runExplicitQuery($queries[$method]['sql'], $args);
+        }
+
+        try {
+            $parsed = self::$parsedCache[$method] ??= DerivedQueryParser::parse($method);
+        } catch (InvalidArgumentException $e) {
+            throw new BadMethodCallException(
+                sprintf('%s::%s() is neither a #[Query] method nor a parseable derived query.', static::class, $method),
+                0,
+                $e,
+            );
+        }
+
+        return $this->driveDerivedQuery($parsed, $args);
+    }
+
+    /**
+     * Run explicit #[Query] SQL. Named `:placeholders` are rewritten to positional `?` in appearance order and the
+     * method arguments bind positionally (name-based binding needs param metadata — deferred; positional works now).
+     *
+     * @param  list<mixed>  $args
+     * @return list<array<string, mixed>>
+     */
+    protected function runExplicitQuery(string $sql, array $args): array
+    {
+        $normalized = (string) preg_replace('/:[A-Za-z_][A-Za-z0-9_]*/', '?', $sql);
+        $rows = (new $this->model)->getConnection()->select($normalized, $args);
+
+        return array_values(array_map(self::rowToArray(...), $rows));
+    }
+
+    /**
+     * Turn a raw DB row (a stdClass from the default PDO fetch) into a column => value map with string keys.
+     *
+     * @return array<string, mixed>
+     */
+    private static function rowToArray(mixed $row): array
+    {
+        $columns = [];
+        if (is_object($row)) {
+            foreach (get_object_vars($row) as $name => $value) {
+                $columns[(string) $name] = $value;
+            }
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @param  list<mixed>  $args
+     */
+    protected function driveDerivedQuery(ParsedQuery $parsed, array $args): mixed
+    {
+        $query = $this->query();
+        $cursor = 0;
+
+        foreach ($parsed->predicates as $index => $predicate) {
+            $boolean = $index === 0 ? 'and' : strtolower($parsed->connectors[$index - 1]);
+            $cursor = $this->applyPredicate($query, $predicate, $args, $cursor, $boolean);
+        }
+
+        foreach ($parsed->orders as $order) {
+            $query->orderBy($order->field, $order->dir);
+        }
+
+        if ($parsed->distinct) {
+            $query->distinct();
+        }
+
+        if ($parsed->top !== null) {
+            $query->limit($parsed->top);
+        }
+
+        return match ($parsed->prefix) {
+            'count' => $query->count(),
+            'exists' => $query->exists(),
+            'delete' => $query->delete(),
+            'find' => $parsed->top === 1
+                ? $query->first()
+                : array_values($query->get()->all()),
+        };
+    }
+
+    /**
+     * Bind a predicate to the Builder and return the advanced argument cursor. IgnoreCase routes the equality /
+     * LIKE family through `LOWER(col) op LOWER(?)`; the column comes from a compile-time method name (never user
+     * input), so the raw fragment is safe.
+     *
+     * @param  Builder<Model>  $query
+     * @param  list<mixed>  $args
+     */
+    private function applyPredicate(Builder $query, Predicate $predicate, array $args, int $cursor, string $boolean): int
+    {
+        $column = $predicate->field;
+
+        if ($predicate->ignoreCase
+            && in_array($predicate->op, ['Equals', 'Not', 'Like', 'NotLike', 'Containing', 'StartingWith', 'EndingWith'], true)
+        ) {
+            $sqlOp = match ($predicate->op) {
+                'Not' => '!=',
+                'NotLike' => 'not like',
+                'Like', 'Containing', 'StartingWith', 'EndingWith' => 'like',
+                default => '=',
+            };
+            // The column is a compile-time method-name token (never user input), so the LOWER(col) fragment is safe.
+            // whereRaw types $sql as literal-string; a runtime-built column cannot be literal, so we suppress it here.
+            // @phpstan-ignore argument.type
+            $query->whereRaw("LOWER({$column}) {$sqlOp} LOWER(?)", [self::likeValue($predicate->op, $args[$cursor])], $boolean);
+
+            return $cursor + 1;
+        }
+
+        switch ($predicate->op) {
+            case 'Between':
+                $query->whereBetween($column, [$args[$cursor], $args[$cursor + 1]], $boolean);
+
+                return $cursor + 2;
+            case 'In':
+                $query->whereIn($column, self::toList($args[$cursor]), $boolean);
+
+                return $cursor + 1;
+            case 'NotIn':
+                $query->whereIn($column, self::toList($args[$cursor]), $boolean, true);
+
+                return $cursor + 1;
+            case 'IsNull':
+                $query->whereNull($column, $boolean);
+
+                return $cursor;
+            case 'IsNotNull':
+                $query->whereNotNull($column, $boolean);
+
+                return $cursor;
+            case 'True':
+                $query->where($column, '=', true, $boolean);
+
+                return $cursor;
+            case 'False':
+                $query->where($column, '=', false, $boolean);
+
+                return $cursor;
+            case 'Like':
+                $query->where($column, 'like', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'NotLike':
+                $query->where($column, 'not like', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'Containing':
+                $query->where($column, 'like', self::likeValue('Containing', $args[$cursor]), $boolean);
+
+                return $cursor + 1;
+            case 'StartingWith':
+                $query->where($column, 'like', self::likeValue('StartingWith', $args[$cursor]), $boolean);
+
+                return $cursor + 1;
+            case 'EndingWith':
+                $query->where($column, 'like', self::likeValue('EndingWith', $args[$cursor]), $boolean);
+
+                return $cursor + 1;
+            case 'GreaterThan':
+                $query->where($column, '>', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'GreaterThanEqual':
+                $query->where($column, '>=', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'LessThan':
+                $query->where($column, '<', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'LessThanEqual':
+                $query->where($column, '<=', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            case 'Not':
+                $query->where($column, '!=', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+            default: // Equals
+                $query->where($column, '=', $args[$cursor], $boolean);
+
+                return $cursor + 1;
+        }
+    }
+
+    /**
+     * @return list<mixed>
+     */
+    private static function toList(mixed $value): array
+    {
+        return is_array($value) ? array_values($value) : [$value];
+    }
+
+    private static function likeValue(string $op, mixed $value): string
+    {
+        $string = self::stringify($value);
+
+        return match ($op) {
+            'Containing' => '%'.$string.'%',
+            'StartingWith' => $string.'%',
+            'EndingWith' => '%'.$string,
+            default => $string,
+        };
+    }
+
+    /**
+     * Coerce a bound predicate argument to a string for a LIKE / IgnoreCase comparison. A non-scalar,
+     * non-Stringable argument is a caller error (the derived-query grammar expects scalar bindings).
+     */
+    private static function stringify(mixed $value): string
+    {
+        if (is_scalar($value) || $value instanceof \Stringable) {
+            return (string) $value;
+        }
+
+        throw new InvalidArgumentException('A LIKE/IgnoreCase predicate argument must be scalar or Stringable.');
+    }
 
     /**
      * @param  TModel  $entity
