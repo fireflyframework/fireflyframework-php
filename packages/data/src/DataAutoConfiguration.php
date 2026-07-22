@@ -8,6 +8,9 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Data\Domain\AggregateTracker;
+use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
@@ -25,10 +28,24 @@ use Firefly\Data\Transaction\TransactionTemplate;
 final class DataAutoConfiguration
 {
     #[Bean]
-    #[ConditionalOnMissingBean(TransactionTemplate::class)]
-    public function transactionTemplate(): TransactionTemplate
+    #[ConditionalOnMissingBean(AggregateTracker::class)]
+    public function aggregateTracker(): AggregateTracker
     {
-        return new TransactionTemplate;
+        return new AggregateTracker;
+    }
+
+    #[Bean]
+    #[ConditionalOnMissingBean(DomainEventDispatcher::class)]
+    public function domainEventDispatcher(AggregateTracker $tracker, ApplicationEventPublisher $publisher): DomainEventDispatcher
+    {
+        return new DomainEventDispatcher($tracker, $publisher);
+    }
+
+    #[Bean]
+    #[ConditionalOnMissingBean(TransactionTemplate::class)]
+    public function transactionTemplate(DomainEventDispatcher $dispatcher): TransactionTemplate
+    {
+        return new TransactionTemplate($dispatcher);
     }
 
     #[Bean]

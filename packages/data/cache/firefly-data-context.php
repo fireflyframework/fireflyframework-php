@@ -17,6 +17,28 @@ return [
         ],
         'beanConditions' => [
             0 => [
+                'method' => 'aggregateTracker',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Domain\\AggregateTracker',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'domainEventDispatcher',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
                 'method' => 'transactionTemplate',
                 'conditions' => [
                     0 => [
@@ -27,7 +49,7 @@ return [
                     ],
                 ],
             ],
-            1 => [
+            3 => [
                 'method' => 'transactionInterceptor',
                 'conditions' => [
                     0 => [
@@ -38,7 +60,7 @@ return [
                     ],
                 ],
             ],
-            2 => [
+            4 => [
                 'method' => 'transactionalManifest',
                 'conditions' => [
                     0 => [
@@ -49,7 +71,7 @@ return [
                     ],
                 ],
             ],
-            3 => [
+            5 => [
                 'method' => 'proxyFactory',
                 'conditions' => [
                     0 => [

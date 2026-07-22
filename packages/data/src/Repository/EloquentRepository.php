@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Firefly\Data\Repository;
 
 use BadMethodCallException;
+use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
 use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\TransactionalManifest;
+use Firefly\Domain\RecordsDomainEvents;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
@@ -34,7 +38,10 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     /** @var class-string<TModel> */
     protected string $model;
 
-    public function __construct(protected readonly ?TransactionalManifest $manifest = null) {}
+    public function __construct(
+        protected readonly ?TransactionalManifest $manifest = null,
+        protected readonly ?AggregateTracker $tracker = null,
+    ) {}
 
     /** @var array<string, ParsedQuery> */
     private static array $parsedCache = [];
@@ -283,14 +290,36 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     }
 
     /**
-     * @param  TModel  $entity
-     * @return TModel
+     * Persist $entity if it is an Eloquent Model, and register it for after-commit domain-event dispatch if it
+     * records domain events while a transaction is active ON ITS OWN CONNECTION (the one it is written on). A
+     * Model that also `use HasDomainEvents implements RecordsDomainEvents` hits BOTH arms — one object, persisted
+     * AND tracked. Restores the simple TEntity in/out signature (no conditional/union widening): the local
+     * `@template TEntity of object` widens the port's `save(TModel): TModel` so a pure aggregate can also flow
+     * through, while the return stays exactly the passed type — PHPStan-max clean.
+     *
+     * @template TEntity of object
+     *
+     * @param  TEntity  $entity
+     * @return TEntity
      */
     public function save(object $entity): object
     {
-        $entity->save();
+        if ($entity instanceof Model) {
+            $entity->save();
+        }
+
+        if ($entity instanceof RecordsDomainEvents
+            && $this->tracker !== null
+            && $this->connectionFor($entity)->transactionLevel() > 0) {
+            $this->tracker->track($entity);
+        }
 
         return $entity;
+    }
+
+    private function connectionFor(object $entity): Connection
+    {
+        return $entity instanceof Model ? $entity->getConnection() : DB::connection();
     }
 
     /**

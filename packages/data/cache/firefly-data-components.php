@@ -17,6 +17,24 @@ return [
         ],
         'beans' => [
             0 => [
+                'method' => 'aggregateTracker',
+                'returns' => 'Firefly\\Data\\Domain\\AggregateTracker',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+            ],
+            1 => [
+                'method' => 'domainEventDispatcher',
+                'returns' => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+            ],
+            2 => [
                 'method' => 'transactionTemplate',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionTemplate',
                 'name' => null,
@@ -25,7 +43,7 @@ return [
                 'order' => 0,
                 'lazy' => false,
             ],
-            1 => [
+            3 => [
                 'method' => 'transactionInterceptor',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionInterceptor',
                 'name' => null,
@@ -34,7 +52,7 @@ return [
                 'order' => 0,
                 'lazy' => false,
             ],
-            2 => [
+            4 => [
                 'method' => 'transactionalManifest',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionalManifest',
                 'name' => null,
@@ -43,7 +61,7 @@ return [
                 'order' => 0,
                 'lazy' => false,
             ],
-            3 => [
+            5 => [
                 'method' => 'proxyFactory',
                 'returns' => 'Firefly\\Data\\Proxy\\ProxyFactory',
                 'name' => null,

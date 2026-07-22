@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Data\Transaction;
 
 use Closure;
+use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Data\Transaction\Exception\TransactionNotAllowedException;
 use Firefly\Data\Transaction\Exception\TransactionRequiredException;
 use Illuminate\Database\Connection;
@@ -23,6 +24,8 @@ use Throwable;
  */
 final class TransactionTemplate
 {
+    public function __construct(private readonly ?DomainEventDispatcher $dispatcher = null) {}
+
     /**
      * @template T
      *
@@ -61,6 +64,12 @@ final class TransactionTemplate
         try {
             $result = $work();
         } catch (Throwable $e) {
+            if ($outermost) {
+                // Queue after-commit events BEFORE resolving the tx, on THIS descriptor's connection: Laravel fires
+                // them on that connection's commit, discards on rollBack.
+                $this->dispatcher?->dispatchAfterCommit($d->connection);
+            }
+
             if ($this->shouldRollBack($e, $d)) {
                 $connection->rollBack();
             } else {
@@ -68,6 +77,10 @@ final class TransactionTemplate
             }
 
             throw $e;
+        }
+
+        if ($outermost) {
+            $this->dispatcher?->dispatchAfterCommit($d->connection);
         }
 
         $connection->commit();
