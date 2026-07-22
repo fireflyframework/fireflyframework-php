@@ -42,6 +42,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/scheduling-postgres/src/.*
+    - name: Domain
+      collectors:
+        - type: directory
+          value: packages/domain/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -118,3 +122,8 @@ deptrac:
       - Context
       - AutoConfigure
       - Scheduling
+
+    # Domain is the pure DDD base: Entity / ValueObject / AggregateRoot / DomainEvent. It carries no framework
+    # dependency (Kernel is permitted but deliberately unused). NOTHING may depend on Domain except Data.
+    Domain:
+      - Kernel

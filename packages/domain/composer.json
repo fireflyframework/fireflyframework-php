@@ -1,0 +1,13 @@
+{
+    "name": "firefly/domain",
+    "description": "LaraFly domain: DDD building blocks — Entity, ValueObject, AggregateRoot, DomainEvent. Pure PHP, zero framework dependencies.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3"
+    },
+    "autoload": { "psr-4": { "Firefly\\Domain\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Domain\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}
