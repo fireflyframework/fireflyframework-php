@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Data\Scanner\TransactionalScanner;
+use Firefly\Data\Tests\Fixtures\Transactional\PlainService;
 use Firefly\Data\Tests\Fixtures\Transactional\TransferService;
 use Firefly\Data\Transaction\Propagation;
 use Firefly\Data\Transaction\TransactionalManifest;
@@ -42,4 +43,12 @@ it('captures #[Query] methods into the manifest', function () {
     expect($manifest->queriesFor(TransferService::class))->toBe([
         'findByName' => ['sql' => 'select * from accounts where name = :name', 'native' => false],
     ]);
+});
+
+it('excludes a class with no #[Transactional] methods from the proxy manifest', function () {
+    $manifest = (new TransactionalScanner)->scan(transactionalFixtures());
+
+    expect($manifest->hasProxyFor(PlainService::class))->toBeFalse()
+        ->and($manifest->all())->not->toHaveKey(PlainService::class)
+        ->and($manifest->hasProxyFor(TransferService::class))->toBeTrue();
 });
