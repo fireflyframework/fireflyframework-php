@@ -8,6 +8,7 @@ use Firefly\Data\Transaction\Isolation;
 use Firefly\Data\Transaction\Propagation;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use RuntimeException;
 
 /**
  * Emits `final class {Short}__FireflyTransactionalProxy extends \{Target}` source in the target's namespace,
@@ -28,6 +29,12 @@ use Firefly\Data\Transaction\TransactionInterceptor;
  */
 final class ProxyClassGenerator
 {
+    /**
+     * Per-process private directory for materialised proxy sources — created once, lazily, with an unpredictable
+     * name and 0700 permissions (see proxyDir()). Static so repeated load() calls in one process share it.
+     */
+    private static ?string $proxyDir = null;
+
     /**
      * @param  array<string, ProxyMethod>  $methods
      */
@@ -72,16 +79,40 @@ final class ProxyClassGenerator
             return $proxyClass;
         }
 
-        $dir = sys_get_temp_dir().'/firefly-transactional-proxies';
-        if (! is_dir($dir)) {
-            mkdir($dir, 0o775, true);
-        }
+        $file = $this->proxyDir().'/'.str_replace('\\', '_', $targetClass).'.php';
 
-        $file = $dir.'/'.str_replace('\\', '_', $targetClass).'.php';
-        file_put_contents($file, $this->generate($targetClass, $methods));
+        // Open with 'x' (O_CREAT|O_EXCL): the create fails rather than following a symlink or reusing a
+        // pre-existing file, closing the classic shared-/tmp symlink + write/require TOCTOU vector. Combined
+        // with the private 0700 per-process directory below, an attacker has neither a predictable path to
+        // pre-seat nor write access to the directory. We only ever require a file we just created here.
+        $handle = fopen($file, 'xb');
+        if ($handle === false) {
+            throw new RuntimeException("Could not safely create transactional proxy file [{$file}].");
+        }
+        fwrite($handle, $this->generate($targetClass, $methods));
+        fclose($handle);
         require $file;
 
         return $proxyClass;
+    }
+
+    /**
+     * The private, unpredictable, owner-only directory generated proxy sources are written to. A random suffix
+     * means the path cannot be pre-created by another user, and 0700 means only this process's user can read or
+     * write inside it. Created once per process and reused.
+     */
+    private function proxyDir(): string
+    {
+        if (self::$proxyDir !== null) {
+            return self::$proxyDir;
+        }
+
+        $dir = sys_get_temp_dir().'/firefly-transactional-proxies-'.bin2hex(random_bytes(8));
+        if (! mkdir($dir, 0o700, true) && ! is_dir($dir)) {
+            throw new RuntimeException("Could not create private transactional proxy directory [{$dir}].");
+        }
+
+        return self::$proxyDir = $dir;
     }
 
     private function renderOverride(ProxyMethod $method): string
