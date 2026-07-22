@@ -23,7 +23,7 @@ function dataReflectionHits(string $dir): array
 }
 
 it('confines firefly/data reflection to the sanctioned scanner + factory', function () {
-    // Nothing reflects yet. Task 5 adds TransactionalScanner.php; Task 7 adds ProxyFactory.php.
+    // TransactionalScanner is the sole sanctioned SCAN reflection site. Task 7 adds ProxyFactory.php.
     // Final expected value: ['ProxyFactory.php', 'TransactionalScanner.php'] (sorted).
-    expect(dataReflectionHits(__DIR__.'/../src'))->toBe([]);
+    expect(dataReflectionHits(__DIR__.'/../src'))->toBe(['TransactionalScanner.php']);
 });
