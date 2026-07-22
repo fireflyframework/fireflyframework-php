@@ -2,6 +2,20 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.8] - 2026-07-22
+### Added
+- **`firefly/domain`** — the DDD base: `Entity` (identity equality), `ValueObject` + `ValueObjectEquality`,
+  `AggregateRoot` (pending domain-event buffer: `raiseEvent`/`pendingEvents`/`pullEvents`/`clearEvents`), and a
+  reflection-free `DomainEvent` (uuid `eventId` / `occurredAt` / `eventType`).
+- **`firefly/data`** — repositories (`CrudRepository`/`PagingAndSortingRepository` ports + `EloquentRepository`),
+  extended-Spring derived queries (`DerivedQueryParser` + `__call` dispatch) with a `#[Query]` escape hatch,
+  `Specification` composition + `Page`/`Pageable`/`Sort` pagination, and soft-delete/auditing/optimistic-locking
+  support. The declarative `#[Transactional]` interception core — `TransactionalScanner`→`TransactionalManifest`,
+  a reflection-free `ProxyClassGenerator` + state-preserving `ProxyFactory`, `TransactionInterceptor`/
+  `TransactionTemplate` over MANUAL `DB` begin/commit/rollBack (all 7 propagation modes, `rollbackFor`/
+  `noRollbackFor`), and a `TransactionalBeanPostProcessor` wired via the M4 seam at phase 700. Auto after-commit
+  domain-event dispatch (`AggregateTracker` + `DomainEventDispatcher` via `DB::afterCommit`). Always-on auto-configuration.
+
 ## [26.07.7] - 2026-07-17
 ### Added
 - **`firefly/resilience`** — programmatic, cache-backed resilience: `ResilienceRegistry` (config-driven named

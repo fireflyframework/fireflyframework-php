@@ -32,3 +32,8 @@ nav:
       - Resilience & Scheduling:
           - Resilience: modules/resilience.md
           - Scheduling: modules/scheduling.md
+      - Data & Domain:
+          - Domain (DDD): modules/domain.md
+          - Data & Repositories: modules/data.md
+          - Relational Data: modules/data-relational.md
+          - Transactions: modules/transactional.md
