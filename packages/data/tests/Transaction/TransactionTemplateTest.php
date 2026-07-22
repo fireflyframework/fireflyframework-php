@@ -16,14 +16,11 @@ uses(DatabaseTestCase::class);
 it('rolls back every write when the work throws', function () {
     $template = new TransactionTemplate;
 
-    try {
-        $template->execute(function (): void {
-            DB::table('widgets')->insert(['name' => 'a']);
-            DB::table('widgets')->insert(['name' => 'b']);
-            throw new RuntimeException('boom');
-        });
-    } catch (RuntimeException) {
-    }
+    expect(fn () => $template->execute(function (): void {
+        DB::table('widgets')->insert(['name' => 'a']);
+        DB::table('widgets')->insert(['name' => 'b']);
+        throw new RuntimeException('boom');
+    }))->toThrow(RuntimeException::class);
 
     expect(DB::table('widgets')->count())->toBe(0);
 });
@@ -41,13 +38,22 @@ it('commits despite an exception listed in noRollbackFor', function () {
     $template = new TransactionTemplate;
     $descriptor = new TransactionalDescriptor(noRollbackFor: [RuntimeException::class]);
 
-    try {
-        $template->execute(function (): void {
-            DB::table('widgets')->insert(['name' => 'kept']);
-            throw new RuntimeException('ignored');
-        }, $descriptor);
-    } catch (RuntimeException) {
-    }
+    expect(fn () => $template->execute(function (): void {
+        DB::table('widgets')->insert(['name' => 'kept']);
+        throw new RuntimeException('ignored');
+    }, $descriptor))->toThrow(RuntimeException::class);
+
+    expect(DB::table('widgets')->count())->toBe(1);
+});
+
+it('commits when the thrown exception matches neither rollbackFor nor noRollbackFor', function () {
+    $template = new TransactionTemplate;
+    $descriptor = new TransactionalDescriptor(rollbackFor: [LogicException::class]);
+
+    expect(fn () => $template->execute(function (): void {
+        DB::table('widgets')->insert(['name' => 'unlisted']);
+        throw new RuntimeException('not in rollbackFor');
+    }, $descriptor))->toThrow(RuntimeException::class);
 
     expect(DB::table('widgets')->count())->toBe(1);
 });
