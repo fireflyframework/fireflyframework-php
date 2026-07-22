@@ -8,6 +8,7 @@ use BadMethodCallException;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
+use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -384,6 +385,36 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     public function findSorted(Sort $sort): array
     {
         return $this->narrow($this->applySort($this->query(), $sort)->get()->all());
+    }
+
+    /**
+     * The Specification's TModel is bound to Model (not TModel), matching the internal builder seam
+     * (`query()`/`applySort()` are likewise typed against `Builder<Model>`) — narrowed at the terminal via
+     * `narrow()`, same as every other list-returning method on this class.
+     *
+     * @param  Specification<Model>  $specification
+     * @return list<TModel>
+     */
+    public function findBySpecification(Specification $specification): array
+    {
+        return $this->narrow($specification->toBuilder($this->query())->get()->all());
+    }
+
+    /**
+     * @param  Specification<Model>  $specification
+     * @return Page<TModel>
+     */
+    public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page
+    {
+        $total = $specification->toBuilder($this->query())->count();
+
+        $items = $this->applySort($specification->toBuilder($this->query()), $pageable->sort)
+            ->skip($pageable->offset())
+            ->take($pageable->size)
+            ->get()
+            ->all();
+
+        return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
     }
 
     /**
