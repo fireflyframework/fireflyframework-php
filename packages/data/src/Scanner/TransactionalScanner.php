@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Data\Scanner;
 
+use Firefly\Data\Proxy\ProxyMethod;
 use Firefly\Data\Repository\Attributes\Query;
 use Firefly\Data\Transaction\Attributes\Transactional;
 use Firefly\Data\Transaction\TransactionalDescriptor;
@@ -12,7 +13,12 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionAttribute;
 use ReflectionClass;
+use ReflectionIntersectionType;
 use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionParameter;
+use ReflectionType;
+use ReflectionUnionType;
 
 /**
  * The ONE scan-time reflection file in packages/data/src (grep invariant): it reflects class + method
@@ -68,6 +74,122 @@ final class TransactionalScanner
         }
 
         return new TransactionalManifest($proxies, $queries);
+    }
+
+    /**
+     * Generation inputs for the ProxyClassGenerator (reflection-free downstream): each transactional method's
+     * effective descriptor plus its rendered signature (param source, call args, return type). This is the ONLY
+     * place signatures are reflected, keeping ProxyClassGenerator free of the reflection substrings.
+     *
+     * @param  array<string,string>  $psr4
+     * @return array<class-string, array<string, ProxyMethod>>
+     */
+    public function scanProxyMethods(array $psr4): array
+    {
+        /** @var array<class-string, array<string, ProxyMethod>> $result */
+        $result = [];
+
+        foreach ($this->classes($psr4) as $class) {
+            $reflection = new ReflectionClass($class);
+            $classAttr = $this->firstTransactional($reflection->getAttributes(Transactional::class));
+
+            $methods = [];
+            foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+                if (! $this->proxyable($method)) {
+                    continue;
+                }
+
+                $effective = $this->firstTransactional($method->getAttributes(Transactional::class)) ?? $classAttr;
+                if ($effective === null) {
+                    continue;
+                }
+
+                [$paramSource, $argSource] = $this->renderParameters($method);
+                $methods[$method->getName()] = new ProxyMethod(
+                    name: $method->getName(),
+                    paramSource: $paramSource,
+                    argSource: $argSource,
+                    returnType: $this->renderReturnType($method),
+                    descriptor: TransactionalDescriptor::fromAttribute($effective),
+                );
+            }
+
+            if ($methods !== []) {
+                $result[$class] = $methods;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{0: string, 1: string} [paramSource, argSource]
+     */
+    private function renderParameters(ReflectionMethod $method): array
+    {
+        $params = [];
+        $args = [];
+
+        foreach ($method->getParameters() as $parameter) {
+            $piece = $this->renderType($parameter->getType());
+            $piece = $piece === '' ? '' : $piece.' ';
+            $piece .= $parameter->isPassedByReference() ? '&' : '';
+            $piece .= $parameter->isVariadic() ? '...' : '';
+            $piece .= '$'.$parameter->getName();
+
+            if ($parameter->isDefaultValueAvailable() && ! $parameter->isVariadic()) {
+                $piece .= ' = '.$this->renderDefault($parameter);
+            }
+
+            $params[] = $piece;
+            $args[] = ($parameter->isVariadic() ? '...' : '').'$'.$parameter->getName();
+        }
+
+        return [implode(', ', $params), implode(', ', $args)];
+    }
+
+    private function renderReturnType(ReflectionMethod $method): string
+    {
+        $rendered = $this->renderType($method->getReturnType());
+
+        return $rendered === '' ? '' : ': '.$rendered;
+    }
+
+    private function renderType(?ReflectionType $type): string
+    {
+        if ($type instanceof ReflectionNamedType) {
+            $name = $type->getName();
+            if (in_array($name, ['self', 'static', 'parent', 'mixed', 'void', 'never', 'null', 'false', 'true'], true)) {
+                $prefix = $type->allowsNull() && ! in_array($name, ['mixed', 'null'], true) ? '?' : '';
+
+                return $prefix.$name;
+            }
+
+            $prefix = $type->allowsNull() ? '?' : '';
+
+            return $prefix.($type->isBuiltin() ? $name : '\\'.ltrim($name, '\\'));
+        }
+
+        if ($type instanceof ReflectionUnionType) {
+            return implode('|', array_map(fn (ReflectionType $t): string => $this->renderType($t), $type->getTypes()));
+        }
+
+        if ($type instanceof ReflectionIntersectionType) {
+            return implode('&', array_map(fn (ReflectionType $t): string => $this->renderType($t), $type->getTypes()));
+        }
+
+        return '';
+    }
+
+    private function renderDefault(ReflectionParameter $parameter): string
+    {
+        if ($parameter->isDefaultValueConstant()) {
+            // Global/class constants render verbatim; self::/static:: constants are a documented latent edge.
+            return (string) $parameter->getDefaultValueConstantName();
+        }
+
+        // var_export handles scalars, arrays, null and enum cases (PHP 8.1+).
+        return var_export($parameter->getDefaultValue(), true);
     }
 
     private function proxyable(ReflectionMethod $method): bool
