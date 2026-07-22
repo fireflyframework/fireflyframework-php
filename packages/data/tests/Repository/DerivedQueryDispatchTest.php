@@ -83,3 +83,16 @@ it('routes a #[Query] method to raw SQL with positional binding', function () {
 it('throws BadMethodCallException for an unparseable method', function () {
     expect(fn () => dispatchRepository()->__call('frobnicate', []))->toThrow(BadMethodCallException::class);
 });
+
+it('refuses a SQL-injection crafted method name instead of running it (IgnoreCase raw path)', function () {
+    // Direct __call with an attacker-controlled name that, unguarded, produced
+    // `LOWER(email) = 'zzz' or 1=1 or lower(email) = LOWER(?)` and returned every row for a non-matching value.
+    // The parser's identifier guard now rejects the field, so dispatch fails loud rather than leaking rows.
+    $repo = dispatchRepository();
+    $craftedName = "findByemail) = 'zzz' or 1=1 or lower(emailIgnoreCase";
+
+    expect(fn () => $repo->__call($craftedName, ['nomatch@x.test']))->toThrow(BadMethodCallException::class);
+
+    // Every real row survives — the crafted call neither read nor mutated anything.
+    expect(Record::query()->count())->toBe(4);
+});

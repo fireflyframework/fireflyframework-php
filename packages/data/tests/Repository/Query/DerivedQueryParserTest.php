@@ -99,3 +99,16 @@ it('throws on an unparseable method name', function () {
     expect(fn () => DerivedQueryParser::parse('save'))->toThrow(InvalidArgumentException::class)
         ->and(fn () => DerivedQueryParser::parse('findAll'))->toThrow(InvalidArgumentException::class);
 });
+
+it('rejects a field that does not reduce to a bare column identifier (injection guard)', function (string $method) {
+    // The derived field is interpolated into a raw LOWER(col) fragment on the IgnoreCase path. parse() is
+    // reachable from the public EloquentRepository::__call, so a crafted method name whose "field" carries SQL
+    // must be refused here, not trusted. Deleting the identifier guard in toSnake() makes every one of these
+    // parse successfully and flips this test.
+    expect(fn () => DerivedQueryParser::parse($method))->toThrow(InvalidArgumentException::class);
+})->with([
+    'quote + boolean tautology' => ["findByemail) = 'zzz' or 1=1 or lower(emailIgnoreCase"],
+    'space in field' => ['findByStatus OrType'],
+    'parenthesis in field' => ['findBycount(*)'],
+    'semicolon / stacked statement' => ['findByid; drop table users'],
+]);

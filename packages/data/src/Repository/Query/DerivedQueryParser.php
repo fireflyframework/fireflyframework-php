@@ -181,6 +181,17 @@ final class DerivedQueryParser
 
     private static function toSnake(string $field): string
     {
-        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $field));
+        $column = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $field));
+
+        // Every derived column flows through here, and one of them (the IgnoreCase path) is interpolated into a
+        // raw `LOWER(col)` fragment. `parse()` is reachable from the public EloquentRepository::__call, so the
+        // method name is untrusted input: enforce that each field reduces to a bare SQL identifier. A crafted
+        // name (spaces, quotes, parentheses) fails this and is reported as an unparseable query rather than
+        // trusted — this is the invariant the whereRaw() suppression downstream relies on.
+        if (preg_match('/^[a-z_][a-z0-9_]*$/', $column) !== 1) {
+            throw new InvalidArgumentException("Derived query field [{$field}] is not a valid column identifier.");
+        }
+
+        return $column;
     }
 }

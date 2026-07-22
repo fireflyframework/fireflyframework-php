@@ -136,14 +136,15 @@ abstract class EloquentRepository implements PagingAndSortingRepository
             'delete' => $query->delete(),
             'find' => $parsed->top === 1
                 ? $query->first()
-                : array_values($query->get()->all()),
+                : $this->narrow($query->get()->all()),
         };
     }
 
     /**
      * Bind a predicate to the Builder and return the advanced argument cursor. IgnoreCase routes the equality /
-     * LIKE family through `LOWER(col) op LOWER(?)`; the column comes from a compile-time method name (never user
-     * input), so the raw fragment is safe.
+     * LIKE family through `LOWER(col) op LOWER(?)`; the column is safe to interpolate because DerivedQueryParser
+     * has already validated every derived field against `^[a-z_][a-z0-9_]*$` (a bare identifier), rejecting any
+     * crafted method name reaching the public __call before it ever gets here.
      *
      * @param  Builder<Model>  $query
      * @param  list<mixed>  $args
@@ -161,8 +162,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
                 'Like', 'Containing', 'StartingWith', 'EndingWith' => 'like',
                 default => '=',
             };
-            // The column is a compile-time method-name token (never user input), so the LOWER(col) fragment is safe.
-            // whereRaw types $sql as literal-string; a runtime-built column cannot be literal, so we suppress it here.
+            // $column is a parser-validated bare identifier (^[a-z_][a-z0-9_]*$; see DerivedQueryParser::toSnake),
+            // so the LOWER(col) fragment is provably injection-free. whereRaw types $sql as literal-string and a
+            // runtime-built string can never satisfy that, so the narrowly-scoped suppression stays.
             // @phpstan-ignore argument.type
             $query->whereRaw("LOWER({$column}) {$sqlOp} LOWER(?)", [self::likeValue($predicate->op, $args[$cursor])], $boolean);
 
