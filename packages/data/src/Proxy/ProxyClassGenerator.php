@@ -89,8 +89,11 @@ final class ProxyClassGenerator
         if ($handle === false) {
             throw new RuntimeException("Could not safely create transactional proxy file [{$file}].");
         }
-        fwrite($handle, $this->generate($targetClass, $methods));
-        fclose($handle);
+        $source = $this->generate($targetClass, $methods);
+        // Fail loud on a short/failed write rather than require() a truncated proxy that would fatal on load.
+        if (fwrite($handle, $source) !== strlen($source) || ! fclose($handle)) {
+            throw new RuntimeException("Could not fully write transactional proxy file [{$file}].");
+        }
         require $file;
 
         return $proxyClass;

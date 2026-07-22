@@ -188,7 +188,9 @@ final class DerivedQueryParser
         // method name is untrusted input: enforce that each field reduces to a bare SQL identifier. A crafted
         // name (spaces, quotes, parentheses) fails this and is reported as an unparseable query rather than
         // trusted — this is the invariant the whereRaw() suppression downstream relies on.
-        if (preg_match('/^[a-z_][a-z0-9_]*$/', $column) !== 1) {
+        // The `D` flag anchors `$` to the true end of string (no trailing-newline tolerance), so the identifier
+        // claim is exact. preg_match returning false on error is fail-closed here (!== 1 throws).
+        if (preg_match('/^[a-z_][a-z0-9_]*$/D', $column) !== 1) {
             throw new InvalidArgumentException("Derived query field [{$field}] is not a valid column identifier.");
         }
 

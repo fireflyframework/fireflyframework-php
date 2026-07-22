@@ -111,4 +111,5 @@ it('rejects a field that does not reduce to a bare column identifier (injection 
     'space in field' => ['findByStatus OrType'],
     'parenthesis in field' => ['findBycount(*)'],
     'semicolon / stacked statement' => ['findByid; drop table users'],
+    'trailing newline (the /D anchor)' => ["findByEmail\nIgnoreCase"],
 ]);
