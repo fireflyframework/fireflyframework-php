@@ -12,6 +12,7 @@ use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use InvalidArgumentException;
 
 /**
@@ -418,6 +419,34 @@ abstract class EloquentRepository implements PagingAndSortingRepository
             ->all();
 
         return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+    }
+
+    /**
+     * Reads including soft-deleted rows (removes the SoftDeletingScope). Meaningful only for models that use the
+     * native SoftDeletes trait; on a non-soft-deletable model the scope is simply absent (a harmless no-op).
+     * Narrowed via `narrow()` like every other list-returning method on this class (not a bare `->all()`).
+     *
+     * @return list<TModel>
+     */
+    public function findAllIncludingDeleted(): array
+    {
+        return $this->narrow($this->query()->withoutGlobalScope(SoftDeletingScope::class)->get()->all());
+    }
+
+    /**
+     * Restores a soft-deleted row by nulling the conventional `deleted_at` column, then re-reads it (now visible
+     * to the default scope). Returns null if no such row exists.
+     *
+     * @return TModel|null
+     */
+    public function restore(mixed $id): ?object
+    {
+        $this->query()
+            ->withoutGlobalScope(SoftDeletingScope::class)
+            ->where($this->keyName(), '=', $id)
+            ->update(['deleted_at' => null]);
+
+        return $this->findById($id);
     }
 
     /**
