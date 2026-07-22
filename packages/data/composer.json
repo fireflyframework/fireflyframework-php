@@ -1,0 +1,29 @@
+{
+    "name": "firefly/data",
+    "description": "LaraFly data: the #[Transactional] interception core (a generated inheritance proxy + a manual-DB TransactionInterceptor/TransactionTemplate), repositories, derived queries and specifications over Eloquent.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/domain": "*@dev",
+        "firefly/kernel": "*@dev",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Data\\DataServiceProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Data\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Data\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

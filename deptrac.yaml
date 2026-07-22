@@ -46,6 +46,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/domain/src/.*
+    - name: Data
+      collectors:
+        - type: directory
+          value: packages/data/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -127,3 +131,15 @@ deptrac:
     # dependency (Kernel is permitted but deliberately unused). NOTHING may depend on Domain except Data.
     Domain:
       - Kernel
+
+    # Data is the persistence + transaction-interception capability. It reuses Kernel infra exceptions, carries
+    # Container/Context attributes (the BPP seam, #[Configuration]/#[Bean] auto-config), reads Config, extends
+    # AutoConfigure's base, and builds on Domain (after-commit event dispatch). It depends on illuminate
+    # (database/support/contracts), which Deptrac ignores as unlayered. Data -> Domain, NEVER the reverse.
+    Data:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Domain
