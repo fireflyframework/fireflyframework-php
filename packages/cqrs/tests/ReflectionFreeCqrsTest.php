@@ -23,6 +23,7 @@ function cqrsReflectionHits(string $dir): array
 }
 
 it('confines firefly/cqrs reflection to the single sanctioned HandlerScanner', function () {
-    // Nothing reflects yet. Task 5 adds HandlerScanner.php (the sole sanctioned site).
-    expect(cqrsReflectionHits(__DIR__.'/../src'))->toBe([]);
+    // HandlerScanner is the SOLE sanctioned reflection site in packages/cqrs/src. Docblocks count —
+    // no other cqrs/src file (comments included) may name ReflectionClass/ReflectionMethod/getAttributes.
+    expect(cqrsReflectionHits(__DIR__.'/../src'))->toBe(['HandlerScanner.php']);
 });
