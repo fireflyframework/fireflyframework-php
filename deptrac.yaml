@@ -50,6 +50,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/data/src/.*
+    - name: Eda
+      collectors:
+        - type: directory
+          value: packages/eda/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -143,3 +147,15 @@ deptrac:
       - Context
       - AutoConfigure
       - Domain
+
+    # Eda is an async event-transport leaf capability: an EventPublisher broker-bus port + in-memory/queue adapters,
+    # a #[EventListener] scanner/manifest, retry/DLQ, and a serializer seam. It reads Config, reuses Kernel infra
+    # exceptions, carries Container/Context attributes, extends AutoConfigure's base, and depends on illuminate
+    # (queue/bus/container/contracts/support), which Deptrac ignores as unlayered. NO edge to/from Messaging; no
+    # capability layer (Web/Validation/Resilience/Scheduling/Data) may depend on it, and it depends on none of them.
+    Eda:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure

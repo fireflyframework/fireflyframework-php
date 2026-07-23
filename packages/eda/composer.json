@@ -1,0 +1,31 @@
+{
+    "name": "firefly/eda",
+    "description": "LaraFly event-driven architecture: an EventPublisher broker-bus port with in-memory and Laravel-queue adapters, an EventEnvelope + JSON serializer seam, a #[EventListener] scanner/manifest wired at boot, and a linear-backoff retry/dead-letter helper.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "illuminate/bus": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/queue": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Eda\\EdaServiceProvider",
+                "Firefly\\Eda\\EdaWiringProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Eda\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Eda\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}
