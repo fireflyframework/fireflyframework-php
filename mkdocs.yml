@@ -37,3 +37,6 @@ nav:
           - Data & Repositories: modules/data.md
           - Relational Data: modules/data-relational.md
           - Transactions: modules/transactional.md
+      - Eventing & Messaging:
+          - Event-Driven Architecture: modules/eda.md
+          - Messaging: modules/messaging.md

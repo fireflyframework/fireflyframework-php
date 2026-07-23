@@ -2,6 +2,20 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.9] - 2026-07-23
+### Added
+- **`firefly/eda`** — the async event-transport bus: an `EventPublisher` broker-bus port with an in-memory default
+  adapter and a Laravel-queue async adapter (`QueueEventBus` enqueues a `DispatchEventJob` carrying the
+  `EventEnvelope`; the worker reconstructs the subscriber registry from the compiled manifest and match+invokes), a
+  `#[EventListener]` pattern attribute → `EventListenerScanner` → `EventListenerManifest` → `EventListenerWiringPass`,
+  a `Serializer` seam (`JsonSerializer`), and a linear-backoff retry / `DeadLetterStore` helper
+  (`x-original-topic`/`x-exception`). Always-on auto-configuration.
+- **`firefly/messaging`** — the raw-bytes broker layer: a `MessageBrokerPort` (`Message` = topic + bytes + key +
+  headers) with in-memory (broadcast + consumer-group round-robin) and Laravel-queue adapters, a broker-agnostic
+  `#[MessageListener]` (topic/group/retries/retryDelay/deadLetterTopic) → `MessageListenerScanner` →
+  `MessageListenerManifest` → `MessageListenerWiringPass`, and a bytes-aware per-listener retry/DLQ helper.
+  Always-on auto-configuration. Independent sibling of `firefly/eda` (no dependency between them).
+
 ## [26.07.8] - 2026-07-22
 ### Added
 - **`firefly/domain`** — the DDD base: `Entity` (identity equality), `ValueObject` + `ValueObjectEquality`,
