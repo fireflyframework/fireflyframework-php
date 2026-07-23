@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
+use Firefly\Eda\DeadLetter\DeadLetterStore;
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
 use Firefly\Eda\EventPublisher;
@@ -37,4 +38,35 @@ it('subscribes compiled #[EventListener]s onto the bus at boot (in-memory provid
     $bus->publish('firefly.events', 'order.placed', ['id' => 1]);
 
     expect($app->make(Spy::class)->seen)->toBe(['order.placed']); // fail.* listener never matched
+});
+
+/**
+ * The wiring layer is where the "policy-free" bus gets its retry/DLQ policy: the pass wraps each listener in a
+ * RetryingEventHandler before subscribe(). This pins that wrap AT the wiring layer — a throwing listener wired at
+ * boot must be caught and dead-lettered (not escape publish()), which only holds if the wrap is applied. Drop the
+ * RetryingEventHandler::wrap in the pass and this fails (the RuntimeException escapes / the DLQ stays empty).
+ */
+it('wraps each wired listener in retry/DLQ: a throwing listener is dead-lettered, not escaped', function () {
+    $app = new Application;
+    $app->instance('config', new Repository(['firefly' => ['eda' => []]])); // retries default 0 -> first failure DLQs
+
+    $descriptors = (new EventListenerScanner)->scan(['Firefly\\Eda\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
+    $app->instance(EventListenerManifest::class, new EventListenerManifest($descriptors));
+    $app->singleton(Spy::class);
+
+    $app->register(new FireflyAutoConfigureServiceProvider($app));
+    $app->register(new EdaServiceProvider($app));
+    $app->register(new EdaWiringProvider($app));
+
+    $app->boot();
+
+    /** @var EventPublisher $bus */
+    $bus = $app->make(EventPublisher::class);
+    $bus->publish('firefly.events', 'fail.boom', ['id' => 9]); // matches FailingListener 'fail.*' -> throws
+
+    /** @var DeadLetterStore $dlq */
+    $dlq = $app->make(DeadLetterStore::class);
+    $entries = $dlq->all();
+    expect($entries)->toHaveCount(1)
+        ->and($entries[0]->exceptionMessage)->toBe('listener boom');
 });
