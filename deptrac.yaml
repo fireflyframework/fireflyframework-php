@@ -54,6 +54,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/eda/src/.*
+    - name: Messaging
+      collectors:
+        - type: directory
+          value: packages/messaging/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -154,6 +158,18 @@ deptrac:
     # (queue/bus/container/contracts/support), which Deptrac ignores as unlayered. NO edge to/from Messaging; no
     # capability layer (Web/Validation/Resilience/Scheduling/Data) may depend on it, and it depends on none of them.
     Eda:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+
+    # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,
+    # a #[MessageListener] scanner/manifest, and a bytes-aware retry/DLQ. It reads Config, reuses Kernel infra
+    # exceptions, carries Container/Context attributes, extends AutoConfigure's base, and depends on illuminate
+    # (queue/bus/container/contracts/support). NO edge to/from Eda (independent siblings); no capability layer may
+    # depend on it, and it depends on none of them.
+    Messaging:
       - Kernel
       - Container
       - Config
