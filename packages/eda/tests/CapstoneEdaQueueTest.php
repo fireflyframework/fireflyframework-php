@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Bus\QueueEventBus;
 use Firefly\Eda\DeadLetter\DeadLetterStore;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Tests\Fixtures\Spy;
@@ -12,6 +13,10 @@ uses(EdaQueueCapstoneTestCase::class);
 it('delivers a published event through the queue(sync) worker path to the #[EventListener]', function () {
     /** @var EdaQueueCapstoneTestCase $this */
     $app = $this->capstoneApp();
+
+    // Pin that this capstone genuinely exercises the QUEUE provider (not a silent in-memory fallback): the
+    // resolved bus IS a QueueEventBus, so a broken provider-selection would fail here, self-contained.
+    expect($app->make(EventPublisher::class))->toBeInstanceOf(QueueEventBus::class);
 
     $app->make(EventPublisher::class)->publish('firefly.events', 'order.placed', ['id' => 8]);
 
