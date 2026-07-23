@@ -23,6 +23,6 @@ function messagingReflectionHits(string $dir): array
 }
 
 it('confines firefly/messaging reflection to the single sanctioned MessageListenerScanner', function () {
-    // Nothing reflects yet. Task 15 adds MessageListenerScanner.php (the sole sanctioned site).
-    expect(messagingReflectionHits(__DIR__.'/../src'))->toBe([]);
+    // MessageListenerScanner is the SOLE sanctioned reflection site in packages/messaging/src. Docblocks count.
+    expect(messagingReflectionHits(__DIR__.'/../src'))->toBe(['MessageListenerScanner.php']);
 });
