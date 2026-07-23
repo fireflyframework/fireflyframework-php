@@ -30,10 +30,18 @@ it('delivers through the worker path under the sync driver', function () {
 
     $received = [];
     $bus->subscribe('order.*', function (EventEnvelope $e) use (&$received): void {
-        $received[] = $e->eventType;
+        $received[] = $e;
     });
 
-    $bus->publish('firefly.events', 'order.placed', ['id' => 2]);
+    $bus->publish('firefly.events', 'order.placed', ['id' => 2], ['trace' => 'abc']);
 
-    expect($received)->toBe(['order.placed']);
+    // Assert the WHOLE envelope survives the publish -> serialize -> job -> deliver round-trip, not just the
+    // event type: a dropped/garbled headers, payload, destination or timestamp field must break this.
+    expect($received)->toHaveCount(1);
+    $envelope = $received[0];
+    expect($envelope->eventType)->toBe('order.placed')
+        ->and($envelope->destination)->toBe('firefly.events')
+        ->and($envelope->payload)->toBe(['id' => 2])
+        ->and($envelope->headers)->toBe(['trace' => 'abc'])
+        ->and($envelope->timestamp)->toBeInstanceOf(DateTimeImmutable::class);
 });
