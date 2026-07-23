@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Firefly\Eda\Tests\Fixtures;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\Eda\Attributes\EventListener;
+use Firefly\Eda\EventEnvelope;
+
+#[Component]
+final class RecordingListener
+{
+    public function __construct(private readonly Spy $spy) {}
+
+    #[EventListener('order.*')]
+    public function onOrder(EventEnvelope $envelope): void
+    {
+        $this->spy->record($envelope->eventType);
+    }
+}
