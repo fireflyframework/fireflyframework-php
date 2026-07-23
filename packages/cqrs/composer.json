@@ -1,0 +1,32 @@
+{
+    "name": "firefly/cqrs",
+    "description": "LaraFly CQRS dispatch: a synchronous CommandBus/QueryBus mediator with attribute-discovered #[CommandHandler]/#[QueryHandler]s compiled into a HandlerManifest and wired at boot, a bounded pipeline of injectable seams (validation/authorization/correlation/metrics/query-cache), and the domain->integration-event bridge that re-emits committed DomainEvents onto the firefly/eda EventPublisher.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/domain": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/validation": "*@dev",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Cqrs\\CqrsServiceProvider",
+                "Firefly\\Cqrs\\CqrsWiringProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Cqrs\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Cqrs\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

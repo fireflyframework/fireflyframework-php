@@ -58,6 +58,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/messaging/src/.*
+    - name: Cqrs
+      collectors:
+        - type: directory
+          value: packages/cqrs/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -175,3 +179,21 @@ deptrac:
       - Config
       - Context
       - AutoConfigure
+
+    # Cqrs is the command/query dispatch capability that COMPOSES lower layers: a synchronous CommandBus/QueryBus +
+    # HandlerRegistry, #[CommandHandler]/#[QueryHandler] stereotypes discovered by HandlerScanner into a manifest, a
+    # CqrsHandlerWiringPass, a bounded pipeline of seams, and the domain->integration bridge. It reuses Kernel
+    # exceptions, carries Container stereotypes + Context boot/condition/#event attributes, reads Config, extends
+    # AutoConfigure's base, validates over Validation's Validator, maps Domain's DomainEvent, and publishes to Eda's
+    # EventPublisher. NO edge to Data (the bridge listens on in-process DomainEvents via the 'events' dispatcher +
+    # an instanceof filter, never Data's AggregateTracker/DomainEventDispatcher). Nothing may depend on Cqrs; it is a
+    # top-of-stack capability like Web.
+    Cqrs:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation
+      - Domain
+      - Eda
