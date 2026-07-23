@@ -23,6 +23,7 @@ function edaReflectionHits(string $dir): array
 }
 
 it('confines firefly/eda reflection to the single sanctioned EventListenerScanner', function () {
-    // Nothing reflects yet. Task 7 adds EventListenerScanner.php (the sole sanctioned site).
-    expect(edaReflectionHits(__DIR__.'/../src'))->toBe([]);
+    // EventListenerScanner is the SOLE sanctioned reflection site in packages/eda/src. Docblocks count —
+    // no other eda/src file (comments included) may name ReflectionClass/ReflectionMethod/getAttributes.
+    expect(edaReflectionHits(__DIR__.'/../src'))->toBe(['EventListenerScanner.php']);
 });
