@@ -37,8 +37,8 @@ it('LOG strategy (default) swallows a publish failure and logs it — the comman
     (new DomainEventBridge($publisher, EventFailureStrategy::Log, $logger))->publish(new AccountOpened('a1', 100));
 
     expect($logged)->toHaveCount(1)
-        ->and($logged[0])->toContain('AccountOpened'); // swallowed + logged, no throw
-})->throwsNoExceptions();
+        ->and($logged[0])->toContain('AccountOpened'); // swallowed + logged; reaching here (no throw) is the assertion
+});
 
 it('RAISE strategy re-throws a publish failure wrapped in CommandProcessingException', function () {
     $publisher = new RecordingCommandEventPublisher(new RuntimeException('broker down'));
