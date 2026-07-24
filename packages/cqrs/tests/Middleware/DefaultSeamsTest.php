@@ -16,8 +16,8 @@ it('ships allow-all authorizers that never throw and satisfy both ports', functi
     expect($authorizer)->toBeInstanceOf(CommandAuthorizer::class)
         ->and($authorizer)->toBeInstanceOf(QueryAuthorizer::class);
 
-    $authorizer->authorize(new stdClass); // no throw
-})->throwsNoExceptions();
+    $authorizer->authorize(new stdClass); // reaching here (no throw) is the assertion
+});
 
 it('ships a no-op metrics recorder', function () {
     $metrics = new NoOpCqrsMetrics;
@@ -26,8 +26,8 @@ it('ships a no-op metrics recorder', function () {
     $metrics->recordCommandSuccess(new stdClass, 0.01);
     $metrics->recordCommandFailure(new stdClass, 0.02);
     $metrics->recordQuerySuccess(new stdClass, 0.03);
-    $metrics->recordQueryFailure(new stdClass, 0.04);
-})->throwsNoExceptions();
+    $metrics->recordQueryFailure(new stdClass, 0.04); // reaching here (all no-ops, no throw) is the assertion
+});
 
 it('ships an always-miss query cache', function () {
     $cache = new NoOpQueryCache;
