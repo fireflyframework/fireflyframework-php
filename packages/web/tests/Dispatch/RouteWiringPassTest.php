@@ -21,6 +21,8 @@ use Firefly\Web\Http\JsonMessageConverter;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Route\RouteManifest;
 use Firefly\Web\Route\RouteScanner;
+use Firefly\Web\Security\AllowAllControllerSecurityGuard;
+use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher as EventsDispatcher;
@@ -39,6 +41,9 @@ it('registers a matchable native route whose closure binds args and negotiates t
     // Closure-action routes dispatch through Laravel's CallableDispatcher; a bare container (no
     // RoutingServiceProvider) must bind it exactly as Illuminate's RoutingServiceProvider does.
     $container->singleton(CallableDispatcherContract::class, static fn (Container $app): CallableDispatcher => new CallableDispatcher($app));
+    // This bare Container bypasses WebServiceProvider (which binds the no-op ControllerSecurityGuard default),
+    // so ControllerDispatcher's fresh-per-request make(ControllerSecurityGuard::class) needs it bound here too.
+    $container->instance(ControllerSecurityGuard::class, new AllowAllControllerSecurityGuard);
 
     $converters = new MessageConverterRegistry([new JsonMessageConverter]);
     $beanValidator = new BeanValidator(

@@ -8,6 +8,7 @@ use Closure;
 use Firefly\Kernel\Exception\FireflyException;
 use Firefly\Web\Exception\ExceptionHandlerRegistry;
 use Firefly\Web\Route\RouteDescriptor;
+use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Container\Container;
 use Illuminate\Http\Request;
 use Throwable;
@@ -35,6 +36,15 @@ final class ControllerDispatcher
             try {
                 $controller = $this->container->make($descriptor->controllerClass);
                 $args = $this->resolver->resolve($descriptor->bindings, $request, $this->container);
+
+                // Dispatch-time method security (M11 seam): resolved FRESH per request so firefly/security's real
+                // guard (bound during boot) always wins over the no-op default, independent of boot ordering. Runs
+                // AFTER argument resolution (so #param references can bind $args) and immediately BEFORE the call.
+                // A thrown AuthorizationException flows through the same try/catch → RFC-7807 renderer below.
+                /** @var ControllerSecurityGuard $guard */
+                $guard = $this->container->make(ControllerSecurityGuard::class);
+                $guard->check($descriptor->controllerClass, $descriptor->methodName, $args);
+
                 // controllerClass is a plain string (not class-string), so make() returns mixed; narrow it to
                 // an object for the dynamic method call (mirrors RegisterEventListenersPass's /** @var object */).
                 /** @var object $controller */

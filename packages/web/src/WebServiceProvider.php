@@ -20,6 +20,8 @@ use Firefly\Web\Filter\FilterChainRegistrar;
 use Firefly\Web\Http\JsonMessageConverter;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Route\RouteManifest;
+use Firefly\Web\Security\AllowAllControllerSecurityGuard;
+use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Foundation\Application;
@@ -74,6 +76,14 @@ final class WebServiceProvider extends FireflyServiceProvider
 
         if (! $this->app->bound(ExceptionHandlerRegistry::class)) {
             $this->app->singleton(ExceptionHandlerRegistry::class, static fn (): ExceptionHandlerRegistry => new ExceptionHandlerRegistry([]));
+        }
+
+        // The M11 dispatch-time method-security seam (§4.6.2): a no-op default so #[PreAuthorize] enforcement
+        // is opt-in. bound()-guarded so firefly/security's SecurityWiringPass (T17/T20) — which binds the real
+        // guard during boot, AFTER this register() has already run — always wins, first-one-wins style, same
+        // idiom as every other binding in this method.
+        if (! $this->app->bound(ControllerSecurityGuard::class)) {
+            $this->app->singleton(ControllerSecurityGuard::class, static fn (): ControllerSecurityGuard => new AllowAllControllerSecurityGuard);
         }
 
         if (! $this->app->bound(ControllerDispatcher::class)) {
