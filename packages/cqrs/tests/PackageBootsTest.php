@@ -5,12 +5,17 @@ declare(strict_types=1);
 use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
+use Firefly\Cqrs\Handler\HandlerManifest;
 use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 
 it('boots green when discovered alongside the bootstrap provider', function () {
     $app = new Application;
     $app->instance('config', new Repository(['firefly' => []]));
+    // From T13 the compiled manifests describe CqrsAutoConfiguration, whose commandEventPublisher/domainEventBridge
+    // #[Bean]s are eager singletons injecting the HandlerManifest — bind the default empty one (normally
+    // CqrsWiringProvider's job, not registered here) so the eager-singletons phase can resolve them.
+    $app->instance(HandlerManifest::class, new HandlerManifest([], []));
 
     $app->register(new CqrsServiceProvider($app));
     $app->register(new FireflyAutoConfigureServiceProvider($app));

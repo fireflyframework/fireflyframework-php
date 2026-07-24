@@ -17,14 +17,18 @@ function bootBridgedApp(RecordingCommandEventPublisher $publisher): Application
     $app = new Application;
     $app->instance('config', new Repository(['firefly' => ['cqrs' => []]]));
 
-    // Bind the bridge (wrapping the recording publisher) BEFORE boot; the wildcard listener resolves it fresh.
-    $app->instance(DomainEventBridge::class, new DomainEventBridge($publisher));
-
     $app->register(new FireflyAutoConfigureServiceProvider($app));
     $app->register(new CqrsServiceProvider($app));
     $app->register(new CqrsWiringProvider($app));
 
     $app->boot();
+
+    // Bind the bridge (wrapping the recording publisher) AFTER boot: from T13, CqrsAutoConfiguration's own
+    // domainEventBridge #[Bean] is an eager singleton, so binding beforehand would be clobbered the moment the
+    // eager-singletons phase resolves it (Illuminate's singleton()/bind() drops any prior instance() binding).
+    // The wildcard listener resolves DomainEventBridge FRESH on every dispatch (proven by the proxy-safety test
+    // below), so a post-boot instance() rebind is honoured exactly like that test's mid-run rebind.
+    $app->instance(DomainEventBridge::class, new DomainEventBridge($publisher));
 
     return $app;
 }
