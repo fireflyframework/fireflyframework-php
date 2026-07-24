@@ -7,6 +7,7 @@ namespace Firefly\Cqrs;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Cqrs\Boot\CqrsHandlerWiringPass;
+use Firefly\Cqrs\Boot\DomainEventBridgeWiringPass;
 use Firefly\Cqrs\Handler\HandlerManifest;
 
 /**
@@ -33,6 +34,6 @@ final class CqrsWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new CqrsHandlerWiringPass];
+        return [new CqrsHandlerWiringPass, new DomainEventBridgeWiringPass];
     }
 }
