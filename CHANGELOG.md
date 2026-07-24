@@ -2,6 +2,19 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.10] - 2026-07-24
+### Added
+- **`firefly/cqrs`** — the CQRS dispatch layer: a synchronous in-process `CommandBus` (`send`) / `QueryBus` (`ask`)
+  mediator with `#[CommandHandler]`/`#[QueryHandler]` class stereotypes (message type inferred from the `handle()`
+  parameter) discovered by a single `HandlerScanner` into a `HandlerManifest` and populated into a `HandlerRegistry`
+  by a `CqrsHandlerWiringPass`; a bounded pipeline of injectable, no-op-by-default seams (validation over the shipped
+  `Validator` via `Validatable`, authorization, correlation, metrics, query cache); category-preserving
+  `CommandProcessingException`/`QueryProcessingException`; and the domain→integration-event bridge — a guarded
+  wildcard listener re-emitting every committed `DomainEvent` onto the `firefly/eda` `EventPublisher`
+  (`CommandEventPublisher` port + `NoOpEventPublisher`/`EdaCommandEventPublisher`, `#[PublishDomainEvent]` routing,
+  LOG/RAISE failure strategy). `#[Transactional]` handlers get transaction interception for free from firefly/data.
+  Always-on auto-configuration. No `Cqrs → Data` Deptrac edge.
+
 ## [26.07.9] - 2026-07-23
 ### Added
 - **`firefly/eda`** — the async event-transport bus: an `EventPublisher` broker-bus port with an in-memory default

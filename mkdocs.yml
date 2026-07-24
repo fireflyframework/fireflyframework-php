@@ -40,3 +40,5 @@ nav:
       - Eventing & Messaging:
           - Event-Driven Architecture: modules/eda.md
           - Messaging: modules/messaging.md
+      - CQRS:
+          - CQRS (Command/Query): modules/cqrs.md
