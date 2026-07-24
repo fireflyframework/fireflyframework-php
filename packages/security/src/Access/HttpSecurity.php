@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Security\Access;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
+
 /**
  * A fluent, deny-by-default URL-authorization DSL (Spring's HttpSecurity.authorizeHttpRequests). Each
  * requestMatcher(pattern) opens a pending rule that the next access verb (permitAll/denyAll/authenticated/
@@ -52,12 +54,12 @@ final class HttpSecurity
 
     public function hasRole(string $role): self
     {
-        return $this->finalise("hasRole('{$role}')");
+        return $this->finalise("hasRole('".self::assertSafeValue($role)."')");
     }
 
     public function hasAuthority(string $authority): self
     {
-        return $this->finalise("hasAuthority('{$authority}')");
+        return $this->finalise("hasAuthority('".self::assertSafeValue($authority)."')");
     }
 
     /**
@@ -87,10 +89,25 @@ final class HttpSecurity
             $access === 'permitAll' => 'permitAll()',
             $access === 'denyAll' => 'denyAll()',
             $access === 'authenticated' => 'isAuthenticated()',
-            str_starts_with($access, 'hasRole:') => "hasRole('".substr($access, 8)."')",
-            str_starts_with($access, 'hasAuthority:') => "hasAuthority('".substr($access, 13)."')",
+            str_starts_with($access, 'hasRole:') => "hasRole('".self::assertSafeValue(substr($access, 8))."')",
+            str_starts_with($access, 'hasAuthority:') => "hasAuthority('".self::assertSafeValue(substr($access, 13))."')",
             default => 'denyAll()', // fail-closed: an unrecognised access spec denies
         };
+    }
+
+    /**
+     * Every value interpolated into a single-quoted expression literal (hasRole()/hasAuthority(), including the
+     * fromConfig() access-spec path) must be rejected if it contains a quote: a legitimate role/authority never
+     * does (Spring authorities are ROLE_X / resource:action), but a quote would let the value break out of its
+     * string literal and splice extra grammar into the fixed expression — e.g. widening it with `or permitAll()`.
+     */
+    private static function assertSafeValue(string $value): string
+    {
+        if (str_contains($value, "'")) {
+            throw new ConfigurationException("Illegal character in security authority/role value: {$value}");
+        }
+
+        return $value;
     }
 
     private function finalise(string $expression): self

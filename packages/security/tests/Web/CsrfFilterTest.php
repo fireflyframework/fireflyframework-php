@@ -41,3 +41,9 @@ it('exempts a configured path', function () {
     $out = csrfFilter(except: ['webhooks/*'])->handle(Request::create('/webhooks/stripe', 'POST'), fn () => new Response('ok'));
     expect($out)->toBeInstanceOf(Response::class);
 });
+
+it('403s an unsafe method with no cookie and no header at all (canonical double-submit bypass)', function () {
+    $request = Request::create('/x', 'POST');
+
+    csrfFilter()->handle($request, fn () => new Response('ok'));
+})->throws(AuthorizationException::class);
