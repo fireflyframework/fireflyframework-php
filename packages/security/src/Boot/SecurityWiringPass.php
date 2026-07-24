@@ -24,16 +24,20 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * filter — which validates against the issuer's JWKS — ever gets a chance to run. A genuine OAuth2-issued token
  * would therefore always 401 at the local filter, never reaching the resource-server filter that could actually
  * validate it: a broken (though fail-closed — no auth bypass results) configuration. Refused at BOOT, fail-closed,
- * exactly like JwtService's own weak-secret guard below — a misconfigured app must not silently serve a filter
- * chain that can never authenticate real OAuth2 clients.
+ * exactly like JwtService's own weak-secret guard right below it.
  *
- * The remaining two run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
- * #[Bean] is registered):
- * (1) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
- * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
- * fresh per request; (2) when JWT auth is enabled, eagerly resolve JwtService so its weak-secret guard FAILS FAST
- * at boot (not lazily on the first request). Skips (1)/(2) entirely when disabled, leaving the secure default
- * (web's AllowAll guard) untouched.
+ * (1) WEAK-SECRET GUARD, ALSO unconditional (runs even when the master flag is off): JwtAuthenticationFilter is
+ * gated ONLY by firefly.security.jwt.enabled, not by firefly.security.enabled (see SecurityAutoConfiguration), so a
+ * weak/placeholder JWT secret must be caught at BOOT whenever jwt.enabled — not lazily on the first request — even
+ * if the master flag never gets flipped on. Eagerly resolving JwtService here (its #[Bean] depends only on Config
+ * scalars, never on anything master-gated) forces its constructor's weak-secret guard to run now, so
+ * WeakSigningSecretException surfaces at boot instead of as a 500 on first use.
+ *
+ * The remaining action runs only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
+ * #[Bean] is registered): OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard
+ * via a container instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher
+ * resolves the guard fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll
+ * guard) untouched.
  */
 final class SecurityWiringPass implements BootPass
 {
@@ -55,15 +59,15 @@ final class SecurityWiringPass implements BootPass
             throw new ConfigurationException('Enable EITHER local JWT authentication (firefly.security.jwt.enabled) OR the OAuth2 resource server (firefly.security.oauth2.resource_server.enabled), not both: the local-JWT filter (order -90) rejects bearer tokens before the resource-server filter (order -85) can validate them.');
         }
 
+        if ($config->bool('firefly.security.jwt.enabled', false)) {
+            $context->container->make(JwtService::class); // fail-fast weak-secret guard at boot, independent of the master flag
+        }
+
         if (! $config->bool('firefly.security.enabled', false)) {
             return;
         }
 
         $container = $context->container;
         $container->instance(ControllerSecurityGuard::class, $container->make(MethodSecurityControllerGuard::class));
-
-        if ($config->bool('firefly.security.jwt.enabled', false)) {
-            $container->make(JwtService::class); // fail-fast weak-secret guard at boot
-        }
     }
 }

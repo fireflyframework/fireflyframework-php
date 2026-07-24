@@ -12,6 +12,7 @@ use Firefly\Data\Repository\Auditing\AuditorAware;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
+use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
 use Illuminate\Cache\ArrayStore;
@@ -83,4 +84,18 @@ it('refuses to boot when both local-JWT and the OAuth2 resource server are enabl
             ],
         ],
     ]))->toThrow(ConfigurationException::class);
+});
+
+it('refuses to boot on a weak JWT secret even when the master flag is off', function () {
+    // Master flag deliberately OFF: JwtAuthenticationFilter/JwtService are gated ONLY by
+    // firefly.security.jwt.enabled (see SecurityAutoConfiguration), never by firefly.security.enabled, so the
+    // weak-secret fail-fast must fire at BOOT regardless of the master flag — proving SecurityWiringPass eagerly
+    // resolves JwtService before, not after, the master-flag early-return.
+    expect(fn () => bootSecurityAppWith([
+        'enabled' => false,
+        'jwt' => [
+            'enabled' => true,
+            'secret' => 'changeme',
+        ],
+    ]))->toThrow(WeakSigningSecretException::class);
 });
