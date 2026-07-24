@@ -2,6 +2,31 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.11] - 2026-07-24
+### Added
+- **`firefly/security`** — the first-party security core: an immutable `Authentication`/`SecurityContext`/`GrantedAuthority`
+  principal model in a `Context`-backed `SecurityContextHolder` (cleared per request); authentication ports with
+  `InMemoryUserDetailsService`, constant-time `PasswordEncoder`s (bcrypt/argon2id/delegating), a `ProviderManager`/
+  `DaoAuthenticationProvider`, a `JwtService` (mandatory `exp`, weak-secret boot refusal), a local-JWT Bearer filter,
+  and an OAuth2 resource-server JWKS filter (`JwksProvider` port, no live network in tests, `iss`/`aud`
+  confused-deputy validation); deny-by-default URL authorization (`HttpSecurity` DSL + `HttpSecurityFilter`, 401/403
+  via kernel exceptions); method security (`#[PreAuthorize]`/`#[Secured]`/`#[RolesAllowed]`) compiled by a single
+  `MethodSecurityScanner` into a `var_export` manifest and enforced at the CQRS bus (real `Command`/`QueryAuthorizer`),
+  the controller dispatcher (a new no-op `ControllerSecurityGuard` port in `firefly/web` + a real impl), and
+  imperatively (`AuthorizationChecker`) — all via a hand-rolled **no-`eval`** whitelist expression evaluator,
+  `RoleHierarchy`, and a deny-all `PermissionEvaluator`; the real `AuditorAware` for the M8 auditing seam; and CSRF
+  (double-submit) + security-headers hardening filters. A boot-time mutual-exclusivity guard refuses local-JWT +
+  OAuth2 resource-server enabled together. Opt-in, secure-by-default, fail-closed, zero boot reflection. New Deptrac
+  `Security` layer (top-of-stack).
+### Changed
+- **`firefly/web`** — added the `ControllerSecurityGuard` enforcement port (no-op `AllowAllControllerSecurityGuard`
+  default) invoked by `ControllerDispatcher` after argument resolution; `firefly/security` binds the real guard.
+### Fixed
+- **`firefly/security`** — `MethodSecurityScanner` now rejects, at scan (cache) time, any `#[Secured]`/`#[RolesAllowed]`
+  role/authority value containing a single quote, closing an expression-injection gap where a crafted value could
+  compile into grammar-valid text (e.g. splicing in `or permitAll()`) and silently widen access; mirrors the
+  `HttpSecurity::assertSafeValue()` guard already shipped for the URL-rule DSL/config path.
+
 ## [26.07.10] - 2026-07-24
 ### Added
 - **`firefly/cqrs`** — the CQRS dispatch layer: a synchronous in-process `CommandBus` (`send`) / `QueryBus` (`ask`)

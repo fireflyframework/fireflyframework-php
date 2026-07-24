@@ -42,3 +42,5 @@ nav:
           - Messaging: modules/messaging.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md
+      - Security:
+          - Security: modules/security.md

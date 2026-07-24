@@ -41,23 +41,24 @@ final class MethodSecurityScanner
 
         foreach ($this->classes($psr4) as $class) {
             $reflection = new ReflectionClass($class);
-            $classExpression = $this->expressionFrom($reflection->getAttributes());
+
+            try {
+                $classExpression = $this->expressionFrom($reflection->getAttributes());
+            } catch (ExpressionParseException $e) {
+                throw new ConfigurationException("Invalid method-security expression on {$class}: {$e->getMessage()}", previous: $e);
+            }
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
                 if ($method->isStatic() || $method->isConstructor() || str_starts_with($method->getName(), '__')) {
                     continue;
                 }
 
-                $expression = $this->expressionFrom($method->getAttributes()) ?? $classExpression;
-                if ($expression === null) {
-                    continue;
-                }
-
-                $params = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), $method->getParameters());
-                $descriptor = new SecurityMethodDescriptor($class, $method->getName(), $expression, $params);
-
                 try {
-                    $evaluator->parse($descriptor->expression);
+                    $expression = $this->expressionFrom($method->getAttributes()) ?? $classExpression;
+                    if ($expression === null) {
+                        continue;
+                    }
+                    $evaluator->parse($expression);
                 } catch (ExpressionParseException $e) {
                     throw new ConfigurationException(
                         "Invalid method-security expression on {$class}::{$method->getName()}: {$e->getMessage()}",
@@ -65,7 +66,8 @@ final class MethodSecurityScanner
                     );
                 }
 
-                $rules[] = $descriptor;
+                $params = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), $method->getParameters());
+                $rules[] = new SecurityMethodDescriptor($class, $method->getName(), $expression, $params);
             }
         }
 
@@ -100,11 +102,26 @@ final class MethodSecurityScanner
     }
 
     /**
+     * Every #[Secured]/#[RolesAllowed] value is interpolated into a single-quoted expression literal
+     * (hasAnyAuthority()/hasAnyRole()). A value containing a quote must be rejected outright rather than left to
+     * the parser: splicing a quote in can produce a MALFORMED expression (caught by parse() below, e.g. an
+     * apostrophe that breaks tokenization) OR a grammar-VALID one that silently widens access — e.g. the value
+     * `X') or permitAll() or hasAnyRole('Y` compiles to `hasAnyRole('X') or permitAll() or hasAnyRole('Y')`, which
+     * parses and evaluates successfully (always true). A legitimate role/authority never contains a quote
+     * (Spring-style ROLE_X / resource:action strings), so this is a pure attribute-authoring constraint, not a
+     * runtime limitation. Mirrors HttpSecurity::assertSafeValue() for the URL-rule DSL/config path.
+     *
      * @param  list<string>  $values
      */
     private function quoteList(array $values): string
     {
-        return implode(', ', array_map(static fn (string $v): string => "'{$v}'", $values));
+        return implode(', ', array_map(static function (string $v): string {
+            if (str_contains($v, "'")) {
+                throw new ExpressionParseException("Illegal character in security authority/role value: {$v}");
+            }
+
+            return "'{$v}'";
+        }, $values));
     }
 
     /**

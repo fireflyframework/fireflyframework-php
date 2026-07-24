@@ -7,6 +7,7 @@ use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\Method\SecurityMethodManifestCompiler;
 use Firefly\Security\Scanner\MethodSecurityScanner;
 use Firefly\Security\Tests\Fixtures\SecuredController;
+use Firefly\Security\Tests\MalformedFixtures\Injection\InjectionSecuredController;
 use Firefly\Security\Tests\MalformedFixtures\PreAuthorize\BrokenPreAuthorizeController;
 use Firefly\Security\Tests\MalformedFixtures\Secured\ApostropheSecuredController;
 
@@ -46,4 +47,14 @@ it('fails loud with a ConfigurationException when a #[Secured] value with an apo
     expect(fn () => (new MethodSecurityScanner)->scan([
         'Firefly\\Security\\Tests\\MalformedFixtures\\Secured\\' => __DIR__.'/../MalformedFixtures/Secured',
     ]))->toThrow(ConfigurationException::class, ApostropheSecuredController::class.'::show');
+});
+
+it('rejects a #[RolesAllowed]/#[Secured] value containing a quote even when the resulting expression would otherwise parse as VALID grammar (expression injection)', function () {
+    // Isolated fixture directory containing ONLY InjectionSecuredController: the value
+    // "X') or permitAll() or hasAnyRole('Y" would otherwise compile to the grammar-valid
+    // `hasAnyRole('X') or permitAll() or hasAnyRole('Y')` — which parse() would happily accept
+    // and which would ALWAYS grant access. The scanner must reject the raw value outright.
+    expect(fn () => (new MethodSecurityScanner)->scan([
+        'Firefly\\Security\\Tests\\MalformedFixtures\\Injection\\' => __DIR__.'/../MalformedFixtures/Injection',
+    ]))->toThrow(ConfigurationException::class, InjectionSecuredController::class.'::show');
 });
