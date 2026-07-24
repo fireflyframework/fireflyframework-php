@@ -11,8 +11,24 @@ use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Security\AllowAllAuthorizer;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Cqrs\Validation\MessageValidator;
+use Firefly\Cqrs\Validation\Validatable;
 use Firefly\Kernel\Exception\Business\ValidationException;
 use Firefly\Kernel\Exception\Security\AuthorizationException;
+use Firefly\Validation\Validator;
+
+/** A command that opts into validation, so MessageValidator actually calls the bound Validator. */
+final class ValidatedCommand implements Validatable
+{
+    public function validationData(): array
+    {
+        return ['name' => ''];
+    }
+
+    public function validationRules(): array
+    {
+        return ['name' => 'required'];
+    }
+}
 
 /**
  * A CqrsMetrics that records which methods fired.
@@ -123,6 +139,35 @@ it('re-throws an already-CommandProcessingException AS-IS (no double wrap)', fun
     } catch (CommandProcessingException $e) {
         expect($e)->toBe($inner)                          // same instance — not re-wrapped
             ->and($e->getPrevious())->toBeInstanceOf(RuntimeException::class);
+    }
+});
+
+it('runs validate BEFORE the handler and does not invoke the handler when validation fails', function () {
+    $registry = new HandlerRegistry;
+    $ran = false;
+    $registry->registerCommandHandler(ValidatedCommand::class, function () use (&$ran): string {
+        $ran = true;
+
+        return 'ok';
+    });
+
+    // A Validator that rejects like the shipped one on invalid data; the command is Validatable so validate() fires.
+    $rejecting = new class implements Validator
+    {
+        public function validate(array $data, array $rules): array
+        {
+            throw new ValidationException('invalid');
+        }
+    };
+
+    $bus = new DefaultCommandBus($registry, new MessageValidator($rejecting), new AllowAllAuthorizer, new CorrelationContext, recordingMetrics());
+
+    try {
+        $bus->send(new ValidatedCommand);
+        expect(false)->toBeTrue('expected a CommandProcessingException');
+    } catch (CommandProcessingException $e) {
+        expect($e->httpStatus())->toBe(422)              // ValidationException 422 preserved
+            ->and($ran)->toBeFalse();                     // handler never ran — validate is upstream of dispatch
     }
 });
 
