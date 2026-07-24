@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Firefly\Security\Scanner;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Access\Attributes\PreAuthorize;
 use Firefly\Security\Access\Attributes\RolesAllowed;
 use Firefly\Security\Access\Attributes\Secured;
+use Firefly\Security\Access\Expression\ExpressionParseException;
+use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Method\SecurityMethodDescriptor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -18,8 +21,12 @@ use ReflectionMethod;
  * Per concrete class it reads the effective #[PreAuthorize]/#[Secured]/#[RolesAllowed] on each public method — a
  * method-level attribute REPLACES a class-level one for that method (Spring semantics) — normalises #[Secured]/
  * #[RolesAllowed] to a hasAnyAuthority()/hasAnyRole() expression, and records the ordered parameter names so #param
- * references resolve at enforcement. Runs only at cache time; production loads the compiled manifest via require+map.
- * Mirrors data/TransactionalScanner.
+ * references resolve at enforcement. Every produced expression (raw #[PreAuthorize] AND the generated
+ * hasAnyAuthority()/hasAnyRole() strings) is fed through SecurityExpressionEvaluator::parse() before it is
+ * accepted: a malformed or whitelist-violating expression would otherwise compile silently and then DENY every
+ * call to that method forever (a permanent production 403 with no build-time signal), so scan() fails loud with a
+ * ConfigurationException naming the offending Class::method instead. Runs only at cache time; production loads
+ * the compiled manifest via require+map. Mirrors data/TransactionalScanner.
  */
 final class MethodSecurityScanner
 {
@@ -30,6 +37,7 @@ final class MethodSecurityScanner
     public function scan(array $psr4): array
     {
         $rules = [];
+        $evaluator = new SecurityExpressionEvaluator;
 
         foreach ($this->classes($psr4) as $class) {
             $reflection = new ReflectionClass($class);
@@ -46,7 +54,18 @@ final class MethodSecurityScanner
                 }
 
                 $params = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), $method->getParameters());
-                $rules[] = new SecurityMethodDescriptor($class, $method->getName(), $expression, $params);
+                $descriptor = new SecurityMethodDescriptor($class, $method->getName(), $expression, $params);
+
+                try {
+                    $evaluator->parse($descriptor->expression);
+                } catch (ExpressionParseException $e) {
+                    throw new ConfigurationException(
+                        "Invalid method-security expression on {$class}::{$method->getName()}: {$e->getMessage()}",
+                        previous: $e,
+                    );
+                }
+
+                $rules[] = $descriptor;
             }
         }
 
