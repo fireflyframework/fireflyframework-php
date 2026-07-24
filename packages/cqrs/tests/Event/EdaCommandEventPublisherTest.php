@@ -43,7 +43,9 @@ it('maps a DomainEvent onto EventPublisher::publish with eventType, payload, and
         ->and($sent['eventType'])->toBe('AccountOpened')          // DomainEvent::eventType() = short class name
         ->and($sent['payload']['accountId'])->toBe('a1')
         ->and($sent['payload']['balance'])->toBe(100)
-        ->and($sent['payload'])->toHaveKey('eventId')             // inherited public prop, from get_object_vars
+        // Pin the EXACT payload key set (the bridge's output contract): the subclass fields plus the base
+        // DomainEvent's public props from get_object_vars. Dropping occurredAt or leaking a stray field fails here.
+        ->and(array_keys($sent['payload']))->toEqualCanonicalizing(['accountId', 'balance', 'eventId', 'occurredAt'])
         ->and($sent['headers'])->toBe([]);                        // no correlation context -> no header
 });
 
