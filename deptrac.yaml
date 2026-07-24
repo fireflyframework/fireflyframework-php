@@ -62,6 +62,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/cqrs/src/.*
+    - name: Security
+      collectors:
+        - type: directory
+          value: packages/security/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -197,3 +201,19 @@ deptrac:
       - Validation
       - Domain
       - Eda
+
+    # Security is a top-of-stack capability (like Web/Cqrs): a first-party principal model + authn/authz that
+    # LIGHTS UP pre-built seams. It reuses Kernel security exceptions, carries Container stereotypes + Context
+    # boot/condition attributes, reads Config, extends AutoConfigure's base, adds a no-op ControllerSecurityGuard
+    # port to Web and a real impl, supplies Cqrs's Command/QueryAuthorizer + Data's AuditorAware, and may validate
+    # over Validation. NOTHING depends on Security.
+    Security:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Data
+      - Cqrs
+      - Validation

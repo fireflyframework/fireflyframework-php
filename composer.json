@@ -18,6 +18,7 @@
         "firefly/resilience": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/scheduling-postgres": "*@dev",
+        "firefly/security": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev"
     },
@@ -46,6 +47,7 @@
             "Firefly\\Resilience\\Tests\\": "packages/resilience/tests/",
             "Firefly\\Scheduling\\Postgres\\Tests\\": "packages/scheduling-postgres/tests/",
             "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
+            "Firefly\\Security\\Tests\\": "packages/security/tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/"
         }
