@@ -59,3 +59,15 @@ it('DENIES every other hostile-input shape the tokenizer/parser can see — iner
 it('parse() fails loud on malformed input for build-time validation', function () use ($evaluator) {
     $evaluator->parse("nope('x')");
 })->throws(ExpressionParseException::class);
+
+it('fails closed (never fatals) on a pathologically long expression via evaluate()', function () use ($evaluator) {
+    expect($evaluator->evaluate(str_repeat('a', 3000), evalRoot(['ROLE_ADMIN'])))->toBeFalse();
+});
+
+it('parse() throws ExpressionParseException on a pathologically long expression', function () use ($evaluator) {
+    $evaluator->parse(str_repeat('a', 3000));
+})->throws(ExpressionParseException::class);
+
+it('still evaluates a normal, well-under-the-cap expression correctly', function () use ($evaluator) {
+    expect($evaluator->evaluate("hasRole('ADMIN') and isAuthenticated()", evalRoot(['ROLE_ADMIN'])))->toBeTrue();
+});

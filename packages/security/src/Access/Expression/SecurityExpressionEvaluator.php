@@ -18,6 +18,19 @@ final class SecurityExpressionEvaluator
 {
     private const KEYWORDS = ['and', 'or', 'not', 'true', 'false'];
 
+    /**
+     * Hard cap on the raw expression's byte length, checked before tokenize() allocates anything.
+     *
+     * This bounds both tokenizer memory (a naive `str_repeat('(', N)` would otherwise allocate an
+     * O(N) token array) and parser recursion depth (nested parens/`not` recurse one stack frame per
+     * char), so an over-long expression cannot exhaust memory or the call stack. A real `#[PreAuthorize]`
+     * expression is a short, developer-authored constant — nothing legitimate is anywhere near this
+     * limit. Rejecting with ExpressionParseException (a \Throwable) instead of letting a raw allocation
+     * fatal keeps evaluate()'s fail-closed guarantee airtight: a fatal error is NOT a \Throwable and
+     * would otherwise escape the catch block below.
+     */
+    private const MAX_EXPRESSION_LENGTH = 2048;
+
     /** @var list<Token> */
     private array $tokens = [];
 
@@ -58,6 +71,10 @@ final class SecurityExpressionEvaluator
      */
     private function tokenize(string $expression): array
     {
+        if (strlen($expression) > self::MAX_EXPRESSION_LENGTH) {
+            throw new ExpressionParseException('Expression exceeds the maximum permitted length.');
+        }
+
         /** @var list<Token> $tokens */
         $tokens = [];
         $length = strlen($expression);
