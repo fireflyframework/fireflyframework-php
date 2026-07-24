@@ -9,10 +9,12 @@ use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Fetches a JWKS document from a configured URI and caches the PARSED key set for a TTL, so verification never
- * makes a live request per token. Kept behind the JwksProvider port precisely so tests inject
- * InMemoryJwksProvider and never touch the network (spec risk #3). The fetch is memoised in the app cache under
- * a per-URI key.
+ * Fetches a JWKS document from a configured URI and caches the RAW JWKS JSON (keyed by URI, under the configured
+ * TTL) so verification never makes a live request per token — the parsed key set is NOT what's cached: `Key`/
+ * OpenSSL objects don't serialize cleanly through a cache driver, so each `keys()` call re-parses the cached raw
+ * JSON via InMemoryJwksProvider::fromJwks(), which is cheap relative to the network round-trip it replaces. Kept
+ * behind the JwksProvider port precisely so tests inject InMemoryJwksProvider and never touch the network (spec
+ * risk #3).
  */
 final class RemoteJwksProvider implements JwksProvider
 {

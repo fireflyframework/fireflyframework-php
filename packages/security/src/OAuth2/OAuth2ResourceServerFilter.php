@@ -26,7 +26,8 @@ use Throwable;
  * path) and maps standard claims to authorities: each `scope`/`scp` entry becomes `SCOPE_<value>` and each
  * configured roles-claim entry is carried through verbatim. COMPOSES with the local-JWT filter rather than
  * replacing it: if the context is already authenticated (the −90 filter ran first), this filter no-ops. Ordered
- * −85. Fail-closed: a present-but-invalid token, or one missing `exp`, is a 401; an absent header is anonymous.
+ * −85. Fail-closed: a present-but-invalid token, one missing `exp`, or one whose `iss`/`aud` does not match the
+ * configured issuer/audience (when configured), is a 401; an absent header is anonymous.
  */
 #[Component]
 #[Order(-85)]
@@ -92,6 +93,25 @@ final class OAuth2ResourceServerFilter extends OncePerRequestFilter
         $claims = (array) $decoded;
         if (! array_key_exists('exp', $claims)) {
             throw new InvalidTokenException('Resource-server JWT is missing the mandatory exp claim.');
+        }
+
+        // Audience/issuer binding (RFC 9700 / OAuth2 Security BCP): a JWKS-signed token is accepted only if it
+        // was minted FOR this resource server. Without this, ANY token the issuer signed — including one aimed at
+        // a different audience — would be accepted (confused-deputy / token-redirection). Validated when the
+        // corresponding config is set; strongly recommended to configure both in production.
+        $expectedIssuer = $this->config->string('firefly.security.oauth2.resource_server.issuer', '');
+        if ($expectedIssuer !== '' && (! isset($claims['iss']) || $claims['iss'] !== $expectedIssuer)) {
+            throw new InvalidTokenException('Resource-server JWT issuer (iss) does not match the configured issuer.');
+        }
+
+        $expectedAudience = $this->config->string('firefly.security.oauth2.resource_server.audience', '');
+        if ($expectedAudience !== '') {
+            $audClaim = $claims['aud'] ?? null;
+            // Per RFC 7519 `aud` is either a single string OR an array of strings.
+            $audiences = is_array($audClaim) ? $audClaim : [$audClaim];
+            if (! in_array($expectedAudience, $audiences, true)) {
+                throw new InvalidTokenException('Resource-server JWT audience (aud) does not include the configured audience.');
+            }
         }
 
         $name = isset($claims['sub']) && is_scalar($claims['sub']) ? (string) $claims['sub'] : '';
