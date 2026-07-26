@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Firefly\Actuator;
 
 use Firefly\Actuator\Boot\ActuatorRouteRegistrar;
+use Firefly\Actuator\Boot\HealthContributorRegistrar;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Actuator\Health\HealthContributorRegistry;
+use Firefly\Actuator\Health\StatusAggregator;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
@@ -16,9 +19,12 @@ use Illuminate\Contracts\Config\Repository;
 /**
  * The boot-pass + default-binding half of firefly/actuator (cannot ride on ActuatorServiceProvider —
  * AutoConfiguration's final register() records candidacy only). Binds ActuatorRegistry (the id → endpoint map
- * ActuatorRouteRegistrar populates and the request-time actions read) and ExposureModel (the include/exclude/
- * base-path exposure policy) behind bound() guards — the exact WebServiceProvider idiom — then contributes
- * ActuatorRouteRegistrar via passes(). Both this and ActuatorServiceProvider are in extra.laravel.providers.
+ * ActuatorRouteRegistrar populates and the request-time actions read), ExposureModel (the include/exclude/
+ * base-path exposure policy), HealthContributorRegistry (the name → HealthIndicator map HealthContributorRegistrar
+ * populates and HealthEndpoint reads at request time), and StatusAggregator (most-severe-wins health aggregation)
+ * behind bound() guards — the exact WebServiceProvider idiom — then contributes HealthContributorRegistrar (order
+ * 10, before route mounting) and ActuatorRouteRegistrar (order 50) via passes(). Both this and ActuatorServiceProvider
+ * are in extra.laravel.providers.
  *
  * ExposureModel MUST be bound here, not left to container autowiring: unlike Config (whose sole constructor
  * param is the `Illuminate\Contracts\Config\Repository` interface, resolvable via Illuminate\Foundation\
@@ -49,6 +55,14 @@ final class ActuatorWiringProvider extends FireflyServiceProvider
             });
         }
 
+        if (! $this->app->bound(HealthContributorRegistry::class)) {
+            $this->app->singleton(HealthContributorRegistry::class, static fn (): HealthContributorRegistry => new HealthContributorRegistry);
+        }
+
+        if (! $this->app->bound(StatusAggregator::class)) {
+            $this->app->singleton(StatusAggregator::class, static fn (): StatusAggregator => new StatusAggregator);
+        }
+
         parent::register();
     }
 
@@ -57,6 +71,6 @@ final class ActuatorWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new ActuatorRouteRegistrar];
+        return [new HealthContributorRegistrar, new ActuatorRouteRegistrar];
     }
 }
