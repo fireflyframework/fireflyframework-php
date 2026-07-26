@@ -44,3 +44,5 @@ nav:
           - CQRS (Command/Query): modules/cqrs.md
       - Security:
           - Security: modules/security.md
+      - Operations:
+          - Actuator: modules/actuator.md
