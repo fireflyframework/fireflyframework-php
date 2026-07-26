@@ -79,7 +79,7 @@ final class PrometheusTextFormat
         ksort($tags);
         $parts = [];
         foreach ($tags as $key => $val) {
-            $parts[] = $this->sanitizeName((string) $key).'="'.$this->escapeLabelValue((string) $val).'"';
+            $parts[] = $this->sanitizeLabelName((string) $key).'="'.$this->escapeLabelValue((string) $val).'"';
         }
 
         return '{'.implode(',', $parts).'}';
@@ -97,7 +97,10 @@ final class PrometheusTextFormat
             return (string) (int) $value;
         }
 
-        return rtrim(rtrim(sprintf('%.10f', $value), '0'), '.');
+        // number_format() (unlike sprintf('%f')) is locale-INDEPENDENT here: the decimal point and thousands
+        // separator are passed explicitly as arguments, so LC_NUMERIC (e.g. a comma-decimal locale such as
+        // de_DE) cannot leak a ',' into the exposition and produce unscrapeable Prometheus output.
+        return rtrim(rtrim(number_format($value, 10, '.', ''), '0'), '.');
     }
 
     private function promType(MeterType $type): string
@@ -113,6 +116,20 @@ final class PrometheusTextFormat
     {
         $name = preg_replace('/[^a-zA-Z0-9_:]/', '_', $name) ?? $name;
         if ($name === '' || preg_match('/^[a-zA-Z_:]/', $name) !== 1) {
+            $name = '_'.$name;
+        }
+
+        return $name;
+    }
+
+    /**
+     * Same idiom as {@see sanitizeName()} but for LABEL names: per the Prometheus 0.0.4 grammar
+     * `label_name ::= [a-zA-Z_][a-zA-Z0-9_]*`, `:` is reserved for metric names and is NOT valid in a label name.
+     */
+    private function sanitizeLabelName(string $name): string
+    {
+        $name = preg_replace('/[^a-zA-Z0-9_]/', '_', $name) ?? $name;
+        if ($name === '' || preg_match('/^[a-zA-Z_]/', $name) !== 1) {
             $name = '_'.$name;
         }
 

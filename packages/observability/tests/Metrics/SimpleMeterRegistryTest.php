@@ -48,3 +48,31 @@ it('exposes the recorder facade delegating to meters', function () {
     expect($names)->toContain('errors')->toContain('latency')->toContain('temp')
         ->and($registry->counter('errors', ['kind' => 'io'])->count())->toBe(5.0);
 });
+
+it('rejects registering the same metric name under a different type (FIX 3)', function () {
+    $registry = new SimpleMeterRegistry;
+    $registry->counter('foo');
+
+    expect(fn () => $registry->gauge('foo', [], fn (): float => 1.0))
+        ->toThrow(InvalidArgumentException::class, "Metric 'foo' already registered as counter; cannot re-register as gauge.");
+});
+
+it('rejects a type conflict via the recorder facade too (setGauge vs counter)', function () {
+    $registry = new SimpleMeterRegistry;
+    $registry->timer('bar');
+
+    expect(fn () => $registry->setGauge('bar', [], 1.0))
+        ->toThrow(InvalidArgumentException::class, "Metric 'bar' already registered as timer; cannot re-register as gauge.");
+});
+
+it('still allows idempotent same-name-same-type registration after the type guard (existing behaviour preserved)', function () {
+    $registry = new SimpleMeterRegistry;
+
+    $a = $registry->counter('foo');
+    $b = $registry->counter('foo');
+    $a->increment();
+    $b->increment(2.0);
+
+    expect($a)->toBe($b)->and($a->count())->toBe(3.0)
+        ->and($registry->meters())->toHaveCount(1);
+});
