@@ -4,23 +4,59 @@ declare(strict_types=1);
 
 namespace Firefly\Actuator;
 
+use Firefly\Actuator\Boot\ActuatorRouteRegistrar;
+use Firefly\Actuator\Endpoint\ActuatorRegistry;
+use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Config\Repository;
 
 /**
  * The boot-pass + default-binding half of firefly/actuator (cannot ride on ActuatorServiceProvider —
- * AutoConfiguration's final register() records candidacy only). Later tasks bind the framework infrastructure
- * collectors (ActuatorRegistry, HealthContributorRegistry, InfoContributorRegistry, StatusAggregator) behind
- * bound() guards here — the exact WebServiceProvider idiom — and contribute the bean-scan/route BootPasses via
- * passes(). Both this and ActuatorServiceProvider are in extra.laravel.providers.
+ * AutoConfiguration's final register() records candidacy only). Binds ActuatorRegistry (the id → endpoint map
+ * ActuatorRouteRegistrar populates and the request-time actions read) and ExposureModel (the include/exclude/
+ * base-path exposure policy) behind bound() guards — the exact WebServiceProvider idiom — then contributes
+ * ActuatorRouteRegistrar via passes(). Both this and ActuatorServiceProvider are in extra.laravel.providers.
+ *
+ * ExposureModel MUST be bound here, not left to container autowiring: unlike Config (whose sole constructor
+ * param is the `Illuminate\Contracts\Config\Repository` interface, resolvable via Illuminate\Foundation\
+ * Application's core container alias for the 'config' binding), ExposureModel's constructor takes plain
+ * `array $include, array $exclude, string $basePath` — no class-typed parameter for the container to reflect
+ * a binding from. `$container->make(ExposureModel::class)` without an explicit binding throws
+ * BindingResolutionException ("Unresolvable dependency… array $include") — verified directly: this exact
+ * failure surfaced in the pre-existing PackageBootTest the moment ActuatorRouteRegistrar (which resolves
+ * ExposureModel::class at WiringPasses to read basePath) was wired into passes() below. No #[Bean]-producing
+ * ActuatorAutoConfiguration exists yet (that lands in a later M12 task), so this bound()-guarded singleton is
+ * the only seam available today; a later ActuatorAutoConfiguration's own #[ConditionalOnMissingBean] bean, if
+ * one is ever added, will simply win over this default without any change needed here.
  */
 final class ActuatorWiringProvider extends FireflyServiceProvider
 {
+    public function register(): void
+    {
+        if (! $this->app->bound(ActuatorRegistry::class)) {
+            $this->app->singleton(ActuatorRegistry::class, static fn (): ActuatorRegistry => new ActuatorRegistry);
+        }
+
+        if (! $this->app->bound(ExposureModel::class)) {
+            $this->app->singleton(ExposureModel::class, static function (Container $app): ExposureModel {
+                /** @var Repository $repository */
+                $repository = $app->make('config');
+
+                return ExposureModel::fromConfig(new Config($repository));
+            });
+        }
+
+        parent::register();
+    }
+
     /**
      * @return list<BootPass>
      */
     public function passes(): array
     {
-        return [];
+        return [new ActuatorRouteRegistrar];
     }
 }
