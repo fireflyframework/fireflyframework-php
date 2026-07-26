@@ -41,6 +41,17 @@ use Throwable;
 #[Lazy]
 final class MetricsFilter extends OncePerRequestFilter
 {
+    /**
+     * Bounded sentinel used as the `uri` tag when the request has no matched route (e.g. any 404). The raw path
+     * (Request::getPathInfo()) must NEVER be used as a tag value for an unmatched route: it is attacker/crawler
+     * controlled and unbounded, so tagging with it would create one metric series per distinct garbage path hit.
+     * Micrometer's own HTTP server instrumentation uses an identical bounded sentinel for exactly this case. This
+     * is harmless under PHP-FPM (a fresh, per-request registry is discarded when the request ends) but CRITICAL
+     * under Octane, where the MeterRegistry is a process-lifetime singleton — an unbounded uri tag there becomes
+     * an unbounded, persistent memory-growth vector.
+     */
+    private const string UNMATCHED_ROUTE_URI = 'UNKNOWN';
+
     public function __construct(private readonly MetricsRecorder $recorder) {}
 
     protected function doFilter(Request $request, Closure $next): mixed
@@ -64,7 +75,7 @@ final class MetricsFilter extends OncePerRequestFilter
     {
         $this->recorder->record('http_server_requests_seconds', [
             'method' => $request->getMethod(),
-            'uri' => $request->route() !== null ? '/'.ltrim((string) $request->route()->uri(), '/') : $request->getPathInfo(),
+            'uri' => $request->route() !== null ? '/'.ltrim((string) $request->route()->uri(), '/') : self::UNMATCHED_ROUTE_URI,
             'status' => (string) $status,
             'outcome' => $outcome,
             'exception' => $this->shortName($exception),
