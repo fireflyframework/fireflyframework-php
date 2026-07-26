@@ -6,10 +6,12 @@ namespace Firefly\Actuator;
 
 use Firefly\Actuator\Boot\ActuatorRouteRegistrar;
 use Firefly\Actuator\Boot\HealthContributorRegistrar;
+use Firefly\Actuator\Boot\InfoContributorRegistrar;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\ExposureModel;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Actuator\Health\StatusAggregator;
+use Firefly\Actuator\Info\InfoContributorRegistry;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
@@ -21,10 +23,11 @@ use Illuminate\Contracts\Config\Repository;
  * AutoConfiguration's final register() records candidacy only). Binds ActuatorRegistry (the id → endpoint map
  * ActuatorRouteRegistrar populates and the request-time actions read), ExposureModel (the include/exclude/
  * base-path exposure policy), HealthContributorRegistry (the name → HealthIndicator map HealthContributorRegistrar
- * populates and HealthEndpoint reads at request time), and StatusAggregator (most-severe-wins health aggregation)
- * behind bound() guards — the exact WebServiceProvider idiom — then contributes HealthContributorRegistrar (order
- * 10, before route mounting) and ActuatorRouteRegistrar (order 50) via passes(). Both this and ActuatorServiceProvider
- * are in extra.laravel.providers.
+ * populates and HealthEndpoint reads at request time), StatusAggregator (most-severe-wins health aggregation), and
+ * InfoContributorRegistry (the list<InfoContributor> InfoContributorRegistrar populates and InfoEndpoint deep-merges
+ * at request time) behind bound() guards — the exact WebServiceProvider idiom — then contributes
+ * HealthContributorRegistrar (order 10), InfoContributorRegistrar (order 20, both before route mounting), and
+ * ActuatorRouteRegistrar (order 50) via passes(). Both this and ActuatorServiceProvider are in extra.laravel.providers.
  *
  * ExposureModel MUST be bound here, not left to container autowiring: unlike Config (whose sole constructor
  * param is the `Illuminate\Contracts\Config\Repository` interface, resolvable via Illuminate\Foundation\
@@ -63,6 +66,10 @@ final class ActuatorWiringProvider extends FireflyServiceProvider
             $this->app->singleton(StatusAggregator::class, static fn (): StatusAggregator => new StatusAggregator);
         }
 
+        if (! $this->app->bound(InfoContributorRegistry::class)) {
+            $this->app->singleton(InfoContributorRegistry::class, static fn (): InfoContributorRegistry => new InfoContributorRegistry);
+        }
+
         parent::register();
     }
 
@@ -71,6 +78,6 @@ final class ActuatorWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new HealthContributorRegistrar, new ActuatorRouteRegistrar];
+        return [new HealthContributorRegistrar, new InfoContributorRegistrar, new ActuatorRouteRegistrar];
     }
 }
