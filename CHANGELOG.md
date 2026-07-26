@@ -2,6 +2,26 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.12] - 2026-07-26
+### Added
+- **`firefly/actuator`** — the Spring-Boot-Actuator analogue: a `HealthIndicator` SPI (`Status` UP/DOWN/OUT_OF_SERVICE/
+  UNKNOWN, a most-severe `StatusAggregator`, liveness/readiness probe groups, `/health/{group}`, 503-on-DOWN,
+  `show-details`) with built-in `Ping`/`DiskSpace`/`Db` indicators discovered by a bean-scan `HealthContributorRegistrar`;
+  an `ActuatorEndpoint` contract + `ActuatorRegistry` + a HAL `/actuator` index; a route-registration BootPass mounting
+  framework endpoints on the illuminate `Router` under `/actuator`; `/info` (`InfoContributor` port + `App`/`BuildInfo`),
+  `/env` (masked), `/beans`, `/conditions`, `/mappings`, `/loggers` (GET/POST), `/scheduledtasks`. Exposure model
+  (secure-default `health,info`; unexposed → 404); fail-safe errors via `ProblemDetailsRenderer`. Secured entirely by
+  M11 config (recommended `firefly.security.http.rules` lockdown) with zero code edge to `firefly/security`. New Deptrac
+  `Actuator` layer (top-of-stack).
+- **`firefly/observability`** — the Micrometer/Prometheus analogue: a first-party pure-PHP `MeterRegistry`
+  (`SimpleMeterRegistry`, counter/gauge/timer, idempotent tag sets) + a `MetricsRecorder` port (+ NoOp); a pure-PHP
+  Prometheus 0.0.4 text exposition (no ext, no OTel) behind `/actuator/prometheus` and a Micrometer-JSON
+  `/actuator/metrics`, both implementing the actuator contract and gated on a `MeterRegistry` bean; an HTTP `MetricsFilter`
+  auto-instrumenting `http_server_requests_seconds`; the real `MeterRegistryCqrsMetrics` (wins the M10 seam via
+  `#[Order(500)]` + `#[ConditionalOnMissingBean]`); a resilience circuit-breaker state gauge + process metrics; a
+  correlation-id log processor; and a `Tracer` port (`NoOpTracer`; OpenTelemetry deferred to SP-7). New Deptrac
+  `Observability` layer (top-of-stack, gated on a `MeterRegistry` bean).
+
 ## [26.07.11] - 2026-07-24
 ### Added
 - **`firefly/security`** — the first-party security core: an immutable `Authentication`/`SecurityContext`/`GrantedAuthority`
