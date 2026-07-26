@@ -1,0 +1,35 @@
+{
+    "name": "firefly/actuator",
+    "description": "LaraFly actuator: production-ready health/info/introspection endpoints (a Spring-Boot-Actuator analog) — a HealthIndicator SPI with liveness/readiness groups, an ActuatorEndpoint contract + registry, and a route-registration BootPass that mounts framework endpoints on the illuminate Router under /actuator. Dependency-light, always-on, secure-by-default via M11 config.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/log": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Actuator\\ActuatorServiceProvider",
+                "Firefly\\Actuator\\ActuatorWiringProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Actuator\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Actuator\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

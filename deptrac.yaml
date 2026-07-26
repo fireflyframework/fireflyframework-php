@@ -66,6 +66,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/security/src/.*
+    - name: Actuator
+      collectors:
+        - type: directory
+          value: packages/actuator/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -217,3 +221,17 @@ deptrac:
       - Data
       - Cqrs
       - Validation
+
+    # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
+    # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
+    # boot/condition attributes, extends AutoConfigure's base, mounts on Web (RouteManifest/ProblemDetailsRenderer/
+    # filters), and reads the Scheduling manifest for /scheduledtasks. Its Db health indicator uses illuminate DB
+    # DIRECTLY (no Data->Actuator edge). No Actuator->Security edge (secured by config). NOTHING depends on Actuator.
+    Actuator:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Scheduling
