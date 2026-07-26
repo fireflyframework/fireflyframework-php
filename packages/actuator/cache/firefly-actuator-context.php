@@ -6,6 +6,30 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Actuator\\ActuatorAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'exposureModel',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Endpoint\\ExposureModel',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Actuator\\Health\\DbHealthIndicator',
         'postConstruct' => [
         ],
@@ -26,7 +50,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
         'postConstruct' => [
         ],

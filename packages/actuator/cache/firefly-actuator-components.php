@@ -6,6 +6,29 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Actuator\\ActuatorAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 1000,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'exposureModel',
+                'returns' => 'Firefly\\Actuator\\Endpoint\\ExposureModel',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+            ],
+        ],
+        'lazy' => false,
+    ],
+    1 => [
         'class' => 'Firefly\\Actuator\\Health\\DbHealthIndicator',
         'stereotype' => 'component',
         'name' => null,
@@ -20,7 +43,7 @@ return [
         ],
         'lazy' => false,
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Actuator\\Health\\DiskSpaceHealthIndicator',
         'stereotype' => 'component',
         'name' => null,
@@ -35,7 +58,22 @@ return [
         ],
         'lazy' => false,
     ],
-    2 => [
+    3 => [
+        'class' => 'Firefly\\Actuator\\Health\\HealthEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+    ],
+    4 => [
         'class' => 'Firefly\\Actuator\\Health\\PingHealthIndicator',
         'stereotype' => 'component',
         'name' => null,
@@ -50,7 +88,7 @@ return [
         ],
         'lazy' => false,
     ],
-    3 => [
+    5 => [
         'class' => 'Firefly\\Actuator\\Info\\AppInfoContributor',
         'stereotype' => 'component',
         'name' => null,
@@ -65,7 +103,7 @@ return [
         ],
         'lazy' => false,
     ],
-    4 => [
+    6 => [
         'class' => 'Firefly\\Actuator\\Info\\BuildInfoContributor',
         'stereotype' => 'component',
         'name' => null,
@@ -80,38 +118,8 @@ return [
         ],
         'lazy' => false,
     ],
-    5 => [
-        'class' => 'Firefly\\Actuator\\Introspection\\BeansEndpoint',
-        'stereotype' => 'component',
-        'name' => null,
-        'scope' => 'Singleton',
-        'primary' => false,
-        'order' => 0,
-        'qualifier' => null,
-        'interfaces' => [
-            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
-        ],
-        'beans' => [
-        ],
-        'lazy' => true,
-    ],
-    6 => [
-        'class' => 'Firefly\\Actuator\\Introspection\\ConditionsEndpoint',
-        'stereotype' => 'component',
-        'name' => null,
-        'scope' => 'Singleton',
-        'primary' => false,
-        'order' => 0,
-        'qualifier' => null,
-        'interfaces' => [
-            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
-        ],
-        'beans' => [
-        ],
-        'lazy' => true,
-    ],
     7 => [
-        'class' => 'Firefly\\Actuator\\Introspection\\EnvEndpoint',
+        'class' => 'Firefly\\Actuator\\Info\\InfoEndpoint',
         'stereotype' => 'component',
         'name' => null,
         'scope' => 'Singleton',
@@ -126,6 +134,51 @@ return [
         'lazy' => false,
     ],
     8 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\BeansEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+    ],
+    9 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\ConditionsEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+    ],
+    10 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\EnvEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+    ],
+    11 => [
         'class' => 'Firefly\\Actuator\\Introspection\\LoggersEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -140,7 +193,7 @@ return [
         ],
         'lazy' => false,
     ],
-    9 => [
+    12 => [
         'class' => 'Firefly\\Actuator\\Introspection\\MappingsEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -155,7 +208,7 @@ return [
         ],
         'lazy' => false,
     ],
-    10 => [
+    13 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
         'stereotype' => 'component',
         'name' => null,
