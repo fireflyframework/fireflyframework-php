@@ -70,6 +70,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/actuator/src/.*
+    - name: Observability
+      collectors:
+        - type: directory
+          value: packages/observability/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -235,3 +239,18 @@ deptrac:
       - AutoConfigure
       - Web
       - Scheduling
+
+    # Observability is a top-of-stack capability: a pure-PHP MeterRegistry + Prometheus exposition whose metrics
+    # endpoints implement Actuator's ActuatorEndpoint contract (=> Actuator), instruments HTTP via a Web filter
+    # (=> Web), backs Cqrs's CqrsMetrics seam (=> Cqrs), and gauges Resilience circuit breakers (=> Resilience). It
+    # reads Config, carries Container/Context attributes, extends AutoConfigure's base. NOTHING depends on it.
+    Observability:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Actuator
+      - Cqrs
+      - Resilience
