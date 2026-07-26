@@ -47,4 +47,25 @@ return [
         'beanConditions' => [
         ],
     ],
+    2 => [
+        'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.metrics.enabled',
+                    1 => 'true',
+                    2 => true,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
 ];

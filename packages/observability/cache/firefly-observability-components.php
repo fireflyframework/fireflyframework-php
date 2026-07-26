@@ -35,4 +35,19 @@ return [
         ],
         'lazy' => true,
     ],
+    2 => [
+        'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -100,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+    ],
 ];
