@@ -48,6 +48,90 @@ return [
         ],
     ],
     2 => [
+        'class' => 'Firefly\\Observability\\ObservabilityAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'meterRegistry',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.metrics.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Metrics\\MeterRegistry',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'metricsRecorder',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'prometheusTextFormat',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Prometheus\\PrometheusTextFormat',
+                        ],
+                    ],
+                ],
+            ],
+            3 => [
+                'method' => 'tracer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                        ],
+                    ],
+                ],
+            ],
+            4 => [
+                'method' => 'cqrsMetrics',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.metrics.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    3 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'postConstruct' => [
         ],

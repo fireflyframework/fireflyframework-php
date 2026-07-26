@@ -46,3 +46,4 @@ nav:
           - Security: modules/security.md
       - Operations:
           - Actuator: modules/actuator.md
+          - Observability: modules/observability.md
