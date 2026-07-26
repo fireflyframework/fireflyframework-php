@@ -125,4 +125,49 @@ return [
         ],
         'lazy' => false,
     ],
+    8 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\LoggersEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+    ],
+    9 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\MappingsEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+    ],
+    10 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+    ],
 ];

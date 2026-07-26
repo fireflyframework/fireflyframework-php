@@ -26,4 +26,23 @@ return [
         'beanConditions' => [
         ],
     ],
+    1 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnClass',
+                'args' => [
+                    0 => 'Firefly\\Scheduling\\Schedule\\ScheduledManifest',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
 ];
