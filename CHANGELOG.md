@@ -2,6 +2,13 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.13] - 2026-07-27
+### Added
+- `firefly/testing` — the first-party test-support kit: `FireflyTestCase` + `bootFireflyApp()`/`fireflyApplication()` boot harness, `FireflyDatabaseTestCase`/`UsesSqliteMemory`, web/data slice builders + `#[FireflyTest]`/`#[WebSlice]`/`#[DataSlice]` attribute analogs, recording doubles for Firefly's ports (`RecordingEventPublisher`, `RecordingApplicationEventPublisher`, `RecordingCommandBus`, `StubQueryBus`, `RecordingCqrsMetrics`, `RecordingCommandEventPublisher`, `RecordingMessageBroker`, `RecordingDistributedLock`, `FakeHealthIndicator`, `RecordingTracer`), Firefly Pest expectations (`toHavePublished`/`toHaveHandledCommand`/`toBeUp`/`toHaveRecordedMetric`/`toBeProblemDetails`) + procedural assertions, a fixture layer (`FixtureRegistry`/`AggregateSeeder`/`ListenerSpy`), and a testcontainers hook (`RequiresDocker`/`fireflyConfigFor()`). New Deptrac `Testing` layer (depends on all, depended on by none).
+
+### Changed
+- Dogfood: every package's hand-rolled test base + bare-boot test now runs on the `firefly/testing` harness; duplicated doubles (`FakeEventPublisher`, `SpyEventPublisher`, cqrs `RecordingCommandEventPublisher`, eda/messaging `Spy`) deleted in favor of the shipped kit.
+
 ## [26.07.12] - 2026-07-26
 ### Added
 - **`firefly/actuator`** — the Spring-Boot-Actuator analogue: a `HealthIndicator` SPI (`Status` UP/DOWN/OUT_OF_SERVICE/

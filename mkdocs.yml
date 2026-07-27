@@ -47,3 +47,6 @@ nav:
       - Operations:
           - Actuator: modules/actuator.md
           - Observability: modules/observability.md
+      - Testing:
+          - Testing: modules/testing.md
+          - Integration Testing: modules/integration-testing.md
