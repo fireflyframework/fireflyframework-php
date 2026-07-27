@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Firefly\Cqrs\Tests\Support;
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Handler\HandlerManifest;
@@ -15,33 +14,29 @@ use Firefly\Data\Proxy\ProxyClassGenerator;
 use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifestCompiler;
 use Firefly\Eda\EventPublisher;
-use Illuminate\Contracts\Config\Repository;
+use Firefly\Testing\Double\RecordingEventPublisher;
+use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Schema;
-use LogicException;
-use Orchestra\Testbench\TestCase;
 
 /**
  * Boots the FULL write path over testbench + sqlite :memory:: firefly/data (M8 tx + after-commit dispatch) +
- * firefly/cqrs (bus + wiring + bridge) + the Banking fixtures. The bridge sink is a FakeEventPublisher bound as the
- * M9 EventPublisher BEFORE providers boot (so cqrs's commandEventPublisher gates onto it and picks EdaCommandEventPublisher).
- * The #[Transactional] proxies + manifest and the HandlerManifest are compiled INLINE in resolveApplicationConfiguration
- * (what firefly:cache emits, M15) — testbench runs it BEFORE provider registration, so the overrides are in place
- * before the boot passes wire anything. Mirrors packages/data/tests/Support/MilestoneCapstoneTestCase.php.
+ * firefly/cqrs (bus + wiring + bridge) + the Banking fixtures. The bridge sink is a RecordingEventPublisher bound as
+ * the M9 EventPublisher BEFORE providers boot (so cqrs's commandEventPublisher gates onto it and picks
+ * EdaCommandEventPublisher). The #[Transactional] proxies + manifest and the HandlerManifest are compiled INLINE in
+ * defineFireflyEnvironment() (what firefly:cache emits, M15) — this is CQRS's OWN test-setup proxy generation, NOT
+ * the frozen M8 packages/data/src/Proxy core, so testbench runs it BEFORE provider registration and the overrides
+ * are in place before the boot passes wire anything. Mirrors packages/data/tests/Support/MilestoneCapstoneTestCase.php.
  */
-abstract class CqrsCapstoneTestCase extends TestCase
+abstract class CqrsCapstoneTestCase extends FireflyDatabaseTestCase
 {
-    public FakeEventPublisher $eventBus;
+    public RecordingEventPublisher $eventBus;
 
-    /**
-     * @param  Application  $app
-     * @return list<class-string>
-     */
-    protected function getPackageProviders($app): array
+    /** @return list<class-string> */
+    protected function fireflyProviders(): array
     {
         return [
-            FireflyAutoConfigureServiceProvider::class,
             DataServiceProvider::class,
             CqrsServiceProvider::class,
             CqrsWiringProvider::class,
@@ -49,20 +44,10 @@ abstract class CqrsCapstoneTestCase extends TestCase
         ];
     }
 
-    /**
-     * @param  Application  $app
-     */
-    protected function resolveApplicationConfiguration($app): void
+    protected function defineFireflyEnvironment(Application $app): void
     {
-        parent::resolveApplicationConfiguration($app);
-
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('database.default', 'testing');
-        $config->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-
         // The bridge sink — bound before boot so commandEventPublisher() sees an EventPublisher and picks Eda.
-        $this->eventBus = new FakeEventPublisher;
+        $this->eventBus = new RecordingEventPublisher;
         $app->instance(EventPublisher::class, $this->eventBus);
 
         $psr4 = ['Firefly\\Cqrs\\Tests\\CapstoneFixtures\\Banking\\' => dirname(__DIR__).'/CapstoneFixtures/Banking'];
@@ -93,14 +78,5 @@ abstract class CqrsCapstoneTestCase extends TestCase
         // Reset after boot so each it() observes only ITS OWN integration events (boot dispatches non-DomainEvents
         // the bridge already ignores, but reset for cleanliness).
         $this->eventBus->published = [];
-    }
-
-    public function capstoneApp(): Application
-    {
-        if (! $this->app instanceof Application) {
-            throw new LogicException('The application has not been booted yet — call this from within a test.');
-        }
-
-        return $this->app;
     }
 }

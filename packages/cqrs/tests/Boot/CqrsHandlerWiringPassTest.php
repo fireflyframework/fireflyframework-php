@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Handler\HandlerDescriptor;
@@ -13,26 +12,21 @@ use Firefly\Cqrs\Tests\WiringFixtures\Ping;
 use Firefly\Cqrs\Tests\WiringFixtures\PingHandler;
 use Firefly\Cqrs\Tests\WiringFixtures\Pong;
 use Firefly\Cqrs\Tests\WiringFixtures\PongHandler;
-use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 
 function bootWiredApp(HandlerManifest $manifest): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['cqrs' => []]]));
-
-    // A real compiled manifest + a shared registry singleton, bound BEFORE the providers register so the
-    // wiring provider's bound()-guarded default backs off and the wiring pass populates THIS registry.
-    $app->instance(HandlerManifest::class, $manifest);
-    $app->singleton(HandlerRegistry::class, static fn (): HandlerRegistry => new HandlerRegistry);
-
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-
-    $app->boot();
-
-    return $app;
+    // A real compiled manifest + a shared registry singleton, bound BEFORE the providers register (via the
+    // harness's `bindings:` menu) so the wiring provider's bound()-guarded default backs off and the wiring pass
+    // populates THIS registry.
+    return fireflyApplication(
+        ['firefly' => ['cqrs' => []]],
+        [CqrsServiceProvider::class, CqrsWiringProvider::class],
+        bindings: [
+            HandlerManifest::class => $manifest,
+            HandlerRegistry::class => new HandlerRegistry,
+        ],
+    );
 }
 
 it('populates the registry from the manifest so command AND query handlers are dispatchable after boot', function () {

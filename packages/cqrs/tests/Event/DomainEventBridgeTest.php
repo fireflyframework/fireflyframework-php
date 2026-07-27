@@ -6,7 +6,7 @@ use Firefly\Cqrs\Event\DomainEventBridge;
 use Firefly\Cqrs\Event\EventFailureStrategy;
 use Firefly\Cqrs\Exception\CommandProcessingException;
 use Firefly\Cqrs\Tests\EventFixtures\AccountOpened;
-use Firefly\Cqrs\Tests\EventFixtures\RecordingCommandEventPublisher;
+use Firefly\Testing\Double\RecordingCommandEventPublisher;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LoggerTrait;
 

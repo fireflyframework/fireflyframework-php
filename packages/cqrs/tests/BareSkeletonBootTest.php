@@ -2,13 +2,10 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Handler\HandlerManifest;
-use Illuminate\Config\Repository;
-use Illuminate\Foundation\Application;
 
 /**
  * The bare-skeleton case: firefly/cqrs is on the classpath but the app declares ZERO handlers (no compiled handler
@@ -18,19 +15,12 @@ use Illuminate\Foundation\Application;
  * where the auto-config actually binds CommandBus.)
  */
 it('boots a cqrs-enabled app with zero handlers on the provider default empty manifest', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['cqrs' => []]]));
+    $context = bootFireflyApp(['firefly' => ['cqrs' => []]], [CqrsServiceProvider::class, CqrsWiringProvider::class]);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-
-    $app->boot();
-
-    /** @var ApplicationContext $context */
-    $context = $app->make(ApplicationContext::class);
+    /** @var HandlerManifest $manifest */
+    $manifest = $context->get(HandlerManifest::class);
 
     expect($context)->toBeInstanceOf(ApplicationContext::class)
-        ->and($app->make(HandlerManifest::class)->handlers())->toBe([])
-        ->and($app->make(HandlerManifest::class)->destinations())->toBe([]);
+        ->and($manifest->handlers())->toBe([])
+        ->and($manifest->destinations())->toBe([]);
 });

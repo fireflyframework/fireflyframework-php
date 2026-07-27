@@ -2,26 +2,17 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Event\DomainEventBridge;
 use Firefly\Cqrs\Tests\EventFixtures\AccountOpened;
-use Firefly\Cqrs\Tests\EventFixtures\RecordingCommandEventPublisher;
-use Illuminate\Config\Repository;
+use Firefly\Testing\Double\RecordingCommandEventPublisher;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 
 function bootBridgedApp(RecordingCommandEventPublisher $publisher): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['cqrs' => []]]));
-
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-
-    $app->boot();
+    $app = fireflyApplication(['firefly' => ['cqrs' => []]], [CqrsServiceProvider::class, CqrsWiringProvider::class]);
 
     // Bind the bridge (wrapping the recording publisher) AFTER boot: from T13, CqrsAutoConfiguration's own
     // domainEventBridge #[Bean] is an eager singleton, so binding beforehand would be clobbered the moment the

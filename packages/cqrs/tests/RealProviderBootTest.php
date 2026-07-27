@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Command\DefaultCommandBus;
@@ -14,29 +13,18 @@ use Firefly\Cqrs\Event\NoOpEventPublisher;
 use Firefly\Cqrs\Query\DefaultQueryBus;
 use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Eda\EventPublisher;
-use Illuminate\Config\Repository;
-use Illuminate\Foundation\Application;
 
-function bootCqrsApp(bool $withEventPublisher): Application
+function bootCqrsApp(bool $withEventPublisher): ApplicationContext
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['cqrs' => []]]));
-
-    if ($withEventPublisher) {
-        $app->instance(EventPublisher::class, fakeEventPublisher()); // helper shared from T11
-    }
-
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-    $app->boot();
-
-    return $app;
+    return bootFireflyApp(
+        ['firefly' => ['cqrs' => []]],
+        [CqrsServiceProvider::class, CqrsWiringProvider::class],
+        bindings: $withEventPublisher ? [EventPublisher::class => fakeEventPublisher()] : [], // helper shared from T11
+    );
 }
 
 it('binds a working CommandBus + QueryBus + a NoOp bridge when cqrs boots alone', function () {
-    /** @var ApplicationContext $context */
-    $context = bootCqrsApp(false)->make(ApplicationContext::class);
+    $context = bootCqrsApp(false);
 
     expect($context->get(CommandBus::class))->toBeInstanceOf(DefaultCommandBus::class)
         ->and($context->get(QueryBus::class))->toBeInstanceOf(DefaultQueryBus::class)
@@ -44,8 +32,7 @@ it('binds a working CommandBus + QueryBus + a NoOp bridge when cqrs boots alone'
 });
 
 it('wires the Eda-backed bridge when an EventPublisher is bound (cqrs + eda together)', function () {
-    /** @var ApplicationContext $context */
-    $context = bootCqrsApp(true)->make(ApplicationContext::class);
+    $context = bootCqrsApp(true);
 
     expect($context->get(CommandBus::class))->toBeInstanceOf(DefaultCommandBus::class)
         ->and($context->get(CommandEventPublisher::class))->toBeInstanceOf(EdaCommandEventPublisher::class);

@@ -26,7 +26,7 @@ function cqrsContext(Application $app): ApplicationContext
 
 it('(1) sends a command through the bus, commits via the #[Transactional] handler, and re-emits the integration event to the M9 EventPublisher', function () {
     /** @var CqrsCapstoneTestCase $this */
-    $context = cqrsContext($this->capstoneApp());
+    $context = cqrsContext($this->app());
     /** @var CommandBus $bus */
     $bus = $context->get(CommandBus::class);
 
@@ -47,7 +47,7 @@ it('(1) sends a command through the bus, commits via the #[Transactional] handle
 
 it('(2) resolves the command handler as the generated #[Transactional] proxy — interception is free', function () {
     /** @var CqrsCapstoneTestCase $this */
-    $handler = cqrsContext($this->capstoneApp())->get(OpenAccountHandler::class);
+    $handler = cqrsContext($this->app())->get(OpenAccountHandler::class);
 
     expect($handler::class)->not->toBe(OpenAccountHandler::class) // it IS the generated proxy subclass
         ->and($handler)->toBeInstanceOf(OpenAccountHandler::class);
@@ -55,7 +55,7 @@ it('(2) resolves the command handler as the generated #[Transactional] proxy —
 
 it('(3) a rollback publishes NO integration event and persists no row', function () {
     /** @var CqrsCapstoneTestCase $this */
-    $context = cqrsContext($this->capstoneApp());
+    $context = cqrsContext($this->app());
     /** @var CommandBus $bus */
     $bus = $context->get(CommandBus::class);
 
@@ -71,7 +71,7 @@ it('(3) a rollback publishes NO integration event and persists no row', function
 
 it('(4) answers a query through the bus, running the handler on the inert cache-seam miss', function () {
     /** @var CqrsCapstoneTestCase $this */
-    $context = cqrsContext($this->capstoneApp());
+    $context = cqrsContext($this->app());
     /** @var CommandBus $commandBus */
     $commandBus = $context->get(CommandBus::class);
     /** @var QueryBus $queryBus */
