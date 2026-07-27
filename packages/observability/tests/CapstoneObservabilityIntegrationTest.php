@@ -36,7 +36,7 @@ it('mounts the observability /prometheus endpoint on the actuator (gated wiring)
     /** @var ObservabilityCapstoneTestCase $this */
     // Record a meter directly through the shared registry, then scrape it via the actuator route.
     /** @var MeterRegistry $registry */
-    $registry = $this->capstoneApp()->make(MeterRegistry::class);
+    $registry = $this->app()->make(MeterRegistry::class);
     $registry->counter('demo_events_total', ['kind' => 'test'])->increment(2.0);
 
     // Brief-test fix: assertHeader() demands an EXACT match, but Illuminate\Http\Response::prepare() (Symfony)
@@ -57,7 +57,7 @@ it('mounts the observability /prometheus endpoint on the actuator (gated wiring)
 
 it('lists metric names on /actuator/metrics', function () {
     /** @var ObservabilityCapstoneTestCase $this */
-    $this->capstoneApp()->make(MeterRegistry::class)->counter('demo_events_total')->increment();
+    $this->app()->make(MeterRegistry::class)->counter('demo_events_total')->increment();
 
     $this->getJson('/actuator/metrics')->assertStatus(200)->assertJsonPath(
         'names',
@@ -79,13 +79,13 @@ it('lists metric names on /actuator/metrics', function () {
  */
 it('proves the real CqrsMetrics recorder and a tripped circuit breaker both reach the /prometheus scrape', function () {
     /** @var ObservabilityCapstoneTestCase $this */
-    $metrics = $this->capstoneApp()->make(CqrsMetrics::class);
+    $metrics = $this->app()->make(CqrsMetrics::class);
     expect($metrics)->toBeInstanceOf(MeterRegistryCqrsMetrics::class);
 
     $metrics->recordCommandSuccess(new DemoCqrsCommand, 0.05);
 
     /** @var ResilienceRegistry $resilience */
-    $resilience = $this->capstoneApp()->make(ResilienceRegistry::class);
+    $resilience = $this->app()->make(ResilienceRegistry::class);
     $breaker = $resilience->circuitBreaker('demo'); // failure-threshold=1 (see ObservabilityCapstoneTestCase)
     try {
         $breaker->call(function (): never {

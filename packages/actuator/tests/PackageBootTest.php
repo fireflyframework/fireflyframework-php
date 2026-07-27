@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 use Firefly\Actuator\ActuatorServiceProvider;
 use Firefly\Actuator\ActuatorWiringProvider;
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Firefly\Web\Route\RouteManifest;
-use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 
 /**
- * Binds empty RouteManifest/ScheduledManifest instances directly (`$app->instance(...)`) rather than
+ * Binds empty RouteManifest/ScheduledManifest instances directly (via the harness's `bindings:` menu) rather than
  * registering the FULL WebServiceProvider/SchedulingServiceProvider/SchedulingWiringProvider stack —
  * the same "stub the cross-package seam, don't drag in the sibling's whole boot pipeline" idiom
  * CqrsWiringProvider's own bare-skeleton tests use for EventPublisher (see
@@ -29,16 +27,14 @@ use Illuminate\Foundation\Application;
  */
 function bootActuatorApp(): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['management' => ['enabled' => true]]]));
-    $app->instance(RouteManifest::class, new RouteManifest([]));
-    $app->instance(ScheduledManifest::class, new ScheduledManifest([]));
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new ActuatorServiceProvider($app));
-    $app->register(new ActuatorWiringProvider($app));
-    $app->boot();
-
-    return $app;
+    return fireflyApplication(
+        config: ['firefly' => ['management' => ['enabled' => true]]],
+        providers: [ActuatorServiceProvider::class, ActuatorWiringProvider::class],
+        bindings: [
+            RouteManifest::class => new RouteManifest([]),
+            ScheduledManifest::class => new ScheduledManifest([]),
+        ],
+    );
 }
 
 it('boots a bare skeleton with the actuator providers registered', function () {

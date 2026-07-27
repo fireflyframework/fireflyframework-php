@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
@@ -12,7 +11,6 @@ use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\ObservabilityServiceProvider;
 use Firefly\Observability\ObservabilityWiringProvider;
-use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 
 /**
@@ -30,25 +28,19 @@ use Illuminate\Foundation\Application;
  * read-only outside the repo, so Monolog's `StreamHandler::createDir()` throws UNCAUGHT (the emergency-logger
  * write is outside LogManager's own try/catch). Fix: configure a real, filesystem-free default channel
  * (`errorlog`, a stock Monolog driver Laravel ships) so `driver()` resolves successfully and the emergency path is
- * never hit.
+ * never hit. This config is passed straight through to the harness's `fireflyApplication()` factory unchanged.
  *
  * @param  array<string, mixed>  $observability
  */
 function bootObservability(array $observability): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository([
-        'firefly' => ['cqrs' => [], 'observability' => $observability],
-        'logging' => ['default' => 'test', 'channels' => ['test' => ['driver' => 'errorlog']]],
-    ]));
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-    $app->register(new ObservabilityServiceProvider($app));
-    $app->register(new ObservabilityWiringProvider($app));
-    $app->boot();
-
-    return $app;
+    return fireflyApplication(
+        config: [
+            'firefly' => ['cqrs' => [], 'observability' => $observability],
+            'logging' => ['default' => 'test', 'channels' => ['test' => ['driver' => 'errorlog']]],
+        ],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, ObservabilityServiceProvider::class, ObservabilityWiringProvider::class],
+    );
 }
 
 it('makes MeterRegistryCqrsMetrics win over the M10 NoOp when metrics are enabled', function () {

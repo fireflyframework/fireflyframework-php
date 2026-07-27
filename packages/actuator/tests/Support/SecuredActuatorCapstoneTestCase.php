@@ -8,8 +8,7 @@ use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
-use Illuminate\Contracts\Config\Repository;
-use Illuminate\Foundation\Application;
+use Illuminate\Support\ServiceProvider;
 
 /**
  * The actuator capstone PLUS firefly/security, with the recommended lockdown: /actuator/health + /actuator/info are
@@ -19,10 +18,9 @@ use Illuminate\Foundation\Application;
 abstract class SecuredActuatorCapstoneTestCase extends ActuatorCapstoneTestCase
 {
     /**
-     * @param  Application  $app
-     * @return list<class-string>
+     * @return list<class-string<ServiceProvider>>
      */
-    protected function getPackageProviders($app): array
+    protected function fireflyProviders(): array
     {
         // NOTE (brief-test fix): the brief's draft registered only the Security providers. Once
         // firefly.security.enabled=true, SecurityAutoConfiguration eagerly resolves commandAuthorizer() ->
@@ -30,9 +28,10 @@ abstract class SecuredActuatorCapstoneTestCase extends ActuatorCapstoneTestCase
         // default binding of its own). Without CqrsWiringProvider registered too, the container tries to
         // autowire HandlerManifest via reflection and fails (its constructor takes plain arrays, no defaults) —
         // BindingResolutionException at boot. firefly/security's own RealProviderBootTest (bootSecurityAppWith)
-        // always pairs Security with Cqrs providers for exactly this reason; mirrored here.
+        // always pairs Security with Cqrs providers for exactly this reason; mirrored here. MERGES with the
+        // parent's own 4 actuator providers so both boots' worth of wiring are present.
         return [
-            ...parent::getPackageProviders($app),
+            ...parent::fireflyProviders(),
             CqrsServiceProvider::class,
             CqrsWiringProvider::class,
             SecurityServiceProvider::class,
@@ -41,21 +40,22 @@ abstract class SecuredActuatorCapstoneTestCase extends ActuatorCapstoneTestCase
     }
 
     /**
-     * @param  Application  $app
+     * @return array<string, mixed>
      */
-    protected function resolveApplicationConfiguration($app): void
+    protected function configOverrides(): array
     {
-        parent::resolveApplicationConfiguration($app);
-
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('firefly.management.endpoints.web.exposure.include', 'health,info,env');
-        $config->set('firefly.security.enabled', true);
-        $config->set('firefly.security.http.enabled', true);
-        $config->set('firefly.security.http.rules', [
-            ['pattern' => 'actuator/health', 'access' => 'permitAll'],
-            ['pattern' => 'actuator/info', 'access' => 'permitAll'],
-            ['pattern' => 'actuator/*', 'access' => 'hasRole:ACTUATOR'],
-        ]);
+        // MERGES with the parent's management/exposure keys (spread first) so the secured boot keeps
+        // managementEnabled()/the base health.db flag; only the exposure list + security keys are added/overridden.
+        return [
+            ...parent::configOverrides(),
+            'firefly.management.endpoints.web.exposure.include' => 'health,info,env',
+            'firefly.security.enabled' => true,
+            'firefly.security.http.enabled' => true,
+            'firefly.security.http.rules' => [
+                ['pattern' => 'actuator/health', 'access' => 'permitAll'],
+                ['pattern' => 'actuator/info', 'access' => 'permitAll'],
+                ['pattern' => 'actuator/*', 'access' => 'hasRole:ACTUATOR'],
+            ],
+        ];
     }
 }

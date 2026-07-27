@@ -6,56 +6,47 @@ use Firefly\Actuator\ActuatorServiceProvider;
 use Firefly\Actuator\ActuatorWiringProvider;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\ExposureModel;
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
-use Illuminate\Config\Repository;
-use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Contracts\Validation\Factory;
 use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
-use Illuminate\Routing\Router;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateFactory;
 
 /**
- * NOTE (brief-test fix, three gaps): (1) the brief's draft omitted binding ScheduledManifest.
- * ScheduledTasksEndpoint (#[ConditionalOnClass(ScheduledManifest::class)]) survives condition filtering in THIS
- * monorepo because firefly/scheduling is a hard composer dependency of firefly/actuator (the class always
- * autoloads), so it is eagerly resolved at BootPhase::EagerSingletons (900) — its own docblock documents that
- * this requires ScheduledManifest to already be bound by then. Neither Scheduling provider is registered here
- * (dragging in the whole Scheduling boot pipeline is deliberately out of scope for an actuator-focused boot test
- * — the same "stub the cross-package seam" idiom PackageBootTest.php already established), so bind an empty
- * manifest directly, exactly as PackageBootTest.php does.
- * (2) the brief's draft also omitted binding Illuminate\Contracts\Validation\Factory. WebServiceProvider's own
- * BeanValidator bean resolves Firefly\Validation\Validator, whose ValidationAutoConfiguration default in turn
- * needs the illuminate Factory — a real host app supplies it via Illuminate\Validation\ValidationServiceProvider,
- * which a bare Application never registers. Bind a real Factory directly, exactly as
- * packages/validation/tests/ShippedProviderBootTest.php's own real-provider boot already does.
- * (3) the brief's draft also omitted binding Illuminate\Contracts\Http\Kernel. WebServiceProvider's
- * FilterChainRegistrar BootPass resolves it to read the app's HTTP middleware; a bare Application never binds
- * it (bootstrap/app.php normally does). Bind a real Foundation Kernel directly, exactly as
- * packages/web/tests/PackageBootsTest.php's own real-provider boot already does.
+ * NOTE (brief-test fix, two gaps beyond the brief's literal draft): (1) ScheduledTasksEndpoint
+ * (#[ConditionalOnClass(ScheduledManifest::class)]) survives condition filtering in THIS monorepo because
+ * firefly/scheduling is a hard composer dependency of firefly/actuator (the class always autoloads), so it is
+ * eagerly resolved at BootPhase::EagerSingletons (900) — its own docblock documents that this requires
+ * ScheduledManifest to already be bound by then. Neither Scheduling provider is registered here (dragging in the
+ * whole Scheduling boot pipeline is deliberately out of scope for an actuator-focused boot test — the same "stub
+ * the cross-package seam" idiom PackageBootTest.php already established), so bind an empty manifest via the
+ * `bindings:` menu.
+ * (2) Illuminate\Contracts\Validation\Factory is bound EXPLICITLY (not via the harness's `needs: ['validation']`
+ * menu) because that menu shortcuts straight to a Firefly\Validation\Validator INSTANCE, which would pre-empt
+ * ValidationAutoConfiguration's own #[ConditionalOnMissingBean(Validator::class)] bean before ValidationServiceProvider
+ * ever registers — defeating the whole point of THIS test (proving the REAL provider wires a real Validator). Bind
+ * the raw Illuminate Factory instead, exactly as packages/validation/tests/ShippedProviderBootTest.php's own
+ * real-provider boot does, and let ValidationAutoConfiguration's bean consume it. The HTTP kernel, however, IS
+ * requested via `needs: ['http']` — WebServiceProvider's FilterChainRegistrar BootPass only needs SOME real
+ * Illuminate\Contracts\Http\Kernel to read middleware off of, with no Firefly-side conditional bean in play, so the
+ * harness's stock construction is behaviourally identical to binding it by hand.
  *
  * @param  array<string, mixed>  $management  the `firefly.management.*` tree for this boot
  */
 function bootRealActuator(array $management = ['enabled' => true]): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['management' => $management], 'logging' => ['channels' => []]]));
-    $app->instance(ScheduledManifest::class, new ScheduledManifest([]));
-    $app->instance(Factory::class, new IlluminateFactory(new Translator(new ArrayLoader, 'en')));
-    $app->instance(HttpKernelContract::class, new FoundationHttpKernel($app, $app->make(Router::class)));
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new ValidationServiceProvider($app));
-    $app->register(new WebServiceProvider($app));
-    $app->register(new ActuatorServiceProvider($app));
-    $app->register(new ActuatorWiringProvider($app));
-    $app->boot();
-
-    return $app;
+    return fireflyApplication(
+        config: ['firefly' => ['management' => $management], 'logging' => ['channels' => []]],
+        providers: [ValidationServiceProvider::class, WebServiceProvider::class, ActuatorServiceProvider::class, ActuatorWiringProvider::class],
+        bindings: [
+            ScheduledManifest::class => new ScheduledManifest([]),
+            Factory::class => new IlluminateFactory(new Translator(new ArrayLoader, 'en')),
+        ],
+        needs: ['http'],
+    );
 }
 
 it('binds the ExposureModel from ActuatorAutoConfiguration', function () {

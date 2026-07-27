@@ -6,29 +6,23 @@ namespace Firefly\Actuator\Tests\Support;
 
 use Firefly\Actuator\ActuatorServiceProvider;
 use Firefly\Actuator\ActuatorWiringProvider;
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
+use Firefly\Testing\Boot\FireflyBoot;
+use Firefly\Testing\FireflyDatabaseTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
-use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Application;
-use Orchestra\Testbench\TestCase;
 
 /**
  * Boots the actuator over testbench + a real Web layer so /actuator/* routes dispatch through the HTTP kernel. A
- * sqlite :memory: connection is configured AND the opt-in DB indicator is explicitly enabled so DbHealthIndicator
- * reports UP (→ /health aggregates UP → 200).
+ * sqlite :memory: connection is configured (via FireflyDatabaseTestCase) AND the opt-in DB indicator is explicitly
+ * enabled so DbHealthIndicator reports UP (→ /health aggregates UP → 200).
  */
-abstract class ActuatorCapstoneTestCase extends TestCase
+abstract class ActuatorCapstoneTestCase extends FireflyDatabaseTestCase
 {
-    /**
-     * @param  Application  $app
-     * @return list<class-string>
-     */
-    protected function getPackageProviders($app): array
+    protected function fireflyProviders(): array
     {
         return [
-            FireflyAutoConfigureServiceProvider::class,
             ValidationServiceProvider::class,
             WebServiceProvider::class,
             ActuatorServiceProvider::class,
@@ -36,20 +30,25 @@ abstract class ActuatorCapstoneTestCase extends TestCase
         ];
     }
 
-    /**
-     * @param  Application  $app
-     */
-    protected function resolveApplicationConfiguration($app): void
+    protected function configOverrides(): array
     {
-        parent::resolveApplicationConfiguration($app);
+        return [
+            'firefly.management.enabled' => $this->managementEnabled(),
+            'firefly.management.endpoint.health.db.enabled' => true,
+            'firefly.management.endpoints.web.exposure.include' => $this->exposureInclude(),
+        ];
+    }
 
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('database.default', 'testing');
-        $config->set('database.connections.testing', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-        $config->set('firefly.management.enabled', $this->managementEnabled());
-        $config->set('firefly.management.endpoint.health.db.enabled', true);
-        $config->set('firefly.management.endpoints.web.exposure.include', $this->exposureInclude());
+    /**
+     * NOTE (brief-test fix): ScheduledTasksEndpoint (#[ConditionalOnClass(ScheduledManifest::class)]) survives
+     * condition filtering here — firefly/scheduling is a hard composer dependency of firefly/actuator, so the
+     * class always autoloads — and is eagerly resolved at BootPhase::EagerSingletons (900); its own docblock
+     * documents that ScheduledManifest must already be bound by then. No Scheduling provider is registered above
+     * (out of scope for an actuator HTTP capstone), so stub an empty manifest via the shared harness helper.
+     */
+    protected function defineFireflyEnvironment(Application $app): void
+    {
+        FireflyBoot::stubScheduledManifest($app);
     }
 
     /**
@@ -76,21 +75,5 @@ abstract class ActuatorCapstoneTestCase extends TestCase
     protected function exposureInclude(): string
     {
         return 'health,info';
-    }
-
-    /**
-     * NOTE (brief-test fix): the brief's draft omitted this binding. ScheduledTasksEndpoint
-     * (#[ConditionalOnClass(ScheduledManifest::class)]) survives condition filtering here — firefly/scheduling is
-     * a hard composer dependency of firefly/actuator, so the class always autoloads — and is eagerly resolved at
-     * BootPhase::EagerSingletons (900); its own docblock documents that ScheduledManifest must already be bound
-     * by then. No Scheduling provider is registered above (out of scope for an actuator HTTP capstone), so bind
-     * an empty manifest directly here, in defineEnvironment() — testbench runs this AFTER provider register()
-     * but BEFORE $app->boot(), the same seam WebCapstoneTestCase uses for its own manifest overrides.
-     *
-     * @param  Application  $app
-     */
-    protected function defineEnvironment($app): void
-    {
-        $app->instance(ScheduledManifest::class, new ScheduledManifest([]));
     }
 }

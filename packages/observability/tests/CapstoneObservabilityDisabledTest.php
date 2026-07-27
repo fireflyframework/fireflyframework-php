@@ -18,8 +18,8 @@ uses(ObservabilityDisabledCapstoneTestCase::class);
  */
 it('leaves the M10 NoOp bound, binds no MeterRegistry, and unmounts /prometheus + /metrics when metrics are disabled', function () {
     /** @var ObservabilityDisabledCapstoneTestCase $this */
-    expect($this->capstoneApp()->make(CqrsMetrics::class))->toBeInstanceOf(NoOpCqrsMetrics::class)
-        ->and($this->capstoneApp()->bound(MeterRegistry::class))->toBeFalse();
+    expect($this->app()->make(CqrsMetrics::class))->toBeInstanceOf(NoOpCqrsMetrics::class)
+        ->and($this->app()->bound(MeterRegistry::class))->toBeFalse();
 
     $this->getJson('/actuator/prometheus')->assertStatus(404);
     $this->getJson('/actuator/metrics')->assertStatus(404);
