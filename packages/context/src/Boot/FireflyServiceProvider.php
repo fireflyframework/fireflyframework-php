@@ -62,25 +62,71 @@ abstract class FireflyServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        $kernel = $this->app->make(FireflyKernel::class);
+        $pending = $this->pendingPasses();
 
         foreach ($this->passes() as $pass) {
-            $kernel->addPass($pass);
+            // passes() is still INVOKED at register() time — timing unchanged; only the KERNEL
+            // resolution moves. Laravel discovers package providers ALPHABETICALLY, so a capability
+            // provider can register before FireflyAutoConfigureServiceProvider binds the kernel;
+            // resolving it here would fail. Buffer instead, and drain lazily once boot begins (by
+            // which point the kernel is bound). See PendingBootPasses.
+            $pending->add($pass);
         }
 
         $this->bindApplicationEventPublisher();
 
-        $this->app->booting(static function () use ($kernel): void {
+        $this->app->booting(function (): void {
+            $kernel = $this->drainInto();
             $kernel->run(...self::definitionStagePhases());
         });
 
-        $this->app->booted(function () use ($kernel): void {
+        $this->app->booted(function (): void {
+            $kernel = $this->drainInto();
             $kernel->run(...self::instanceStagePhases());
 
             $this->bootApplicationContext($kernel);
         });
 
         $this->registerOctaneListener();
+    }
+
+    /**
+     * The shared, first-one-wins PendingBootPasses buffer. Bound bound()-guarded exactly like
+     * bindApplicationEventPublisher()/registerOctaneListener(): every FireflyServiceProvider subclass
+     * (one per Firefly package) calls register() and this helper, but only the FIRST binds the buffer;
+     * all of them then share that single instance, so a pass buffered by any subclass is visible to the
+     * one drainInto() call that first reaches the (by-then bound) kernel.
+     */
+    private function pendingPasses(): PendingBootPasses
+    {
+        if (! $this->app->bound(PendingBootPasses::class)) {
+            $this->app->instance(PendingBootPasses::class, new PendingBootPasses);
+        }
+
+        /** @var PendingBootPasses */
+        return $this->app->make(PendingBootPasses::class);
+    }
+
+    /**
+     * Resolve the (now-bound) FireflyKernel and move any buffered passes into it, then return it.
+     * Called lazily from the booting()/booted() callbacks — never at register() time — so the kernel
+     * only has to EXIST by boot time, by which point FireflyAutoConfigureServiceProvider::register()
+     * has bound the correct, manifest-complete kernel regardless of provider registration order. Every
+     * provider's register() has completed (buffering ALL passes) before any booting() callback fires,
+     * so the FIRST drainInto() sees the complete pass list; drain() empties the buffer, so every later
+     * drainInto() — from every other subclass's callback — adds nothing (INVARIANT 10: the kernel still
+     * owns ordering via sortedPasses(); this only relocates WHEN passes are handed over).
+     */
+    private function drainInto(): FireflyKernel
+    {
+        /** @var FireflyKernel $kernel */
+        $kernel = $this->app->make(FireflyKernel::class);
+
+        foreach ($this->pendingPasses()->drain() as $pass) {
+            $kernel->addPass($pass);
+        }
+
+        return $kernel;
     }
 
     /**
