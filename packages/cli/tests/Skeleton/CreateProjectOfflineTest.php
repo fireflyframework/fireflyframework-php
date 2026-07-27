@@ -76,13 +76,15 @@ it('creates a booting, cached app via local firefly path repos (Packagist deps f
     );
     $process->run();
 
-    expect($process->isSuccessful())->toBeTrue($process->getOutput().$process->getErrorOutput())
-        ->and(is_file($target.'/artisan'))->toBeTrue()                                  // BLOCKER-2: runnable app
-        ->and(is_dir($target.'/vendor/firefly/web'))->toBeTrue()                        // firefly family installed
-        ->and(is_file($target.'/bootstrap/cache/firefly/component.php'))->toBeTrue()    // post-create firefly:cache ran
-        ->and(is_file($target.'/bootstrap/cache/firefly/context.php'))->toBeTrue()
-        ->and(is_file($target.'/bootstrap/cache/firefly/routes.php'))->toBeTrue();      // the sample #[RestController] compiled
-
-    // teardown
-    (new Process(['rm', '-rf', $work]))->run();
+    try {
+        expect($process->isSuccessful())->toBeTrue($process->getOutput().$process->getErrorOutput())
+            ->and(is_file($target.'/artisan'))->toBeTrue()                                  // BLOCKER-2: runnable app
+            ->and(is_dir($target.'/vendor/firefly/web'))->toBeTrue()                        // firefly family installed
+            ->and(is_file($target.'/bootstrap/cache/firefly/component.php'))->toBeTrue()    // post-create firefly:cache ran
+            ->and(is_file($target.'/bootstrap/cache/firefly/context.php'))->toBeTrue()
+            ->and(is_file($target.'/bootstrap/cache/firefly/routes.php'))->toBeTrue();      // the sample #[RestController] compiled
+    } finally {
+        // teardown — runs even if an assertion above fails, so a full vendor/-populated temp dir never leaks under /tmp
+        (new Process(['rm', '-rf', $work]))->run();
+    }
 })->group('createproject');
