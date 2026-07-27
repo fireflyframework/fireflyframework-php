@@ -31,18 +31,20 @@ it('fails the toHavePublished expectation when the event type does not match', f
     $publisher = new RecordingEventPublisher;
     $publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice']);
 
-    // @phpstan-ignore method.notFound
-    expect(fn () => expect($publisher)->toHavePublished('does.not.exist'))
-        ->toThrow(ExpectationFailedException::class);
+    expect(function () use ($publisher): void {
+        // @phpstan-ignore method.notFound
+        expect($publisher)->toHavePublished('does.not.exist');
+    })->toThrow(ExpectationFailedException::class);
 });
 
 it('fails the toHavePublished expectation when the payload does not match', function () {
     $publisher = new RecordingEventPublisher;
     $publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice', 'balance' => 500]);
 
-    // @phpstan-ignore method.notFound
-    expect(fn () => expect($publisher)->toHavePublished('AccountOpened', payloadContains: ['owner' => 'bob']))
-        ->toThrow(ExpectationFailedException::class);
+    expect(function () use ($publisher): void {
+        // @phpstan-ignore method.notFound
+        expect($publisher)->toHavePublished('AccountOpened', payloadContains: ['owner' => 'bob']);
+    })->toThrow(ExpectationFailedException::class);
 });
 
 it('supports the procedural assertions', function () {
