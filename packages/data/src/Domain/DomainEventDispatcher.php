@@ -23,6 +23,7 @@ final class DomainEventDispatcher
     public function __construct(
         private readonly AggregateTracker $tracker,
         private readonly ApplicationEventPublisher $publisher,
+        private readonly ?PreCommitEventHook $preCommitHook = null,
     ) {}
 
     public function dispatchAfterCommit(?string $connection = null): void
@@ -41,6 +42,11 @@ final class DomainEventDispatcher
 
     private function afterCommit(object $event, ?string $connection): void
     {
+        // SP-4 same-tx seam: when bound, write the event to the outbox WITHIN the still-open tx (this method runs
+        // during TransactionTemplate's pre-commit drain), so it commits/rolls back atomically with the aggregate.
+        // $connection is passed through so the outbox INSERT lands on the aggregate's OWN connection (I1).
+        $this->preCommitHook?->handle($event, $connection);
+
         DB::connection($connection)->afterCommit(function () use ($event): void {
             $this->publisher->publish($event);
         });
