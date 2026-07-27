@@ -1,0 +1,19 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+foreach ([__DIR__.'/../../../autoload.php', __DIR__.'/../vendor/autoload.php'] as $autoload) {
+    if (file_exists($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+
+use Firefly\Installer\NewCommand;
+use Symfony\Component\Console\Application;
+
+$app = new Application('LaraFly Installer', '26.x-dev');
+$app->add(new NewCommand());
+$app->setDefaultCommand('new');
+$app->run();

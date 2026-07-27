@@ -94,6 +94,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/cli/src/.*
+    - name: Installer
+      collectors:
+        - type: directory
+          value: packages/installer/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -370,3 +374,8 @@ deptrac:
       - Security
       - Actuator
       - Observability
+
+    # Installer is the standalone global `firefly new` tool: symfony/console + symfony/process ONLY,
+    # ZERO firefly runtime deps, so a global install never drags in the framework. Depends on nothing
+    # layered; depended on by none.
+    Installer: ~

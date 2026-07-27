@@ -1,0 +1,28 @@
+{
+    "name": "firefly/installer",
+    "description": "The LaraFly global installer — `firefly new <app>` scaffolds a fresh LaraFly app by wrapping `composer create-project firefly/skeleton`, then git-inits and prints next steps. A thin Symfony Console binary with no firefly runtime dependencies.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "installer", "scaffold", "create-project"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/installer"
+    },
+    "require": {
+        "php": "^8.3",
+        "symfony/console": "^8.0",
+        "symfony/process": "^8.0"
+    },
+    "bin": ["bin/firefly"],
+    "autoload": { "psr-4": { "Firefly\\Installer\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Installer\\Tests\\": "tests/" } },
+    "extra": {
+        "branch-alias": { "dev-main": "26.x-dev" }
+    },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}
