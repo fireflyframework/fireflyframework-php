@@ -3,8 +3,20 @@
     "description": "LaraFly domain: DDD building blocks — Entity, ValueObject, AggregateRoot, DomainEvent. Pure PHP, zero framework dependencies.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "php", "ddd"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/domain"
+    },
     "require": {
         "php": "^8.3"
+    },
+    "extra": {
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Domain\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Domain\\Tests\\": "tests/" } },

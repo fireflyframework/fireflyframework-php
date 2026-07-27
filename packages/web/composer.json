@@ -3,6 +3,15 @@
     "description": "LaraFly web layer: #[RestController] routing compiled to a RouteManifest, parameter binding, #[Valid] interception, JSON-native content negotiation, RFC-7807 rendering, and an ordered WebFilter to Laravel-middleware chain.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "http", "rest"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/web"
+    },
     "require": {
         "php": "^8.3",
         "firefly/autoconfigure": "*@dev",
@@ -21,7 +30,8 @@
             "providers": [
                 "Firefly\\Web\\WebServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Web\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Web\\Tests\\": "tests/" } },

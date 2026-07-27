@@ -3,6 +3,15 @@
     "description": "LaraFly CLI: the developer-experience console — firefly:cache (compile all app manifests + emit #[Transactional] proxies to bootstrap/cache/firefly for a zero-reflection boot), firefly:clear, firefly:about + actuator-over-CLI (routes/health/metrics), the make:firefly-* generator family, and thin serve/db passthroughs.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "cli"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/cli"
+    },
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
@@ -31,7 +40,8 @@
                 "Firefly\\Cli\\CliServiceProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Cli\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Cli\\Tests\\": "tests/" } },

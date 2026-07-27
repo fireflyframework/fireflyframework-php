@@ -3,6 +3,15 @@
     "description": "LaraFly scheduling: a DistributedLock port (a ShedLock analog) with NoneLock/CacheLock backends, a #[Scheduled] attribute discovered into a compiled ScheduledManifest, and a ScheduleWiringPass that registers native Laravel scheduled tasks lazily under a lock guard.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "scheduling"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling"
+    },
     "require": {
         "php": "^8.3",
         "firefly/autoconfigure": "*@dev",
@@ -23,7 +32,8 @@
                 "Firefly\\Scheduling\\SchedulingServiceProvider",
                 "Firefly\\Scheduling\\SchedulingWiringProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Scheduling\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Scheduling\\Tests\\": "tests/" } },

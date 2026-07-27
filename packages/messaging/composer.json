@@ -3,6 +3,15 @@
     "description": "LaraFly raw-bytes messaging: a MessageBrokerPort with in-memory and Laravel-queue adapters, a broker-agnostic #[MessageListener] (topic/group/retries/retryDelay/deadLetterTopic) scanned into a compiled manifest and wired at boot, and a bytes-aware retry/dead-letter helper.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "messaging"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/messaging"
+    },
     "require": {
         "php": "^8.3",
         "firefly/autoconfigure": "*@dev",
@@ -22,7 +31,8 @@
                 "Firefly\\Messaging\\MessagingServiceProvider",
                 "Firefly\\Messaging\\MessagingWiringProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Messaging\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Messaging\\Tests\\": "tests/" } },

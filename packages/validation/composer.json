@@ -3,6 +3,15 @@
     "description": "LaraFly validation: a validate() port over Illuminate\\Validation, financial-domain Rule objects, and a ValidationAutoConfiguration that backs off when the app supplies its own Validator.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "validation"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/validation"
+    },
     "require": {
         "php": "^8.3",
         "firefly/autoconfigure": "*@dev",
@@ -18,7 +27,8 @@
             "providers": [
                 "Firefly\\Validation\\ValidationServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Validation\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Validation\\Tests\\": "tests/" } },

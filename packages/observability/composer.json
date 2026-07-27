@@ -3,6 +3,15 @@
     "description": "LaraFly observability: a first-party pure-PHP MeterRegistry (counter/gauge/timer) with Prometheus 0.0.4 text exposition and a Micrometer-JSON /metrics endpoint, HTTP request auto-instrumentation, the real MeterRegistry-backed CqrsMetrics recorder, a resilience circuit-breaker gauge, process metrics, and a Tracer port (NoOp; OTel drops in at SP-7). Top-of-stack, gated on a MeterRegistry bean.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "metrics", "prometheus"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/observability"
+    },
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
@@ -26,7 +35,8 @@
                 "Firefly\\Observability\\ObservabilityServiceProvider",
                 "Firefly\\Observability\\ObservabilityWiringProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Observability\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Observability\\Tests\\": "tests/" } },

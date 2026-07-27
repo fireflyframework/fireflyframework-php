@@ -3,6 +3,15 @@
     "description": "LaraFly boot engine: the FireflyKernel ordered boot pipeline, conditional evaluation, bean post-processing, lifecycle callbacks, and application events.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "application-context"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/context"
+    },
     "require": {
         "php": "^8.3",
         "firefly/config": "*@dev",
@@ -12,6 +21,9 @@
         "illuminate/contracts": "^13.0",
         "illuminate/events": "^13.0",
         "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Context\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Context\\Tests\\": "tests/" } },

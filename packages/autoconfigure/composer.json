@@ -3,6 +3,15 @@
     "description": "LaraFly auto-configuration engine: candidate discovery, definition assembly, and the bootstrap provider that binds the FireflyKernel and drives the phase-200/500 auto-configuration seams.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "auto-configuration"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/autoconfigure"
+    },
     "require": {
         "php": "^8.3",
         "firefly/config": "*@dev",
@@ -18,7 +27,8 @@
             "providers": [
                 "Firefly\\AutoConfigure\\FireflyAutoConfigureServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\AutoConfigure\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\AutoConfigure\\Tests\\": "tests/" } },

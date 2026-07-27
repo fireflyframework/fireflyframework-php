@@ -3,6 +3,15 @@
     "description": "LaraFly testing: the first-party test-support kit — a boot harness (FireflyTestCase + bootFireflyApp), sqlite/testcontainers database bases, web/data slice builders + attribute analogs, recording doubles for Firefly's own ports, Firefly-flavored Pest expectations, and a fixture layer. Dev-scoped; no runtime service provider.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "testing"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/testing"
+    },
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
@@ -35,6 +44,9 @@
     },
     "suggest": {
         "testcontainers/testcontainers": "Ephemeral Docker backends for @group integration tests (fireflyConfigFor())."
+    },
+    "extra": {
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": {
         "psr-4": { "Firefly\\Testing\\": "src/" },

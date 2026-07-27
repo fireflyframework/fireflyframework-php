@@ -3,6 +3,15 @@
     "description": "LaraFly eda RabbitMQ adapter: a RabbitMqEventPublisher + long-running consumer over php-amqplib (AMQP 0-9-1), auto-configured behind firefly.eda.provider=rabbitmq, with a DLX for exhausted retries and a RabbitMqHealthIndicator.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "rabbitmq"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/eda-rabbitmq"
+    },
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
@@ -22,7 +31,8 @@
             "providers": [
                 "Firefly\\Eda\\Rabbitmq\\EdaRabbitmqServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Eda\\Rabbitmq\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Eda\\Rabbitmq\\Tests\\": "tests/" } },

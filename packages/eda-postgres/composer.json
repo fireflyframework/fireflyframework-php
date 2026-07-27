@@ -3,6 +3,15 @@
     "description": "LaraFly eda Postgres adapter: a PostgresEventPublisher backed by a GENUINE same-transaction firefly_eda_outbox table (the outbox row commits atomically with the aggregate), an in-process LISTEN/NOTIFY + poll consumer that claims committed PENDING rows (SELECT ... FOR UPDATE SKIP LOCKED), drives #[EventListener] handlers, and marks them PUBLISHED, plus an OPTIONAL firefly:outbox:relay command that forwards PENDING rows to a distinct downstream broker. Auto-configured behind firefly.eda.provider=postgres.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "outbox", "postgres"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/eda-postgres"
+    },
     "require": {
         "php": "^8.3",
         "ext-pdo_pgsql": "*",
@@ -27,7 +36,8 @@
                 "Firefly\\Eda\\Postgres\\EdaPostgresServiceProvider",
                 "Firefly\\Eda\\Postgres\\EdaPostgresBootServiceProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Eda\\Postgres\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Eda\\Postgres\\Tests\\": "tests/" } },

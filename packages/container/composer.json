@@ -3,12 +3,24 @@
     "description": "LaraFly dependency injection: PHP 8 attribute stereotypes, component scanning, and a cached manifest over Illuminate\\Container.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "dependency-injection"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/container"
+    },
     "require": {
         "php": "^8.3",
         "firefly/kernel": "*@dev",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
         "symfony/expression-language": "^8.0"
+    },
+    "extra": {
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": {
         "psr-4": { "Firefly\\Container\\": "src/" }

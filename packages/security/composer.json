@@ -3,6 +3,15 @@
     "description": "LaraFly security core: a first-party immutable SecurityContext/Authentication principal model, in-memory + JWT + OAuth2 resource-server authentication, deny-by-default URL and method authorization (#[PreAuthorize]/#[Secured]/#[RolesAllowed]) enforced at the CQRS bus + controller dispatch via a single reflection-free method-security manifest and a no-eval whitelist expression evaluator, CSRF + security-headers hardening filters, and real CommandAuthorizer/QueryAuthorizer/AuditorAware/ControllerSecurityGuard seam implementations. Secure-by-default, fail-closed, zero boot reflection.",
     "type": "library",
     "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "security"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/security"
+    },
     "require": {
         "php": "^8.3",
         "firebase/php-jwt": "^7.0",
@@ -26,7 +35,8 @@
                 "Firefly\\Security\\SecurityServiceProvider",
                 "Firefly\\Security\\SecurityWiringProvider"
             ]
-        }
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": { "psr-4": { "Firefly\\Security\\": "src/" } },
     "autoload-dev": { "psr-4": { "Firefly\\Security\\Tests\\": "tests/" } },
