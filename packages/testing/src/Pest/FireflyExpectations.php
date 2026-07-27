@@ -7,8 +7,10 @@ namespace Firefly\Testing\Pest;
 use Firefly\Actuator\Health\Health;
 use Firefly\Actuator\Health\HealthIndicator;
 use Firefly\Actuator\Health\Status;
+use Firefly\Observability\Metrics\Meter;
 use Firefly\Testing\Double\RecordingCommandBus;
 use Firefly\Testing\Double\RecordingEventPublisher;
+use Illuminate\Testing\TestResponse;
 use RuntimeException;
 
 /**
@@ -85,6 +87,61 @@ final class FireflyExpectations
                 Status::Up,
                 'Expected health status to be UP, got '.$health->status->value.'.',
             );
+
+            // @phpstan-ignore variable.undefined
+            return $this;
+        });
+
+        expect()->extend('toHaveRecordedMetric', function (string $name, array $tags = []) {
+            // Same Pest scope-rebind gotcha as toHavePublished/toHaveHandledCommand/toBeUp above: $this is
+            // Pest\Expectation inside this closure, invisible to PHPStan's static analysis.
+            /** @var object{meters: callable} $registry */
+            // @phpstan-ignore variable.undefined, property.nonObject
+            $registry = $this->value;
+            // The @var shape above describes $registry only well enough to satisfy PHPStan's need for SOME
+            // type; it does not (and cannot, via inline @var) declare a meters() method signature, so the
+            // call below is flagged as method.notFound even though it succeeds at runtime (proven by
+            // MetricAndProblemExpectationsTest).
+            /** @var list<Meter> $meters */
+            // @phpstan-ignore method.notFound
+            $meters = $registry->meters();
+
+            $matches = array_values(array_filter($meters, static function ($meter) use ($name, $tags): bool {
+                if ($meter->name() !== $name) {
+                    return false;
+                }
+                $actual = $meter->tags();
+                foreach ($tags as $key => $value) {
+                    if (! array_key_exists($key, $actual) || $actual[$key] !== $value) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }));
+
+            expect($matches)->not->toBeEmpty("Expected a metric named [{$name}] with the given tags to be recorded.");
+
+            // @phpstan-ignore variable.undefined
+            return $this;
+        });
+
+        expect()->extend('toBeProblemDetails', function (int $status) {
+            // Same Pest scope-rebind gotcha as the other extend() closures above.
+            // @phpstan-ignore variable.undefined, property.nonObject
+            $value = $this->value;
+
+            if ($value instanceof TestResponse) {
+                expect($value->headers->get('content-type'))->toContain('application/problem+json');
+                /** @var array<string,mixed> $body */
+                $body = $value->json();
+            } else {
+                /** @var array<string,mixed> $body */
+                $body = $value;
+            }
+
+            expect($body)->toHaveKeys(['type', 'title', 'status'])
+                ->and($body['status'])->toBe($status);
 
             // @phpstan-ignore variable.undefined
             return $this;
