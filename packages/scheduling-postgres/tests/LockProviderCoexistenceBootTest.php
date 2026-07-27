@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Context\Boot\FireflyKernel;
 use Firefly\Scheduling\Lock\CacheLock;
@@ -15,7 +14,6 @@ use Firefly\Scheduling\SchedulingAutoConfiguration;
 use Firefly\Scheduling\SchedulingServiceProvider;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
-use Illuminate\Config\Repository;
 use Illuminate\Contracts\Cache\Factory as CacheFactoryContract;
 use Illuminate\Contracts\Cache\Repository as CacheRepositoryContract;
 use Illuminate\Foundation\Application;
@@ -39,26 +37,27 @@ function bootWithLockProvider(?string $provider): Application
 {
     $scheduling = $provider === null ? [] : ['lock' => ['provider' => $provider]];
 
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['scheduling' => $scheduling]]));
-    $app->instance(CacheRepositoryContract::class, new CacheRepository(new ArrayStore));
-    $app->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
-    {
-        public function store($name = null)
-        {
-            return new CacheRepository(new ArrayStore);
-        }
-    });
-
-    // Registration ORDER is deliberately scheduling-then-postgres: the winner must be fixed by the
+    // Both the Repository (SchedulingAutoConfiguration's distributedLock #[Bean], eagerly resolved when it
+    // survives the condition pass) and the Factory (any Schedule resolution's CacheEventMutex/CacheSchedulingMutex)
+    // are bound explicitly here — NOT via needs: ['cache']: Laravel's own
+    // Application::registerCoreContainerAliases() pre-registers Illuminate\Contracts\Cache\Repository as an ALIAS
+    // of 'cache.store', so $app->bound(Cache::class) is already true and the needs-menu's guarded default never
+    // fires. Registration ORDER is deliberately scheduling-then-postgres: the winner must be fixed by the
     // condition pass's (#[Order], FQCN) sort, NEVER by which provider recorded its candidacy first.
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new SchedulingServiceProvider($app));
-    $app->register(new SchedulingPostgresServiceProvider($app));
-
-    $app->boot();
-
-    return $app;
+    return fireflyApplication(
+        ['firefly' => ['scheduling' => $scheduling]],
+        [SchedulingServiceProvider::class, SchedulingPostgresServiceProvider::class],
+        bindings: [
+            CacheRepositoryContract::class => new CacheRepository(new ArrayStore),
+            CacheFactoryContract::class => new class implements CacheFactoryContract
+            {
+                public function store($name = null)
+                {
+                    return new CacheRepository(new ArrayStore);
+                }
+            },
+        ],
+    );
 }
 
 /**

@@ -25,18 +25,18 @@ function capstoneEvent(Schedule $schedule): Event
 it('registers the #[Scheduled] task on the real Schedule via the deferred afterResolving hook', function () {
     /** @var SchedulingCapstoneTestCase $this */
     /** @var Schedule $schedule */
-    $schedule = $this->capstoneApp()->make(Schedule::class);
+    $schedule = $this->app()->make(Schedule::class);
 
     expect($schedule->events())->toHaveCount(1);
 });
 
 it('runs the task body when the lock is free', function () {
     /** @var SchedulingCapstoneTestCase $this */
-    $spy = $this->capstoneApp()->make(SpyCounter::class);
+    $spy = $this->app()->make(SpyCounter::class);
 
     /** @var Schedule $schedule */
-    $schedule = $this->capstoneApp()->make(Schedule::class);
-    capstoneEvent($schedule)->run($this->capstoneApp());
+    $schedule = $this->app()->make(Schedule::class);
+    capstoneEvent($schedule)->run($this->app());
 
     expect($spy->count)->toBe(1);
 });
@@ -49,11 +49,11 @@ it('SKIPS the task body when the lock is already held elsewhere', function () {
     $held = Cache::lock(CAPSTONE_LOCK_NAME, 60);
     expect($held->get())->toBeTrue();
 
-    $spy = $this->capstoneApp()->make(SpyCounter::class);
+    $spy = $this->app()->make(SpyCounter::class);
 
     /** @var Schedule $schedule */
-    $schedule = $this->capstoneApp()->make(Schedule::class);
-    capstoneEvent($schedule)->run($this->capstoneApp());
+    $schedule = $this->app()->make(Schedule::class);
+    capstoneEvent($schedule)->run($this->app());
 
     expect($spy->count)->toBe(0);
 

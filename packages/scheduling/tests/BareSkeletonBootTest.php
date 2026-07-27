@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Scheduling\Lock\DistributedLock;
 use Firefly\Scheduling\Lock\NoneLock;
@@ -11,11 +10,9 @@ use Firefly\Scheduling\SchedulingServiceProvider;
 use Firefly\Scheduling\SchedulingWiringProvider;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
-use Illuminate\Config\Repository;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Factory as CacheFactoryContract;
 use Illuminate\Contracts\Cache\Repository as CacheRepositoryContract;
-use Illuminate\Foundation\Application;
 
 /**
  * COVERAGE GAP closed: ShippedProviderBootTest always hand-binds a non-empty ScheduledManifest before booting, so
@@ -26,24 +23,28 @@ use Illuminate\Foundation\Application;
  * autowire ScheduledManifest's `array $tasks` constructor parameter (no default) and crash boot outright.
  */
 it('boots a scheduling-enabled app with zero #[Scheduled] tasks on the provider default empty manifest', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['scheduling' => []]]));
-    $app->instance(CacheRepositoryContract::class, new CacheRepository(new ArrayStore));
-    $app->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
-    {
-        public function store($name = null)
-        {
-            return new CacheRepository(new ArrayStore);
-        }
-    });
+    // Illuminate\Console\Scheduling\Schedule autowires CacheEventMutex/CacheSchedulingMutex, both of which need
+    // Illuminate\Contracts\Cache\Factory, and SchedulingAutoConfiguration's distributedLock #[Bean] needs the
+    // Repository — both bound explicitly here (NOT via needs: ['cache']: Laravel's own
+    // Application::registerCoreContainerAliases() pre-registers Illuminate\Contracts\Cache\Repository as an ALIAS
+    // of 'cache.store', so $app->bound(Cache::class) is already true and the needs-menu's guarded default never
+    // fires).
     // Deliberately NOT binding ScheduledManifest::class — this is the whole point of the test. A bare skeleton
     // app has no #[Scheduled] tasks, so nothing else in the app would ever bind a compiled manifest.
-
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new SchedulingServiceProvider($app));
-    $app->register(new SchedulingWiringProvider($app));
-
-    $app->boot();
+    $app = fireflyApplication(
+        ['firefly' => ['scheduling' => []]],
+        [SchedulingServiceProvider::class, SchedulingWiringProvider::class],
+        bindings: [
+            CacheRepositoryContract::class => new CacheRepository(new ArrayStore),
+            CacheFactoryContract::class => new class implements CacheFactoryContract
+            {
+                public function store($name = null)
+                {
+                    return new CacheRepository(new ArrayStore);
+                }
+            },
+        ],
+    );
 
     /** @var ApplicationContext $context */
     $context = $app->make(ApplicationContext::class);
