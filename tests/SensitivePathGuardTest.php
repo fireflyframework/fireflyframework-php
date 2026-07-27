@@ -75,7 +75,11 @@ it('catches a tracked private-key filename (id_rsa)', function () {
 
     try {
         mkdir($repo.'/.ssh', 0o755, true);
-        file_put_contents($repo.'/.ssh/id_rsa', '-----BEGIN OPENSSH PRIVATE KEY-----');
+        // NOTE: the PEM header is built via concatenation (not one literal) so this fixture
+        // string never appears contiguous in THIS file's own tracked source — otherwise the
+        // guard's content scan (now live, see below) would flag this very test file when run
+        // against the real repo tree.
+        file_put_contents($repo.'/.ssh/id_rsa', '-----BEGIN'.' OPENSSH PRIVATE KEY-----');
         (new Process(['git', 'add', '-A', '-f'], $repo))->run();
 
         $p = new Process(['bash', $repo.'/guard.sh'], $repo);
@@ -83,6 +87,54 @@ it('catches a tracked private-key filename (id_rsa)', function () {
 
         expect($p->getExitCode())->not->toBe(0)
             ->and($p->getErrorOutput())->toContain('key file');
+    } finally {
+        (new Process(['rm', '-rf', $repo]))->run();
+    }
+});
+
+it('catches an AWS-style secret key in a file whose name matches no path rule', function () {
+    $repo = makeGitSandbox();
+
+    try {
+        // "config.txt" matches none of the path-based case arms (not .env*, not a key filename,
+        // not a superpowers/.claude path) — this proves the CONTENT scan itself is what catches
+        // it, not the path rules. The fake key is concatenated so the contiguous 20-char pattern
+        // never appears literally in this tracked test file's own source.
+        $fakeAwsKey = 'AKIA'.'FAKEFAKEFAKEFAKE';
+        file_put_contents($repo.'/config.txt', "aws_key = {$fakeAwsKey}\n");
+        (new Process(['git', 'add', '-A'], $repo))->run();
+
+        $p = new Process(['bash', $repo.'/guard.sh'], $repo);
+        $p->run();
+
+        expect($p->getExitCode())->not->toBe(0)
+            ->and($p->getErrorOutput())->toContain('secret marker')
+            ->and($p->getErrorOutput())->toContain('config.txt');
+    } finally {
+        (new Process(['rm', '-rf', $repo]))->run();
+    }
+});
+
+it('catches a full PEM private-key body in a filename outside the key-file path rules', function () {
+    $repo = makeGitSandbox();
+
+    try {
+        // "deploy_key" is deliberately NOT in the path-based key-filename arm (id_rsa/id_ed25519/
+        // *.pem/*.p12/*.pfx only) — per the brief, ssh/PEM keys under other filenames are meant
+        // to be caught by the content scan instead. Header/footer built via concatenation so the
+        // literal PEM markers never appear contiguous in this tracked file's own source.
+        $begin = '-----BEGIN'.' OPENSSH PRIVATE KEY-----';
+        $end = '-----END'.' OPENSSH PRIVATE KEY-----';
+        $body = $begin."\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmU=\n".$end."\n";
+        file_put_contents($repo.'/deploy_key', $body);
+        (new Process(['git', 'add', '-A'], $repo))->run();
+
+        $p = new Process(['bash', $repo.'/guard.sh'], $repo);
+        $p->run();
+
+        expect($p->getExitCode())->not->toBe(0)
+            ->and($p->getErrorOutput())->toContain('secret marker')
+            ->and($p->getErrorOutput())->toContain('deploy_key');
     } finally {
         (new Process(['rm', '-rf', $repo]))->run();
     }
