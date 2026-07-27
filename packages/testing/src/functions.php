@@ -31,20 +31,30 @@ if (! function_exists('fireflyApplication')) {
      * @param  array<string,mixed>  $config  full config array (defaults to ['firefly' => []])
      * @param  list<class-string<ServiceProvider>>  $providers  registered after AutoConfigure
      * @param  array<class-string,object>  $bindings  $app->instance(...) overrides bound before registration
-     * @param  list<'cache'|'validation'|'http'>  $needs  standard missing-bindings menu, bind-if-not-bound
+     * @param  list<'cache'|'validation'|'http'>  $needs  standard missing-bindings menu; binds a fresh
+     *                                                    fallback instance for each requested capability
+     *                                                    (overridable by an explicit $bindings entry)
      */
     function fireflyApplication(array $config = [], array $providers = [], array $bindings = [], array $needs = []): Application
     {
         $app = new Application;
         $app->instance('config', new Repository($config === [] ? ['firefly' => []] : $config));
 
-        if (in_array('cache', $needs, true) && ! $app->bound(Cache::class)) {
+        // NOTE: a fresh Application::__construct() already calls registerCoreContainerAliases(), which
+        // pre-aliases Illuminate\Contracts\Cache\Repository -> 'cache.store' and
+        // Illuminate\Contracts\Validation\Factory -> 'validator'. That makes $app->bound(Cache::class) /
+        // $app->bound(Validator::class) return true via isAlias() even though nothing was ever bound — so
+        // these branches must NOT be guarded by ! $app->bound(...); they bind unconditionally when
+        // requested. Container::instance() unsets the alias before binding, so this correctly installs the
+        // isolated fallback instance in place of the aliased one. The explicit $bindings loop below runs
+        // AFTER this and still wins if the caller also passes an explicit binding for the same abstract.
+        if (in_array('cache', $needs, true)) {
             $app->instance(Cache::class, new CacheRepository(new ArrayStore));
         }
-        if (in_array('validation', $needs, true) && ! $app->bound(Validator::class)) {
+        if (in_array('validation', $needs, true)) {
             $app->instance(Validator::class, new IlluminateValidator(new IlluminateFactory(new Translator(new ArrayLoader, 'en'))));
         }
-        if (in_array('http', $needs, true) && ! $app->bound(HttpKernelContract::class)) {
+        if (in_array('http', $needs, true)) {
             $app->instance(HttpKernelContract::class, new FoundationHttpKernel($app, $app->make(Router::class)));
         }
 
