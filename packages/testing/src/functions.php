@@ -104,3 +104,44 @@ if (! function_exists('assertNoEventsPublished')) {
         expect($publisher->published)->toBeEmpty('Expected no events to have been published.');
     }
 }
+
+if (! function_exists('is_docker_available')) {
+    /** True iff `docker info` exits 0 (also true when DOCKER_HOST is set and reachable, since the docker CLI honors it). Never throws; returns false on any failure so it is safe to call with no Docker installed. */
+    function is_docker_available(): bool
+    {
+        $result = 1;
+        $output = [];
+        exec('docker info >/dev/null 2>&1', $output, $result);
+
+        return $result === 0;
+    }
+}
+
+if (! function_exists('fireflyConfigFor')) {
+    /**
+     * Map a started testcontainer into a flat Firefly/Laravel config array (the @ServiceConnection analog).
+     *
+     * @return array<string,mixed>
+     */
+    function fireflyConfigFor(object $container, string $prefix = 'database.connections.testing'): array
+    {
+        $config = [];
+        if (method_exists($container, 'getHost')) {
+            $config["{$prefix}.host"] = $container->getHost();
+        }
+        if (method_exists($container, 'getMappedPort')) {
+            $config["{$prefix}.port"] = $container->getMappedPort();
+        }
+        if (method_exists($container, 'getUsername')) {
+            $config["{$prefix}.username"] = $container->getUsername();
+        }
+        if (method_exists($container, 'getPassword')) {
+            $config["{$prefix}.password"] = $container->getPassword();
+        }
+        if (method_exists($container, 'getDatabase')) {
+            $config["{$prefix}.database"] = $container->getDatabase();
+        }
+
+        return $config;
+    }
+}
