@@ -17,7 +17,7 @@ return [
         ],
         'beanConditions' => [
             0 => [
-                'method' => 'subscriberRegistry',
+                'method' => 'rabbitConnectionFactory',
                 'conditions' => [
                     0 => [
                         'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
@@ -30,6 +30,32 @@ return [
                 ],
             ],
             1 => [
+                'method' => 'connectionOpener',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.eda.provider',
+                            1 => 'rabbitmq',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'subscriberRegistry',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.eda.provider',
+                            1 => 'rabbitmq',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
+            3 => [
                 'method' => 'eventPublisher',
                 'conditions' => [
                     0 => [
@@ -42,6 +68,27 @@ return [
                     ],
                 ],
             ],
+        ],
+    ],
+    1 => [
+        'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqHealthIndicator',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.eda.provider',
+                    1 => 'rabbitmq',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
         ],
     ],
 ];

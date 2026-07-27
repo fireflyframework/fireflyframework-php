@@ -19,22 +19,24 @@ use Firefly\Eda\JsonSerializer;
  * backs off — the scheduling-postgres precedent. The SubscriberRegistry is a shared singleton so the publisher, the
  * consumer, and EventListenerWiringPass all populate/read ONE registry.
  *
- * rabbitConnectionFactory()/connectionOpener() are bound UNCONDITIONALLY (constructing them opens no socket —
- * connect() is lazy): this keeps RabbitMqHealthIndicator resolvable — and able to actually probe RabbitMQ — even
- * when firefly.eda.provider is not "rabbitmq". Only the provider-affecting beans (SubscriberRegistry, EventPublisher)
- * are gated, so installing this package without opting in stays otherwise inert.
+ * Every bean here — including rabbitConnectionFactory()/connectionOpener() — is gated behind
+ * firefly.eda.provider=rabbitmq: RabbitMqHealthIndicator (the only thing that used to need the connection factory
+ * while inactive) is now itself #[ConditionalOnProperty]-gated, so nothing in this package needs to resolve when
+ * a different eda provider is active. Installing this package without opting in stays fully inert.
  */
 #[Configuration]
 #[Order(900)]
 final class RabbitMqAutoConfiguration
 {
     #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'rabbitmq')]
     public function rabbitConnectionFactory(Config $config): RabbitMqConnectionFactory
     {
         return new RabbitMqConnectionFactory($config);
     }
 
     #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'rabbitmq')]
     public function connectionOpener(RabbitMqConnectionFactory $factory): OpensConnection
     {
         return $factory;
