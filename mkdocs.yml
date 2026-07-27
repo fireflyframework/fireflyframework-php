@@ -40,6 +40,7 @@ nav:
           - Transactions: modules/transactional.md
       - Eventing & Messaging:
           - Event-Driven Architecture: modules/eda.md
+          - EDA Brokers: modules/eda-brokers.md
           - Messaging: modules/messaging.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md

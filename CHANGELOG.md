@@ -2,6 +2,17 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.16] - 2026-07-27
+
+### Added
+- `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` — real message-broker adapters behind the M9 `EventPublisher` port.
+- Genuine same-transaction outbox (`firefly_eda_outbox`) in `firefly/eda-postgres` — the outbox row commits atomically with the aggregate.
+- `firefly/eda` consumer-loop SPI (`EventConsumer`/`ConsumerLoop`) + `firefly:eda:consume`; `firefly:outbox:relay`.
+- Per-broker `HealthIndicator`s; `@group('integration')` round-trip tests per broker.
+
+### Changed
+- `firefly/data`: added an optional `PreCommitEventHook` seam to `Domain\DomainEventDispatcher` (non-frozen) enabling the same-tx outbox; null by default — no behaviour change for existing apps.
+
 ## [26.07.15] - 2026-07-27
 ### Fixed
 - **`firefly/context`** — boot-order robustness: a real app (created via `composer create-project
