@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Firefly\Cli;
 
+use Firefly\Cli\Command\AboutCommand;
 use Firefly\Cli\Command\CacheCommand;
 use Firefly\Cli\Command\ClearCommand;
+use Firefly\Cli\Command\HealthCommand;
+use Firefly\Cli\Command\MetricsCommand;
+use Firefly\Cli\Command\RoutesCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -20,8 +24,11 @@ final class CliServiceProvider extends ServiceProvider
             $this->commands([
                 CacheCommand::class,
                 ClearCommand::class,
-                // filled task-by-task: AboutCommand, Routes/Health/Metrics,
-                // Serve/Db, and the make:firefly-* family.
+                AboutCommand::class,
+                RoutesCommand::class,
+                HealthCommand::class,
+                MetricsCommand::class,
+                // filled task-by-task: Serve/Db, and the make:firefly-* family.
             ]);
         }
     }
