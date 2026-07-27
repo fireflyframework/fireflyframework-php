@@ -2,6 +2,13 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.14] - 2026-07-27
+### Added
+- `firefly/cli` — the developer-experience console (new Deptrac `Cli` layer, depends-all/depended-by-none): `firefly:cache` (compile all app manifests via every settled package's scanner→compiler + emit `#[Transactional]` proxy classes into `bootstrap/cache/firefly/` for a zero-reflection boot; a `FireflyCacheServiceProvider` binds the compiled wiring manifests + registers the proxy autoloader at boot), `firefly:clear`, `firefly:about` + actuator-over-CLI `firefly:routes`/`firefly:health`/`firefly:metrics`, the `make:firefly-*` generator family (controller/service/component/handler/listener/entity/repository/config-properties), and thin `firefly:serve`/`firefly:db` passthroughs.
+- `firefly/firefly` — a `type: metapackage` runtime aggregator (the Composer BOM analog): `composer require firefly/firefly` pulls the whole runtime family.
+- `firefly/skeleton` — a `type: project` Laravel-13 create-project template pre-wired with the Firefly family + a sample `#[RestController]`/`#[Service]` + `firefly:cache` in `post-create-project-cmd`; `composer create-project firefly/skeleton my-app` yields a booting, cached app.
+- Docs: `docs/modules/getting-started.md` + `docs/modules/cli.md`; a full foundation-flow e2e capstone (+ a `@group integration` Postgres pass via testcontainers).
+
 ## [26.07.13] - 2026-07-27
 ### Added
 - `firefly/testing` — the first-party test-support kit: `FireflyTestCase` + `bootFireflyApp()`/`fireflyApplication()` boot harness, `FireflyDatabaseTestCase`/`UsesSqliteMemory`, web/data slice builders + `#[FireflyTest]`/`#[WebSlice]`/`#[DataSlice]` attribute analogs, recording doubles for Firefly's ports (`RecordingEventPublisher`, `RecordingApplicationEventPublisher`, `RecordingCommandBus`, `StubQueryBus`, `RecordingCqrsMetrics`, `RecordingCommandEventPublisher`, `RecordingMessageBroker`, `RecordingDistributedLock`, `FakeHealthIndicator`, `RecordingTracer`), Firefly Pest expectations (`toHavePublished`/`toHaveHandledCommand`/`toBeUp`/`toHaveRecordedMetric`/`toBeProblemDetails`) + procedural assertions, a fixture layer (`FixtureRegistry`/`AggregateSeeder`/`ListenerSpy`), and a testcontainers hook (`RequiresDocker`/`fireflyConfigFor()`). New Deptrac `Testing` layer (depends on all, depended on by none).

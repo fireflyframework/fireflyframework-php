@@ -18,6 +18,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Architecture: architecture.md
+  - Getting Started: modules/getting-started.md
   - Modules:
       - Foundation:
           - Error Handling: modules/error-handling.md
@@ -50,3 +51,5 @@ nav:
       - Testing:
           - Testing: modules/testing.md
           - Integration Testing: modules/integration-testing.md
+      - Tooling:
+          - CLI: modules/cli.md
