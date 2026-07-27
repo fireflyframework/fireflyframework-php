@@ -13,6 +13,7 @@
         <exclude>
             <group>integration</group>
             <group>createproject</group>
+            <group>installer</group>
         </exclude>
     </groups>
     <source>

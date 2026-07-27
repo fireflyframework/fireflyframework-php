@@ -3,7 +3,11 @@
 
 declare(strict_types=1);
 
-foreach ([__DIR__.'/../../../autoload.php', __DIR__.'/../vendor/autoload.php'] as $autoload) {
+foreach ([
+    __DIR__.'/../../../autoload.php',        // installed as vendor/firefly/installer/bin/firefly (global/project install)
+    __DIR__.'/../../../vendor/autoload.php', // running from packages/installer/bin inside the monorepo checkout
+    __DIR__.'/../vendor/autoload.php',       // firefly/installer developed standalone with its own vendor/
+] as $autoload) {
     if (file_exists($autoload)) {
         require $autoload;
         break;
@@ -14,6 +18,6 @@ use Firefly\Installer\NewCommand;
 use Symfony\Component\Console\Application;
 
 $app = new Application('LaraFly Installer', '26.x-dev');
-$app->add(new NewCommand());
+$app->addCommand(new NewCommand());
 $app->setDefaultCommand('new');
 $app->run();
