@@ -17,3 +17,17 @@ composer.lock
 # Subagent-driven-development scratch (ledger + review packages)
 /.superpowers/
 .DS_Store
+# IDE / editor
+/.idea/
+/.vscode/
+*.swp
+# env files (never commit real env; .env.example is allowed by the guard)
+.env
+.env.*
+!.env.example
+# OS cruft
+Thumbs.db
+# tool caches / logs / coverage
+*.log
+/coverage/
+/.claude/

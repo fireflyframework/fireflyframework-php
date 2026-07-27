@@ -43,3 +43,13 @@ jobs:
           python-version: '3.12'
       - run: pip install mkdocs-material
       - run: mkdocs build --strict
+
+  guard:
+    name: Pre-push safety guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No sensitive tracked/staged paths
+        run: bash scripts/check-no-sensitive-tracked.sh
