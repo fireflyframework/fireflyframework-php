@@ -6,4 +6,4 @@ default adapter and a Laravel-queue async adapter, an `EventEnvelope` + JSON `Se
 and a linear-backoff retry / dead-letter helper. Real brokers (Kafka/RabbitMQ/Postgres) and the durable
 transactional outbox ship as their own packages at SP-4.
 
-© Firefly Software Solutions Inc. Licensed under Apache-2.0.
+Apache-2.0 © Firefly Software Solutions Inc.

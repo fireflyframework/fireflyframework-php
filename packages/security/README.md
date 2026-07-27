@@ -11,4 +11,4 @@ method-security manifest and a **no-`eval`** whitelist expression evaluator, and
 hardening filters. It supplies the real `CommandAuthorizer`/`QueryAuthorizer`/`AuditorAware`/`ControllerSecurityGuard`
 for the seams shipped in M8/M10/M6. Secure-by-default, fail-closed, opt-in, zero boot reflection.
 
-© Firefly Software Solutions Inc. Licensed under Apache-2.0.
+Apache-2.0 © Firefly Software Solutions Inc.

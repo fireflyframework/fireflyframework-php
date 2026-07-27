@@ -9,4 +9,4 @@ query cache), and the domain->integration-event bridge that re-emits every commi
 transaction semantics for free from the firefly/data proxy — cqrs writes no interception code.
 Read models / projections are a future `firefly/eventsourcing` package.
 
-© Firefly Software Solutions Inc. Licensed under Apache-2.0.
+Apache-2.0 © Firefly Software Solutions Inc.
