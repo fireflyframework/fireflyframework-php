@@ -11,9 +11,9 @@ use Firefly\Data\Tests\Fixtures\Domain\NoteAdded;
 use Firefly\Data\Tests\Fixtures\Domain\SecondaryNote;
 use Firefly\Data\Tests\Fixtures\Domain\SecondaryNoteRepository;
 use Firefly\Data\Tests\Support\DatabaseTestCase;
-use Firefly\Data\Tests\Support\SpyEventPublisher;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionTemplate;
+use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -24,12 +24,12 @@ uses(DatabaseTestCase::class);
  * Builds a real tracker + spy publisher + dispatcher + a template WIRED with that dispatcher — the exact object
  * graph DataAutoConfiguration assembles, over the real sqlite connection.
  *
- * @return array{0: TransactionTemplate, 1: AggregateTracker, 2: SpyEventPublisher}
+ * @return array{0: TransactionTemplate, 1: AggregateTracker, 2: RecordingApplicationEventPublisher}
  */
 function txStack(): array
 {
     $tracker = new AggregateTracker;
-    $spy = new SpyEventPublisher;
+    $spy = new RecordingApplicationEventPublisher;
     $dispatcher = new DomainEventDispatcher($tracker, $spy);
     $template = new TransactionTemplate($dispatcher);
 

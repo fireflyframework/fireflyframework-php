@@ -14,7 +14,7 @@ uses(DataCapstoneTestCase::class);
 /**
  * Resolve the (proxied) AccountService from the booted context. Takes the app explicitly — a top-level Pest
  * helper is NOT bound to the TestCase, so it cannot read the protected $this->app itself; each it() passes it in
- * via $this->capstoneApp() (inside an it() closure $this IS the TestCase, and capstoneApp() narrows the untyped
+ * via $this->app() (inside an it() closure $this IS the TestCase, and app() narrows the untyped
  * inherited $app to a real Application).
  */
 function accountService(Application $app): AccountService
@@ -30,7 +30,7 @@ function accountService(Application $app): AccountService
 
 it('proxies the #[Service] and rolls back BOTH inserts when the method throws', function () {
     /** @var DataCapstoneTestCase $this */
-    $service = accountService($this->capstoneApp());
+    $service = accountService($this->app());
 
     expect($service::class)->not->toBe(AccountService::class); // it is the generated proxy subclass
     expect($service)->toBeInstanceOf(AccountService::class);
@@ -45,7 +45,7 @@ it('proxies the #[Service] and rolls back BOTH inserts when the method throws', 
 
 it('commits and persists both rows', function () {
     /** @var DataCapstoneTestCase $this */
-    accountService($this->capstoneApp())->transferAndCommit();
+    accountService($this->app())->transferAndCommit();
 
     expect(DB::table('accounts')->count())->toBe(2);
 });
@@ -53,7 +53,7 @@ it('commits and persists both rows', function () {
 it('commits despite a method-level noRollbackFor exception (override beats class-level)', function () {
     /** @var DataCapstoneTestCase $this */
     try {
-        accountService($this->capstoneApp())->logButKeep();
+        accountService($this->app())->logButKeep();
     } catch (IgnorableException) {
     }
 
@@ -63,7 +63,7 @@ it('commits despite a method-level noRollbackFor exception (override beats class
 
 it('unwinds a NESTED inner rollback to a savepoint, leaving the outer row intact', function () {
     /** @var DataCapstoneTestCase $this */
-    accountService($this->capstoneApp())->outerWithNested();
+    accountService($this->app())->outerWithNested();
 
     expect(DB::table('accounts')->pluck('name')->all())->toBe(['outer']);
 });

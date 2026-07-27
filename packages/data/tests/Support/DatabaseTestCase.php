@@ -4,34 +4,17 @@ declare(strict_types=1);
 
 namespace Firefly\Data\Tests\Support;
 
-use Illuminate\Contracts\Config\Repository;
+use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Schema;
-use Orchestra\Testbench\TestCase;
 
 /**
- * A testbench base that wires the DB/Schema facades over an sqlite :memory: connection and creates a simple
- * `widgets` table. Used by the transaction engine (T4), the proxy characterization (T7) and the capstone (T9)
- * — anything that needs a REAL connection to prove begin/commit/rollBack.
+ * A testbench base that wires the DB/Schema facades over an sqlite :memory: connection (inherited from
+ * FireflyDatabaseTestCase) and creates a simple `widgets` table. Used by the transaction engine (T4), the proxy
+ * characterization (T7) and the capstone (T9) — anything that needs a REAL connection to prove begin/commit/rollBack.
  */
-abstract class DatabaseTestCase extends TestCase
+abstract class DatabaseTestCase extends FireflyDatabaseTestCase
 {
-    /**
-     * @param  Application  $app
-     */
-    protected function defineEnvironment($app): void
-    {
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('database.default', 'testing');
-        $config->set('database.connections.testing', [
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'prefix' => '',
-        ]);
-    }
-
     protected function setUp(): void
     {
         parent::setUp();

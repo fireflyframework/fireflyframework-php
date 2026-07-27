@@ -9,10 +9,10 @@ use Firefly\Data\DataAutoConfiguration;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Data\Proxy\ProxyFactory;
-use Firefly\Data\Tests\Support\SpyEventPublisher;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
 use Firefly\Data\Transaction\TransactionTemplate;
+use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 
 it('is an ordered #[Configuration] whose beans back off ConditionalOnMissingBean', function () {
     $class = new ReflectionClass(DataAutoConfiguration::class);
@@ -28,7 +28,7 @@ it('builds the transaction engine beans incl. the after-commit dispatch graph', 
     $config = new DataAutoConfiguration;
 
     $tracker = $config->aggregateTracker();
-    $dispatcher = $config->domainEventDispatcher($tracker, new SpyEventPublisher);
+    $dispatcher = $config->domainEventDispatcher($tracker, new RecordingApplicationEventPublisher);
     $template = $config->transactionTemplate($dispatcher);
 
     expect($tracker)->toBeInstanceOf(AggregateTracker::class)

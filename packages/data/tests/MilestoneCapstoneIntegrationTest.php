@@ -18,7 +18,7 @@ uses(MilestoneCapstoneTestCase::class);
 /**
  * Resolve the (proxied) PlaceOrderService from the booted context. Takes the app explicitly — a top-level Pest
  * helper is NOT bound to the TestCase, so it cannot read the protected $this->app itself; each it() passes it in
- * via $this->milestoneApp() (inside an it() closure $this IS the TestCase, and milestoneApp() narrows the untyped
+ * via $this->app() (inside an it() closure $this IS the TestCase, and app() narrows the untyped
  * inherited $app to a real Application).
  */
 function placeOrderService(Application $app): PlaceOrderService
@@ -59,7 +59,7 @@ function asOrderPlaced(object $event): OrderPlaced
 
 it('(1) proxies the #[Transactional] service and rolls back the whole unit of work — no rows, no event', function () {
     /** @var MilestoneCapstoneTestCase $this */
-    $service = placeOrderService($this->milestoneApp());
+    $service = placeOrderService($this->app());
 
     expect($service::class)->not->toBe(PlaceOrderService::class) // it IS the generated proxy subclass
         ->and($service)->toBeInstanceOf(PlaceOrderService::class);
@@ -75,12 +75,12 @@ it('(1) proxies the #[Transactional] service and rolls back the whole unit of wo
 
 it('(2) returns the derived-query rows (findByStatusOrderByCreatedAtDesc) after commit', function () {
     /** @var MilestoneCapstoneTestCase $this */
-    $service = placeOrderService($this->milestoneApp());
+    $service = placeOrderService($this->app());
     $service->placeOrder('placed');   // created_at ...:01
     $service->placeOrder('placed');   // created_at ...:02
     $service->placeOrder('shipped');  // filtered out
 
-    $rows = orderRepository($this->milestoneApp())->findByStatusOrderByCreatedAtDesc('placed');
+    $rows = orderRepository($this->app())->findByStatusOrderByCreatedAtDesc('placed');
 
     expect($rows)->toHaveCount(2)
         ->and($rows[0]->id)->toBeGreaterThan($rows[1]->id) // created_at DESC ⇒ latest first
@@ -89,7 +89,7 @@ it('(2) returns the derived-query rows (findByStatusOrderByCreatedAtDesc) after 
 
 it('(3) publishes the domain event to the spy ONLY after a real commit; rollback publishes nothing', function () {
     /** @var MilestoneCapstoneTestCase $this */
-    $service = placeOrderService($this->milestoneApp());
+    $service = placeOrderService($this->app());
 
     $service->placeOrder('placed');
 
@@ -107,13 +107,13 @@ it('(3) publishes the domain event to the spy ONLY after a real commit; rollback
 
 it('(4) returns the right Page from a Specification-filtered paged query', function () {
     /** @var MilestoneCapstoneTestCase $this */
-    $service = placeOrderService($this->milestoneApp());
+    $service = placeOrderService($this->app());
     $service->placeOrder('placed');
     $service->placeOrder('placed');
     $service->placeOrder('placed');
     $service->placeOrder('cancelled');
 
-    $page = orderRepository($this->milestoneApp())->findBySpecificationPaged(
+    $page = orderRepository($this->app())->findBySpecificationPaged(
         Specifications::where(fn (Builder $q) => $q->where('status', 'placed')),
         Pageable::of(1, 2),
     );
