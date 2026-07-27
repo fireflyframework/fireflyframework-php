@@ -63,3 +63,34 @@ it('refuses a non-empty target directory without --force', function () {
 
     exec('rm -rf '.escapeshellarg($dir));
 });
+
+it('proceeds with scaffolding a non-empty directory when --force is passed', function () {
+    $dir = sys_get_temp_dir().'/fnew-'.bin2hex(random_bytes(5));
+    mkdir($dir, 0o755, true);
+    file_put_contents($dir.'/keep.txt', 'x');
+    $runner = new FakeProcessRunner;
+
+    try {
+        $tester = runNew($runner, ['name' => $dir, '--force' => true, '--no-git' => true]);
+
+        $tester->assertCommandIsSuccessful();
+        expect($runner->calls)->not->toBeEmpty()
+            ->and($runner->calls[0]['command'])->toBe(
+                ['composer', 'create-project', 'firefly/skeleton', $dir, '--no-interaction']
+            );
+    } finally {
+        exec('rm -rf '.escapeshellarg($dir));
+    }
+});
+
+it('never shells a git command when --no-git is passed', function () {
+    $dir = sys_get_temp_dir().'/fnew-'.bin2hex(random_bytes(5));
+    $runner = new FakeProcessRunner;
+
+    $tester = runNew($runner, ['name' => $dir, '--no-git' => true]);
+
+    $tester->assertCommandIsSuccessful();
+    $programs = array_map(fn (array $c): string => $c['command'][0], $runner->calls);
+    expect($runner->calls)->toHaveCount(1)
+        ->and($programs)->not->toContain('git');
+});
