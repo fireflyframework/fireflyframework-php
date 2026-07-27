@@ -42,6 +42,19 @@ return [
                     ],
                 ],
             ],
+            2 => [
+                'method' => 'eventConsumer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.eda.provider',
+                            1 => 'kafka',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     1 => [
