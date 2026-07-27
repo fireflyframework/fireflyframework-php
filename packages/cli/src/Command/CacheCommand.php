@@ -27,9 +27,14 @@ final class CacheCommand extends Command
         }
 
         $dir = FireflyCachePaths::dir($this->laravel);
-        $report = (new ManifestCacheWriter)->writeManifests($psr4, $dir);
+        $report = (new ManifestCacheWriter)->write($psr4, $dir);
 
-        $this->info(sprintf('firefly:cache — wrote %d manifest(s) to %s', count($report->files), $dir));
+        $this->info(sprintf(
+            'firefly:cache — wrote %d manifest(s) + %d proxy(ies) to %s',
+            count($report->files),
+            $report->proxyCount,
+            $dir,
+        ));
 
         return self::SUCCESS;
     }
