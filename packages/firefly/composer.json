@@ -1,0 +1,29 @@
+{
+    "name": "firefly/firefly",
+    "description": "LaraFly runtime metapackage — the Composer analog of the Maven BOM. Requiring firefly/firefly pulls the whole runtime framework family in one line.",
+    "type": "metapackage",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/cqrs": "*@dev",
+        "firefly/data": "*@dev",
+        "firefly/domain": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/messaging": "*@dev",
+        "firefly/observability": "*@dev",
+        "firefly/resilience": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "firefly/scheduling-postgres": "*@dev",
+        "firefly/security": "*@dev",
+        "firefly/validation": "*@dev",
+        "firefly/web": "*@dev"
+    },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

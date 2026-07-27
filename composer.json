@@ -27,6 +27,7 @@
     "require-dev": {
         "deptrac/deptrac": "^4.6",
         "firefly/cli": "*@dev",
+        "firefly/firefly": "*@dev",
         "firefly/testing": "*@dev",
         "larastan/larastan": "^3.9",
         "laravel/octane": "^2.0",
@@ -46,6 +47,7 @@
             "Firefly\\Context\\Tests\\": "packages/context/tests/",
             "Firefly\\Cli\\Tests\\": "packages/cli/tests/",
             "Firefly\\Cqrs\\Tests\\": "packages/cqrs/tests/",
+            "Firefly\\Firefly\\Tests\\": "packages/firefly/tests/",
             "Firefly\\Data\\Tests\\": "packages/data/tests/",
             "Firefly\\Domain\\Tests\\": "packages/domain/tests/",
             "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
