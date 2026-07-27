@@ -2,14 +2,10 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
-use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Validation\IlluminateValidator;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Validation\Validator;
-use Illuminate\Config\Repository;
 use Illuminate\Contracts\Validation\Factory;
-use Illuminate\Foundation\Application;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateFactory;
@@ -21,17 +17,14 @@ use Illuminate\Validation\Factory as IlluminateFactory;
  * `composer require firefly/validation` does — it must auto-wire the default Validator without crashing.
  */
 it('auto-wires the default Validator by booting the shipped provider against its committed manifests', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => []]));
-    $app->instance(Factory::class, new IlluminateFactory(new Translator(new ArrayLoader, 'en')));
-
-    $app->register(new ValidationServiceProvider($app));
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-
-    $app->boot();
-
-    /** @var ApplicationContext $context */
-    $context = $app->make(ApplicationContext::class);
+    // ValidationAutoConfiguration's validator() bean needs Illuminate\Contracts\Validation\Factory — bound
+    // explicitly here (NOT via needs: ['validation'], which pre-binds the Firefly Validator PORT itself and
+    // would make #[ConditionalOnMissingBean(Validator)] back off, defeating this test's whole point).
+    $context = bootFireflyApp(
+        ['firefly' => []],
+        [ValidationServiceProvider::class],
+        bindings: [Factory::class => new IlluminateFactory(new Translator(new ArrayLoader, 'en'))],
+    );
 
     expect($context->get(Validator::class))->toBeInstanceOf(IlluminateValidator::class);
 });

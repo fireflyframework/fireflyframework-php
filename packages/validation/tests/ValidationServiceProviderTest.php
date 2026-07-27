@@ -5,11 +5,20 @@ declare(strict_types=1);
 use Firefly\AutoConfigure\AutoConfiguration;
 use Firefly\AutoConfigure\AutoConfigurationCollector;
 use Firefly\Validation\ValidationServiceProvider;
-use Illuminate\Foundation\Application;
+use Illuminate\Contracts\Validation\Factory;
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\Factory as IlluminateFactory;
 
 it('is a discovered AutoConfiguration that records validation candidacy at register() time', function () {
-    $app = new Application;
-    $app->register(new ValidationServiceProvider($app));
+    // #[ConditionalOnMissingBean(Validator)] checks the Firefly BeanDefinitionRegistry, not the Illuminate
+    // container — needs: ['validation'] (which instance-binds the Firefly Validator PORT directly) would
+    // NOT satisfy it, so ValidationAutoConfiguration's validator() bean still runs during boot and needs a
+    // real Illuminate\Contracts\Validation\Factory — bound explicitly here, same as ShippedProviderBootTest.
+    $app = fireflyApplication(
+        providers: [ValidationServiceProvider::class],
+        bindings: [Factory::class => new IlluminateFactory(new Translator(new ArrayLoader, 'en'))],
+    );
 
     expect(new ValidationServiceProvider($app))->toBeInstanceOf(AutoConfiguration::class);
 

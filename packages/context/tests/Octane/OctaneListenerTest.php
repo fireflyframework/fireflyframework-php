@@ -84,7 +84,7 @@ it(
     'resets ONLY $event->sandbox — the container actually serving the request/task/tick — never $event->app',
     function (string $handlerMethod, Closure $makeEvent): void {
         /** @var LaraflyTestCase $this */
-        $app = $this->laraflyApp();
+        $app = $this->app();
         $sandbox = clone $app;
 
         $appState = wireScopedOctaneProbe($app);
@@ -127,7 +127,7 @@ it(
     'subscribe() wires every Octane lifecycle event to its reset handler on a real Dispatcher',
     function (Closure $makeEvent): void {
         /** @var LaraflyTestCase $this */
-        $app = $this->laraflyApp();
+        $app = $this->app();
         $sandbox = clone $app;
 
         wireScopedOctaneProbe($app);

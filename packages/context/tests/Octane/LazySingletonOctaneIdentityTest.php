@@ -86,7 +86,7 @@ it('pins the ACTUAL #[Lazy]/Octane behavior: an eagerly-resolved singleton is th
     LazyIdentityProbe::$constructions = 0;
 
     /** @var LaraflyTestCase $this */
-    $app = $this->laraflyApp();
+    $app = $this->app();
 
     $app->singleton(EagerIdentityProbe::class);
     $app->singleton(LazyIdentityProbe::class);
@@ -127,7 +127,7 @@ it('[FAULT INJECTION] the control fails if the "eager" probe is ALSO never resol
     LazyIdentityProbe::$constructions = 0;
 
     /** @var LaraflyTestCase $this */
-    $app = $this->laraflyApp();
+    $app = $this->app();
 
     $app->singleton(EagerIdentityProbe::class);
     $app->singleton(LazyIdentityProbe::class);
