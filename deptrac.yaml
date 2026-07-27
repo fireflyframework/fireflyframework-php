@@ -58,6 +58,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/eda-rabbitmq/src/.*
+    - name: EdaPostgres
+      collectors:
+        - type: directory
+          value: packages/eda-postgres/src/.*
     - name: Messaging
       collectors:
         - type: directory
@@ -204,6 +208,26 @@ deptrac:
       - Context
       - AutoConfigure
       - Eda
+      - Actuator
+
+    # EdaPostgres is the GENUINE same-transaction Postgres OUTBOX adapter for Eda's EventPublisher port: its own
+    # package (every broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of
+    # the pdo_pgsql dependency. Its PostgresEventPublisher writes the outbox row on the aggregate's current
+    # connection (illuminate/database, ignored as unlayered); its OutboxPreCommitHook implements Data's
+    # PreCommitEventHook (=> Data) and reuses Cqrs's EdaCommandEventPublisher/HandlerManifest/CorrelationContext to
+    # mirror the after-commit domain->envelope mapping (=> Cqrs), mapping Domain's DomainEvent (=> Domain); it supplies
+    # an Actuator HealthIndicator (=> Actuator). It reads Config indirectly via #[ConditionalOnProperty], carries
+    # Container/Context attributes, and extends AutoConfigure's base. It is depended on by NONE.
+    EdaPostgres:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Domain
+      - Data
+      - Eda
+      - Cqrs
       - Actuator
 
     # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,

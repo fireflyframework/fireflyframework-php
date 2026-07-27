@@ -27,6 +27,7 @@
     "require-dev": {
         "deptrac/deptrac": "^4.6",
         "firefly/cli": "*@dev",
+        "firefly/eda-postgres": "*@dev",
         "firefly/eda-rabbitmq": "*@dev",
         "firefly/firefly": "*@dev",
         "firefly/testing": "*@dev",
@@ -52,6 +53,7 @@
             "Firefly\\Data\\Tests\\": "packages/data/tests/",
             "Firefly\\Domain\\Tests\\": "packages/domain/tests/",
             "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
+            "Firefly\\Eda\\Postgres\\Tests\\": "packages/eda-postgres/tests/",
             "Firefly\\Eda\\Rabbitmq\\Tests\\": "packages/eda-rabbitmq/tests/",
             "Firefly\\Messaging\\Tests\\": "packages/messaging/tests/",
             "Firefly\\Observability\\Tests\\": "packages/observability/tests/",
