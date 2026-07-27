@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Firefly\Testing\Pest;
 
+use Firefly\Actuator\Health\Health;
+use Firefly\Actuator\Health\HealthIndicator;
+use Firefly\Actuator\Health\Status;
 use Firefly\Testing\Double\RecordingCommandBus;
 use Firefly\Testing\Double\RecordingEventPublisher;
 use RuntimeException;
@@ -70,6 +73,22 @@ final class FireflyExpectations
             // @phpstan-ignore variable.undefined
             return $this;
         });
+
+        expect()->extend('toBeUp', function () {
+            // Same Pest scope-rebind gotcha as toHavePublished/toHaveHandledCommand above: $this is
+            // Pest\Expectation inside this closure, and the literal class name (not self::) is required
+            // to reach this class's helper.
+            // @phpstan-ignore variable.undefined, property.nonObject
+            $health = FireflyExpectations::asHealth($this->value);
+
+            expect($health->status)->toBe(
+                Status::Up,
+                'Expected health status to be UP, got '.$health->status->value.'.',
+            );
+
+            // @phpstan-ignore variable.undefined
+            return $this;
+        });
     }
 
     /**
@@ -100,6 +119,25 @@ final class FireflyExpectations
     {
         if (! $value instanceof RecordingCommandBus) {
             throw new RuntimeException('toHaveHandledCommand() expects the value under test to be a RecordingCommandBus.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Narrow the Expectation's mixed `->value` to Health — accepting either a Health directly or a
+     * HealthIndicator (narrowed via ->health()) — instanceof-narrow-or-throw, no `@var` override, no
+     * cast. Same PUBLIC-not-private requirement as the other as*() helpers above: this runs under the
+     * Expectation-rebound scope, so visibility is checked against that, not this class.
+     */
+    public static function asHealth(mixed $value): Health
+    {
+        if ($value instanceof HealthIndicator) {
+            $value = $value->health();
+        }
+
+        if (! $value instanceof Health) {
+            throw new RuntimeException('toBeUp() expects the value under test to be a Health or a HealthIndicator.');
         }
 
         return $value;
