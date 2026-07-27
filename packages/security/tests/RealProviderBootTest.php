@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
@@ -15,10 +14,6 @@ use Firefly\Security\Data\SecurityContextAuditorAware;
 use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
-use Illuminate\Cache\ArrayStore;
-use Illuminate\Cache\Repository as CacheRepository;
-use Illuminate\Config\Repository;
-use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Foundation\Application;
 
 /**
@@ -26,21 +21,14 @@ use Illuminate\Foundation\Application;
  */
 function bootSecurityAppWith(array $security): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['cqrs' => [], 'security' => $security]]));
-    // The jwksProvider #[Bean] resolves Illuminate\Contracts\Cache\Repository; a bare Application registers no
-    // cache service provider, so bind an in-memory one directly — needed whenever the oauth2 resource-server
-    // surface flag is on, harmless (unused) otherwise.
-    $app->instance(Cache::class, new CacheRepository(new ArrayStore));
-
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new CqrsServiceProvider($app));
-    $app->register(new CqrsWiringProvider($app));
-    $app->register(new SecurityServiceProvider($app));
-    $app->register(new SecurityWiringProvider($app));
-    $app->boot();
-
-    return $app;
+    // needs: ['cache'] — the jwksProvider #[Bean] resolves Illuminate\Contracts\Cache\Repository; the
+    // harness's isolated ArrayStore fallback (fireflyApplication()'s missing-bindings menu) satisfies it
+    // whenever the oauth2 resource-server surface flag is on, harmless (unused) otherwise.
+    return fireflyApplication(
+        config: ['firefly' => ['cqrs' => [], 'security' => $security]],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class],
+        needs: ['cache'],
+    );
 }
 
 function bootSecurityApp(bool $enabled): Application
