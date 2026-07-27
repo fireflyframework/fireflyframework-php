@@ -19,7 +19,7 @@ uses(QueueMessageBrokerTestCase::class);
  */
 it('delivers through the worker path under the sync driver', function () {
     /** @var QueueMessageBrokerTestCase $this */
-    $app = $this->brokerApp();
+    $app = $this->app();
 
     /** @var Repository $config */
     $config = $app->make('config');
@@ -45,7 +45,7 @@ it('delivers through the worker path under the sync driver', function () {
  */
 it('round-trips the full Message (value, key, headers) through job serialization', function () {
     /** @var QueueMessageBrokerTestCase $this */
-    $app = $this->brokerApp();
+    $app = $this->app();
 
     /** @var Repository $config */
     $config = $app->make('config');

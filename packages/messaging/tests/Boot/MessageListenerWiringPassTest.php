@@ -2,35 +2,34 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Messaging\DeadLetter\DeadLetterStore;
 use Firefly\Messaging\Listener\MessageListenerManifest;
 use Firefly\Messaging\MessageBrokerPort;
 use Firefly\Messaging\MessagingServiceProvider;
 use Firefly\Messaging\MessagingWiringProvider;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
-use Firefly\Messaging\Tests\Fixtures\Spy;
-use Illuminate\Config\Repository;
-use Illuminate\Foundation\Application;
+use Firefly\Testing\Fixture\ListenerSpy;
 
 it('subscribes compiled #[MessageListener]s onto the broker at boot and starts it (in-memory provider)', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['messaging' => []]]));
-
     $descriptors = (new MessageListenerScanner)->scan(['Firefly\\Messaging\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
-    $app->instance(MessageListenerManifest::class, new MessageListenerManifest($descriptors));
-    $app->singleton(Spy::class);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new MessagingServiceProvider($app));
-    $app->register(new MessagingWiringProvider($app));
-
-    $app->boot();
+    $context = bootFireflyApp(
+        ['firefly' => ['messaging' => []]],
+        [MessagingServiceProvider::class, MessagingWiringProvider::class],
+        bindings: [
+            MessageListenerManifest::class => new MessageListenerManifest($descriptors),
+            ListenerSpy::class => new ListenerSpy,
+        ],
+    );
 
     // The wiring pass already called start(); publishing now reaches the consumer (no manual start()).
-    $app->make(MessageBrokerPort::class)->publish('orders', 'bytes');
+    /** @var MessageBrokerPort $broker */
+    $broker = $context->get(MessageBrokerPort::class);
+    $broker->publish('orders', 'bytes');
 
-    expect($app->make(Spy::class)->seen)->toBe(['orders']);
+    /** @var ListenerSpy $spy */
+    $spy = $context->get(ListenerSpy::class);
+    expect($spy->seen)->toBe(['orders']);
 });
 
 /**
@@ -43,24 +42,24 @@ it('subscribes compiled #[MessageListener]s onto the broker at boot and starts i
  * RuntimeException escapes / the DLQ stays empty).
  */
 it('wraps each wired listener in retry/DLQ: a throwing listener is dead-lettered, not escaped', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['messaging' => []]]));
-
     $descriptors = (new MessageListenerScanner)->scan(['Firefly\\Messaging\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
-    $app->instance(MessageListenerManifest::class, new MessageListenerManifest($descriptors));
-    $app->singleton(Spy::class);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new MessagingServiceProvider($app));
-    $app->register(new MessagingWiringProvider($app));
-
-    $app->boot();
+    $context = bootFireflyApp(
+        ['firefly' => ['messaging' => []]],
+        [MessagingServiceProvider::class, MessagingWiringProvider::class],
+        bindings: [
+            MessageListenerManifest::class => new MessageListenerManifest($descriptors),
+            ListenerSpy::class => new ListenerSpy,
+        ],
+    );
 
     // FailingConsumer is wired with retries: 2, deadLetterTopic: 'failing.DLT' — always throws.
-    $app->make(MessageBrokerPort::class)->publish('failing', 'bytes');
+    /** @var MessageBrokerPort $broker */
+    $broker = $context->get(MessageBrokerPort::class);
+    $broker->publish('failing', 'bytes');
 
     /** @var DeadLetterStore $dlq */
-    $dlq = $app->make(DeadLetterStore::class);
+    $dlq = $context->get(DeadLetterStore::class);
     $entries = $dlq->all();
 
     expect($entries)->toHaveCount(1)

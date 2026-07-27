@@ -7,11 +7,12 @@ namespace Firefly\Messaging\Tests\Fixtures;
 use Firefly\Container\Attributes\Component;
 use Firefly\Messaging\Attributes\MessageListener;
 use Firefly\Messaging\Message;
+use Firefly\Testing\Fixture\ListenerSpy;
 
 #[Component]
 final class OrderConsumer
 {
-    public function __construct(private readonly Spy $spy) {}
+    public function __construct(private readonly ListenerSpy $spy) {}
 
     #[MessageListener(topic: 'orders')]
     public function consume(Message $message): void

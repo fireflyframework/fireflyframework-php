@@ -15,7 +15,7 @@ it('enqueues ONE DispatchEventJob carrying the envelope and does NOT invoke the 
     Bus::fake();
 
     /** @var QueueEventBusTestCase $this */
-    $bus = new QueueEventBus(new SubscriberRegistry, $this->busApp(), null, null);
+    $bus = new QueueEventBus(new SubscriberRegistry, $this->app(), null, null);
     $ran = false;
     $bus->subscribe('order.*', function () use (&$ran): void {
         $ran = true;
@@ -104,7 +104,7 @@ final class RecordingDispatcherSpy implements Dispatcher
 it('resolves the Dispatcher FRESH on every publish() call — a Dispatcher bound AFTER construction is still '
     .'used, never a stale constructor-time reference', function () {
         /** @var QueueEventBusTestCase $this */
-        $app = $this->busApp();
+        $app = $this->app();
 
         // Constructed while the container still holds whatever Dispatcher::class binding existed at boot — mirrors
         // the real timing: the auto-config binds QueueEventBus as a container SINGLETON once, at boot, long before

@@ -4,27 +4,20 @@ declare(strict_types=1);
 
 namespace Firefly\Messaging\Tests\Support;
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Messaging\Listener\MessageListenerManifest;
 use Firefly\Messaging\MessagingServiceProvider;
 use Firefly\Messaging\MessagingWiringProvider;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
-use Firefly\Messaging\Tests\Fixtures\Spy;
-use Illuminate\Contracts\Config\Repository;
+use Firefly\Testing\FireflyTestCase;
+use Firefly\Testing\Fixture\ListenerSpy;
 use Illuminate\Foundation\Application;
-use LogicException;
-use Orchestra\Testbench\TestCase;
 
-abstract class MessagingCapstoneTestCase extends TestCase
+abstract class MessagingCapstoneTestCase extends FireflyTestCase
 {
-    /**
-     * @param  Application  $app
-     * @return list<class-string>
-     */
-    protected function getPackageProviders($app): array
+    /** @return list<class-string> */
+    protected function fireflyProviders(): array
     {
         return [
-            FireflyAutoConfigureServiceProvider::class,
             MessagingServiceProvider::class,
             MessagingWiringProvider::class,
         ];
@@ -35,35 +28,32 @@ abstract class MessagingCapstoneTestCase extends TestCase
         return 'memory';
     }
 
-    public function capstoneApp(): Application
+    /**
+     * Seed config so #[ConditionalOn*] passes (which scan at register time) observe it BEFORE provider
+     * registration — same eager-ordering rule the pre-harness resolveApplicationConfiguration() override followed.
+     * The queue subclass additionally sets the sync driver.
+     *
+     * @return array<string, mixed>
+     */
+    protected function configOverrides(): array
     {
-        if (! $this->app instanceof Application) {
-            throw new LogicException('The application has not been booted yet — call this from within a test.');
+        $config = ['firefly.messaging.provider' => $this->messagingProvider()];
+        if ($this->messagingProvider() === 'queue') {
+            $config['queue.default'] = 'sync';
         }
 
-        return $this->app;
+        return $config;
     }
 
     /**
-     * Seed config + compile the fixture manifest INLINE via the real scanner in resolveApplicationConfiguration
-     * (testbench runs this BEFORE provider registration, so the manifest + Spy are in place before the wiring pass
-     * subscribes and starts the broker). The queue subclass additionally sets the sync driver.
-     *
-     * @param  Application  $app
+     * Compile the fixture manifest INLINE via the real scanner (exactly what firefly:cache emits) — the harness
+     * calls this AFTER provider registration, before boot, so the manifest + ListenerSpy singleton are in place
+     * before the wiring pass subscribes and starts the broker.
      */
-    protected function resolveApplicationConfiguration($app): void
+    protected function defineFireflyEnvironment(Application $app): void
     {
-        parent::resolveApplicationConfiguration($app);
-
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('firefly.messaging.provider', $this->messagingProvider());
-        if ($this->messagingProvider() === 'queue') {
-            $config->set('queue.default', 'sync');
-        }
-
         $descriptors = (new MessageListenerScanner)->scan(['Firefly\\Messaging\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
         $app->instance(MessageListenerManifest::class, new MessageListenerManifest($descriptors));
-        $app->singleton(Spy::class);
+        $app->singleton(ListenerSpy::class);
     }
 }

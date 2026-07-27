@@ -19,7 +19,7 @@ uses(QueueEventBusTestCase::class);
  */
 it('delivers through the worker path under the sync driver', function () {
     /** @var QueueEventBusTestCase $this */
-    $app = $this->busApp();
+    $app = $this->app();
 
     /** @var Repository $config */
     $config = $app->make('config');

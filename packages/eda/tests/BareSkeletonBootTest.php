@@ -2,15 +2,12 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Eda\Bus\InMemoryEventBus;
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Listener\EventListenerManifest;
-use Illuminate\Config\Repository;
-use Illuminate\Foundation\Application;
 
 /**
  * The bare-skeleton case: firefly/eda is on the classpath but the app declares ZERO #[EventListener]s (no compiled
@@ -19,19 +16,12 @@ use Illuminate\Foundation\Application;
  * no-default array constructor param and crash boot outright.
  */
 it('boots an eda-enabled app with zero #[EventListener]s on the provider default empty manifest', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['eda' => []]]));
+    $context = bootFireflyApp(['firefly' => ['eda' => []]], [EdaServiceProvider::class, EdaWiringProvider::class]);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new EdaServiceProvider($app));
-    $app->register(new EdaWiringProvider($app));
-
-    $app->boot();
-
-    /** @var ApplicationContext $context */
-    $context = $app->make(ApplicationContext::class);
+    /** @var EventListenerManifest $manifest */
+    $manifest = $context->get(EventListenerManifest::class);
 
     expect($context)->toBeInstanceOf(ApplicationContext::class)
         ->and($context->get(EventPublisher::class))->toBeInstanceOf(InMemoryEventBus::class)
-        ->and($app->make(EventListenerManifest::class)->all())->toBe([]);
+        ->and($manifest->all())->toBe([]);
 });

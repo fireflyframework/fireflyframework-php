@@ -7,11 +7,12 @@ namespace Firefly\Eda\Tests\Fixtures;
 use Firefly\Container\Attributes\Component;
 use Firefly\Eda\Attributes\EventListener;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Testing\Fixture\ListenerSpy;
 
 #[Component]
 final class RecordingListener
 {
-    public function __construct(private readonly Spy $spy) {}
+    public function __construct(private readonly ListenerSpy $spy) {}
 
     #[EventListener('order.*')]
     public function onOrder(EventEnvelope $envelope): void

@@ -2,16 +2,13 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Eda\DeadLetter\DeadLetterStore;
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Listener\EventListenerManifest;
 use Firefly\Eda\Scanner\EventListenerScanner;
-use Firefly\Eda\Tests\Fixtures\Spy;
-use Illuminate\Config\Repository;
-use Illuminate\Foundation\Application;
+use Firefly\Testing\Fixture\ListenerSpy;
 
 /**
  * REAL-PROVIDER wiring: the shipped EdaServiceProvider (candidacy) + EdaWiringProvider (passes) + bootstrap
@@ -19,25 +16,25 @@ use Illuminate\Foundation\Application;
  * must be subscribed onto the auto-config-bound InMemoryEventBus at boot, so a later publish reaches the listener.
  */
 it('subscribes compiled #[EventListener]s onto the bus at boot (in-memory provider)', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['eda' => []]]));
-
-    // Compile the fixtures inline (exactly what firefly:cache emits, M15) and bind the manifest + a shared Spy.
+    // Compile the fixtures inline (exactly what firefly:cache emits, M15) and bind the manifest + a shared ListenerSpy.
     $descriptors = (new EventListenerScanner)->scan(['Firefly\\Eda\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
-    $app->instance(EventListenerManifest::class, new EventListenerManifest($descriptors));
-    $app->singleton(Spy::class);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new EdaServiceProvider($app));
-    $app->register(new EdaWiringProvider($app));
-
-    $app->boot();
+    $context = bootFireflyApp(
+        ['firefly' => ['eda' => []]],
+        [EdaServiceProvider::class, EdaWiringProvider::class],
+        bindings: [
+            EventListenerManifest::class => new EventListenerManifest($descriptors),
+            ListenerSpy::class => new ListenerSpy,
+        ],
+    );
 
     /** @var EventPublisher $bus */
-    $bus = $app->make(EventPublisher::class);
+    $bus = $context->get(EventPublisher::class);
     $bus->publish('firefly.events', 'order.placed', ['id' => 1]);
 
-    expect($app->make(Spy::class)->seen)->toBe(['order.placed']); // fail.* listener never matched
+    /** @var ListenerSpy $spy */
+    $spy = $context->get(ListenerSpy::class);
+    expect($spy->seen)->toBe(['order.placed']); // fail.* listener never matched
 });
 
 /**
@@ -47,25 +44,24 @@ it('subscribes compiled #[EventListener]s onto the bus at boot (in-memory provid
  * RetryingEventHandler::wrap in the pass and this fails (the RuntimeException escapes / the DLQ stays empty).
  */
 it('wraps each wired listener in retry/DLQ: a throwing listener is dead-lettered, not escaped', function () {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => ['eda' => []]])); // retries default 0 -> first failure DLQs
-
     $descriptors = (new EventListenerScanner)->scan(['Firefly\\Eda\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
-    $app->instance(EventListenerManifest::class, new EventListenerManifest($descriptors));
-    $app->singleton(Spy::class);
 
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new EdaServiceProvider($app));
-    $app->register(new EdaWiringProvider($app));
-
-    $app->boot();
+    // config: retries default 0 -> first failure DLQs
+    $context = bootFireflyApp(
+        ['firefly' => ['eda' => []]],
+        [EdaServiceProvider::class, EdaWiringProvider::class],
+        bindings: [
+            EventListenerManifest::class => new EventListenerManifest($descriptors),
+            ListenerSpy::class => new ListenerSpy,
+        ],
+    );
 
     /** @var EventPublisher $bus */
-    $bus = $app->make(EventPublisher::class);
+    $bus = $context->get(EventPublisher::class);
     $bus->publish('firefly.events', 'fail.boom', ['id' => 9]); // matches FailingListener 'fail.*' -> throws
 
     /** @var DeadLetterStore $dlq */
-    $dlq = $app->make(DeadLetterStore::class);
+    $dlq = $context->get(DeadLetterStore::class);
     $entries = $dlq->all();
     expect($entries)->toHaveCount(1)
         ->and($entries[0]->exceptionMessage)->toBe('listener boom');

@@ -14,7 +14,7 @@ it('enqueues ONE DispatchMessageJob and does NOT invoke the subscriber synchrono
     Bus::fake();
 
     /** @var QueueMessageBrokerTestCase $this */
-    $broker = new QueueMessageBroker($this->brokerApp(), null, null);
+    $broker = new QueueMessageBroker($this->app(), null, null);
     $ran = false;
     $broker->subscribe('orders', function () use (&$ran): void {
         $ran = true;
@@ -102,7 +102,7 @@ final class RecordingMessageDispatcherSpy implements Dispatcher
 it('resolves the Dispatcher FRESH on every publish() call — a Dispatcher bound AFTER construction is still '
     .'used, never a stale constructor-time reference', function () {
         /** @var QueueMessageBrokerTestCase $this */
-        $app = $this->brokerApp();
+        $app = $this->app();
 
         // Constructed while the container still holds whatever Dispatcher::class binding existed at boot — mirrors
         // the real timing: the auto-config binds QueueMessageBroker as a container SINGLETON once, at boot, long
