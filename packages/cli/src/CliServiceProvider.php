@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Cli;
 
 use Firefly\Cli\Command\CacheCommand;
+use Firefly\Cli\Command\ClearCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -18,7 +19,8 @@ final class CliServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CacheCommand::class,
-                // filled task-by-task: ClearCommand, AboutCommand, Routes/Health/Metrics,
+                ClearCommand::class,
+                // filled task-by-task: AboutCommand, Routes/Health/Metrics,
                 // Serve/Db, and the make:firefly-* family.
             ]);
         }
