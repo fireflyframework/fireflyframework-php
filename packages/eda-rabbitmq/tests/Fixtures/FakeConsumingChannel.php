@@ -35,6 +35,9 @@ final class FakeConsumingChannel implements ConsumingChannel
     /** @var list<AMQPMessage> */
     public array $queuedMessages = [];
 
+    /** @var list<float> every wait() was called with — proves the ms->s conversion in poll() */
+    public array $waitTimeouts = [];
+
     /** @var list<int> */
     public array $acked = [];
 
@@ -69,6 +72,8 @@ final class FakeConsumingChannel implements ConsumingChannel
 
     public function wait(float $timeoutSeconds): void
     {
+        $this->waitTimeouts[] = $timeoutSeconds;
+
         if ($this->queuedMessages === []) {
             throw new AMQPTimeoutException('no message within timeout');
         }

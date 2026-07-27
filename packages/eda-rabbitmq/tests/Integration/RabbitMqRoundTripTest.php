@@ -52,13 +52,17 @@ it('round-trips publish -> consume -> handler -> ack against a real RabbitMQ', f
         $received[] = $envelope->payload['id'];
     });
 
+    // The consumer's subscribe() declares the topic exchange + a durable work queue and BINDS it to 'order.*'
+    // FIRST: AMQP 0-9-1 silently drops a message published to a topic exchange with no bound queue as unroutable,
+    // so the queue must exist and be bound before anything is published — otherwise the message below is gone
+    // before poll() ever runs.
+    $consumer = new RabbitMqEventConsumer($factory, new JsonSerializer, 'firefly.events.test', $queue, 'firefly.events.test.dlx', 10);
+    $consumer->subscribe(['order.*']);
+
     $publisher = new RabbitMqEventPublisher($factory, $registry, new JsonSerializer, 'firefly.events.test');
     $publisher->start();
     $publisher->publish('firefly.events.test/order.created', 'order.created', ['id' => 42]);
     $publisher->stop();
-
-    $consumer = new RabbitMqEventConsumer($factory, new JsonSerializer, 'firefly.events.test', $queue, 'firefly.events.test.dlx', 10);
-    $consumer->subscribe(['order.*']);
 
     $processed = (new ConsumerLoop)->run(
         $consumer,
@@ -87,13 +91,17 @@ it('routes an exhausted retry to the DLX queue', function () {
     $setupChannel->close();
     $setupConnection->close();
 
+    // The consumer's subscribe() declares the work queue (carrying its x-dead-letter-exchange arg) and BINDS it
+    // to 'order.*' on the main exchange FIRST: a topic exchange silently drops an unroutable publish, so the
+    // queue must exist and be bound before anything is published — otherwise there is nothing left to receive
+    // and later nack into the DLX below.
+    $consumer = new RabbitMqEventConsumer($factory, new JsonSerializer, $exchange, $queue, $dlx, 10);
+    $consumer->subscribe(['order.*']);
+
     $publisher = new RabbitMqEventPublisher($factory, new SubscriberRegistry, new JsonSerializer, $exchange);
     $publisher->start();
     $publisher->publish($exchange.'/order.created', 'order.created', ['id' => 99]);
     $publisher->stop();
-
-    $consumer = new RabbitMqEventConsumer($factory, new JsonSerializer, $exchange, $queue, $dlx, 10);
-    $consumer->subscribe(['order.*']);
 
     $received = null;
     $deadline = time() + 15;

@@ -65,6 +65,16 @@ it('poll() returns null on a wait() timeout (no message this tick)', function ()
     expect($consumer->poll(50))->toBeNull();
 });
 
+it('poll() converts its millisecond timeout to seconds before calling wait()', function () {
+    $channel = new FakeConsumingChannel;
+    $consumer = new RabbitMqEventConsumer(null, new JsonSerializer, channelOverride: $channel);
+    $consumer->subscribe(['order.*']);
+
+    $consumer->poll(2000);
+
+    expect($channel->waitTimeouts)->toBe([2.0]);
+});
+
 it('poll() returns a ReceivedEnvelope carrying the decoded envelope and the AMQP delivery tag', function () {
     $channel = new FakeConsumingChannel;
     $consumer = new RabbitMqEventConsumer(null, new JsonSerializer, channelOverride: $channel);
