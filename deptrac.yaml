@@ -78,6 +78,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/testing/src/.*
+    - name: Cli
+      collectors:
+        - type: directory
+          value: packages/cli/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -274,6 +278,30 @@ deptrac:
       - Scheduling
       - SchedulingPostgres
       - Domain
+      - Data
+      - Eda
+      - Messaging
+      - Cqrs
+      - Security
+      - Actuator
+      - Observability
+
+    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 12
+    # compile-producing packages' scanner/compiler pair directly (D4 DIRECT DEPENDENCY). UNLIKE Testing
+    # (whose composer.json genuinely requires the full runtime family, so it legitimately lists all 18
+    # layers), firefly/cli's composer.json requires exactly the packages ManifestCacheWriter/CacheCommand/
+    # ActuatorCliRenderer call into — so this ruleset lists ONLY those layers, deliberately OMITTING
+    # Domain/Resilience/SchedulingPostgres (not required by packages/cli/composer.json, not called by any
+    # writer/scanner). It is depended on by NONE. It does NOT depend on Testing (dev-only).
+    Cli:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation
+      - Web
+      - Scheduling
       - Data
       - Eda
       - Messaging

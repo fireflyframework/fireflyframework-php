@@ -1,0 +1,39 @@
+{
+    "name": "firefly/cli",
+    "description": "LaraFly CLI: the developer-experience console — firefly:cache (compile all app manifests + emit #[Transactional] proxies to bootstrap/cache/firefly for a zero-reflection boot), firefly:clear, firefly:about + actuator-over-CLI (routes/health/metrics), the make:firefly-* generator family, and thin serve/db passthroughs.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/cqrs": "*@dev",
+        "firefly/data": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/messaging": "*@dev",
+        "firefly/observability": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "firefly/security": "*@dev",
+        "firefly/validation": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/console": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Cli\\CliServiceProvider",
+                "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Cli\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Cli\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}
