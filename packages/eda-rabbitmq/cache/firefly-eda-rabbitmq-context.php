@@ -68,6 +68,25 @@ return [
                     ],
                 ],
             ],
+            4 => [
+                'method' => 'eventConsumer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Eda\\Consumer\\EventConsumer',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.eda.provider',
+                            1 => 'rabbitmq',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     1 => [
