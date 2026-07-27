@@ -227,12 +227,20 @@ message that was actually received.
 
 ## DLQ surface per broker
 
-Retry exhaustion looks different on each broker, by design — each uses its own broker-native mechanism
-rather than routing through the in-memory `DeadLetterStore` the M9 in-process/queue adapters use:
+**Division of labour first.** The default `ConsumerLoop::run()` calls `nack(requeue: true)` on a sink throw
+(redeliver) — it never auto-escalates to `nack(requeue: false)`. So **bounded retry and dead-lettering are
+driven by the M9 `RetryingEventHandler` + in-memory `DeadLetterStore` inside the `#[EventListener]` sink** —
+that remains the primary, broker-agnostic mechanism, unchanged here. The broker-native surfaces below are an
+SPI *capability* each adapter exposes: they are reached when an application-level consumer explicitly decides
+a message is poison and calls `nack(requeue: false)` — the default loop does not drive them. The one exception
+is **Postgres**, whose `nack()` bounds `attempts → FAILED` natively regardless of `$requeue`, so its outbox
+consumer *does* dead-letter through the default loop (see below).
+
+Each broker's native surface, reached via an explicit `nack(requeue: false)`:
 
 - **RabbitMQ**: the consumer declares the work queue with an `x-dead-letter-exchange` argument pointing at
-  a dedicated DLX topic exchange (`firefly.eda.rabbitmq.dlx`, default `firefly.events.dlx`). A broker-native
-  `nack(requeue: false)` (an exhausted retry) is routed by RabbitMQ itself straight to the DLX — no
+  a dedicated DLX topic exchange (`firefly.eda.rabbitmq.dlx`, default `firefly.events.dlx`). An explicit
+  `nack(requeue: false)` is routed by RabbitMQ itself straight to the DLX — no
   application code copies the message anywhere.
 - **Kafka**: there is no broker-native DLX equivalent, so `KafkaEventConsumer::nack(requeue: false)`
   re-produces the envelope to a **dead-letter topic** named `"<destination>.DLT"`, then commits the
@@ -241,7 +249,8 @@ rather than routing through the in-memory `DeadLetterStore` the M9 in-process/qu
   `status='FAILED'` (with `error_message` and `failed_at` populated) in place, on the same
   `firefly_eda_outbox` table. Query for `status='FAILED'` rows to inspect or reprocess them.
 
-`nack(requeue: true)` — a retry that hasn't yet exhausted — behaves differently per broker too:
+`nack(requeue: true)` — the redelivery path the default `ConsumerLoop` uses on every sink throw — behaves
+differently per broker too:
 RabbitMQ's `basic_nack(requeue: true)` is an immediate broker-level redelivery; Kafka's consumer simply
 leaves the offset uncommitted (the record redelivers on the next rebalance/restart of that consumer group,
 since Kafka's log-offset model has no immediate-requeue primitive short of a manual `seek()`); Postgres
