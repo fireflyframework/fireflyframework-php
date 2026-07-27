@@ -12,6 +12,7 @@
     <groups>
         <exclude>
             <group>integration</group>
+            <group>createproject</group>
         </exclude>
     </groups>
     <source>

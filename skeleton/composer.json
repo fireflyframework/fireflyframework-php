@@ -1,0 +1,33 @@
+{
+    "name": "firefly/skeleton",
+    "description": "LaraFly application skeleton — a Laravel 13 app pre-wired with the Firefly family, a sample #[RestController]/#[Service], and firefly:cache in post-create-project-cmd.",
+    "type": "project",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/cli": "*@dev",
+        "firefly/firefly": "*@dev",
+        "laravel/framework": "^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    },
+    "scripts": {
+        "post-create-project-cmd": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
+            "@php artisan key:generate --ansi",
+            "@php artisan firefly:cache"
+        ]
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}

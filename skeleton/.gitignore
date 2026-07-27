@@ -1,0 +1,24 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+/.idea
+/.phpunit.cache
+/.vscode
+/auth.json
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# Firefly compiled manifests + generated #[Transactional] proxies (emitted by `php artisan firefly:cache`).
+/bootstrap/cache/firefly/*
+!/bootstrap/cache/firefly/.gitkeep
