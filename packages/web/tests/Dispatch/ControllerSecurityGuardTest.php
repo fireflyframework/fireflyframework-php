@@ -2,46 +2,28 @@
 
 declare(strict_types=1);
 
-use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Kernel\Exception\Security\AuthorizationException;
-use Firefly\Validation\IlluminateValidator;
-use Firefly\Validation\Validator;
 use Firefly\Web\Dispatch\ControllerDispatcher;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Security\ControllerSecurityGuard;
 use Firefly\Web\Tests\Fixtures\Security\GuardedController;
 use Firefly\Web\Tests\Fixtures\Security\RecordingSecurityGuard;
 use Firefly\Web\WebServiceProvider;
-use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
-use Illuminate\Translation\ArrayLoader;
-use Illuminate\Translation\Translator;
-use Illuminate\Validation\Factory as IlluminateFactory;
 
 /**
  * Build a minimal app with the REAL WebServiceProvider registered (mirrors WebServiceProviderBindingsTest), so
  * ControllerDispatcher resolves its true collaborators (ArgumentResolver / ResponseFactory /
- * ExceptionHandlerRegistry). A bare Testbench TestCase would NOT register WebServiceProvider, so
- * $app->make(ControllerDispatcher::class) would fail to resolve those deps — hence the explicit registration.
- *
- * DEVIATION FROM THE BRIEF (noted, no production code changed for it): the brief's guardTestApp() omits a
- * Validator::class binding. Resolving ControllerDispatcher here eagerly walks ArgumentResolver => BeanValidator
- * => Validator, and a bare Application (no boot(), no compiled auto-config manifests) never binds that port —
- * exactly the gap PackageBootsTest.php and ArgumentResolverTest.php already work around by binding the shipped
- * IlluminateValidator adapter directly. Without this line every test here fails with "Target
- * [Firefly\Validation\Validator] is not instantiable", not because of anything this task's dispatcher change
- * did.
+ * ExceptionHandlerRegistry). The 'validation'/'http' needs supply the Validator and HTTP-kernel bindings a real
+ * host app would provide — without them, resolving ControllerDispatcher eagerly walks ArgumentResolver =>
+ * BeanValidator => Validator, and FilterChainRegistrar (run at boot) resolves the HTTP kernel contract; a bare
+ * app with neither bound fails with "Target [...] is not instantiable" before a single assertion runs — exactly
+ * the gap PackageBootsTest.php and ArgumentResolverTest.php already work around by requesting the same needs.
  */
 function guardTestApp(): Application
 {
-    $app = new Application;
-    $app->instance('config', new Repository(['firefly' => []]));
-    $app->instance(Validator::class, new IlluminateValidator(new IlluminateFactory(new Translator(new ArrayLoader, 'en'))));
-    $app->register(new FireflyAutoConfigureServiceProvider($app));
-    $app->register(new WebServiceProvider($app));
-
-    return $app;
+    return fireflyApplication(['firefly' => []], [WebServiceProvider::class], needs: ['validation', 'http']);
 }
 
 function descriptorFor(string $method): RouteDescriptor
