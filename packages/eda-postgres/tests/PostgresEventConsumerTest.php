@@ -5,10 +5,12 @@ declare(strict_types=1);
 use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\ConsumerLoop;
 use Firefly\Eda\Consumer\ConsumerOptions;
+use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventConsumer;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
+use Firefly\Eda\Postgres\Tests\Fixtures\ThrowingNotificationConsumer;
 use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -60,4 +62,18 @@ it('a fresh consumer (restart) does NOT replay PUBLISHED rows (durable status wi
     );
 
     expect($processed)->toBe(0)->and($seen)->toBe(0); // the PUBLISHED row is not re-delivered
+});
+
+it('poll() swallows a throwing NOTIFY wait and still delivers via the poll-fallback PENDING claim', function () {
+    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 42]);
+
+    $consumer = new ThrowingNotificationConsumer(DB::connection()); // awaitNotification() always throws
+    $received = $consumer->poll(10);
+    if (! $received instanceof ReceivedEnvelope) {
+        throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');
+    }
+
+    expect($received->envelope->eventType)->toBe('user.created')
+        ->and($received->envelope->destination)->toBe('users')
+        ->and($received->envelope->payload)->toBe(['id' => 42]);
 });
