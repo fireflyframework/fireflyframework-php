@@ -54,6 +54,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/eda/src/.*
+    - name: EdaRabbitmq
+      collectors:
+        - type: directory
+          value: packages/eda-rabbitmq/src/.*
     - name: Messaging
       collectors:
         - type: directory
@@ -187,6 +191,20 @@ deptrac:
       - Config
       - Context
       - AutoConfigure
+
+    # EdaRabbitmq is the RabbitMQ adapter for Eda's EventPublisher port (php-amqplib): its own package (every
+    # broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of the
+    # php-amqplib dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context
+    # attributes, extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator
+    # HealthIndicator. It is depended on by NONE.
+    EdaRabbitmq:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Eda
+      - Actuator
 
     # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,
     # a #[MessageListener] scanner/manifest, and a bytes-aware retry/DLQ. It reads Config, reuses Kernel infra
