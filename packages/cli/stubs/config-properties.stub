@@ -1,0 +1,15 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Config\Attributes\ConfigProperties;
+
+#[ConfigProperties('{{ class }}')]
+final readonly class {{ class }}
+{
+    public function __construct(
+        public string $value = '',
+    ) {}
+}

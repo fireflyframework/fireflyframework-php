@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Eda\Attributes\EventListener;
+use Firefly\Eda\EventEnvelope;
+
+final class {{ class }}
+{
+    /**
+     * Replace the pattern with the broker event-type glob this listener subscribes to (e.g. "user.*").
+     */
+    #[EventListener('{{ class }}')]
+    public function onEvent(EventEnvelope $event): void
+    {
+    }
+}

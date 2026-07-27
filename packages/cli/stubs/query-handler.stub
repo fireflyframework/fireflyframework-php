@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Cqrs\Attributes\QueryHandler;
+
+#[QueryHandler]
+final class {{ class }}
+{
+    /**
+     * Replace `object` with the concrete Query message class this handler resolves for
+     * (or pass it explicitly via #[QueryHandler(SomeQuery::class)]).
+     */
+    public function handle(object $query): mixed
+    {
+        return null;
+    }
+}

@@ -1,0 +1,19 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Messaging\Attributes\MessageListener;
+use Firefly\Messaging\Message;
+
+final class {{ class }}
+{
+    /**
+     * Replace the topic with the broker topic this listener consumes.
+     */
+    #[MessageListener('{{ class }}')]
+    public function onMessage(Message $message): void
+    {
+    }
+}

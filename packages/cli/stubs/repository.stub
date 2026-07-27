@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Data\Repository\CrudRepository;
+
+/**
+ * @extends CrudRepository<object, int|string>
+ */
+interface {{ class }} extends CrudRepository
+{
+}

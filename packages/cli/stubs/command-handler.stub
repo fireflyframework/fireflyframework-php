@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Cqrs\Attributes\CommandHandler;
+
+#[CommandHandler]
+final class {{ class }}
+{
+    /**
+     * Replace `object` with the concrete Command message class this handler dispatches for
+     * (or pass it explicitly via #[CommandHandler(SomeCommand::class)]).
+     */
+    public function handle(object $command): mixed
+    {
+        return null;
+    }
+}

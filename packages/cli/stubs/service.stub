@@ -1,0 +1,12 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Container\Attributes\Service;
+
+#[Service]
+final class {{ class }}
+{
+}
