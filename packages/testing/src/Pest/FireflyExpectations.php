@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Testing\Pest;
 
+use Firefly\Testing\Double\RecordingCommandBus;
 use Firefly\Testing\Double\RecordingEventPublisher;
 use RuntimeException;
 
@@ -55,6 +56,20 @@ final class FireflyExpectations
             // @phpstan-ignore variable.undefined
             return $this;
         });
+
+        expect()->extend('toHaveHandledCommand', function (string $class) {
+            // Same Pest scope-rebind gotcha as toHavePublished above: $this is Pest\Expectation inside this
+            // closure, and the literal class name (not self::) is required to reach this class's helper.
+            // @phpstan-ignore variable.undefined, property.nonObject
+            $bus = FireflyExpectations::asRecordingCommandBus($this->value);
+
+            expect($bus->handled($class))->not->toBeEmpty(
+                "Expected a command of type [{$class}] to have been sent through the bus.",
+            );
+
+            // @phpstan-ignore variable.undefined
+            return $this;
+        });
     }
 
     /**
@@ -71,6 +86,20 @@ final class FireflyExpectations
     {
         if (! $value instanceof RecordingEventPublisher) {
             throw new RuntimeException('toHavePublished() expects the value under test to be a RecordingEventPublisher.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Narrow the Expectation's mixed `->value` to RecordingCommandBus — instanceof-narrow-or-throw, no
+     * `@var` override, no cast. Same PUBLIC-not-private requirement as asRecordingEventPublisher: this
+     * runs under the Expectation-rebound scope, so visibility is checked against that, not this class.
+     */
+    public static function asRecordingCommandBus(mixed $value): RecordingCommandBus
+    {
+        if (! $value instanceof RecordingCommandBus) {
+            throw new RuntimeException('toHaveHandledCommand() expects the value under test to be a RecordingCommandBus.');
         }
 
         return $value;
