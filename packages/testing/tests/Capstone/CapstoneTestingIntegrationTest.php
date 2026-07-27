@@ -40,6 +40,12 @@ it('composes a REAL Firefly boot with the harness doubles + expectations end-to-
     $orderPlacer = $context->get(OrderPlacer::class);
     $orderPlacer->place('o-1');
 
+    // Proof the REAL #[Service] scan registered OrderPlacer as a bean: the scan registers it as a
+    // singleton, so two resolutions return the SAME instance. Plain container reflection-autowiring
+    // (which would happen even if scanning were disabled, since the ctor deps are all bound) returns a
+    // DISTINCT instance each time — so this identity check fails if the scan didn't run.
+    expect($context->get(OrderPlacer::class))->toBe($context->get(OrderPlacer::class));
+
     // Each custom expectation is kept on its own expect() statement: chaining them via ->and() degrades
     // the ignorable `method.notFound` PHPStan error into the unignorable `method.nonObject` one, because
     // ->and() re-wraps the return value and loses the runtime-registered-expectation type information.
