@@ -6,6 +6,7 @@ namespace Firefly\Testing\Slice;
 
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\Testing\Attributes\WebSlice;
 use Firefly\Testing\FireflyTestCase;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
@@ -34,6 +35,23 @@ abstract class WebSliceTestCase extends FireflyTestCase
     protected array $sliceOverrides = [];
 
     protected bool $sliceRequested = false;
+
+    /**
+     * Class-style analog of webSlice(): seeds the slice from a #[WebSlice] attribute on the test class,
+     * BEFORE parent::setUp() runs testbench's one-and-only boot — so that first boot already sees the
+     * slice values and (unlike the closure path below) no refreshApplication() reboot is needed.
+     */
+    protected function setUp(): void
+    {
+        $attrs = (new \ReflectionClass(static::class))->getAttributes(WebSlice::class);
+        if ($attrs !== []) {
+            $slice = $attrs[0]->newInstance();
+            $this->sliceScan = $slice->scan;
+            $this->sliceOverrides = $slice->overrides;
+            $this->sliceRequested = true;
+        }
+        parent::setUp();
+    }
 
     /**
      * @param  array<string,string>  $scan

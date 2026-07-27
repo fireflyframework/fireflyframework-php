@@ -6,6 +6,7 @@ namespace Firefly\Testing;
 
 use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\Testing\Attributes\FireflyTest;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -31,7 +32,9 @@ abstract class FireflyTestCase extends TestCase
      */
     protected function fireflyProviders(): array
     {
-        return [];
+        $attribute = $this->fireflyTestAttribute();
+
+        return $attribute instanceof FireflyTest ? $attribute->providers : [];
     }
 
     /**
@@ -42,7 +45,17 @@ abstract class FireflyTestCase extends TestCase
      */
     protected function configOverrides(): array
     {
-        return [];
+        $attribute = $this->fireflyTestAttribute();
+
+        return $attribute instanceof FireflyTest ? $attribute->config : [];
+    }
+
+    /** Class-style analog of the two hooks above: a #[FireflyTest] attribute on the test class itself. */
+    private function fireflyTestAttribute(): ?FireflyTest
+    {
+        $attrs = (new \ReflectionClass(static::class))->getAttributes(FireflyTest::class);
+
+        return $attrs === [] ? null : $attrs[0]->newInstance();
     }
 
     /**

@@ -7,6 +7,7 @@ namespace Firefly\Testing\Slice;
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\DataServiceProvider;
+use Firefly\Testing\Attributes\DataSlice;
 use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Foundation\Application;
 use LogicException;
@@ -25,6 +26,23 @@ abstract class DataSliceTestCase extends FireflyDatabaseTestCase
     protected array $sliceOverrides = [];
 
     protected bool $sliceRequested = false;
+
+    /**
+     * Class-style analog of dataSlice(): seeds the slice from a #[DataSlice] attribute on the test class,
+     * BEFORE parent::setUp() runs testbench's one-and-only boot — so that first boot already sees the
+     * slice values and (unlike the closure path below) no refreshApplication() reboot is needed.
+     */
+    protected function setUp(): void
+    {
+        $attrs = (new \ReflectionClass(static::class))->getAttributes(DataSlice::class);
+        if ($attrs !== []) {
+            $slice = $attrs[0]->newInstance();
+            $this->sliceScan = $slice->scan;
+            $this->sliceOverrides = $slice->overrides;
+            $this->sliceRequested = true;
+        }
+        parent::setUp();
+    }
 
     /**
      * @param  array<string,string>  $scan  PSR-4 prefix => dir of the ONLY beans this slice discovers
