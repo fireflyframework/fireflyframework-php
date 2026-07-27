@@ -10,7 +10,6 @@ use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventConsumer;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
-use Firefly\Eda\Postgres\Tests\Fixtures\ThrowingNotificationConsumer;
 use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +66,9 @@ it('a fresh consumer (restart) does NOT replay PUBLISHED rows (durable status wi
 it('poll() swallows a throwing NOTIFY wait and still delivers via the poll-fallback PENDING claim', function () {
     (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 42]);
 
-    $consumer = new ThrowingNotificationConsumer(DB::connection()); // awaitNotification() always throws
+    $consumer = new PostgresEventConsumer(DB::connection(), 'firefly_eda_events', 3, function (int $t): void {
+        throw new ErrorException('simulated deprecation-to-exception');
+    }); // awaitNotification seam always throws
     $received = $consumer->poll(10);
     if (! $received instanceof ReceivedEnvelope) {
         throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');

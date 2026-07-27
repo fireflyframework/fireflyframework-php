@@ -23,17 +23,31 @@ use Illuminate\Database\Connection;
  * DURABLE PENDING->PUBLISHED status window (M3), NOT an in-memory high-water mark: a restart resumes at the oldest
  * still-PENDING row and never replays PUBLISHED rows. SINGLE consumer worker gives exactly-once in-process delivery;
  * multi-worker degrades to at-least-once (idempotent handlers documented). Requires the concrete Illuminate\Database\
- * Connection because getPdo()/getDriverName() are not on ConnectionInterface (B2). NOT final: a test-only fixture
- * subclass overrides the protected awaitNotification() seam to simulate a deprecation-to-exception handler without a
- * live pgsql socket (see PostgresEventConsumerTest + Fixtures/ThrowingNotificationConsumer).
+ * Connection because getPdo()/getDriverName() are not on ConnectionInterface (B2).
  */
-class PostgresEventConsumer implements EventConsumer
+final class PostgresEventConsumer implements EventConsumer
 {
+    /** @var \Closure(int): void */
+    private readonly \Closure $awaitNotification;
+
+    /**
+     * @param  (\Closure(int): void)|null  $awaitNotification  Test seam: overrides the pgsql NOTIFY wait. Defaults to the
+     *                                                         real Postgres LISTEN/NOTIFY wait (a pure low-latency optimization — poll() always falls through to the
+     *                                                         durable PENDING-row claim, and guards this against ANY failure, so a deprecation-to-exception handler on the
+     *                                                         deprecated pgsqlGetNotify() path can never crash the poll loop).
+     */
     public function __construct(
         private readonly Connection $connection,
         private readonly string $channel = 'firefly_eda_events',
         private readonly int $maxAttempts = 3,
-    ) {}
+        ?\Closure $awaitNotification = null,
+    ) {
+        $this->awaitNotification = $awaitNotification ?? function (int $timeoutMs): void {
+            if ($this->connection->getDriverName() === 'pgsql') {
+                NotificationWaiter::wait($this->connection->getPdo(), $timeoutMs);
+            }
+        };
+    }
 
     public function subscribe(array $destinations): void
     {
@@ -44,23 +58,10 @@ class PostgresEventConsumer implements EventConsumer
 
     public function start(): void {}
 
-    /**
-     * Blocks up to $timeoutMs for a Postgres NOTIFY (pgsql only). The NOTIFY wake is a pure low-latency optimization —
-     * poll() always falls through to the durable PENDING-row claim — so poll() guards this against ANY failure (e.g.
-     * an app that converts the deprecated pgsqlGetNotify() E_DEPRECATED into an exception) and continues to the claim.
-     * protected so a test can substitute a throwing waiter without a live pgsql socket.
-     */
-    protected function awaitNotification(int $timeoutMs): void
-    {
-        if ($this->connection->getDriverName() === 'pgsql') {
-            NotificationWaiter::wait($this->connection->getPdo(), $timeoutMs);
-        }
-    }
-
     public function poll(int $timeoutMs): ?ReceivedEnvelope
     {
         try {
-            $this->awaitNotification($timeoutMs);
+            ($this->awaitNotification)($timeoutMs);
         } catch (\Throwable) {
             // NOTIFY is a low-latency optimization; on ANY failure (incl. a deprecation-to-exception handler on the
             // deprecated pgsqlGetNotify path) fall through to the poll-fallback claim below, which delivers regardless.
