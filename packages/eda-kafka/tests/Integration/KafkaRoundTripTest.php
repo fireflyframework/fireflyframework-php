@@ -11,6 +11,7 @@ use Firefly\Eda\Kafka\KafkaConsumerFactory;
 use Firefly\Eda\Kafka\KafkaEventConsumer;
 use Firefly\Eda\Kafka\KafkaEventPublisher;
 use Firefly\Eda\Kafka\KafkaProducerFactory;
+use Firefly\Eda\Kafka\RdKafkaConsumerClient;
 use Firefly\Eda\Kafka\Tests\Support\KafkaIntegrationTestCase;
 
 uses(KafkaIntegrationTestCase::class);
@@ -43,7 +44,7 @@ it('round-trips publish -> consume -> handler -> commit against a real Kafka, an
     $producerFactory = new KafkaProducerFactory($brokers);
     $consumerFactory = new KafkaConsumerFactory($brokers, $groupId);
 
-    $consumer = new KafkaEventConsumer($consumerFactory, $producerFactory, new JsonSerializer);
+    $consumer = new KafkaEventConsumer(new RdKafkaConsumerClient($consumerFactory, $producerFactory, new JsonSerializer));
     $consumer->subscribe([$topic]);
     $consumer->start();
 
@@ -61,7 +62,7 @@ it('round-trips publish -> consume -> handler -> commit against a real Kafka, an
     expect($processed)->toBe(1)->and($received)->toBe([42]);
 
     // Prove ack() genuinely committed: a fresh consumer with the SAME group.id must NOT see the record again.
-    $verifyConsumer = new KafkaEventConsumer($consumerFactory, $producerFactory, new JsonSerializer);
+    $verifyConsumer = new KafkaEventConsumer(new RdKafkaConsumerClient($consumerFactory, $producerFactory, new JsonSerializer));
     $verifyConsumer->subscribe([$topic]);
     $verifyConsumer->start();
     $again = $verifyConsumer->poll(3000);
@@ -81,7 +82,7 @@ it('routes an exhausted retry (nack requeue:false) to the "<topic>.DLT" dead-let
     $producerFactory = new KafkaProducerFactory($brokers);
     $consumerFactory = new KafkaConsumerFactory($brokers, 'firefly-test-dlt-'.bin2hex(random_bytes(4)));
 
-    $consumer = new KafkaEventConsumer($consumerFactory, $producerFactory, new JsonSerializer);
+    $consumer = new KafkaEventConsumer(new RdKafkaConsumerClient($consumerFactory, $producerFactory, new JsonSerializer));
     $consumer->subscribe([$topic]);
     $consumer->start();
 
@@ -105,7 +106,7 @@ it('routes an exhausted retry (nack requeue:false) to the "<topic>.DLT" dead-let
     $consumer->stop();
 
     $dltConsumerFactory = new KafkaConsumerFactory($brokers, 'firefly-test-dlt-verify-'.bin2hex(random_bytes(4)));
-    $dltConsumer = new KafkaEventConsumer($dltConsumerFactory, $producerFactory, new JsonSerializer);
+    $dltConsumer = new KafkaEventConsumer(new RdKafkaConsumerClient($dltConsumerFactory, $producerFactory, new JsonSerializer));
     $dltConsumer->subscribe([$dltTopic]);
     $dltConsumer->start();
 

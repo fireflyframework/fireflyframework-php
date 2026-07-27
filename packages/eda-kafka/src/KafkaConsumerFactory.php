@@ -40,6 +40,12 @@ final class KafkaConsumerFactory
         $conf->set('group.id', $this->groupId);
         $conf->set('metadata.broker.list', $this->brokers);
         $conf->set('auto.offset.reset', 'earliest');
+        // librdkafka defaults BOTH of these to `true` — leaving them on would auto-commit offsets in the background
+        // (~every auto.commit.interval.ms=5000) independent of ack()/nack(), silently committing even records the app
+        // nack(requeue: true)'d and intended to leave uncommitted -> message loss. Turn them OFF so the manual
+        // commit() on ack()/dead-letter is the ONLY thing that durably advances the offset.
+        $conf->set('enable.auto.commit', 'false');
+        $conf->set('enable.auto.offset.store', 'false');
 
         return new KafkaConsumer($conf);
     }

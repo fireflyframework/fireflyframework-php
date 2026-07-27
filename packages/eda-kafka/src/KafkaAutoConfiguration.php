@@ -67,9 +67,11 @@ final class KafkaAutoConfiguration
         $brokers = $config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092');
 
         return new KafkaEventConsumer(
-            new KafkaConsumerFactory($brokers, $config->string('firefly.eda.consumer.group_id', 'firefly')),
-            new KafkaProducerFactory($brokers),
-            new JsonSerializer,
+            new RdKafkaConsumerClient(
+                new KafkaConsumerFactory($brokers, $config->string('firefly.eda.consumer.group_id', 'firefly')),
+                new KafkaProducerFactory($brokers),
+                new JsonSerializer,
+            ),
         );
     }
 }

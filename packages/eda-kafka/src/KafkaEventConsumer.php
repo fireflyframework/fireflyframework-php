@@ -6,42 +6,39 @@ namespace Firefly\Eda\Kafka;
 
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\Consumer\ReceivedEnvelope;
-use Firefly\Eda\JsonSerializer;
-use RdKafka\KafkaConsumer;
-use RdKafka\Message;
-use RuntimeException;
 
 /**
- * The Kafka EventConsumer over ext-rdkafka's KafkaConsumer, behind the same skip-if-missing seam as
- * KafkaProducerFactory/KafkaEventPublisher — see KafkaConsumerFactory's docblock for why the `use RdKafka\...;`
- * imports above (added by this repo's Pint preset) never fatal on a no-ext machine: the consumer object is only
- * ever built lazily inside consumer(), which delegates the extension_loaded guard to
- * KafkaConsumerFactory::available().
+ * The Kafka EventConsumer — pure orchestration over the ext-AGNOSTIC KafkaConsumerClient seam (RdKafkaConsumerClient
+ * in production, FakeKafkaConsumerClient in unit tests). This class carries NO `\RdKafka\*` reference at all: every
+ * librdkafka call lives inside RdKafkaConsumerClient's extension_loaded-guarded bodies, so the ack/nack/DLT/wildcard
+ * correctness core here is unit-testable on a machine with no ext-rdkafka (the eda-rabbitmq RabbitMqEventConsumer /
+ * ConsumingChannel precedent).
  *
- * subscribe() hands the concrete topic list straight to rdkafka's KafkaConsumer::subscribe() (topics = concrete
- * patterns already resolved by TopicSubscriptionResolver upstream). poll() calls consume($timeoutMs) and maps
- * $message->err: RD_KAFKA_RESP_ERR_NO_ERROR decodes the payload into a ReceivedEnvelope carrying the rdkafka
- * Message itself as the delivery tag (mirrors PostgresEventConsumer's row-id / RabbitMqEventConsumer's AMQP
- * delivery-tag precedent — broker-native handle, replayed against THIS consumer on ack/nack); anything else
- * (RD_KAFKA_RESP_ERR__PARTITION_EOF / __TIMED_OUT / any other transient code) is "nothing this tick" -> null.
+ * subscribe() TRANSLATES each destination before handing it to the client. librdkafka treats any topic string NOT
+ * prefixed with `^` as an EXACT literal topic — so a raw pattern like `order.*` (what TopicSubscriptionResolver emits)
+ * would become a literal topic `"order.*"` that never matches, and a wildcard #[EventListener] would silently receive
+ * nothing. toTopic() maps a wildcard destination to a `^`-prefixed rdkafka regex (fnmatch->regex: escape regex
+ * metachars EXCEPT `*`, `*`->`.*`, prefix `^`; e.g. `order.*` -> `^order\..*`); a wildcard-free destination is a
+ * literal topic and passes through UNCHANGED. SubscriberRegistry's fnmatch still does the fine-grained post-receipt
+ * filter (TopicSubscriptionResolver's documented contract), so broker-level over-matching (e.g. a bare `*` -> `^.*`)
+ * is harmless.
  *
- * ack() is a manual commit($message) — group.id + enable.auto.commit=false (rdkafka's own default) mean nothing is
- * durably consumed until this call. nack(requeue: true) (the ConsumerLoop at-least-once retry default) deliberately
- * does NOT commit, so the uncommitted offset makes Kafka redeliver the same record on the next poll — the
- * broker-native analogue of RabbitMQ's basic_nack(requeue: true). nack(requeue: false) (an exhausted retry) instead
- * re-produces the envelope to a DEAD-LETTER TOPIC ("<topic>.DLT", Kafka has no broker-native DLX like RabbitMQ) via
- * a producer built from the T6 KafkaProducerFactory, THEN commits the original offset — so the exhausted record is
- * never redelivered from its original topic, exactly mirroring RabbitMqEventConsumer's DLX routing outcome with a
- * topic instead of an exchange.
+ * ack() is a manual commit — group.id + enable.auto.commit=false + enable.auto.offset.store=false (set explicitly by
+ * KafkaConsumerFactory; NOT rdkafka's defaults, which are both `true`) mean nothing is durably consumed until this
+ * call. nack(requeue: true) (the ConsumerLoop at-least-once retry default) deliberately does NOT commit: the offset is
+ * left uncommitted, so the record is redelivered on the next consumer REBALANCE/RESTART (the fetch position of the
+ * SAME running consumer has already advanced past it, so redelivery is not immediate in-session — the honest
+ * broker-native analogue of RabbitMQ's basic_nack(requeue: true), which Kafka's log-offset model cannot make
+ * immediate without a seek()). nack(requeue: false) (an exhausted retry) instead re-produces the envelope to a
+ * DEAD-LETTER TOPIC ("<destination>.DLT", Kafka has no broker-native DLX like RabbitMQ), THEN commits the original
+ * offset — so the exhausted record is never redelivered from its original topic, mirroring RabbitMqEventConsumer's DLX
+ * routing outcome with a topic instead of an exchange. The DLT topic is derived from the broker-agnostic
+ * EventEnvelope::$destination (the topic the publisher targeted), keeping this layer free of `\RdKafka\Message`.
  */
 final class KafkaEventConsumer implements EventConsumer
 {
-    private ?KafkaConsumer $consumer = null;
-
     public function __construct(
-        private readonly KafkaConsumerFactory $factory,
-        private readonly KafkaProducerFactory $producerFactory,
-        private readonly JsonSerializer $serializer,
+        private readonly KafkaConsumerClient $client,
         private readonly string $deadLetterSuffix = '.DLT',
     ) {}
 
@@ -50,71 +47,57 @@ final class KafkaEventConsumer implements EventConsumer
      */
     public function subscribe(array $destinations): void
     {
-        $this->consumer()->subscribe($destinations);
+        $topics = [];
+        foreach ($destinations as $destination) {
+            $topics[] = $this->toTopic($destination);
+        }
+
+        $this->client->subscribe($topics);
     }
 
     public function start(): void
     {
-        $this->consumer();
+        // No-op: librdkafka's KafkaConsumer opens no socket on construction (metadata is fetched lazily on the first
+        // subscribe()/consume()), so there is no separate connect step to force here — subscribe() has already built
+        // the underlying consumer via the client. Kept to honour the EventConsumer lifecycle contract.
     }
 
+    /** poll() returning null also swallows any non-NO_ERROR librdkafka code, including a real broker error (a
+     *  documented operability caveat — see RdKafkaConsumerClient::consume()); ConsumerLoop treats null as "no message
+     *  this tick" and simply polls again. */
     public function poll(int $timeoutMs): ?ReceivedEnvelope
     {
-        $message = $this->consumer()->consume($timeoutMs);
-
-        return match ($message->err) {
-            RD_KAFKA_RESP_ERR_NO_ERROR => new ReceivedEnvelope(
-                $this->serializer->deserialize((string) $message->payload),
-                $message,
-            ),
-            default => null, // RD_KAFKA_RESP_ERR__PARTITION_EOF / RD_KAFKA_RESP_ERR__TIMED_OUT / any other transient code.
-        };
+        return $this->client->consume($timeoutMs);
     }
 
     public function ack(ReceivedEnvelope $received): void
     {
-        $this->consumer()->commit($this->message($received));
+        $this->client->commit($received->deliveryTag);
     }
 
     public function nack(ReceivedEnvelope $received, bool $requeue = true): void
     {
         if ($requeue) {
-            return; // leave the offset uncommitted -> Kafka redelivers the same record (at-least-once).
+            return; // leave the offset uncommitted -> Kafka redelivers on the next rebalance/restart (at-least-once).
         }
 
-        $this->deadLetter($received);
-        $this->consumer()->commit($this->message($received));
+        $this->client->deadLetter($received->envelope, $received->envelope->destination.$this->deadLetterSuffix);
+        $this->client->commit($received->deliveryTag);
     }
 
     public function stop(): void
     {
-        $this->consumer?->close();
-        $this->consumer = null;
+        $this->client->close();
     }
 
-    private function deadLetter(ReceivedEnvelope $received): void
+    private function toTopic(string $destination): string
     {
-        $message = $this->message($received);
-        $producer = $this->producerFactory->producer();
-        $topic = $producer->newTopic($message->topic_name.$this->deadLetterSuffix);
-
-        // RD_KAFKA_PARTITION_UA (-1) = librdkafka picks the partition; the DLT record carries no partition key,
-        // there is no "correct" partition to preserve once a record has been dead-lettered.
-        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $this->serializer->serialize($received->envelope));
-        $producer->flush(2000);
-    }
-
-    private function message(ReceivedEnvelope $received): Message
-    {
-        if (! $received->deliveryTag instanceof Message) {
-            throw new RuntimeException('ReceivedEnvelope::$deliveryTag must be the rdkafka Message.');
+        if (! str_contains($destination, '*')) {
+            return $destination; // an exact literal topic — librdkafka subscribes to it verbatim.
         }
 
-        return $received->deliveryTag;
-    }
-
-    private function consumer(): KafkaConsumer
-    {
-        return $this->consumer ??= $this->factory->consumer();
+        // fnmatch -> rdkafka regex: preg_quote escapes EVERY metachar (incl. `*` -> `\*`); turn the escaped star
+        // back into `.*`, then prefix `^` (librdkafka's regex-subscription marker). e.g. `order.*` -> `^order\..*`.
+        return '^'.str_replace('\\*', '.*', preg_quote($destination, '/'));
     }
 }
