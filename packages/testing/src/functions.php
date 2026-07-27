@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\Testing\Double\RecordingEventPublisher;
 use Firefly\Validation\IlluminateValidator;
 use Firefly\Validation\Validator;
 use Illuminate\Cache\ArrayStore;
@@ -77,5 +78,29 @@ if (! function_exists('bootFireflyApp')) {
         $context = fireflyApplication($config, $providers, $bindings, $needs)->make(ApplicationContext::class);
 
         return $context;
+    }
+}
+
+if (! function_exists('assertEventPublished')) {
+    /**
+     * @param  RecordingEventPublisher  $publisher
+     * @param  array<string,mixed>  $payloadContains
+     */
+    function assertEventPublished(object $publisher, string $eventType, array $payloadContains = []): void
+    {
+        // toHavePublished() is registered at runtime by FireflyExpectations::register() (Pest\Concerns\
+        // Extendable::extend(), invoked via dynamic __call) — PHPStan has no reflection extension that
+        // knows about expectations added this way, so it can't see the method on Pest\Expectation even
+        // though it genuinely exists once tests/Pest.php has run (proven by RecordingEventPublisherTest).
+        // @phpstan-ignore method.notFound
+        expect($publisher)->toHavePublished($eventType, $payloadContains);
+    }
+}
+
+if (! function_exists('assertNoEventsPublished')) {
+    /** @param RecordingEventPublisher $publisher */
+    function assertNoEventsPublished(object $publisher): void
+    {
+        expect($publisher->published)->toBeEmpty('Expected no events to have been published.');
     }
 }
