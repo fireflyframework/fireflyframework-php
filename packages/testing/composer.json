@@ -1,0 +1,46 @@
+{
+    "name": "firefly/testing",
+    "description": "LaraFly testing: the first-party test-support kit — a boot harness (FireflyTestCase + bootFireflyApp), sqlite/testcontainers database bases, web/data slice builders + attribute analogs, recording doubles for Firefly's own ports, Firefly-flavored Pest expectations, and a fixture layer. Dev-scoped; no runtime service provider.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/cqrs": "*@dev",
+        "firefly/data": "*@dev",
+        "firefly/domain": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/messaging": "*@dev",
+        "firefly/observability": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "firefly/security": "*@dev",
+        "firefly/validation": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/cache": "^13.0",
+        "illuminate/config": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0",
+        "illuminate/testing": "^13.0",
+        "illuminate/translation": "^13.0",
+        "illuminate/validation": "^13.0",
+        "orchestra/testbench": "^11.1"
+    },
+    "suggest": {
+        "testcontainers/testcontainers": "Ephemeral Docker backends for @group integration tests (fireflyConfigFor())."
+    },
+    "autoload": {
+        "psr-4": { "Firefly\\Testing\\": "src/" },
+        "files": [ "src/functions.php" ]
+    },
+    "autoload-dev": { "psr-4": { "Firefly\\Testing\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

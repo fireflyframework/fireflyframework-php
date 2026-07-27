@@ -26,6 +26,7 @@
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
+        "firefly/testing": "*@dev",
         "larastan/larastan": "^3.9",
         "laravel/octane": "^2.0",
         "laravel/pint": "^1.20",
@@ -52,6 +53,7 @@
             "Firefly\\Scheduling\\Postgres\\Tests\\": "packages/scheduling-postgres/tests/",
             "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
             "Firefly\\Security\\Tests\\": "packages/security/tests/",
+            "Firefly\\Testing\\Tests\\": "packages/testing/tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/"
         }

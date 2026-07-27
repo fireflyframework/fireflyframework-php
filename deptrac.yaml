@@ -74,6 +74,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/observability/src/.*
+    - name: Testing
+      collectors:
+        - type: directory
+          value: packages/testing/src/.*
   ruleset:
     # Kernel is the zero-dependency foundation.
     Kernel: ~
@@ -254,3 +258,26 @@ deptrac:
       - Actuator
       - Cqrs
       - Resilience
+
+    # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
+    # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it
+    # only from their tests/, which Deptrac's src-only collectors never see (no cycle; dev-scoped dep).
+    Testing:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation
+      - Web
+      - Resilience
+      - Scheduling
+      - SchedulingPostgres
+      - Domain
+      - Data
+      - Eda
+      - Messaging
+      - Cqrs
+      - Security
+      - Actuator
+      - Observability
