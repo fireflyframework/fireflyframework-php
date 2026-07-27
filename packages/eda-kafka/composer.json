@@ -1,0 +1,33 @@
+{
+    "name": "firefly/eda-kafka",
+    "description": "LaraFly eda Kafka adapter: a KafkaEventPublisher + consumer over the OPTIONAL ext-rdkafka (suggest + extension_loaded guard — never a hard require), auto-configured behind firefly.eda.provider=kafka, with a DLT topic for exhausted retries and a KafkaHealthIndicator.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "illuminate/console": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "suggest": {
+        "ext-rdkafka": "Required ONLY to activate the Kafka adapter (firefly.eda.provider=kafka). Needs librdkafka >= 1.5.3. Absent = the adapter is inert; the default gate + non-Kafka consumers never need it."
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Eda\\Kafka\\EdaKafkaServiceProvider"
+            ]
+        }
+    },
+    "autoload": { "psr-4": { "Firefly\\Eda\\Kafka\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Eda\\Kafka\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

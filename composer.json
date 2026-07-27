@@ -27,10 +27,12 @@
     "require-dev": {
         "deptrac/deptrac": "^4.6",
         "firefly/cli": "*@dev",
+        "firefly/eda-kafka": "*@dev",
         "firefly/eda-postgres": "*@dev",
         "firefly/eda-rabbitmq": "*@dev",
         "firefly/firefly": "*@dev",
         "firefly/testing": "*@dev",
+        "kwn/php-rdkafka-stubs": "^2.2",
         "larastan/larastan": "^3.9",
         "laravel/octane": "^2.0",
         "laravel/pint": "^1.20",
@@ -53,6 +55,7 @@
             "Firefly\\Data\\Tests\\": "packages/data/tests/",
             "Firefly\\Domain\\Tests\\": "packages/domain/tests/",
             "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
+            "Firefly\\Eda\\Kafka\\Tests\\": "packages/eda-kafka/tests/",
             "Firefly\\Eda\\Postgres\\Tests\\": "packages/eda-postgres/tests/",
             "Firefly\\Eda\\Rabbitmq\\Tests\\": "packages/eda-rabbitmq/tests/",
             "Firefly\\Messaging\\Tests\\": "packages/messaging/tests/",
@@ -75,6 +78,9 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true
+        },
+        "platform": {
+            "ext-rdkafka": "4.0"
         }
     },
     "scripts": {

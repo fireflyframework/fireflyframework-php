@@ -62,6 +62,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/eda-postgres/src/.*
+    - name: EdaKafka
+      collectors:
+        - type: directory
+          value: packages/eda-kafka/src/.*
     - name: Messaging
       collectors:
         - type: directory
@@ -228,6 +232,21 @@ deptrac:
       - Data
       - Eda
       - Cqrs
+      - Actuator
+
+    # EdaKafka is the Kafka adapter for Eda's EventPublisher port over the OPTIONAL ext-rdkafka (suggest +
+    # extension_loaded guard, never a hard require): its own package (every broker its own package, the
+    # SchedulingPostgres/EdaRabbitmq/EdaPostgres precedent) so the core eda package stays free of the rdkafka
+    # dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context attributes,
+    # extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator HealthIndicator. It
+    # is depended on by NONE.
+    EdaKafka:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Eda
       - Actuator
 
     # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,
