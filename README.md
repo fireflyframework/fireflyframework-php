@@ -1,7 +1,7 @@
 # LaraFly — Firefly Framework for PHP
 
 [![CI](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml/badge.svg)](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-26.07.14-brightgreen)
+![Version](https://img.shields.io/badge/version-26.07.15-brightgreen)
 ![PHP](https://img.shields.io/badge/php-8.3%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 

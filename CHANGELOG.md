@@ -2,6 +2,18 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.15] - 2026-07-27
+### Fixed
+- **`firefly/context`** — boot-order robustness: a real app (created via `composer create-project
+  firefly/skeleton`) now boots WITHOUT an app-side `beforeBootstrapping` kernel-binding hook.
+  `Firefly\Context\Boot\FireflyServiceProvider` now buffers each provider's contributed `BootPass`
+  instances (new `PendingBootPasses`) at `register()` time and drains them into the kernel lazily,
+  from the `booting()`/`booted()` callbacks, once the kernel is actually bound — so Laravel's
+  alphabetical package-provider discovery order no longer breaks boot. The skeleton's now-unneeded
+  `beforeBootstrapping` hook is removed.
+- **`firefly/cli`** — the offline create-project test now cleans up its temp directory via
+  try/finally, so a failed assertion no longer leaks it.
+
 ## [26.07.14] - 2026-07-27
 ### Added
 - `firefly/cli` — the developer-experience console (new Deptrac `Cli` layer, depends-all/depended-by-none): `firefly:cache` (compile all app manifests via every settled package's scanner→compiler + emit `#[Transactional]` proxy classes into `bootstrap/cache/firefly/` for a zero-reflection boot; a `FireflyCacheServiceProvider` binds the compiled wiring manifests + registers the proxy autoloader at boot), `firefly:clear`, `firefly:about` + actuator-over-CLI `firefly:routes`/`firefly:health`/`firefly:metrics`, the `make:firefly-*` generator family (controller/service/component/handler/listener/entity/repository/config-properties), and thin `firefly:serve`/`firefly:db` passthroughs.

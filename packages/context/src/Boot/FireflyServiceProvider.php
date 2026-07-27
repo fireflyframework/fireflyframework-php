@@ -91,7 +91,7 @@ abstract class FireflyServiceProvider extends ServiceProvider
     }
 
     /**
-     * The shared, first-one-wins PendingBootPasses buffer. Bound bound()-guarded exactly like
+     * The shared, first-one-wins PendingBootPasses buffer. Guarded by bound(), same pattern as
      * bindApplicationEventPublisher()/registerOctaneListener(): every FireflyServiceProvider subclass
      * (one per Firefly package) calls register() and this helper, but only the FIRST binds the buffer;
      * all of them then share that single instance, so a pass buffered by any subclass is visible to the
