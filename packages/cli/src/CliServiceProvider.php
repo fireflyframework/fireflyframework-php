@@ -7,6 +7,7 @@ namespace Firefly\Cli;
 use Firefly\Cli\Command\AboutCommand;
 use Firefly\Cli\Command\CacheCommand;
 use Firefly\Cli\Command\ClearCommand;
+use Firefly\Cli\Command\DbCommand;
 use Firefly\Cli\Command\HealthCommand;
 use Firefly\Cli\Command\Make\MakeComponentCommand;
 use Firefly\Cli\Command\Make\MakeConfigPropertiesCommand;
@@ -18,6 +19,7 @@ use Firefly\Cli\Command\Make\MakeRepositoryCommand;
 use Firefly\Cli\Command\Make\MakeServiceCommand;
 use Firefly\Cli\Command\MetricsCommand;
 use Firefly\Cli\Command\RoutesCommand;
+use Firefly\Cli\Command\ServeCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -44,7 +46,8 @@ final class CliServiceProvider extends ServiceProvider
                 MakeEntityCommand::class,
                 MakeRepositoryCommand::class,
                 MakeConfigPropertiesCommand::class,
-                // filled task-by-task: Serve/Db.
+                ServeCommand::class,
+                DbCommand::class,
             ]);
         }
     }

@@ -1,0 +1,27 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Firefly\Cli\Tests\Command;
+
+use Firefly\Cli\CliServiceProvider;
+use Firefly\Testing\FireflyTestCase;
+use Illuminate\Support\ServiceProvider;
+
+/**
+ * Named Support test-case for PassthroughCommandsTest — Pest's `uses()` requires a class-string
+ * (`function uses(string ...$classAndTraits)`), and an anonymous `new class extends FireflyTestCase {
+ * ... }::class` expression instantiates the class immediately (to read its ::class), which throws
+ * before Pest ever gets to bind it: the ultimate ancestor PHPUnit\Framework\TestCase::__construct()
+ * requires a `string $name` argument that a bare `new` expression never supplies (verified empirically:
+ * ArgumentCountError). See ClearCommandTestCase for the same fix.
+ * Not `final`: Pest's uses() generates a per-test-file class that EXTENDS this one.
+ */
+class PassthroughCommandsTestCase extends FireflyTestCase
+{
+    /** @return list<class-string<ServiceProvider>> */
+    protected function fireflyProviders(): array
+    {
+        return [CliServiceProvider::class];
+    }
+}
