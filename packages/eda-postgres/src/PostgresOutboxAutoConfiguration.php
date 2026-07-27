@@ -17,6 +17,7 @@ use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Eda\Bus\SubscriberRegistry;
+use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
 use Illuminate\Database\Connection;
@@ -98,5 +99,27 @@ final class PostgresOutboxAutoConfiguration
     public function commandEventPublisher(): CommandEventPublisher
     {
         return new NoOpEventPublisher;
+    }
+
+    /**
+     * The TERMINAL in-process consumer firefly:eda:consume drives in postgres mode: it claims committed PENDING
+     * outbox rows (LISTEN/NOTIFY wake + FOR UPDATE SKIP LOCKED), delivers each to the #[EventListener] handlers via
+     * the SubscriberRegistry, and marks them PUBLISHED — with NO EventPublisher call, so there is no re-INSERT (B1).
+     * Narrows the resolved connection to the concrete type because PostgresEventConsumer needs getPdo()/getDriverName()
+     * (not on ConnectionInterface — B2).
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
+    public function eventConsumer(Config $config, ConnectionResolverInterface $connections): EventConsumer
+    {
+        $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
+        $conn = $connections->connection($name);
+        assert($conn instanceof Connection); // PostgresEventConsumer needs getPdo()/getDriverName() (B2)
+
+        return new PostgresEventConsumer(
+            $conn,
+            $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
+            $config->int('firefly.eda.postgres.max_attempts', 3),
+        );
     }
 }
