@@ -15,8 +15,9 @@ labels:
   contents: "Contenido"
 # NOTA (Tarea B2): la portada + el Inicio rápido + la Parte I (Capítulos 1-2)
 # se incorporaron aquí. Tarea B3: Parte I completada (Capítulos 3-4) + Parte II
-# abierta (Capítulos 5-6). Las tareas B4-B5 añaden las entradas de los capítulos
-# restantes a `parts:` más abajo.
+# abierta (Capítulos 5-6). Tarea B4: Parte II completada y Parte III abierta
+# (Capítulos 7-10: CQRS, EDA/outbox, transacciones, seguridad). La tarea B5
+# añade las entradas de los capítulos restantes a `parts:` más abajo.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -37,4 +38,10 @@ parts:
     chapters:
       - {id: ch05, file: 05-persistence-repositories.md, num: 5, title: "Persistencia y el Patrón Repositorio"}
       - {id: ch06, file: 06-domain-driven-design.md, num: 6, title: "Diseño Guiado por el Dominio"}
+  - title: "Parte III — Coordinar y Asegurar la Aplicación"
+    chapters:
+      - {id: ch07, file: 07-cqrs.md, num: 7, title: "CQRS: Comandos y Consultas"}
+      - {id: ch08, file: 08-eda-outbox.md, num: 8, title: "Arquitectura Guiada por Eventos y el Outbox Transaccional"}
+      - {id: ch09, file: 09-transactions.md, num: 9, title: "Transacciones y el Proxy #[Transactional]"}
+      - {id: ch10, file: 10-security.md, num: 10, title: "Seguridad: Autenticación y Autorización"}
 back: []
