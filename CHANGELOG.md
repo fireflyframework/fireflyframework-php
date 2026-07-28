@@ -2,6 +2,17 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.18] - 2026-07-28
+
+### Added
+- **`samples/lumen`** — a runnable DDD wallet-and-ledger sample exercising the whole stack: a `Wallet` Eloquent aggregate (`HasDomainEvents`/`RecordsDomainEvents`) with a `balance >= 0` invariant, a `Money` value object, four domain events, a hexagonal `WalletRepository` port + Eloquent adapter, CQRS command/query handlers (`#[CommandHandler]`/`#[QueryHandler]`, `#[Transactional]`), a `LedgerProjector` (`#[EventListener]`), a genuine same-transaction outbox, `#[PreAuthorize]` method security, and a REST layer with RFC-7807 problem-details. A `firefly/lumen` path-package (never in the metapackage/split matrix/Deptrac paths). ~40 tests, all dispatching through the real `CommandBus`/`QueryBus`/router.
+- **Book — *LaraFly by Example*** — a complete bilingual (EN + ES) book under `book/`: a quick start, 13 chapters across four parts (Foundations, Modelling & Persisting the Domain, Coordinating & Securing the App, Observability/Testing/Delivery), plus a Laravel→LaraFly cheat-sheet and a glossary. A dedicated Python/WeasyPrint pipeline renders PDF + EPUB in both languages; every fenced PHP listing is `php -l`-verified against the sample.
+- **Tutorial** — an end-to-end, ~12-step guided tutorial (`docs/tutorial.md`) in English + Spanish (`docs/tutorial.es.md`).
+- **Docs table of contents** (`docs/README.md`) grouping every guide by topic; grown `docs/index.md`.
+
+### Changed
+- **README** — rewritten to a professional, fully-explained front page (15 sections, banner + five SVG diagrams, nine source-accurate "Featured Patterns" showcases, real links to the tutorial/book/docs TOC), guarded by a relative-link test.
+
 ## [26.07.17] - 2026-07-28
 
 ### Added
