@@ -34,10 +34,11 @@ li{ margin:.28rem 0; }
 li::marker{ color:var(--green); }
 hr{ border:none; border-top:1px solid var(--rule); margin:1.7rem 0; }
 
-/* inline code */
+/* inline code — ligatures OFF so operators render literally (`->` never becomes `→`) */
 code{ background:#eef3e8; color:#2c6e22; padding:.06em .36em; border-radius:4px;
   font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:.85em;
-  word-break:break-word; }
+  word-break:break-word;
+  font-variant-ligatures:none; font-feature-settings:"liga" 0,"clig" 0,"calt" 0,"dlig" 0; }
 
 /* ============ code listings ============ */
 .listing{ margin:1.2rem 0; }
@@ -45,13 +46,26 @@ code{ background:#eef3e8; color:#2c6e22; padding:.06em .36em; border-radius:4px;
   font:600 .72rem/1 "SF Mono","JetBrains Mono",Menlo,monospace;
   padding:.44rem .72rem; border:1px solid var(--code-border); border-bottom:none;
   border-radius:8px 8px 0 0; }
-pre.code{
-  margin:0; background:var(--code-bg); border:1px solid var(--code-border);
-  border-radius:0 8px 8px 8px; padding:.85rem 1rem;
-  font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+
+/* TWO renderers, ONE look:
+   - `::: listing` directive -> <pre class="code">               (class on the PRE; filetab on top)
+   - ```lang fenced code      -> <div class="code"><pre>…</pre>  (codehilite: class is on the DIV,
+     so the old `pre.code`-only rules NEVER matched it -> it overflowed with a bare box).
+   The shared box + pre-wrap keeps even 200-char lines inside the container in the print PDF, and
+   ligatures are disabled so operators render literally (`->` stays `->`, never `→`). */
+pre.code, div.code{
+  background:var(--code-bg); border:1px solid var(--code-border);
+  border-radius:8px; padding:.85rem 1rem;
+}
+div.code{ margin:1.2rem 0; }
+pre.code, div.code > pre{
+  margin:0; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   font-size:.78rem; line-height:1.62; color:#24292f;
   white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; tab-size:4;
+  font-variant-ligatures:none; font-feature-settings:"liga" 0,"clig" 0,"calt" 0,"dlig" 0;
 }
+div.code > pre{ background:transparent; border:none; padding:0; max-width:100%; }
+pre.code{ border-radius:0 8px 8px 8px; }         /* listing: square top-left under the filetab */
 .filetab + pre.code{ border-top-left-radius:0; }
 .lcap{ font-size:.76rem; color:var(--muted); margin-top:.45rem; font-style:italic; }
 

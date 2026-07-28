@@ -411,18 +411,20 @@ Un comando, un manejador — aplicado en tiempo de cableado, no dejado a merced 
 
 !!! tip "Desenvolver la causa en una prueba"
     Una prueba que quiere afirmar *por qué* se rechazó un comando llega directamente más allá del envoltorio con `getPrevious()`. `samples/lumen/tests/Application/TransferSecurityTest.php` hace exactamente esto para un `#[PreAuthorize]` denegado (el Capítulo 10 explica la protección en sí):
-    ```php
-    $denied = null;
-    try {
-        $commands->send(new Withdraw($walletId, 1000));
-    } catch (CommandProcessingException $e) {
-        $denied = $e;
-    }
 
-    expect($denied)->toBeInstanceOf(CommandProcessingException::class);
-    expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
-    ```
-    El tipo exterior te dice *qué operación del bus* falló; el tipo interior — alcanzado vía `getPrevious()` — te dice *por qué*.
+```php
+$denied = null;
+try {
+    $commands->send(new Withdraw($walletId, 1000));
+} catch (CommandProcessingException $e) {
+    $denied = $e;
+}
+
+expect($denied)->toBeInstanceOf(CommandProcessingException::class);
+expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
+```
+
+El tipo exterior te dice *qué operación del bus* falló; el tipo interior — alcanzado vía `getPrevious()` — te dice *por qué*.
 
 ---
 

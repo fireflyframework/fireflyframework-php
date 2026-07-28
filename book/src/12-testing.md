@@ -237,18 +237,18 @@ function assertNoEventsPublished(object $publisher): void { /* ... */ }
 
     This is why Lumen's own tests — like `firefly/web`'s own capstone test suite — assert the RFC-7807 fields directly instead:
 
-    ```php
-    it('returns RFC-7807 problem+json for an unknown wallet', function () {
-        $this->getJson('/api/v1/wallets/nope/balance')
-            ->assertStatus(404)
-            ->assertHeader('Content-Type', 'application/problem+json')
-            ->assertJsonPath('status', 404)
-            ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
-            ->assertJsonPath('title', 'Not Found');
-    });
-    ```
+```php
+it('returns RFC-7807 problem+json for an unknown wallet', function () {
+    $this->getJson('/api/v1/wallets/nope/balance')
+        ->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 404)
+        ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
+        ->assertJsonPath('title', 'Not Found');
+});
+```
 
-    A book that only teaches what genuinely works would be doing you a disservice by hiding this: `toBeProblemDetails()` is real, shipped, and exercised by the testing package's own suite against a body that *does* carry a `type` key — it simply is not the assertion Lumen reaches for against the framework's actual error responses, and now you know why, instead of hitting the same failure cold.
+A book that only teaches what genuinely works would be doing you a disservice by hiding this: `toBeProblemDetails()` is real, shipped, and exercised by the testing package's own suite against a body that *does* carry a `type` key — it simply is not the assertion Lumen reaches for against the framework's actual error responses, and now you know why, instead of hitting the same failure cold.
 
 ---
 

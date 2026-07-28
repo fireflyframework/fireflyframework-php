@@ -237,18 +237,18 @@ function assertNoEventsPublished(object $publisher): void { /* ... */ }
 
     Por eso las propias pruebas de Lumen — como la propia suite de pruebas de remate de `firefly/web` — afirman los campos RFC-7807 directamente en su lugar:
 
-    ```php
-    it('returns RFC-7807 problem+json for an unknown wallet', function () {
-        $this->getJson('/api/v1/wallets/nope/balance')
-            ->assertStatus(404)
-            ->assertHeader('Content-Type', 'application/problem+json')
-            ->assertJsonPath('status', 404)
-            ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
-            ->assertJsonPath('title', 'Not Found');
-    });
-    ```
+```php
+it('returns RFC-7807 problem+json for an unknown wallet', function () {
+    $this->getJson('/api/v1/wallets/nope/balance')
+        ->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 404)
+        ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
+        ->assertJsonPath('title', 'Not Found');
+});
+```
 
-    Un libro que solo enseñe lo que genuinamente funciona te haría un flaco favor ocultando esto: `toBeProblemDetails()` es real, se entrega, y la propia suite del paquete de pruebas lo ejercita contra un cuerpo que *sí* lleva una clave `type` — simplemente no es la aserción a la que Lumen recurre contra las respuestas de error reales del framework, y ahora sabes por qué, en lugar de toparte con el mismo fallo en frío.
+Un libro que solo enseñe lo que genuinamente funciona te haría un flaco favor ocultando esto: `toBeProblemDetails()` es real, se entrega, y la propia suite del paquete de pruebas lo ejercita contra un cuerpo que *sí* lleva una clave `type` — simplemente no es la aserción a la que Lumen recurre contra las respuestas de error reales del framework, y ahora sabes por qué, en lugar de toparte con el mismo fallo en frío.
 
 ---
 

@@ -411,18 +411,20 @@ One command, one handler — enforced at wiring time, not left to whichever regi
 
 !!! tip "Unwrapping the cause in a test"
     A test that wants to assert *why* a command was rejected reaches straight past the wrapper with `getPrevious()`. `samples/lumen/tests/Application/TransferSecurityTest.php` does exactly this for a denied `#[PreAuthorize]` (Chapter 10 explains the guard itself):
-    ```php
-    $denied = null;
-    try {
-        $commands->send(new Withdraw($walletId, 1000));
-    } catch (CommandProcessingException $e) {
-        $denied = $e;
-    }
 
-    expect($denied)->toBeInstanceOf(CommandProcessingException::class);
-    expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
-    ```
-    The outer type tells you *which bus operation* failed; the inner type — reached via `getPrevious()` — tells you *why*.
+```php
+$denied = null;
+try {
+    $commands->send(new Withdraw($walletId, 1000));
+} catch (CommandProcessingException $e) {
+    $denied = $e;
+}
+
+expect($denied)->toBeInstanceOf(CommandProcessingException::class);
+expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
+```
+
+The outer type tells you *which bus operation* failed; the inner type — reached via `getPrevious()` — tells you *why*.
 
 ---
 
