@@ -154,12 +154,14 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
     }
 
     /**
-     * Runs the sample application's migrations against the sqlite :memory: connection. A no-op until the domain
-     * (S2+) lands its migrations under samples/lumen/database/migrations.
+     * Runs the sample application's migrations against the sqlite :memory: connection. S3 lands the first
+     * migrations under samples/lumen/src/Infrastructure/Migration (co-located with the port/adapter they back,
+     * mirroring how a Firefly package ships its own database/migrations); still a no-op if that directory is
+     * ever absent (e.g. a future reorganization).
      */
     protected function migrate(): void
     {
-        $path = dirname(__DIR__).'/database/migrations';
+        $path = dirname(__DIR__).'/src/Infrastructure/Migration';
 
         if (is_dir($path)) {
             Artisan::call('migrate', ['--path' => $path, '--realpath' => true]);
