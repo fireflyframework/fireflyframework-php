@@ -8,7 +8,7 @@ up as individually-installable Packagist packages, and the exact, gated sequence
 
 Development happens in one monorepo (`fireflyframework-php`); each package is published as a **read-only**
 Packagist mirror at `fireflyframework/firefly-<pkg>` (e.g. `fireflyframework/firefly-kernel`). All mirrors
-share **one CalVer tag** — a single `v26.07.16`-style tag on the monorepo cuts a release of every package at
+share **one CalVer tag** — a single `v26.07.17`-style tag on the monorepo cuts a release of every package at
 once, at the same version, even for packages that had no code change that cycle. There is no independent
 per-package versioning; see [Versioning](versioning.md) for why.
 
@@ -32,7 +32,7 @@ as `firefly/xyz: "*@dev"`, resolved locally via the root `composer.json`'s `path
 what makes `composer install` at the monorepo root wire the whole tree together for local development and the
 test suite.
 
-At release, `vendor/bin/monorepo-builder bump-interdependency 26.07.16` rewrites every sibling constraint from
+At release, `vendor/bin/monorepo-builder bump-interdependency 26.07.17` rewrites every sibling constraint from
 `*@dev` to `^26.07` **on the release commit that gets tagged and split**, so the resulting mirrors are
 stable-installable on their own — a consumer running `composer require fireflyframework/firefly-eda` never
 sees a `*@dev` constraint, which `minimum-stability: stable` (the default posture) would refuse to resolve.
@@ -62,10 +62,10 @@ history, create public mirror repositories, and register public Packagist packag
    ```
 4. **On a release commit:**
    ```bash
-   vendor/bin/monorepo-builder bump-interdependency 26.07.16
+   vendor/bin/monorepo-builder bump-interdependency 26.07.17
    ```
    Verify every `packages/*/composer.json` now requires its siblings as `^26.07` (not `*@dev`), run
-   `composer validate` per package, commit the result, and **re-tag** `v26.07.16` at this commit — so the tag
+   `composer validate` per package, commit the result, and **re-tag** `v26.07.17` at this commit — so the tag
    that gets pushed and split in the next step is the one carrying `^26.07` constraints, not `*@dev`.
 5. **`git remote add origin git@github.com:fireflyframework/fireflyframework-php.git` then
    `git push origin main --tags`** — **irreversible**: this publishes the monorepo's history and the release

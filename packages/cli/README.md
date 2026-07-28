@@ -15,6 +15,6 @@ php artisan firefly:cache
 php artisan make:firefly-handler RegisterWidget
 ```
 
-See [CLI](../../docs/modules/cli.md) for the full command reference.
+See [CLI](../../docs/cli.md) for the full command reference.
 
 Apache-2.0 © Firefly Software Solutions Inc.
