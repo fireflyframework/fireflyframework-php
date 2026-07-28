@@ -488,7 +488,7 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
 }
 ```
 
-Cada una de las llamadas HTTP de los Capítulos 4 al 11 en este libro — cada `$this->postJson(...)`, cada aserción RFC-7807 — se ejecuta contra una subclase de `LumenTestCase`. Deliberadamente enlaza el `InMemoryEventBus` *real* como el `EventPublisher` (nunca un `RecordingEventPublisher`), porque las propias pruebas de Lumen necesitan que el puente de dominio-a-integración del Capítulo 9 dispare genuinamente, no que meramente se grabe como si lo hubiera hecho.
+Cada una de las llamadas HTTP de los Capítulos 4 al 11 en este libro — cada `$this->postJson(...)`, cada aserción RFC-7807 — se ejecuta contra una subclase de `LumenTestCase`. Deliberadamente enlaza el `InMemoryEventBus` *real* como el `EventPublisher` (nunca un `RecordingEventPublisher`), porque las propias pruebas de Lumen necesitan que el puente de dominio-a-integración del Capítulo 8 dispare genuinamente, no que meramente se grabe como si lo hubiera hecho.
 
 !!! laravel "Paridad con Laravel"
     El propio kit de pruebas de Laravel (`RefreshDatabase`, `Event::fake()`, `Bus::fake()`) es excelente para las propias primitivas de Laravel, pero no tiene visibilidad alguna sobre un puerto de Firefly — una llamada a `CommandBus::send()` o a `EventPublisher::publish()` es invisible para `Event::fake()`, porque nada de ella pasa por el propio despachador de eventos de Laravel. Los dobles de grabación y las expectativas de Pest de `firefly/testing` son la capa de paridad: el mismo idioma de "prepara un fake, afirma sobre lo que vio" que ya conoces de Laravel, apuntado a los puertos que los demás capítulos de este libro realmente presentaron.

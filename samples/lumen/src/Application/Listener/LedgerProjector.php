@@ -29,8 +29,9 @@ final class LedgerProjector
     {
         // The envelope payload is array<string, mixed> (get_object_vars of the domain event, seen through the broker
         // boundary), so each field is narrowed to its projected type — a WalletOpened carries no amount/balance, so
-        // those default to 0, and TransferCompleted carries no walletId, so it defaults to ''.
-        $walletId = $envelope->payload['walletId'] ?? '';
+        // those default to 0. TransferCompleted names its wallet `sourceWalletId` (not `walletId`), so the ledger row
+        // for a completed transfer is keyed to the source wallet via the fallback below.
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
         $amountMinor = $envelope->payload['amountMinor'] ?? 0;
         $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
 

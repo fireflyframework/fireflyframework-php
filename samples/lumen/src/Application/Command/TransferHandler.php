@@ -41,6 +41,8 @@ class TransferHandler
         $this->wallets->save($source);    // persist + track the debit INSIDE the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
         $this->wallets->save($destination);
-        // commit here -> FundsWithdrawn + FundsDeposited drain atomically after the unit of work commits.
+        $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
+        // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
+        // (recordTransferTo runs only on the success path: a failed credit throws above, the tx rolls back, nothing publishes.)
     }
 }

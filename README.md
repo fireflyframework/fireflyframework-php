@@ -321,7 +321,7 @@ succeeds":
   <img src="docs/assets/diagrams/outbox-flow.svg" alt="The genuine same-transaction outbox: an aggregate's transaction begins, the domain write and the outbox INSERT + pg_notify happen on the same connection inside the same transaction, and only on commit does Postgres deliver the NOTIFY to a LISTEN-ing consumer that drains the row to subscribed #[EventListener] handlers." width="100%">
 </p>
 
-See the [same-tx outbox showcase](#same-transaction-outbox-firefly.eda.providerpostgres) below for the config
+See the [same-tx outbox showcase](#same-transaction-outbox--fireflyedaproviderpostgres) below for the config
 and the seam that makes this possible.
 
 ---
@@ -550,7 +550,8 @@ class TransferHandler
         $this->wallets->save($source);    // persist inside the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
         $this->wallets->save($destination);
-        // commit here -> FundsWithdrawn + FundsDeposited drain atomically after the unit of work commits.
+        $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
+        // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
     }
 }
 ```
@@ -767,8 +768,10 @@ still ahead, accurately:
 - **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
-  - **Documentation.** The end-to-end tutorial, the *LaraFly by Example* book, and a docs table of contents
-  are in progress as part of the current documentation-parity milestone (this README included).
+- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
+  [book](book/README.md) (13 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
+  Deeper guides (more recipes, more diagrams) continue to grow from here.
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete, dated history of every shipped milestone.
 

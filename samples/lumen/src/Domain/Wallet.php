@@ -10,6 +10,7 @@ use Firefly\Kernel\Exception\Business\ConflictException;
 use Illuminate\Database\Eloquent\Model;
 use Lumen\Domain\Event\FundsDeposited;
 use Lumen\Domain\Event\FundsWithdrawn;
+use Lumen\Domain\Event\TransferCompleted;
 use Lumen\Domain\Event\WalletOpened;
 
 final class Wallet extends Model implements RecordsDomainEvents
@@ -110,6 +111,22 @@ final class Wallet extends Model implements RecordsDomainEvents
         $this->setAttribute('balance_minor', $remaining->minorUnits);
         $this->raiseEvent(new FundsWithdrawn(
             $this->walletId(), $amount->minorUnits, $amount->currency->value, $remaining->minorUnits
+        ));
+    }
+
+    /**
+     * Records that a transfer of `$amount` from this (source) wallet to `$destinationWalletId` has completed. The
+     * TransferHandler calls this only AFTER both legs succeed (the debit here + the credit there), so it marks the
+     * transfer as a single business fact — distinct from, and in addition to, the low-level FundsWithdrawn (here)
+     * and FundsDeposited (there) the two legs already raised. Because domain events drain at COMMIT from the tracked
+     * aggregate (this wallet was tracked by its save()), raising it after that save() still publishes it atomically;
+     * and on a rolled-back transfer the handler never reaches this call, so a failed transfer publishes nothing.
+     */
+    public function recordTransferTo(string $destinationWalletId, Money $amount): void
+    {
+        $this->assertCurrency($amount);
+        $this->raiseEvent(new TransferCompleted(
+            $this->walletId(), $destinationWalletId, $amount->minorUnits, $amount->currency->value
         ));
     }
 

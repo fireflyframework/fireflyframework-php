@@ -489,7 +489,7 @@ final readonly class FundsWithdrawn extends DomainEvent
 }
 ```
 
-A fourth event, `TransferCompleted`, is raised not by `Wallet` itself but by the application layer once both legs of a transfer succeed (the next section shows exactly where). Every one carries `#[PublishDomainEvent('wallet.events')]` — an attribute from `firefly/cqrs`, not `firefly/domain`, which names the **destination** an event republishes to once it crosses into the integration-event world; `firefly/domain` itself has no opinion about destinations at all, only about raising and draining.
+A fourth event, `TransferCompleted`, is raised not by `Wallet` itself but by the application layer once both legs of a transfer succeed — `TransferHandler`, later in this chapter, shows exactly where. Every one carries `#[PublishDomainEvent('wallet.events')]` — an attribute from `firefly/cqrs`, not `firefly/domain`, which names the **destination** an event republishes to once it crosses into the integration-event world; `firefly/domain` itself has no opinion about destinations at all, only about raising and draining.
 
 Notice what each event does and does not carry. `FundsDeposited` and `FundsWithdrawn` both carry the **post-operation** balance (`$balanceMinor`), not just the amount that moved — a subscriber updating a read-model never has to reload the wallet to learn its new balance; everything it needs is already in the fact it received. That design pays off directly in `LedgerProjector`, later in this chapter.
 
@@ -596,12 +596,15 @@ class TransferHandler
         $this->wallets->save($source);    // persist + track the debit INSIDE the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
         $this->wallets->save($destination);
-        // commit here -> FundsWithdrawn + FundsDeposited drain atomically after the unit of work commits.
+        $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
+        // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
     }
 }
 ```
 
-If the destination's `deposit()` throws — a currency mismatch — `#[Transactional]`'s default `rollbackFor` (every `Throwable`) rolls the whole method back, undoing the source's debit too. Neither `FundsWithdrawn` nor `FundsDeposited` was published yet at that point — both were only buffered on their respective aggregates — so a listener never sees the half of a transfer that never actually happened. Money can neither vanish nor double: either both legs commit and both events publish, or neither does.
+`recordTransferTo()` is where the `TransferCompleted` fact promised earlier gets raised — deliberately the *last* line, after both legs have already succeeded, on the source wallet (which `save()` already registered with the tracker, so an event raised after that save still drains at commit). It is a small `Wallet` method that just calls `raiseEvent(new TransferCompleted(...))`; because it runs only on the success path, a rolled-back transfer never reaches it and never publishes it.
+
+If the destination's `deposit()` throws — a currency mismatch — `#[Transactional]`'s default `rollbackFor` (every `Throwable`) rolls the whole method back, undoing the source's debit too. None of `FundsWithdrawn`, `FundsDeposited`, or `TransferCompleted` was published yet at that point — each was only buffered on its aggregate — so a listener never sees the half of a transfer that never actually happened. Money can neither vanish nor double: either both legs commit and their events publish, or neither does.
 
 !!! note "Rehydration and the factory"
     Every `findById()` call above rebuilds a `Wallet` from a stored row through Eloquent's own hydration — never through `Wallet::open()`. That is correct: `open()` is for **new** wallets, and calling it again on an already-persisted row would re-raise `WalletOpened` for a wallet that has existed for months. A `Wallet` loaded from storage is exactly as valid as a freshly opened one; it simply carries no fresh event, because nothing new happened to it yet.
@@ -644,8 +647,9 @@ final class LedgerProjector
     {
         // The envelope payload is array<string, mixed> (get_object_vars of the domain event, seen through the broker
         // boundary), so each field is narrowed to its projected type — a WalletOpened carries no amount/balance, so
-        // those default to 0, and TransferCompleted carries no walletId, so it defaults to ''.
-        $walletId = $envelope->payload['walletId'] ?? '';
+        // those default to 0. TransferCompleted names its wallet `sourceWalletId` (not `walletId`), so the ledger row
+        // for a completed transfer is keyed to the source wallet via the fallback below.
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
         $amountMinor = $envelope->payload['amountMinor'] ?? 0;
         $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
 
