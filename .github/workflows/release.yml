@@ -1,0 +1,67 @@
+name: Release (split mirrors)
+
+# Dormant until a v* tag is pushed by the controller (see docs/publishing.md). Pushes NOTHING on
+# every other event — no branches:, no pull_request: trigger.
+#
+# The split faithfully mirrors the TAGGED commit's composer.json. Per docs/publishing.md, the
+# release-time `vendor/bin/monorepo-builder bump-interdependency <version>` runs on the release
+# commit BEFORE it is tagged, rewriting every `firefly/xyz: "*@dev"` sibling constraint to
+# `^26.07` — so by the time this workflow runs (triggered by the tag push), the commit being split
+# already carries `^26.07` interdependencies, not `*@dev`. Each mirror is therefore
+# stable-installable on its own via Packagist.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  split:
+    name: Split ${{ matrix.package.local }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - { local: packages/kernel,              split: firefly-kernel }
+          - { local: packages/container,           split: firefly-container }
+          - { local: packages/config,              split: firefly-config }
+          - { local: packages/context,             split: firefly-context }
+          - { local: packages/autoconfigure,       split: firefly-autoconfigure }
+          - { local: packages/validation,          split: firefly-validation }
+          - { local: packages/web,                 split: firefly-web }
+          - { local: packages/resilience,          split: firefly-resilience }
+          - { local: packages/scheduling,          split: firefly-scheduling }
+          - { local: packages/scheduling-postgres, split: firefly-scheduling-postgres }
+          - { local: packages/domain,              split: firefly-domain }
+          - { local: packages/data,                split: firefly-data }
+          - { local: packages/eda,                 split: firefly-eda }
+          - { local: packages/eda-kafka,            split: firefly-eda-kafka }
+          - { local: packages/eda-postgres,        split: firefly-eda-postgres }
+          - { local: packages/eda-rabbitmq,        split: firefly-eda-rabbitmq }
+          - { local: packages/messaging,           split: firefly-messaging }
+          - { local: packages/cqrs,                split: firefly-cqrs }
+          - { local: packages/security,            split: firefly-security }
+          - { local: packages/actuator,            split: firefly-actuator }
+          - { local: packages/observability,       split: firefly-observability }
+          - { local: packages/testing,             split: firefly-testing }
+          - { local: packages/cli,                 split: firefly-cli }
+          - { local: packages/firefly,              split: firefly-firefly }
+          - { local: packages/installer,           split: firefly-installer }
+          - { local: skeleton,                     split: firefly-skeleton }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Guard (never split a tree with sensitive paths)
+        run: bash scripts/check-no-sensitive-tracked.sh
+      - name: Subtree split to the read-only mirror
+        uses: symplify/monorepo-split-github-action@v2.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        with:
+          tag: ${{ github.ref_name }}
+          package-directory: ${{ matrix.package.local }}
+          split-repository-organization: fireflyframework
+          split-repository-name: ${{ matrix.package.split }}
+          user-name: fireflybot
+          user-email: bot@fireflyframework.dev
