@@ -40,6 +40,7 @@
         "orchestra/testbench": "^11.1",
         "pestphp/pest": "^3.7",
         "phpstan/phpstan": "^2.1",
+        "symfony/yaml": "^8.1",
         "symplify/monorepo-builder": "^11.2"
     },
     "autoload-dev": {

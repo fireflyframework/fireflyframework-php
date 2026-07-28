@@ -168,7 +168,7 @@ it('does not interpolate untrusted github.event.* into a run: step', function ()
         $stepMap = asYamlMap($step, 'step');
         $run = $stepMap['run'] ?? null;
         if (is_string($run)) {
-            expect($run)->not->toContain('github.event.', "run: step interpolates github.event.*: {$run}");
+            expect($run)->not->toContain('github.event.');
         }
     }
 });
