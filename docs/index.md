@@ -49,6 +49,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 |---|---|
 | [Installation](installation.md) | Requirements and how to stand up a new app |
 | [Getting Started](getting-started.md) | Boot the skeleton, write your first controller/service |
+| [Tutorial](tutorial.md) | A hand-built, 12-step walkthrough building a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature |
 | [Architecture](architecture.md) | The hexagonal design and the boot pipeline |
 | [Laravel Comparison](laravel-comparison.md) | Concept mapping for developers coming from plain Laravel |
 
@@ -67,11 +68,15 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |
 
+New to LaraFly? Follow the [Tutorial](tutorial.md) — a hand-built, 12-step walkthrough from
+`composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice, with a
+curl'd expected output at every step.
+
 Want to see it all running together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
-method security, and a REST layer with RFC-7807 problem-details. A guided, book-style tutorial is planned for
-a later stage of this docs milestone.
+method security, and a REST layer with RFC-7807 problem-details. A guided, book-style "LaraFly by Example"
+book is planned for a later stage of this docs milestone.
 
 ## Quick Links
 

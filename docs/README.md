@@ -20,7 +20,7 @@
 | [Installation](installation.md) | Requirements, `composer create-project firefly/skeleton`, and manual install |
 | [Getting Started](getting-started.md) | Boot the `firefly/skeleton` template, write your first `#[RestController]`/`#[Service]`, run `firefly:cache` |
 | [Architecture](architecture.md) | The hexagonal design, the boot pipeline, and how the Deptrac layers fit together |
-| Tutorial | *Coming in a later docs milestone* — a guided, step-by-step walkthrough building a sample app |
+| [Tutorial](tutorial.md) | A hand-built, 12-step walkthrough — from `composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice |
 | [Lumen Sample](../samples/lumen/) | A runnable digital-wallet & ledger sample exercising `#[Transactional]`, CQRS, domain events over EDA, method security, and a REST layer with RFC-7807 problem-details |
 
 ---
@@ -139,7 +139,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 
 ---
 
-*A guided, book-style tutorial is planned for a later stage of this docs milestone — this README will link it
-here once it lands.*
+*A guided, book-style "LaraFly by Example" book is planned for a later stage of this docs milestone — this
+README will link it here once it lands. The step-by-step [Tutorial](tutorial.md) is available now.*
 
 Apache-2.0 © Firefly Software Solutions Inc.
