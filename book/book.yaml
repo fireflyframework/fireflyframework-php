@@ -13,15 +13,20 @@ manuscript_dir: "src"
 output_basename: "larafly-by-example"
 labels:
   contents: "Contents"
-# NOTE (Task B1 — build-system scaffold): `front` and `parts` intentionally hold
-# only the build-system proof-of-pipeline placeholder below. Tasks B2-B5 each
-# add their own front-matter/chapter files AND register them here (see
-# .superpowers/sdd/dp-task-B{2,3,4,5}-brief.md); when B2 lands the real
-# 00-front/*.md set, delete the `placeholder-front` entry (and file) below.
+# NOTE (Task B2): front matter + Quick Start + Part I (Chapters 1-2) landed here.
+# Tasks B3-B5 append the remaining chapters' entries to `parts:` below.
 front:
-  - {id: placeholder-front, file: 00-front/00-placeholder-front.md, nav: false}
+  - {id: title,       file: 00-front/00-title.md,       nav: false}
+  - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
+  - {id: dedication,  file: 00-front/00-dedication.md,  nav: false}
+  - {id: preface,     file: 00-front/00-preface.md,     title: "Preface"}
+  - {id: conventions, file: 00-front/00-conventions.md, title: "Conventions"}
 parts:
-  - title: "Placeholder"
+  - title: "Quick Start"
     chapters:
-      - {id: placeholder, file: 00-placeholder.md, num: "", title: "Placeholder Chapter (build-system proof)"}
+      - {id: quickstart, file: 00-quickstart.md, num: "", title: "Build Lumen Step by Step"}
+  - title: "Part I — Foundations"
+    chapters:
+      - {id: ch01, file: 01-why-larafly.md, num: 1, title: "Why LaraFly?"}
+      - {id: ch02, file: 02-dependency-injection.md, num: 2, title: "Dependency Injection & Auto-Configuration"}
 back: []

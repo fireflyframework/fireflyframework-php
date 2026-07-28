@@ -13,16 +13,21 @@ manuscript_dir: "src-es"
 output_basename: "larafly-by-example-es"
 labels:
   contents: "Contenido"
-# NOTA (Tarea B1 — andamiaje del sistema de compilacion): `front` y `parts`
-# contienen intencionalmente solo el capitulo de prueba de la tuberia de
-# compilacion. Las tareas B2-B5 anaden sus propios archivos de portada/capitulo
-# Y los registran aqui (ver .superpowers/sdd/dp-task-B{2,3,4,5}-brief.md);
-# cuando B2 incorpore el conjunto real 00-front/*.md, elimina la entrada
-# `placeholder-front` (y su archivo) de abajo.
+# NOTA (Tarea B2): la portada + el Inicio rápido + la Parte I (Capítulos 1-2)
+# se incorporaron aquí. Las tareas B3-B5 añaden las entradas de los capítulos
+# restantes a `parts:` más abajo.
 front:
-  - {id: placeholder-front, file: 00-front/00-placeholder-front.md, nav: false}
+  - {id: title,       file: 00-front/00-title.md,       nav: false}
+  - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
+  - {id: dedication,  file: 00-front/00-dedication.md,  nav: false}
+  - {id: preface,     file: 00-front/00-preface.md,     title: "Prefacio"}
+  - {id: conventions, file: 00-front/00-conventions.md, title: "Convenciones"}
 parts:
-  - title: "Marcador de posición"
+  - title: "Inicio rápido"
     chapters:
-      - {id: placeholder, file: 00-placeholder.md, num: "", title: "Capítulo de prueba (sistema de compilación)"}
+      - {id: quickstart, file: 00-quickstart.md, num: "", title: "Construye Lumen paso a paso"}
+  - title: "Parte I — Fundamentos"
+    chapters:
+      - {id: ch01, file: 01-why-larafly.md, num: 1, title: "¿Por qué LaraFly?"}
+      - {id: ch02, file: 02-dependency-injection.md, num: 2, title: "Inyección de Dependencias y Auto-Configuración"}
 back: []
