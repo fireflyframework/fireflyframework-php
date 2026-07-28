@@ -39,7 +39,7 @@ final class DispatchMessageJob implements ShouldQueue
 
     public function handle(Container $container): void
     {
-        $broker = $container->make(MessageBrokerPort::class);
+        $broker = $this->resolveBroker($container);
 
         if (! $broker instanceof QueueMessageBroker) {
             throw new MessagingException(
@@ -50,5 +50,17 @@ final class DispatchMessageJob implements ShouldQueue
         }
 
         $broker->deliver(new Message($this->topic, $this->value, $this->key, $this->headers));
+    }
+
+    /**
+     * Resolves the bound MessageBrokerPort as its CONTRACT type. Routing the resolution through this interface-typed
+     * boundary keeps the misconfiguration guard above honest under static analysis: an analyzer that resolves the
+     * container's default (in-memory) binding would otherwise narrow make(MessageBrokerPort::class) to the concrete
+     * InMemoryMessageBroker and flag the `instanceof QueueMessageBroker` check — which only holds when
+     * firefly.messaging.provider=queue — as statically dead. Runtime behaviour is identical to calling make() inline.
+     */
+    private function resolveBroker(Container $container): MessageBrokerPort
+    {
+        return $container->make(MessageBrokerPort::class);
     }
 }

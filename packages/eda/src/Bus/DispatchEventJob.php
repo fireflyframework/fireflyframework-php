@@ -31,7 +31,7 @@ final class DispatchEventJob implements ShouldQueue
 
     public function handle(Container $container): void
     {
-        $publisher = $container->make(EventPublisher::class);
+        $publisher = $this->resolvePublisher($container);
 
         if (! $publisher instanceof QueueEventBus) {
             throw new InfrastructureException(
@@ -42,5 +42,17 @@ final class DispatchEventJob implements ShouldQueue
         }
 
         $publisher->deliver($this->envelope);
+    }
+
+    /**
+     * Resolves the bound EventPublisher as its CONTRACT type. Routing the resolution through this interface-typed
+     * boundary keeps the misconfiguration guard above honest under static analysis: an analyzer that resolves the
+     * container's default (in-memory) binding would otherwise narrow make(EventPublisher::class) to the concrete
+     * InMemoryEventBus and flag the `instanceof QueueEventBus` check — which only holds when firefly.eda.provider=queue
+     * — as statically dead. Runtime behaviour is identical to calling make() inline.
+     */
+    private function resolvePublisher(Container $container): EventPublisher
+    {
+        return $container->make(EventPublisher::class);
     }
 }

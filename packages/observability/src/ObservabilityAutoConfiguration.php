@@ -47,13 +47,25 @@ final class ObservabilityAutoConfiguration
     public function metricsRecorder(Container $container): MetricsRecorder
     {
         if ($container->bound(MeterRegistry::class)) {
-            $registry = $container->make(MeterRegistry::class);
+            $registry = $this->resolveRegistry($container);
             if ($registry instanceof MetricsRecorder) {
                 return $registry;
             }
         }
 
         return new NoOpMetricsRecorder;
+    }
+
+    /**
+     * Resolves the bound MeterRegistry as its CONTRACT type. Routing the resolution through this interface-typed
+     * boundary keeps the `instanceof MetricsRecorder` check above honest under static analysis: an analyzer that
+     * resolves the container's default binding would narrow make(MeterRegistry::class) to the concrete
+     * SimpleMeterRegistry (which implements both contracts) and flag the check — meaningful for a custom registry
+     * that records nothing — as statically always-true. Runtime behaviour is identical to calling make() inline.
+     */
+    private function resolveRegistry(Container $container): MeterRegistry
+    {
+        return $container->make(MeterRegistry::class);
     }
 
     #[Bean]

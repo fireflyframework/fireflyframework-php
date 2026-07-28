@@ -18,7 +18,6 @@ final class DbCommand extends Command
     public function handle(): int
     {
         $action = $this->argument('action');
-        $action = is_string($action) ? $action : 'migrate';
 
         return match ($action) {
             'seed' => $this->call('db:seed'),
