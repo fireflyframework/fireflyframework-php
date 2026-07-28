@@ -92,8 +92,11 @@ book/
     openers/                  # reserved for future per-chapter opener art (empty)
   src/                         # EN manuscript (Markdown)
     00-front/                   # title/copyright/dedication/preface/conventions
-    00-placeholder.md            # Task B1 proof-of-pipeline chapter (temporary)
-  src-es/                        # ES manuscript, same structure
+    00-quickstart.md             # "Build Lumen step by step" quick start
+    01..13-*.md                  # the thirteen chapters (Parts I-IV)
+    90-appendix-a-laravel.md      # Laravel -> LaraFly cheat-sheet
+    94-glossary.md                # glossary
+  src-es/                        # ES manuscript, same structure/filenames
   tests/
     test_md.py, test_epub.py, test_verify_code.py
 ```
@@ -113,22 +116,22 @@ book/
   LaraFly concept directly to its native Laravel equivalent (this replaces
   PyFly's `!!! spring` callout).
 
-## What Task B1 did — and did not — author
+## Manuscript status
 
-Task B1 (this scaffold) built the **build system**: every file under
-`build/`, `theme/`, `art/` (cover + 5 starter figures copied from
-`docs/assets/diagrams/`), `book.yaml`/`book.es.yaml`, `tests/`, and this
-README. To prove the pipeline end-to-end, it also added one placeholder
-front-matter file and one placeholder chapter in `src/` and `src-es/`
-(registered in both manifests) — these exercise every directive (figure,
-listing, all four callouts) and a real `php -l`-clean code excerpt from
-`samples/lumen`.
+The manuscript is **complete** in both languages: a five-file front matter, a
+"Build Lumen step by step" quick start, thirteen chapters across four parts —
 
-Tasks **B2-B5** (see `.superpowers/sdd/dp-task-B{2,3,4,5}-brief.md`) author
-the real thirteen chapters and the real five-file front matter
-(`00-title.md`, `00-copyright.md`, `00-dedication.md`, `00-preface.md`,
-`00-conventions.md`). When B2 lands that front matter, delete
-`00-placeholder-front.md` and its manifest entry; when the real chapter
-sequence is registered, delete `00-placeholder.md` and its manifest entry too.
-Task **B6** performs the final full-manuscript build + code-listing accuracy
-pass once all chapters exist.
+- **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
+  Configuration/Profiles/Secrets, Your First HTTP API
+- **Part II — Modelling & Persisting the Domain**: Persistence & Repositories,
+  Domain-Driven Design
+- **Part III — Coordinating & Securing the Application**: CQRS, Event-Driven
+  Architecture & the Transactional Outbox, Transactions & the `#[Transactional]`
+  proxy, Security
+- **Part IV — Observability, Testing & Delivery**: Observability/Actuator,
+  Testing, the CLI & the Zero-Reflection Cache
+
+— plus **Appendix A** (Laravel → LaraFly cheat-sheet) and a **Glossary**. Every
+chapter walks the real `samples/lumen` project, and every fenced ` ```php `
+listing is `php -l`-clean (enforced by `verify_code.py` over both `src/` and
+`src-es/`). Both editions build to `book/dist/` as PDF + EPUB.
