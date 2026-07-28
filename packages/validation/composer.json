@@ -5,19 +5,26 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "validation"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "validation"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/validation"
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "*@dev",
-        "firefly/container": "*@dev",
-        "firefly/context": "*@dev",
-        "firefly/kernel": "*@dev",
+        "firefly/autoconfigure": "26.07.17",
+        "firefly/container": "26.07.17",
+        "firefly/context": "26.07.17",
+        "firefly/kernel": "26.07.17",
         "illuminate/contracts": "^13.0",
         "illuminate/support": "^13.0",
         "illuminate/validation": "^13.0"
@@ -28,10 +35,22 @@
                 "Firefly\\Validation\\ValidationServiceProvider"
             ]
         },
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
-    "autoload": { "psr-4": { "Firefly\\Validation\\": "src/" } },
-    "autoload-dev": { "psr-4": { "Firefly\\Validation\\Tests\\": "tests/" } },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Validation\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Validation\\Tests\\": "tests/"
+        }
+    },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }

@@ -5,37 +5,49 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "bom", "metapackage"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "bom",
+        "metapackage"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/firefly"
     },
     "require": {
         "php": "^8.3",
-        "firefly/actuator": "*@dev",
-        "firefly/autoconfigure": "*@dev",
-        "firefly/config": "*@dev",
-        "firefly/container": "*@dev",
-        "firefly/context": "*@dev",
-        "firefly/cqrs": "*@dev",
-        "firefly/data": "*@dev",
-        "firefly/domain": "*@dev",
-        "firefly/eda": "*@dev",
-        "firefly/kernel": "*@dev",
-        "firefly/messaging": "*@dev",
-        "firefly/observability": "*@dev",
-        "firefly/resilience": "*@dev",
-        "firefly/scheduling": "*@dev",
-        "firefly/scheduling-postgres": "*@dev",
-        "firefly/security": "*@dev",
-        "firefly/validation": "*@dev",
-        "firefly/web": "*@dev"
+        "firefly/actuator": "26.07.17",
+        "firefly/autoconfigure": "26.07.17",
+        "firefly/config": "26.07.17",
+        "firefly/container": "26.07.17",
+        "firefly/context": "26.07.17",
+        "firefly/cqrs": "26.07.17",
+        "firefly/data": "26.07.17",
+        "firefly/domain": "26.07.17",
+        "firefly/eda": "26.07.17",
+        "firefly/kernel": "26.07.17",
+        "firefly/messaging": "26.07.17",
+        "firefly/observability": "26.07.17",
+        "firefly/resilience": "26.07.17",
+        "firefly/scheduling": "26.07.17",
+        "firefly/scheduling-postgres": "26.07.17",
+        "firefly/security": "26.07.17",
+        "firefly/validation": "26.07.17",
+        "firefly/web": "26.07.17"
     },
     "extra": {
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }
