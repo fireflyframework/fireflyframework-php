@@ -8,6 +8,10 @@ use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Exception\CommandProcessingException;
 use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
+use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Core\SimpleGrantedAuthority;
 use Lumen\Application\Command\Deposit;
 use Lumen\Application\Command\OpenWallet;
 use Lumen\Application\Command\Withdraw;
@@ -16,6 +20,10 @@ use Lumen\Domain\Currency;
 use Lumen\Tests\LumenTestCase;
 
 uses(LumenTestCase::class);
+
+// S6 added #[PreAuthorize] to WithdrawHandler, so the overdraw test below must run under an authorized principal;
+// clear it afterwards so no principal leaks into another test (mirrors SecurityAuthorizerTest's teardown).
+afterEach(fn () => SecurityContextHolder::clearContext());
 
 it('opens, deposits and reads the persisted balance through the real buses', function () {
     /** @var LumenTestCase $this */
@@ -42,6 +50,12 @@ it('rejects an overdraw with a category-preserving CommandProcessingException an
 
     /** @var string $walletId */
     $walletId = $commands->send(new OpenWallet('owner-2', Currency::EUR));
+
+    // WithdrawHandler is now #[PreAuthorize]-guarded; grant WALLET_OWNER so the command REACHES the handler and the
+    // assertion under test — that the domain overdraw ConflictException surfaces through the bus — still holds.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-2', 'owner-2', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
 
     $caught = null;
     try {
