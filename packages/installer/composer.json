@@ -5,18 +5,9 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "laravel",
-        "installer",
-        "scaffold",
-        "create-project"
-    ],
+    "keywords": ["firefly", "laravel", "installer", "scaffold", "create-project"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/installer"
@@ -26,26 +17,12 @@
         "symfony/console": "^8.0",
         "symfony/process": "^8.0"
     },
-    "bin": [
-        "bin/firefly"
-    ],
-    "autoload": {
-        "psr-4": {
-            "Firefly\\Installer\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Firefly\\Installer\\Tests\\": "tests/"
-        }
-    },
+    "bin": ["bin/firefly"],
+    "autoload": { "psr-4": { "Firefly\\Installer\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Installer\\Tests\\": "tests/" } },
     "extra": {
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "minimum-stability": "stable",
-    "config": {
-        "sort-packages": true
-    }
+    "config": { "sort-packages": true }
 }

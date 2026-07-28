@@ -5,47 +5,28 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "laravel",
-        "application-context"
-    ],
+    "keywords": ["firefly", "laravel", "application-context"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/context"
     },
     "require": {
         "php": "^8.3",
-        "firefly/config": "26.07.17",
-        "firefly/container": "26.07.17",
-        "firefly/kernel": "26.07.17",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/kernel": "*@dev",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
         "illuminate/events": "^13.0",
         "illuminate/support": "^13.0"
     },
     "extra": {
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
-    "autoload": {
-        "psr-4": {
-            "Firefly\\Context\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Firefly\\Context\\Tests\\": "tests/"
-        }
-    },
+    "autoload": { "psr-4": { "Firefly\\Context\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Context\\Tests\\": "tests/" } },
     "minimum-stability": "stable",
-    "config": {
-        "sort-packages": true
-    }
+    "config": { "sort-packages": true }
 }

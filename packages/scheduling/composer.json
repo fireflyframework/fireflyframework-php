@@ -5,28 +5,21 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "laravel",
-        "scheduling"
-    ],
+    "keywords": ["firefly", "laravel", "scheduling"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling"
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "26.07.17",
-        "firefly/config": "26.07.17",
-        "firefly/container": "26.07.17",
-        "firefly/context": "26.07.17",
-        "firefly/kernel": "26.07.17",
-        "firefly/resilience": "26.07.17",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/resilience": "*@dev",
         "illuminate/cache": "^13.0",
         "illuminate/console": "^13.0",
         "illuminate/container": "^13.0",
@@ -40,22 +33,10 @@
                 "Firefly\\Scheduling\\SchedulingWiringProvider"
             ]
         },
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
-    "autoload": {
-        "psr-4": {
-            "Firefly\\Scheduling\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Firefly\\Scheduling\\Tests\\": "tests/"
-        }
-    },
+    "autoload": { "psr-4": { "Firefly\\Scheduling\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Scheduling\\Tests\\": "tests/" } },
     "minimum-stability": "stable",
-    "config": {
-        "sort-packages": true
-    }
+    "config": { "sort-packages": true }
 }

@@ -5,29 +5,21 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "laravel",
-        "scheduling",
-        "postgres"
-    ],
+    "keywords": ["firefly", "laravel", "scheduling", "postgres"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling-postgres"
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "26.07.17",
-        "firefly/config": "26.07.17",
-        "firefly/container": "26.07.17",
-        "firefly/context": "26.07.17",
-        "firefly/kernel": "26.07.17",
-        "firefly/scheduling": "26.07.17",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/scheduling": "*@dev",
         "illuminate/contracts": "^13.0",
         "illuminate/database": "^13.0",
         "illuminate/support": "^13.0"
@@ -38,22 +30,10 @@
                 "Firefly\\Scheduling\\Postgres\\SchedulingPostgresServiceProvider"
             ]
         },
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
-    "autoload": {
-        "psr-4": {
-            "Firefly\\Scheduling\\Postgres\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Firefly\\Scheduling\\Postgres\\Tests\\": "tests/"
-        }
-    },
+    "autoload": { "psr-4": { "Firefly\\Scheduling\\Postgres\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Scheduling\\Postgres\\Tests\\": "tests/" } },
     "minimum-stability": "stable",
-    "config": {
-        "sort-packages": true
-    }
+    "config": { "sort-packages": true }
 }

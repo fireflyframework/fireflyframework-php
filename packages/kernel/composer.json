@@ -5,16 +5,9 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "php",
-        "error-handling"
-    ],
+    "keywords": ["firefly", "php", "error-handling"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/kernel"
@@ -23,9 +16,7 @@
         "php": "^8.3"
     },
     "extra": {
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
     "autoload": {
         "psr-4": {

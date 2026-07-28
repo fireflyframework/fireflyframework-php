@@ -5,27 +5,20 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        {
-            "name": "Firefly Software Solutions Inc.",
-            "homepage": "https://github.com/fireflyframework"
-        }
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
     ],
-    "keywords": [
-        "firefly",
-        "laravel",
-        "event-driven"
-    ],
+    "keywords": ["firefly", "laravel", "event-driven"],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/eda"
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "26.07.17",
-        "firefly/config": "26.07.17",
-        "firefly/container": "26.07.17",
-        "firefly/context": "26.07.17",
-        "firefly/kernel": "26.07.17",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
         "illuminate/bus": "^13.0",
         "illuminate/console": "^13.0",
         "illuminate/container": "^13.0",
@@ -41,22 +34,10 @@
                 "Firefly\\Eda\\EdaConsumerServiceProvider"
             ]
         },
-        "branch-alias": {
-            "dev-main": "26.x-dev"
-        }
+        "branch-alias": { "dev-main": "26.x-dev" }
     },
-    "autoload": {
-        "psr-4": {
-            "Firefly\\Eda\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Firefly\\Eda\\Tests\\": "tests/"
-        }
-    },
+    "autoload": { "psr-4": { "Firefly\\Eda\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Eda\\Tests\\": "tests/" } },
     "minimum-stability": "stable",
-    "config": {
-        "sort-packages": true
-    }
+    "config": { "sort-packages": true }
 }
