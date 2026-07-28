@@ -8,9 +8,9 @@ use Firefly\Cqrs\Attributes\QueryHandler;
 use Lumen\Domain\LedgerEntry;
 
 /**
- * Handles GetLedger: returns the wallet's ledger rows in insertion order. The projector that writes `ledger_entries`
- * lands in S5; until then this reads whatever is persisted (an empty list for a wallet with no entries yet). A pure
- * read — no #[Transactional]; the query type is inferred from the handle() parameter.
+ * Handles GetLedger: returns the wallet's ledger rows in insertion order. S5's projector writes `ledger_entries`, so
+ * this reads the projected rows directly (an empty list for a wallet with no entries yet). A pure read —
+ * no #[Transactional]; the query type is inferred from the handle() parameter.
  */
 #[QueryHandler]
 final class GetLedgerHandler

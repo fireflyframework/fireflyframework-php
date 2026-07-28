@@ -38,8 +38,8 @@ class TransferHandler
 
         $amount = new Money($command->amountMinor, $source->currency());
         $source->withdraw($amount);       // debit (raises FundsWithdrawn)
+        $this->wallets->save($source);    // persist + track the debit INSIDE the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
-        $this->wallets->save($source);
         $this->wallets->save($destination);
         // commit here -> FundsWithdrawn + FundsDeposited drain atomically after the unit of work commits.
     }

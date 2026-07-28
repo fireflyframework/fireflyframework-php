@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Lumen\Application\Query;
 
 /**
- * Query: read the ledger rows for a wallet. Until S5's projector populates `ledger_entries`, this returns whatever is
- * persisted there (an empty list for a wallet with no projected entries yet).
+ * Query: read the ledger rows for a wallet. S5's projector populates `ledger_entries`, so this returns the wallet's
+ * projected entries in insertion order (an empty list only for a wallet with none yet).
  */
 final readonly class GetLedger
 {
