@@ -84,6 +84,8 @@ same-transaction outbox**: the `firefly_eda_outbox` row is written *inside* the 
 transaction, on the aggregate's own connection, so it commits or rolls back atomically with the aggregate
 — no dual-write, no "commit then hope the publish succeeds."
 
+![The genuine same-transaction outbox](../assets/diagrams/outbox-flow.svg)
+
 ### The seam: `PreCommitEventHook`
 
 `firefly/data`'s `Domain\DomainEventDispatcher` (non-frozen — this is the one authorized non-`Version.php`

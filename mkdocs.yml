@@ -4,6 +4,7 @@ site_description: Spring Boot's cohesion, native to Laravel.
 # be built into the published site. They are also git-ignored from the repo.
 exclude_docs: |
   superpowers/
+  assets/README.md
 theme:
   name: material
   features:

@@ -5,6 +5,8 @@ parameter binding with `#[Valid]` interception, JSON-native content negotiation,
 rendering — all dispatched through native Laravel routes, inside the real HTTP-kernel middleware
 pipeline.
 
+![Request lifecycle](../assets/diagrams/request-lifecycle.svg)
+
 ## `#[RestController]`
 
 `#[RestController]` is a `#[Component]` stereotype (it extends `Firefly\Container\Attributes\Component`),

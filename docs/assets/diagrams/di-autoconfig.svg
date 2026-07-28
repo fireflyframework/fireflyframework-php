@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 970" font-family="sans-serif">
+  <title>Dependency injection and auto-configuration</title>
+  <desc>PSR-4 scanner to cached manifest to ConditionPassTwo to bean registry to eager singletons.</desc>
+  <defs>
+    <marker id="di-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1118" height="968" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="560" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">DI + auto-configuration: scan → manifest → condition pass → bean registry</text>
+  <text x="560" y="52" text-anchor="middle" font-size="11" fill="#6b7280">packages/container/src/Scanner · packages/context/src/{Scanner,Pass} · packages/autoconfigure/src</text>
+
+  <rect x="310" y="72" width="500" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="98" text-anchor="middle" font-size="13" fill="#1f2937">PSR-4 scan roots — config('firefly.scan.paths')</text>
+
+  <line x1="560" y1="114" x2="560" y2="146" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <text x="560" y="140" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">reflection happens ONCE, here — never again at boot</text>
+
+  <rect x="90" y="150" width="440" height="66" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="310" y="174" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">ComponentScanner</text>
+  <text x="310" y="192" text-anchor="middle" font-size="11.5" fill="#374151">discovers #[Component]/#[Configuration]/</text>
+  <text x="310" y="207" text-anchor="middle" font-size="11.5" fill="#374151">#[Bean]/stereotypes (e.g. #[RestController])</text>
+
+  <rect x="590" y="150" width="440" height="66" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="810" y="174" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">ContextScanner</text>
+  <text x="810" y="192" text-anchor="middle" font-size="11.5" fill="#374151">discovers #[PostConstruct]/#[PreDestroy]/</text>
+  <text x="810" y="207" text-anchor="middle" font-size="11.5" fill="#374151">#[AsEventListener]/#[ConditionalOn*]</text>
+
+  <line x1="310" y1="216" x2="540" y2="256" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+  <line x1="810" y1="216" x2="580" y2="256" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="310" y="258" width="500" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="284" text-anchor="middle" font-size="13" fill="#1f2937">ManifestCompiler.write(): var_export() → require-able PHP file</text>
+
+  <line x1="560" y1="300" x2="560" y2="332" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="260" y="334" width="600" height="42" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="360" text-anchor="middle" font-size="13" fill="#1f2937">Compiled manifest (ComponentManifest / ContextManifest) — loaded with ZERO reflection at boot</text>
+
+  <line x1="560" y1="376" x2="560" y2="410" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <text x="560" y="402" text-anchor="middle" font-size="12" fill="#6b7280" font-style="italic">— FireflyKernel boot phases —</text>
+
+  <rect x="140" y="412" width="840" height="50" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="432" text-anchor="middle" font-size="13" fill="#1f2937">AutoConfigDiscoveryPass (200): load each candidate's manifests, ASSEMBLE BeanDefinitions</text>
+  <text x="560" y="450" text-anchor="middle" font-size="13" fill="#1f2937">tagged DefinitionSource::AutoConfiguration — writes NOTHING to the registry yet</text>
+
+  <line x1="330" y1="462" x2="330" y2="480" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+  <line x1="790" y1="462" x2="790" y2="480" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="140" y="482" width="410" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="345" y="502" text-anchor="middle" font-size="12.5" fill="#1f2937">UserConfigurations (300): user</text>
+  <text x="345" y="518" text-anchor="middle" font-size="12.5" fill="#1f2937">#[Configuration]/#[Bean] enter the registry</text>
+
+  <rect x="570" y="482" width="410" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="775" y="502" text-anchor="middle" font-size="12.5" fill="#1f2937">ConditionPassOne (400): evaluate conditions</text>
+  <text x="775" y="518" text-anchor="middle" font-size="12.5" fill="#1f2937">over USER definitions — PARSE_CONFIGURATION</text>
+
+  <line x1="345" y1="528" x2="540" y2="548" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+  <line x1="775" y1="528" x2="580" y2="548" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="140" y="550" width="840" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="578" text-anchor="middle" font-size="13" fill="#1f2937">AutoConfigurations (500): assembled definitions committed into the registry, tagged DefinitionSource::AutoConfiguration</text>
+
+  <line x1="560" y1="596" x2="560" y2="628" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="100" y="630" width="920" height="150" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="560" y="654" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1f2937">ConditionPassTwoPass (600) — REGISTER_BEAN, INCREMENTAL not batch</text>
+  <text x="130" y="678" font-size="12.5" fill="#1f2937">1. pull every AutoConfiguration definition OUT of the registry</text>
+  <text x="130" y="700" font-size="12.5" fill="#1f2937">2. sort the pulled-out candidates by (#[Order], FQCN) — read from the manifest, never from a resolved instance</text>
+  <text x="130" y="722" font-size="12.5" fill="#1f2937">3. for each, in that order: evaluate #[ConditionalOnMissingBean]/#[ConditionalOnProperty]/… against the registry</text>
+  <text x="150" y="744" font-size="12.5" fill="#1f2937">AS IT CURRENTLY STANDS (surviving User defs + already-accepted AutoConfig defs) — add back only on a match</text>
+  <text x="130" y="766" font-size="12" fill="#374151" font-style="italic">a definition never sees its own contribution while its own conditions run — first-registered wins a #[ConditionalOnMissingBean] tie</text>
+
+  <line x1="560" y1="780" x2="560" y2="812" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="180" y="814" width="760" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="842" text-anchor="middle" font-size="13" fill="#1f2937">FlushDefinitions (650): the ONE ContainerRegistrar::register() write → Bean registry</text>
+
+  <line x1="560" y1="860" x2="560" y2="892" stroke="#4b5563" stroke-width="1.5" marker-end="url(#di-arrow)"/>
+
+  <rect x="140" y="894" width="840" height="54" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="560" y="916" text-anchor="middle" font-size="13" fill="#1f2937">EagerSingletonsPass (900): container-&gt;make() every non-#[Lazy] Scope::Singleton bean +</text>
+  <text x="560" y="934" text-anchor="middle" font-size="13" fill="#1f2937">eager #[Bean] factory, sorted by (order, abstract) — read from the manifest</text>
+
+  <text x="560" y="962" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">#[ConditionalOnMissingBean] is how a starter's default backs off the moment you supply your own bean.</text>
+</svg>

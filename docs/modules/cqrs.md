@@ -5,6 +5,8 @@ top of the shipped seams. It writes no interception code: a `#[Transactional]` c
 transaction semantics for free from the firefly/data proxy. Read models / projections are a future
 `firefly/eventsourcing` package.
 
+![CQRS / EDA bridge](../assets/diagrams/cqrs-eda-bridge.svg)
+
 ## The buses
 
 - `CommandBus::send(object $command): mixed` — the write side.

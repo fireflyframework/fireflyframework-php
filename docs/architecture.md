@@ -4,6 +4,15 @@ LaraFly is **hexagonal**: every subsystem exposes a nominal PHP interface (a *po
 *adapters*. Domain and application code depend only on ports. Architectural direction is enforced with
 **Deptrac**.
 
+## The boot pipeline
+
+Every capability package plugs into one shared `FireflyKernel` through `FireflyServiceProvider`: a
+provider's `register()` only *buffers* its `BootPass` contributions (into `PendingBootPasses`) — it never
+resolves the kernel itself, so Laravel's alphabetical package-discovery order can never affect boot order.
+The kernel drains that buffer and decides the real order, phase by phase:
+
+![Boot pipeline](assets/diagrams/boot-pipeline.svg)
+
 ## The kernel layer
 
 `firefly/kernel` is the zero-dependency foundation:

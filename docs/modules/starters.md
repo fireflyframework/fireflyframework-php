@@ -3,6 +3,8 @@
 LaraFly boots like Spring Boot: install a capability package and its sensible defaults wire themselves up,
 while your own beans always take precedence. This is the job of `firefly/autoconfigure`.
 
+![Dependency injection and auto-configuration](../assets/diagrams/di-autoconfig.svg)
+
 ## How it works
 
 1. **Candidacy (register time).** Each capability package ships a discovered provider extending
