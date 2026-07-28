@@ -32,6 +32,7 @@
         "firefly/eda-rabbitmq": "*@dev",
         "firefly/firefly": "*@dev",
         "firefly/installer": "*@dev",
+        "firefly/lumen": "*@dev",
         "firefly/testing": "*@dev",
         "kwn/php-rdkafka-stubs": "^2.2",
         "larastan/larastan": "^3.9",
@@ -69,11 +70,13 @@
             "Firefly\\Security\\Tests\\": "packages/security/tests/",
             "Firefly\\Testing\\Tests\\": "packages/testing/tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
-            "Firefly\\Web\\Tests\\": "packages/web/tests/"
+            "Firefly\\Web\\Tests\\": "packages/web/tests/",
+            "Lumen\\Tests\\": "samples/lumen/tests/"
         }
     },
     "repositories": [
-        { "type": "path", "url": "packages/*", "options": { "symlink": true } }
+        { "type": "path", "url": "packages/*", "options": { "symlink": true } },
+        { "type": "path", "url": "samples/*", "options": { "symlink": true } }
     ],
     "minimum-stability": "stable",
     "prefer-stable": true,

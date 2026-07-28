@@ -9,6 +9,8 @@ parameters:
     paths:
         - packages
         - tests
+        - samples/lumen/src
+        - samples/lumen/tests
     excludePaths:
         - packages/*/vendor
     tmpDir: .phpstan-cache
