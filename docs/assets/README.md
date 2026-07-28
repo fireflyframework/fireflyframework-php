@@ -1,3 +1,17 @@
+## Banner
+
+`larafly-banner.svg` is the project banner embedded at the top of `README.md` and `docs/index.md`. It is a
+brand-clean, **placeholder-quality** design — a "LaraFly" wordmark, tagline, and a tasteful firefly/spark
+motif built from SVG primitives (circles/ellipses/gradients), not the official Firefly logo. The official
+mark (`Group 91.svg`) was not available on this machine at authoring time.
+
+The banner carries an explicit swap point: the `<g id="glyph">` element (marked with an SVG comment
+`<!-- SWAP POINT: ... -->` right above it) is where the official `Group 91.svg` mark should be dropped in
+once available, in place of the hand-drawn spark glyph. The wordmark, tagline, and background can stay as-is
+or be adjusted once the real brand asset is in hand. Like the diagrams below, the banner is self-contained
+(no external fonts/images/scripts, generic `font-family`) and theme-neutral (its own background, not reliant
+on the surrounding page).
+
 # Diagrams
 
 The SVGs under `diagrams/` are **hand-authored, static** architecture diagrams — plain `<rect>`/`<line>`/`<text>`

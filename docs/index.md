@@ -1,3 +1,5 @@
+![LaraFly](assets/larafly-banner.svg)
+
 # LaraFly
 
 **LaraFly** is the PHP edition of the Firefly Framework — Spring Boot's cohesion, native to Laravel 13.

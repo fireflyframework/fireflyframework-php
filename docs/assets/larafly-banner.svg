@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <title>LaraFly — Firefly Framework for PHP</title>
+  <desc>Spring Boot's cohesion, native to Laravel 13. A firefly/spark motif rendered from primitives, no external logo asset.</desc>
+
+  <defs>
+    <linearGradient id="lf-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <radialGradient id="lf-spark" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lf-wordmark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Self-contained background: identical on light or dark surrounding pages (GitHub, Packagist, mkdocs). -->
+  <rect x="0" y="0" width="1200" height="300" rx="16" fill="url(#lf-bg)"/>
+  <rect x="1" y="1" width="1198" height="298" rx="15" fill="none" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Faint hex/particle texture, kept subtle so it reads on both themes -->
+  <g opacity="0.12" stroke="#94a3b8" stroke-width="1">
+    <circle cx="140" cy="60" r="3"/>
+    <circle cx="1080" cy="240" r="3"/>
+    <circle cx="980" cy="50" r="2"/>
+    <circle cx="60" cy="230" r="2"/>
+    <line x1="0" y1="150" x2="1200" y2="150" stroke-dasharray="2 10"/>
+  </g>
+
+  <!-- SWAP POINT: replace this <g id="glyph"> with the official Group 91.svg mark when available -->
+  <g id="glyph">
+    <!-- Firefly/spark motif, drawn from primitives: a rounded abdomen + wings + a glowing spark trail. -->
+    <g transform="translate(150,150)">
+      <circle r="58" fill="url(#lf-spark)"/>
+
+      <!-- wings -->
+      <ellipse cx="-22" cy="-18" rx="30" ry="16" fill="#e0f2fe" opacity="0.55" transform="rotate(-18 -22 -18)"/>
+      <ellipse cx="22" cy="-18" rx="30" ry="16" fill="#e0f2fe" opacity="0.55" transform="rotate(18 22 -18)"/>
+
+      <!-- body -->
+      <ellipse cx="0" cy="4" rx="15" ry="22" fill="#1f2937"/>
+      <ellipse cx="0" cy="-8" rx="10" ry="9" fill="#111827"/>
+
+      <!-- glowing tail segment (the "firefly" light) -->
+      <ellipse cx="0" cy="22" rx="9" ry="11" fill="#fbbf24"/>
+      <ellipse cx="0" cy="22" rx="9" ry="11" fill="#fde68a" opacity="0.6"/>
+
+      <!-- spark trail -->
+      <g fill="#fbbf24">
+        <circle cx="-46" cy="46" r="3.5" opacity="0.85"/>
+        <circle cx="-62" cy="62" r="2.5" opacity="0.6"/>
+        <circle cx="-76" cy="74" r="1.6" opacity="0.35"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="260" y="150" font-size="72" font-weight="800" fill="url(#lf-wordmark)" letter-spacing="-1">Lara<tspan fill="#fbbf24">Fly</tspan></text>
+
+  <!-- Tagline -->
+  <text x="262" y="188" font-size="21" fill="#cbd5e1">The Spring-Boot-grade application framework for Laravel</text>
+
+  <!-- Firefly family + license micro-credit -->
+  <text x="262" y="216" font-size="13.5" fill="#94a3b8">Part of the Firefly Framework family · hexagonal ports &amp; adapters · CQRS · event-driven · a project CLI</text>
+
+  <text x="1140" y="272" text-anchor="end" font-size="12.5" fill="#64748b">© Firefly Software Solutions Inc.</text>
+</svg>

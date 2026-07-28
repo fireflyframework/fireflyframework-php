@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/larafly-banner.svg" alt="LaraFly" width="100%"></p>
+
 # LaraFly — Firefly Framework for PHP
 
 [![CI](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml/badge.svg)](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml)
