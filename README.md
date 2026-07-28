@@ -61,15 +61,21 @@
 
 ## 📘 The Book — *LaraFly by Example*
 
-**LaraFly by Example** is planned as the official, project-driven book for the framework — a PHP sibling to
-[*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It will build **Lumen**, the
+**LaraFly by Example** is the official, project-driven book for the framework — a PHP sibling to
+[*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
 (it boots and its tests pass against this framework version, `26.07.17`).
 
-The book (`book/`, with PDF/EPUB output) is being written as part of this same documentation-parity milestone.
-Until it lands, `samples/lumen/` is the fastest way to see the whole stack fit together end to end, and the
-[Featured Patterns](#featured-patterns) section below walks through its most important pieces.
+The book is **complete and bilingual (English + Spanish)**: a quick start, **thirteen chapters** across four
+parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD), Coordinating &
+Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security), and Observability, Testing
+& Delivery (actuator, testing, the CLI + zero-reflection cache) — plus a Laravel→LaraFly cheat-sheet and a
+glossary. Every fenced PHP listing is `php -l`-verified against the real sample. The sources live under
+[`book/`](book/README.md) ([EN manuscript](book/src/) · [ES manuscript](book/src-es/)) and build to PDF + EPUB
+in both languages via [`book/build/run.sh`](book/README.md). `samples/lumen/` is the fastest way to see the
+whole stack fit together end to end, and the [Featured Patterns](#featured-patterns) section below walks
+through its most important pieces.
 
 ---
 
@@ -719,21 +725,23 @@ is the 26th unit, a `type: project` create-project template at the top level.
 
 ---
 
-## Documentation
+Start at the **[documentation table of contents](docs/README.md)** — it groups every guide by topic. Highlights:
 
 - [Getting Started](docs/getting-started.md) — the full quickstart, adding LaraFly to an existing app.
+- [Tutorial](docs/tutorial.md) ([Español](docs/tutorial.es.md)) — build the wallet service end to end in ~12 guided steps.
 - [Installation](docs/installation.md) — requirements, the installer, what you get out of the box.
 - [Architecture](docs/architecture.md) — the boot pipeline and kernel layer, in more depth.
 - [CLI Reference](docs/cli.md) — every `firefly:*` command and `make:firefly-*` generator.
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
+- [*LaraFly by Example*](book/README.md) — the complete bilingual book (13 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
-An end-to-end tutorial (`docs/tutorial.md`) and the *LaraFly by Example* book (`book/`) are in progress as
-part of this same documentation-parity milestone — check the [module guides](#modules) and `samples/lumen/` in
-the meantime for the deepest, most concrete tour of the framework.
+Between the [tutorial](docs/tutorial.md), the [book](book/README.md), the [module guides](#modules), and the
+runnable [`samples/lumen/`](samples/lumen/), you have a complete, concrete tour of the framework — from a first
+HTTP endpoint to CQRS, the transactional outbox, method security, and the zero-reflection production cache.
 
 ---
 
