@@ -63,6 +63,6 @@ php artisan firefly:serve
 
 ## Where to next
 
-- [Architecture](../architecture.md) — how the boot engine, DI, and auto-configuration fit together.
-- [Auto-Configuration](starters.md) — writing your own `#[Configuration]`/`#[Bean]` starters.
-- [Testing](testing.md) — the `firefly/testing` harness every package (and your app) dogfoods.
+- [Architecture](architecture.md) — how the boot engine, DI, and auto-configuration fit together.
+- [Auto-Configuration](modules/starters.md) — writing your own `#[Configuration]`/`#[Bean]` starters.
+- [Testing](modules/testing.md) — the `firefly/testing` harness every package (and your app) dogfoods.

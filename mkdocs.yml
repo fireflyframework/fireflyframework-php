@@ -18,8 +18,14 @@ markdown_extensions:
       permalink: true
 nav:
   - Home: index.md
+  - Installation: installation.md
+  - Getting Started: getting-started.md
   - Architecture: architecture.md
-  - Getting Started: modules/getting-started.md
+  - CLI Reference: cli.md
+  - Laravel Comparison: laravel-comparison.md
+  - Versioning: versioning.md
+  - Contributing: contributing.md
+  - Publishing: publishing.md
   - Modules:
       - Foundation:
           - Error Handling: modules/error-handling.md
@@ -54,4 +60,4 @@ nav:
           - Testing: modules/testing.md
           - Integration Testing: modules/integration-testing.md
       - Tooling:
-          - CLI: modules/cli.md
+          - Installer: modules/installer.md

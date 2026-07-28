@@ -43,8 +43,8 @@ zero-reflection cached boot, `firefly:about`/`:routes`/`:health`/`:metrics` intr
 thinly delegate to Laravel's own commands. `firefly/firefly` is a one-line runtime metapackage
 (`composer require firefly/firefly`). See:
 
-- [Getting Started](docs/modules/getting-started.md) — the full quickstart.
-- [CLI](docs/modules/cli.md) — the full command reference.
+- [Getting Started](docs/getting-started.md) — the full quickstart.
+- [CLI](docs/cli.md) — the full command reference.
 
 ## Testing (`firefly/testing`)
 
