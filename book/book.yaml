@@ -1,0 +1,27 @@
+title: "LaraFly by Example"
+subtitle: "Hexagonal PHP Microservices on Laravel 13 with the Firefly Framework"
+author: "Firefly Software Solutions Inc."
+publisher: "Firefly Software Solutions Inc."
+language: "en"
+identifier: "urn:uuid:7707e7fc-286d-4773-87f8-5525f6703d27"
+rights: "Copyright (c) 2026 Firefly Software Solutions Inc. Licensed under Apache-2.0."
+cover_svg: "art/cover.svg"
+cover_png: "art/cover.png"
+trim_width: "7.5in"
+trim_height: "9.25in"
+manuscript_dir: "src"
+output_basename: "larafly-by-example"
+labels:
+  contents: "Contents"
+# NOTE (Task B1 — build-system scaffold): `front` and `parts` intentionally hold
+# only the build-system proof-of-pipeline placeholder below. Tasks B2-B5 each
+# add their own front-matter/chapter files AND register them here (see
+# .superpowers/sdd/dp-task-B{2,3,4,5}-brief.md); when B2 lands the real
+# 00-front/*.md set, delete the `placeholder-front` entry (and file) below.
+front:
+  - {id: placeholder-front, file: 00-front/00-placeholder-front.md, nav: false}
+parts:
+  - title: "Placeholder"
+    chapters:
+      - {id: placeholder, file: 00-placeholder.md, num: "", title: "Placeholder Chapter (build-system proof)"}
+back: []

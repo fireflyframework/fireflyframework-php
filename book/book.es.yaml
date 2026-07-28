@@ -1,0 +1,28 @@
+title: "LaraFly by Example"
+subtitle: "Microservicios PHP Hexagonales en Laravel 13 con el Firefly Framework"
+author: "Firefly Software Solutions Inc."
+publisher: "Firefly Software Solutions Inc."
+language: "es"
+identifier: "urn:uuid:1c24667b-e0ad-42c6-9f28-8cbb241a2314"
+rights: "Copyright (c) 2026 Firefly Software Solutions Inc. Bajo licencia Apache-2.0."
+cover_svg: "art/cover.svg"
+cover_png: "art/cover.png"
+trim_width: "7.5in"
+trim_height: "9.25in"
+manuscript_dir: "src-es"
+output_basename: "larafly-by-example-es"
+labels:
+  contents: "Contenido"
+# NOTA (Tarea B1 — andamiaje del sistema de compilacion): `front` y `parts`
+# contienen intencionalmente solo el capitulo de prueba de la tuberia de
+# compilacion. Las tareas B2-B5 anaden sus propios archivos de portada/capitulo
+# Y los registran aqui (ver .superpowers/sdd/dp-task-B{2,3,4,5}-brief.md);
+# cuando B2 incorpore el conjunto real 00-front/*.md, elimina la entrada
+# `placeholder-front` (y su archivo) de abajo.
+front:
+  - {id: placeholder-front, file: 00-front/00-placeholder-front.md, nav: false}
+parts:
+  - title: "Marcador de posición"
+    chapters:
+      - {id: placeholder, file: 00-placeholder.md, num: "", title: "Capítulo de prueba (sistema de compilación)"}
+back: []

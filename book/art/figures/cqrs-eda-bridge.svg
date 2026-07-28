@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="sans-serif">
+  <title>CQRS / EDA bridge</title>
+  <desc>Command/query buses and the domain-to-integration-event after-commit bridge.</desc>
+  <defs>
+    <marker id="cb-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="818" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="600" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">CQRS / EDA bridge: buses + the domain → integration-event trigger</text>
+  <text x="600" y="48" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/cqrs/src/{Command/DefaultCommandBus.php, Query/DefaultQueryBus.php, Event/DomainEventBridge.php,</text>
+  <text x="600" y="61" text-anchor="middle" font-size="10.5" fill="#6b7280">Event/EdaCommandEventPublisher.php, Boot/DomainEventBridgeWiringPass.php} · packages/data/src/Domain/DomainEventDispatcher.php</text>
+
+  <!-- Buses -->
+  <rect x="80" y="76" width="500" height="112" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="330" y="98" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">CommandBus::send(command)</text>
+  <text x="100" y="122" font-size="12" fill="#374151">correlate → validate → authorize →</text>
+  <text x="100" y="140" font-size="12" fill="#374151">resolve + invoke #[CommandHandler]</text>
+  <text x="100" y="158" font-size="12" fill="#374151">(often #[Transactional]) → metrics</text>
+
+  <rect x="620" y="76" width="500" height="112" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="870" y="98" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">QueryBus::ask(query)</text>
+  <text x="640" y="122" font-size="12" fill="#374151">correlate → validate → authorize →</text>
+  <text x="640" y="140" font-size="12" fill="#374151">cache-get (short-circuit) → resolve +</text>
+  <text x="640" y="158" font-size="12" fill="#374151">invoke #[QueryHandler] → cache-put → metrics</text>
+  <text x="870" y="178" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">reads commit no DomainEvents — never reaches the bridge</text>
+
+  <line x1="330" y1="188" x2="560" y2="222" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="180" y="224" width="840" height="54" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="246" text-anchor="middle" font-size="12.5" fill="#1f2937">Aggregate commits (firefly/data #[Transactional] proxy) → committed DomainEvent(s) published</text>
+  <text x="600" y="263" text-anchor="middle" font-size="12.5" fill="#1f2937">to the in-process 'events' dispatcher inside DB::afterCommit (ApplicationEventPublisher)</text>
+
+  <line x1="600" y1="278" x2="600" y2="292" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="140" y="294" width="920" height="58" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="314" text-anchor="middle" font-size="12.5" fill="#1f2937">DomainEventBridgeWiringPass (WiringPasses/1000): registers ONE guarded wildcard listener —</text>
+  <text x="600" y="330" text-anchor="middle" font-size="12.5" fill="#1f2937">dispatcher-&gt;listen('*', …) — filters instanceof DomainEvent</text>
+  <text x="600" y="346" text-anchor="middle" font-size="11" fill="#374151" font-style="italic">(a typed #[AsEventListener] on the abstract DomainEvent base can never match a concrete subclass)</text>
+
+  <line x1="600" y1="352" x2="600" y2="366" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="180" y="368" width="840" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="388" text-anchor="middle" font-size="12.5" fill="#1f2937">DomainEventBridge::publish($event) — applies EventFailureStrategy:</text>
+  <text x="600" y="405" text-anchor="middle" font-size="12.5" fill="#1f2937">Log (default, swallow + log) or Raise (rethrow as CommandProcessingException)</text>
+
+  <line x1="600" y1="414" x2="600" y2="428" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="280" y="430" width="640" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="456" text-anchor="middle" font-size="12.5" fill="#1f2937">CommandEventPublisher — NoOpEventPublisher (default) or EdaCommandEventPublisher</text>
+
+  <text x="930" y="446" font-size="10.5" fill="#6b7280" font-style="italic">no eda EventPublisher bound →</text>
+  <text x="930" y="460" font-size="10.5" fill="#6b7280" font-style="italic">stays NoOp, drops silently</text>
+
+  <line x1="600" y1="472" x2="600" y2="486" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="140" y="488" width="920" height="92" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="508" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">EdaCommandEventPublisher maps DomainEvent → integration event:</text>
+  <text x="600" y="528" text-anchor="middle" font-size="12" fill="#1f2937">eventType = short class name · payload = get_object_vars()</text>
+  <text x="600" y="546" text-anchor="middle" font-size="12" fill="#1f2937">destination = explicit arg → #[PublishDomainEvent(destination:)] → firefly.cqrs.default_destination ('cqrs.events')</text>
+  <text x="600" y="564" text-anchor="middle" font-size="12" fill="#1f2937">headers['x-correlation-id'] stamped from CorrelationContext</text>
+
+  <line x1="600" y1="580" x2="600" y2="594" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <rect x="220" y="596" width="760" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="622" text-anchor="middle" font-size="12.5" fill="#1f2937">firefly/eda EventPublisher port: publish(destination, eventType, payload, headers)</text>
+
+  <line x1="600" y1="638" x2="600" y2="652" stroke="#4b5563" stroke-width="1.5" marker-end="url(#cb-arrow)"/>
+
+  <g font-size="12" fill="#1f2937">
+    <rect x="80" y="654" width="200" height="46" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="180" y="682" text-anchor="middle">memory</text>
+
+    <rect x="290" y="654" width="200" height="46" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="390" y="682" text-anchor="middle">queue</text>
+
+    <rect x="500" y="654" width="200" height="46" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="600" y="682" text-anchor="middle">rabbitmq</text>
+
+    <rect x="710" y="654" width="200" height="46" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="810" y="674" text-anchor="middle">postgres</text>
+    <text x="810" y="690" text-anchor="middle" font-size="10">(same-tx outbox)</text>
+
+    <rect x="920" y="654" width="200" height="46" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="1020" y="682" text-anchor="middle">kafka</text>
+  </g>
+
+  <text x="600" y="730" text-anchor="middle" font-size="11.5" fill="#374151">Fires for ANY committed aggregate — not only CommandBus writes. The bridge listens on the in-process</text>
+  <text x="600" y="747" text-anchor="middle" font-size="11.5" fill="#374151">dispatcher, not on a specific command's aggregate.</text>
+
+  <text x="600" y="775" text-anchor="middle" font-size="11" fill="#6b7280" font-style="italic">Non-atomic here: the DB commit and the broker publish are two steps with a gap — true same-tx atomicity is the postgres outbox adapter (see outbox-flow.svg).</text>
+</svg>

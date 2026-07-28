@@ -5,6 +5,11 @@
 /site/
 # local docs build venv (mkdocs-material install; PEP-668 workaround)
 /.venv-docs/
+# book/ build toolchain venv + generated PDF/EPUB (Python, not part of the PHP toolchain)
+/book/.venv/
+/book/dist/
+/book/.pytest_cache/
+/book/**/__pycache__/
 # library monorepo: do not commit the root lock
 composer.lock
 .phpunit.result.cache

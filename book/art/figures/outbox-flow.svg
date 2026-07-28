@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1080" font-family="sans-serif">
+  <title>The genuine same-transaction outbox</title>
+  <desc>Aggregate transaction writes the outbox row in-tx; a separate terminal consumer claims PENDING rows with FOR UPDATE SKIP LOCKED.</desc>
+  <defs>
+    <marker id="ob-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="1078" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="600" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">The genuine same-transaction outbox</text>
+  <text x="600" y="52" text-anchor="middle" font-size="11" fill="#6b7280">packages/data/src/{Transaction/TransactionTemplate.php,Domain/DomainEventDispatcher.php}</text>
+  <text x="600" y="66" text-anchor="middle" font-size="11" fill="#6b7280">packages/eda-postgres/src/{Outbox/OutboxPreCommitHook.php,PostgresEventPublisher.php,PostgresEventConsumer.php}</text>
+
+  <!-- Section 1: the aggregate's transaction -->
+  <rect x="80" y="80" width="1040" height="420" rx="10" fill="none" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="600" y="102" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">IN THE AGGREGATE'S OWN TRANSACTION — single connection</text>
+
+  <rect x="120" y="114" width="960" height="36" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="137" text-anchor="middle" font-size="12.5" fill="#1f2937">#[Transactional] method call → TransactionInterceptor → TransactionTemplate::execute()</text>
+
+  <line x1="600" y1="150" x2="600" y2="162" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="164" width="960" height="32" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="185" text-anchor="middle" font-size="12.5" fill="#1f2937">connection-&gt;beginTransaction()</text>
+
+  <line x1="600" y1="196" x2="600" y2="208" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="210" width="960" height="38" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="233" text-anchor="middle" font-size="12.5" fill="#1f2937">$work() runs: aggregate mutates state; RecordsDomainEvents records events onto AggregateTracker</text>
+
+  <line x1="600" y1="248" x2="600" y2="260" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="262" width="960" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="280" text-anchor="middle" font-size="12.5" fill="#1f2937">Pre-commit drain (still inside the tx): DomainEventDispatcher::dispatchAfterCommit($connection)</text>
+  <text x="600" y="296" text-anchor="middle" font-size="12.5" fill="#1f2937">drains the tracker — for each event, afterCommit($event, $connection) runs:</text>
+
+  <line x1="600" y1="304" x2="600" y2="316" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <!-- (a) same-tx outbox path (emphasized) -->
+  <rect x="120" y="318" width="560" height="140" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.75"/>
+  <text x="400" y="338" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">(a) OutboxPreCommitHook — the same-tx path</text>
+  <text x="140" y="358" font-size="11.5" fill="#1f2937">resolves the AGGREGATE'S OWN connection</text>
+  <text x="140" y="374" font-size="11.5" fill="#1f2937">(ConnectionResolverInterface)</text>
+  <text x="140" y="394" font-size="11.5" fill="#1f2937">new PostgresEventPublisher(conn, channel,</text>
+  <text x="140" y="410" font-size="11.5" fill="#1f2937">emitNotify = driver is pgsql)</text>
+  <text x="140" y="430" font-size="11.5" fill="#1f2937">EdaCommandEventPublisher::publish(event) → INSERT</text>
+  <text x="140" y="446" font-size="11.5" fill="#1f2937">firefly_eda_outbox (status=PENDING) on THIS connection/tx</text>
+
+  <!-- (b) in-process leg (de-emphasized) -->
+  <rect x="700" y="318" width="380" height="140" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25" stroke-dasharray="5,4"/>
+  <text x="890" y="338" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">(b) in-process leg</text>
+  <text x="890" y="353" text-anchor="middle" font-size="11" fill="#1f2937">(separate from the outbox)</text>
+  <text x="720" y="374" font-size="11" fill="#1f2937">DB::connection($connection)-&gt;afterCommit(</text>
+  <text x="740" y="390" font-size="11" fill="#1f2937">fn() =&gt; ApplicationEventPublisher-&gt;publish($event)</text>
+  <text x="720" y="406" font-size="11" fill="#1f2937">) — registered now, fires LATER after the real commit</text>
+  <text x="720" y="424" font-size="11" fill="#1f2937">drives in-process #[AsEventListener]s only —</text>
+  <text x="720" y="440" font-size="11" fill="#1f2937">no outbox write on this leg</text>
+
+  <text x="400" y="472" text-anchor="middle" font-size="11" fill="#1f2937">+ SELECT pg_notify(channel, id) — same tx, pgsql only</text>
+
+  <line x1="600" y1="458" x2="600" y2="484" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="380" y="440" width="440" height="38" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="600" y="463" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">connection-&gt;commit()</text>
+
+  <text x="600" y="490" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1f2937">ATOMIC — outbox row + aggregate's own writes commit together, or both roll back</text>
+
+  <!-- Bridge arrow between the two frames (process boundary) -->
+  <line x1="600" y1="500" x2="600" y2="554" stroke="#4b5563" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#ob-arrow)"/>
+  <text x="770" y="530" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">separate process — woken by LISTEN/NOTIFY, or by its own poll fallback</text>
+
+  <!-- Section 2: terminal consumer -->
+  <rect x="80" y="558" width="1040" height="420" rx="10" fill="none" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="600" y="580" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">TERMINAL CONSUMER — separate long-running process (firefly:eda:consume → PostgresEventConsumer)</text>
+
+  <rect x="120" y="592" width="960" height="34" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="614" text-anchor="middle" font-size="12.5" fill="#1f2937">subscribe(): LISTEN &lt;channel&gt; (pgsql)</text>
+
+  <line x1="600" y1="626" x2="600" y2="638" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="640" width="960" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="660" text-anchor="middle" font-size="12.5" fill="#1f2937">poll(timeoutMs): NotificationWaiter waits (best-effort) for the queued NOTIFY —</text>
+  <text x="600" y="677" text-anchor="middle" font-size="12.5" fill="#1f2937">delivered exactly when the row's commit lands</text>
+
+  <line x1="600" y1="686" x2="600" y2="698" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="700" width="960" height="46" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.75"/>
+  <text x="600" y="720" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">claim: SELECT * FROM firefly_eda_outbox WHERE status='PENDING'</text>
+  <text x="600" y="737" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">ORDER BY id FOR UPDATE SKIP LOCKED (pgsql)</text>
+
+  <line x1="600" y1="746" x2="600" y2="758" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="760" width="960" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="600" y="778" text-anchor="middle" font-size="12.5" fill="#1f2937">ConsumerLoop delivers the ReceivedEnvelope to SubscriberRegistry →</text>
+  <text x="600" y="794" text-anchor="middle" font-size="12.5" fill="#1f2937">drives matching #[EventListener] handler(s)</text>
+
+  <line x1="350" y1="802" x2="350" y2="814" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+  <line x1="850" y1="802" x2="850" y2="814" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ob-arrow)"/>
+
+  <rect x="120" y="816" width="460" height="54" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="350" y="838" text-anchor="middle" font-size="12" fill="#1f2937">success → ack(): UPDATE … SET status='PUBLISHED'</text>
+  <text x="350" y="855" text-anchor="middle" font-size="12" fill="#1f2937">WHERE id=? AND status='PENDING' (idempotent)</text>
+
+  <rect x="620" y="816" width="460" height="54" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="850" y="838" text-anchor="middle" font-size="12" fill="#1f2937">throw → nack(): attempts+1 → back to PENDING (retry)</text>
+  <text x="850" y="855" text-anchor="middle" font-size="12" fill="#1f2937">or, past max_attempts, status='FAILED'</text>
+
+  <text x="600" y="900" text-anchor="middle" font-size="11.5" fill="#374151" font-style="italic">No EventPublisher::publish() call anywhere in this consumer path — it reads/updates the outbox</text>
+  <text x="600" y="918" text-anchor="middle" font-size="11.5" fill="#374151" font-style="italic">table directly: no re-INSERT, no self-reference.</text>
+
+  <text x="600" y="950" text-anchor="middle" font-size="11" fill="#6b7280" font-style="italic">A single consumer worker gives exactly-once in-process delivery; multiple workers degrade to at-least-once (handlers should be idempotent).</text>
+</svg>

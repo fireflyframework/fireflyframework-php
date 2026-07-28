@@ -1,0 +1,9 @@
+# Book build/test toolchain — installed once into book/.venv (see book/README.md).
+# Pinned to the exact versions verified to install + build cleanly on macOS
+# (Python 3.13, Homebrew cairo 1.18 + pango 1.57) at authoring time.
+weasyprint==69.0
+markdown==3.10.2
+pygments==2.20.0
+pyyaml==6.0.3
+pytest==9.1.1
+cairosvg==2.9.0
