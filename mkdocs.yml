@@ -22,6 +22,7 @@ nav:
   - Installation: installation.md
   - Getting Started: getting-started.md
   - Tutorial: tutorial.md
+  - Tutorial (Español): tutorial.es.md
   - Architecture: architecture.md
   - CLI Reference: cli.md
   - Laravel Comparison: laravel-comparison.md
