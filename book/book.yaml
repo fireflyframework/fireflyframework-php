@@ -16,7 +16,8 @@ labels:
 # NOTE (Task B2): front matter + Quick Start + Part I (Chapters 1-2) landed here.
 # Task B3: Part I completed (Chapters 3-4) + Part II opened (Chapters 5-6).
 # Task B4: Part II completed with Part III opened (Chapters 7-10: CQRS, EDA/outbox, transactions, security).
-# Task B5 appends the remaining chapters' entries to `parts:` below.
+# Task B5: Part IV added (Chapters 11-13: observability, testing, CLI/cache) + Appendices (Appendix A + Glossary).
+# This completes the book's ~13-chapter scope.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -43,4 +44,13 @@ parts:
       - {id: ch08, file: 08-eda-outbox.md, num: 8, title: "Event-Driven Architecture and the Transactional Outbox"}
       - {id: ch09, file: 09-transactions.md, num: 9, title: "Transactions and the #[Transactional] Proxy"}
       - {id: ch10, file: 10-security.md, num: 10, title: "Security: Authentication and Authorization"}
+  - title: "Part IV — Observability, Testing & Delivery"
+    chapters:
+      - {id: ch11, file: 11-observability-actuator.md, num: 11, title: "Observability: Health, Metrics, and the Actuator"}
+      - {id: ch12, file: 12-testing.md, num: 12, title: "Testing LaraFly Applications"}
+      - {id: ch13, file: 13-cli-cache.md, num: 13, title: "The CLI and the Zero-Reflection Cache"}
+  - title: "Appendices"
+    chapters:
+      - {id: appa, file: 90-appendix-a-laravel.md, num: "A", title: "Laravel → LaraFly Cheat-Sheet"}
+      - {id: glossary, file: 94-glossary.md, num: "", title: "Glossary"}
 back: []
