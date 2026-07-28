@@ -2,6 +2,18 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.07.17] - 2026-07-28
+
+### Added
+- `firefly/installer` — the global `firefly new <app>` installer (laravel/installer analog): a thin `bin/firefly` Symfony Console binary with a single `NewCommand` wrapping `composer create-project firefly/skeleton`, git-init, and next-steps; `symfony/console`+`symfony/process` only (no firefly runtime deps). New Deptrac `Installer` layer (depends on nothing).
+- Publish-readiness packaging: Apache-2.0 `LICENSE` on every package + skeleton; the 8 missing per-package READMEs; full Packagist metadata (`authors`/`keywords`/`homepage`/`support`) + `extra.branch-alias` (`dev-main` → `26.x-dev`) on all 26 units — still NO `version` field.
+- Pre-push safety guard: `scripts/check-no-sensitive-tracked.sh` + a CI `guard` job failing on any tracked/staged `.superpowers/`, `docs/superpowers/`, `.claude`, `CLAUDE.md`, `.env`, or secret marker; hardened `.gitignore`.
+- Docs overhaul (pyfly parity): top-level `installation.md`, `getting-started.md`, `cli.md`, `laravel-comparison.md`, `versioning.md`, `contributing.md`, `publishing.md`, `modules/installer.md`; five source-accurate SVG diagrams (boot pipeline, DI/auto-config, request lifecycle, same-tx outbox, CQRS/EDA bridge); a brand-clean LaraFly banner.
+- Dormant `.github/workflows/release.yml` — on a pushed `v*` tag, subtree-splits all 26 units to `fireflyframework/firefly-<pkg>` read-only mirrors (`symplify/monorepo-split-github-action`).
+
+### Changed
+- Promoted `docs/modules/getting-started.md` → `docs/getting-started.md` and `docs/modules/cli.md` → `docs/cli.md` (top-level, pyfly-parity nav).
+
 ## [26.07.16] - 2026-07-27
 
 ### Added

@@ -3,7 +3,7 @@
 # LaraFly — Firefly Framework for PHP
 
 [![CI](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml/badge.svg)](https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-26.07.16-brightgreen)
+![Version](https://img.shields.io/badge/version-26.07.17-brightgreen)
 ![PHP](https://img.shields.io/badge/php-8.3%2B-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
@@ -25,13 +25,13 @@ packages: `firefly/kernel`, `firefly/container`, `firefly/config`, `firefly/cont
 `firefly/eda-kafka`, `firefly/messaging`, `firefly/cqrs`, `firefly/security`,
 `firefly/actuator`, `firefly/observability`, `firefly/firefly` (the runtime metapackage). Dev-scoped:
 **`firefly/testing`** — the first-party test-support kit (see below) — and **`firefly/cli`** — the developer
-console (see below). `firefly/skeleton` (a `type: project` create-project template) lives at the top-level
-`skeleton/` directory, outside `packages/*`.
+console (see below). **`firefly/installer`** — the global `firefly new` tool (see below). `firefly/skeleton`
+(a `type: project` create-project template) lives at the top-level `skeleton/` directory, outside `packages/*`.
 
 ## Getting Started / CLI (`firefly/cli`)
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require firefly/installer && firefly new my-app
 cd my-app
 php artisan firefly:cache
 php artisan firefly:serve
