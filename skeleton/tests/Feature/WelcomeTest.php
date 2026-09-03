@@ -20,7 +20,8 @@ final class WelcomeTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
-        $response->assertSee('Your application', false);
+        $response->assertSee('Hello,', false);
+        $response->assertSee('Your paths', false);
     }
 
     public function test_the_sample_rest_controller_returns_json(): void
