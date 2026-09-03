@@ -1,35 +1,48 @@
 @extends('firefly-admin::layout')
 @section('title', 'Metrics')
 @section('body')
+    @php
+        $peak = 0.0;
+        foreach ($metrics as $metric) { foreach ($metric['rows'] as $row) { $peak = max($peak, abs($row['value'])); } }
+    @endphp
+
     <div class="head">
         <h1>Metrics</h1>
-        <p>Counters, timers and gauges recorded through the meter registry.</p>
+        <p>Counters, timers and gauges recorded through the meter registry. Units are inferred from the
+           meter name, the same convention the Prometheus exposition uses.</p>
     </div>
 
     <div class="panel">
-        <h2>Meters <span>{{ count($metrics) }}</span></h2>
+        @include('firefly-admin::_panel-head', [
+            'title' => 'Meters', 'count' => count($metrics),
+            'filter' => 'metrics-body', 'placeholder' => 'Filter meters…',
+        ])
         @if ($metrics === [])
-            <p class="empty">Nothing recorded yet. Note that the default registry keeps meters in process
-            memory, so under PHP-FPM a scrape only ever sees its own request — set
-            <code>firefly.observability.metrics.store</code> to a cache store to accumulate across workers.</p>
+            @include('firefly-admin::_empty', [
+                'title' => 'Nothing recorded yet',
+                'body' => 'The default registry keeps meters in process memory, so under PHP-FPM a page only ever sees its own request. Set <code>firefly.observability.metrics.store</code> to a cache store to accumulate across workers.',
+            ])
         @else
-            @include('firefly-admin::_filter', ['target' => 'metrics-body', 'placeholder' => 'Filter by meter name…'])
             <div class="tw">
                 <table>
-                    <thead><tr><th>Meter</th><th>Statistic</th><th class="num">Value</th></tr></thead>
+                    <thead><tr><th>Meter</th><th>Statistic</th><th class="num">Value</th><th style="width:22%">Relative</th></tr></thead>
                     <tbody id="metrics-body">
                     @foreach ($metrics as $metric)
-                        @php $measurements = is_array($metric['measurements']) ? $metric['measurements'] : []; @endphp
-                        @forelse ($measurements as $measurement)
+                        @forelse ($metric['rows'] as $row)
                             <tr>
-                                <td class="mono wrapish">{{ $loop->first ? $metric['name'] : '' }}</td>
-                                <td class="mono muted">{{ $measurement['statistic'] ?? '' }}</td>
-                                <td class="num">{{ is_numeric($measurement['value'] ?? null) ? rtrim(rtrim(number_format((float) $measurement['value'], 4, '.', ''), '0'), '.') : '—' }}</td>
+                                <td class="mono wrap">{{ $loop->first ? $metric['name'] : '' }}</td>
+                                <td class="mono dim tight">{{ $row['statistic'] }}</td>
+                                <td class="num">{{ $row['display'] }}</td>
+                                <td>
+                                    {{-- One shared scale across every meter: the bar answers "which of these is
+                                         large", which is the only comparison a mixed-unit list supports. --}}
+                                    <div class="bar"><i style="width:{{ $peak > 0 ? round(abs($row['value']) / $peak * 100, 2) : 0 }}%"></i></div>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td class="mono wrapish">{{ $metric['name'] }}</td>
-                                <td class="muted" colspan="2">no measurements</td>
+                                <td class="mono wrap">{{ $metric['name'] }}</td>
+                                <td class="dim" colspan="3">no measurements</td>
                             </tr>
                         @endforelse
                     @endforeach

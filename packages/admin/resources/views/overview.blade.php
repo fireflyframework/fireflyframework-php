@@ -1,98 +1,154 @@
 @extends('firefly-admin::layout')
 @section('title', 'Overview')
+
+@section('topchips')
+    <span class="chip {{ $aggregate === 'UP' ? 'up' : ($aggregate === 'DOWN' ? 'down' : '') }}">{{ $aggregate }}</span>
+    <span class="chip flat">{{ $bootMode }}</span>
+@endsection
+
 @section('body')
     @php
-        $status = is_string($health['status'] ?? null) ? $health['status'] : 'UNKNOWN';
-        $components = is_array($health['components'] ?? null) ? $health['components'] : [];
-        $positive = is_array($conditions['positiveMatches'] ?? null) ? $conditions['positiveMatches'] : [];
-        $negative = is_array($conditions['negativeMatches'] ?? null) ? $conditions['negativeMatches'] : [];
+        use Firefly\Admin\Format;
+        $down = array_values(array_filter($indicators, fn ($i) => $i['status'] !== 'UP'));
     @endphp
 
     <div class="head">
         <h1>Overview</h1>
-        <p>What this process wired at boot, and how it is doing now.</p>
+        <p>Health, runtime and what this process wired at boot.</p>
     </div>
 
-    <dl class="cards">
-        <div>
+    <dl class="stats">
+        <div class="stat">
             <dt>Health</dt>
-            <dd><span class="pill {{ $status === 'UP' ? 'up' : 'down' }}">{{ $status }}</span></dd>
+            <dd><span class="chip {{ $aggregate === 'UP' ? 'up' : ($aggregate === 'DOWN' ? 'down' : '') }}">{{ $aggregate }}</span></dd>
         </div>
-        <div><dt>Beans</dt><dd>{{ count($beans) }}</dd></div>
-        <div><dt>Routes</dt><dd>{{ count($mappings) }}</dd></div>
-        <div><dt>Auto-config met</dt><dd>{{ count($positive) }}</dd></div>
-        <div><dt>Backed off</dt><dd>{{ count($negative) }}</dd></div>
-        <div>
-            <dt>Boot</dt>
-            <dd><span class="pill {{ $bootMode === 'compiled' ? 'up' : 'off' }}">{{ $bootMode }}</span></dd>
-        </div>
+        <div class="stat"><dt>Indicators</dt><dd>{{ count($indicators) }}@if ($down !== [])<small>{{ count($down) }} down</small>@endif</dd></div>
+        <div class="stat"><dt>Beans</dt><dd><a href="{{ $settings->url('beans') }}">{{ count($beans) }}</a></dd></div>
+        <div class="stat"><dt>Routes</dt><dd><a href="{{ $settings->url('mappings') }}">{{ count($mappings) }}</a></dd></div>
+        <div class="stat"><dt>Auto-config</dt><dd><a href="{{ $settings->url('conditions') }}">{{ count($positive) }}</a><small>{{ count($negative) }} off</small></dd></div>
+        <div class="stat"><dt>Scheduled</dt><dd>{{ count($tasks) }}</dd></div>
+        <div class="stat"><dt>Boot</dt><dd><span class="chip {{ $bootMode === 'compiled' ? 'up' : 'warn' }}">{{ $bootMode }}</span></dd></div>
     </dl>
 
     @if ($bootMode !== 'compiled')
-        <p class="note">This process scanned its classes by reflection at startup. That is right while
-        developing; run <code>php artisan firefly:cache</code> before deploying.</p>
+        <p class="note">This process scanned its classes by reflection at startup — right while developing.
+        Run <code>php artisan firefly:cache</code> before deploying for a zero-reflection boot.</p>
     @endif
 
-    @if ($components === [])
-        <div class="panel" style="margin-top:18px">
-            <h2>Health indicators</h2>
-            <p class="empty">The health endpoint is reporting its aggregate status only. Set
-            <code>firefly.management.endpoint.health.show-details</code> to <code>always</code> to see each
-            indicator and its details here.</p>
+    <div class="grid two" style="margin-top:16px">
+        <div class="panel">
+            @include('firefly-admin::_panel-head', ['title' => 'Health indicators', 'count' => count($indicators)])
+            @if ($indicators === [])
+                @include('firefly-admin::_empty', [
+                    'title' => 'No indicators registered',
+                    'body' => 'Implement <code>Firefly\Actuator\Health\HealthIndicator</code> and register it as a bean to see it here.',
+                ])
+            @else
+                <div class="tw">
+                    <table>
+                        <tbody>
+                        @foreach ($indicators as $indicator)
+                            <tr>
+                                <td class="mono tight">{{ $indicator['name'] }}</td>
+                                <td class="tight"><span class="chip {{ $indicator['status'] === 'UP' ? 'up' : 'down' }}">{{ $indicator['status'] }}</span></td>
+                                <td class="mono dim wrap">
+                                    @if ($indicator['details'] === [])
+                                        —
+                                    @else
+                                        {{ implode(' · ', array_map(
+                                            fn ($k, $v) => $k.' '.Format::detail((string) $k, $v),
+                                            array_keys($indicator['details']), $indicator['details']
+                                        )) }}
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </div>
-    @else
-        <div class="panel" style="margin-top:18px">
-            <h2>Health indicators <span>{{ count($components) }}</span></h2>
-            <div class="tw">
-                <table>
-                    <thead><tr><th>Indicator</th><th>Status</th><th>Details</th></tr></thead>
-                    <tbody>
-                    @foreach ($components as $name => $component)
-                        @php $s = is_array($component) && is_string($component['status'] ?? null) ? $component['status'] : 'UNKNOWN'; @endphp
-                        <tr>
-                            <td class="mono">{{ $name }}</td>
-                            <td><span class="pill {{ $s === 'UP' ? 'up' : 'down' }}">{{ $s }}</span></td>
-                            <td class="mono muted wrapish">
-                                @php $d = is_array($component) && is_array($component['details'] ?? null) ? $component['details'] : []; @endphp
-                                {{ $d === [] ? '—' : json_encode($d, JSON_UNESCAPED_SLASHES) }}
-                            </td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
+
+        <div class="panel">
+            @include('firefly-admin::_panel-head', ['title' => 'Runtime', 'count' => count($info)])
+            @if ($info === [])
+                @include('firefly-admin::_empty', [
+                    'title' => 'Nothing published',
+                    'body' => 'No <code>InfoContributor</code> has contributed anything. Set <code>firefly.management.info.app</code>, or register your own contributor.',
+                ])
+            @else
+                <div class="tw">
+                    <table>
+                        <tbody>
+                        @foreach ($info as $key => $value)
+                            <tr>
+                                <td class="mono dim tight">{{ $key }}</td>
+                                <td class="mono wrap">{{ $value }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </div>
+    </div>
+
+    <div class="grid two" style="margin-top:16px">
+        @if ($exchanges !== [])
+            <div class="panel">
+                @include('firefly-admin::_panel-head', ['title' => 'Recent requests', 'count' => count($exchanges)])
+                <div class="tw">
+                    <table>
+                        <tbody>
+                        @foreach ($exchanges as $exchange)
+                            <tr>
+                                <td class="tight"><span class="verb">{{ $exchange['method'] }}</span></td>
+                                <td class="mono wrap">{{ $exchange['path'] }}</td>
+                                <td class="tight">
+                                    <span class="code {{ $exchange['status'] < 400 ? 'ok' : ($exchange['status'] < 500 ? 'warn' : 'err') }}">{{ $exchange['status'] }}</span>
+                                </td>
+                                <td class="num dim">{{ $exchange['duration'] }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div style="padding:9px 14px;border-top:1px solid var(--line)">
+                    <a href="{{ $settings->url('http') }}">All traffic &rarr;</a>
+                </div>
             </div>
-        </div>
-    @endif
+        @endif
 
-    <div class="panel">
-        <h2>Build information <span>/actuator/info</span></h2>
-        @if ($info === [])
-            <p class="empty">No <code>InfoContributor</code> has published anything. Set
-            <code>firefly.management.info.app</code>, or register your own contributor.</p>
-        @else
-            <div class="tw">
-                <table>
-                    <tbody>
-                    @foreach ($info as $key => $value)
-                        <tr>
-                            <td class="mono" style="width:220px">{{ $key }}</td>
-                            <td class="mono muted wrapish">{{ is_scalar($value) ? (string) $value : json_encode($value, JSON_UNESCAPED_SLASHES) }}</td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
+        @if ($metrics !== [])
+            <div class="panel">
+                @include('firefly-admin::_panel-head', ['title' => 'Metrics', 'count' => count($metrics)])
+                <div class="tw">
+                    <table>
+                        <tbody>
+                        @foreach (array_slice($metrics, 0, 8) as $metric)
+                            <tr>
+                                <td class="mono wrap">{{ $metric['name'] }}</td>
+                                <td class="num">{{ $metric['rows'][0]['display'] ?? '—' }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div style="padding:9px 14px;border-top:1px solid var(--line)">
+                    <a href="{{ $settings->url('metrics') }}">All metrics &rarr;</a>
+                </div>
             </div>
         @endif
     </div>
 
-    <div class="panel">
-        <h2>Registered endpoints <span>{{ count($endpoints) }}</span></h2>
-        <div style="padding:14px 16px;display:flex;flex-wrap:wrap;gap:6px">
+    <div class="panel" style="margin-top:16px">
+        @include('firefly-admin::_panel-head', ['title' => 'Registered endpoints', 'count' => count($endpoints)])
+        <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px">
             @foreach ($endpoints as $id)
-                <span class="pill on">{{ $id }}</span>
+                <span class="chip flat">{{ $id }}</span>
             @endforeach
         </div>
-        <p class="empty" style="padding-top:0">These are readable here in-process. Which of them answer over
-        HTTP is a separate decision — see <code>firefly.management.endpoints.web.exposure.include</code>.</p>
+        <p class="note" style="padding:0 14px 12px;margin:0">Readable here in-process. Which of them answer
+        over HTTP is a separate decision — see <code>firefly.management.endpoints.web.exposure.include</code>.</p>
     </div>
 @endsection

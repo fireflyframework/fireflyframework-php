@@ -12,7 +12,8 @@ it('serves the overview as HTML', function () {
         ->assertStatus(200)
         ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
         ->assertSee('Overview', false)
-        ->assertSee('Backed off', false);
+        ->assertSee('Health indicators', false)
+        ->assertSee('Registered endpoints', false);
 });
 
 // The point of reading endpoints in-process: exposure is at its secure default of health,info here, so

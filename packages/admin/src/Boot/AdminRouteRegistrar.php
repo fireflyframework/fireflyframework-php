@@ -59,6 +59,7 @@ final class AdminRouteRegistrar implements BootPass
         $container->singleton(AdminEndpointReader::class, static fn (): AdminEndpointReader => new AdminEndpointReader(
             $container->make(ActuatorRegistry::class),
             $context->config,
+            $container,
         ));
         $container->singleton(AdminAction::class, static fn (): AdminAction => new AdminAction(
             $container->make(AdminSettings::class),

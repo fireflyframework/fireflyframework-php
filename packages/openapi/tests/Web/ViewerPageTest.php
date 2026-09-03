@@ -7,12 +7,16 @@ use Firefly\OpenApi\Web\ViewerPage;
 it('renders a self-contained page that never reaches the network', function () {
     $html = new ViewerPage('Orders API')->render('/openapi.json', cdn: false);
 
+    // The ONE network call the default viewer makes is to the spec route it was handed, so no element may
+    // FETCH from another origin. Asserting on src/href rather than on the raw substring "http://" is the
+    // honest version of that rule: the inline favicon is an SVG data URI, and an SVG carries the XML
+    // namespace http://www.w3.org/2000/svg, which is an identifier a browser never requests. Banning the
+    // substring would fail on a page that makes no request at all.
+    preg_match_all('#\b(?:src|href)\s*=\s*["\']?(https?:)?//[^"\'\s>]+#i', $html, $external);
+
     expect($html)->toStartWith('<!DOCTYPE html>')
         ->and($html)->toContain('Orders API')
-        // The ONE network call the default viewer makes is to the spec route it was handed. Any other
-        // absolute URL in this page would be an undeclared third-party dependency at request time.
-        ->and($html)->not->toContain('https://')
-        ->and($html)->not->toContain('http://')
+        ->and($external[0])->toBe([])
         ->and($html)->not->toContain('//cdn.')
         ->and(substr_count($html, '<script'))->toBe(1);
 });
@@ -23,7 +27,10 @@ it('resolves $ref pointers client-side so a reader sees members, not pointers', 
     expect($html)->toContain('function deref')
         // The JSON Pointer walk itself: a local "#/a/b" pointer split and followed into the loaded document.
         ->and($html)->toContain("ref.slice(2).split('/')")
-        ->and($html)->toContain('schema.$ref');
+        // deref() is applied wherever a schema can be a pointer, so a reader never sees one.
+        ->and($html)->toContain('typeof node.$ref')
+        ->and($html)->toContain('deref(schema.properties[name])')
+        ->and($html)->toContain('deref(content[type].schema)');
 });
 
 it('only reaches a CDN when the opt-in flag is explicitly turned on', function () {

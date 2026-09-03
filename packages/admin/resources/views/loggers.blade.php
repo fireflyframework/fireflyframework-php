@@ -12,20 +12,26 @@
     </div>
 
     <div class="panel">
-        <h2>Channels <span>{{ count($channels) }}</span></h2>
+        @include('firefly-admin::_panel-head', [
+            'title' => 'Channels', 'count' => count($channels),
+            'filter' => 'log-body', 'placeholder' => 'Filter channels…',
+        ])
         @if ($channels === [])
-            <p class="empty">No channels configured under <code>logging.channels</code>.</p>
+            @include('firefly-admin::_empty', [
+                'title' => 'No channels configured',
+                'body' => 'Nothing is defined under <code>logging.channels</code>.',
+            ])
         @else
             <div class="tw">
                 <table>
-                    <thead><tr><th>Channel</th><th>Configured level</th><th style="width:1%">Set</th></tr></thead>
-                    <tbody>
+                    <thead><tr><th>Channel</th><th>Level</th><th style="width:1%">Set</th></tr></thead>
+                    <tbody id="log-body">
                     @foreach ($channels as $name => $logger)
                         @php $level = is_array($logger) && is_string($logger['configuredLevel'] ?? null) ? $logger['configuredLevel'] : 'INFO'; @endphp
                         <tr>
-                            <td class="mono">{{ $name }}</td>
-                            <td class="mono muted">{{ $level }}</td>
-                            <td>
+                            <td class="mono tight">{{ $name }}</td>
+                            <td class="mono dim tight">{{ $level }}</td>
+                            <td class="tight">
                                 <form method="post" action="{{ $settings->url('loggers') }}" style="display:flex;gap:6px">
                                     @csrf
                                     <input type="hidden" name="logger" value="{{ $name }}">
@@ -46,7 +52,7 @@
     </div>
 
     {{--
-        Honesty about what this control does. LoggersEndpoint::setLevel() reaches into the Monolog handlers of
+        Honesty about what the control does. LoggersEndpoint::setLevel() reaches into the Monolog handlers of
         the CURRENT process, so under PHP-FPM the change lasts exactly as long as this request. Saying so is
         better than letting someone believe they have changed production logging.
     --}}

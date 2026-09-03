@@ -6,6 +6,7 @@ namespace Firefly\Admin\Web;
 
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
+use Firefly\Admin\Format;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
@@ -17,9 +18,9 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 /**
  * The single invokable behind every dashboard page.
  *
- * Each page is a view over one ActuatorEndpoint's payload, read in-process (see AdminEndpointReader). The
- * action's only jobs are to pick the page, collect its data, and hand both to Blade — the views hold no
- * logic beyond formatting, so the shapes here are the shapes the actuator actually returns.
+ * Each page is a view over one ActuatorEndpoint's payload, read in-process (see AdminEndpointReader). This
+ * class picks the page, collects its data in the shape the view wants, and renders — the views hold no logic
+ * beyond formatting, so the array shapes here are the shapes the actuator actually returns.
  */
 final readonly class AdminAction
 {
@@ -41,56 +42,196 @@ final readonly class AdminAction
         }
 
         if ($current === null) {
-            return new Response($this->render('missing', ['slug' => $slug]), 404, ['Content-Type' => 'text/html; charset=UTF-8']);
+            return $this->html($this->render('missing', ['slug' => $slug]), 404);
         }
 
         if ($current->requires !== null && ! $this->reader->has($current->requires)) {
-            return new Response($this->render('unavailable', ['page' => $current]), 404, ['Content-Type' => 'text/html; charset=UTF-8']);
+            return $this->html($this->render('unavailable', ['page' => $current]), 404);
         }
 
         if ($slug === 'loggers' && $request->isMethod('POST')) {
             return $this->setLoggerLevel($request);
         }
 
-        return new Response(
-            $this->render($slug === '' ? 'overview' : $slug, $this->data($slug)),
-            200,
-            ['Content-Type' => 'text/html; charset=UTF-8'],
-        );
+        return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($slug), $current), 200);
     }
 
     /** @return array<string,mixed> */
     private function data(string $slug): array
     {
-        /** @var array<string,mixed> $data */
-        $data = match ($slug) {
-            '' => [
-                'health' => $this->payload('health'),
-                'info' => $this->payload('info'),
-                'beans' => $this->listOf('beans', 'beans'),
-                'conditions' => $this->payload('conditions'),
-                'mappings' => $this->listOf('mappings', 'mappings'),
-                'bootMode' => AppScan::cachedFile($this->container, AppScan::ROUTES) !== null ? 'compiled' : 'scanned',
-                'endpoints' => $this->reader->available(),
-            ],
+        return match ($slug) {
+            '' => $this->overview(),
+            'health' => ['indicators' => $this->reader->healthIndicators(), 'aggregate' => $this->aggregateStatus()],
+            'metrics' => ['metrics' => $this->metrics()],
+            'http' => ['exchanges' => $this->exchanges()],
             'beans' => ['beans' => $this->listOf('beans', 'beans')],
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
-            'metrics' => ['metrics' => $this->metrics()],
-            'loggers' => $this->payload('loggers') + ['levels' => [], 'loggers' => []],
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
+            'configprops' => ['contexts' => $this->payload('configprops')],
+            'caches' => ['caches' => $this->payload('caches')],
+            'loggers' => $this->payload('loggers') + ['levels' => [], 'loggers' => []],
             default => [],
         };
-
-        return $data;
     }
 
     /**
-     * An endpoint's payload as a string-keyed array — the shape every actuator endpoint returns.
+     * The overview is the page an operator leaves open, so it answers the three questions that matter
+     * without a click: is it healthy, what is it doing, and what did it wire.
      *
      * @return array<string,mixed>
      */
+    private function overview(): array
+    {
+        $indicators = $this->reader->healthIndicators();
+        $conditions = $this->payload('conditions');
+
+        return [
+            'aggregate' => $this->aggregateStatus(),
+            'indicators' => $indicators,
+            'info' => $this->runtime(),
+            'beans' => $this->listOf('beans', 'beans'),
+            'mappings' => $this->listOf('mappings', 'mappings'),
+            'positive' => $this->subArray($conditions, 'positiveMatches'),
+            'negative' => $this->subArray($conditions, 'negativeMatches'),
+            'tasks' => $this->listOf('scheduledtasks', 'tasks'),
+            'metrics' => $this->metrics(),
+            'exchanges' => array_slice($this->exchanges(), 0, 8),
+            'bootMode' => AppScan::cachedFile($this->container, AppScan::ROUTES) !== null ? 'compiled' : 'scanned',
+            'endpoints' => $this->reader->available(),
+        ];
+    }
+
+    /**
+     * /actuator/info flattened to dotted keys and formatted for reading.
+     *
+     * Contributors publish nested maps, so rendering the top level only produced cells containing raw JSON
+     * — `{"used":2097152,"peak":2097152}` where an operator wants `2.0 MB`. Flattening gives one row per
+     * fact, and the byte-ish keys the runtime contributor uses are formatted as sizes.
+     *
+     * @return array<string,string>
+     */
+    private function runtime(): array
+    {
+        $flat = $this->flatten($this->payload('info'), 'info');
+
+        $rows = [];
+        foreach ($flat as $key => $value) {
+            $leaf = substr($key, strrpos($key, '.') + 1);
+            $rows[substr($key, strlen('info.'))] = is_numeric($value)
+                ? Format::detail($leaf, $value + 0)
+                : $value;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The worst status any indicator reports — the same aggregation the health endpoint performs, computed
+     * here so the page shows a status even when the endpoint withholds its components.
+     */
+    private function aggregateStatus(): string
+    {
+        $body = $this->payload('health');
+        $status = $body['status'] ?? null;
+        if (is_string($status) && $status !== '') {
+            return $status;
+        }
+
+        $worst = 'UNKNOWN';
+        foreach ($this->reader->healthIndicators() as $indicator) {
+            if ($indicator['status'] === 'DOWN') {
+                return 'DOWN';
+            }
+            if ($indicator['status'] === 'UP' && $worst === 'UNKNOWN') {
+                $worst = 'UP';
+            }
+        }
+
+        return $worst;
+    }
+
+    /**
+     * The metrics index returns names only, so each name is read back for its measurements — N in-process
+     * calls, the right trade for a dashboard, and it keeps MetricsEndpoint's contract untouched.
+     *
+     * Each measurement is pre-formatted here (bytes as MB, seconds as ms) because the view must not be
+     * doing arithmetic, and the JSON surface must keep returning raw numbers for Prometheus.
+     *
+     * @return list<array{name: string, rows: list<array{statistic: string, value: float, display: string}>}>
+     */
+    private function metrics(): array
+    {
+        $metrics = [];
+        foreach ($this->subArray($this->payload('metrics'), 'names') as $name) {
+            if (! is_string($name)) {
+                continue;
+            }
+
+            /** @var array<string,mixed> $detail */
+            $detail = $this->reader->read('metrics', [$name]) ?? [];
+
+            $rows = [];
+            foreach ($this->subArray($detail, 'measurements') as $measurement) {
+                if (! is_array($measurement)) {
+                    continue;
+                }
+                $value = $measurement['value'] ?? null;
+                $statistic = $measurement['statistic'] ?? '';
+                $rows[] = [
+                    'statistic' => is_string($statistic) ? $statistic : '',
+                    'value' => is_numeric($value) ? (float) $value : 0.0,
+                    'display' => is_numeric($value) ? Format::measurement($name, (float) $value) : '—',
+                ];
+            }
+
+            $metrics[] = ['name' => $name, 'rows' => $rows];
+        }
+
+        return $metrics;
+    }
+
+    /**
+     * Recent HTTP exchanges, newest first, with each duration pre-formatted.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function exchanges(): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('httpexchanges'), 'exchanges') as $exchange) {
+            if (! is_array($exchange)) {
+                continue;
+            }
+
+            $duration = $exchange['durationMs'] ?? $exchange['duration'] ?? null;
+            $rows[] = [
+                'method' => is_string($exchange['method'] ?? null) ? $exchange['method'] : '',
+                'path' => is_string($exchange['path'] ?? null) ? $exchange['path'] : '',
+                'status' => is_numeric($exchange['status'] ?? null) ? (int) $exchange['status'] : 0,
+                'duration' => is_numeric($duration) ? Format::milliseconds((float) $duration) : '—',
+                'correlationId' => is_string($exchange['correlationId'] ?? null) ? $exchange['correlationId'] : '',
+                'timestamp' => is_numeric($exchange['timestamp'] ?? null) ? (float) $exchange['timestamp'] : 0.0,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function setLoggerLevel(Request $request): RedirectResponse
+    {
+        $name = $request->input('logger');
+        $level = $request->input('level');
+
+        if (is_string($name) && $name !== '' && is_string($level) && $level !== '') {
+            $this->reader->write('loggers', [$name], ['level' => $level]);
+        }
+
+        return new RedirectResponse($this->settings->url('loggers'));
+    }
+
+    /** @return array<string,mixed> */
     private function payload(string $id): array
     {
         /** @var array<string,mixed> $body */
@@ -99,11 +240,7 @@ final readonly class AdminAction
         return $body;
     }
 
-    /**
-     * One list-valued key out of an endpoint's payload (e.g. beans => 'beans', mappings => 'mappings').
-     *
-     * @return array<mixed>
-     */
+    /** @return array<mixed> */
     private function listOf(string $id, string $key): array
     {
         return $this->subArray($this->payload($id), $key);
@@ -121,44 +258,8 @@ final readonly class AdminAction
     }
 
     /**
-     * The metrics index returns names only, so each name is read back for its measurements — N in-process
-     * calls, which is the right trade for a dashboard and keeps MetricsEndpoint's contract untouched.
-     *
-     * @return list<array{name: string, measurements: array<mixed>}>
-     */
-    private function metrics(): array
-    {
-        $metrics = [];
-        foreach ($this->subArray($this->payload('metrics'), 'names') as $name) {
-            if (! is_string($name)) {
-                continue;
-            }
-
-            $detail = $this->reader->read('metrics', [$name]);
-            /** @var array<string,mixed> $detail */
-            $detail = is_array($detail) ? $detail : [];
-
-            $metrics[] = ['name' => $name, 'measurements' => $this->subArray($detail, 'measurements')];
-        }
-
-        return $metrics;
-    }
-
-    private function setLoggerLevel(Request $request): RedirectResponse
-    {
-        $name = $request->input('logger');
-        $level = $request->input('level');
-
-        if (is_string($name) && $name !== '' && is_string($level) && $level !== '') {
-            $this->reader->write('loggers', [$name], ['level' => $level]);
-        }
-
-        return new RedirectResponse($this->settings->url('loggers'));
-    }
-
-    /**
-     * Flattens the nested firefly.* config into dotted keys, which is how a developer looks a key up and how
-     * every other part of the framework names one.
+     * Flattens nested firefly.* config into dotted keys — how a developer looks a key up, and how every
+     * other part of the framework names one.
      *
      * @param  array<mixed>  $values
      * @return array<string,string>
@@ -193,14 +294,22 @@ final readonly class AdminAction
     }
 
     /** @param array<string,mixed> $data */
-    private function render(string $view, array $data): string
+    private function render(string $view, array $data, ?AdminPage $page = null): string
     {
         return $this->views->make('firefly-admin::'.$view, [
             ...$data,
             'settings' => $this->settings,
             'nav' => $this->nav(),
-            'active' => $view === 'overview' ? '' : $view,
+            'groups' => AdminPage::groups(),
+            'active' => $page instanceof AdminPage ? $page->slug : ($view === 'overview' ? '' : $view),
+            'page' => $data['page'] ?? $page,
+            'now' => microtime(true),
         ])->render();
+    }
+
+    private function html(string $body, int $status): SymfonyResponse
+    {
+        return new Response($body, $status, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 
     /** @return list<AdminPage> */

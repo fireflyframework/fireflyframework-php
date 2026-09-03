@@ -3,15 +3,20 @@
 @section('body')
     <div class="head">
         <h1>Environment</h1>
-        <p>Resolved <code>firefly.*</code> configuration as this process sees it. Values whose key looks
-           secret are masked by the endpoint before they reach this page.</p>
+        <p>Resolved <code>firefly.*</code> configuration as this process sees it. Keys that look secret are
+           masked by the endpoint before they reach this page.</p>
     </div>
 
     <div class="panel">
-        <h2>Configuration <span>{{ count($env) }} keys</span></h2>
-        @include('firefly-admin::_filter', ['target' => 'env-body', 'placeholder' => 'Filter by key or value…'])
+        @include('firefly-admin::_panel-head', [
+            'title' => 'Configuration', 'count' => count($env),
+            'filter' => 'env-body', 'placeholder' => 'Filter by key or value…',
+        ])
         @if ($env === [])
-            <p class="empty">Nothing set under <code>firefly</code>.</p>
+            @include('firefly-admin::_empty', [
+                'title' => 'Nothing set',
+                'body' => 'No <code>firefly.*</code> configuration is present. The skeleton ships a documented reference at <code>config/firefly.php</code>.',
+            ])
         @else
             <div class="tw">
                 <table>
@@ -19,8 +24,8 @@
                     <tbody id="env-body">
                     @foreach ($env as $key => $value)
                         <tr>
-                            <td class="mono wrapish">{{ $key }}</td>
-                            <td class="mono muted wrapish">{{ $value }}</td>
+                            <td class="mono wrap">{{ $key }}</td>
+                            <td class="mono dim wrap">{{ $value }}</td>
                         </tr>
                     @endforeach
                     </tbody>

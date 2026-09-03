@@ -6,7 +6,9 @@ namespace Firefly\Admin;
 
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\EndpointRequest;
+use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Config\Config;
+use Illuminate\Contracts\Container\Container;
 use Throwable;
 
 /**
@@ -27,7 +29,57 @@ final readonly class AdminEndpointReader
     public function __construct(
         private ActuatorRegistry $registry,
         private Config $config,
+        private ?Container $container = null,
     ) {}
+
+    /**
+     * Every health indicator with its own status and details, read from the CONTRIBUTOR REGISTRY rather than
+     * through the health endpoint.
+     *
+     * The endpoint withholds per-indicator details unless
+     * `firefly.management.endpoint.health.show-details` is `always`, and that default is right: it protects
+     * anonymous HTTP callers from learning your database host from a failed connection. The dashboard is not
+     * an anonymous HTTP caller — it is already rendering beans and env in-process — so applying the HTTP
+     * disclosure policy to it produced a Health panel whose entire content was an apology telling the
+     * operator to go and change a config key. It reads the indicators directly instead.
+     *
+     * Each indicator is called in isolation: one that throws is reported DOWN with the reason, exactly as
+     * HealthEndpoint's own fail-safe read does, so a broken indicator degrades its own row and nothing else.
+     *
+     * @return list<array{name: string, status: string, details: array<string, mixed>}>
+     */
+    public function healthIndicators(): array
+    {
+        if ($this->container === null || ! $this->container->bound(HealthContributorRegistry::class)) {
+            return [];
+        }
+
+        try {
+            $registry = $this->container->get(HealthContributorRegistry::class);
+        } catch (Throwable) {
+            return [];
+        }
+
+        $indicators = [];
+        foreach ($registry->all() as $name => $indicator) {
+            try {
+                $health = $indicator->health();
+                $indicators[] = [
+                    'name' => $name,
+                    'status' => $health->status->value,
+                    'details' => $health->details,
+                ];
+            } catch (Throwable $e) {
+                $indicators[] = [
+                    'name' => $name,
+                    'status' => 'DOWN',
+                    'details' => ['error' => $e::class, 'message' => $e->getMessage()],
+                ];
+            }
+        }
+
+        return $indicators;
+    }
 
     /**
      * The endpoint ids that are registered AND not switched off, in registration order.
