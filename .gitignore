@@ -36,3 +36,7 @@ Thumbs.db
 *.log
 /coverage/
 /.claude/
+
+# Local screenshots from design review
+*.png
+.playwright-mcp/
