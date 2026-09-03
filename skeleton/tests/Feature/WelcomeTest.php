@@ -21,7 +21,8 @@ final class WelcomeTest extends TestCase
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/html; charset=UTF-8');
         $response->assertSee('Hello,', false);
-        $response->assertSee('Your paths', false);
+        $response->assertSee('Your routes', false);
+        $response->assertSee('What is running', false);
     }
 
     public function test_the_sample_rest_controller_returns_json(): void

@@ -160,6 +160,19 @@
         .copy:hover{border-color:var(--amber);color:var(--amber)}
         .copy[data-done]{border-color:var(--ok);color:var(--ok)}
 
+        /* what is running — the live surfaces, with the path shown so it is obvious where they are */
+        .tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+        .tools .tool{
+            display:flex;flex-direction:column;gap:4px;
+            border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card);
+            padding:15px 17px;transition:border-color .14s,background .14s;
+        }
+        .tools .tool:hover{border-color:var(--amber-2);background:var(--card-2)}
+        .tools .tool strong{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:600}
+        .tools .tool .go{color:var(--amber);font-size:13px}
+        .tools .tool span{font-size:13px;color:var(--text-3);line-height:1.5}
+        .tools .tool code{align-self:flex-start;margin-top:3px;font-size:11.5px}
+
         /* learn */
         .links{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px}
         .links a{
@@ -203,7 +216,7 @@
     </header>
 
     <section>
-        <h2>Your paths</h2>
+        <h2>Your routes</h2>
         <div class="paths">
             @forelse ($routes as $route)
                 @if (str_contains($route['path'], '{'))
@@ -225,12 +238,6 @@
                 <p class="empty">No routes yet. Run <code>php artisan make:firefly-controller</code> to add one.</p>
             @endforelse
 
-            <a class="path" href="{{ $actuatorBase }}">
-                <span class="verb">GET</span>
-                <span class="url">{{ $actuatorBase }}</span>
-                <span class="by">Health and info</span>
-                <span class="go" aria-hidden="true">&rarr;</span>
-            </a>
         </div>
     </section>
 
@@ -253,6 +260,19 @@
     </section>
 
     <section>
+        <h2>What is running</h2>
+        <div class="tools">
+            @foreach ($tools as $tool)
+                <a class="tool" href="{{ $tool['href'] }}">
+                    <strong>{{ $tool['label'] }}<span class="go" aria-hidden="true">&rarr;</span></strong>
+                    <span>{{ $tool['blurb'] }}</span>
+                    <code>{{ $tool['href'] }}</code>
+                </a>
+            @endforeach
+        </div>
+    </section>
+
+    <section>
         <h2>Learn</h2>
         <div class="links">
             <a href="https://github.com/fireflyframework/fireflyframework-php#readme">
@@ -261,7 +281,7 @@
             </a>
             <a href="https://github.com/fireflyframework/fireflyframework-php/tree/main/book">
                 <strong>The book</strong>
-                <span>Thirteen chapters building one real service</span>
+                <span>Chapters building one real service, end to end</span>
             </a>
             <a href="https://github.com/fireflyframework/fireflyframework-php/issues">
                 <strong>Ask a question</strong>

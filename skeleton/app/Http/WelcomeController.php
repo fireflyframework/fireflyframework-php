@@ -7,10 +7,12 @@ namespace App\Http;
 use Composer\InstalledVersions;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Introspection\BeansCatalog;
+use Firefly\Admin\AdminSettings;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Scan\AppScan;
+use Firefly\OpenApi\OpenApiProperties;
 use Firefly\Web\Attributes\Controller;
 use Firefly\Web\Attributes\GetMapping;
 use Firefly\Web\Route\RouteManifest;
@@ -62,7 +64,56 @@ final class WelcomeController
             'exposed' => $this->exposed(),
             'endpoints' => $this->registeredEndpoints(),
             'routes' => $this->appRoutes($base),
+            'tools' => $this->tools($base),
         ]);
+    }
+
+    /**
+     * The other surfaces this application is serving right now.
+     *
+     * Each is present only when its package is installed AND turned on, resolved from the same config keys
+     * the packages themselves read — so the card never links to a 404. That matters more than it sounds: the
+     * dashboard is off by default outside debug, and the API reference disappears when firefly/openapi is
+     * not installed, so a hard-coded link would be wrong for most applications.
+     *
+     * @return list<array{href: string, label: string, blurb: string}>
+     */
+    private function tools(string $actuatorBase): array
+    {
+        $tools = [[
+            'href' => '/'.$actuatorBase,
+            'label' => 'Actuator',
+            'blurb' => 'Health, info and the endpoints you expose, as JSON.',
+        ]];
+
+        if (class_exists(AdminSettings::class)) {
+            $admin = AdminSettings::fromConfig($this->config);
+            if ($admin->enabled) {
+                $tools[] = [
+                    'href' => $admin->url(),
+                    'label' => 'Dashboard',
+                    'blurb' => 'Health, beans, routes, metrics and configuration in the browser.',
+                ];
+            }
+        }
+
+        if ($this->config->bool('firefly.openapi.enabled', true) && class_exists(OpenApiProperties::class)) {
+            if ($this->config->bool('firefly.openapi.viewer.enabled', true)) {
+                $tools[] = [
+                    'href' => '/'.trim($this->config->string('firefly.openapi.viewer.path', '/openapi'), '/'),
+                    'label' => 'API reference',
+                    'blurb' => 'Every endpoint, its schema and a request console — generated from your code.',
+                ];
+            }
+
+            $tools[] = [
+                'href' => '/'.trim($this->config->string('firefly.openapi.path', '/openapi.json'), '/'),
+                'label' => 'OpenAPI document',
+                'blurb' => 'The 3.1 spec, for a client generator or an API gateway.',
+            ];
+        }
+
+        return $tools;
     }
 
     /**
