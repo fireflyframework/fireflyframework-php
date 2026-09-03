@@ -17,6 +17,8 @@ final class FireflyCachePaths
 
     public const string ROUTES = 'routes.php';
 
+    public const string EXCEPTION_HANDLERS = 'exception-handlers.php';
+
     public const string CONSTRAINTS = 'constraints.php';
 
     public const string HANDLERS = 'handlers.php';

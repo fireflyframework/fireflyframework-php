@@ -1,13 +1,21 @@
 {
     "name": "firefly/firefly",
-    "description": "LaraFly runtime metapackage — the Composer analog of the Maven BOM. Requiring firefly/firefly pulls the whole runtime framework family in one line.",
+    "description": "LaraFly runtime metapackage \u2014 the Composer analog of the Maven BOM. Requiring firefly/firefly pulls the whole runtime framework family in one line.",
     "type": "metapackage",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "bom", "metapackage"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "bom",
+        "metapackage"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/firefly"
@@ -16,6 +24,7 @@
         "php": "^8.3",
         "firefly/actuator": "*@dev",
         "firefly/autoconfigure": "*@dev",
+        "firefly/cli": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
@@ -34,8 +43,12 @@
         "firefly/web": "*@dev"
     },
     "extra": {
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }

@@ -6,9 +6,11 @@ namespace Firefly\Web;
 
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\FireflyException;
 use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Validation\Constraint\ConstraintManifest;
+use Firefly\Validation\Constraint\ConstraintManifestCompiler;
 use Firefly\Validation\Validator;
 use Firefly\Web\Dispatch\ArgumentResolver;
 use Firefly\Web\Dispatch\ControllerDispatcher;
@@ -20,6 +22,7 @@ use Firefly\Web\Filter\FilterChainRegistrar;
 use Firefly\Web\Http\JsonMessageConverter;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Route\RouteManifest;
+use Firefly\Web\Route\RouteScanner;
 use Firefly\Web\Security\AllowAllControllerSecurityGuard;
 use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Container\Container;
@@ -59,7 +62,20 @@ final class WebServiceProvider extends FireflyServiceProvider
         }
 
         if (! $this->app->bound(ConstraintManifest::class)) {
-            $this->app->singleton(ConstraintManifest::class, static fn (): ConstraintManifest => new ConstraintManifest([]));
+            $this->app->singleton(ConstraintManifest::class, static function (Application $app): ConstraintManifest {
+                if (($file = AppScan::cachedFile($app, AppScan::CONSTRAINTS)) !== null) {
+                    return ConstraintManifest::load($file);
+                }
+
+                $paths = AppScan::paths($app);
+                if ($paths === []) {
+                    return new ConstraintManifest([]);
+                }
+
+                // Validation compiles from an explicit class list, not a directory walk, so the in-process
+                // fallback enumerates the PSR-4 roots the same way ManifestCacheWriter does.
+                return ConstraintManifest::fromArray((new ConstraintManifestCompiler)->toArray(AppScan::classes($paths)));
+            });
         }
 
         if (! $this->app->bound(BeanValidator::class)) {
@@ -74,8 +90,20 @@ final class WebServiceProvider extends FireflyServiceProvider
             $this->app->singleton(ResponseFactory::class, static fn (Application $app): ResponseFactory => new ResponseFactory($app->make(MessageConverterRegistry::class)));
         }
 
+        // #[ControllerAdvice] / #[ExceptionHandler] used to be dead in every real boot: RouteScanner::
+        // scanExceptionHandlers() was implemented but called by nothing outside three test base classes, and
+        // firefly:cache emitted no artifact, so this registry was always constructed empty. It now resolves
+        // like every other Category-B manifest.
         if (! $this->app->bound(ExceptionHandlerRegistry::class)) {
-            $this->app->singleton(ExceptionHandlerRegistry::class, static fn (): ExceptionHandlerRegistry => new ExceptionHandlerRegistry([]));
+            $this->app->singleton(ExceptionHandlerRegistry::class, static function (Application $app): ExceptionHandlerRegistry {
+                if (($file = AppScan::cachedFile($app, AppScan::EXCEPTION_HANDLERS)) !== null) {
+                    return ExceptionHandlerRegistry::load($file);
+                }
+
+                $paths = AppScan::paths($app);
+
+                return new ExceptionHandlerRegistry($paths === [] ? [] : (new RouteScanner)->scanExceptionHandlers($paths));
+            });
         }
 
         // The M11 dispatch-time method-security seam (§4.6.2): a no-op default so #[PreAuthorize] enforcement
@@ -99,7 +127,15 @@ final class WebServiceProvider extends FireflyServiceProvider
         }
 
         if (! $this->app->bound(RouteManifest::class)) {
-            $this->app->singleton(RouteManifest::class, static fn (): RouteManifest => new RouteManifest([]));
+            $this->app->singleton(RouteManifest::class, static function (Application $app): RouteManifest {
+                if (($file = AppScan::cachedFile($app, AppScan::ROUTES)) !== null) {
+                    return RouteManifest::load($file);
+                }
+
+                $paths = AppScan::paths($app);
+
+                return new RouteManifest($paths === [] ? [] : (new RouteScanner)->scan($paths));
+            });
         }
     }
 

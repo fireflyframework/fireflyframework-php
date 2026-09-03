@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Web\Exception;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Throwable;
 
 /**
@@ -18,6 +19,43 @@ final class ExceptionHandlerRegistry
      * @param  list<ExceptionHandlerDescriptor>  $handlers
      */
     public function __construct(private readonly array $handlers) {}
+
+    /**
+     * Rehydrate from the compiled exception-handlers.php emitted by ExceptionHandlerManifestCompiler.
+     *
+     * @param  array<int, array{exceptionClass: string, handlerClass: string, methodName: string, global: bool}>  $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(array_map(
+            static fn (array $row): ExceptionHandlerDescriptor => ExceptionHandlerDescriptor::fromArray($row),
+            array_values($data),
+        ));
+    }
+
+    public static function load(string $path): self
+    {
+        if (! is_file($path)) {
+            throw new ConfigurationException("Exception handler manifest not found at {$path}. Run the exception-handler scan first.");
+        }
+
+        /** @var mixed $data */
+        $data = require $path;
+        if (! is_array($data)) {
+            throw new ConfigurationException("Exception handler manifest at {$path} did not return an array.");
+        }
+
+        /** @var array<int, array{exceptionClass: string, handlerClass: string, methodName: string, global: bool}> $data */
+        return self::fromArray($data);
+    }
+
+    /**
+     * @return list<ExceptionHandlerDescriptor>
+     */
+    public function all(): array
+    {
+        return $this->handlers;
+    }
 
     public function resolve(Throwable $e, ?string $controllerClass = null): ?ExceptionHandlerDescriptor
     {
