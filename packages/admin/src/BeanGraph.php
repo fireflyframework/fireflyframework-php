@@ -5,29 +5,49 @@ declare(strict_types=1);
 namespace Firefly\Admin;
 
 /**
- * Turns the beans catalogue into a directed graph a browser can draw and a person can reason about.
+ * The application's wiring as a directed graph a browser can draw and a person can reason about.
  *
- * THE HARD PART IS NOT DRAWING, IT IS RESOLVING. A constructor asks for a TYPE, and that type is very often
- * an interface — `EventPublisher`, `HealthIndicator`, `Cache` — while the bean that satisfies it is a
- * concrete class that merely implements it. An edge list built naively from constructor types therefore
- * points at nodes that do not exist, and the graph comes out as a field of disconnected dots. Every
- * dependency here is resolved through an interface index first, so `PostgresEventPublisher` is what
- * `EventPublisher` actually links to, and the edge is marked `via` so the reader can see the indirection
- * rather than being quietly shown something they did not write.
+ * WHAT COUNTS AS A NODE, AND WHY THE FIRST VERSION WAS NEARLY EMPTY. A LaraFly application has three kinds
+ * of bean, and the first version of this class only knew about one:
  *
- * Layering is a longest-path assignment over the resolved edges: a node sits one level below the deepest
- * thing that depends on it, so arrows flow consistently downward and the eye can follow a chain. Cycles
- * cannot hang it — the walk carries its own visited set and simply stops, and the offending edge is reported
- * so a genuine circular dependency shows up as a fact about the application rather than a hung page.
+ *   component  a scanned #[Component]/#[Service]/#[Repository]/#[RestController] class
+ *   bean       a value produced by a #[Bean] factory method on a #[Configuration]
+ *   config     a #[ConfigProperties] DTO bound from configuration
+ *
+ * Only components were nodes. But a FRAMEWORK's wiring lives almost entirely in the second kind — an
+ * auto-configuration is a #[Configuration] whose #[Bean] methods produce MeterRegistry, TransactionTemplate,
+ * AggregateTracker and so on — so every edge pointing at one of those pointed at a node that did not exist.
+ * Measured on a stock skeleton: 42 nodes, 41 #[Bean] products missing, 21 dangling dependencies, and exactly
+ * ONE edge drawn. The graph was not "sparse", it was structurally incapable of showing framework wiring.
+ *
+ * THE SECOND REASON EDGES VANISH IS INTERFACES. A constructor asks for a TYPE, and that type is usually an
+ * interface — EventPublisher, HealthIndicator, Cache — while the bean satisfying it is a concrete class or a
+ * factory return. Every dependency is therefore resolved through an interface index, and the edge records
+ * the interface in `via` so the reader sees the indirection rather than being quietly shown something they
+ * did not write.
+ *
+ * Layering is a longest-path assignment over the resolved edges, so a node sits below everything that
+ * depends on it and arrows read downward. The walk carries its own visited set, so a cycle terminates and
+ * the edge that closed it is REPORTED — which matters, because the container has no cycle detection and a
+ * cycle among eager singletons exhausts memory at boot.
  */
 final class BeanGraph
 {
-    /** A graph past this many nodes is a hairball, not a diagram, so the view offers a filter instead. */
-    public const MAX_RENDERABLE = 220;
+    public const KIND_COMPONENT = 'component';
+
+    public const KIND_BEAN = 'bean';
+
+    public const KIND_CONFIG = 'config';
+
+    /** A dependency the consumer declared and the container satisfies. */
+    public const EDGE_INJECTS = 'injects';
+
+    /** A #[Configuration] to the value one of its #[Bean] methods produces. */
+    public const EDGE_PRODUCES = 'produces';
 
     /**
-     * @param  list<array{id: string, label: string, namespace: string, stereotype: string, scope: string, level: int, in: int, out: int}>  $nodes
-     * @param  list<array{from: string, to: string, via: string|null}>  $edges
+     * @param  list<array{id: string, label: string, namespace: string, kind: string, stereotype: string, scope: string, detail: string, level: int, in: int, out: int}>  $nodes
+     * @param  list<array{from: string, to: string, via: string|null, type: string}>  $edges
      * @param  list<array{from: string, to: string}>  $cycles
      * @param  list<string>  $unresolved
      */
@@ -40,34 +60,27 @@ final class BeanGraph
 
     /**
      * @param  array<mixed>  $beans  rows as BeansCatalog publishes them
+     * @param  array<mixed>  $configProperties  rows as the configprops endpoint publishes them, keyed by class
      */
-    public static function fromCatalog(array $beans): self
+    public static function build(array $beans, array $configProperties = []): self
     {
-        [$rows, $byInterface] = self::index($beans);
+        $index = new BeanGraphIndex;
 
-        $edges = [];
-        $unresolved = [];
-        foreach ($rows as $class => $row) {
-            foreach ($row['dependencies'] as $dependency) {
-                $target = isset($rows[$dependency]) ? $dependency : ($byInterface[$dependency] ?? null);
+        foreach ($beans as $row) {
+            if (! is_array($row) || ! is_string($row['class'] ?? null)) {
+                continue;
+            }
+            $index->addComponent($row);
+        }
 
-                if ($target === null || $target === $class) {
-                    // A type nothing in the container provides: a framework contract satisfied by a binding
-                    // rather than a bean, or a class the scan never saw. Reported, not silently dropped —
-                    // "why is my bean not in the graph" is exactly the question this page has to answer.
-                    if ($target === null) {
-                        $unresolved[] = $dependency;
-                    }
-
-                    continue;
-                }
-
-                $edges[] = ['from' => $class, 'to' => $target, 'via' => $target === $dependency ? null : $dependency];
+        foreach ($configProperties as $class => $row) {
+            if (is_array($row) && is_string($row['class'] ?? $class)) {
+                $index->addConfigProperties(is_string($row['class'] ?? null) ? $row['class'] : (string) $class);
             }
         }
 
-        $edges = self::dedupe($edges);
-        [$levels, $cycles] = self::levels(array_keys($rows), $edges);
+        [$edges, $unresolved] = $index->edges();
+        [$levels, $cycles] = self::levels($index->ids(), $edges);
 
         $degree = [];
         foreach ($edges as $edge) {
@@ -76,96 +89,82 @@ final class BeanGraph
         }
 
         $nodes = [];
-        foreach ($rows as $class => $row) {
+        foreach ($index->nodes() as $id => $node) {
             $nodes[] = [
-                'id' => $class,
-                'label' => Format::shortClass($class),
-                'namespace' => rtrim(Format::namespaceOf($class), '\\'),
-                'stereotype' => $row['stereotype'],
-                'scope' => $row['scope'],
-                'level' => $levels[$class] ?? 0,
-                'in' => $degree[$class]['in'] ?? 0,
-                'out' => $degree[$class]['out'] ?? 0,
+                ...$node,
+                'level' => $levels[$id] ?? 0,
+                'in' => $degree[$id]['in'] ?? 0,
+                'out' => $degree[$id]['out'] ?? 0,
             ];
         }
 
         usort($nodes, static fn (array $a, array $b): int => [$a['level'], $a['label']] <=> [$b['level'], $b['label']]);
 
-        return new self($nodes, $edges, $cycles, array_values(array_unique($unresolved)));
-    }
-
-    public function isRenderable(): bool
-    {
-        return count($this->nodes) <= self::MAX_RENDERABLE;
+        return new self($nodes, $edges, $cycles, $unresolved);
     }
 
     /**
-     * @param  array<mixed>  $beans
-     * @return array{0: array<string, array{stereotype: string, scope: string, dependencies: list<string>}>, 1: array<string, string>}
-     */
-    private static function index(array $beans): array
-    {
-        $rows = [];
-        $byInterface = [];
-
-        foreach ($beans as $bean) {
-            if (! is_array($bean) || ! is_string($bean['class'] ?? null)) {
-                continue;
-            }
-
-            $class = $bean['class'];
-            $rows[$class] = [
-                'stereotype' => is_string($bean['stereotype'] ?? null) ? $bean['stereotype'] : '',
-                'scope' => is_string($bean['scope'] ?? null) ? $bean['scope'] : '',
-                'dependencies' => array_values(array_filter(
-                    is_array($bean['dependencies'] ?? null) ? $bean['dependencies'] : [],
-                    static fn (mixed $d): bool => is_string($d) && $d !== '',
-                )),
-            ];
-
-            foreach (is_array($bean['interfaces'] ?? null) ? $bean['interfaces'] : [] as $interface) {
-                // First implementor wins, deterministically: the catalogue is emitted in scan order, so the
-                // same application always draws the same graph. An interface with several implementors is a
-                // real ambiguity the container resolves with #[Primary]/#[Qualifier], and the graph says so
-                // by listing the edge as `via` rather than pretending the choice was obvious.
-                if (is_string($interface) && ! isset($byInterface[$interface])) {
-                    $byInterface[$interface] = $class;
-                }
-            }
-        }
-
-        return [$rows, $byInterface];
-    }
-
-    /**
-     * @param  list<array{from: string, to: string, via: string|null}>  $edges
-     * @return list<array{from: string, to: string, via: string|null}>
-     */
-    private static function dedupe(array $edges): array
-    {
-        $seen = [];
-        $out = [];
-        foreach ($edges as $edge) {
-            $key = $edge['from'].'>'.$edge['to'];
-            if (! isset($seen[$key])) {
-                $seen[$key] = true;
-                $out[] = $edge;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * Longest-path layering, so a node always sits below everything that depends on it and arrows read
-     * downward. Depth is memoised and the walk carries a visited set, so a cycle terminates instead of
-     * recursing forever — and the edge that closed it is reported.
+     * Kept for the older two-argument shape.
      *
-     * @param  list<string>  $classes
-     * @param  list<array{from: string, to: string, via: string|null}>  $edges
+     * @param  array<mixed>  $beans
+     */
+    public static function fromCatalog(array $beans): self
+    {
+        return self::build($beans);
+    }
+
+    /** @return array<string,int> node count per kind, for the page's summary */
+    public function kindCounts(): array
+    {
+        $counts = [self::KIND_COMPONENT => 0, self::KIND_BEAN => 0, self::KIND_CONFIG => 0];
+        foreach ($this->nodes as $node) {
+            $counts[$node['kind']] = ($counts[$node['kind']] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The namespace roots present, most-populated first — the drawing colours by module, and a legend has to
+     * name them.
+     *
+     * @return list<string>
+     */
+    public function modules(): array
+    {
+        $counts = [];
+        foreach ($this->nodes as $node) {
+            $module = self::moduleOf($node['id']);
+            $counts[$module] = ($counts[$module] ?? 0) + 1;
+        }
+
+        arsort($counts);
+
+        return array_keys($counts);
+    }
+
+    /** The first two namespace segments — `Firefly\Observability`, `App\Http` — which is how a reader groups. */
+    public static function moduleOf(string $id): string
+    {
+        $parts = explode('\\', ltrim($id, '\\'));
+
+        return match (true) {
+            count($parts) <= 1 => '(global)',
+            count($parts) === 2 => $parts[0],
+            default => $parts[0].'\\'.$parts[1],
+        };
+    }
+
+    /**
+     * Longest-path layering, so a node always sits below everything that depends on it. Depth is memoised and
+     * the walk carries a visited set, so a cycle terminates instead of recursing forever — and the edge that
+     * closed it is reported.
+     *
+     * @param  list<string>  $ids
+     * @param  list<array{from: string, to: string, via: string|null, type: string}>  $edges
      * @return array{0: array<string,int>, 1: list<array{from: string, to: string}>}
      */
-    private static function levels(array $classes, array $edges): array
+    private static function levels(array $ids, array $edges): array
     {
         $out = [];
         foreach ($edges as $edge) {
@@ -180,7 +179,7 @@ final class BeanGraph
                 return $depth[$node];
             }
             if (isset($path[$node])) {
-                return 0; // the caller records the closing edge
+                return 0;
             }
 
             $path[$node] = true;
@@ -197,37 +196,28 @@ final class BeanGraph
             return $depth[$node] = $deepest;
         };
 
-        foreach ($classes as $class) {
-            $walk($class, []);
+        foreach ($ids as $id) {
+            $walk($id, []);
         }
 
         // Depth counts how far a node's longest chain of dependencies runs; the drawing wants the opposite,
-        // with dependents on top. Flip it so level 0 is the thing nothing depends on.
+        // with dependents on top. Flip it so level 0 is what nothing depends on.
         $max = $depth === [] ? 0 : max($depth);
         $levels = [];
-        foreach ($depth as $class => $value) {
-            $levels[$class] = $max - $value;
+        foreach ($depth as $id => $value) {
+            $levels[$id] = $max - $value;
         }
 
-        return [$levels, self::dedupeCycles($cycles)];
-    }
-
-    /**
-     * @param  list<array{from: string, to: string}>  $cycles
-     * @return list<array{from: string, to: string}>
-     */
-    private static function dedupeCycles(array $cycles): array
-    {
         $seen = [];
-        $out = [];
+        $unique = [];
         foreach ($cycles as $cycle) {
             $key = $cycle['from'].'>'.$cycle['to'];
             if (! isset($seen[$key])) {
                 $seen[$key] = true;
-                $out[] = $cycle;
+                $unique[] = $cycle;
             }
         }
 
-        return $out;
+        return [$levels, $unique];
     }
 }

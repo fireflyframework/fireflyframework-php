@@ -82,7 +82,13 @@ final readonly class AdminAction
             'metrics' => ['metrics' => $this->metrics()],
             'http' => ['exchanges' => $this->exchanges()],
             'beans' => ['beans' => $this->listOf('beans', 'beans')],
-            'graph' => ['graph' => BeanGraph::fromCatalog($this->listOf('beans', 'beans'))],
+            // #[ConfigProperties] DTOs are bound and injectable but are neither scanned as components nor
+            // produced by a factory, so the beans catalogue alone cannot see them — they arrived as
+            // unresolved dependencies instead of as the beans they are.
+            'graph' => ['graph' => BeanGraph::build(
+                $this->listOf('beans', 'beans'),
+                $this->subArray($this->payload('configprops'), 'beans'),
+            )],
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],

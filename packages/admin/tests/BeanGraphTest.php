@@ -36,7 +36,9 @@ function bean(string $class, array $dependencies = [], array $interfaces = []): 
 it('links a dependency on a concrete class straight to that bean', function () {
     $graph = graphOf([bean('App\\Controller', ['App\\Service']), bean('App\\Service')]);
 
-    expect($graph->edges)->toBe([['from' => 'App\\Controller', 'to' => 'App\\Service', 'via' => null]]);
+    expect($graph->edges)->toBe([
+        ['from' => 'App\\Controller', 'to' => 'App\\Service', 'via' => null, 'type' => BeanGraph::EDGE_INJECTS],
+    ]);
 });
 
 // The reason a naive edge list produces a field of disconnected dots: constructors ask for INTERFACES, and
@@ -48,7 +50,7 @@ it('resolves a dependency on an interface to the bean that implements it', funct
     ]);
 
     expect($graph->edges)->toBe([
-        ['from' => 'App\\Publisher', 'to' => 'App\\KafkaTransport', 'via' => 'App\\Contracts\\Transport'],
+        ['from' => 'App\\Publisher', 'to' => 'App\\KafkaTransport', 'via' => 'App\\Contracts\\Transport', 'type' => BeanGraph::EDGE_INJECTS],
     ]);
 });
 
@@ -128,4 +130,130 @@ it('splits a class into a short label and its namespace for the drawing', functi
 
     expect($graph->nodes[0]['label'])->toBe('OrderService')
         ->and($graph->nodes[0]['namespace'])->toBe('App\\Domain');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// #[Bean] PRODUCTS. The graph's original blind spot: a framework's wiring lives almost entirely in
+// #[Configuration] classes whose #[Bean] methods produce the collaborators everything else injects. Only
+// declaring classes were nodes, so on a stock skeleton 41 of 42 relations pointed at nodes that did not
+// exist and exactly ONE edge was drawn.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @param  list<array{type: string, method: string, dependencies: list<string>}>  $produces
+ * @param  list<string>  $dependencies
+ * @return array<string,mixed>
+ */
+function configuration(string $class, array $produces, array $dependencies = []): array
+{
+    return [
+        'class' => $class,
+        'stereotype' => 'configuration',
+        'scope' => 'Singleton',
+        'name' => null,
+        'interfaces' => [],
+        'beans' => array_map(static fn (array $p): string => $p['method'], $produces),
+        'dependencies' => $dependencies,
+        'produces' => $produces,
+    ];
+}
+
+it('makes every #[Bean] product a node of its own', function () {
+    $graph = BeanGraph::build([
+        configuration('App\\Config', [
+            ['type' => 'App\\MeterRegistry', 'method' => 'meters', 'dependencies' => []],
+            ['type' => 'App\\Tracer', 'method' => 'tracer', 'dependencies' => []],
+        ]),
+    ]);
+
+    $ids = array_column($graph->nodes, 'id');
+
+    expect($ids)->toContain('App\\MeterRegistry')
+        ->and($ids)->toContain('App\\Tracer')
+        ->and($graph->kindCounts()[BeanGraph::KIND_BEAN])->toBe(2)
+        ->and($graph->kindCounts()[BeanGraph::KIND_COMPONENT])->toBe(1);
+});
+
+it('draws a produces edge from the configuration to each product', function () {
+    $graph = BeanGraph::build([
+        configuration('App\\Config', [['type' => 'App\\MeterRegistry', 'method' => 'meters', 'dependencies' => []]]),
+    ]);
+
+    expect($graph->edges)->toBe([
+        ['from' => 'App\\Config', 'to' => 'App\\MeterRegistry', 'via' => null, 'type' => BeanGraph::EDGE_PRODUCES],
+    ]);
+});
+
+// The whole point: a component injecting a type that a factory produces must LINK to it. This is the case
+// that produced 21 dangling dependencies before #[Bean] products became nodes.
+it('links a consumer to the #[Bean] product it injects', function () {
+    $graph = BeanGraph::build([
+        bean('App\\Filter', ['App\\MeterRegistry']),
+        configuration('App\\Config', [['type' => 'App\\MeterRegistry', 'method' => 'meters', 'dependencies' => []]]),
+    ]);
+
+    $injects = array_values(array_filter($graph->edges, static fn (array $e): bool => $e['type'] === BeanGraph::EDGE_INJECTS));
+
+    expect($injects)->toBe([
+        ['from' => 'App\\Filter', 'to' => 'App\\MeterRegistry', 'via' => null, 'type' => BeanGraph::EDGE_INJECTS],
+    ])->and($graph->unresolved)->toBe([]);
+});
+
+it('draws what a factory method itself depends on', function () {
+    $graph = BeanGraph::build([
+        configuration('App\\Config', [
+            ['type' => 'App\\Bus', 'method' => 'bus', 'dependencies' => ['App\\Clock']],
+        ]),
+        bean('App\\Clock'),
+    ]);
+
+    expect($graph->edges)->toContain(
+        ['from' => 'App\\Bus', 'to' => 'App\\Clock', 'via' => null, 'type' => BeanGraph::EDGE_INJECTS],
+    );
+});
+
+// Two factories producing one type is the shape the container now requires #[Primary]/#[Qualifier] to
+// disambiguate. Collapsing them onto the type would hide exactly the ambiguity a reader came to look at.
+it('keeps competing producers as separate nodes', function () {
+    $graph = BeanGraph::build([
+        configuration('App\\Config', [
+            ['type' => 'App\\Cache', 'method' => 'memory', 'dependencies' => []],
+            ['type' => 'App\\Cache', 'method' => 'redis', 'dependencies' => []],
+        ]),
+    ]);
+
+    $ids = array_column($graph->nodes, 'id');
+
+    expect($ids)->toContain('App\\Config::memory()')
+        ->and($ids)->toContain('App\\Config::redis()')
+        ->and($graph->kindCounts()[BeanGraph::KIND_BEAN])->toBe(2);
+});
+
+// A #[ConfigProperties] DTO is bound and injectable but is neither scanned nor produced, so nothing else
+// creates a node for it — it showed up as an unresolved dependency instead of the bean it is.
+it('makes a #[ConfigProperties] DTO a node so its consumers link to it', function () {
+    $graph = BeanGraph::build(
+        [bean('App\\GreetingService', ['App\\GreetingProperties'])],
+        ['App\\GreetingProperties' => ['class' => 'App\\GreetingProperties', 'prefix' => 'greeting']],
+    );
+
+    expect($graph->kindCounts()[BeanGraph::KIND_CONFIG])->toBe(1)
+        ->and($graph->unresolved)->toBe([])
+        ->and($graph->edges)->toBe([
+            ['from' => 'App\\GreetingService', 'to' => 'App\\GreetingProperties', 'via' => null, 'type' => BeanGraph::EDGE_INJECTS],
+        ]);
+});
+
+it('groups a node under the first two namespace segments', function () {
+    expect(BeanGraph::moduleOf('Firefly\\Observability\\Metrics\\Counter'))->toBe('Firefly\\Observability')
+        ->and(BeanGraph::moduleOf('App\\Service'))->toBe('App')
+        ->and(BeanGraph::moduleOf('Bare'))->toBe('(global)');
+});
+
+it('orders modules by how many nodes they hold', function () {
+    $graph = BeanGraph::build([
+        bean('Big\\Mod\\A'), bean('Big\\Mod\\B'), bean('Big\\Mod\\C'), bean('Small\\Mod\\A'),
+    ]);
+
+    expect($graph->modules()[0])->toBe('Big\\Mod');
 });

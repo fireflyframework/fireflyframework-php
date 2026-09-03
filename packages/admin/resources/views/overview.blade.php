@@ -51,7 +51,7 @@
                             <tr>
                                 <td class="mono tight">{{ $indicator['name'] }}</td>
                                 <td class="tight"><span class="chip {{ $indicator['status'] === 'UP' ? 'up' : 'down' }}">{{ $indicator['status'] }}</span></td>
-                                <td class="mono dim wrap">
+                                <td class="mono dim wrap text">
                                     @if ($indicator['details'] === [])
                                         —
                                     @else
@@ -83,7 +83,7 @@
                         @foreach ($info as $key => $value)
                             <tr>
                                 <td class="mono dim tight">{{ $key }}</td>
-                                <td class="mono wrap">{{ $value }}</td>
+                                <td class="mono wrap text">{{ $value }}</td>
                             </tr>
                         @endforeach
                         </tbody>
@@ -128,7 +128,7 @@
                         @foreach (array_slice($metrics, 0, 8) as $metric)
                             <tr>
                                 <td class="mono wrap">{{ $metric['name'] }}</td>
-                                <td class="num">{{ $metric['rows'][0]['display'] ?? '—' }}</td>
+                                <td class="num pin">{{ $metric['rows'][0]['display'] ?? '—' }}</td>
                             </tr>
                         @endforeach
                         </tbody>

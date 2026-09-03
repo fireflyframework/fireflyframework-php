@@ -195,9 +195,17 @@
         .panel > header .spacer{flex:1}
         .panel > header .meta{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
 
-        .grid{display:grid;gap:16px}
-        .grid.two{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
-        .grid.three{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+        /* align-items:start so a short panel does not stretch to match a tall neighbour and leave a void
+           under its own content — the single biggest source of dead space on a wide screen. */
+        .grid{display:grid;gap:16px;align-items:start}
+        .grid.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr))}
+        .grid.three{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+        /* A dashboard on a 1920 screen should show MORE, not the same two panels stretched to 840px each.
+           auto-fit only creates as many tracks as there are children, so the overview supplies enough
+           panels to fill them. */
+        @media(min-width:1500px){
+            .grid.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr))}
+        }
 
         /* ── stat strip ──────────────────────────────────────────────────── */
         .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
@@ -227,6 +235,10 @@
         td.tight{width:1%;white-space:nowrap}
         .dim{color:var(--ink-3)}
         .wrap{overflow-wrap:anywhere}
+        /* Long free-text cells stop growing past a readable measure instead of stretching the row to the
+           full window width, which on a 1920 screen put a label at x=270 and its value at x=1855. */
+        td.text{max-width:64ch}
+        td.num.pin{width:1%}
 
         /* A fully-qualified class name has no spaces, so overflow-wrap:anywhere breaks it mid-word —
            "SecurityHeadersFilte / r". Showing the short name on its own line and eliding the namespace under
@@ -279,18 +291,66 @@
         .act:hover{border-color:var(--accent);color:var(--accent)}
 
         /* ── bean graph ──────────────────────────────────────────────────── */
+        .legend{display:flex;flex-wrap:wrap;gap:6px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+        .mod{
+            display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;
+            border:1px solid var(--line-2);background:transparent;color:var(--ink-2);cursor:pointer;
+            font-family:var(--mono);font-size:11px;
+        }
+        .mod i{width:8px;height:8px;border-radius:2px;background:hsl(var(--hue) 62% 46%);flex:none}
+        .mod:hover{border-color:var(--ink-3);color:var(--ink)}
+        .mod[aria-pressed="false"]{opacity:.42;text-decoration:line-through}
+
+        .graph{display:grid;grid-template-columns:minmax(0,1fr) 268px}
+        @media(max-width:1100px){.graph{grid-template-columns:1fr}}
+        .graph .canvas{position:relative;height:min(72vh,720px);overflow:hidden;background:var(--panel-2);cursor:grab;touch-action:none}
+        .graph .canvas.grabbing{cursor:grabbing}
+        .graph .canvas svg{width:100%;height:100%;display:block}
+        .hint-bar{
+            position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--ink-3);
+            background:color-mix(in srgb, var(--panel) 84%, transparent);padding:3px 8px;border-radius:6px;
+            pointer-events:none;
+        }
+        .inspect{border-left:1px solid var(--line);padding:12px 14px;overflow:hidden auto;height:min(72vh,720px);background:var(--panel);min-width:0}
+        @media(max-width:1100px){.inspect{border-left:0;border-top:1px solid var(--line);height:auto;max-height:320px}}
+        .inspect .blank{color:var(--ink-3);font-size:13px;padding:18px 0}
+        .inspect .who{margin-bottom:12px}
+        .inspect .who strong{display:block;font-size:14.5px}
+        .inspect .who code{display:block;margin-top:4px;font-size:10.5px;overflow-wrap:anywhere;background:none;border:0;padding:0;color:var(--ink-3)}
+        .inspect h4{margin:12px 0 5px;font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+        .inspect h4 span{color:var(--ink-2);letter-spacing:0}
+        .inspect ul{list-style:none;margin:0;padding:0}
+        .inspect li button{
+            display:block;width:100%;text-align:left;background:none;border:0;padding:3px 0;cursor:pointer;
+            font-family:var(--mono);font-size:11.5px;color:var(--accent);
+            overflow-wrap:anywhere;line-height:1.4;
+        }
+        .inspect li button:hover{text-decoration:underline}
+        .inspect .none{margin:0;font-size:12.5px;color:var(--ink-3)}
         .canvas{overflow:auto;padding:14px;background:var(--panel-2);max-height:70vh}
         .canvas svg{display:block;margin-inline:auto}
-        .edges .edge{fill:none;stroke:var(--line-2);stroke-width:1.4;color:var(--line-2);transition:stroke .12s,opacity .12s}
+        .edges .edge{fill:none;stroke:var(--line-2);stroke-width:1.3;color:var(--line-2);transition:stroke .12s,opacity .12s}
         .edges .edge.via{stroke-dasharray:4 3}
-        .edges .edge.lit{stroke:var(--accent);color:var(--accent);stroke-width:2}
-        .edges .edge.dimmed{opacity:.15}
-        .nodes .node rect{fill:var(--panel);stroke:var(--line-2);stroke-width:1.2;transition:stroke .12s,fill .12s}
-        .nodes .node text{font-family:var(--mono);font-size:11.5px;fill:var(--ink);pointer-events:none}
-        .nodes .node text.sub{font-size:10px;fill:var(--ink-3)}
+        /* A `produces` edge is structure, not a dependency the author wrote — drawn quieter so the wiring
+           the reader came to see stays the loudest thing on the canvas. */
+        .edges .edge.produces{stroke-dasharray:1 4;opacity:.55}
+        .edges .edge.lit{stroke:var(--accent);color:var(--accent);stroke-width:2;opacity:1}
+        .edges .edge.dimmed{opacity:.08}
+        .edges .edge.off{display:none}
+
         .nodes .node{cursor:pointer}
+        .nodes .node rect{fill:var(--panel);stroke:var(--line-2);stroke-width:1.1;transition:stroke .12s,fill .12s}
+        .nodes .node .stripe{fill:hsl(var(--hue) 62% 46%);stroke:none}
+        .nodes .node text{font-family:var(--mono);font-size:11px;fill:var(--ink);pointer-events:none}
+        .nodes .node text.sub{font-size:9.5px;fill:var(--ink-3)}
+        /* A #[Bean] product is a value a factory returns, not a class the scanner found — dashed says so. */
+        .nodes .node.k-bean rect{stroke-dasharray:3 2}
+        .nodes .node.k-config rect{fill:var(--hover)}
         .nodes .node:hover rect,.nodes .node.lit rect{stroke:var(--accent);fill:var(--accent-soft)}
-        .nodes .node.dimmed{opacity:.25}
+        .nodes .node.picked rect{stroke:var(--accent);stroke-width:2}
+        .nodes .node.dimmed{opacity:.22}
+        .nodes .node.off{display:none}
+        .nodes .node:focus-visible rect{stroke:var(--accent);stroke-width:2}
 
         [hidden]{display:none!important}
     </style>
@@ -476,5 +536,12 @@
         });
     })();
 </script>
+
+{{--
+    Page-specific scripts. Without this stack a view's @push('scripts') block is silently DISCARDED — which
+    is exactly what happened to the bean graph: its pan/zoom, selection and module filtering were pushed
+    here, nothing rendered them, and the page looked static with no error anywhere to say why.
+--}}
+@stack('scripts')
 </body>
 </html>
