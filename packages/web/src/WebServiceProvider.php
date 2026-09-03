@@ -28,6 +28,7 @@ use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -87,7 +88,20 @@ final class WebServiceProvider extends FireflyServiceProvider
         }
 
         if (! $this->app->bound(ResponseFactory::class)) {
-            $this->app->singleton(ResponseFactory::class, static fn (Application $app): ResponseFactory => new ResponseFactory($app->make(MessageConverterRegistry::class)));
+            // The view factory is optional: illuminate/view ships with laravel/framework but is not a
+            // dependency of firefly/web, so a JSON-only deployment (or a unit test) resolves null and the
+            // HTML branch fails loud instead of rendering an empty body.
+            //
+            // The probe is the CONCRETE 'view' key, not the contract. Container::bound() answers true for a
+            // mere ALIAS, and Laravel aliases Illuminate\Contracts\View\Factory => 'view' in
+            // registerCoreContainerAliases() whether or not ViewServiceProvider ever registered anything —
+            // so probing the contract reports a view factory in a bare testbench and then explodes with
+            // "Target class [view] does not exist" on make().
+            $this->app->singleton(ResponseFactory::class, static function (Application $app): ResponseFactory {
+                $views = $app->bound('view') ? $app->make(ViewFactory::class) : null;
+
+                return new ResponseFactory($app->make(MessageConverterRegistry::class), $views);
+            });
         }
 
         // #[ControllerAdvice] / #[ExceptionHandler] used to be dead in every real boot: RouteScanner::
