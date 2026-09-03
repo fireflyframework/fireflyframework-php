@@ -33,3 +33,14 @@ it('404s an unexposed sensitive endpoint (secure-by-default)', function () {
 // needs its OWN boot (see ActuatorEnvExposedCapstoneTestCase) — ExposureModel's include list is a singleton
 // #[Bean] captured ONCE at boot, so a post-boot config()->set() here (the brief's literal draft) never reaches
 // the already-resolved instance. Fixed test, not production code — see ActuatorCapstoneTestCase::exposureInclude().
+
+// An endpoint body is a JSON OBJECT by contract, but PHP encodes the empty array as `[]`. /actuator/info
+// with no InfoContributor therefore answered `[]` — an array where every client, and every other response
+// from the same endpoint, expects an object, which breaks a typed client deserialising into a map.
+it('renders an empty endpoint body as {} rather than []', function () {
+    /** @var ActuatorCapstoneTestCase $this */
+    $response = $this->get('/actuator/info');
+
+    $response->assertStatus(200);
+    expect($response->getContent())->toBe('{}');
+});

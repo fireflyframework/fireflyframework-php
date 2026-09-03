@@ -33,17 +33,21 @@ final readonly class ExposureModel
         return new self($include, $exclude, $base === '' ? 'actuator' : $base);
     }
 
+    /**
+     * Exclude wins over include, and `*` is a wildcard in BOTH lists.
+     *
+     * The wildcard used to be honoured only in `include`, so the documented kill-switch spelling
+     * `exposure.exclude=*` silently exposed everything `include` named instead of nothing — the exact
+     * inverse of what an operator reaching for it wants. Spring treats `*` the same way on both sides, and
+     * so does this now.
+     */
     public function isExposed(string $id): bool
     {
-        if (in_array($id, $this->exclude, true)) {
+        if (in_array('*', $this->exclude, true) || in_array($id, $this->exclude, true)) {
             return false;
         }
 
-        if (in_array('*', $this->include, true)) {
-            return true;
-        }
-
-        return in_array($id, $this->include, true);
+        return in_array('*', $this->include, true) || in_array($id, $this->include, true);
     }
 
     /**
