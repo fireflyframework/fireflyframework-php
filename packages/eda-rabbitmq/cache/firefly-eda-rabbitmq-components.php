@@ -24,6 +24,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             1 => [
                 'method' => 'connectionOpener',
@@ -33,6 +36,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Eda\\Rabbitmq\\RabbitMqConnectionFactory',
+                ],
             ],
             2 => [
                 'method' => 'subscriberRegistry',
@@ -42,6 +48,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             3 => [
                 'method' => 'eventPublisher',
@@ -51,6 +59,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Eda\\Rabbitmq\\RabbitMqConnectionFactory',
+                    2 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                ],
             ],
             4 => [
                 'method' => 'eventConsumer',
@@ -60,9 +73,15 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Eda\\Rabbitmq\\RabbitMqConnectionFactory',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqHealthIndicator',
@@ -78,5 +97,8 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Eda\\Rabbitmq\\OpensConnection',
+        ],
     ],
 ];

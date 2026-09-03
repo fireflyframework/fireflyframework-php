@@ -29,7 +29,11 @@ final class OpenApiViewerAction
     public function __invoke(): Response
     {
         return new Response(
-            $this->page->render($this->urls->to($this->properties->specPath), $this->properties->viewerCdn),
+            $this->page->render(
+                $this->urls->to($this->properties->specPath),
+                $this->properties->viewerStyle,
+                $this->urls->to($this->properties->viewerPath.'/assets'),
+            ),
             200,
             ['Content-Type' => 'text/html; charset=UTF-8'],
         );

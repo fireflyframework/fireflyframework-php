@@ -23,6 +23,19 @@ final readonly class ComponentDescriptor
         public array $interfaces,
         public array $beans,
         public bool $lazy = false,
+        /**
+         * The class types this component's constructor asks for — the edges of the bean graph.
+         *
+         * Recorded at scan time, where reflection is already sanctioned, because the alternative is
+         * reflecting at request time to answer "what depends on what", which the reflection-free boot
+         * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is configuration,
+         * not a wiring edge, and putting it in the graph would drown the edges that matter.
+         *
+         * Last, with a default, so a manifest compiled before this field existed still rehydrates.
+         *
+         * @var list<string>
+         */
+        public array $dependencies = [],
     ) {}
 
     /**
@@ -52,6 +65,7 @@ final readonly class ComponentDescriptor
             'interfaces' => $this->interfaces,
             'beans' => array_map(static fn (BeanDescriptor $b): array => $b->toArray(), $this->beans),
             'lazy' => $this->lazy,
+            'dependencies' => $this->dependencies,
         ];
     }
 
@@ -67,6 +81,7 @@ final readonly class ComponentDescriptor
      *     interfaces: list<class-string>,
      *     beans: list<array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}>,
      *     lazy?: bool,
+     *     dependencies?: list<string>,
      * } $data
      */
     public static function fromArray(array $data): self
@@ -85,6 +100,8 @@ final readonly class ComponentDescriptor
             // than fatal, so an old cached manifest on disk still loads (see ComponentScanner /
             // Firefly\Container\Attributes\Lazy).
             $data['lazy'] ?? false,
+            // Same reasoning as $lazy above: absent on a manifest cached before the bean graph shipped.
+            $data['dependencies'] ?? [],
         );
     }
 }

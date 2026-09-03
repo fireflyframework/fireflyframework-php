@@ -6,6 +6,7 @@ namespace Firefly\Admin\Web;
 
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
+use Firefly\Admin\BeanGraph;
 use Firefly\Admin\Format;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
@@ -41,7 +42,8 @@ final readonly class AdminAction
             }
         }
 
-        if ($current === null) {
+        // An excluded page is refused, not merely unlisted — see AdminSettings::allows().
+        if ($current === null || ! $this->settings->allows($slug)) {
             return $this->html($this->render('missing', ['slug' => $slug]), 404);
         }
 
@@ -65,12 +67,20 @@ final readonly class AdminAction
             'metrics' => ['metrics' => $this->metrics()],
             'http' => ['exchanges' => $this->exchanges()],
             'beans' => ['beans' => $this->listOf('beans', 'beans')],
+            'graph' => ['graph' => BeanGraph::fromCatalog($this->listOf('beans', 'beans'))],
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
-            'configprops' => ['contexts' => $this->payload('configprops')],
-            'caches' => ['caches' => $this->payload('caches')],
+            // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
+            // and caches answers {default: name|null, caches: {name => row}}.
+            'configprops' => ['beans' => $this->subArray($this->payload('configprops'), 'beans')],
+            'caches' => [
+                'stores' => $this->subArray($this->payload('caches'), 'caches'),
+                'defaultStore' => is_string($this->payload('caches')['default'] ?? null)
+                    ? $this->payload('caches')['default']
+                    : null,
+            ],
             'loggers' => $this->payload('loggers') + ['levels' => [], 'loggers' => []],
             default => [],
         };
@@ -317,7 +327,8 @@ final readonly class AdminAction
     {
         return array_values(array_filter(
             AdminPage::all(),
-            fn (AdminPage $page): bool => $page->requires === null || $this->reader->has($page->requires),
+            fn (AdminPage $page): bool => $this->settings->allows($page->slug)
+                && ($page->requires === null || $this->reader->has($page->requires)),
         ));
     }
 }

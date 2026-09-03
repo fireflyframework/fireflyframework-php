@@ -7,16 +7,23 @@ namespace Firefly\OpenApi\Web;
 /**
  * The API reference UI, as a single self-contained HTML document with NO build step and NO network access.
  *
- * WHY NOT SWAGGER UI / REDOC / ELEMENTS. Every off-the-shelf OpenAPI viewer is a bundled JavaScript
- * application, which leaves exactly two ways to ship one: vendor a multi-megabyte minified bundle into a PHP
- * package (bloating every `composer install`, and pinning the framework to a JS release train it cannot
- * audit or patch), or load it from a CDN at request time. The second is worse than it looks: an internal API
- * console that silently phones out to a third-party host on every page view is a supply-chain dependency and
- * a data-protection question, and it simply does not render in the air-gapped and locked-down-CSP
- * environments where an internal API console is most wanted. So the default viewer is hand-written, inline,
- * and dependency-free — a few hundred bytes of CSS and a single fetch of the spec route this same package
- * serves. A Swagger UI page IS available for teams that want the full feature set, behind
- * `firefly.openapi.viewer.cdn`, which defaults to FALSE and is documented as opting into a CDN request.
+ * THREE STYLES, selected by `firefly.openapi.viewer.style`:
+ *
+ *   swagger (default)  The OFFICIAL Swagger UI, served from the application's own origin out of the
+ *                      `swagger-api/swagger-ui` composer package. Byte-for-byte the distribution Swagger
+ *                      publishes — the full feature set, deep linking, try-it-out, OAuth2 — with no CDN
+ *                      request and no npm step, because composer already fetched and pinned the dist.
+ *   builtin            A hand-written, dependency-free reference: one <script>, a few hundred bytes of CSS,
+ *                      and a single fetch of the spec route. For a deployment that wants a console with no
+ *                      third-party JavaScript in it at all, and it is the automatic fallback when the
+ *                      swagger-api/swagger-ui package is not installed.
+ *   cdn                Swagger UI loaded from jsDelivr. Kept for parity with what most tutorials show, and
+ *                      documented as the only style that makes a third-party request at page view.
+ *
+ * `swagger` and `builtin` both keep the property that matters: an internal API console that phones out to a
+ * third-party host on every page view is a supply-chain dependency and a data-protection question, and it
+ * renders nothing at all in the air-gapped and locked-down-CSP environments where an internal console is
+ * most wanted.
  *
  * The page does the two things a reader actually needs from a generated spec and that raw JSON does not
  * give them: it groups operations by tag with their verbs and paths visible at a glance, and it RESOLVES
@@ -34,11 +41,70 @@ final class ViewerPage
      */
     private const string SWAGGER_UI_VERSION = '5.17.14';
 
-    public function __construct(private readonly string $title) {}
+    public function __construct(
+        private readonly string $title,
+        private readonly SwaggerAssets $assets = new SwaggerAssets,
+    ) {}
 
-    public function render(string $specUrl, bool $cdn): string
+    /**
+     * @param  string  $assetBase  where this package serves the Swagger UI files from, e.g. /openapi/assets
+     */
+    public function render(string $specUrl, string $style, string $assetBase = ''): string
     {
-        return $cdn ? $this->swaggerUi($specUrl) : $this->builtIn($specUrl);
+        return match (true) {
+            $style === 'cdn' => $this->swaggerUiFromCdn($specUrl),
+            // Falling back rather than rendering a broken page: `swagger` is the DEFAULT, so an application
+            // that has not installed swagger-api/swagger-ui would otherwise get a console referencing assets
+            // that 404. The built-in reference needs nothing and is always available.
+            $style === 'swagger' && $this->assets->available() => $this->swaggerUi($specUrl, $assetBase),
+            default => $this->builtIn($specUrl),
+        };
+    }
+
+    /** The official Swagger UI, wired to assets this package serves from the application's own origin. */
+    private function swaggerUi(string $specUrl, string $assetBase): string
+    {
+        return strtr(<<<'HTML'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noindex, nofollow">
+        <title>__TITLE__ — API reference</title>
+        <link rel="stylesheet" href="__ASSETS__/swagger-ui.css">
+        <link rel="icon" type="image/png" href="__ASSETS__/favicon-32x32.png" sizes="32x32">
+        <link rel="icon" type="image/png" href="__ASSETS__/favicon-16x16.png" sizes="16x16">
+        <style>html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;background:#fafafa}</style>
+        </head>
+        <body>
+        <div id="swagger-ui"></div>
+        <script src="__ASSETS__/swagger-ui-bundle.js"></script>
+        <script src="__ASSETS__/swagger-ui-standalone-preset.js"></script>
+        <script>
+        window.onload = function () {
+          window.ui = SwaggerUIBundle({
+            url: __SPEC_URL__,
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+            layout: 'StandaloneLayout',
+            oauth2RedirectUrl: window.location.origin + '__ASSETS__/oauth2-redirect.html',
+            tryItOutEnabled: true,
+            displayRequestDuration: true,
+            filter: true,
+            persistAuthorization: true
+          });
+        };
+        </script>
+        </body>
+        </html>
+        HTML, [
+            '__TITLE__' => $this->escape($this->title),
+            '__SPEC_URL__' => $this->json($specUrl),
+            '__ASSETS__' => $this->escape($assetBase),
+        ]);
     }
 
     private function builtIn(string $specUrl): string
@@ -477,7 +543,7 @@ final class ViewerPage
         ]);
     }
 
-    private function swaggerUi(string $specUrl): string
+    private function swaggerUiFromCdn(string $specUrl): string
     {
         $title = $this->escape($this->title);
         $url = $this->json($specUrl);

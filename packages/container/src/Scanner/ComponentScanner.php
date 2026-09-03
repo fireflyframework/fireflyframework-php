@@ -117,7 +117,43 @@ final class ComponentScanner
             interfaces: $interfaces,
             beans: $this->beansOf($reflection),
             lazy: $reflection->getAttributes(Lazy::class) !== [],
+            dependencies: $this->dependenciesOf($reflection),
         );
+    }
+
+    /**
+     * The class and interface types this component's constructor asks for — the edges of the bean graph.
+     *
+     * Scalars, builtins and untyped parameters are skipped: those are configuration, not wiring, and putting
+     * them in the graph would bury the edges that matter under `string $name` noise. A nullable or defaulted
+     * class parameter IS kept, because an optional collaborator is still a relationship.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @return list<string>
+     */
+    private function dependenciesOf(ReflectionClass $reflection): array
+    {
+        $constructor = $reflection->getConstructor();
+
+        return $constructor === null ? [] : $this->parameterTypes($constructor);
+    }
+
+    /**
+     * The class and interface types a callable asks for, in declaration order and de-duplicated.
+     *
+     * @return list<string>
+     */
+    private function parameterTypes(ReflectionMethod $method): array
+    {
+        $types = [];
+        foreach ($method->getParameters() as $parameter) {
+            $type = $parameter->getType();
+            if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
+                $types[] = $type->getName();
+            }
+        }
+
+        return array_values(array_unique($types));
     }
 
     /**
@@ -170,6 +206,7 @@ final class ComponentScanner
                 primary: $method->getAttributes(Primary::class) !== [],
                 order: $this->orderOf($method->getAttributes(Order::class)),
                 lazy: $method->getAttributes(Lazy::class) !== [],
+                dependencies: $this->parameterTypes($method),
             );
         }
 

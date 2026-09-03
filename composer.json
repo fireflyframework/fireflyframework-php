@@ -23,7 +23,8 @@
         "firefly/scheduling-postgres": "*@dev",
         "firefly/security": "*@dev",
         "firefly/validation": "*@dev",
-        "firefly/web": "*@dev"
+        "firefly/web": "*@dev",
+        "swagger-api/swagger-ui": "^5.17"
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
@@ -109,7 +110,7 @@
         "pint": "pint",
         "pint-test": "pint --test",
         "stan": "phpstan analyse --no-progress --memory-limit=1G",
-        "test": "pest",
+        "test": "@php -d memory_limit=512M vendor/bin/pest",
         "deptrac": "deptrac analyse --no-progress --config-file=deptrac.yaml",
         "mono-validate": "monorepo-builder validate",
         "check": [

@@ -24,6 +24,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Cache\\Repository',
+                    1 => 'Firefly\\Config\\Config',
+                ],
             ],
             1 => [
                 'method' => 'resilienceRegistry',
@@ -33,8 +37,14 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Resilience\\Store\\ResilienceStore',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

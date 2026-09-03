@@ -24,6 +24,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             1 => [
                 'method' => 'constraintSchemaMapper',
@@ -33,6 +36,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             2 => [
                 'method' => 'dtoSchemaFactory',
@@ -42,6 +47,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Validation\\Constraint\\ConstraintManifest',
+                    1 => 'Firefly\\OpenApi\\Schema\\ConstraintSchemaMapper',
+                ],
             ],
             3 => [
                 'method' => 'operationFactory',
@@ -51,6 +60,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\OpenApi\\Schema\\DtoSchemaFactory',
+                ],
             ],
             4 => [
                 'method' => 'openApiGenerator',
@@ -60,6 +72,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Web\\Route\\RouteManifest',
+                    1 => 'Firefly\\OpenApi\\OpenApiProperties',
+                    2 => 'Firefly\\OpenApi\\Generator\\OperationFactory',
+                ],
             ],
             5 => [
                 'method' => 'viewerPage',
@@ -69,8 +86,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\OpenApi\\OpenApiProperties',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

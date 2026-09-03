@@ -19,6 +19,11 @@ labels:
 # (Capítulos 7-10: CQRS, EDA/outbox, transacciones, seguridad). Tarea B5: Parte IV
 # añadida (Capítulos 11-13: observabilidad, pruebas, CLI/caché) + Apéndices
 # (Apéndice A + Glosario). Esto completa el alcance de ~13 capítulos del libro.
+# Tarea B6: firefly/openapi añadido como Capítulo 4A, justo después del capítulo HTTP sobre el
+# que se apoya. El orden de los capítulos sale de ESTA lista, no de los nombres de fichero, y
+# `num` es una etiqueta libre (el Apéndice A ya lo demuestra), así que intercalar un capítulo
+# aquí no exige renumerar los nueve siguientes — y renumerarlos habría invalidado cada
+# referencia cruzada "Capítulo N" de ambos manuscritos y de book/README.md.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -35,6 +40,7 @@ parts:
       - {id: ch02, file: 02-dependency-injection.md, num: 2, title: "Inyección de Dependencias y Auto-Configuración"}
       - {id: ch03, file: 03-configuration.md, num: 3, title: "Configuración, Perfiles y Secretos"}
       - {id: ch04, file: 04-first-http-api.md, num: 4, title: "Tu Primera API HTTP"}
+      - {id: ch04a, file: 04a-openapi.md, num: "4A", title: "Documentar la API: OpenAPI 3.1 desde los Manifiestos"}
   - title: "Parte II — Modelar y Persistir el Dominio"
     chapters:
       - {id: ch05, file: 05-persistence-repositories.md, num: 5, title: "Persistencia y el Patrón Repositorio"}

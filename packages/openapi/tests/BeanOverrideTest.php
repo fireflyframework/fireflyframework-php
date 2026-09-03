@@ -26,5 +26,5 @@ it('lets an application #[Bean] of the same type win over the framework default'
 
     // The whole override contract: every collaborator is a #[Bean] behind #[ConditionalOnMissingBean], so
     // replacing one is a five-line #[Configuration] in the app and needs no fork of the package.
-    expect($page->render('/openapi.json', cdn: false))->toContain('Corporate Console');
+    expect($page->render('/openapi.json', 'builtin'))->toContain('Corporate Console');
 });

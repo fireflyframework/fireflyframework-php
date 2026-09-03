@@ -49,6 +49,8 @@ final readonly class AdminPage
 
             new self('beans', 'Beans', 'beans', self::GROUP_WIRING,
                 'Every bean the container registered, with the stereotype that declared it.'),
+            new self('graph', 'Bean graph', 'beans', self::GROUP_WIRING,
+                'How your beans depend on one another, resolved through the interfaces they are wired by.'),
             new self('conditions', 'Conditions', 'conditions', self::GROUP_WIRING,
                 'Which auto-configurations applied, and which backed off because you supplied your own.'),
             new self('mappings', 'Routes', 'mappings', self::GROUP_WIRING,

@@ -86,6 +86,18 @@ final class ActuatorRouteRegistrar implements BootPass
                 'name' => $descriptor->name,
                 'interfaces' => $descriptor->interfaces,
                 'beans' => array_map(static fn ($bean): string => $bean->method, $descriptor->beans),
+                // A #[Configuration]'s own edges are the union of its constructor's and every #[Bean]
+                // factory method's parameters: that is where a framework's wiring actually lives, and a
+                // graph built from constructors alone draws almost nothing.
+                'produces' => array_map(static fn ($bean): array => [
+                    'type' => $bean->returns,
+                    'method' => $bean->method,
+                    'dependencies' => $bean->dependencies,
+                ], $descriptor->beans),
+                // The bean graph's edges. Recorded by ComponentScanner at scan time — answering "what
+                // depends on what" by reflecting at request time would break the reflection-free boot
+                // contract, so the wiring is compiled like everything else.
+                'dependencies' => $descriptor->dependencies,
             ];
         }
 

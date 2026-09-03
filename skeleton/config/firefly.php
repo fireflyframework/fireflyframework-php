@@ -347,6 +347,17 @@ return [
             // 'build' => [
             //     'path' => base_path('firefly-build.json'),
             // ],
+
+            /*
+             | The `runtime` fragment of /actuator/info — PHP version/SAPI/OPcache, Laravel version, LaraFly
+             | version, current and peak memory. Gated by #[ConditionalOnProperty(matchIfMissing: true)], so
+             | leaving it unset keeps the contributor; setting it false removes the BEAN, not just the output.
+             |
+             | Default: true.
+            */
+            // 'runtime' => [
+            //     'enabled' => false,
+            // ],
         ],
     ],
 
@@ -372,6 +383,108 @@ return [
     //     'enabled' => env('FIREFLY_ADMIN_ENABLED', false),
     //     'base-path' => '/firefly',
     //     'title' => env('APP_NAME', 'LaraFly'),
+    // ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | API documentation — firefly/openapi
+    |--------------------------------------------------------------------------
+    |
+    | The OpenAPI 3.1 document is generated from the same compiled artifacts the dispatcher and the
+    | validator read — RouteManifest for paths/operations/parameters, ConstraintManifest for request-body
+    | schemas — so there is no annotation dialect and nothing that can drift. `php artisan firefly:openapi`
+    | writes the same document to a file or to stdout.
+    |
+    | Both routes are mounted natively on the illuminate Router from a BootPass, which is what makes their
+    | paths configurable at all: an attribute route bakes its literal into a compiled RouteDescriptor. It is
+    | also why this package's own routes never appear in the document it generates.
+    |
+    | SECURING IT. The whole surface is ordinary routes, so `firefly.security.http.rules` above covers it
+    | with no code edge. A deployment that wants no documentation surface in production sets `enabled` to
+    | false — which leaves both paths genuinely unrouted, not merely blank — and generates the document in
+    | CI with `firefly:openapi --output=` instead.
+    |
+    | Defaults: enabled true, path '/openapi.json', viewer.enabled true, viewer.path '/openapi',
+    | viewer.style 'swagger', title 'API', version '0.0.0', description '', servers [], exclude '',
+    | include-html false.
+    |
+    */
+
+    // 'openapi' => [
+    //     'enabled' => true,
+    //     'path' => '/openapi.json',
+    //
+    //     'viewer' => [
+    //         'enabled' => true,
+    //         'path' => '/openapi',
+    //
+    //         /*
+    //          | Which console /openapi renders. Three values, and only one of them makes a third-party
+    //          | request:
+    //          |
+    //          |   'swagger' — the DEFAULT. The official Swagger UI, served from THIS application's own
+    //          |               origin out of the swagger-api/swagger-ui composer package (a hard dependency
+    //          |               of firefly/openapi, so it is already on disk). Byte-for-byte the distribution
+    //          |               Swagger publishes — try-it-out, deep linking, OAuth2 — with no CDN request and
+    //          |               no npm step. Falls back to 'builtin' if the dist is somehow missing, rather
+    //          |               than rendering a page whose assets 404.
+    //          |   'builtin' — a hand-written, dependency-free reference: one inline script, no third-party
+    //          |               JavaScript at all. Groups operations by tag and resolves $ref client-side.
+    //          |   'cdn'     — Swagger UI fetched from cdn.jsdelivr.net at an exactly pinned version. The
+    //          |               ONLY style that makes a network request at page view, and therefore the only
+    //          |               one that renders nothing in an air-gapped or strict-CSP deployment. No
+    //          |               Subresource Integrity hash is claimed: one the framework cannot verify at
+    //          |               release time would be security theatre.
+    //          |
+    //          | Anything unrecognised falls back to 'swagger' rather than rendering a blank page.
+    //          |
+    //          | Default: 'swagger'.
+    //         */
+    //         'style' => 'swagger',
+    //
+    //         /*
+    //          | The older spelling of `style => 'cdn'`, kept so an application that set it before `style`
+    //          | existed keeps the behaviour it configured. `cdn => true` still FORCES the CDN page and wins
+    //          | over `style`; prefer `style` in new configuration.
+    //          |
+    //          | Default: false.
+    //         */
+    //         // 'cdn' => false,
+    //     ],
+    //
+    //     // Info Object members, written verbatim into the document.
+    //     'title' => env('APP_NAME', 'API'),
+    //     'version' => '1.0.0',
+    //     'description' => '',
+    //
+    //     /*
+    //      | Server Objects. Both spellings a real config file uses are accepted — a bare URL string, and
+    //      | OpenAPI's own object form with a `description`. An entry that is neither is DROPPED rather than
+    //      | emitted, because a Server Object with no `url` is invalid under the 3.1 schema.
+    //      |
+    //      | Default: [].
+    //     */
+    //     'servers' => [
+    //         'https://api.example.test',
+    //         // ['url' => 'https://staging.example.test', 'description' => 'Staging'],
+    //     ],
+    //
+    //     /*
+    //      | CSV of path prefixes left out of the document. Note this only removes them from the SPEC — it
+    //      | does not unroute them; that is what firefly.security.http.rules is for.
+    //      |
+    //      | Default: ''.
+    //     */
+    //     'exclude' => '/internal,/admin',
+    //
+    //     /*
+    //      | Document #[Controller] HTML routes as `text/html` operations. Off by default: an HTML page is
+    //      | not part of a JSON API's contract, and a typed client generated from a document containing one
+    //      | gets a method that returns markup.
+    //      |
+    //      | Default: false.
+    //     */
+    //     'include-html' => false,
     // ],
 
     /*
@@ -413,6 +526,79 @@ return [
              | Default: 0 (no expiry).
             */
             'ttl' => (int) env('FIREFLY_METRICS_TTL', 0),
+        ],
+
+        /*
+         | The rolling buffer behind /actuator/httpexchanges (and the request counter in /actuator/process)
+         | — the last N requests this application answered, newest first.
+         |
+         | A SEPARATE SWITCH FROM METRICS, deliberately: metrics aggregate, this retains individual
+         | requests. An operator happy to publish latency histograms may still want no per-request record
+         | kept anywhere, and has to be able to say so without losing metrics.
+        */
+        'httpexchanges' => [
+
+            /*
+             | Gates the RECORDING FILTER, not the endpoints — /actuator/httpexchanges and /actuator/process
+             | stay mounted either way and answer `"recording": false`, because two 404s that explain
+             | nothing is the opposite of what an operator staring at an empty panel needs.
+             |
+             | Compared as a string by #[ConditionalOnProperty], so `1`/`'on'`/`'yes'` read as OFF. Use a
+             | boolean literal.
+             |
+             | Default: true (matchIfMissing).
+            */
+            'enabled' => true,
+
+            /*
+             | Ring size, clamped to [1, 10000]. Both ends of the clamp are load-bearing: 0 would divide by
+             | zero inside the cache-backed recorder (a config typo that 500s every request), and capacity
+             | is the number of cache keys fetched per endpoint call, so a very large value builds an
+             | endpoint that times out.
+             |
+             | Default: 100.
+            */
+            'capacity' => 100,
+
+            /*
+             | Naming a CACHE STORE swaps InMemoryHttpExchangeRecorder for CacheHttpExchangeRecorder. This
+             | matters more here than it does for metrics: under PHP-FPM the in-memory ring is not merely
+             | stale but always EMPTY — each request is a fresh process, and the request rendering the
+             | endpoint has not been recorded yet, because the filter records on the way out.
+             |
+             | Default: '' (process-local InMemoryHttpExchangeRecorder).
+            */
+            'store' => env('FIREFLY_HTTPEXCHANGES_STORE', ''),
+
+            /*
+             | Expiry in seconds for each cache-backed row. Only consulted when `store` is set; 0 or less
+             | means no expiry.
+             |
+             | Default: 0 (no expiry).
+            */
+            'ttl' => (int) env('FIREFLY_HTTPEXCHANGES_TTL', 0),
+
+            /*
+             | Add masked request headers to each row. Request and response BODIES are never recorded, with
+             | or without this.
+             |
+             | Default: false.
+            */
+            'include-headers' => false,
+
+            /*
+             | Glob patterns whose requests are recorded by nobody. Setting this REPLACES the default rather
+             | than adding to it, and an empty list means "record everything, management traffic included".
+             |
+             | The default is the management base path and everything under it, because a dashboard is a
+             | polling client: left in, a panel refreshing /actuator/httpexchanges would evict every genuine
+             | request from a 100-row ring and then show the operator nothing but their own polling.
+             | Running firefly/admin? Add its base path here for exactly the same reason — the framework
+             | does not reach into another package's key to guess at its mount point.
+             |
+             | Default: the value of management.endpoints.web.base-path, plus that path with `/*`.
+            */
+            // 'exclude' => ['actuator', 'actuator/*', 'firefly', 'firefly/*'],
         ],
     ],
 

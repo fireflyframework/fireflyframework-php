@@ -24,6 +24,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             1 => [
                 'method' => 'correlationContext',
@@ -33,6 +35,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             2 => [
                 'method' => 'messageValidator',
@@ -42,6 +46,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                ],
             ],
             3 => [
                 'method' => 'commandAuthorizer',
@@ -51,6 +58,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             4 => [
                 'method' => 'queryAuthorizer',
@@ -60,6 +69,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             5 => [
                 'method' => 'cqrsMetrics',
@@ -69,6 +80,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             6 => [
                 'method' => 'queryCache',
@@ -78,6 +91,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             7 => [
                 'method' => 'commandEventPublisher',
@@ -87,6 +102,12 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                    2 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
+                    3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
+                ],
             ],
             8 => [
                 'method' => 'domainEventBridge',
@@ -96,6 +117,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Cqrs\\Event\\CommandEventPublisher',
+                    1 => 'Firefly\\Config\\Config',
+                    2 => 'Illuminate\\Container\\Container',
+                ],
             ],
             9 => [
                 'method' => 'commandBus',
@@ -105,6 +131,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Cqrs\\Handler\\HandlerRegistry',
+                    1 => 'Firefly\\Cqrs\\Validation\\MessageValidator',
+                    2 => 'Firefly\\Cqrs\\Security\\CommandAuthorizer',
+                    3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
+                    4 => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
+                ],
             ],
             10 => [
                 'method' => 'queryBus',
@@ -114,8 +147,19 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Cqrs\\Handler\\HandlerRegistry',
+                    1 => 'Firefly\\Cqrs\\Validation\\MessageValidator',
+                    2 => 'Firefly\\Cqrs\\Security\\QueryAuthorizer',
+                    3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
+                    4 => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
+                    5 => 'Firefly\\Cqrs\\Cache\\QueryCache',
+                    6 => 'Firefly\\Config\\Config',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

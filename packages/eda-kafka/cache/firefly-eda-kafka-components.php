@@ -24,6 +24,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             1 => [
                 'method' => 'eventPublisher',
@@ -33,6 +35,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                ],
             ],
             2 => [
                 'method' => 'eventConsumer',
@@ -42,9 +48,14 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Eda\\Kafka\\KafkaHealthIndicator',
@@ -60,5 +71,7 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

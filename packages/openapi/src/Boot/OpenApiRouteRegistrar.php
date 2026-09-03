@@ -10,6 +10,7 @@ use Firefly\Context\Boot\BootPhase;
 use Firefly\OpenApi\OpenApiProperties;
 use Firefly\OpenApi\Web\OpenApiSpecAction;
 use Firefly\OpenApi\Web\OpenApiViewerAction;
+use Firefly\OpenApi\Web\SwaggerAssetAction;
 use Illuminate\Routing\Router;
 
 /**
@@ -72,5 +73,13 @@ final class OpenApiRouteRegistrar implements BootPass
 
         $router->get($properties->viewerPath, static fn (): mixed => $container->make(OpenApiViewerAction::class)())
             ->name('firefly.openapi.viewer');
+
+        // The official Swagger UI files, served from this application's own origin rather than a CDN. Mounted
+        // under the viewer path so moving the console moves its assets with it, and constrained to a single
+        // path segment so the route cannot express a traversal in the first place — SwaggerAssets whitelists
+        // and realpath-checks the name as well.
+        $router->get($properties->viewerPath.'/assets/{file}', static fn (string $file): mixed => $container->make(SwaggerAssetAction::class)($file))
+            ->where('file', '[A-Za-z0-9._-]+')
+            ->name('firefly.openapi.assets');
     }
 }

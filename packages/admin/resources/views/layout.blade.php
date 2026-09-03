@@ -10,7 +10,7 @@
     eye. The brand appears once, as the dot in the wordmark.
 --}}
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="{{ $settings->theme }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -278,6 +278,20 @@
         }
         .act:hover{border-color:var(--accent);color:var(--accent)}
 
+        /* ── bean graph ──────────────────────────────────────────────────── */
+        .canvas{overflow:auto;padding:14px;background:var(--panel-2);max-height:70vh}
+        .canvas svg{display:block;margin-inline:auto}
+        .edges .edge{fill:none;stroke:var(--line-2);stroke-width:1.4;color:var(--line-2);transition:stroke .12s,opacity .12s}
+        .edges .edge.via{stroke-dasharray:4 3}
+        .edges .edge.lit{stroke:var(--accent);color:var(--accent);stroke-width:2}
+        .edges .edge.dimmed{opacity:.15}
+        .nodes .node rect{fill:var(--panel);stroke:var(--line-2);stroke-width:1.2;transition:stroke .12s,fill .12s}
+        .nodes .node text{font-family:var(--mono);font-size:11.5px;fill:var(--ink);pointer-events:none}
+        .nodes .node text.sub{font-size:10px;fill:var(--ink-3)}
+        .nodes .node{cursor:pointer}
+        .nodes .node:hover rect,.nodes .node.lit rect{stroke:var(--accent);fill:var(--accent-soft)}
+        .nodes .node.dimmed{opacity:.25}
+
         [hidden]{display:none!important}
     </style>
 </head>
@@ -348,8 +362,10 @@
             try { localStorage.removeItem('firefly-admin-refresh'); } catch (e) { /* private mode */ }
         }
 
+        var INTERVAL = {{ $settings->refreshSeconds }};
+
         function start() {
-            left = 10;
+            left = INTERVAL;
             tick.textContent = left + 's';
             button.setAttribute('aria-pressed', 'true');
             try { localStorage.setItem('firefly-admin-refresh', '1'); } catch (e) { /* private mode */ }
@@ -380,6 +396,75 @@
                 if (out) { out.textContent = shown + ' of ' + body.rows.length; }
             });
         });
+
+        // Bean graph: hovering or clicking a node lights its edges and both endpoints, and dims everything
+        // else. Reading a dependency diagram is asking "what touches THIS", and a static picture cannot
+        // answer that once there is more than a handful of nodes.
+        (function () {
+            var svg = document.querySelector('.canvas svg');
+            if (!svg) { return; }
+
+            var nodes = svg.querySelectorAll('.node');
+            var edges = svg.querySelectorAll('.edge');
+
+            function clear() {
+                nodes.forEach(function (n) { n.classList.remove('lit', 'dimmed'); });
+                edges.forEach(function (e) { e.classList.remove('lit', 'dimmed'); });
+            }
+
+            function focus(id) {
+                var touched = {};
+                touched[id] = true;
+                edges.forEach(function (edge) {
+                    var from = edge.getAttribute('data-from'), to = edge.getAttribute('data-to');
+                    if (from === id || to === id) {
+                        edge.classList.add('lit');
+                        edge.classList.remove('dimmed');
+                        touched[from] = true;
+                        touched[to] = true;
+                    } else {
+                        edge.classList.add('dimmed');
+                        edge.classList.remove('lit');
+                    }
+                });
+                nodes.forEach(function (node) {
+                    var hit = touched[node.getAttribute('data-id')];
+                    node.classList.toggle('lit', !!hit);
+                    node.classList.toggle('dimmed', !hit);
+                });
+            }
+
+            var pinned = null;
+            nodes.forEach(function (node) {
+                var id = node.getAttribute('data-id');
+                node.addEventListener('mouseenter', function () { if (!pinned) { focus(id); } });
+                node.addEventListener('mouseleave', function () { if (!pinned) { clear(); } });
+                node.addEventListener('click', function () {
+                    pinned = pinned === id ? null : id;
+                    pinned ? focus(pinned) : clear();
+                });
+            });
+            svg.addEventListener('click', function (event) {
+                if (event.target === svg) { pinned = null; clear(); }
+            });
+
+            // The graph filter highlights rather than hides: removing a node would silently remove its
+            // edges too, and an edge to something you cannot see is worse than no filter at all.
+            var find = document.querySelector('[data-filter="graph-body"]');
+            if (find) {
+                find.addEventListener('input', function () {
+                    var needle = find.value.toLowerCase();
+                    pinned = null;
+                    if (needle === '') { clear(); return; }
+                    nodes.forEach(function (node) {
+                        var hit = (node.getAttribute('data-search') || '').indexOf(needle) !== -1;
+                        node.classList.toggle('lit', hit);
+                        node.classList.toggle('dimmed', !hit);
+                    });
+                    edges.forEach(function (e) { e.classList.add('dimmed'); e.classList.remove('lit'); });
+                });
+            }
+        })();
 
         // "/" focuses the first filter on the page — the shortcut every log and table UI uses.
         document.addEventListener('keydown', function (event) {

@@ -133,6 +133,33 @@ flip the one flag, and the `MeterRegistry` bean, the CqrsMetrics winner, and eve
 adapter can drop in at SP-7 with zero call-site changes — the same "port now, adapter later" shape as the CqrsMetrics
 seam above.
 
+## HTTP exchanges and the process endpoint
+
+`/actuator/httpexchanges` serves the last N requests this application answered, newest first, and
+`/actuator/process` serves the live process numbers (pid, uptime, PHP version/SAPI, memory, OPcache) beside the
+request counter the same recorder already keeps. Neither is in the secure-by-default exposure list
+(`health,info`), so reaching either over HTTP means naming it in
+`firefly.management.endpoints.web.exposure.include`.
+
+Recording is done by `HttpExchangeFilter` — a `#[Component]` `WebFilter` discovered by web's
+`FilterChainRegistrar`, `#[Order(-100)]`, `#[Lazy]`, gated on its **own**
+`firefly.observability.httpexchanges.enabled` rather than on the metrics flag. Each row carries
+`timestamp`/`method`/`uri`/`status`/`durationMs`/`correlationId`; `uri` is the **route template** where a route
+matched, and otherwise the raw path with the query string dropped, capped at 256 characters. **No request or
+response body is ever retained, and there is no flag to enable one.** Headers are off by default; switching
+`include-headers` on adds a `requestHeaders` object whose credential-bearing entries (`authorization`, `cookie`,
+`proxy-authorization`, anything matching `password|secret|token|key|credential|passwd|authenticate`) are replaced
+with `******` by `HeaderMasker`.
+
+`HttpExchangeRecorder` is a port with the same two implementations, and the same reason for them, as
+`MeterRegistry`: `InMemoryHttpExchangeRecorder` (default, correct only on a long-lived worker) and
+`CacheHttpExchangeRecorder`. Under PHP-FPM the in-memory buffer is not merely stale but always **empty** — each
+request is a fresh process, and the request rendering the endpoint has not been recorded yet because the filter
+records on the way out. The payload therefore reports `storage` (`memory` or `cache:<store>`), `processLocal`,
+`recording`, `capacity`, `recorded` (monotonic, so `recorded - count` is what the ring has evicted) and `count`,
+so an empty list can be told apart from a broken one. `?limit=N` trims the list; a malformed limit is ignored
+rather than answered with a `400`.
+
 ## Configuration (`firefly.observability.*`, kebab-case)
 
 | Key | Default | Meaning |
@@ -140,6 +167,12 @@ seam above.
 | `firefly.observability.metrics.enabled` | `true` | Master gate. Binds `MeterRegistry`/`MetricsRecorder`/`PrometheusTextFormat`/the real `CqrsMetrics`, and survives on the endpoints + `MetricsFilter`. Disabled → `NoOpMetricsRecorder`, the M10 `NoOpCqrsMetrics` stays bound, no `MeterRegistry`, `/prometheus`+`/metrics` unmounted. |
 | `firefly.observability.metrics.store` | `''` | Names a **cache store**. Empty (or no `cache` binding) → the in-process `SimpleMeterRegistry`; a store name → `CacheMeterRegistry` over `cache()->store($name)`, keyed under `firefly:metrics:`. |
 | `firefly.observability.metrics.ttl` | `0` | Expiry in seconds for each cache-backed meter. `0` or less means no expiry. Only consulted when `store` is set. |
+| `firefly.observability.httpexchanges.enabled` | `true` | Gates `HttpExchangeFilter` — i.e. whether anything is recorded. Compared as the literal string `true` by `#[ConditionalOnProperty]`, so `1`/`on`/`yes` count as OFF. The endpoints stay mounted either way and report `"recording": false`. Independent of the metrics gate. |
+| `firefly.observability.httpexchanges.capacity` | `100` | Ring size, clamped to `[1, 10000]`. |
+| `firefly.observability.httpexchanges.store` | `''` | Names a **cache store**. Empty (or no `cache` binding) → the process-local `InMemoryHttpExchangeRecorder`; a store name → `CacheHttpExchangeRecorder` over `cache()->store($name)`, keyed under `firefly:httpexchanges:`, which is what makes the buffer non-empty under PHP-FPM. |
+| `firefly.observability.httpexchanges.ttl` | `0` | Expiry in seconds for each cache-backed row. `0` or less means no expiry. Only consulted when `store` is set. |
+| `firefly.observability.httpexchanges.include-headers` | `false` | Adds masked request headers to each row. Bodies are never recorded, with or without this. |
+| `firefly.observability.httpexchanges.exclude` | `[<management base path>, <management base path>/*]` | Glob patterns whose requests are not recorded. The default keeps a polling dashboard from evicting real traffic from its own ring; setting it **replaces** the default rather than adding to it. |
 | `firefly.resilience.circuit-breaker.*` | _(unset)_ | Read by `MeterBindingsPass` (not owned by this package) — one named instance here gets one `resilience_circuit_breaker_state{name}` gauge. |
 
 ## Laravel comparison

@@ -40,6 +40,9 @@ final readonly class OpenApiProperties
         public array $servers,
         public array $excludePathPrefixes,
         public bool $includeHtml = false,
+        // Last, with a default, so every existing positional construction — the fixtures and an
+        // application's own override bean — keeps compiling. `swagger` is the out-of-the-box console.
+        public string $viewerStyle = 'swagger',
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -56,6 +59,11 @@ final readonly class OpenApiProperties
             servers: self::servers($config),
             excludePathPrefixes: self::csv($config->string('firefly.openapi.exclude', '')),
             includeHtml: $config->bool('firefly.openapi.include-html', false),
+            // `style` is the real switch; `cdn: true` is the older spelling and still forces the CDN page, so
+            // an application that set it before this option existed keeps the behaviour it configured.
+            viewerStyle: $config->bool('firefly.openapi.viewer.cdn', false)
+                ? 'cdn'
+                : self::style($config->string('firefly.openapi.viewer.style', 'swagger')),
         );
     }
 
@@ -64,6 +72,14 @@ final readonly class OpenApiProperties
      * itself (Route::__construct -> uri = trim($uri, '/')) and a `/`-prefixed literal would otherwise make
      * every generated link in the viewer disagree with the route it points at by one character.
      */
+    /** Anything unrecognised falls back to the default rather than rendering a blank page. */
+    private static function style(string $configured): string
+    {
+        $style = strtolower(trim($configured));
+
+        return in_array($style, ['swagger', 'builtin', 'cdn'], true) ? $style : 'swagger';
+    }
+
     private static function path(string $configured, string $fallback): string
     {
         $trimmed = trim($configured, '/');

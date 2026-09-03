@@ -68,6 +68,27 @@ it('masks sensitive values in /env', function () {
         ->and($flat)->toContain('******');
 });
 
+// The audit finding, pinned on /env as well as /configprops: the original mask() tested the key ONLY on the
+// scalar branch, so a sensitive key holding an ARRAY was recursed into and each leaf judged on its own
+// harmless name. A JWT keyring under `firefly.security.jwt.keys` therefore rendered every private key in
+// full — and a keyring, a credentials pair or a per-tenant token map is what a real secret actually looks
+// like, so the bypass covered the cases that mattered most.
+it('masks a sensitive /env key whose value is an array, leaking neither values nor shape', function () {
+    $repository = new Repository(['firefly' => ['security' => ['jwt' => [
+        'keys' => ['active' => 'PRIVATE-A', 'previous' => 'PRIVATE-B'],
+        'issuer' => 'https://auth.local',
+    ]]]]);
+
+    $body = (new EnvEndpoint($repository))->handle(new EndpointRequest('GET', []))->body;
+
+    $flat = json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    expect($flat)->not->toContain('PRIVATE-A')
+        ->and($flat)->not->toContain('PRIVATE-B')
+        ->and($flat)->not->toContain('active')
+        ->and($flat)->toContain('https://auth.local')
+        ->and($flat)->toContain('******');
+});
+
 it('lists beans from the boot-time catalog', function () {
     $catalog = new BeansCatalog([
         ['class' => 'App\\Foo', 'stereotype' => 'service', 'scope' => 'Singleton', 'name' => null, 'interfaces' => ['App\\FooPort'], 'beans' => []],

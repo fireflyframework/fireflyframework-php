@@ -16,6 +16,7 @@ use Firefly\Testing\FireflyTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
+use Illuminate\Routing\Router;
 
 /**
  * Boots actuator + observability over a real Web layer so /actuator/prometheus scrapes through the HTTP kernel.
@@ -62,11 +63,42 @@ abstract class ObservabilityCapstoneTestCase extends FireflyTestCase
         return [
             'cache.default' => 'array',
             'firefly.management.enabled' => true,
-            'firefly.management.endpoints.web.exposure.include' => 'health,info,prometheus,metrics',
+            'firefly.management.endpoints.web.exposure.include' => 'health,info,prometheus,metrics,httpexchanges,process',
             'firefly.management.endpoint.health.db.enabled' => false,
             'firefly.observability.metrics.enabled' => $this->metricsEnabled(),
+            'firefly.observability.httpexchanges.enabled' => $this->httpExchangesEnabled(),
             'firefly.resilience.circuit-breaker.demo' => ['failure-threshold' => 1],
         ];
+    }
+
+    /**
+     * The http-exchanges gate, a SEPARATE template method from metricsEnabled() because the two features have
+     * separate switches on purpose: metrics aggregate, http exchanges retain individual requests, and an
+     * operator must be able to refuse the second without losing the first. Same boot-time constraint as
+     * metricsEnabled() — firefly.observability.httpexchanges.enabled is read by HttpExchangeFilter's
+     * #[ConditionalOnProperty] during condition filtering, so proving "the filter is not registered when the
+     * flag is off" needs its own boot; flipping it in a test body cannot un-push middleware already on the
+     * kernel.
+     */
+    protected function httpExchangesEnabled(): bool
+    {
+        return true;
+    }
+
+    /**
+     * A single ordinary application route, so the capstone can prove the recording path end to end: a real
+     * request through the real HTTP kernel, recorded by the discovered HttpExchangeFilter, read back out of
+     * /actuator/httpexchanges. It is templated ('/demo/{id}') because the whole point of the uri field is that
+     * it carries the ROUTE TEMPLATE and not the concrete path.
+     *
+     * The parameter stays untyped: Testbench's HandlesRoutes::defineRoutes() declares it untyped, and narrowing
+     * a parameter in an override is an LSP violation PHP rejects outright.
+     *
+     * @param  Router  $router
+     */
+    protected function defineRoutes($router): void
+    {
+        $router->get('/demo/{id}', static fn (string $id): string => 'demo-'.$id);
     }
 
     /**

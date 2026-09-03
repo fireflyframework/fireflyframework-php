@@ -24,6 +24,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             1 => [
                 'method' => 'domainEventDispatcher',
@@ -33,6 +35,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Data\\Domain\\AggregateTracker',
+                    1 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                ],
             ],
             2 => [
                 'method' => 'transactionTemplate',
@@ -42,6 +48,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
+                ],
             ],
             3 => [
                 'method' => 'transactionInterceptor',
@@ -51,6 +60,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Data\\Transaction\\TransactionTemplate',
+                ],
             ],
             4 => [
                 'method' => 'transactionalManifest',
@@ -60,6 +72,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                ],
             ],
             5 => [
                 'method' => 'proxyFactory',
@@ -69,9 +84,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Data\\Transaction\\TransactionalBeanPostProcessor',
@@ -87,5 +106,10 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Data\\Transaction\\TransactionalManifest',
+            1 => 'Firefly\\Data\\Proxy\\ProxyFactory',
+            2 => 'Firefly\\Data\\Transaction\\TransactionInterceptor',
+        ],
     ],
 ];

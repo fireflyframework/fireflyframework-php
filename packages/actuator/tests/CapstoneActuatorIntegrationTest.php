@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Actuator\Tests\Support\ActuatorCapstoneTestCase;
+use Firefly\Kernel\Version;
 
 uses(ActuatorCapstoneTestCase::class);
 
@@ -34,13 +35,21 @@ it('404s an unexposed sensitive endpoint (secure-by-default)', function () {
 // #[Bean] captured ONCE at boot, so a post-boot config()->set() here (the brief's literal draft) never reaches
 // the already-resolved instance. Fixed test, not production code — see ActuatorCapstoneTestCase::exposureInclude().
 
-// An endpoint body is a JSON OBJECT by contract, but PHP encodes the empty array as `[]`. /actuator/info
-// with no InfoContributor therefore answered `[]` — an array where every client, and every other response
-// from the same endpoint, expects an object, which breaks a typed client deserialising into a map.
-it('renders an empty endpoint body as {} rather than []', function () {
+// /actuator/info used to answer `{}` on a skeleton — a 200 with nothing in it, which the admin dashboard
+// could only render as an apology telling the operator to configure something. RuntimeInfoContributor is
+// registered by default now, so the endpoint says what is actually running WITHOUT the application having
+// authored firefly.management.info.app.* or shipped a firefly-build.json. The `{}`-not-`[]` rendering rule
+// that used to be asserted here still is, over a boot that deliberately switches the contributor off:
+// CapstoneActuatorEmptyInfoTest.
+it('serves runtime facts at /actuator/info with no application configuration', function () {
     /** @var ActuatorCapstoneTestCase $this */
-    $response = $this->get('/actuator/info');
-
-    $response->assertStatus(200);
-    expect($response->getContent())->toBe('{}');
+    $this->getJson('/actuator/info')
+        ->assertStatus(200)
+        ->assertJsonPath('runtime.php.version', PHP_VERSION)
+        ->assertJsonPath('runtime.php.sapi', PHP_SAPI)
+        ->assertJsonPath('runtime.firefly.version', Version::VERSION)
+        ->assertJsonPath('runtime.php.opcache', fn (mixed $v): bool => is_bool($v))
+        ->assertJsonPath('runtime.laravel.version', fn (mixed $v): bool => is_string($v) && $v !== '')
+        ->assertJsonPath('runtime.memory.used', fn (mixed $v): bool => is_int($v) && $v > 0)
+        ->assertJsonPath('runtime.memory.peak', fn (mixed $v): bool => is_int($v) && $v > 0);
 });
