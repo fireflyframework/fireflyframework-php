@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Installer\NewCommand;
 use Firefly\Installer\SymfonyProcessRunner;
+use Firefly\Installer\Tests\Support\Skeleton;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -50,9 +51,13 @@ it('scaffolds a booting app via the real installer over local path repos', funct
     $tester = new CommandTester($command);
 
     try {
-        $tester->execute(['name' => $work.'/my-app', '--dev' => true, '--no-git' => true]);
+        // interactive:false — `new` prompts for the archetype and the capabilities when neither is
+        // flagged, and CommandTester is interactive by default with no input stream to answer from.
+        $tester->execute(['name' => $work.'/my-app', '--dev' => true, '--no-git' => true], ['interactive' => false]);
         expect(is_file($work.'/my-app/artisan'))->toBeTrue()
-            ->and(is_file($work.'/my-app/bootstrap/cache/firefly/routes.php'))->toBeTrue();
+            ->and(is_file($work.'/my-app/bootstrap/cache/firefly/routes.php'))->toBeTrue()
+            // the default archetype shaped a real create-project result, not just a fixture
+            ->and(Skeleton::stamp($work.'/my-app'))->toBe(['archetype' => 'web', 'capabilities' => []]);
     } finally {
         (new Process(['rm', '-rf', $work]))->run();
         putenv('COMPOSER_HOME');

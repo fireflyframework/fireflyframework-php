@@ -2,6 +2,136 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [Unreleased]
+
+Cut as `26.09.1` when released: `Firefly\Kernel\Version::VERSION`, this heading, and the README version
+badge move together (see [Versioning](docs/versioning.md)), and `tests/VersionConsistencyTest.php` fails the
+build if any one of the three drifts.
+
+A correctness release. Several headline features were found not to work at all outside the compiled boot, and
+two of the failures were **fail-open** in the security sense — the application kept serving, unguarded, with
+nothing logged. Every fix below was reproduced by a failing test first.
+
+### BREAKING
+
+- **`packages/container` — two non-`#[Primary]` `#[Bean]` methods returning the same type now THROW at
+  registration.** They previously booted, and one of the two beans silently did not exist: a bean name was
+  only ever recorded as `alias($returns, $name)`, and an alias is a pointer to a key rather than a binding of
+  its own, so both names pointed at the single type key, that key held whichever factory registered last, and
+  `getByName('memoryCache')` and `getByName('redisCache')` handed back the identical object. `#[Primary]` could
+  not break the tie because `BeanDescriptor::$primary` was read nowhere in the bean path. **Migration:** give
+  each competing `#[Bean]` method a distinct name and mark exactly one `#[Primary]` — the type key then
+  aliases the primary and every candidate stays individually resolvable. Rejected at registration (where the
+  stack trace still points at the manifest): competing beans that are anonymous, that share a name, that are
+  named after the contested type itself, or that declare more than one `#[Primary]`. A contested type with no
+  `#[Primary]` stays *bound* — to a guard that throws naming every candidate — so `#[ConditionalOnMissingBean]`
+  still sees that a bean of that type exists. See [Dependency Injection](docs/modules/dependency-injection.md).
+
+### Added
+- **`Firefly\Context\Scan\AppScan`** — the seam every capability package uses to resolve its own manifest:
+  compiled artifact, else an in-process scan of `firefly.scan.paths`, else empty. Routes, `#[ControllerAdvice]`
+  handlers, CQRS handlers, event/message listeners, scheduled tasks, validation constraints, method-security
+  rules, `#[ConfigProperties]` DTOs and the `#[Transactional]` manifest all resolve through it, so an uncached
+  application behaves exactly like a cached one. `firefly/cli` joins the `firefly/firefly` metapackage.
+- **`firefly.security.method.strict`** (default `false`) — refuses to boot when no compiled method-security
+  manifest exists, instead of falling back to the scan. The only defence against a build that ships without
+  the compile step.
+- **`firefly.observability.metrics.store` / `.ttl`** — names a cache store, swapping `SimpleMeterRegistry` for
+  the new `CacheMeterRegistry` so counters and timers survive the request that recorded them. `increment()`
+  and `record()` use the store's atomic increment (durations accumulate as integer microseconds, because
+  `increment()` is integer-only and a float read-modify-write drops samples); `setGauge()` is last-writer-wins;
+  `meters()` rehydrates from one index rather than a key scan. Opt-in: on the `array` driver it would be no
+  better than memory.
+- **`#[Controller]`** — the HTML stereotype (Spring's `@Controller` to `#[RestController]`'s
+  `@RestController`), extending `#[RestController]` so `RouteScanner`'s `IS_INSTANCEOF` filter finds it
+  unchanged. `ResponseFactory` now renders `View`/`Renderable`/`Htmlable` and the new `ModelAndView` as
+  `text/html`; arrays and scalars still negotiate to JSON. A bare `string` is deliberately **not** a view name.
+- **`#[ControllerAdvice]`/`#[ExceptionHandler]` are wired for the first time** — `RouteScanner`'s
+  `scanExceptionHandlers()` always existed, but nothing compiled the result, so `ExceptionHandlerRegistry` was
+  empty in every real boot while the docs taught it as working. `firefly:cache` now emits
+  `exception-handlers.php`, and compiles 13 manifests in total.
+- **`packages/config`** — relaxed binding (exact → `snake_case` → `kebab-case` → `SCREAMING_SNAKE_CASE`,
+  acronym-aware) and `#[Profile]` gating for `#[ConfigProperties]` DTOs.
+- **`packages/resilience`** — `circuit-breaker.minimum-number-of-calls` and `.half-open-probe-timeout`,
+  `bulkhead.permit-ttl`, and `firefly.resilience.store.lock-block-timeout` (default `0.5`s) for the mutex wait
+  budget.
+- **`skeleton/config/firefly.php` is now a full configuration reference** — every `firefly.*` key the framework
+  reads, grouped by capability, with its real default and what it does; advanced keys stay commented out at
+  their defaults. `skeleton/.env.example` carries the ones that usually vary per environment. The skeleton
+  also gains a `#[Controller]` welcome page (nothing on it hard-coded — real bean/condition counts, the real
+  route table, the real actuator registry) and its first test suite.
+
+### Changed
+- **`#[Qualifier]` on a parameter is honoured.** It declared `TARGET_PARAMETER` from day one and nothing read
+  it, so `#[Qualifier('redisCache')] Cache $cache` silently received whatever `Cache::class` resolved to. It
+  now rides `ContextualAttribute` — the seam `#[Value]` already used — adding no reflection that was not
+  already happening and leaving the compiled manifest shape untouched.
+- **`#[Bean]` discovery no longer compares stereotype short names.** The gate was `$shortAttr ===
+  'configuration'`, the one place in the scanner that abandoned `IS_INSTANCEOF`, so `#[Bean]` methods on a
+  user-defined stereotype extending `#[Configuration]` — or on a plain `#[Component]`, Spring's "lite mode" —
+  vanished from the manifest while the class itself was still bound.
+- **`make:firefly-*` output.** `-handler` writes two files (the handler *and* the concrete command/query class
+  its `handle()` takes); `-listener` puts `#[Component]` on the generated class; `-repository` generates a
+  concrete `#[Repository]` extending `EloquentRepository` instead of an unresolvable interface.
+- **`firefly.management.endpoints.web.exposure.exclude` honours `*`**, matching `include` and Spring — the
+  documented kill switch used to expose everything `include` named. An endpoint body renders as `{}` rather
+  than `[]` when empty.
+- The skeleton drops `app/Support/CachedTransactionalConfiguration.php`, the hand-written workaround every
+  application needed while `DataAutoConfiguration` bound an empty `TransactionalManifest`.
+- Docs corrected against source throughout: the CLI's cached-vs-uncached boot, the resilience circuit-breaker
+  and bulkhead tables and their state prose, configuration's relaxed binding and profile gating, the web
+  layer's HTML rendering, security's fail-open note and full config table, observability's cross-process
+  registry, and the "compilation lands in M15 — until then bind the manifest yourself" caveat that five module
+  guides still carried.
+
+### Fixed
+- **`packages/security` — method security failed OPEN.** Both enforcement sites treat "no rule for this
+  method" as ALLOW, so the unconditional empty `SecurityMethodManifest` silently disabled every
+  `#[PreAuthorize]`, `#[Secured]` and `#[RolesAllowed]` in the application. Only `firefly/cli` — then a
+  `require-dev` package absent from the metapackage — ever bound the compiled rules.
+- **`packages/security` — the expression evaluator failed OPEN.** `SecurityExpressionEvaluator` is a singleton
+  whose parse state lives on the instance, and `hasPermission()` calls application code (a user-supplied
+  `PermissionEvaluator`) that may evaluate an expression of its own on that same singleton. The inner call
+  overwrote the outer parse state, so `hasPermission(#id, 'read') and hasRole('ADMIN')` returned **true** for a
+  principal holding no authorities at all. State is now saved and restored in a `finally`.
+- **Boot — the framework only worked in its compiled state.** `firefly:clear` on a freshly created skeleton
+  made the app 404 every route it owned, and no quality gate could see it. Fixed by `AppScan` above.
+- **`packages/data` — `#[Transactional]` was a silent no-op.** Nothing ever loaded the compiled
+  `transactional.php`, so `hasProxyFor()` was always false. `ProxyMaterializer` now makes proxies loadable on
+  both paths (classmap when compiled, generated per-process when not) *before* the manifest is handed out.
+- **`packages/eda-postgres` — with `provider=postgres` no `#[EventListener]` was ever subscribed and outbox
+  rows were ACKed without being delivered**: silent data loss in the headline feature. `firefly:outbox:relay`
+  could not work either, because `downstream_provider` selected no publisher; it now resolves a shipped alias,
+  an `EventPublisher` class-string or a bound container id, validates at command time (not boot), refuses a
+  `PostgresEventPublisher` downstream, and fails loudly instead of exiting successfully when unconfigured.
+- **`packages/eda` — `#[EventListener(order:)]` was discarded at dispatch.** It round-tripped through the
+  manifest and the wiring pass then iterated `all()`; it now iterates `ordered()`.
+- **`packages/resilience` — the CircuitBreaker wedged permanently in HALF_OPEN** when a probe threw a
+  non-recorded exception or its worker died, rejecting 100% of traffic to a healthy dependency until an
+  operator flushed the cache. Probe permits are now expiring leases, an ignored exception explicitly returns
+  its permit, and bulkhead permits (which leaked the same way, and could be driven negative by an unmatched
+  `release()`) are leases too. `state()` reported a stale `open` for a breaker whose wait window had elapsed,
+  so the actuator gauge called a recovering breaker hard-down; it now reports the state `admit()` would decide.
+  The store's mutex WAIT budget is separated from its HOLD TTL, so a `timeout: 0` rate limiter no longer blocks
+  five seconds and then surfaces an unmapped `LockTimeoutException` as a bare HTTP 500 — it raises a 503
+  `RESILIENCE_STORE_LOCK_TIMEOUT`.
+- **`packages/validation`** — `#[Size]` silently flipped from length to numeric semantics beside any constraint
+  emitting `numeric`; a present-but-null value failed every constraint instead of only `@NotNull` (Jakarta
+  semantics); `#[Rules]` lost a custom `ValidationRule`'s constructor arguments on the compiled path, booting
+  `new StartsWith()` where the developer wrote `new StartsWith('ACME')`. Rules now declare their arguments via
+  `Compilable`, or have them recovered from promoted properties at COMPILE time, or are rejected then with an
+  actionable message — never silently stripped at runtime.
+- **`packages/config`** — `ProfileResolver` read raw `getenv()`, which returns `false` under both testbench and
+  `config:cache`, so profiles collapsed to `['default']` exactly where they mattered; `#[Profile]` was
+  declared, exported and documented with zero production readers.
+- **`packages/observability` — `/actuator/metrics` and `/actuator/prometheus` were effectively empty in
+  production.** Under PHP-FPM every request is a fresh process, so a scrape saw only what that scrape's own
+  request recorded — worse than empty, because it reads as data. See `CacheMeterRegistry` above.
+- **`packages/cli`** — `make:firefly-handler` generated code that made the next `firefly:cache` throw and abort
+  the whole compile; `make:firefly-repository` generated an interface nothing could resolve;
+  `make:firefly-listener` generated a class the scanner could not discover. Stub tests now generate from each
+  stub and assert the output is valid PHP *and* discoverable by the relevant scanner.
+
 ## [26.07.18] - 2026-07-28
 
 ### Added

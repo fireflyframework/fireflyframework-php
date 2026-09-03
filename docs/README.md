@@ -44,7 +44,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 
 | Guide | Description |
 |-------|-------------|
-| [Web Layer](modules/web.md) | `firefly/web` — `#[RestController]` routing, parameter binding, RFC-7807 error rendering |
+| [Web Layer](modules/web.md) | `firefly/web` — `#[RestController]`/`#[Controller]` routing, parameter binding, JSON + HTML negotiation, RFC-7807 error rendering |
 | [Web Filters](modules/web-filters.md) | An ordered `WebFilter` chain bridged onto Laravel's own middleware pipeline |
 
 ### Resilience & Scheduling

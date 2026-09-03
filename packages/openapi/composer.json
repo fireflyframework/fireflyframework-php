@@ -1,0 +1,44 @@
+{
+    "name": "firefly/openapi",
+    "description": "LaraFly OpenAPI: generates a valid OpenAPI 3.1 document from the manifests the framework already holds in memory — RouteManifest for paths/operations/parameters, ConstraintManifest for request-body schemas — plus a firefly:openapi artisan command, a spec route, and a zero-dependency, zero-network viewer mounted at a configurable base path.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "openapi", "swagger"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/openapi"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/validation": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/console": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\OpenApi\\OpenApiServiceProvider",
+                "Firefly\\OpenApi\\OpenApiWiringProvider"
+            ]
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
+    },
+    "autoload": { "psr-4": { "Firefly\\OpenApi\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\OpenApi\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

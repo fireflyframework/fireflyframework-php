@@ -23,6 +23,7 @@ bootstrap/cache/firefly/
 ├── context.php            # application-context manifest
 ├── config-properties.php  # #[ConfigProperties] DTOs
 ├── routes.php             # compiled route table
+├── exception-handlers.php # #[ControllerAdvice]/#[ExceptionHandler] manifest
 ├── constraints.php        # validation constraint manifest
 ├── handlers.php           # #[CommandHandler]/#[QueryHandler] manifest
 ├── event-listeners.php    # #[EventListener] manifest
@@ -34,10 +35,10 @@ bootstrap/cache/firefly/
 └── proxies/               # one generated proxy class file per #[Transactional] target
 ```
 
-A `FireflyCacheServiceProvider` (auto-discovered) binds these compiled manifests over each capability's
-`bound()`-guarded empty default, registers the `#[ConfigProperties]` bindings, and installs a `spl_autoload_register`
-classmap loader for the proxy classes — all before any bean resolution runs, giving a fully cached, reflection-free
-boot. Two config keys point the boot path at the cache:
+A `FireflyCacheServiceProvider` (auto-discovered with `firefly/cli`) `instance()`s these compiled manifests over
+whatever the capability packages resolved, registers the `#[ConfigProperties]` bindings, and installs a
+`spl_autoload_register` classmap loader for the proxy classes — all before any bean resolution runs, giving a fully
+cached, reflection-free boot. Three config keys point the boot path at the cache:
 
 ```php
 'firefly' => [
@@ -49,9 +50,33 @@ boot. Two config keys point the boot path at the cache:
 ],
 ```
 
-When `component_manifest`/`context_manifest` point at files that exist, `FireflyAutoConfigureServiceProvider` loads
-them via `::load()` instead of scanning `firefly.scan.paths` in-process. Without a cache, the app still boots — via
-the in-process scanner fallback — just without the zero-reflection guarantee.
+### Cached and uncached boots
+
+Every manifest above is resolved by the same three-step convention, and `Firefly\Context\Scan\AppScan` is the
+seam each capability package uses to do it:
+
+1. the compiled artifact exists under `firefly.cache.path` → load it, zero reflection (production);
+2. otherwise `firefly.scan.paths` is non-empty → scan those PSR-4 roots **in-process**, on every boot (development);
+3. otherwise → an empty manifest, and boot still succeeds.
+
+`FireflyAutoConfigureServiceProvider` has always done this for the component and context manifests (via
+`component_manifest`/`context_manifest`). It is now also what routes, `#[ControllerAdvice]` handlers, CQRS handlers,
+event and message listeners, scheduled tasks, validation constraints, method-security rules, `#[ConfigProperties]`
+DTOs and the `#[Transactional]` manifest do — so an application that has never run `firefly:cache` behaves the same
+as one that has, and pays a full reflection scan per boot for the privilege.
+
+That is a change, not a restatement: **before it, step 2 did not exist.** Every capability bound an *empty*
+manifest and only `firefly/cli`'s `FireflyCacheServiceProvider` ever replaced it, which made a `require-dev` tool
+the sole owner of the loading half of the contract. An app that skipped the compile step — or that installed the
+`firefly/firefly` metapackage, which did not require the CLI — booted with no routes (404 on everything it owned)
+and, worse, with an empty method-security manifest: both enforcement sites read "no rule for this method" as ALLOW,
+so `#[PreAuthorize]`, `#[Secured]` and `#[RolesAllowed]` all failed **open**. `firefly/cli` is
+now part of the `firefly/firefly` metapackage, and `firefly.security.method.strict` (default `false`) makes the
+strict reading available to anyone who wants a build that ships without a compiled manifest to refuse to boot
+rather than run unprotected.
+
+Compiling is still worth it — reflection-free boot is the point of `firefly:cache` — but it is now an optimisation
+rather than a correctness requirement.
 
 ## `firefly:clear`
 
@@ -105,11 +130,30 @@ Pyfly's `generate` command family, one Artisan generator per stereotype:
 | `make:firefly-controller` | A `#[RestController]` with a sample `#[GetMapping]` action, under `app/Http`. |
 | `make:firefly-service` | A `#[Service]` bean. |
 | `make:firefly-component` | A `#[Component]` bean. |
-| `make:firefly-handler` | A `#[CommandHandler]` by default, or a `#[QueryHandler]` with `--query`. |
-| `make:firefly-listener` | An `#[EventListener]` method by default, or a `#[MessageListener]` with `--message`. |
+| `make:firefly-handler` | **Two files**: a `#[CommandHandler]` *and* the command class its `handle()` takes (`#[QueryHandler]` + query with `--query`). |
+| `make:firefly-listener` | A `#[Component]` class with an `#[EventListener]` method, or a `#[MessageListener]` one with `--message`. |
 | `make:firefly-entity` | A DDD entity extending `Firefly\Domain\Entity` (there is no `#[Entity]` attribute). |
-| `make:firefly-repository` | A repository interface extending `Firefly\Data\Repository\CrudRepository`. |
+| `make:firefly-repository` | A concrete `#[Repository]` class extending `Firefly\Data\Repository\EloquentRepository`, with a `$model` to repoint. |
 | `make:firefly-config-properties` | A `#[ConfigProperties]`-bound configuration DTO. |
+
+Three of those outputs are shaped by what the scanners actually accept, and it is worth knowing why:
+
+- **The handler generator emits its message class too.** `HandlerScanner` infers a bare `#[CommandHandler]`'s
+  message type from `handle()`'s sole parameter, and a builtin type (the old stub's `object $command`) cannot be
+  resolved — it threw `CqrsConfigurationException` out of `firefly:cache`, aborting the *whole* compile. So the
+  generated `handle()` takes a concrete class, and that class is written alongside it: `RegisterWidgetHandler` +
+  `RegisterWidget`, `CountWidgetsHandler` + `CountWidgets`. A message file that already exists is left alone and
+  reported, never overwritten. Nested names stay together (`make:firefly-handler Widget/RegisterWidgetHandler`
+  puts both in the same sub-namespace).
+- **The listener generator puts `#[Component]` on the class.** `#[EventListener]`/`#[MessageListener]` mark a
+  method of a *bean*; without a stereotype `ComponentScanner::describe()` returns null, the class never reaches
+  the component manifest, and the wiring pass's `$container->make()` falls through to Illuminate's reflective
+  auto-build — a plain object outside Firefly's lifecycle, with no `#[Value]` injection, no post-processing and a
+  new instance per delivery.
+- **The repository generator emits a class, not an interface.** Nothing synthesises an implementation for a
+  repository interface (there is no Spring-Data dynamic proxy here), so the old `interface X extends CrudRepository`
+  was unresolvable by construction. The generated class is deliberately not `final`, because `firefly:cache` emits
+  a `#[Transactional]` proxy that `extends` it.
 
 ```
 php artisan make:firefly-controller GreetingController

@@ -176,20 +176,18 @@ $template->execute($work, new TransactionalDescriptor(
 
 ## Known-latent
 
-- **App-level `#[Transactional]` proxy classes + manifests compile via `firefly:cache` (M15) — this has not
-  shipped yet.** Out of the box, the shipped `DataAutoConfiguration` (`#[Order(1000)]`) binds an **empty**
-  `TransactionalManifest` (`#[ConditionalOnMissingBean]`), so `#[Transactional]` proxies **nothing** in a
-  freshly-installed application until it runs `firefly:cache`. When M15 lands, `firefly:cache` MUST emit — as
-  **one matched unit** — the compiled `TransactionalManifest`, the generated
-  `{Target}__FireflyTransactionalProxy` classes (autoloaded), **and** a manifest-loader bean: a
-  `#[Configuration]` `#[Bean]` at `#[Order]` **less than** `1000` that calls `TransactionalManifest::load()` on
-  the compiled manifest file, so that loaded manifest wins `#[ConditionalOnMissingBean]` ahead of
-  `DataAutoConfiguration`'s empty default. Until M15 ships, tests wire all three of these inline (scan with
-  `TransactionalScanner::scan()`, generate/require proxies with `ProxyClassGenerator`, and bind the resulting
-  `TransactionalManifest` directly) exactly as `firefly:cache` will. This fails **loud**, not silently:
-  `TransactionalBeanPostProcessor` throws a `ConfigurationException` if the manifest promises a proxy for a
-  class whose generated proxy class isn't loaded — so a half-emitted cache fails at boot rather than quietly
-  running unproxied.
+- **The manifest and its proxies must stay one matched unit — and they now are, on both boot paths.**
+  `DataAutoConfiguration::transactionalManifest()` resolves the compiled `transactional.php` if
+  `firefly:cache` wrote one (registering the `proxies.php` classmap autoloader first, so `firefly/cli` is not
+  required at runtime), otherwise scans `firefly.scan.paths` and materialises each
+  `{Target}__FireflyTransactionalProxy` per process through `ProxyMaterializer` — a private `0700` directory
+  written with `O_EXCL`, dev-time cost only. Proxies are made loadable **before** the manifest is handed out,
+  because `TransactionalBeanPostProcessor` throws a `ConfigurationException` when the manifest promises a
+  proxy class it cannot find; a half-emitted cache therefore fails at boot rather than quietly running
+  unproxied. Until this landed, the auto-config bound an unconditional empty manifest and *nothing* loaded
+  the compiled `transactional.php`, so `#[Transactional]` was a **silent no-op** in any application that did
+  not hand-write its own manifest configuration — which is precisely what the skeleton's
+  `app/Support/CachedTransactionalConfiguration.php` existed to do, and why it has been deleted.
 - **The proxy's state-copy cannot see state private to a non-framework parent of the proxied class.**
   `ProxyFactory`'s scoped closure copies `get_object_vars()` visible from `$declaredClass`'s own scope; state
   declared `private` on some class *above* `$declaredClass` in its inheritance chain is invisible to it. A

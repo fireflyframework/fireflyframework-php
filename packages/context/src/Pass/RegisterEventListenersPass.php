@@ -51,12 +51,15 @@ use Illuminate\Contracts\Events\Dispatcher;
  * `EagerSingletonsPass` and `RegisterBeanPostProcessorsPass` both already iterate
  * `$descriptor->beans`/`$bean->returns` for exactly this reason (a `#[Bean]` output is a
  * first-class lifecycle-managed thing, not merely its declaring class); this pass does the same
- * here in its own boot-time sweep. `$bean->returns` is resolved via `$container->make($bean->returns)`
- * — the same abstract `ContainerRegistrar::registerBeans()` bound the factory under — so the
- * listener always observes the fully post-processed (possibly proxied) bean, exactly like a plain
- * `#[Component]`. A class already visited (as either a definition's own class OR an earlier bean's
- * return type) is never visited twice, so a class reachable both ways cannot register the same
- * listener method twice.
+ * here in its own boot-time sweep. The listener resolves its bean through the key
+ * `ContainerRegistrar::registerBeans()` actually bound the factory under (`BeanBindingKeys` — the
+ * return type for the ordinary single-#[Bean] case, the #[Bean] NAME when several #[Bean] methods
+ * compete for one type), so it always observes the fully post-processed (possibly proxied) bean,
+ * exactly like a plain `#[Component]`. A BINDING already visited (reachable as either a
+ * definition's own class OR a bean's key) is never visited twice, so a class reachable both ways
+ * cannot register the same listener method twice — while two competing beans, which are two
+ * distinct bindings, each register their own. See `orderedListeners()` for why the class and the
+ * key had to stop being one string.
  *
  * 🔴 THE CANONICAL HEXAGONAL SHAPE IS NOT HANDLED BY THIS SWEEP (M4 review #6, Important 1 — the
  * untreated twin of `d3a7688`, corrected here; do NOT reintroduce the false claim this replaces).
@@ -115,10 +118,10 @@ final class RegisterEventListenersPass implements BootPass
         /** @var Dispatcher $dispatcher */
         $dispatcher = $container->make('events');
 
-        foreach ($this->orderedListeners($context) as [$class, $method, $event]) {
-            $raw = static function (mixed ...$arguments) use ($container, $class, $method): mixed {
+        foreach ($this->orderedListeners($context) as [$boundKey, $method, $event]) {
+            $raw = static function (mixed ...$arguments) use ($container, $boundKey, $method): mixed {
                 /** @var object $bean */
-                $bean = $container->make($class);
+                $bean = $container->make($boundKey);
 
                 return $bean->{$method}(...$arguments);
             };
@@ -128,22 +131,55 @@ final class RegisterEventListenersPass implements BootPass
     }
 
     /**
-     * @return list<array{0: string, 1: string, 2: string, 3: int}>
+     * Discovery is per CLASS (listener metadata lives on a class); registration is per BEAN.
+     *
+     * Those coincide for a #[Component] and for an uncontested #[Bean], which is why one loop keyed
+     * on `$bean->returns` was right for as long as a #[Bean] method's return type was also its
+     * container key. It stopped being right when firefly/container taught ContainerRegistrar to
+     * honour #[Primary]/#[Qualifier] on #[Bean] methods: with SEVERAL #[Bean] methods producing one
+     * type, each competitor is bound under its own #[Bean] NAME and the bare type key becomes an
+     * ALIAS of the #[Primary] winner — or, with no #[Primary], a factory that throws a
+     * NoUniqueBeanDefinition-style ConfigurationException. Both halves then went wrong at once:
+     *
+     *  - ONE registration for N beans. `$visited` is keyed by class, so a type produced twice was
+     *    collected once. That is still exactly right for DISCOVERY — re-reading one class's
+     *    metadata would duplicate the listener — but it meant only ONE listener existed for two
+     *    beans that each declared it, and the sibling's #[AsEventListener] simply never fired.
+     *  - INVOKED THROUGH THE WRONG KEY. `make($bean->returns)` on a contested type reaches the
+     *    #[Primary] winner, so the listener ran against the winner's instance no matter which bean
+     *    declared it; with no #[Primary] it hit the ambiguity guard and threw at DISPATCH time —
+     *    turning a valid application (two same-typed beans, injected only by #[Qualifier]) into a
+     *    runtime failure the first time any event was published.
+     *
+     * So `$visited` now keys on the CONTAINER KEY (BeanBindingKeys), which IS the class for every
+     * component and every uncontested #[Bean] — identical behavior, including the "reachable as
+     * both a component class and a bean return type" dedupe this guard was written for — and is the
+     * distinct #[Bean] name for each competitor, so each one registers its own listener and invokes
+     * it through its own binding. See CompetingBeansPassTest.
+     *
+     * @return list<array{0: string, 1: string, 2: string, 3: int}> [container key, method, event, order]
      */
     private function orderedListeners(BootContext $context): array
     {
+        $keys = BeanBindingKeys::fromDefinitions($context->definitions);
+
         $entries = [];
 
-        /** @var array<string, true> $visited guards against visiting the same class twice */
+        /** @var array<string, true> $visited guards against registering the same binding twice */
         $visited = [];
 
         foreach ($context->definitions->all() as $definition) {
-            $this->collectListenersFor($context, $definition->class(), $visited, $entries);
+            $this->collectListenersFor($context, $definition->class(), $definition->class(), $visited, $entries);
 
             foreach ($definition->descriptor->beans as $bean) {
-                if ($bean->returns !== '') {
-                    $this->collectListenersFor($context, $bean->returns, $visited, $entries);
+                // Null means the registrar bound nothing for this #[Bean] method (see
+                // BeanBindingKeys::keyFor()) — there is no binding to invoke a listener through.
+                $boundKey = $keys->keyFor($bean);
+                if ($boundKey === null) {
+                    continue;
                 }
+
+                $this->collectListenersFor($context, $bean->returns, $boundKey, $visited, $entries);
             }
         }
 
@@ -153,23 +189,27 @@ final class RegisterEventListenersPass implements BootPass
     }
 
     /**
+     * $lookupClass is the class whose manifest entry carries the #[AsEventListener] metadata;
+     * $boundKey is the container key the listener resolves its bean through at dispatch. They are
+     * the same string everywhere except for a competing #[Bean] — see orderedListeners().
+     *
      * @param  array<string, true>  $visited
      * @param  list<array{0: string, 1: string, 2: string, 3: int}>  $entries
      */
-    private function collectListenersFor(BootContext $context, string $class, array &$visited, array &$entries): void
+    private function collectListenersFor(BootContext $context, string $lookupClass, string $boundKey, array &$visited, array &$entries): void
     {
-        if (isset($visited[$class])) {
+        if (isset($visited[$boundKey])) {
             return;
         }
-        $visited[$class] = true;
+        $visited[$boundKey] = true;
 
-        $descriptor = $context->contextManifest->forClass($class);
+        $descriptor = $context->contextManifest->forClass($lookupClass);
         if ($descriptor === null) {
             return;
         }
 
         foreach ($descriptor->listeners as $listener) {
-            $entries[] = [$class, $listener['method'], $listener['event'], $listener['order']];
+            $entries[] = [$boundKey, $listener['method'], $listener['event'], $listener['order']];
         }
     }
 

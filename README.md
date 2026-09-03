@@ -131,8 +131,9 @@ final class GreetingController
 
 No service-provider boilerplate, no manual route registration: the component scanner finds `GreetingService`
 and `GreetingController`, the container autowires `GreetingProperties` into the service by constructor type,
-and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table — all from one
-`php artisan firefly:cache` run. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
+and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table. `php artisan
+firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it the same scan simply
+runs in-process at boot instead, so the app behaves identically either way. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
 outbox, and security tour, drawn from the runnable `samples/lumen/` wallet-ledger sample.
 
 LaraFly is not a fork of Laravel and does not hide it — every package layers cleanly on top of
@@ -167,10 +168,11 @@ php artisan firefly:serve
 ```
 
 `firefly new` wraps `composer create-project firefly/skeleton` (git-init included by default), which already
-wires a sample `#[RestController]`/`#[Service]` pair, sqlite for storage, and a `post-create-project-cmd` hook
-that ran `firefly:cache` for you — so the app is already booting reflection-free. Re-run `firefly:cache`
-yourself any time you add or change a `#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. class, and
-`firefly:clear` to fall back to the in-process scanner. See [Installation](#installation) for the
+wires a `#[Controller]` welcome page, a sample `#[RestController]`/`#[Service]` pair, sqlite for storage, and a
+`post-create-project-cmd` hook that ran `firefly:cache` for you — so the app is already booting
+reflection-free. Re-run `firefly:cache` any time you add or change a
+`#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. class; `firefly:clear` drops back to the
+in-process scan, which is slower but functionally identical. See [Installation](#installation) for the
 non-global-installer path and [CLI & Project Scaffolding](#cli--project-scaffolding) for the full command
 reference.
 
@@ -641,12 +643,15 @@ composer create-project firefly/skeleton my-app
 ```
 
 **Adding LaraFly to an existing Laravel app** — `firefly/firefly` is a `type: metapackage` (the Maven BOM
-analogue) that pulls in the whole runtime family with one line, and `firefly/cli` adds the developer console:
+analogue) that pulls in the whole runtime family, developer console included, with one line:
 
 ```bash
 composer require firefly/firefly
-composer require --dev firefly/cli
 ```
+
+The broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`), the browser dashboard
+(`firefly/admin`) and the test kit
+(`firefly/testing`) stay separate — require them only if you use them.
 
 Point LaraFly at your app's classes and compile it:
 
@@ -672,10 +677,10 @@ php artisan firefly:serve
 
 | Command | What it does |
 |---|---|
-| `firefly:cache` | Compiles the app into `bootstrap/cache/firefly/` — DI, routes, config properties, CQRS handlers, event/message listeners, scheduled tasks, security methods, and `#[Transactional]` proxy classes — for a zero-reflection boot. |
+| `firefly:cache` | Compiles the app into `bootstrap/cache/firefly/` — DI, routes, `#[ControllerAdvice]` exception handlers, validation constraints, config properties, CQRS handlers, event/message listeners, scheduled tasks, security methods, and `#[Transactional]` proxy classes — for a zero-reflection boot. |
 | `firefly:clear` | The inverse — deletes `bootstrap/cache/firefly/`; the app falls back to in-process scanning. |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Actuator-over-CLI: render the `info`/`env`/`beans`/`conditions`/`mappings` endpoints, the route table, aggregated health, or the metrics snapshot **in-process**, with no HTTP round-trip. |
-| `make:firefly-controller` / `-service` / `-component` / `-handler` / `-listener` / `-entity` / `-repository` / `-config-properties` | One generator per stereotype — `--query` on `-handler` scaffolds a `#[QueryHandler]`, `--message` on `-listener` scaffolds a `#[MessageListener]`. |
+| `make:firefly-controller` / `-service` / `-component` / `-handler` / `-listener` / `-entity` / `-repository` / `-config-properties` | One generator per stereotype — `--query` on `-handler` scaffolds a `#[QueryHandler]`, `--message` on `-listener` scaffolds a `#[MessageListener]`. `-handler` writes **two** files: the handler and the concrete command/query class its `handle()` takes. |
 | `firefly:serve` / `firefly:db` | Thin passthroughs to `artisan serve` (or `octane:start` when Octane is installed) and Laravel's own `migrate`/`db:seed`/`migrate:fresh`. |
 
 ```bash
@@ -701,7 +706,7 @@ its own installable Composer package with its own tests and its own [module guid
 | Foundation | [Application Context](docs/modules/context.md) — the phased boot engine (`ApplicationContext` port) | `firefly/context` |
 | Foundation | [Auto-Configuration](docs/modules/starters.md) — `#[Configuration]`/`#[Bean]` starters, conditions | `firefly/autoconfigure` |
 | Foundation | [Validation](docs/modules/validation.md) — constraint attributes, `#[Valid]`, structured 422s | `firefly/validation` |
-| Web & API | [Web Layer](docs/modules/web.md) — `#[RestController]` routing, `RouteManifest` | `firefly/web` |
+| Web & API | [Web Layer](docs/modules/web.md) — `#[RestController]`/`#[Controller]` routing, `RouteManifest`, JSON + HTML negotiation | `firefly/web` |
 | Web & API | [Web Filters](docs/modules/web-filters.md) — the ordered filter chain onto Laravel middleware | `firefly/web` |
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
 | Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |

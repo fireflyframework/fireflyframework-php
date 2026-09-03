@@ -23,7 +23,8 @@ indicators. A throwing indicator degrades to DOWN — never a 500.
 ## Exposure & security (recommended)
 
 Default `firefly.management.endpoints.web.exposure.include = "health,info"`; sensitive endpoints return **404** until
-explicitly exposed. Lock them down with `firefly.security.http.rules` (no second management port — doesn't fit PHP-FPM):
+explicitly exposed. An endpoint body is always a JSON **object**: `/actuator/info` with no `InfoContributor`
+registered answers `{}`, not `[]`, so a typed client deserialising into a map does not break on the default. Lock them down with `firefly.security.http.rules` (no second management port — doesn't fit PHP-FPM):
 
 ```php
 'firefly' => [
@@ -59,10 +60,10 @@ endpoint that is reachable at all only once explicitly exposed.
 ## Configuration (`firefly.management.*`, kebab-case)
 
 - `firefly.management.enabled` (default `true`) — master gate
-- `firefly.management.endpoints.web.exposure.include` / `.exclude` (CSV or `*`, exclude wins)
+- `firefly.management.endpoints.web.exposure.include` / `.exclude` (CSV or `*`; `*` is a wildcard in **both** lists and exclude wins, so `.exclude = "*"` is the kill switch)
 - `firefly.management.endpoints.web.base-path` (default `/actuator`)
 - `firefly.management.endpoint.{id}.enabled` (per-endpoint)
-- `firefly.management.endpoint.health.show-details` (`never`|`when-authorized`|`always`)
+- `firefly.management.endpoint.health.show-details` (default `never`; only the literal `always` shows component details — see Known-latent for `when-authorized`)
 - `firefly.management.endpoint.health.group.{name}.include`
 - `firefly.management.endpoint.health.db.enabled` (default `false`) — opt-in `Db` health indicator
 - `firefly.management.info.app.*`, `firefly.management.info.build.path`

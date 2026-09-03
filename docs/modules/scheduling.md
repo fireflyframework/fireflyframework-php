@@ -183,7 +183,7 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   Laravel `Event` — no initial-delay offset is set. Laravel's frequency DSL has no native way to express "run
   once after an initial delay, then resume the normal cadence", so this is deferred to **SP-5** alongside the
   cron shims above. (`zone` **is** applied — see `#[Scheduled]` above.)
-- **The app's `ScheduledManifest` compiles via `firefly:cache` — landing in M15.** Until then, an
-  application supplies its compiled manifest inline (bind `ScheduledManifest` yourself, e.g. from a hand-run
-  `ScheduledScanner` + `ScheduledManifestCompiler`, or bind descriptors directly) rather than through the
-  automated cache-warm command the framework will eventually ship.
+- **A `#[Scheduled]` method outside `firefly.scan.paths` never registers.** The `ScheduledManifest` resolves
+  to the `firefly:cache` artifact if present, otherwise an in-process scan of `firefly.scan.paths`, otherwise
+  empty — so no hand-wiring is needed, but a task the scan cannot see is silently absent rather than an
+  error.

@@ -35,6 +35,13 @@ use Illuminate\Contracts\Events\Dispatcher;
  * #[Bean] return type) — never $o::class — and is what gets passed to every
  * BeanPostProcessor::before/afterInitialization() call.
  *
+ * The CONTAINER KEY each extender is installed on is a separate question, answered by
+ * BeanBindingKeys and not by $declaredClass: when several #[Bean] methods produce one type, the
+ * registrar binds each competitor under its own #[Bean] name and the bare type key belongs to the
+ * group. Extending the type key there reached only the #[Primary] winner, so every named sibling
+ * escaped this chain entirely — #[PostConstruct], #[PreDestroy] and #[Transactional] included, in
+ * silence. See abstractsToExtend()'s own docblock for the full account.
+ *
  * INVARIANT 4, REFINED — "key on the declared class, never $bean::class" exists to be PROXY-safe:
  * a proxy's runtime class has no manifest entry, so using it as a lookup key silently finds nothing.
  * But its own corollary contract (see docs/modules/context.md's "proxy contract") is that a proxy is
@@ -141,15 +148,16 @@ final class RegisterBeanPostProcessorsPass implements BootPass
 
         $bppClassSet = array_fill_keys($bppClasses, true);
 
-        /** @var array<string, true> $listenersRegisteredFor keyed by the ABSTRACT ($declaredClass) — see registerLateBoundListeners() */
+        /** @var array<string, true> $listenersRegisteredFor keyed by the CONTAINER KEY ($boundKey) — see registerLateBoundListeners() */
         $listenersRegisteredFor = [];
 
-        foreach ($this->abstractsToExtend($descriptors, $bppClassSet) as $abstract => $target) {
+        foreach ($this->abstractsToExtend($descriptors, $bppClassSet) as $boundKey => $target) {
             [$declaredClass, $scope] = $target;
 
-            $container->extend($abstract, static function (object $bean) use (
+            $container->extend($boundKey, static function (object $bean) use (
                 $chain,
                 $declaredClass,
+                $boundKey,
                 $scope,
                 $disposables,
                 $container,
@@ -174,6 +182,7 @@ final class RegisterBeanPostProcessorsPass implements BootPass
                         $container,
                         $declaredClass,
                         $concreteClass,
+                        $boundKey,
                         $listenersRegisteredFor,
                     );
                 }
@@ -228,21 +237,36 @@ final class RegisterBeanPostProcessorsPass implements BootPass
      * reason (abstract classes are unscanned too, so `forClass()` is null there as well), which the
      * old identity gate only got right by accident.
      *
-     * $registered is keyed by the ABSTRACT ($declaredClass) — NOT the runtime concrete class (M4
-     * review #8, Minor; the prior version keyed on $concreteClass, the same inferred-vs-asked
-     * substitution review #7 fixed one guard above: this dedupe question is "have listeners already
-     * been registered FOR THIS ABSTRACT", never "has this runtime class been seen under ANY
-     * abstract", and only the abstract answers that. Keying on $concreteClass was too COARSE across
-     * abstracts — two #[Bean] factories producing distinct singletons of the very SAME concrete class
-     * but bound under two DIFFERENT abstracts (e.g. `#[Bean] fn(): ReadPort` and
+     * $registered is keyed by the CONTAINER KEY this extender was installed on ($boundKey) — NOT the
+     * runtime concrete class (M4 review #8, Minor; the prior version keyed on $concreteClass, the
+     * same inferred-vs-asked substitution review #7 fixed one guard above: this dedupe question is
+     * "have listeners already been registered FOR THIS BINDING", never "has this runtime class been
+     * seen under ANY binding", and only the binding answers that. Keying on $concreteClass was too
+     * COARSE across bindings — two #[Bean] factories producing distinct singletons of the very SAME
+     * concrete class but bound under two DIFFERENT abstracts (e.g. `#[Bean] fn(): ReadPort` and
      * `#[Bean] fn(): WritePort`, both implemented by one `Repo` class) shared one
      * `$registered[Repo::class]` entry, so the SECOND abstract's extender found it already `true`
      * and silently never registered that bean's listener at all — undisclosed, and measured false
-     * (see DedupeKeyTest's cross-abstract case). Keying on $declaredClass fixes it: each abstract's
-     * own extender consults its own entry, so both abstracts register.
+     * (see DedupeKeyTest's cross-abstract case). Keying on the binding fixes it: each binding's own
+     * extender consults its own entry, so both register.
+     *
+     * $boundKey RATHER THAN $declaredClass, and the two only differ for a CONTESTED type. For a
+     * #[Component] and for an uncontested #[Bean] the container key IS the declared class, so every
+     * word above holds verbatim. But when SEVERAL #[Bean] methods produce one type, the registrar
+     * binds each under its own #[Bean] NAME while `$declaredClass` stays the shared return type —
+     * so keying this guard on $declaredClass would collapse the competitors onto ONE entry and the
+     * second bean's listener would silently never register, reintroducing exactly the too-coarse
+     * failure the cross-abstract case above describes, one level down. $boundKey is also what gets
+     * passed as registerListenersFor()'s $invokeThrough, for the same reason: the contested type key
+     * is an alias of the #[Primary] winner (or, with no #[Primary], a factory that throws), so
+     * invoking a sibling's listener through it would reach the wrong bean, or none.
+     *
+     * The manifest GATE above stays on $declaredClass, deliberately: it asks whether
+     * RegisterEventListenersPass's boot sweep already handled this bean, and that sweep looks
+     * listener metadata up by the declared TYPE. Gate on the type, dedupe and invoke on the key.
      *
      * $registered is passed BY REFERENCE from the ONE composite extender closure created in run()
-     * for this abstract. Under Octane that SAME closure instance (installed once, at worker boot)
+     * for this binding. Under Octane that SAME closure instance (installed once, at worker boot)
      * survives for the worker's entire life — a shallow `clone $this->app` per request copies the
      * extenders array's closure REFERENCES, never deep-clones them (see OctaneListener's own
      * invariant-7 note on Illuminate\Container's clone semantics) — so this guard is what stops a
@@ -290,16 +314,17 @@ final class RegisterBeanPostProcessorsPass implements BootPass
         Container $container,
         string $declaredClass,
         string $concreteClass,
+        string $boundKey,
         array &$registered,
     ): void {
         $swept = $contextManifest->forClass($declaredClass);
         $sweptListeners = $swept === null ? [] : $swept->listeners;
-        if ($sweptListeners !== [] || isset($registered[$declaredClass])) {
+        if ($sweptListeners !== [] || isset($registered[$boundKey])) {
             return;
         }
-        $registered[$declaredClass] = true;
+        $registered[$boundKey] = true;
 
-        RegisterEventListenersPass::registerListenersFor($dispatcher, $contextManifest, $container, $concreteClass, $declaredClass);
+        RegisterEventListenersPass::registerListenersFor($dispatcher, $contextManifest, $container, $concreteClass, $boundKey);
     }
 
     /**
@@ -320,12 +345,41 @@ final class RegisterBeanPostProcessorsPass implements BootPass
     }
 
     /**
+     * The container keys that get a composite extender, each mapped to the DECLARED CLASS threaded
+     * into that extender.
+     *
+     * THE TWO ARE NOT THE SAME THING, and conflating them is what let competing #[Bean] methods
+     * escape post-processing entirely. The KEY is whatever ContainerRegistrar bound the factory
+     * under (BeanBindingKeys — the #[Bean] NAME for a contested type, the return type otherwise);
+     * the VALUE's class is the bean's DECLARED TYPE, which is what BeanPostProcessor::$declaredClass
+     * is contractually required to be (a real class-string: TransactionalBeanPostProcessor calls
+     * class_exists() on it, and a #[Bean] name is a container key, not a class).
+     *
+     * WHAT WAS BROKEN. Both roles used to be `$bean->returns`. N competing beans therefore collapsed
+     * onto ONE map entry (same key, overwritten), and that single entry named the bare type key —
+     * which for a contested type is an ALIAS of the #[Primary] winner, and which Illuminate's
+     * Container::extend() resolves before installing anything (`$abstract = $this->getAlias($abstract)`).
+     * So the one extender that got installed went onto the WINNER's binding, and every named sibling
+     * got no extender at all: it never reached the BeanPostProcessorChain, so its #[PostConstruct]
+     * never fired, it was never handed to DisposableBeanRegistry (no #[PreDestroy] at context
+     * close), and — the reason this is not a niche concern — TransactionalBeanPostProcessor never
+     * saw it, meaning #[Transactional] silently did not apply to that bean. Nothing errored.
+     *
+     * With no #[Primary] the type key is not an alias but the ambiguity-guard binding, so the
+     * extender was installed on a factory that only ever throws — every sibling escaped there too.
+     *
+     * Keying on the registrar's own key fixes both shapes and leaves the common one untouched: for
+     * an UNCONTESTED bean the key IS the return type, exactly as before, and for a #[Component] the
+     * key is (and always was) its class.
+     *
      * @param  list<ComponentDescriptor>  $descriptors
      * @param  array<string, true>  $bppClassSet
-     * @return array<string, array{0: class-string, 1: Scope}>
+     * @return array<string, array{0: class-string, 1: Scope}> container key => [declared class, scope]
      */
     private function abstractsToExtend(array $descriptors, array $bppClassSet): array
     {
+        $keys = BeanBindingKeys::fromDescriptors($descriptors);
+
         /** @var array<string, array{0: class-string, 1: Scope}> $abstracts */
         $abstracts = [];
 
@@ -337,11 +391,23 @@ final class RegisterBeanPostProcessorsPass implements BootPass
             }
 
             foreach ($descriptor->beans as $bean) {
-                if ($bean->returns !== '' && ! isset($bppClassSet[$bean->returns])) {
-                    /** @var class-string $returns */
-                    $returns = $bean->returns;
-                    $abstracts[$returns] = [$returns, $bean->scope];
+                // The BPP exclusion is asked of the declared TYPE, not the binding key: what must
+                // never get an extender is a bean that IS a BeanPostProcessor, and only its type
+                // says whether it is one.
+                if ($bean->returns === '' || isset($bppClassSet[$bean->returns])) {
+                    continue;
                 }
+
+                // Null means the registrar bound nothing for this #[Bean] method (see
+                // BeanBindingKeys::keyFor()) — there is no binding to extend.
+                $key = $keys->keyFor($bean);
+                if ($key === null) {
+                    continue;
+                }
+
+                /** @var class-string $returns */
+                $returns = $bean->returns;
+                $abstracts[$key] = [$returns, $bean->scope];
             }
         }
 

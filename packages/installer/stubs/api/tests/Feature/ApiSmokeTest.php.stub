@@ -1,0 +1,32 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use Tests\TestCase;
+
+/**
+ * The api archetype's smoke test.
+ *
+ * The skeleton ships tests/Feature/WelcomeTest.php, whose first case asserts that the HTML welcome page
+ * renders. `firefly new --api` deletes that page, so it deletes that test too and leaves this in its place:
+ * the two cases that still hold for a JSON-only service — the sample #[RestController] negotiates a value
+ * into JSON, and the actuator reports health.
+ */
+final class ApiSmokeTest extends TestCase
+{
+    public function test_the_sample_rest_controller_returns_json(): void
+    {
+        $this->getJson('/greetings/Ada')
+            ->assertOk()
+            ->assertExactJson(['message' => 'Hello, Ada!']);
+    }
+
+    public function test_the_actuator_reports_health(): void
+    {
+        $this->getJson('/actuator/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'UP');
+    }
+}

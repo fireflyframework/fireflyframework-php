@@ -1,9 +1,9 @@
 # Web Layer
 
-`firefly/web` is LaraFly's HTTP layer: `#[RestController]` routing compiled to a `RouteManifest`,
-parameter binding with `#[Valid]` interception, JSON-native content negotiation, and RFC-7807 error
-rendering — all dispatched through native Laravel routes, inside the real HTTP-kernel middleware
-pipeline.
+`firefly/web` is LaraFly's HTTP layer: `#[RestController]`/`#[Controller]` routing compiled to a
+`RouteManifest`, parameter binding with `#[Valid]` interception, content negotiation (JSON for data, HTML
+for views), and RFC-7807 error rendering — all dispatched through native Laravel routes, inside the real
+HTTP-kernel middleware pipeline.
 
 ![Request lifecycle](../assets/diagrams/request-lifecycle.svg)
 
@@ -42,6 +42,48 @@ final class AccountsController
 
 The `RouteScanner` (routing metadata) and the component scan (DI wiring) are two separate passes over
 the same class — a `#[RestController]` never has to declare its own route registration.
+
+## `#[Controller]` — the HTML stereotype
+
+`#[Controller]` is to `#[RestController]` what Spring's `@Controller` is to `@RestController`: same routing,
+different intent. It **extends** `#[RestController]`, so `RouteScanner`'s `IS_INSTANCEOF` filter finds it with
+no scanner change, its routes compile into the same `RouteManifest`, and constructor DI is identical. What
+differs is what the method returns and how the response is built.
+
+```php
+use Firefly\Web\Attributes\{Controller, GetMapping};
+use Firefly\Web\View\ModelAndView;
+use Illuminate\Contracts\View\View;
+
+#[Controller]
+final class WelcomeController
+{
+    #[GetMapping('/', name: 'welcome')]
+    public function index(): View
+    {
+        return view('welcome', ['name' => 'Ada']);   // rendered as text/html
+    }
+
+    #[GetMapping('/about')]
+    public function about(): ModelAndView
+    {
+        return ModelAndView::of('about', ['version' => '1.0'])->withStatus(200);
+    }
+}
+```
+
+`ModelAndView` is a view **name** plus its model, resolved through the application's view factory. It exists
+for a handler that should not reach for the `view()` helper — one under test, or one in a package that must
+not depend on `illuminate/view` — and carries `of()`, `withModel()`, `withStatus()` and `withHeader()`. If no
+view factory is bound, returning one fails loudly rather than rendering nothing.
+
+Two deliberate boundaries:
+
+- **A bare `string` return is *not* a view name.** `#[RestController]` methods legitimately return strings
+  that must negotiate to JSON, and the meaning of a return value must not depend on the class that declares
+  it. Explicit beats magic.
+- **A `#[Controller]` may still return an array or a DTO**, which negotiates to JSON exactly as before — the
+  same latitude Spring gives a `@Controller` method carrying `@ResponseBody`.
 
 ## `#[RequestMapping]` and the verb mappings
 
@@ -121,11 +163,26 @@ final class CreateAccountRequest
 
 ## Content negotiation
 
-Content negotiation is JSON-native: the only shipped `MessageConverter` is `JsonMessageConverter`
-(`application/json` and any `+json` suffix type). A controller return value that is not already a
-`Response`/`Responsable` is written by the converter chosen from the request's `Accept` header — parsed
-for q-values with a header-order tiebreak — falling back to the first (JSON) converter when nothing
-matches or `Accept` is absent. Request bodies are read the same way, keyed off `Content-Type`.
+`ResponseFactory` decides what to do with a controller's return value in this order:
+
+| Return value | Response |
+|---|---|
+| A Symfony or Illuminate `Response` (including `JsonResponse`) | passed through untouched |
+| A `Responsable` | `toResponse($request)` |
+| A `ModelAndView` | resolved through the view factory, rendered `text/html; charset=UTF-8` |
+| A `View` or any `Renderable` | `render()`, rendered as `text/html; charset=UTF-8` |
+| An `Htmlable` | `toHtml()`, rendered as `text/html; charset=UTF-8` |
+| Anything else (array, `JsonSerializable`, `Arrayable`, scalar) | written by the negotiated `MessageConverter` |
+
+The HTML arms are why a server-rendered page is possible at all. Before they existed, a Blade `View` was
+neither a `SymfonyResponse` nor a `Responsable`, so it fell through to the converter chain and was
+`json_encode`d — and because a `View` exposes no public properties, **every returned view became the body
+`{}` with HTTP 200 and `Content-Type: application/json`**, silently.
+
+Data negotiation is JSON-native: the only shipped `MessageConverter` is `JsonMessageConverter`
+(`application/json` and any `+json` suffix type). The converter is chosen from the request's `Accept`
+header — parsed for q-values with a header-order tiebreak — falling back to the first (JSON) converter when
+nothing matches or `Accept` is absent. Request bodies are read the same way, keyed off `Content-Type`.
 
 `MessageConverterRegistry` is an ordinary container binding (guarded `#[ConditionalOnMissingBean]`-style
 via `if (! $app->bound(...))`), so an application can register additional `MessageConverter`s — XML
@@ -142,12 +199,11 @@ descriptor and hands each one a dispatch closure (`ControllerDispatcher`) — so
 generation, and Laravel's own route-caching machinery all apply to LaraFly routes unmodified.
 
 !!! note "Known-latent: manifest compilation, config ordering, and negotiation scope"
-    - **App manifests compile inline today.** `RouteManifest`/`ConstraintManifest` are meant to be
-      produced ahead of time by `firefly/cli`'s `firefly:cache` command (M14/M15). Until that command
-      ships, an application must compile its own `RouteScanner`/`ConstraintManifestCompiler` output and
-      bind the resulting `RouteManifest`/`ConstraintManifest` instances itself (exactly what the
-      package's own capstone test does); `WebServiceProvider` only binds empty defaults so the package
-      boots standalone.
+    - **App manifests need no hand-wiring.** `RouteManifest`, `ConstraintManifest` and
+      `ExceptionHandlerRegistry` are each resolved through `Firefly\Context\Scan\AppScan`: the artifact
+      `firefly:cache` compiled if it exists, otherwise an in-process scan of `firefly.scan.paths`, otherwise
+      empty. An application therefore never has to compile and bind these itself — it did have to before the
+      scan fallback existed, and until then an uncached app 404'd every route it owned.
     - **`route:cache` interplay.** Because dispatch runs through ordinary native Laravel routes, Laravel's
       own `route:cache` works unmodified once those routes are registered — there is no separate LaraFly
       route cache to keep in sync with it.

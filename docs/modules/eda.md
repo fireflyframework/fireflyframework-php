@@ -70,7 +70,9 @@ encodes.
 
 ### `InMemoryEventBus` — the default
 
-A `SubscriberRegistry` (pattern → handler pairs) delivered to in subscription order via `fnmatch()`.
+A `SubscriberRegistry` (pattern → handler pairs) delivered to in subscription order via `fnmatch()` — and
+subscription order is the manifest's `order` order, because `EventListenerWiringPass` subscribes listeners
+sorted by `#[EventListener(order:)]`.
 `publish()` builds the envelope and calls `deliver()` **synchronously** — every matching handler runs before
 `publish()` returns. `start()`/`stop()` are no-ops. Zero external services; this is the skeleton default
 (`firefly.eda.provider` unset or `memory`).
@@ -124,10 +126,14 @@ several patterns (or several separately-ordered annotations) at once.
 - **`EventListenerWiringPass`** runs at `BootPhase::WiringPasses` (1000), in *every* process — web request
   and queue worker alike. For each manifest row it wraps the target invocation in `RetryingEventHandler`
   (config-driven retries/delay + the bound `DeadLetterStore`) and calls `$bus->subscribe($pattern, $wrapped)`
-  for each of the descriptor's patterns. The invoking closure resolves the target bean **fresh from the
-  container on every dispatch** — never cached at registration — so it always observes the fully
-  post-processed (possibly proxied) bean, exactly like `RegisterEventListenersPass` does for the in-process
-  surface.
+  for each of the descriptor's patterns. It iterates `EventListenerManifest::ordered()` — descriptors sorted
+  by their declared `order` **ascending** (lower first, the `#[Order]` convention used throughout the
+  framework), ties keeping compiled-manifest order — so `#[EventListener(order:)]` genuinely determines
+  dispatch order. (It used to iterate `all()`, so the parameter round-tripped through the manifest and was
+  then discarded: ordering was whatever the scanner happened to emit.) The invoking closure resolves the
+  target bean **fresh from the container on every dispatch** — never cached at registration — so it always
+  observes the fully post-processed (possibly proxied) bean, exactly like `RegisterEventListenersPass` does
+  for the in-process surface.
 
 ## Retry / DLQ model
 
@@ -186,18 +192,20 @@ bytes on a real wire.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `firefly.eda.provider` | `memory`\|`queue` | `memory` | Selects `InMemoryEventBus` or `QueueEventBus` (`EdaAutoConfiguration`). |
+| `firefly.eda.provider` | `memory`\|`queue`\|`rabbitmq`\|`postgres`\|`kafka` | `memory` | `EdaAutoConfiguration` selects `InMemoryEventBus` or `QueueEventBus`; the three broker values are honoured by the adapter packages (see [EDA brokers](eda-brokers.md)) and read here as "not queue". |
 | `firefly.eda.serialization_format` | string | `json` | Selects `Serializer`; anything but `json` throws `SerializationException`. |
 | `firefly.eda.retries` | int | `0` | Handler-level retry count applied to every `#[EventListener]` by `EventListenerWiringPass`. |
 | `firefly.eda.retry_delay` | float (seconds) | `0.0` | Linear-backoff base delay (`retry_delay * attempt`). |
 | `firefly.eda.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueEventBus`/`DispatchEventJob` dispatch onto, when `provider=queue`. |
 | `firefly.eda.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
+| `firefly.eda.destinations` | list\<string\> | `[]` | The broker destinations `php artisan firefly:eda:consume` binds when `--destination` is not passed. Read **only** by that command; it must be a list of strings or the command throws a `ConfigurationException`. |
 
-!!! note "`destination` is a call-site argument, not a config key"
+!!! note "A publish `destination` is a call-site argument, not a config key"
     `EventPublisher::publish(string $destination, ...)` takes the destination explicitly at the call site —
-    it is not read from configuration. The test suite and capstones use `'firefly.events'` by convention as
-    an app-facing default destination name, but no shipped code binds or reads a
-    `firefly.eda.destinations` config key; nothing in `EdaAutoConfiguration` or the wiring pass consults one.
+    it is never read from configuration, and neither `EdaAutoConfiguration` nor the wiring pass consults a
+    key for it. `firefly.eda.destinations` above is the *consumer* side: which destinations to subscribe to,
+    used by the consume command alone. `--destination` on the command line overrides it, so one compiled
+    config can still serve several workers.
     Pick whatever destination string suits your application.
 
 `EdaAutoConfiguration` (`#[Configuration] #[Order(1000)]`) binds the `EventPublisher`, `Serializer`, and
@@ -253,11 +261,10 @@ These are carried-forward, documented limitations of the M9 shipment — not bug
 - **"Async" is queue-backed, not coroutine-based.** Under the `sync` queue driver (or with no worker
   running), `QueueEventBus` delivers synchronously, identically to `InMemoryEventBus`. Genuine asynchronous,
   cross-process delivery requires a running queue worker (`queue:work`, Horizon, …).
-- **App-level `#[EventListener]` manifests compile via `firefly:cache` — landing in M15.** Until then, an
-  application supplies its compiled `EventListenerManifest` inline (bind it directly, or hand-run
-  `EventListenerScanner` + the manifest compiler) rather than through an automated cache-warm command; a
-  listener method absent from the compiled manifest silently never subscribes — the same compile-inline
-  caveat as web routes and scheduled tasks.
+- **A listener outside `firefly.scan.paths` never subscribes.** The `EventListenerManifest` resolves to the
+  `firefly:cache` artifact if present, otherwise an in-process scan of `firefly.scan.paths`, otherwise empty
+  — so no hand-wiring is needed, but a listener the scan cannot see is silently absent rather than an error.
+  Run `firefly:cache` in production for the reflection-free path.
 - **`firefly/eda` and `firefly/messaging` are independent sibling packages** — see
   [Messaging § Sibling of `firefly/eda`](messaging.md#sibling-of-fireflyeda-no-shared-code) for why there is
   no dependency in either direction.

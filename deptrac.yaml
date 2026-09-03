@@ -90,6 +90,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/admin/src/.*
+    - name: OpenApi
+      collectors:
+        - type: directory
+          value: packages/openapi/src/.*
     - name: Testing
       collectors:
         - type: directory
@@ -345,6 +349,26 @@ deptrac:
       - AutoConfigure
       - Web
       - Actuator
+
+    # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
+    # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/
+    # RouteDescriptor (paths, verbs, statuses, binding plans) and Validation's ConstraintManifest + Rule
+    # objects (body schemas and their `required` lists), and mirrors Kernel's ErrorResponse/ErrorCategory/
+    # ErrorSeverity into the shared RFC-9457 problem component. It reads Config, carries Container
+    # stereotypes + Context boot/condition attributes, extends AutoConfigure's base, and mounts its two
+    # routes on the illuminate Router from a BootPass (the ActuatorRouteRegistrar precedent) because an
+    # attribute route cannot carry a configurable path. NO edge to Actuator (the two surfaces are
+    # independent; the ordering between their registrars is a tie-break, not a dependency) and NO edge to
+    # Cli (its firefly:openapi command is registered by its OWN provider, so the command ships wherever the
+    # package does — firefly/cli is require-dev in a real app). NOTHING depends on OpenApi.
+    OpenApi:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation
+      - Web
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
     # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it

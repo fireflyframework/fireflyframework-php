@@ -61,7 +61,7 @@ provider selected the whole package resolves nothing and requires nothing.
 | `firefly.eda.postgres.connection` | the default DB connection | The named Laravel connection the outbox publisher/consumer/relay use — must be `pgsql` for `pg_notify`/`LISTEN` to activate (any other driver, e.g. `sqlite` in tests, silently skips the NOTIFY optimization and falls back to polling). |
 | `firefly.eda.postgres.channel` | `firefly_eda_events` | The `LISTEN`/`NOTIFY` channel name and the outbox row's `channel` column value. |
 | `firefly.eda.postgres.max_attempts` | `3` | How many `nack()`s (in-process consumer) or failed relay attempts an outbox row tolerates before it is marked `FAILED`. |
-| `firefly.eda.postgres.relay.downstream_provider` | *(unset)* | **OPTIONAL.** `rabbitmq`\|`kafka` — when set, `firefly:outbox:relay` forwards `PENDING` rows to that distinct downstream broker. When unset, the relay command is a documented no-op and delivery is entirely the terminal in-process consumer's job. |
+| `firefly.eda.postgres.relay.downstream_provider` | *(unset)* | **OPTIONAL.** Selects the relay's downstream: the shipped aliases `rabbitmq`\|`kafka`, the class-string of any `EventPublisher`, or a bound container id. When set, `firefly:outbox:relay` forwards `PENDING` rows there; when unset the command refuses to run with an error naming this key, and delivery is entirely the terminal in-process consumer's job. An app that binds its own publisher under the container id `firefly.eda.relay.downstream` may leave this key unset — that binding is checked first. Resolution is validated when the relay command runs (not at boot), so a misconfiguration fails before a single row is claimed instead of at the first publish. Whatever it resolves to, a `PostgresEventPublisher` is **refused**: it would re-insert `PENDING` rows into the same outbox. |
 
 ### Kafka (`firefly/eda-kafka`)
 
@@ -181,10 +181,21 @@ Kafka — just the natural insertion order of one table).
 
 ### (b) The optional relay — `firefly:outbox:relay`
 
-`firefly:outbox:relay` is a **distinct, optional** path that fronts a **different downstream broker** —
-set `firefly.eda.postgres.relay.downstream_provider=rabbitmq|kafka` to enable it. When that key is unset,
-running the command is a documented no-op (it logs and exits `SUCCESS` immediately): terminal delivery
-via `firefly:eda:consume` is assumed instead.
+`firefly:outbox:relay` is a **distinct, optional** path that fronts a **different downstream broker**. Enable
+it by setting `firefly.eda.postgres.relay.downstream_provider` — to a shipped alias (`rabbitmq`/`kafka`), to
+an `EventPublisher` class-string, or to the id of a binding you supply — or by binding your own publisher
+under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset).
+
+With neither configured, running the command **fails** with a console error naming the key and the available
+aliases, and exits `FAILURE`. That is deliberate: an operator who starts the relay expects rows to move, and a
+silent success would look like a working relay that delivers nothing. If you did not mean to front a second
+broker, simply do not run the command — `provider=postgres` already delivers committed rows in-process via
+`firefly:eda:consume`.
+
+The downstream is resolved **when the command runs**, not at boot, and a bad value is reported before a single
+row is claimed. Boot-time validation was considered and rejected: a downstream bound in another provider's
+`boot()` may not exist yet when the check would run, so it would fail correctly-configured applications — and
+it would fail every web request and every unrelated artisan command over a relay-only concern.
 
 `OutboxRelay::relayBatch()` claims a batch of `PENDING` rows (`FOR UPDATE SKIP LOCKED` on pgsql, inside a
 short transaction so concurrent relay workers never double-claim; a plain per-row `WHERE id=? AND
@@ -194,7 +205,8 @@ status='PENDING'` guard on drivers without row locking), publishes each through 
 
 Both the command and `OutboxRelay`'s constructor **refuse a `PostgresEventPublisher` as the downstream** —
 that would re-INSERT `PENDING` rows into the very same outbox, an infinite loop — throwing a `LogicException`
-/ printing a clear error instead. The relay is for genuinely bridging to a *different* broker (e.g. you want
+/ printing a clear error instead. The refusal applies however the downstream was named: alias, class-string
+or container binding. The relay is for genuinely bridging to a *different* broker (e.g. you want
 Kafka as your public-facing bus but still want the same-tx outbox guarantee for the write); it is not an
 alternative in-process delivery mechanism.
 

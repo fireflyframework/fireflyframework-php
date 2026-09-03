@@ -14,12 +14,51 @@ flag, secure-by-default-on, zero boot reflection.
   calls with the same identity return the same instance.
 - `MetricsRecorder` — the narrow write-facing port instrumentation actually depends on (`increment()`, `record()`,
   `setGauge()`), so callers never need the full registry.
-- `SimpleMeterRegistry` — the shipped in-memory implementation of **both** ports. `Counter` (monotonic), `Gauge`
-  (pull-based, backed by a `callable(): float` supplier — sampled at *read* time, not write time), `Timer` (count +
-  total-seconds, exposed as a Prometheus summary — **no** histogram buckets/percentiles yet).
+- `SimpleMeterRegistry` — the shipped in-memory implementation of **both** ports, and the default. `Counter`
+  (monotonic), `Gauge` (pull-based, backed by a `callable(): float` supplier — sampled at *read* time, not write
+  time), `Timer` (count + total-seconds, exposed as a Prometheus summary — **no** histogram buckets/percentiles yet).
+- `CacheMeterRegistry` — the cross-process implementation of both ports, bound instead when
+  `firefly.observability.metrics.store` names a cache store. See [Surviving the request](#surviving-the-request)
+  below.
 - A metric **name** has exactly one type, globally: registering the same name under a different `MeterType` (e.g.
   `counter('foo')` then `gauge('foo', ...)`) throws `InvalidArgumentException` — Prometheus scopes one `# TYPE` line
   per name, so a silent type conflict would emit invalid exposition.
+
+## Surviving the request
+
+`SimpleMeterRegistry` keeps every meter in process memory. That is correct for a long-lived worker (Octane,
+RoadRunner) and wrong for PHP's usual deployment: under PHP-FPM each request is a fresh process, so by the time a
+scrape reaches `/actuator/metrics` or `/actuator/prometheus`, the only meters in memory are the ones that scrape's
+own request recorded. The endpoints were effectively empty in production — and the numbers they *did* show were a
+single request's, which is worse than empty, because it reads as data.
+
+Naming a cache store swaps in `CacheMeterRegistry`, which writes through to that store:
+
+- `increment()` and `record()` use the store's **atomic increment**, so concurrent workers cannot lose writes on a
+  driver that supports it (redis, memcached, apc, dynamodb). Durations accumulate in integer **microseconds**,
+  because `increment()` is integer-only and a float read-modify-write would drop samples under concurrency.
+- `setGauge()` is a plain `put()`: a gauge is a snapshot, so last-writer-wins is the correct semantic.
+- `meters()` rehydrates `Counter`/`Timer`/`Gauge` from a single index of every meter identity ever written, so it
+  costs one read rather than a key scan — which not every cache driver supports.
+- Tag order never splits a meter in two; identities sort their tags.
+
+```php
+// config/firefly.php
+'observability' => [
+    'metrics' => [
+        'store' => env('FIREFLY_METRICS_STORE', ''),   // '' = in-process SimpleMeterRegistry
+        'ttl' => 0,                                     // seconds; 0 = no expiry
+    ],
+],
+```
+
+It is **opt-in** rather than the default on purpose: a metrics registry that silently starts writing to whatever
+cache an application happens to have configured is a surprise, and on the `array` driver it would be no better
+than memory anyway.
+
+The documented boundary: the factory methods (`counter()`/`timer()`/`gauge()`) still hand back the **in-process**
+meters, and mutating one of those directly stays process-local. Everything the framework itself records goes
+through the `MetricsRecorder` methods, which are the durable path.
 
 ## Exposition
 
@@ -99,6 +138,8 @@ seam above.
 | Key | Default | Meaning |
 |---|---|---|
 | `firefly.observability.metrics.enabled` | `true` | Master gate. Binds `MeterRegistry`/`MetricsRecorder`/`PrometheusTextFormat`/the real `CqrsMetrics`, and survives on the endpoints + `MetricsFilter`. Disabled → `NoOpMetricsRecorder`, the M10 `NoOpCqrsMetrics` stays bound, no `MeterRegistry`, `/prometheus`+`/metrics` unmounted. |
+| `firefly.observability.metrics.store` | `''` | Names a **cache store**. Empty (or no `cache` binding) → the in-process `SimpleMeterRegistry`; a store name → `CacheMeterRegistry` over `cache()->store($name)`, keyed under `firefly:metrics:`. |
+| `firefly.observability.metrics.ttl` | `0` | Expiry in seconds for each cache-backed meter. `0` or less means no expiry. Only consulted when `store` is set. |
 | `firefly.resilience.circuit-breaker.*` | _(unset)_ | Read by `MeterBindingsPass` (not owned by this package) — one named instance here gets one `resilience_circuit_breaker_state{name}` gauge. |
 
 ## Laravel comparison
@@ -117,8 +158,12 @@ seam above.
   span overhead; nothing downstream needs to change when the adapter lands.
 - **Histogram buckets / percentiles** — `Timer` only exposes as a Prometheus *summary* (`_count`/`_sum`); no
   `histogram_quantile`-friendly buckets yet.
-- **Multiprocess aggregation** — `SimpleMeterRegistry` is a single-process, in-memory store; under PHP-FPM/Octane
-  with multiple workers, each process/worker exposes only its own counters (no shared-memory or Redis aggregation
-  layer, unlike `prometheus_client`'s APCu/Redis adapters).
+- **Multiprocess aggregation is opt-in, and partial.** `firefly.observability.metrics.store` gives counters,
+  timers and set-gauges cross-process totals through the cache (see [Surviving the
+  request](#surviving-the-request)); without it, `SimpleMeterRegistry` exposes only the calling process's own
+  meters. Two limits remain even with a store: the `counter()`/`timer()`/`gauge()` factory objects stay
+  process-local, and a pull-based gauge registered by `MeterBindingsPass` is sampled in whichever process serves
+  the scrape (which is the correct semantic for `php_memory_peak_bytes`, and the only possible one for a live
+  circuit-breaker read).
 - **A second Octane management-port listener** — deferred alongside `firefly/actuator`'s own known-latent (no second
   management port; doesn't fit PHP-FPM). An SP-7 option for Octane deployments.
