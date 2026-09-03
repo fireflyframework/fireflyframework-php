@@ -51,9 +51,15 @@ final class PostgresOutboxAutoConfiguration
         return new SubscriberRegistry;
     }
 
+    /**
+     * The outbox WRITER — and, just as importantly, the object EventListenerWiringPass calls subscribe() on. The
+     * shared SubscriberRegistry singleton above is injected here so those subscriptions land in the SAME registry
+     * firefly:eda:consume feeds every polled envelope into. Without it the wiring pass subscribed into a publisher
+     * that discarded handlers, and the consumer then acked undelivered rows (see PostgresEventPublisher's docblock).
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function eventPublisher(Config $config, ConnectionResolverInterface $connections): EventPublisher
+    public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry): EventPublisher
     {
         $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
         $conn = $connections->connection($name);
@@ -62,6 +68,7 @@ final class PostgresOutboxAutoConfiguration
 
         return new PostgresEventPublisher(
             $conn,
+            $registry,
             $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
             $emitNotify,
         );
@@ -74,10 +81,11 @@ final class PostgresOutboxAutoConfiguration
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation): OutboxPreCommitHook
+    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation, SubscriberRegistry $registry): OutboxPreCommitHook
     {
         return new OutboxPreCommitHook(
             $connections,
+            $registry,
             $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
             $config->string('firefly.cqrs.default_destination', 'cqrs.events'),
             $manifest->destinations(),

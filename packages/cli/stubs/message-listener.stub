@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace {{ namespace }};
 
+use Firefly\Container\Attributes\Component;
 use Firefly\Messaging\Attributes\MessageListener;
 use Firefly\Messaging\Message;
 
+/**
+ * #[MessageListener] marks a public method of a BEAN, so the class itself carries a #[Component] stereotype:
+ * that is what puts it in the component manifest, and only a managed bean gets constructor autowiring,
+ * #[Value] injection and bean post-processing when MessageListenerWiringPass resolves it per delivery.
+ */
+#[Component]
 final class {{ class }}
 {
     /**

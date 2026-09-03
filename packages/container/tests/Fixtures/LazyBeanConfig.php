@@ -12,18 +12,22 @@ use Firefly\Container\Attributes\Lazy;
  * A #[Configuration] with one #[Lazy] #[Bean] factory method and one eager one:
  * ComponentScanner must capture #[Lazy] onto BeanDescriptor::$lazy so
  * EagerSingletonsPass can skip it without reflecting.
+ *
+ * Both methods return Gadget, and EdgeConfig::typedClass() returns it too, so all
+ * three carry an explicit #[Bean] name: competing beans of one type must stay
+ * individually addressable (see ContainerRegistrar::registerBeans()).
  */
 #[Configuration]
 final class LazyBeanConfig
 {
-    #[Bean]
+    #[Bean('lazyGadget')]
     #[Lazy]
     public function lazyGadget(): Gadget
     {
         return new Gadget;
     }
 
-    #[Bean]
+    #[Bean('eagerGadget')]
     public function eagerGadget(): Gadget
     {
         return new Gadget;

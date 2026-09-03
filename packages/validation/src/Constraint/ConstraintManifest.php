@@ -13,6 +13,12 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * ['@rule' => Iban::class] / ['@rule' => DecimalScale::class, 'args' => [2]], because ValidationRule
  * objects do not var_export cleanly. fromArray()/load() rehydrate envelopes back to rule objects.
  *
+ * 'args' is POSITIONAL and complete: the compiler emits every constructor parameter in declaration order, so
+ * rehydrate() can splat it without knowing anything about the rule. The key is absent, rather than an empty
+ * list, for a rule with no constructor state. Producing that list is ConstraintManifestCompiler's job and the
+ * subtle part of this round-trip — read its class docblock for what is recoverable, what is refused at
+ * compile time, and the production-only failure that came from getting it wrong.
+ *
  * @phpstan-type RuleEnvelope array{'@rule': class-string<ValidationRule>, args?: list<mixed>}
  */
 final class ConstraintManifest
@@ -68,6 +74,9 @@ final class ConstraintManifest
     }
 
     /**
+     * The only place a compiled envelope becomes an object again. Positional splat, no reflection, no
+     * per-rule knowledge — everything needed to rebuild the rule was decided by the compiler.
+     *
      * @param  RuleEnvelope  $entry
      */
     private static function rehydrate(array $entry): ValidationRule

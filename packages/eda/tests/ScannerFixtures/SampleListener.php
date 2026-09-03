@@ -9,7 +9,7 @@ use Firefly\Eda\EventEnvelope;
 
 final class SampleListener
 {
-    #[EventListener(['user.*', 'order.created'], order: 5)]
+    #[EventListener(['user.*', 'order.created'], order: 5, destinations: ['users', 'orders'])]
     public function on(EventEnvelope $envelope): void
     {
         // no-op fixture

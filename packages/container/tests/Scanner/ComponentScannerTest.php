@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Container\Scope;
+use Firefly\Container\Tests\Fixtures\ApiBeansConfig;
+use Firefly\Container\Tests\Fixtures\ApiToken;
 use Firefly\Container\Tests\Fixtures\AppConfig;
 use Firefly\Container\Tests\Fixtures\Clock;
 use Firefly\Container\Tests\Fixtures\EdgeConfig;
@@ -15,6 +17,8 @@ use Firefly\Container\Tests\Fixtures\LazyBeanConfig;
 use Firefly\Container\Tests\Fixtures\LazyWidget;
 use Firefly\Container\Tests\Fixtures\LoudGreeter;
 use Firefly\Container\Tests\Fixtures\SpanishGreeter;
+use Firefly\Container\Tests\Fixtures\Stamp;
+use Firefly\Container\Tests\Fixtures\StampComponent;
 use Firefly\Container\Tests\Fixtures\Widget;
 
 /**
@@ -77,6 +81,45 @@ it('captures #[Bean] methods on #[Configuration] classes', function () {
         ->and($config->beans[0]->returns)->toBe(Clock::class)
         ->and($config->beans[0]->name)->toBe('utcClock')
         ->and($config->beans[0]->scope)->toBe(Scope::Singleton);
+});
+
+/**
+ * @return ComponentDescriptor the scanned descriptor for $class
+ */
+function scannedDescriptor(string $class): ComponentDescriptor
+{
+    foreach (scanFixtures() as $descriptor) {
+        if ($descriptor->class === $class) {
+            return $descriptor;
+        }
+    }
+
+    throw new RuntimeException("No descriptor scanned for {$class}.");
+}
+
+it('captures #[Bean] methods declared under a CUSTOM stereotype that specialises #[Configuration]', function () {
+    // #[ApiConfiguration] extends #[Configuration], so it IS a Configuration by the
+    // IS_INSTANCEOF discipline the rest of the scanner uses. Its short name is
+    // 'apiconfiguration' though, and the old `$shortAttr === 'configuration'` gate
+    // compared strings, so every bean under it was silently dropped.
+    $config = scannedDescriptor(ApiBeansConfig::class);
+
+    expect($config->stereotype)->toBe('apiconfiguration')
+        ->and($config->beans)->toHaveCount(1)
+        ->and($config->beans[0]->method)->toBe('token')
+        ->and($config->beans[0]->name)->toBe('apiToken')
+        ->and($config->beans[0]->returns)->toBe(ApiToken::class);
+});
+
+it('captures #[Bean] methods declared on a plain #[Component], not only on #[Configuration]', function () {
+    // Spring processes @Bean methods on any @Component ("lite mode"); the short-name
+    // gate dropped them because the stereotype reads 'component'.
+    $component = scannedDescriptor(StampComponent::class);
+
+    expect($component->stereotype)->toBe('component')
+        ->and($component->beans)->toHaveCount(1)
+        ->and($component->beans[0]->name)->toBe('inkStamp')
+        ->and($component->beans[0]->returns)->toBe(Stamp::class);
 });
 
 it('records the empty-string return-type contract for builtin/untyped #[Bean] returns', function () {

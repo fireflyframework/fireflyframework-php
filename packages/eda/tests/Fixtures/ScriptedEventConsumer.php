@@ -9,9 +9,10 @@ use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
 
 /**
- * A scripted in-memory EventConsumer fake for ConsumerLoopTest: emits a fixed queue of envelopes then nulls
- * (simulating poll timeouts), and records every ack()/nack() delivery tag plus start()/stop() calls so the
- * loop's bounded-termination and ack/nack routing can be asserted without a real broker.
+ * A scripted in-memory EventConsumer fake for ConsumerLoopTest / ConsumeEventsCommandTest: emits a fixed queue
+ * of envelopes then nulls (simulating poll timeouts), and records every ack()/nack() delivery tag, the
+ * destination list it was subscribed to, and start()/stop() calls — so the loop's bounded-termination, its
+ * ack/nack routing, and the command's destination-routing contract can all be asserted without a real broker.
  */
 final class ScriptedEventConsumer implements EventConsumer
 {
@@ -20,6 +21,13 @@ final class ScriptedEventConsumer implements EventConsumer
 
     /** @var list<mixed> */
     public array $nacked = [];
+
+    /**
+     * Every destination list handed to subscribe(), in call order — the command's routing contract is asserted on this.
+     *
+     * @var list<list<string>>
+     */
+    public array $subscribed = [];
 
     public bool $started = false;
 
@@ -30,9 +38,12 @@ final class ScriptedEventConsumer implements EventConsumer
      */
     public function __construct(private array $queue) {}
 
+    /**
+     * @param  list<string>  $destinations
+     */
     public function subscribe(array $destinations): void
     {
-        // no-op: subscription targets aren't asserted by the scripted-consumer tests.
+        $this->subscribed[] = $destinations;
     }
 
     public function start(): void

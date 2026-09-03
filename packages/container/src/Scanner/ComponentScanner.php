@@ -97,6 +97,10 @@ final class ComponentScanner
 
         /** @var Component $component */
         $component = $componentAttrs[0]->newInstance();
+
+        // The stereotype is a REPORTING label (actuator's /beans, BeanDefinition,
+        // ContextDescriptor) — never a behavioural switch. See beansOf() below for
+        // the switch that used to be built on it and the bug that caused.
         $shortAttr = strtolower((new ReflectionClass($component))->getShortName());
 
         /** @var list<class-string> $interfaces */
@@ -111,12 +115,35 @@ final class ComponentScanner
             order: $this->orderOf($reflection->getAttributes(Order::class)),
             qualifier: $this->qualifierOf($reflection->getAttributes(Qualifier::class)),
             interfaces: $interfaces,
-            beans: $shortAttr === 'configuration' ? $this->beansOf($reflection) : [],
+            beans: $this->beansOf($reflection),
             lazy: $reflection->getAttributes(Lazy::class) !== [],
         );
     }
 
     /**
+     * Collect the #[Bean] factory methods declared on an already-discovered component.
+     *
+     * WHY THIS IS UNCONDITIONAL. It used to be gated by the caller on a stereotype
+     * SHORT-NAME STRING comparison — `$shortAttr === 'configuration'` — the single
+     * place in the scanner that abandoned the ReflectionAttribute::IS_INSTANCEOF
+     * discipline used everywhere else (describe() finds stereotypes via
+     * getAttributes(Component::class, IS_INSTANCEOF) precisely so that a subclass of
+     * a stereotype IS that stereotype). String equality is not subtype equality, so
+     * the gate silently dropped every bean it did not recognise by exact spelling:
+     *
+     *  - a user-defined stereotype specialising #[Configuration] — `#[Attribute] final
+     *    class ApiConfiguration extends Configuration {}` — reports the short name
+     *    'apiconfiguration', so ALL of its #[Bean] methods vanished from the manifest.
+     *    The class itself was still discovered and bound, which made the failure
+     *    especially confusing: the #[Configuration] was present, its beans were not.
+     *  - a #[Bean] method on a plain #[Component] (or on #[Service]/#[Repository])
+     *    vanished the same way, even though Spring processes bean factory methods on
+     *    ANY component class — its "lite mode" configuration classes.
+     *
+     * Nothing is lost by always scanning: a component with no #[Bean] method yields
+     * an empty list, exactly as the gate used to force. The only stereotype test left
+     * in this scanner is describe()'s IS_INSTANCEOF Component check — where it belongs.
+     *
      * @param  ReflectionClass<object>  $reflection
      * @return list<BeanDescriptor>
      */

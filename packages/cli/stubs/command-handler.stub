@@ -6,14 +6,18 @@ namespace {{ namespace }};
 
 use Firefly\Cqrs\Attributes\CommandHandler;
 
+/**
+ * Handles the {{ message }} command.
+ *
+ * HandlerScanner infers the handled message type from handle()'s SOLE parameter, so that parameter must
+ * stay a concrete class (a builtin type such as `object` cannot be resolved to a message and makes
+ * `firefly:cache` fail loud). Point it somewhere else by naming the class explicitly instead:
+ * #[CommandHandler(SomeOtherCommand::class)].
+ */
 #[CommandHandler]
 final class {{ class }}
 {
-    /**
-     * Replace `object` with the concrete Command message class this handler dispatches for
-     * (or pass it explicitly via #[CommandHandler(SomeCommand::class)]).
-     */
-    public function handle(object $command): mixed
+    public function handle({{ message }} $command): mixed
     {
         return null;
     }

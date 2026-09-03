@@ -5,19 +5,32 @@ declare(strict_types=1);
 namespace Firefly\Eda\Postgres\Console;
 
 use Firefly\Config\Config;
-use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxRelay;
-use Firefly\Eda\Postgres\PostgresEventPublisher;
+use Firefly\Eda\Postgres\Outbox\RelayDownstream;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
 /**
- * OPTIONAL: forwards committed firefly_eda_outbox PENDING rows to a DISTINCT downstream broker configured via
- * firefly.eda.postgres.relay.downstream_provider (rabbitmq|kafka). If that key is unset, terminal Postgres delivers
- * in-process via firefly:eda:consume, so this command is a documented no-op. It NEVER resolves to PostgresEventPublisher
- * (that would re-insert PENDING rows) — the guard below + OutboxRelay's ctor guard both refuse it (B1).
+ * OPTIONAL: forwards committed firefly_eda_outbox PENDING rows to a DISTINCT downstream broker selected by
+ * firefly.eda.postgres.relay.downstream_provider. Terminal in-process delivery is NOT this command's job —
+ * firefly:eda:consume owns that — so an app that only needs #[EventListener] handlers never runs this at all.
+ *
+ * WHAT CHANGED AND WHY. This command used to treat downstream_provider as a mere on/off flag and then resolve
+ * EventPublisher::class from the container. Under firefly.eda.provider=postgres — the only provider that has an
+ * outbox table to relay — that binding IS the outbox writer, so the guard below rejected the one thing the command
+ * could ever resolve, and the relay could not be made to work under any configuration. Selection now goes through
+ * RelayDownstream (see its docblock for the full resolution order and why the sibling adapter packages are
+ * referenced as class-strings), which returns a REAL downstream publisher or throws a ConfigurationException
+ * naming exactly what to change.
+ *
+ * Both failure modes are now loud. An UNSET key is no longer an exit-0 "no-op": running a relay with nothing to
+ * relay to is a misconfiguration, and exiting 0 while forwarding nothing is precisely the silent behaviour that hid
+ * the defect — so it exits FAILURE with a message pointing at firefly:eda:consume for the in-process case. A
+ * MISCONFIGURED key (unknown name, package not installed, unconstructible class, wrong type, or the outbox writer
+ * itself) is reported before a single row is claimed, so a failed relay can never mark rows PUBLISHED.
  */
 final class OutboxRelayCommand extends Command
 {
@@ -25,24 +38,16 @@ final class OutboxRelayCommand extends Command
     protected $signature = 'firefly:outbox:relay {--max-messages= : stop after N published} {--time-limit= : stop after N seconds} {--sleep=1 : seconds between empty batches} {--batch-size=50}';
 
     /** @var string */
-    protected $description = 'OPTIONAL: forward committed firefly_eda_outbox rows to a downstream broker (claim -> publish -> mark PUBLISHED/FAILED). No-op unless firefly.eda.postgres.relay.downstream_provider is set.';
+    protected $description = 'OPTIONAL: forward committed firefly_eda_outbox rows to the downstream broker named by firefly.eda.postgres.relay.downstream_provider (claim -> publish -> mark PUBLISHED/FAILED).';
 
     public function handle(ConnectionResolverInterface $connections, Container $container, Config $config): int
     {
-        $downstreamProvider = $config->has('firefly.eda.postgres.relay.downstream_provider')
-            ? $config->string('firefly.eda.postgres.relay.downstream_provider')
-            : null;
-
-        if ($downstreamProvider === null) {
-            $this->info('firefly:outbox:relay — no firefly.eda.postgres.relay.downstream_provider configured; terminal Postgres delivers in-process via firefly:eda:consume. No-op.');
-
-            return self::SUCCESS;
-        }
-
-        /** @var EventPublisher $downstream */
-        $downstream = $container->make(EventPublisher::class);
-        if ($downstream instanceof PostgresEventPublisher) {
-            $this->error("firefly.eda.postgres.relay.downstream_provider={$downstreamProvider} but the resolved EventPublisher is the Postgres outbox publisher itself — that would re-insert PENDING rows (infinite loop). Bind a real rabbitmq/kafka downstream EventPublisher for the relay.");
+        try {
+            $downstream = RelayDownstream::resolve($container, $config);
+        } catch (ConfigurationException $e) {
+            // Reported as a clean console error rather than an escaping exception: the operator needs the remedy,
+            // not a stack trace through the container.
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         }

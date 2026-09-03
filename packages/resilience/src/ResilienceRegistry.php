@@ -69,6 +69,8 @@ final class ResilienceRegistry
             waitDurationInOpen: $this->seconds($c, 'wait-duration-in-open', 30.0),
             halfOpenMaxCalls: $this->int($c, 'half-open-max-calls', 1),
             recordOn: $this->classList($c, 'record-on'),
+            minimumNumberOfCalls: $this->int($c, 'minimum-number-of-calls', 0),
+            halfOpenProbeTimeout: $this->seconds($c, 'half-open-probe-timeout', 30.0),
         );
     }
 
@@ -90,6 +92,7 @@ final class ResilienceRegistry
             store: $this->store,
             maxConcurrent: $this->int($c = $this->instance('bulkhead', $name), 'max-concurrent', 10),
             maxWait: $this->seconds($c, 'max-wait', 0.0),
+            permitTtl: $this->seconds($c, 'permit-ttl', 60.0),
         );
     }
 

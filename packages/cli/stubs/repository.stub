@@ -4,11 +4,27 @@ declare(strict_types=1);
 
 namespace {{ namespace }};
 
-use Firefly\Data\Repository\CrudRepository;
+use Firefly\Container\Attributes\Repository;
+use Firefly\Data\Repository\EloquentRepository;
+use Illuminate\Database\Eloquent\Model;
 
 /**
- * @extends CrudRepository<object, int|string>
+ * A #[Repository] bean over the Eloquent model named by $model.
+ *
+ * Point $model at your own model class — Illuminate\Database\Eloquent\Model is only the placeholder the
+ * generator can guarantee exists, and it is abstract, so every inherited query fails until you replace it.
+ * Everything else is already wired: extending EloquentRepository inherits the whole
+ * Crud/PagingAndSorting contract (save/findById/findAll/count/delete, Page/Pageable/Sort), and undeclared
+ * derived-query methods (findByStatus(...), countByOwnerId(...)) are parsed from their names by __call —
+ * declare them as @method tags so static analysis sees them.
+ *
+ * Deliberately NOT final: firefly:cache emits a #[Transactional] proxy that `extends` this class.
+ *
+ * @extends EloquentRepository<Model>
  */
-interface {{ class }} extends CrudRepository
+#[Repository]
+class {{ class }} extends EloquentRepository
 {
+    /** @var class-string<Model> */
+    protected string $model = Model::class;
 }

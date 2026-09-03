@@ -82,8 +82,21 @@ it('still negotiates arrays and scalars to JSON — the HTML branch is additive'
         ->and($response->getContent())->toBe('{"ok":true}');
 });
 
-// RouteScanner discovers controllers with an IS_INSTANCEOF filter on #[RestController], so #[Controller]
-// extending it is found by the existing scan with no scanner change.
-it('makes #[Controller] discoverable by the existing #[RestController] scan', function () {
-    expect(is_subclass_of(Controller::class, RestController::class))->toBeTrue();
+// RouteScanner discovers controllers with an IS_INSTANCEOF filter on #[RestController]. Asserting the class
+// hierarchy would be statically trivial; what actually matters is that a REFLECTION lookup for RestController
+// finds a #[Controller] attribute — that is the mechanism the scan relies on.
+it('makes #[Controller] discoverable by the existing #[RestController] attribute scan', function () {
+    $probe = new ReflectionClass(HtmlProbeController::class);
+
+    expect($probe->getAttributes(RestController::class, ReflectionAttribute::IS_INSTANCEOF))->toHaveCount(1)
+        ->and($probe->getAttributes(Controller::class, ReflectionAttribute::IS_INSTANCEOF))->toHaveCount(1);
 });
+
+#[Controller]
+final class HtmlProbeController
+{
+    public function index(): string
+    {
+        return 'probe';
+    }
+}

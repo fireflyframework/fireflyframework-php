@@ -20,7 +20,7 @@ uses(FireflyDatabaseTestCase::class);
 beforeEach(fn () => Schema::create(OutboxSchema::TABLE, fn (Blueprint $t) => OutboxSchema::blueprint($t)));
 
 it('delivers each committed PENDING row exactly once and NEVER grows the outbox (B1 regression)', function () {
-    $publisher = new PostgresEventPublisher(DB::connection()); // emitNotify=false on sqlite
+    $publisher = new PostgresEventPublisher(DB::connection(), new SubscriberRegistry); // emitNotify=false on sqlite
     foreach ([1, 2, 3] as $id) {
         $publisher->publish('users', 'user.created', ['id' => $id]);
     }
@@ -48,7 +48,7 @@ it('delivers each committed PENDING row exactly once and NEVER grows the outbox 
 });
 
 it('a fresh consumer (restart) does NOT replay PUBLISHED rows (durable status window, M3)', function () {
-    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 1]);
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 1]);
     (new ConsumerLoop)->run(new PostgresEventConsumer(DB::connection()), fn () => null, new ConsumerOptions(maxMessages: 1, pollTimeoutMs: 10));
 
     $seen = 0;
@@ -64,7 +64,7 @@ it('a fresh consumer (restart) does NOT replay PUBLISHED rows (durable status wi
 });
 
 it('poll() swallows a throwing NOTIFY wait and still delivers via the poll-fallback PENDING claim', function () {
-    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 42]);
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 42]);
 
     $consumer = new PostgresEventConsumer(DB::connection(), 'firefly_eda_events', 3, function (int $t): void {
         throw new ErrorException('simulated deprecation-to-exception');

@@ -35,6 +35,7 @@ final class EventListenerScanner
                         method: $method->getName(),
                         patterns: $listener->patterns,
                         order: $listener->order,
+                        destinations: $listener->destinations,
                     );
                 }
             }

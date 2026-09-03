@@ -14,11 +14,18 @@ final readonly class BeanDescriptor
         public ?string $name,
         public Scope $scope,
         /**
-         * Captured from #[Primary] on the #[Bean] method, but NOT yet
-         * consulted during registration in this milestone (registerBeans()
-         * ignores it). Reserved for future bean-collision disambiguation,
-         * analogous to how ContainerRegistrar::wireInterfaces() uses
-         * ComponentDescriptor::$primary to pick a default interface impl.
+         * Captured from #[Primary] on the #[Bean] method: when SEVERAL #[Bean]
+         * methods produce the same return type, this marks the one the bare type
+         * resolves to, while every candidate stays reachable under its own
+         * #[Bean] name. Exactly the role ComponentDescriptor::$primary plays for
+         * competing interface implementations in
+         * ContainerRegistrar::wireInterfaces().
+         *
+         * It was inert for a long time — registerBeans() read it NOWHERE, which
+         * is half of why two beans of one type used to collapse onto a single
+         * binding with no way to tell them apart. It is consulted now; see
+         * ContainerRegistrar::registerBeans() for the full rule, including the
+         * registration-time errors for shapes #[Primary] cannot rescue.
          */
         public bool $primary,
         public int $order,

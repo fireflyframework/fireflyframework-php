@@ -12,7 +12,9 @@ commands.
 
 ```bash
 php artisan firefly:cache
-php artisan make:firefly-handler RegisterWidget
+# writes App\RegisterWidgetHandler AND the App\RegisterWidget command it handles — a handler whose
+# message type cannot be resolved would abort the next firefly:cache, so the pair is generated together.
+php artisan make:firefly-handler RegisterWidgetHandler
 ```
 
 See [CLI](../../docs/cli.md) for the full command reference.

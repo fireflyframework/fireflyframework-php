@@ -23,9 +23,20 @@ final class RecordingView implements ViewContract
         return $this->data;
     }
 
+    /**
+     * Illuminate's contract allows both with('k', $v) and with(['k' => $v]).
+     *
+     * @param  array<string,mixed>|string  $key
+     */
     public function with($key, $value = null): self
     {
-        $this->data[(string) $key] = $value;
+        if (is_array($key)) {
+            $this->data = [...$this->data, ...$key];
+
+            return $this;
+        }
+
+        $this->data[$key] = $value;
 
         return $this;
     }

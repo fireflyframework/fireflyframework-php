@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+/**
+ * The {{ class }} command — an immutable intent to change the write model, dispatched with
+ * Firefly\Cqrs\Command\CommandBus::send(). Add constructor-promoted readonly properties for the data its
+ * handler needs; the bus imposes no base class or marker.
+ */
+final readonly class {{ class }}
+{
+}

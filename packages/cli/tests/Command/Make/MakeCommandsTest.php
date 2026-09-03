@@ -16,6 +16,8 @@ uses(MakeCommandsTestCase::class);
 // which lands under app_path('Http/') (MakeControllerCommand::getDefaultNamespace() appends \Http).
 // Clean both locations after every test so the shared testbench workbench app/ dir stays pristine
 // across the whole single-process suite run.
+// `make:firefly-handler` writes TWO files — the handler and the message class its handle() takes — so the
+// glob below sweeps up DemoCommand.php / DemoQuery.php alongside the handlers themselves.
 afterEach(function (): void {
     array_map('unlink', glob(app_path('*.php')) ?: []);
     array_map('unlink', glob(app_path('Http/*.php')) ?: []);
@@ -29,7 +31,8 @@ dataset('generators', [
     'handler (command)' => ['make:firefly-handler', 'DemoCommandHandler', 'DemoCommandHandler.php', '#[CommandHandler]'],
     // #[EventListener] always carries a $patterns constructor arg in the generated scaffold, so the
     // needle checks the opening paren too (an attribute usage never renders as a bare `#[EventListener]`
-    // here, unlike the parameterless stereotypes above).
+    // here, unlike the parameterless stereotypes above). The class-level #[Component] that makes the
+    // listener a bean is asserted behaviourally in GeneratedStubIntegrityTest.
     'listener (event)' => ['make:firefly-listener', 'DemoEventListener', 'DemoEventListener.php', "#[EventListener('"],
     // NOTE: no `Firefly\Data\Attributes\Entity` (or any other) attribute exists anywhere in the
     // monorepo — grepping every packages/*/src/Attributes dir confirms it. The real framework analog
@@ -38,7 +41,11 @@ dataset('generators', [
     // entity.stub extends it instead of applying a nonexistent attribute; the needle is adjusted to
     // match (deviation from the brief's literal `'#[Entity]'`, reported in the task report).
     'entity' => ['make:firefly-entity', 'DemoEntity', 'DemoEntity.php', 'extends Entity'],
-    'repository' => ['make:firefly-repository', 'DemoRepository', 'DemoRepository.php', 'interface DemoRepository'],
+    // The repository scaffold is a CONCRETE #[Repository] bean extending EloquentRepository, not the bare
+    // `interface ... extends CrudRepository` it used to be: nothing in the framework synthesises an
+    // implementation for a repository interface, so the old output could never be injected and was skipped
+    // by the component scan entirely. GeneratedStubIntegrityTest holds the behavioural half of that.
+    'repository' => ['make:firefly-repository', 'DemoRepository', 'DemoRepository.php', '#[Repository]'],
     'config properties' => ['make:firefly-config-properties', 'DemoConfigProperties', 'DemoConfigProperties.php', '#[ConfigProperties('],
 ]);
 

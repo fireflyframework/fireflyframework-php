@@ -69,3 +69,34 @@ it('throws a ConfigurationException naming available instances for an unknown na
 it('an empty resilience config still rejects unknown names cleanly', function () {
     expect(fn () => makeResilienceRegistry()->circuitBreaker('none'))->toThrow(ConfigurationException::class, '(none configured)');
 });
+
+it('wires the circuit breaker minimum-number-of-calls key through to the built instance', function () {
+    // A registry key that never reaches the constructor is indistinguishable from a typo, so assert the
+    // BEHAVIOUR the key buys rather than the object's shape: with a minimum of 3, two failures on a
+    // failure-threshold-1 breaker must not trip it.
+    $breaker = makeResilienceRegistry([
+        'circuit-breaker' => ['strict' => ['failure-threshold' => 1, 'minimum-number-of-calls' => 3]],
+    ])->circuitBreaker('strict');
+
+    foreach ([1, 2] as $ignored) {
+        try {
+            $breaker->call(fn () => throw new RuntimeException('down'));
+        } catch (RuntimeException) {
+        }
+    }
+
+    expect($breaker->state())->toBe('closed');
+});
+
+it('wires the bulkhead permit-ttl key through to the built instance', function () {
+    // permit-ttl is what reclaims a crashed holder's permit; a 50ms TTL makes that observable in-test.
+    $bulkhead = makeResilienceRegistry([
+        'bulkhead' => ['tiny' => ['max-concurrent' => 1, 'permit-ttl' => '50ms']],
+    ])->bulkhead('tiny');
+
+    expect($bulkhead->acquire())->toBeTrue(); // acquired and deliberately never released
+
+    usleep(80_000);
+
+    expect($bulkhead->acquire())->toBeTrue(); // the abandoned permit expired and was reclaimed
+});

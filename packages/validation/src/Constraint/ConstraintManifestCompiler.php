@@ -5,14 +5,41 @@ declare(strict_types=1);
 namespace Firefly\Validation\Constraint;
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
-use Firefly\Validation\Rule\DecimalScale;
+use Firefly\Validation\Rule\Compilable;
 use Illuminate\Contracts\Validation\ValidationRule;
+use ReflectionClass;
+use ReflectionProperty;
+use UnitEnum;
 
 /**
- * Compile-time façade over ConstraintScanner. Delegates the single reflection pass to the scanner, then
- * serialises each ValidationRule object into a var_export-safe envelope. The only arg-bearing shipped rule
- * is DecimalScale, so envelope() special-cases exactly it (via its additive scale() accessor); every other
- * rule serialises to a bare ['@rule' => Class]. Never called on the cached path.
+ * Compile-time façade over ConstraintScanner. Delegates the single reflection pass over the DTO to the
+ * scanner, then serialises each ValidationRule object into a var_export-safe envelope. Never called on the
+ * cached path.
+ *
+ * THE DEFECT THIS CLASS WAS REWRITTEN FOR. A rule object cannot be written into a PHP array literal, so it is
+ * stored as ['@rule' => Class] plus an optional positional 'args' list and rebuilt with `new $class(...$args)`
+ * by ConstraintManifest::rehydrate(). envelope() used to hard-code the ONE shipped rule that carried
+ * constructor state (DecimalScale, via its scale() accessor) and emit a bare ['@rule' => Class] for
+ * everything else. That was fine for first-party rules and silently wrong for the #[Rules] escape hatch,
+ * whose whole purpose is app-local and third-party rules: #[Rules(new StartsWith('ACME-'))] compiled to
+ * ['@rule' => StartsWith::class], and the cached application then booted a `new StartsWith()` — an
+ * ArgumentCountError at boot if the constructor parameter was required, or, if it had a default, something
+ * far worse: a rule that validated a DIFFERENT prefix from the one written in the source, in production only,
+ * because the uncached path (which keeps the live object) behaved correctly in every test and every local run.
+ *
+ * WHAT WE DO INSTEAD, AND WHY THIS SHAPE. Arbitrary object graphs genuinely cannot be var_export'd, but the
+ * constructor ARGUMENTS of the overwhelmingly common rule shape can be recovered exactly: PHP 8 constructor
+ * promotion guarantees a property per parameter, with the parameter's name, so reflection reads back the very
+ * values the rule was built with. That covers first-party rules (DecimalScale and Size now compile through
+ * the generic path — the special case is gone) and ordinary third-party ones with no ceremony at all.
+ *
+ * Recovery stops where honesty does. A constructor that assigns in its body, renames, or normalises its input
+ * cannot be inverted, and a promoted argument may still be un-exportable (a DateTimeImmutable, a PSR logger,
+ * a closure). Guessing there would ship a rule that behaves differently from the one written — the very
+ * failure being fixed — so both cases throw a ConfigurationException from the COMPILER, naming the rule, the
+ * offending parameter, and the two ways out: promote the parameter, or implement
+ * Firefly\Validation\Rule\Compilable and declare the arguments explicitly. A cache build fails loudly on a
+ * developer's machine or in CI instead of a request failing in production.
  *
  * @phpstan-type RuleEnvelope array{'@rule': class-string<ValidationRule>, args?: list<mixed>}
  */
@@ -82,10 +109,105 @@ final class ConstraintManifestCompiler
      */
     private function envelope(ValidationRule $rule): array
     {
-        if ($rule instanceof DecimalScale) {
-            return ['@rule' => $rule::class, 'args' => [$rule->scale()]];
+        // Keyed by parameter name on the reflection path and by position on the Compilable one, purely so a
+        // rejection can name what the developer wrote; array_values() then flattens it to the positional list
+        // rehydrate() splats. PHP preserves insertion order, so declaration order survives the flattening.
+        $arguments = $rule instanceof Compilable
+            ? $rule->constructorArguments()
+            : $this->recoverArguments($rule);
+
+        /** @var mixed $argument */
+        foreach ($arguments as $label => $argument) {
+            $this->assertExportable($rule, is_int($label) ? '#'.$label : '$'.$label, $argument);
         }
 
-        return ['@rule' => $rule::class];
+        // A stateless rule keeps the bare two-key envelope it has always had: 'args' => [] would be noise in
+        // every generated manifest, and `new $class()` is exactly right for a rule with nothing to restore.
+        return $arguments === []
+            ? ['@rule' => $rule::class]
+            : ['@rule' => $rule::class, 'args' => array_values($arguments)];
+    }
+
+    /**
+     * Reads a rule's constructor arguments back out of its promoted properties, keyed by parameter name.
+     *
+     * @return array<string, mixed>
+     */
+    private function recoverArguments(ValidationRule $rule): array
+    {
+        $constructor = (new ReflectionClass($rule))->getConstructor();
+        if ($constructor === null) {
+            return [];
+        }
+
+        $arguments = [];
+        foreach ($constructor->getParameters() as $parameter) {
+            $name = $parameter->getName();
+
+            if (! $parameter->isPromoted()) {
+                throw new ConfigurationException(sprintf(
+                    'Cannot compile the validation rule %s: its constructor parameter $%s is not promoted to a '
+                    .'property, so the compiled constraint manifest has no way to recover the value it was built '
+                    .'with. Promote the parameter (e.g. "private readonly" in the constructor signature), or '
+                    .'implement %s to declare the rule\'s constructor arguments explicitly.',
+                    $rule::class,
+                    $name,
+                    Compilable::class,
+                ));
+            }
+
+            $property = new ReflectionProperty($rule, $name);
+            if (! $property->isInitialized($rule)) {
+                throw new ConfigurationException(sprintf(
+                    'Cannot compile the validation rule %s: its promoted property $%s is uninitialised, so the '
+                    .'compiled constraint manifest cannot record the argument. Implement %s to declare the '
+                    .'rule\'s constructor arguments explicitly.',
+                    $rule::class,
+                    $name,
+                    Compilable::class,
+                ));
+            }
+
+            /** @var mixed $value */
+            $value = $property->getValue($rule);
+            $arguments[$name] = $value;
+        }
+
+        return $arguments;
+    }
+
+    /**
+     * Rejects, at compile time, any argument var_export cannot write as a re-parseable literal.
+     *
+     * var_export handles null, scalars, arrays of those, and (since PHP 8.1) enum cases, which it writes as
+     * \Fully\Qualified::Case. Everything else it writes as \Some\Class::__set_state(...), which fatals on load
+     * unless the class implements that magic — so an unchecked object argument would turn a green cache build
+     * into a broken production boot. Failing here names the rule while the developer is looking at it.
+     */
+    private function assertExportable(ValidationRule $rule, string $label, mixed $argument): void
+    {
+        if ($argument === null || is_scalar($argument) || $argument instanceof UnitEnum) {
+            return;
+        }
+
+        if (is_array($argument)) {
+            /** @var mixed $element */
+            foreach ($argument as $element) {
+                $this->assertExportable($rule, $label, $element);
+            }
+
+            return;
+        }
+
+        throw new ConfigurationException(sprintf(
+            'Cannot compile the validation rule %s: constructor argument %s is of type %s, which cannot be '
+            .'written into the compiled constraint manifest (only null, scalars, enum cases and arrays of those '
+            .'survive var_export). Give the rule scalar constructor state, or implement %s to declare arguments '
+            .'that do.',
+            $rule::class,
+            $label,
+            get_debug_type($argument),
+            Compilable::class,
+        ));
     }
 }
