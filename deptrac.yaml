@@ -86,6 +86,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/observability/src/.*
+    - name: Admin
+      collectors:
+        - type: directory
+          value: packages/admin/src/.*
     - name: Testing
       collectors:
         - type: directory
@@ -327,6 +331,20 @@ deptrac:
       - Actuator
       - Cqrs
       - Resilience
+
+    # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
+    # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
+    # its pages on the illuminate Router through a Context BootPass at a configurable base path, and reuses
+    # Web's ProblemDetailsRenderer for its own failures (=> Web). It reads Config, carries Container/Context
+    # attributes and extends AutoConfigure's base. NOTHING depends on it — it is a leaf, and an optional one.
+    Admin:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Actuator
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
     # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it

@@ -1,6 +1,6 @@
 {
     "name": "firefly/monorepo",
-    "description": "LaraFly — the Firefly Framework for PHP. Development monorepo.",
+    "description": "LaraFly \u2014 the Firefly Framework for PHP. Development monorepo.",
     "type": "project",
     "license": "Apache-2.0",
     "require": {
@@ -26,6 +26,7 @@
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
+        "firefly/admin": "*@dev",
         "firefly/cli": "*@dev",
         "firefly/eda-kafka": "*@dev",
         "firefly/eda-postgres": "*@dev",
@@ -46,21 +47,21 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Firefly\\Tests\\": "tests/",
             "Firefly\\Actuator\\Tests\\": "packages/actuator/tests/",
+            "Firefly\\Admin\\Tests\\": "packages/admin/tests/",
             "Firefly\\AutoConfigure\\Tests\\": "packages/autoconfigure/tests/",
+            "Firefly\\Cli\\Tests\\": "packages/cli/tests/",
             "Firefly\\Config\\Tests\\": "packages/config/tests/",
             "Firefly\\Container\\Tests\\": "packages/container/tests/",
             "Firefly\\Context\\Tests\\": "packages/context/tests/",
-            "Firefly\\Cli\\Tests\\": "packages/cli/tests/",
             "Firefly\\Cqrs\\Tests\\": "packages/cqrs/tests/",
-            "Firefly\\Firefly\\Tests\\": "packages/firefly/tests/",
             "Firefly\\Data\\Tests\\": "packages/data/tests/",
             "Firefly\\Domain\\Tests\\": "packages/domain/tests/",
-            "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
             "Firefly\\Eda\\Kafka\\Tests\\": "packages/eda-kafka/tests/",
             "Firefly\\Eda\\Postgres\\Tests\\": "packages/eda-postgres/tests/",
             "Firefly\\Eda\\Rabbitmq\\Tests\\": "packages/eda-rabbitmq/tests/",
+            "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
+            "Firefly\\Firefly\\Tests\\": "packages/firefly/tests/",
             "Firefly\\Installer\\Tests\\": "packages/installer/tests/",
             "Firefly\\Messaging\\Tests\\": "packages/messaging/tests/",
             "Firefly\\Observability\\Tests\\": "packages/observability/tests/",
@@ -69,14 +70,27 @@
             "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
             "Firefly\\Security\\Tests\\": "packages/security/tests/",
             "Firefly\\Testing\\Tests\\": "packages/testing/tests/",
+            "Firefly\\Tests\\": "tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/",
             "Lumen\\Tests\\": "samples/lumen/tests/"
         }
     },
     "repositories": [
-        { "type": "path", "url": "packages/*", "options": { "symlink": true } },
-        { "type": "path", "url": "samples/*", "options": { "symlink": true } }
+        {
+            "type": "path",
+            "url": "packages/*",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "type": "path",
+            "url": "samples/*",
+            "options": {
+                "symlink": true
+            }
+        }
     ],
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -96,6 +110,11 @@
         "test": "pest",
         "deptrac": "deptrac analyse --no-progress --config-file=deptrac.yaml",
         "mono-validate": "monorepo-builder validate",
-        "check": [ "@pint-test", "@stan", "@test", "@deptrac" ]
+        "check": [
+            "@pint-test",
+            "@stan",
+            "@test",
+            "@deptrac"
+        ]
     }
 }
