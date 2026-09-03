@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Observability;
 
+use Firefly\Config\Config;
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
@@ -11,6 +12,7 @@ use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
+use Firefly\Observability\Metrics\CacheMeterRegistry;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\NoOpMetricsRecorder;
@@ -19,6 +21,7 @@ use Firefly\Observability\Prometheus\PrometheusTextFormat;
 use Firefly\Observability\Tracing\NoOpTracer;
 use Firefly\Observability\Tracing\Tracer;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Factory;
 
 /**
  * #[Order(500)] is DELIBERATELY below CqrsAutoConfiguration's #[Order(1000)] (§7 risk 4, mirrors
@@ -34,12 +37,35 @@ use Illuminate\Container\Container;
 #[Order(500)]
 final class ObservabilityAutoConfiguration
 {
+    /**
+     * The meter store. In-memory by default; cache-backed when `firefly.observability.metrics.store` names a
+     * cache store.
+     *
+     * SimpleMeterRegistry keeps meters in process memory, which is right for a long-lived worker (Octane,
+     * roadrunner) and wrong for PHP's usual deployment: under PHP-FPM each request is a fresh process, so a
+     * scrape of /actuator/metrics or /actuator/prometheus sees only what that scrape's own request recorded —
+     * which reads as data but is not. Naming a store swaps in CacheMeterRegistry, whose counters and timers
+     * accumulate across workers through the store's atomic increment.
+     *
+     * Opt-in rather than default: a metrics registry that silently begins writing to whatever cache an
+     * application happens to have configured is a surprise, and on the `array` driver it would be no better
+     * than memory anyway.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
-    public function meterRegistry(): MeterRegistry
+    public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
-        return new SimpleMeterRegistry;
+        $store = $config->string('firefly.observability.metrics.store', '');
+        if ($store === '' || ! $container->bound('cache')) {
+            return new SimpleMeterRegistry;
+        }
+
+        /** @var Factory $factory */
+        $factory = $container->make('cache');
+        $ttl = $config->int('firefly.observability.metrics.ttl', 0);
+
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null);
     }
 
     #[Bean]
