@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace Firefly\OpenApi\Schema;
 
+use Firefly\OpenApi\Generator\DocBlock;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use ReflectionClass;
-use ReflectionParameter;
 
 /**
- * Builds the `components/schemas` entry for one request-body DTO, from two sources that each know half of it.
+ * Builds the `components/schemas` entry for one request-body DTO, from three sources that each know part of
+ * it: the compiled constraints, the constructor signature, and the class's own PHPDoc (plus #[ApiProperty]
+ * where an author has something to add that none of the three can state).
  *
  * ConstraintManifest knows the VALIDATION contract — which members are required, what shapes they must have —
  * but nothing about types, because a rule list is untyped by construction. The DTO's own constructor knows
@@ -35,6 +37,13 @@ use ReflectionParameter;
  * requests the server would have served. Rules keyed to a member with no constructor parameter are still
  * documented: BeanValidator validates the RAW decoded array, so such a member is enforced on input even
  * though it is never hydrated.
+ *
+ * THE PROSE comes from the class docblock (which becomes the schema's `description`), each member's own
+ * docblock or the constructor's `@param` line for it (which becomes the member's), and #[ApiProperty] over
+ * both — see MemberDoc, which owns that precedence. It is read here for the same reason the types are: the
+ * text is already written, sitting in the file, and a schema that repeats a member's own name back at the
+ * reader is worse than one that says nothing. The reflection this costs is the same reflection the
+ * constructor already required.
  *
  * NESTED DTOs become their own component and a `$ref`, never an inlined object — see SchemaRegistry. When the
  * nested class has its own manifest entry (the normal case: ConstraintManifestCompiler compiles every class
@@ -89,7 +98,7 @@ final class DtoSchemaFactory
         $schema = [
             'type' => 'object',
             'title' => $this->title($class),
-            'description' => 'Request payload bound from '.$class.'.',
+            'description' => $this->description($class),
             'properties' => $fields,
         ];
 
@@ -113,23 +122,30 @@ final class DtoSchemaFactory
         if ($type !== null && TypeSchema::isDto($type)) {
             $ref = $this->ref($type, $registry, [], $nestedRules);
 
-            // A `$ref` cannot usefully be widened with a sibling `type` in 2020-12 (the reference's own
-            // keywords win), so a nullable nested DTO is spelled as the union it actually is.
+            // A `$ref` cannot usefully be widened with a sibling `type` in 2020-12 — VALIDATION keywords
+            // beside a reference are applied WITH it, so `type: 'null'` would have to pass as well as the
+            // reference and could never hold — which is why a nullable nested DTO is spelled as the union it
+            // actually is. Annotations are the opposite case: a `description` beside a `$ref` is legal in
+            // 2020-12 and therefore in 3.1, so MemberDoc::apply() is safe on either shape.
             $schema = $member->nullable
                 ? ['anyOf' => [['$ref' => $ref], ['type' => 'null']]]
                 : ['$ref' => $ref];
 
-            return new PropertySchema($schema, $this->mapper->apply([], $rules, false, $member->required())->required);
+            return new PropertySchema(
+                $member->doc->apply($schema),
+                $this->mapper->apply([], $rules, false, $member->required())->required,
+            );
         }
 
         $base = TypeSchema::for($type) ?? [];
         $property = $this->mapper->apply($base, $rules, $member->nullable, $member->required());
+        $schema = $property->schema;
 
-        if ($member->hasDefault && $member->default !== null && ! array_key_exists('default', $property->schema)) {
-            return new PropertySchema([...$property->schema, 'default' => $member->default], $property->required);
+        if ($member->hasDefault && $member->default !== null && ! array_key_exists('default', $schema)) {
+            $schema['default'] = $member->default;
         }
 
-        return $property;
+        return new PropertySchema($member->doc->apply($schema), $property->required);
     }
 
     /**
@@ -142,42 +158,79 @@ final class DtoSchemaFactory
      */
     private function members(string $class, array $properties, array $own): array
     {
+        $reflection = $this->reflect($class);
+        $constructor = $reflection?->getConstructor();
+
+        // Parsed ONCE per DTO and handed to every member: `@param` lines all live in the same comment, and
+        // re-parsing it per parameter would re-do the same work eight times for an eight-member payload.
+        $constructorDoc = DocBlock::parse($constructor?->getDocComment());
+
         $members = [];
 
-        foreach ($this->parameters($class) as $parameter) {
-            $members[$parameter->getName()] = MemberType::fromParameter($parameter);
+        foreach ($constructor?->getParameters() ?? [] as $parameter) {
+            $members[$parameter->getName()] = MemberType::fromParameter(
+                $parameter,
+                MemberDoc::forParameter($parameter, $constructorDoc),
+            );
         }
 
         if ($members === []) {
             // No constructor to reflect (the class is not autoloadable here, or takes no arguments): fall
             // back to the compiled binding's key list, which RouteScanner captured from the same source.
             foreach ($properties as $name) {
-                $members[$name] = MemberType::unknown();
+                $members[$name] = MemberType::unknown($this->memberDoc($reflection, $name));
             }
         }
 
         foreach (array_keys($own) as $name) {
-            $members[$name] ??= MemberType::unknown();
+            $members[$name] ??= MemberType::unknown($this->memberDoc($reflection, $name));
         }
 
         return $members;
     }
 
     /**
-     * @return list<ReflectionParameter>
+     * The prose for a member the constructor does not take, read off a declared property of the same name
+     * when there is one. A rule-only member with no property at all (validated on the raw decoded array, and
+     * nowhere else) simply has nothing to read.
+     *
+     * @param  ReflectionClass<object>|null  $class
      */
-    private function parameters(string $class): array
+    private function memberDoc(?ReflectionClass $class, string $name): MemberDoc
+    {
+        return $class !== null && $class->hasProperty($name)
+            ? MemberDoc::forProperty($class->getProperty($name))
+            : new MemberDoc;
+    }
+
+    /**
+     * The DTO's class docblock as the schema `description`, falling back to a statement of where the payload
+     * is bound from.
+     *
+     * The fallback is kept rather than dropped because a schema with no description at all reads, in a
+     * viewer, as a component nobody has looked at — whereas "Request payload bound from App\Dto\X." at
+     * least tells a reader which PHP class to open. It is a locator, not documentation, which is exactly why
+     * any real docblock beats it.
+     */
+    private function description(string $class): string
+    {
+        $prose = DocBlock::parse($this->reflect($class)?->getDocComment())->prose();
+
+        return $prose === '' ? 'Request payload bound from '.$class.'.' : $prose;
+    }
+
+    /**
+     * @return ReflectionClass<object>|null
+     */
+    private function reflect(string $class): ?ReflectionClass
     {
         if (! class_exists($class)) {
-            return [];
+            return null;
         }
 
         $reflection = new ReflectionClass($class);
-        if ($reflection->isAbstract() || $reflection->isInterface()) {
-            return [];
-        }
 
-        return $reflection->getConstructor()?->getParameters() ?? [];
+        return $reflection->isAbstract() || $reflection->isInterface() ? null : $reflection;
     }
 
     /**

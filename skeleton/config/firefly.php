@@ -375,7 +375,8 @@ return [
     | must opt in explicitly — and should put the route behind its own auth middleware when it does.
     | Setting the key wins over the debug default in both directions.
     |
-    | Defaults: enabled = app.debug, base-path '/firefly', title = app.name.
+    | Defaults: enabled = app.debug, base-path '/firefly', title = app.name, refresh-seconds 10,
+    | theme 'auto', graph.max-nodes 220, pages.exclude ''.
     |
     */
 
@@ -383,6 +384,42 @@ return [
     //     'enabled' => env('FIREFLY_ADMIN_ENABLED', false),
     //     'base-path' => '/firefly',
     //     'title' => env('APP_NAME', 'LaraFly'),
+    //
+    //     /*
+    //      | How often a live page reloads itself. FLOORED AT 2: a shorter interval reloads faster than the
+    //      | page renders, so the countdown would never finish and the dashboard would hammer the very
+    //      | application it exists to observe.
+    //      |
+    //      | Default: 10.
+    //     */
+    //     'refresh-seconds' => 10,
+    //
+    //     // 'auto' (follow the operating system) | 'light' | 'dark'. Anything unrecognised falls back to
+    //     // 'auto' rather than rendering unstyled. Default: 'auto'.
+    //     'theme' => 'auto',
+    //
+    //     'graph' => [
+    //         /*
+    //          | The node count past which the Bean graph page LISTS the relations instead of drawing them.
+    //          | A diagram past a couple of hundred nodes is a hairball rather than something anyone can
+    //          | read. Configurable — not a constant — because "unreadable" depends on the screen and the
+    //          | application; 0 always lists.
+    //          |
+    //          | Default: 220.
+    //         */
+    //         'max-nodes' => 220,
+    //     ],
+    //
+    //     'pages' => [
+    //         /*
+    //          | CSV of page slugs to REFUSE. This is a refusal, not a menu preference: an excluded page is
+    //          | hidden from the menu AND its URL 404s — hiding `env` from the menu achieves nothing if the
+    //          | URL still answers. The index page's slug is `overview`.
+    //          |
+    //          | Default: '' (nothing excluded).
+    //         */
+    //         'exclude' => 'env,configprops',
+    //     ],
     // ],
 
     /*

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Firefly\Admin\Boot;
 
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
+use Firefly\Actuator\Server\ManagementPortGuard;
+use Firefly\Actuator\Server\ManagementServerSettings;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\Web\AdminAction;
@@ -66,6 +68,9 @@ final class AdminRouteRegistrar implements BootPass
             $container->make(AdminEndpointReader::class),
             $container->make(ViewFactory::class),
             $container,
+            // Resolved here rather than injected as a bean so the dashboard works whether or not the
+            // actuator's own wiring has bound one: the settings come from the same config keys either way.
+            new ManagementPortGuard(ManagementServerSettings::fromConfig($context->config)),
         ));
 
         /** @var Router $router */

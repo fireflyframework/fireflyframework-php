@@ -27,6 +27,28 @@ return [
                     ],
                 ],
             ],
+            1 => [
+                'method' => 'managementServerSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'managementPortGuard',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Server\\ManagementPortGuard',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     1 => [

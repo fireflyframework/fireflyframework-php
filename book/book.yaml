@@ -23,6 +23,11 @@ labels:
 # (Appendix A already proves that), so slotting a chapter in here needs no renumbering of the
 # nine chapters that follow — and renumbering them would have invalidated every "Chapter N"
 # cross-reference in both manuscripts plus book/README.md, which is not this task's to edit.
+# Task B7: no new chapter. The bean-graph explorer extends Chapter 11 (it is a page of firefly/admin,
+# which that chapter already introduces) and the official-Swagger-UI viewer extends Chapter 4A (it
+# replaces the old "CDN flag" section outright, since `viewer.style` supersedes `viewer.cdn`). Splitting
+# either into a chapter of its own would have separated a feature from the package it belongs to, and
+# would have moved a "Chapter N" reference for no reader benefit.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}

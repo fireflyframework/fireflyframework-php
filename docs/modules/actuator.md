@@ -14,7 +14,14 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
 - `/actuator/configprops` — every `#[ConfigProperties]` DTO, with the values it actually resolved off the bound instance, masked
 - `/actuator/caches` (+ `/actuator/caches/{name}`) — the configured `cache.stores` (name/driver/default only); read-only, no eviction
 - `/actuator/beans`, `/actuator/conditions`, `/actuator/mappings`, `/actuator/loggers` (GET/POST), `/actuator/scheduledtasks`
-- `/actuator/metrics`, `/actuator/prometheus` — supplied by `firefly/observability` when installed
+- `/actuator/metrics`, `/actuator/prometheus`, `/actuator/httpexchanges`, `/actuator/process` — supplied by
+  `firefly/observability` when installed
+
+!!! tip "A browser view over all of this"
+    `firefly/admin` renders these same endpoints as a server-side dashboard, reading them **in-process** rather
+    than over HTTP — so it shows pages the exposure model below deliberately keeps unpublished. That inversion is
+    the whole of its security model: see [Admin Dashboard](admin.md), and read
+    [its access model](admin.md#access-the-whole-security-boundary) before enabling it outside `app.debug`.
 
 ## Health
 

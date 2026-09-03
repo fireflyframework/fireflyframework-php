@@ -28,6 +28,30 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
+            1 => [
+                'method' => 'managementServerSettings',
+                'returns' => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            2 => [
+                'method' => 'managementPortGuard',
+                'returns' => 'Firefly\\Actuator\\Server\\ManagementPortGuard',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

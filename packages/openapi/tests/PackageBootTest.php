@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\OpenApi\Generator\DocumentInfo;
 use Firefly\OpenApi\Generator\OpenApiGenerator;
 use Firefly\OpenApi\OpenApiProperties;
 use Firefly\OpenApi\OpenApiServiceProvider;
@@ -78,4 +79,48 @@ it('mounts nothing when the master gate is off', function () {
     $router = bootOpenApiApp(['enabled' => false])->make('router');
 
     expect($router->getRoutes()->getRoutes())->toBe([]);
+});
+
+/**
+ * The Info Object's optional members are read from config by a bean, not by a test helper. DocumentInfoTest
+ * proves the OBJECT behaves; this proves the WIRING exists — that `firefly.openapi.license.name` in an
+ * application's config file reaches the generated document at all.
+ *
+ * It is a separate test because the two can fail independently, and the interesting failure is the silent
+ * one: DocumentInfo can be perfectly correct and perfectly unreachable if nothing constructs it. The
+ * generator's fourth constructor argument is optional, so a bean that forgets to pass it still compiles,
+ * still boots, and still produces a document — just never the configured one.
+ */
+it('feeds the configured Info Object members into the generated document', function () {
+    /** @var OpenApiGenerator $generator */
+    $generator = bootOpenApiApp([
+        'title' => 'Warehouse API',
+        'version' => '2.0.0',
+        'summary' => 'Everything the warehouse exposes.',
+        'terms-of-service' => 'https://example.test/terms',
+        'contact' => ['name' => 'Platform Team', 'email' => 'api@example.test'],
+        'license' => ['name' => 'Apache 2.0', 'identifier' => 'Apache-2.0'],
+    ])->make(OpenApiGenerator::class);
+
+    /** @var array<string, mixed> $info */
+    $info = $generator->generate()['info'];
+
+    expect($info)->toBe([
+        'title' => 'Warehouse API',
+        'summary' => 'Everything the warehouse exposes.',
+        'termsOfService' => 'https://example.test/terms',
+        'contact' => ['name' => 'Platform Team', 'email' => 'api@example.test'],
+        'license' => ['name' => 'Apache 2.0', 'identifier' => 'Apache-2.0'],
+        'version' => '2.0.0',
+    ]);
+});
+
+it('resolves a DocumentInfo bean that an application has not configured', function () {
+    // The bean must exist unconditionally, so that the generator's dependency is always satisfiable — an app
+    // that has never heard of these keys still boots, and still gets the document it got before.
+    $app = bootOpenApiApp();
+
+    expect($app->make(DocumentInfo::class))->toBeInstanceOf(DocumentInfo::class)
+        ->and($app->make(OpenApiGenerator::class)->generate()['info'])
+        ->toBe(['title' => 'API', 'version' => '0.0.0']);
 });

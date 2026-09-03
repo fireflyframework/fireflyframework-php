@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\OpenApi\Generator;
 
+use Firefly\OpenApi\Attributes\ApiParameter;
+use Firefly\OpenApi\Attributes\ApiResponse;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
 use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\SchemaRegistry;
@@ -15,14 +17,21 @@ use ReflectionNamedType;
 /**
  * Turns one compiled RouteDescriptor into one OpenAPI Operation Object.
  *
- * Everything here comes out of the descriptor the framework already holds: the verb and path, the default
- * status the #[Mapping] declared, the optional route name, and the binding plan RouteScanner reflected out of
- * the controller method's parameters. The binding `kind` is what makes the mapping unambiguous, because it is
- * the SAME discriminator ArgumentResolver dispatches on at request time — `path`/`query`/`header` become
+ * The MECHANICS come out of the descriptor the framework already holds: the verb and path, the default status
+ * the #[Mapping] declared, the optional route name, and the binding plan RouteScanner reflected out of the
+ * controller method's parameters. The binding `kind` is what makes the mapping unambiguous, because it is the
+ * SAME discriminator ArgumentResolver dispatches on at request time — `path`/`query`/`header` become
  * Parameter Objects, `body` becomes the Request Body Object, `file` becomes a multipart part, and `service`
  * is a container-injected collaborator that is not part of the HTTP contract at all and must not leak into
  * the document. Deriving the parameter list from the method signature independently would have to re-decide
  * every one of those cases and could disagree with the dispatcher; reading the plan cannot.
+ *
+ * The PROSE comes from ApiDocs, which merges #[ApiOperation]/#[ApiResponse]/#[ApiParameter] over the method's
+ * docblock over a derivation from the method name — in that order, decided there and not re-decided here. The
+ * summary this factory writes used to be `ucfirst()` of the humanised method name and the description used to
+ * be the literal string "Handled by App\Web\OrderController::show().", which was a placeholder wearing
+ * documentation's clothes: it filled the slot a viewer renders, so nothing looked missing, while telling a
+ * reader strictly less than an empty string would have. An absent description is now absent.
  *
  * @phpstan-import-type Binding from RouteDescriptor
  */
@@ -31,10 +40,18 @@ final class OperationFactory
     public function __construct(private readonly DtoSchemaFactory $schemas) {}
 
     /**
+     * $docs is threaded in rather than injected, for the same reason SchemaRegistry is: both are per-DOCUMENT
+     * state that OpenApiGenerator creates inside build() and discards with it. Holding either as a
+     * constructor dependency of a container SINGLETON would give a cache the lifetime of the process while
+     * the thing it caches for lives one generation, and would leave this factory's #[Bean] signature — the
+     * documented override point — carrying a collaborator no application would ever want to replace.
+     *
      * @return array<string, mixed>
      */
-    public function create(RouteDescriptor $route, string $operationId, SchemaRegistry $registry): array
+    public function create(RouteDescriptor $route, string $operationId, SchemaRegistry $registry, ApiDocs $docs): array
     {
+        $doc = $docs->operation($route);
+
         $parameters = [];
         $body = null;
         $files = [];
@@ -46,15 +63,15 @@ final class OperationFactory
 
             switch ($binding['kind']) {
                 case 'path':
-                    $parameters[] = $this->parameter($binding, 'path', true);
+                    $parameters[] = $this->parameter($binding, 'path', true, $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $this->coercible($binding);
                     break;
                 case 'query':
-                    $parameters[] = $this->parameter($binding, 'query', $binding['required']);
+                    $parameters[] = $this->parameter($binding, 'query', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'header':
-                    $parameters[] = $this->parameter($binding, 'header', $binding['required']);
+                    $parameters[] = $this->parameter($binding, 'header', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'file':
@@ -68,12 +85,19 @@ final class OperationFactory
             }
         }
 
-        $operation = [
-            'operationId' => $operationId,
-            'summary' => $this->summary($route),
-            'description' => 'Handled by '.$route->controllerClass.'::'.$route->methodName.'().',
-            'tags' => [$this->tag($route)],
-        ];
+        $operation = ['operationId' => $operationId, 'summary' => $doc->summary];
+
+        if ($doc->description !== '') {
+            $operation['description'] = $doc->description;
+        }
+
+        // Emitted only when true. `deprecated` defaults to false in the specification, so writing it out on
+        // every live operation would add a line per operation to every generated file to say nothing.
+        if ($doc->deprecated) {
+            $operation['deprecated'] = true;
+        }
+
+        $operation['tags'] = $docs->tagNames($route);
 
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
@@ -85,7 +109,7 @@ final class OperationFactory
             $operation['requestBody'] = $this->multipartBody($files);
         }
 
-        $operation['responses'] = $this->responses($route, $rejectable, $validated);
+        $operation['responses'] = $this->responses($route, $rejectable, $validated, $doc, $registry);
 
         return $operation;
     }
@@ -100,12 +124,18 @@ final class OperationFactory
      * `required` is passed in rather than read off the binding because a PATH parameter is required by the
      * OpenAPI specification itself (`required: false` is invalid there), independently of what the binding
      * plan happens to say — RouteScanner always plans one as required, and the caller reasserts it so the
-     * document is valid by construction rather than by that coincidence.
+     * document is valid by construction rather than by that coincidence. An #[ApiParameter(required:)] is
+     * honoured for query and header parameters and DROPPED for a path one, for exactly the same reason: an
+     * author override may reshape the document but may not make it invalid.
+     *
+     * The override deliberately does NOT feed back into the 400 derivation below. That derivation states what
+     * the SERVER does — ArgumentResolver rejects a missing required parameter before the controller runs —
+     * and an attribute cannot change the server's behaviour by describing it differently.
      *
      * @param  Binding  $binding
      * @return array<string, mixed>
      */
-    private function parameter(array $binding, string $in, bool $required): array
+    private function parameter(array $binding, string $in, bool $required, ?ApiParameter $enrichment): array
     {
         $schema = TypeSchema::for($binding['type']) ?? ['type' => 'string'];
 
@@ -113,12 +143,23 @@ final class OperationFactory
             $schema['default'] = $binding['default'];
         }
 
-        return [
-            'name' => $binding['key'],
-            'in' => $in,
-            'required' => $required,
-            'schema' => $schema,
-        ];
+        $parameter = ['name' => $binding['key'], 'in' => $in];
+
+        if ($enrichment !== null && trim($enrichment->description) !== '') {
+            $parameter['description'] = trim($enrichment->description);
+        }
+
+        $parameter['required'] = $in === 'path' ? true : ($enrichment->required ?? $required);
+        $parameter['schema'] = $schema;
+
+        // The Parameter Object's own `example` member, which 3.1 kept. Its SCHEMA-level namesake is the one
+        // 3.1 deprecated in favour of JSON Schema's `examples` array — see ApiProperty, which is on that side
+        // of the line and spells it the other way round.
+        if ($enrichment !== null && $enrichment->example !== null) {
+            $parameter['example'] = $enrichment->example;
+        }
+
+        return $parameter;
     }
 
     /**
@@ -172,7 +213,7 @@ final class OperationFactory
 
     /**
      * The success response plus every error status this operation can ACTUALLY produce, all pointing at the
-     * one shared problem component.
+     * one shared problem component, plus whatever #[ApiResponse] declared on top.
      *
      * The error set is derived, not guessed. `400` appears exactly when the operation has something
      * ArgumentResolver can reject BEFORE the controller runs — a body to decode and bind (MALFORMED_BODY /
@@ -190,14 +231,19 @@ final class OperationFactory
      * route manifest without reading the controller's body, and which all render through the same
      * ProblemDetailsRenderer anyway.
      *
+     * #[ApiResponse] is where an author states the half that is provably underivable — WHICH of those handler
+     * statuses are real and what each one means. It is applied LAST and overwrites, so putting real prose on
+     * the success status is a one-line edit rather than a fight with the derivation.
+     *
      * Keyed by `array-key` rather than `string` because PHP coerces a numeric string key to an INTEGER the
-     * moment it is written — '201' becomes 201 — so the honest type for a status map is the mixed one. The
-     * document is unaffected: a map keyed 201/400/'default' is not a PHP list, so json_encode still writes a
-     * JSON object.
+     * moment it is written — '201' becomes 201 — so the honest type for a status map is the mixed one. That
+     * coercion is what makes the override work at all: a derived '201' and a declared 201 land on the same
+     * key rather than producing two entries. The document is unaffected: a map keyed 201/400/'default' is not
+     * a PHP list, so json_encode still writes a JSON object.
      *
      * @return array<array-key, mixed>
      */
-    private function responses(RouteDescriptor $route, bool $rejectable, bool $validated): array
+    private function responses(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
     {
         $responses = [(string) $route->status => $this->successResponse($route)];
 
@@ -211,7 +257,90 @@ final class OperationFactory
 
         $responses['default'] = ['$ref' => ProblemSchema::RESPONSE_REF];
 
-        return $responses;
+        foreach ($doc->responses as $declared) {
+            $responses[(string) $declared->status] = $this->declaredResponse($declared, $registry);
+        }
+
+        return $this->sortStatuses($responses);
+    }
+
+    /**
+     * One #[ApiResponse] as a Response Object. `description` is the only REQUIRED member of that object, and
+     * the attribute makes it a required constructor argument for exactly that reason — a Response Object
+     * without one is invalid, and defaulting it to '' would produce a document that validates as a technicality
+     * and reads as a blank.
+     *
+     * An omitted `type` documents a BODILESS response, which is the honest shape for a 204 or a 304 and the
+     * common case for the error statuses this attribute mostly documents — those render through
+     * ProblemDetailsRenderer, whose shape the shared problem component already states.
+     *
+     * `array` is honoured here as `type: array`, where the DERIVED success response degrades the same PHP
+     * type to `type: object`. That is not an inconsistency: a controller's `array` return type genuinely does
+     * not say whether the payload is a list or a map (LaraFly controllers overwhelmingly return maps), so the
+     * derivation cannot know — whereas an author who typed `type: 'array'` into an attribute has said which
+     * one they meant.
+     *
+     * @return array<string, mixed>
+     */
+    private function declaredResponse(ApiResponse $declared, SchemaRegistry $registry): array
+    {
+        $response = ['description' => $declared->description];
+
+        if ($declared->type === null) {
+            return $response;
+        }
+
+        $schema = TypeSchema::isDto($declared->type)
+            ? ['$ref' => $this->schemas->ref($declared->type, $registry)]
+            : TypeSchema::for($declared->type) ?? ['type' => 'object'];
+
+        $response['content'] = ['application/json' => ['schema' => $schema]];
+
+        return $response;
+    }
+
+    /**
+     * Numeric statuses ascending, then any other named one, then `default` last.
+     *
+     * Without this an #[ApiResponse(404)] would land after `default` simply because it was applied later, and
+     * a reader scanning a viewer's response list would meet the catch-all before the specific case. The order
+     * is also what makes a regenerated document diff cleanly: response order would otherwise depend on the
+     * order attributes happen to be written in above the method.
+     *
+     * @param  array<array-key, mixed>  $responses
+     * @return array<array-key, mixed>
+     */
+    private function sortStatuses(array $responses): array
+    {
+        $numeric = [];
+        $named = [];
+
+        foreach ($responses as $status => $response) {
+            if (is_int($status)) {
+                $numeric[$status] = $response;
+            } else {
+                $named[$status] = $response;
+            }
+        }
+
+        ksort($numeric);
+        ksort($named);
+
+        $default = $named['default'] ?? null;
+        unset($named['default']);
+
+        $sorted = [];
+        foreach ($numeric as $status => $response) {
+            $sorted[$status] = $response;
+        }
+        foreach ($named as $status => $response) {
+            $sorted[$status] = $response;
+        }
+        if ($default !== null) {
+            $sorted['default'] = $default;
+        }
+
+        return $sorted;
     }
 
     /**
@@ -224,6 +353,8 @@ final class OperationFactory
      * `array` is the common LaraFly return and deliberately degrades to `type: object` rather than being
      * expanded from the method's `@return array{...}` docblock: parsing a PHPDoc array shape here would make
      * the generated document depend on comment text that nothing else in the framework treats as binding.
+     * A method's PROSE is now read (see ApiDocs) and its TYPES are still not, which is the line — prose has
+     * no other source and cannot mislead a client generator; a mistyped `@return` silently can.
      *
      * @return array<string, mixed>
      */
@@ -278,31 +409,5 @@ final class OperationFactory
         $type = (new ReflectionMethod($route->controllerClass, $route->methodName))->getReturnType();
 
         return $type instanceof ReflectionNamedType ? $type->getName() : null;
-    }
-
-    /**
-     * The tag a viewer groups this operation under: the controller's short name with a trailing "Controller"
-     * removed, so `Lumen\Web\WalletController` reads as "Wallet".
-     */
-    private function tag(RouteDescriptor $route): string
-    {
-        $class = $route->controllerClass;
-        $short = str_contains($class, '\\') ? substr($class, (int) strrpos($class, '\\') + 1) : $class;
-
-        return str_ends_with($short, 'Controller') && $short !== 'Controller'
-            ? substr($short, 0, -strlen('Controller'))
-            : $short;
-    }
-
-    /**
-     * `getBalance` reads as "Get balance". A method name is the only human-authored label a route carries
-     * (a #[Mapping]'s name is a Laravel route name, not prose), so it is the honest source for a summary.
-     */
-    private function summary(RouteDescriptor $route): string
-    {
-        $words = preg_split('/(?=[A-Z])/', $route->methodName);
-        $sentence = strtolower(trim(implode(' ', $words === false ? [$route->methodName] : $words)));
-
-        return $sentence === '' ? $route->methodName : ucfirst($sentence);
     }
 }

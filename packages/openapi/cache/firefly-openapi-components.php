@@ -65,6 +65,18 @@ return [
                 ],
             ],
             4 => [
+                'method' => 'documentInfo',
+                'returns' => 'Firefly\\OpenApi\\Generator\\DocumentInfo',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            5 => [
                 'method' => 'openApiGenerator',
                 'returns' => 'Firefly\\OpenApi\\Generator\\OpenApiGenerator',
                 'name' => null,
@@ -76,9 +88,10 @@ return [
                     0 => 'Firefly\\Web\\Route\\RouteManifest',
                     1 => 'Firefly\\OpenApi\\OpenApiProperties',
                     2 => 'Firefly\\OpenApi\\Generator\\OperationFactory',
+                    3 => 'Firefly\\OpenApi\\Generator\\DocumentInfo',
                 ],
             ],
-            5 => [
+            6 => [
                 'method' => 'viewerPage',
                 'returns' => 'Firefly\\OpenApi\\Web\\ViewerPage',
                 'name' => null,

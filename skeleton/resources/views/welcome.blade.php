@@ -168,6 +168,8 @@
             padding:15px 17px;transition:border-color .14s,background .14s;
         }
         .tools .tool:hover{border-color:var(--amber-2);background:var(--card-2)}
+        .tools .tool.moved{opacity:.72}
+        .tools .tool.moved:hover{border-color:var(--line);background:var(--card)}
         .tools .tool strong{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:600}
         .tools .tool .go{color:var(--amber);font-size:13px}
         .tools .tool span{font-size:13px;color:var(--text-3);line-height:1.5}
@@ -263,13 +265,31 @@
         <h2>What is running</h2>
         <div class="tools">
             @foreach ($tools as $tool)
-                <a class="tool" href="{{ $tool['href'] }}">
-                    <strong>{{ $tool['label'] }}<span class="go" aria-hidden="true">&rarr;</span></strong>
-                    <span>{{ $tool['blurb'] }}</span>
-                    <code>{{ $tool['href'] }}</code>
-                </a>
+                @if ($tool['href'] === null)
+                    {{-- Moved to the management port: described, never linked, because the link would 404. --}}
+                    <div class="tool moved">
+                        <strong>{{ $tool['label'] }}</strong>
+                        <span>{{ $tool['blurb'] }}</span>
+                        <code>port {{ $managementPort }}</code>
+                    </div>
+                @else
+                    <a class="tool" href="{{ $tool['href'] }}">
+                        <strong>{{ $tool['label'] }}<span class="go" aria-hidden="true">&rarr;</span></strong>
+                        <span>{{ $tool['blurb'] }}</span>
+                        <code>{{ $tool['href'] }}</code>
+                    </a>
+                @endif
             @endforeach
         </div>
+
+        @if ($managementPort !== null)
+            <p class="tip" style="margin-top:12px">
+                <b>Management traffic is on port {{ $managementPort }}.</b> The actuator and the dashboard
+                answer only there, so they are not reachable from this page. Run
+                <code>php artisan firefly:serve --management</code> alongside your application to reach them
+                in development.
+            </p>
+        @endif
     </section>
 
     <section>

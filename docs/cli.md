@@ -183,3 +183,14 @@ php artisan firefly:db {action=migrate}
 Delegates to Laravel's own database commands: `migrate` (default), `db:seed` (`firefly:db seed`), or
 `migrate:fresh` (`firefly:db fresh`). Neither command reimplements any Laravel behavior — both are thin
 `$this->call(...)` passthroughs.
+
+## Commands contributed by other packages
+
+`firefly/cli` is not the only package that registers Artisan commands; a capability package ships its own where the
+command is part of that capability rather than of the console.
+
+| Command | Package | What it does |
+|---|---|---|
+| `firefly:openapi` | `firefly/openapi` | Writes the generated OpenAPI 3.1 document to `--output=<file>` (parent directories are created, and a summary line is printed) or **raw** to stdout. Stdout is written with Symfony's `OUTPUT_RAW` so the bytes are exactly the document's — `php artisan firefly:openapi \| <client-generator>` is the intended use — which is also why the confirmation line prints only in `--output` mode. See [OpenAPI](modules/openapi.md#php-artisan-fireflyopenapi). |
+| `firefly:eda:consume` | `firefly/eda` | Binds the configured broker destinations and runs the consumer loop. See [EDA](modules/eda.md). |
+| `firefly:outbox:relay` | `firefly/eda-postgres` | Forwards committed outbox rows to a second broker. See [EDA Brokers](modules/eda-brokers.md). |

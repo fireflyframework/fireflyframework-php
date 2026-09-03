@@ -8,6 +8,7 @@ use Firefly\Actuator\Endpoint\ActuatorEndpoint;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\ExposureModel;
 use Firefly\Actuator\Introspection\BeansCatalog;
+use Firefly\Actuator\Server\ManagementServerSettings;
 use Firefly\Actuator\Web\ActuatorDispatchAction;
 use Firefly\Actuator\Web\ActuatorIndexAction;
 use Firefly\Context\Boot\BootContext;
@@ -24,6 +25,21 @@ use Illuminate\Routing\Router;
  * BeansEndpoint/ConditionsEndpoint constructor can inject them), then resolves each discovered ActuatorEndpoint
  * bean once to populate ActuatorRegistry. The master gate firefly.management.enabled (default true) short-circuits
  * to registering nothing.
+ *
+ * MOUNT PATH: the two routes go under ManagementServerSettings::mountPath(), which is
+ * `firefly.management.server.base-path` (usually empty) followed by the ExposureModel's own
+ * `firefly.management.endpoints.web.base-path`. The two settings COMPOSE — this pass does not re-derive either — so
+ * an application that never set a management base path mounts exactly the paths it always did.
+ *
+ * MANAGEMENT PORT: nothing about the port can be decided HERE. The routes are mounted on the one Router this
+ * process owns, and this process serves whichever port its listener was given; mounting conditionally would mean
+ * the SAME deployed code registered different routes depending on which pool happened to boot it, and the actuator
+ * would silently vanish if the guess was wrong. So the routes are always mounted and ManagementPortGuard refuses
+ * them per request instead — see ManagementServerSettings for the full argument about what PHP can and cannot do
+ * with a second port. What this pass DOES own is the fail-fast: a management port equal to the application port
+ * would leave the guard permitting everything, which reads as isolation and is not, so assertDistinctFrom() aborts
+ * the boot. It runs AFTER the master gate on purpose — an application that has switched the actuator off entirely
+ * has no management surface to isolate, and should not be blocked from booting over the configuration of one.
  */
 final class ActuatorRouteRegistrar implements BootPass
 {
@@ -45,6 +61,11 @@ final class ActuatorRouteRegistrar implements BootPass
 
         $container = $context->container;
 
+        // (0) fail fast on a management port that cannot possibly isolate anything (see the class docblock).
+        /** @var ManagementServerSettings $management */
+        $management = $container->make(ManagementServerSettings::class);
+        $management->assertDistinctFrom(ManagementServerSettings::applicationPort($context->config));
+
         // (1) request-time introspection snapshots — bound FIRST so endpoint constructors can inject them.
         $container->instance(ConditionEvaluationReport::class, $context->report);
         $container->instance(BeansCatalog::class, $this->beansCatalog($context));
@@ -65,7 +86,7 @@ final class ActuatorRouteRegistrar implements BootPass
         $exposure = $container->make(ExposureModel::class);
         /** @var Router $router */
         $router = $container->make('router');
-        $base = $exposure->basePath;
+        $base = $management->mountPath($exposure);
 
         $router->get($base, fn (Request $request) => $container->make(ActuatorIndexAction::class)($request))
             ->name('firefly.actuator.index');

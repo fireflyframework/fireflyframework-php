@@ -61,6 +61,17 @@ return [
                 ],
             ],
             4 => [
+                'method' => 'documentInfo',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\OpenApi\\Generator\\DocumentInfo',
+                        ],
+                    ],
+                ],
+            ],
+            5 => [
                 'method' => 'openApiGenerator',
                 'conditions' => [
                     0 => [
@@ -71,7 +82,7 @@ return [
                     ],
                 ],
             ],
-            5 => [
+            6 => [
                 'method' => 'viewerPage',
                 'conditions' => [
                     0 => [

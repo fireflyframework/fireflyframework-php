@@ -9,6 +9,7 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\OpenApi\Generator\DocumentInfo;
 use Firefly\OpenApi\Generator\OpenApiGenerator;
 use Firefly\OpenApi\Generator\OperationFactory;
 use Firefly\OpenApi\Schema\ConstraintSchemaMapper;
@@ -70,11 +71,25 @@ final class OpenApiAutoConfiguration
         return new OperationFactory($schemas);
     }
 
+    /**
+     * The OPTIONAL Info Object members — summary, termsOfService, contact, license — as their own bean rather
+     * than as a few more fields on OpenApiProperties. They are a distinct, spec-shaped object with its own
+     * validity rules (a License Object requires a `name`; `identifier` and `url` exclude one another), and
+     * keeping them separate is what lets an application replace just this piece — to read a license out of
+     * composer.json, say — without also taking over the title and version.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(DocumentInfo::class)]
+    public function documentInfo(Config $config): DocumentInfo
+    {
+        return DocumentInfo::fromConfig($config);
+    }
+
     #[Bean]
     #[ConditionalOnMissingBean(OpenApiGenerator::class)]
-    public function openApiGenerator(RouteManifest $routes, OpenApiProperties $properties, OperationFactory $operations): OpenApiGenerator
+    public function openApiGenerator(RouteManifest $routes, OpenApiProperties $properties, OperationFactory $operations, DocumentInfo $info): OpenApiGenerator
     {
-        return new OpenApiGenerator($routes, $properties, $operations);
+        return new OpenApiGenerator($routes, $properties, $operations, $info);
     }
 
     #[Bean]

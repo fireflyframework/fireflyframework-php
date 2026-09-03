@@ -623,6 +623,27 @@ built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — se
 
 ---
 
+### Two browser surfaces, neither of which needs npm or a CDN
+
+`composer require firefly/admin` mounts a server-rendered dashboard at `/firefly`: thirteen pages over the
+actuator's own endpoints — health, metrics, HTTP traffic, beans, a drawn
+[**bean graph**](docs/modules/bean-graph.md), conditions, routes, scheduled tasks, environment, config
+properties, caches and loggers. It reads those endpoints **in-process** rather than over HTTP, so it renders
+pages the JSON surface deliberately keeps unexposed — which makes its own URL the entire security boundary.
+`firefly.admin.enabled` therefore defaults to `app.debug`, and an application that enables it with debug off
+**must put the route behind its own auth middleware**. Read
+[the access model](docs/modules/admin.md#access-the-whole-security-boundary) before you do.
+
+`composer require firefly/openapi` mounts `GET /openapi.json` and a console at `/openapi`, both generated from
+the same `RouteManifest` the dispatcher dispatches from and the same `ConstraintManifest` the validator
+validates with — no annotation dialect, and nothing that can drift. `php artisan firefly:openapi --output=`
+makes the document a committable build artifact a CI job can diff. The default console is the **official
+Swagger UI, served from your own origin** out of the `swagger-api/swagger-ui` composer package: full feature
+set, no CDN request, no npm step, and it still renders in an air-gapped or strict-CSP deployment. See
+[OpenAPI](docs/modules/openapi.md).
+
+---
+
 ## Installation
 
 **Requirements:** PHP 8.3+ (8.4 recommended), Composer 2, and an existing (or new) Laravel 13 application —
@@ -650,8 +671,13 @@ composer require firefly/firefly
 ```
 
 The broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`), the browser dashboard
-(`firefly/admin`) and the test kit
+(`firefly/admin`), the API-documentation package (`firefly/openapi`) and the test kit
 (`firefly/testing`) stay separate — require them only if you use them.
+
+```bash
+composer require firefly/admin     # /firefly — the dashboard over the actuator (see its access model first)
+composer require firefly/openapi   # /openapi.json + /openapi — a spec that cannot drift, and Swagger UI
+```
 
 Point LaraFly at your app's classes and compile it:
 
@@ -695,7 +721,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 ## Modules
 
-25 packages under `packages/*` (plus `firefly/skeleton` at the top level — 26 shippable units in total), each
+27 packages under `packages/*` (plus `firefly/skeleton` at the top level — 28 shippable units in total), each
 its own installable Composer package with its own tests and its own [module guide](docs/modules/):
 
 | Group | Module | Package(s) |
@@ -708,6 +734,7 @@ its own installable Composer package with its own tests and its own [module guid
 | Foundation | [Validation](docs/modules/validation.md) — constraint attributes, `#[Valid]`, structured 422s | `firefly/validation` |
 | Web & API | [Web Layer](docs/modules/web.md) — `#[RestController]`/`#[Controller]` routing, `RouteManifest`, JSON + HTML negotiation | `firefly/web` |
 | Web & API | [Web Filters](docs/modules/web-filters.md) — the ordered filter chain onto Laravel middleware | `firefly/web` |
+| Web & API | [OpenAPI](docs/modules/openapi.md) — OpenAPI 3.1 generated from the compiled manifests, `firefly:openapi`, official Swagger UI from your own origin | `firefly/openapi` |
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
 | Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |
 | Data & Domain | [Domain (DDD)](docs/modules/domain.md) — `Entity`, `ValueObject`, `AggregateRoot`, `DomainEvent` | `firefly/domain` |
@@ -721,13 +748,15 @@ its own installable Composer package with its own tests and its own [module guid
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Operations | [Actuator](docs/modules/actuator.md) — health, info, env, beans, conditions, mappings | `firefly/actuator` |
 | Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics, `/actuator/prometheus` | `firefly/observability` |
+| Operations | [Admin Dashboard](docs/modules/admin.md) — the browser dashboard over the actuator, read in-process | `firefly/admin` |
+| Operations | [Bean Graph](docs/modules/bean-graph.md) — the dashboard's drawn dependency graph, with cycle reporting | `firefly/admin` |
 | Testing | [Testing](docs/modules/testing.md) — `FireflyTestCase`, recording doubles, Pest expectations | `firefly/testing` |
 | Testing | [Integration Testing](docs/modules/integration-testing.md) — `@group integration`, testcontainers | `firefly/testing` |
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
 
 `firefly/firefly` (the runtime metapackage) and `firefly/cli` (the dev-console — see
-[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 25 packages; `firefly/skeleton`
-is the 26th unit, a `type: project` create-project template at the top level.
+[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 27 packages; `firefly/skeleton`
+is the 28th unit, a `type: project` create-project template at the top level.
 
 ---
 

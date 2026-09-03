@@ -65,7 +65,24 @@ final class WelcomeController
             'endpoints' => $this->registeredEndpoints(),
             'routes' => $this->appRoutes($base),
             'tools' => $this->tools($base),
+            'managementPort' => $this->managementPort(),
         ]);
+    }
+
+    /**
+     * The port management traffic has been moved to, or null when it shares the application's port.
+     *
+     * This page must know, because when a management port IS configured the actuator and the dashboard stop
+     * answering here — a card linking to them from the application port would link to a 404 and quietly
+     * teach a developer that the feature is broken rather than that it moved.
+     */
+    private function managementPort(): ?int
+    {
+        if (! class_exists(\Firefly\Actuator\Server\ManagementServerSettings::class)) {
+            return null;
+        }
+
+        return \Firefly\Actuator\Server\ManagementServerSettings::fromConfig($this->config)->port;
     }
 
     /**
@@ -76,12 +93,16 @@ final class WelcomeController
      * dashboard is off by default outside debug, and the API reference disappears when firefly/openapi is
      * not installed, so a hard-coded link would be wrong for most applications.
      *
-     * @return list<array{href: string, label: string, blurb: string}>
+     * @return list<array{href: string|null, label: string, blurb: string}>
      */
     private function tools(string $actuatorBase): array
     {
+        // With a management port configured, the actuator and the dashboard answer only there — so they are
+        // described rather than linked, and the page says where they went.
+        $moved = $this->managementPort() !== null;
+
         $tools = [[
-            'href' => '/'.$actuatorBase,
+            'href' => $moved ? null : '/'.$actuatorBase,
             'label' => 'Actuator',
             'blurb' => 'Health, info and the endpoints you expose, as JSON.',
         ]];
@@ -90,9 +111,9 @@ final class WelcomeController
             $admin = AdminSettings::fromConfig($this->config);
             if ($admin->enabled) {
                 $tools[] = [
-                    'href' => $admin->url(),
+                    'href' => $moved ? null : $admin->url(),
                     'label' => 'Dashboard',
-                    'blurb' => 'Health, beans, routes, metrics and configuration in the browser.',
+                    'blurb' => 'Health, beans, the bean graph, routes, metrics and configuration in the browser.',
                 ];
             }
         }

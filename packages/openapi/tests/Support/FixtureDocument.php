@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\OpenApi\Tests\Support;
 
 use Firefly\Context\Scan\AppScan;
+use Firefly\OpenApi\Generator\DocumentInfo;
 use Firefly\OpenApi\Generator\OpenApiGenerator;
 use Firefly\OpenApi\Generator\OperationFactory;
 use Firefly\OpenApi\OpenApiProperties;
@@ -30,24 +31,24 @@ final class FixtureDocument
     /**
      * @return array<string, string>
      */
-    public static function psr4(): array
+    public static function psr4(string $directory = 'Fixture'): array
     {
-        return ['Firefly\\OpenApi\\Tests\\Fixture\\' => dirname(__DIR__).'/Fixture'];
+        return ['Firefly\\OpenApi\\Tests\\'.$directory.'\\' => dirname(__DIR__).'/'.$directory];
     }
 
-    public static function routes(): RouteManifest
+    public static function routes(string $directory = 'Fixture'): RouteManifest
     {
-        return new RouteManifest((new RouteScanner)->scan(self::psr4()));
+        return new RouteManifest((new RouteScanner)->scan(self::psr4($directory)));
     }
 
-    public static function constraints(): ConstraintManifest
+    public static function constraints(string $directory = 'Fixture'): ConstraintManifest
     {
-        return ConstraintManifest::fromArray((new ConstraintManifestCompiler)->toArray(AppScan::classes(self::psr4())));
+        return ConstraintManifest::fromArray((new ConstraintManifestCompiler)->toArray(AppScan::classes(self::psr4($directory))));
     }
 
-    public static function schemas(): DtoSchemaFactory
+    public static function schemas(string $directory = 'Fixture'): DtoSchemaFactory
     {
-        return new DtoSchemaFactory(self::constraints(), new ConstraintSchemaMapper);
+        return new DtoSchemaFactory(self::constraints($directory), new ConstraintSchemaMapper);
     }
 
     public static function generator(?OpenApiProperties $properties = null): OpenApiGenerator
@@ -57,6 +58,51 @@ final class FixtureDocument
             $properties ?? self::properties(),
             new OperationFactory(self::schemas()),
         );
+    }
+
+    /**
+     * A generator over ONE fixture namespace, so the documentation fixtures can each be a self-contained
+     * surface rather than more routes bolted onto the shared one.
+     *
+     * Keeping them apart is what lets each assert on a WHOLE document — the exact tag list, the exact set of
+     * paths, nothing else present — which is the only way to prove a negative like "the #[ApiIgnore]d
+     * controller left no trace". A single shared fixture would force every such assertion to be a
+     * needle-in-a-haystack lookup that passes just as well when the haystack is wrong.
+     */
+    public static function generatorFor(string $directory, ?OpenApiProperties $properties = null, ?DocumentInfo $info = null): OpenApiGenerator
+    {
+        return new OpenApiGenerator(
+            self::routes($directory),
+            $properties ?? self::properties(),
+            new OperationFactory(self::schemas($directory)),
+            $info,
+        );
+    }
+
+    /**
+     * One operation out of a generated document, or [] when the path or verb is absent — so a missing
+     * operation fails the assertion that asked about it rather than a type error three lines earlier.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<string, mixed>
+     */
+    public static function operation(array $document, string $path, string $verb): array
+    {
+        /** @var mixed $node */
+        $node = $document['paths'] ?? [];
+
+        foreach ([$path, $verb] as $segment) {
+            if (! is_array($node) || ! array_key_exists($segment, $node)) {
+                return [];
+            }
+            /** @var mixed $node */
+            $node = $node[$segment];
+        }
+
+        /** @var array<string, mixed> $operation */
+        $operation = is_array($node) ? $node : [];
+
+        return $operation;
     }
 
     /**

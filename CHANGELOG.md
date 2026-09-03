@@ -8,9 +8,13 @@ Cut as `26.09.1` when released: `Firefly\Kernel\Version::VERSION`, this heading,
 badge move together (see [Versioning](docs/versioning.md)), and `tests/VersionConsistencyTest.php` fails the
 build if any one of the three drifts.
 
-A correctness release. Several headline features were found not to work at all outside the compiled boot, and
-two of the failures were **fail-open** in the security sense — the application kept serving, unguarded, with
-nothing logged. Every fix below was reproduced by a failing test first.
+A correctness release that also grew two surfaces. Several headline features were found not to work at all
+outside the compiled boot, and two of the failures were **fail-open** in the security sense — the application
+kept serving, unguarded, with nothing logged; every fix below was reproduced by a failing test first. Alongside
+them, LaraFly gained the two things a framework this shape is expected to have and did not: a browser dashboard
+over the actuator (`firefly/admin`) and an OpenAPI 3.1 document generated from the manifests it already holds
+(`firefly/openapi`). Both are opt-in Composer packages, outside the `firefly/firefly` metapackage, and neither
+needs npm or a CDN.
 
 ### BREAKING
 
@@ -28,6 +32,63 @@ nothing logged. Every fix below was reproduced by a failing test first.
   still sees that a bean of that type exists. See [Dependency Injection](docs/modules/dependency-injection.md).
 
 ### Added
+- **`firefly/openapi` — an OpenAPI 3.1 document that cannot drift from the server.** Generated from the
+  artifacts the framework already holds in memory: `RouteManifest` for paths, verbs, declared statuses, route
+  names and the per-parameter binding plan; `ConstraintManifest` for request-body schemas and their `required`
+  lists; `firefly/kernel`'s `ErrorResponse` for the RFC 9457 problem component. There is no annotation dialect
+  and no second description of the API, so there is nothing to keep in sync. `#[NotBlank]`, `#[Size]`,
+  `#[Min]`/`#[Max]`, `#[Email]`, `#[Pattern]`, `#[Percentage]`, `#[Money]` and the rest become JSON Schema
+  keywords; anything JSON Schema cannot state (`after:now`, a Luhn checksum, a PCRE flag ECMA-262 has no syntax
+  for) is recorded under the `x-firefly-constraints` specification extension rather than dropped silently.
+  Nested `#[Valid]` DTOs get their own component, so a self-referential DTO terminates as a `$ref` cycle. Paths,
+  verbs and components are sorted, so a regenerated document diffs cleanly and stays worth committing.
+  `php artisan firefly:openapi` writes it to `--output=` (with a summary line) or **raw** to stdout via
+  Symfony's `OUTPUT_RAW`, so `firefly:openapi | <client-generator>` gets exactly the document's bytes. Three
+  routes — spec, console, console assets — are mounted natively from a `BootPass` at configurable paths, which
+  an attribute route could not be, and which also keeps the package from documenting itself. See
+  [OpenAPI](docs/modules/openapi.md).
+- **`firefly.openapi.viewer.style` — `swagger` (default) | `builtin` | `cdn`.** The default console is the
+  **official Swagger UI, served from the application's own origin** out of the `swagger-api/swagger-ui` composer
+  package (a hard dependency, so the files are already on disk): byte-for-byte the distribution Swagger
+  publishes — full feature set, deep linking, try-it-out, OAuth2 — with **no CDN request and no npm step**, so
+  it still renders in the air-gapped and strict-CSP deployments where an internal API console is most wanted.
+  Asset serving is a whitelist of seven basenames, each `realpath()`-checked inside the dist directory, behind a
+  route whose `{file}` segment cannot express a traversal; the files are immutable for a pinned version and are
+  sent with a one-year `immutable` cache header and an auto ETag. `builtin` is the hand-written, dependency-free
+  reference (no third-party JavaScript at all) and is also the automatic fallback when the dist is absent, so a
+  missing package never renders a console whose assets 404. `cdn` fetches Swagger UI from `cdn.jsdelivr.net` and
+  is the only style that makes a third-party request at page view. The older boolean `firefly.openapi.viewer.cdn`
+  (default `false`) still forces the CDN page and wins over `style`, so an application that set it keeps the
+  behaviour it configured.
+- **`firefly/admin` — a browser dashboard over the actuator**, the Spring Boot Admin analogue, mounted at
+  `firefly.admin.base-path` (default `/firefly`). Thirteen pages in three operator-shaped groups: overview,
+  health, metrics and HTTP traffic; beans, **bean graph**, conditions, routes and scheduled tasks; environment,
+  config properties, caches and loggers. It reads each `ActuatorEndpoint` **in-process** from `ActuatorRegistry`,
+  deliberately bypassing `ExposureModel` — so it renders pages the JSON surface keeps unexposed while that
+  surface stays secure-by-default — and honours the per-endpoint kill switch
+  (`firefly.management.endpoint.{id}.enabled`), because that key means "off", not "unpublished". A page whose
+  endpoint is unregistered or switched off is hidden from the menu rather than linked; a throwing endpoint
+  degrades its own panel; health details are read from `HealthContributorRegistry` directly rather than through
+  the endpoint's `show-details` disclosure policy. Plain Blade with inline CSS — no npm step, no CDN — and it
+  mounts nothing at all when no view factory is bound. See [Admin Dashboard](docs/modules/admin.md).
+  - **SECURITY — `firefly.admin.enabled` defaults to the value of `app.debug`.** Because the dashboard bypasses
+    exposure, its own URL is the entire boundary in front of `beans`, `env` and `conditions`. An app already
+    serving stack traces is a development environment by definition; an app with debug off must opt in
+    explicitly, and an explicit value wins in both directions. The dashboard ships **no authentication of its
+    own** and has no code edge to `firefly/security`: an application that enables it outside debug **must put
+    the route behind its own auth middleware** (`firefly.security.http.rules` covers `firefly` and `firefly/*`
+    with no code change).
+- **The bean graph (`/firefly/graph`)** — a drawn, layered dependency diagram, not another table.
+  `ComponentScanner` now records each component's constructor class/interface types at **scan** time
+  (`ComponentDescriptor::$dependencies`, declared last with a default so an older compiled manifest still
+  rehydrates), and `BeansCatalog` publishes them, so answering "what depends on what" costs no request-time
+  reflection. `BeanGraph` resolves every dependency through an interface index first — a constructor asks for
+  `EventPublisher`, the bean that satisfies it is `PostgresEventPublisher` — and marks the edge `via` so the
+  indirection is visible rather than silently substituted; layering is a longest-path assignment so arrows read
+  downward; a cycle terminates the walk and is **reported** rather than hanging the page, which turns "the app
+  died at boot with no message" into a named pair of classes. Past 220 nodes the diagram is suppressed in favour
+  of the filterable relations table, and constructor types satisfied by a Laravel binding rather than a bean are
+  listed as "provided outside the container" rather than dropped. See [Bean Graph](docs/modules/bean-graph.md).
 - **`Firefly\Context\Scan\AppScan`** — the seam every capability package uses to resolve its own manifest:
   compiled artifact, else an in-process scan of `firefly.scan.paths`, else empty. Routes, `#[ControllerAdvice]`
   handlers, CQRS handlers, event/message listeners, scheduled tasks, validation constraints, method-security
@@ -57,7 +118,10 @@ nothing logged. Every fix below was reproduced by a failing test first.
   budget.
 - **`skeleton/config/firefly.php` is now a full configuration reference** — every `firefly.*` key the framework
   reads, grouped by capability, with its real default and what it does; advanced keys stay commented out at
-  their defaults. `skeleton/.env.example` carries the ones that usually vary per environment. The skeleton
+  their defaults. This release adds the `firefly.openapi.*` block (including `viewer.style` and the legacy
+  `viewer.cdn`), the `firefly.observability.httpexchanges.*` block (`enabled`, `capacity`, `store`, `ttl`,
+  `include-headers`, `exclude`) and `firefly.management.info.runtime.enabled`, and the file was re-derived
+  mechanically against the keys the source actually reads, in both directions. `skeleton/.env.example` carries the ones that usually vary per environment. The skeleton
   also gains a `#[Controller]` welcome page (nothing on it hard-coded — real bean/condition counts, the real
   route table, the real actuator registry) and its first test suite.
 
@@ -78,6 +142,17 @@ nothing logged. Every fix below was reproduced by a failing test first.
   than `[]` when empty.
 - The skeleton drops `app/Support/CachedTransactionalConfiguration.php`, the hand-written workaround every
   application needed while `DataAutoConfiguration` bound an empty `TransactionalManifest`.
+- **Docs, book and README cover the two new packages.** New module guides
+  [OpenAPI](docs/modules/openapi.md), [Admin Dashboard](docs/modules/admin.md) and
+  [Bean Graph](docs/modules/bean-graph.md), wired into `docs/README.md` and `docs/index.md`; the actuator guide
+  gains `/actuator/httpexchanges` + `/actuator/process` and a pointer to the dashboard's access model; the CLI
+  reference gains a table of commands contributed by other packages (`firefly:openapi`, `firefly:eda:consume`,
+  `firefly:outbox:relay`). *LaraFly by Example* is updated in **both** languages: Chapter 11 gains the
+  thirteen-page dashboard table and a full bean-graph section (interface resolution, longest-path layering,
+  cycle reporting, the 220-node ceiling), and Chapter 4A's "CDN flag" section is replaced by the three viewer
+  styles, the whitelisted asset route and the honest cost of `cdn`. Every fenced PHP listing still passes
+  `php -l` (219 per language). Package counts corrected from 25/26 to **27 packages / 28 shippable units** in
+  the README and the publishing runbook.
 - Docs corrected against source throughout: the CLI's cached-vs-uncached boot, the resilience circuit-breaker
   and bulkhead tables and their state prose, configuration's relaxed binding and profile gating, the web
   layer's HTML rendering, security's fail-open note and full config table, observability's cross-process

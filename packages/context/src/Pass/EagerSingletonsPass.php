@@ -61,11 +61,36 @@ final class EagerSingletonsPass implements BootPass
     public function run(BootContext $context): void
     {
         foreach ($this->orderedEagerAbstracts($context) as $abstract) {
+            // A COMPILED MANIFEST GOES STALE THE MOMENT A CLASS IS DELETED OR RENAMED, and that is an
+            // ordinary thing to do while developing. Before this guard, the consequence was catastrophic and
+            // unrecoverable: the manifest still named the class, this pass make()d it, the container threw
+            // "Target class does not exist", and BOTH commands that repair the situation — firefly:cache and
+            // firefly:clear — died with the same error, because each has to boot the application before it
+            // can rewrite or delete the manifest. Deleting one controller bricked the application, and the
+            // only escape was to `rm -rf bootstrap/cache/firefly` by hand.
+            //
+            // Skipping is the only defensible response. A definition naming a class that no longer exists
+            // describes an application state that has already moved on, and refusing to boot over it helps
+            // nobody: the class is gone, nothing can inject it, and the next firefly:cache will drop it from
+            // the manifest anyway. A stale entry is a cache-invalidation problem, never a reason to take the
+            // application down.
+            //
+            // Only a MISSING class is tolerated. Every other resolution failure — a genuinely broken
+            // constructor, an unsatisfiable dependency, the registrar's own NoUniqueBeanDefinition guard —
+            // still propagates, because those are real defects in code that does exist and failing fast at
+            // boot is exactly right for them.
             $context->container->make($abstract);
         }
     }
 
     /**
+     * The abstracts to resolve, in #[Order], with any whose DECLARING CLASS no longer exists dropped.
+     *
+     * The check is on the declaring class rather than on the binding key, and rather than on whether the
+     * container has a binding, because both of those answer yes for a stale entry: the registrar binds
+     * straight from the same manifest, and a #[Bean] key is often a bean NAME with no class of its own. The
+     * declaring class is the thing that actually goes missing when someone deletes a file.
+     *
      * @return list<string>
      */
     private function orderedEagerAbstracts(BootContext $context): array
@@ -77,6 +102,27 @@ final class EagerSingletonsPass implements BootPass
 
         foreach ($context->definitions->all() as $definition) {
             $descriptor = $definition->descriptor;
+
+            // A COMPILED MANIFEST GOES STALE THE MOMENT A CLASS IS DELETED OR RENAMED, and that is an
+            // ordinary thing to do while developing. Before this guard the consequence was catastrophic and
+            // unrecoverable: the manifest still named the class, this pass resolved it, the container threw
+            // "Target class does not exist", and BOTH commands that repair the situation — firefly:cache and
+            // firefly:clear — died with the same error, because each must boot the application before it can
+            // rewrite or delete the manifest. Deleting one controller bricked the application, and the only
+            // escape was `rm -rf bootstrap/cache/firefly` by hand.
+            //
+            // Skipping is the only defensible response. A definition naming a class that no longer exists
+            // describes an application that has already moved on: nothing can inject it, and the next
+            // firefly:cache drops it from the manifest anyway. A stale entry is a cache-invalidation
+            // problem, never a reason to take the application down.
+            //
+            // Only a MISSING class is tolerated here. Every other resolution failure — a broken constructor,
+            // an unsatisfiable dependency, the registrar's own NoUniqueBeanDefinition guard — still
+            // propagates from make(), because those are real defects in code that does exist, and failing
+            // fast at boot is exactly right for them.
+            if (! class_exists($descriptor->class)) {
+                continue;
+            }
 
             if ($descriptor->scope === Scope::Singleton && ! $descriptor->lazy) {
                 $entries[] = [$descriptor->order, $descriptor->class];

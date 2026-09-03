@@ -20,14 +20,20 @@ use ReflectionParameter;
  */
 final readonly class MemberType
 {
+    /**
+     * $doc defaults to an empty MemberDoc rather than to null so that every call site can apply it
+     * unconditionally. A member with no prose then adds no keys instead of forcing a null check into the one
+     * place that assembles the schema.
+     */
     public function __construct(
         public ?string $type,
         public bool $nullable,
         public bool $hasDefault,
         public mixed $default,
+        public MemberDoc $doc = new MemberDoc,
     ) {}
 
-    public static function fromParameter(ReflectionParameter $parameter): self
+    public static function fromParameter(ReflectionParameter $parameter, MemberDoc $doc = new MemberDoc): self
     {
         $type = $parameter->getType();
 
@@ -36,13 +42,14 @@ final readonly class MemberType
             nullable: $type?->allowsNull() ?? true,
             hasDefault: $parameter->isDefaultValueAvailable(),
             default: $parameter->isDefaultValueAvailable() ? self::scalar($parameter->getDefaultValue()) : null,
+            doc: $doc,
         );
     }
 
     /** A member the constructor does not declare: validated on input, but untyped as far as this generator knows. */
-    public static function unknown(): self
+    public static function unknown(MemberDoc $doc = new MemberDoc): self
     {
-        return new self(null, true, false, null);
+        return new self(null, true, false, null, $doc);
     }
 
     public function required(): bool

@@ -2,7 +2,7 @@
 
 # Documenting the API: OpenAPI 3.1 from the Manifests {.chtitle}
 
-By the end of this chapter you will know how `firefly/openapi` turns the `RouteManifest` and `ConstraintManifest` Chapter 4 just built into a valid OpenAPI 3.1 document with **no annotation dialect of its own** — how `firefly:openapi` makes that document a build artifact a CI job can diff, how each binding `kind` in the compiled route plan becomes a Parameter Object or a Request Body, how a `#[NotBlank]` or a `#[Positive]` you already wrote becomes a `pattern` or an `exclusiveMinimum`, why every DTO is registered once and reached by `$ref` rather than inlined, why every operation carries the same `problem+json` error component Chapter 4's renderer produces, and why a `#[Controller]` HTML route is left out of the document by default.
+By the end of this chapter you will know how `firefly/openapi` turns the `RouteManifest` and `ConstraintManifest` Chapter 4 just built into a valid OpenAPI 3.1 document with **no annotation dialect of its own** — how `firefly:openapi` makes that document a build artifact a CI job can diff, how each binding `kind` in the compiled route plan becomes a Parameter Object or a Request Body, how a `#[NotBlank]` or a `#[Positive]` you already wrote becomes a `pattern` or an `exclusiveMinimum`, why every DTO is registered once and reached by `$ref` rather than inlined, why every operation carries the same `problem+json` error component Chapter 4's renderer produces, and why a `#[Controller]` HTML route is left out of the document by default. It closes on the browser console the package serves over that document — three styles, of which the default is the **official Swagger UI served from your own origin**, with no npm step and no CDN request, and only one of the three ever talks to a third party.
 
 !!! note "New term: specification extension"
     OpenAPI 3.1 lets a document carry members whose names begin with `x-`, called **specification extensions**. Conforming tools must ignore them, so an extension can record something the standard vocabulary cannot express without making the document invalid. `firefly/openapi` uses exactly one, `x-firefly-constraints`, and this chapter shows what lands in it and why nothing is ever dropped silently instead.
@@ -23,7 +23,7 @@ That is the whole installation. Boot the app and `GET /openapi.json` is served; 
 
 ---
 
-## `firefly:openapi`, and two routes that are not attribute routes
+## `firefly:openapi`, and routes that are not attribute routes
 
 The document is also a file you can commit:
 
@@ -36,7 +36,7 @@ The command exists so the document can be a **build artifact** rather than only 
 
 Stdout mode is written with Symfony's `OUTPUT_RAW` flag, and that detail matters more than it looks: console output normally goes through Symfony's formatter, which treats `<...>` as markup. A `description` mentioning a generic type — anything carrying an angle bracket that reached the document from a config value — would either be swallowed or would throw on an unknown tag. The point of stdout mode is to pipe straight into a client generator, so the bytes must be exactly the bytes of the document. That is also why the confirmation line is printed **only** in `--output` mode, where stdout is not the document.
 
-The two HTTP routes are mounted natively on the Illuminate `Router` from a `BootPass`, not declared with `#[GetMapping]`:
+The HTTP routes — the spec, the console, and the console's own assets — are mounted natively on the Illuminate `Router` from a `BootPass`, not declared with `#[GetMapping]`:
 
 ```php
 final class OpenApiRouteRegistrar implements BootPass
@@ -74,13 +74,21 @@ final class OpenApiRouteRegistrar implements BootPass
 
         $router->get($properties->viewerPath, static fn (): mixed => $container->make(OpenApiViewerAction::class)())
             ->name('firefly.openapi.viewer');
+
+        // The official Swagger UI files, served from this application's own origin rather than a CDN. Mounted
+        // under the viewer path so moving the console moves its assets with it, and constrained to a single
+        // path segment so the route cannot express a traversal in the first place — SwaggerAssets whitelists
+        // and realpath-checks the name as well.
+        $router->get($properties->viewerPath.'/assets/{file}', static fn (string $file): mixed => $container->make(SwaggerAssetAction::class)($file))
+            ->where('file', '[A-Za-z0-9._-]+')
+            ->name('firefly.openapi.assets');
     }
 }
 ```
 
-This is the same shape — and the same `BootPass` idiom — Chapter 11 will show you for the actuator's own routes, and it is chosen for two independent reasons. First, **an attribute route cannot be configurable**: `#[GetMapping('/openapi.json')]` bakes its literal into a compiled `RouteDescriptor` at `firefly:cache` time, so an operator could never move the spec off a path that collides with one of their own, and could never take it off a public surface without deleting the package. Second, an attribute route would enter the application's `RouteManifest` — and the generator reads that manifest, so **the package would document itself**. Registering natively keeps both problems out of existence: the two paths come from config at boot, and they never appear in the spec they serve.
+This is the same shape — and the same `BootPass` idiom — Chapter 11 will show you for the actuator's own routes, and it is chosen for two independent reasons. First, **an attribute route cannot be configurable**: `#[GetMapping('/openapi.json')]` bakes its literal into a compiled `RouteDescriptor` at `firefly:cache` time, so an operator could never move the spec off a path that collides with one of their own, and could never take it off a public surface without deleting the package. Second, an attribute route would enter the application's `RouteManifest` — and the generator reads that manifest, so **the package would document itself**. Registering natively keeps both problems out of existence: the paths come from config at boot, and they never appear in the spec they serve. Note that the assets route is mounted *under* the viewer path, so moving the console moves its stylesheet and scripts with it.
 
-`firefly.openapi.enabled` (default `true`) is enforced *here*, on the routes, rather than on the beans — the generator and its collaborators are inert without routes, so gating the routes is the whole of the switch. Turning it off leaves both paths genuinely unrouted, so they 404 through the router's own `NotFoundHttpException`, which Chapter 4's `ProblemDetailsRenderer` then renders as a proper `404` problem-details body rather than a `500`.
+`firefly.openapi.enabled` (default `true`) is enforced *here*, on the routes, rather than on the beans — the generator and its collaborators are inert without routes, so gating the routes is the whole of the switch. Turning it off leaves every one of those paths genuinely unrouted, so they 404 through the router's own `NotFoundHttpException`, which Chapter 4's `ProblemDetailsRenderer` then renders as a proper `404` problem-details body rather than a `500`.
 
 !!! note "The actions are resolved per request, inside the closure"
     Building an `OpenApiSpecAction` at boot and capturing it in the route would freeze one `OpenApiGenerator` into the route for the process's lifetime — exactly the shape that breaks under Octane, where a later request's container is a different sandbox. `$container->make(...)` *inside* the closure is the rule, here and in every other framework package that mounts a native route.
@@ -156,12 +164,7 @@ final class OperationFactory
             }
         }
 
-        $operation = [
-            'operationId' => $operationId,
-            'summary' => $this->summary($route),
-            'description' => 'Handled by '.$route->controllerClass.'::'.$route->methodName.'().',
-            'tags' => [$this->tag($route)],
-        ];
+        // …the operation's own prose (operationId, summary, description, tags) is assembled here…
 
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
@@ -180,7 +183,7 @@ final class OperationFactory
 }
 ```
 
-Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
+The one elided block is where the operation's human-facing prose is put together; everything shown is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
 
 Four smaller decisions finish an operation:
 
@@ -476,23 +479,101 @@ The second half of that method is the blunt instrument for everything else: `fir
 
 ---
 
-## The viewer, and the CDN flag
+## The viewer: three styles, and only one of them phones out
 
-`GET /openapi` renders a reference console: a single self-contained HTML page with **no npm build at install time and no network access at request time**. It groups operations by tag and resolves `$ref` pointers client-side, so a reader sees a DTO's members rather than a pointer into `#/components/schemas`.
+`GET /openapi` renders a browser console over the document. Which console is `firefly.openapi.viewer.style`, and the choice is a supply-chain decision dressed up as a preference:
 
-Every off-the-shelf viewer — Swagger UI, Redoc, Elements — is a bundled JavaScript application, which leaves exactly two ways to ship one: vendor a multi-megabyte bundle into a PHP package, or fetch it from a CDN on every page view. The second is a supply-chain dependency and a data-protection question, and it does not render at all in the air-gapped, strict-CSP environments where an internal API console is most wanted. Hence a hand-written, dependency-free default.
+| `style` | Ships from | Third-party request at page view? |
+|---|---|---|
+| `swagger` **(default)** | your own origin, out of the `swagger-api/swagger-ui` composer package | **no** |
+| `builtin` | inline in the response | **no** |
+| `cdn` | `cdn.jsdelivr.net` | **yes, on every view** |
 
-Swagger UI is available for teams that want the full feature set, at an exactly pinned version:
+An unrecognised value falls back to `swagger` rather than rendering a blank page — a typo in a config file should cost you nothing.
+
+### Why the default is the official Swagger UI, from your own origin
+
+Every off-the-shelf viewer — Swagger UI, Redoc, Elements — is a bundled JavaScript application, and for years that left a PHP package exactly two options. Vendor a multi-megabyte minified bundle into the package's own git history, so every clone of every dependent project pays for it forever and the framework is pinned to a release train it cannot patch without cutting a release of its own. Or fetch it from a CDN on every page view, which is a supply-chain dependency and a data-protection question, and which renders *nothing at all* in the air-gapped and strict-CSP environments where an internal API console is most wanted.
+
+There is a third option, and this package takes it. `swagger-api/swagger-ui` publishes its `dist` on Packagist under Apache-2.0, so **composer** can fetch and pin it — it is a hard `require` of `firefly/openapi`, so the files are already on disk in `vendor/` by the time you first hit the route — and `SwaggerAssetAction` serves those files from the application's own origin:
+
+```php
+final class SwaggerAssetAction
+{
+    public function __construct(private readonly SwaggerAssets $assets) {}
+
+    public function __invoke(string $file): SymfonyResponse
+    {
+        $path = $this->assets->path($file);
+        $type = $this->assets->contentType($file);
+
+        if ($path === null || $type === null) {
+            return new Response('Not Found', 404, ['Content-Type' => 'text/plain; charset=UTF-8']);
+        }
+
+        $response = new BinaryFileResponse($path, 200, ['Content-Type' => $type]);
+        $response->setPublic();
+        $response->setMaxAge(31536000);
+        $response->setImmutable();
+        $response->setAutoEtag();
+
+        return $response;
+    }
+}
+```
+
+You get the console byte-for-byte as Swagger publishes it — the full feature set, deep linking, try-it-out, the OAuth2 redirect popup — with no CDN request, no npm step, and nothing in this repository's history that a `composer update` could not replace. The long cache header is safe precisely because the bytes are immutable for a pinned version: composer changes them only when the pinned version changes, and the ETag changes with them.
+
+!!! note "Path traversal is defended by a whitelist, not a sanitiser"
+    Only seven basenames are servable at all — `swagger-ui.css`, `swagger-ui-bundle.js`, `swagger-ui-standalone-preset.js`, `oauth2-redirect.html`, two favicons and `index.css` — and each resolved path is `realpath()`-checked to be inside the dist directory. The route itself constrains `{file}` to `[A-Za-z0-9._-]+`, so it cannot even *express* a traversal. Matching against a fixed list rather than scrubbing the input is the deliberate choice: a whitelist cannot be defeated by an encoding trick that a sanitiser missed. Anything else is a plain `text/plain` 404 — not problem+json, because the caller here is a browser fetching a stylesheet, not an API client.
+
+The dist directory is located by asking **Composer's own installed-versions metadata** for the package root, rather than walking up from `__DIR__`. The depth from `src/Web/` to `vendor/` differs between an installed package (`vendor/firefly/openapi/src/Web`) and this monorepo (`packages/openapi/src/Web`), so a relative walk would work in exactly one of them; the walk is kept only as a fallback for a runtime whose autoloader cannot answer.
+
+And if the distribution is genuinely absent — a stripped `vendor/`, a phar, a non-composer runtime — `render()` falls back rather than serving a page whose assets 404:
+
+```php
+final class ViewerPage
+{
+    public function render(string $specUrl, string $style, string $assetBase = ''): string
+    {
+        return match (true) {
+            $style === 'cdn' => $this->swaggerUiFromCdn($specUrl),
+            // Falling back rather than rendering a broken page: `swagger` is the DEFAULT, so an
+            // application that has not installed swagger-api/swagger-ui would otherwise get a console
+            // referencing assets that 404. The built-in reference needs nothing and is always available.
+            $style === 'swagger' && $this->assets->available() => $this->swaggerUi($specUrl, $assetBase),
+            default => $this->builtIn($specUrl),
+        };
+    }
+}
+```
+
+### What `builtin` is for
+
+A hand-written, dependency-free reference: one inline script, a few hundred bytes of CSS, one `fetch` of the spec route, and a palette that follows `prefers-color-scheme`. It does the two things a reader actually needs from a generated spec and that raw JSON does not give them — it groups operations by tag with verbs and paths visible at a glance, and it **resolves `$ref` pointers client-side**, so the reader sees a DTO's members rather than a pointer into `#/components/schemas`. Try-it-out, OAuth flows and code samples are deliberately absent; that is what `swagger` is for.
+
+Choose it when the deployment's rule is *no third-party JavaScript in the response at all*, rather than merely *no third-party host*.
+
+!!! note "Why that page is a nowdoc"
+    The built-in viewer embeds a JavaScript application, and a PHP **heredoc** interpolates variables. Every `$ref`, `$schema` and `$1` in that script was therefore read as a PHP variable — `$ref` silently became the empty string, and `$ref` resolution, the whole point of the page, stopped working. A nowdoc takes the script verbatim and the two real substitutions are made explicitly afterwards. It is the kind of bug that produces no error anywhere: the page renders, and simply shows pointers instead of schemas.
+
+### What `cdn` costs
 
 ```php
 // config/firefly.php
 return [
-    'openapi' => ['viewer' => ['cdn' => true]],
+    'openapi' => ['viewer' => ['style' => 'cdn']],
 ];
 ```
 
-!!! warning "Turning the CDN flag on means the browser fetches code from a third party"
-    `firefly.openapi.viewer.cdn` defaults to `false`. With it on, every page view loads Swagger UI from `cdn.jsdelivr.net`. No Subresource Integrity hash is claimed, deliberately: a hash the framework cannot verify at release time is security theatre, and a wrong one would simply break the page. The honest statement is the one in the package README — this is a request to a third party on every view.
+Every page view then loads Swagger UI from `cdn.jsdelivr.net`. The version is pinned exactly, and **no Subresource Integrity hash is claimed** — deliberately: a hash the framework cannot verify at release time is security theatre, and a wrong one would simply break the page.
+
+Weigh the trade honestly. In exchange for a request to a third party on every view, a Content-Security-Policy that has to allow that host, and a console that renders nothing in an air-gapped deployment, you get… the same Swagger UI that `swagger` already served you from your own origin. The style is kept because it is what most tutorials show, and because some organisations genuinely prefer their bytes to come from a cache they already trust — not because it is the better default.
+
+!!! warning "`viewer.cdn` still wins over `viewer.style`"
+    `firefly.openapi.viewer.cdn` (default `false`) is the older boolean spelling of this option, from before `style` existed. It still **forces** the CDN page and overrides `style`, so an application that set it keeps the behaviour it configured rather than being silently moved onto a different console by a framework upgrade. Prefer `style` in new configuration; delete `cdn` when you adopt it.
+
+The viewer fetches the spec from the sibling route rather than having the document inlined into the page, so a regenerated spec shows up on a plain browser refresh, and so the two routes can be exposed independently — a deployment may well want the machine-readable document public and the console off, or the reverse. The spec URL is resolved through the `UrlGenerator` rather than concatenated, because an app mounted under a subdirectory or behind `APP_URL` would otherwise get a link that 404s from every page but the root, and a viewer whose only network call is wrong is a viewer that shows nothing at all.
 
 ---
 
@@ -507,18 +588,19 @@ declare(strict_types=1);
 
 return [
     'openapi' => [
-        'enabled' => true,              // master gate: off means both routes are genuinely unrouted
+        'enabled' => true,              // master gate: off means every route is genuinely unrouted
         'path' => '/openapi.json',      // spec route
         'viewer' => [
             'enabled' => true,
-            'path' => '/openapi',
-            'cdn' => false,             // opt in to Swagger UI over a CDN — see above
+            'path' => '/openapi',       // assets are mounted under {path}/assets/{file}
+            'style' => 'swagger',       // swagger (default) | builtin | cdn — see above
         ],
         'title' => 'Lumen Wallet API',
         'version' => '1.0.0',
         'description' => '',
         'servers' => ['https://api.example.test'],  // bare URLs or OpenAPI Server Objects
         'exclude' => '/internal,/admin',            // CSV of path prefixes to leave out
+        'include-html' => false,                    // document #[Controller] routes as text/html
     ],
 ];
 ```
@@ -539,12 +621,15 @@ return [
             'enabled' => true,
             'rules' => [
                 ['pattern' => 'openapi', 'access' => 'hasRole:DEVELOPER'],
+                ['pattern' => 'openapi/*', 'access' => 'hasRole:DEVELOPER'],
                 ['pattern' => 'openapi.json', 'access' => 'hasRole:DEVELOPER'],
             ],
         ],
     ],
 ];
 ```
+
+Note the three patterns. `openapi` alone does not match `openapi/assets/swagger-ui.css`, and `openapi.json` is a separate literal — a rule set that covers the console but not its assets produces an authenticated page whose stylesheet answers 401, which is a worse outcome than either extreme.
 
 The alternative, for a deployment that wants no documentation surface at all in production, is `enabled => false` plus a `firefly:openapi --output=` step in CI.
 
@@ -580,7 +665,7 @@ final class ApiDocsConfiguration
 |---|---|
 | `OpenApiGenerator` | Assembles an OpenAPI 3.1 document from `RouteManifest` + `ConstraintManifest`; memoised per instance, deterministically ordered so regenerations diff cleanly |
 | `firefly:openapi` | Writes the document to `--output=` or raw to stdout, making the spec a committable build artifact a CI job can diff |
-| `OpenApiRouteRegistrar` | Mounts `/openapi.json` and `/openapi` natively from a `BootPass` — a configurable path an attribute route could never have, and no self-documentation |
+| `OpenApiRouteRegistrar` | Mounts `/openapi.json`, `/openapi` and `/openapi/assets/{file}` natively from a `BootPass` — configurable paths an attribute route could never have, and no self-documentation |
 | `OperationFactory` | Maps each binding `kind` — `path`/`query`/`header`/`file`/`body` — to its OpenAPI shape; `service` bindings never appear |
 | `SchemaRegistry` | One component per DTO, reached by `$ref`: no duplicate generated types, and a reserved name closes a recursive `$ref` cycle |
 | `DtoSchemaFactory` | Merges declared constructor types with compiled constraints; emits no `additionalProperties: false`, because the server ignores extra keys |
@@ -589,6 +674,9 @@ final class ApiDocsConfiguration
 | `ProblemSchema` | The one shared `application/problem+json` response; documents Firefly's `code`/`category`/`severity`/`errors`, with the enums read off the kernel's own cases |
 | Derived error set | `400` only when something is rejectable before the controller runs, `422` only under `#[Valid]`, `default` always |
 | `$route->html` | `#[Controller]` HTML routes are excluded by default; `firefly.openapi.include-html` documents them as `text/html`, never as JSON |
+| `firefly.openapi.viewer.style` | `swagger` (default) \| `builtin` \| `cdn`. Only `cdn` makes a third-party request at page view; an unrecognised value falls back to `swagger` |
+| `SwaggerAssets` | Serves the OFFICIAL Swagger UI from your own origin out of the `swagger-api/swagger-ui` composer package — seven whitelisted basenames, each `realpath()`-checked inside the dist directory |
+| `ViewerPage::render()` | Falls back to `builtin` when the Swagger dist is absent, rather than rendering a console whose assets 404 |
 
 ---
 
@@ -596,4 +684,5 @@ final class ApiDocsConfiguration
 
 1. **Generate Lumen's document and read it.** Run `php artisan firefly:openapi --output=openapi.json` in the sample, then open `/openapi` in a browser. Find `walletBalance` and confirm it has no `400` response, then find `walletDeposit` and confirm it has both a `400` and a `422` — and satisfy yourself, from this chapter's rules, why the two differ.
 2. **Make the spec a CI gate.** Commit the generated file, then add a job that regenerates it and runs `git diff --exit-code` over it. Change a DTO — add a `#[Size(max: 32)]` to `OpenWalletRequest::$owner_id` — and watch the job fail with a diff that names the exact schema keyword that changed.
-3. **Watch a constraint fall through to the extension.** Add `#[Future]` to a `string` property on a request DTO, regenerate, and find the property's `x-firefly-constraints` array carrying `after:now` beside a perfectly ordinary `format: date-time`. Then add `#[Pattern('/^[a-z]+$/i')]` to another property and compare: the pattern *is* published, and the original rule is recorded beside it because the `i` flag could not survive the translation.
+3. **Prove the default console makes no outbound request.** Open `/openapi` in the sample with the browser's network panel recording, and confirm every request is same-origin: the page, `openapi/assets/swagger-ui.css`, the two bundles, and `openapi.json`. Then set `firefly.openapi.viewer.style` to `cdn`, reload, and watch `cdn.jsdelivr.net` appear in the same panel — that request is the entire difference, and it is what a strict CSP or an air-gapped host would block.
+4. **Watch a constraint fall through to the extension.** Add `#[Future]` to a `string` property on a request DTO, regenerate, and find the property's `x-firefly-constraints` array carrying `after:now` beside a perfectly ordinary `format: date-time`. Then add `#[Pattern('/^[a-z]+$/i')]` to another property and compare: the pattern *is* published, and the original rule is recorded beside it because the `i` flag could not survive the translation.

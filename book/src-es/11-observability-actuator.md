@@ -2,7 +2,7 @@
 
 # Observabilidad: Salud, Métricas y el Actuator {.chtitle}
 
-Al terminar este capítulo conocerás el SPI `HealthIndicator` de `firefly/actuator` y los indicadores integrados `Ping`/`DiskSpace`/`Db`, cómo `HealthEndpoint` los agrega en una única respuesta `/actuator/health` — y cómo un **grupo** de sondeo (el mecanismo que hay detrás de "liveness" y "readiness") no es más que un subconjunto de indicadores con nombre y configurado, cómo toda la superficie de gestión está **sin exponer por defecto** de modo que un endpoint olvidado falla cerrado como un 404 en lugar de una fuga de información, y el `MeterRegistry` en PHP puro de `firefly/observability`, su exportador Prometheus a prueba de locale, y el truco exacto de precedencia `#[Order(500)]` — el mismo que el Capítulo 10 te mostró para la seguridad — que permite a `MeterRegistryCqrsMetrics` reemplazar el `NoOpCqrsMetrics` del bus de CQRS sin ningún cambio de código en `firefly/cqrs`. El capítulo cierra con `firefly/admin`, el panel de administración renderizado en el servidor sobre esos mismos endpoints — los lee **en proceso**, de modo que renderiza páginas que la superficie JSON deliberadamente mantiene sin exponer, lo que convierte a su propia URL en toda la frontera de seguridad y a su valor por defecto (`app.debug`) en la línea más importante del paquete.
+Al terminar este capítulo conocerás el SPI `HealthIndicator` de `firefly/actuator` y los indicadores integrados `Ping`/`DiskSpace`/`Db`, cómo `HealthEndpoint` los agrega en una única respuesta `/actuator/health` — y cómo un **grupo** de sondeo (el mecanismo que hay detrás de "liveness" y "readiness") no es más que un subconjunto de indicadores con nombre y configurado, cómo toda la superficie de gestión está **sin exponer por defecto** de modo que un endpoint olvidado falla cerrado como un 404 en lugar de una fuga de información, y el `MeterRegistry` en PHP puro de `firefly/observability`, su exportador Prometheus a prueba de locale, y el truco exacto de precedencia `#[Order(500)]` — el mismo que el Capítulo 10 te mostró para la seguridad — que permite a `MeterRegistryCqrsMetrics` reemplazar el `NoOpCqrsMetrics` del bus de CQRS sin ningún cambio de código en `firefly/cqrs`. El capítulo cierra con `firefly/admin`, el panel de administración renderizado en el servidor sobre esos mismos endpoints — trece páginas, incluido un **grafo de beans** dibujado que resuelve cada dependencia de constructor a través de la interfaz por la que está cableada y reporta los ciclos con los que, si no, un arranque moriría sin mensaje. Lee esos endpoints **en proceso**, de modo que renderiza páginas que la superficie JSON deliberadamente mantiene sin exponer, lo que convierte a su propia URL en toda la frontera de seguridad y a su valor por defecto (`app.debug`) en la línea más importante del paquete.
 
 !!! note "Término nuevo: actuator"
     Un **actuator** es un endpoint de gestión que informa sobre el *proceso en ejecución en sí* — si está sano, con qué arrancó, cuán rápidas son sus peticiones — en lugar de sobre el dominio de negocio al que sirve el proceso. El término y la forma provienen ambos de Spring Boot Actuator; `firefly/actuator` es un análogo PHP de primera parte y con pocas dependencias: endpoints de framework montados directamente sobre el mismo `Router` de Illuminate que usan tus propios controladores, no un proceso de administración separado.
@@ -660,7 +660,7 @@ composer require firefly/admin
 
 Después abre `/firefly`. No hay paso de npm en la instalación ni CDN en tiempo de petición — las vistas son Blade puro con CSS en línea y tipografías del sistema, porque un paquete de Composer no puede dar por hecho que npm se ha ejecutado, y un panel que necesita la red es inútil precisamente en los entornos aislados donde más quieres mirar uno.
 
-Cada página es una vista sobre la carga útil de un endpoint, y el menú las agrupa como piensa un operador y no como están dispuestos los paquetes — qué está haciendo ahora mismo, qué cableó en el arranque, y cómo está configurado:
+Trece páginas, cada una una vista sobre la carga útil de un endpoint. El menú las agrupa como piensa un operador y no como están dispuestos los paquetes — qué está haciendo ahora mismo, qué cableó en el arranque, y cómo está configurado — porque una lista plana de trece enlaces es peor menú que tres cortas:
 
 | Grupo | Página | Lee | Responde |
 |---|---|---|---|
@@ -669,6 +669,7 @@ Cada página es una vista sobre la carga útil de un endpoint, y el menú las ag
 | Runtime | Métricas | `metrics` | Contadores, cronómetros y medidores, con sus mediciones actuales |
 | Runtime | Tráfico HTTP | `httpexchanges` | Las peticiones más recientes que sirvió esta aplicación |
 | Cableado | Beans | `beans` | Cada bean que registró el contenedor, con el estereotipo que lo declaró |
+| Cableado | Grafo de beans | `beans` | Cómo dependen tus beans unos de otros, resueltos a través de las interfaces por las que están cableados |
 | Cableado | Condiciones | `conditions` | Qué auto-configuraciones se aplicaron, y cuáles se echaron atrás porque aportaste la tuya |
 | Cableado | Rutas | `mappings` | La tabla de rutas compilada desde la que sirve el dispatcher |
 | Cableado | Programadas | `scheduledtasks` | Métodos registrados por `#[Scheduled]`, con el cron o intervalo que los dispara |
@@ -736,6 +737,99 @@ Un endpoint que lanza se captura y se reporta como `null` en vez de dejar que se
 
 ---
 
+### El grafo de beans
+
+Doce de las trece páginas son tablas. La decimotercera dibuja una imagen, y es la que amortiza el paquete el día en que algo está mal cableado.
+
+`/actuator/beans` te dice *qué* beans existen. No puede decirte a qué está **cableado** cada uno, que es lo que realmente quieres cuando un `#[ConditionalOnMissingBean]` no se disparó como esperabas, cuando un ciclo entre singletons ansiosos ha colgado un arranque sin mensaje alguno, o cuando intentas averiguar a qué se enganchó el paquete que acabas de instalar. `/firefly/graph` responde a eso, como un diagrama SVG por capas más una tabla de relaciones filtrable.
+
+No se refleja nada para construirlo. `ComponentScanner` ya registra, en tiempo de **escaneo**, los tipos de clase e interfaz que pide el constructor de cada componente, y esa lista viaja en el manifiesto compilado igual que cualquier otro hecho escaneado (abreviado):
+
+```php
+final class ComponentDescriptor
+{
+    public function __construct(
+        public string $class,
+        public string $stereotype,
+        public array $interfaces,
+        /**
+         * The class types this component's constructor asks for — the edges of the bean graph.
+         *
+         * Recorded at scan time, where reflection is already sanctioned, because the alternative is
+         * reflecting at request time to answer "what depends on what", which the reflection-free boot
+         * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is
+         * configuration, not a wiring edge, and putting it in the graph would drown the edges that matter.
+         */
+        public array $dependencies = [],
+    ) {}
+}
+```
+
+Esa última frase es una decisión de diseño en la que merece la pena detenerse. Un parámetro de constructor tipado `string $name` es configuración; dibujarlo como una arista enterraría las relaciones que importan bajo ruido de `string`/`int`. Un parámetro de **clase anulable o con valor por defecto** *sí* se conserva, porque un colaborador opcional sigue siendo una relación.
+
+#### Lo difícil no es dibujar, es resolver
+
+Un constructor pide un **tipo**, y ese tipo es muy a menudo una interfaz — `EventPublisher`, `HealthIndicator`, `Cache` — mientras que el bean que lo satisface es una clase concreta que meramente la implementa. Una lista de aristas construida ingenuamente a partir de los tipos del constructor apunta entonces a nodos que no existen, y el grafo sale como un campo de puntos desconectados. Pregúntate a qué debería dibujar una flecha la dependencia de `WalletService` sobre `WalletRepository`: no al puerto, que es una interfaz sin bean propio, sino a `EloquentWalletRepository`, que es lo que de verdad se va a construir.
+
+Así que cada dependencia se resuelve a través de un índice de interfaces antes de convertirse en arista:
+
+```php
+foreach ($rows as $class => $row) {
+    foreach ($row['dependencies'] as $dependency) {
+        $target = isset($rows[$dependency]) ? $dependency : ($byInterface[$dependency] ?? null);
+
+        if ($target === null || $target === $class) {
+            // A type nothing in the container provides: a framework contract satisfied by a binding
+            // rather than a bean, or a class the scan never saw. Reported, not silently dropped —
+            // "why is my bean not in the graph" is exactly the question this page has to answer.
+            if ($target === null) {
+                $unresolved[] = $dependency;
+            }
+
+            continue;
+        }
+
+        $edges[] = ['from' => $class, 'to' => $target, 'via' => $target === $dependency ? null : $dependency];
+    }
+}
+```
+
+El miembro `via` es la honestidad de ese bucle. Cuando la arista pasó por una interfaz, el diagrama la marca y la columna **Wired by** de la tabla de relaciones nombra la interfaz, de modo que quien lee ve la indirección en lugar de que se le muestre calladamente una relación que nunca escribió. Cuando el constructor nombró la clase concreta, la columna simplemente dice `class`.
+
+El índice se construye en orden de catálogo y **gana el primer implementador**, de forma determinista — el catálogo se emite en orden de escaneo, así que la misma aplicación dibuja siempre el mismo grafo en lugar de rebarajarse entre máquinas. Una interfaz con varios implementadores es una ambigüedad real que el contenedor resuelve con `#[Primary]`/`#[Qualifier]`, y el grafo lo dice listando la arista como `via` en lugar de fingir que la elección era obvia.
+
+#### Capas, ciclos y el techo de nodos
+
+Los niveles salen de un recorrido de **camino más largo** sobre las aristas resueltas: la profundidad de un nodo es uno más que la de lo más profundo de lo que depende, y después los niveles se invierten para que el nivel 0 contenga aquello de lo que nada depende. El efecto es que un nodo siempre queda por debajo de todo lo que depende de él, las flechas se leen consistentemente hacia abajo, y la vista puede seguir una cadena desde un controlador hasta el repositorio que hay al final. La vista solo posiciona; los niveles vienen del modelo.
+
+La profundidad se memoiza y el recorrido lleva su propio conjunto de visitados, así que un ciclo termina en lugar de recursar para siempre — y la arista que lo cerró se *reporta*:
+
+```php
+foreach ($out[$node] ?? [] as $next) {
+    if (isset($path[$next])) {
+        $cycles[] = ['from' => $node, 'to' => $next];
+
+        continue;
+    }
+    $deepest = max($deepest, $walk($next, $path) + 1);
+}
+```
+
+Ese reporte vale más de lo que parece. El contenedor no tiene detección de ciclos propia, así que un ciclo entre singletons ansiosos no produce un error útil — agota la memoria en el arranque. Una página que nombra las dos clases implicadas convierte "la app murió sin mensaje" en un diagnóstico de cinco segundos, y el consejo del propio panel es el correcto: rompe una de estas aristas, normalmente inyectando una interfaz y dejando que el otro lado dependa de ella.
+
+Dos límites se declaran en la página en lugar de ocultarse:
+
+* **Pasados los `firefly.admin.graph.max-nodes` — 220 por defecto — el diagrama se suprime** y la tabla de Relaciones de abajo lleva la misma información como una lista filtrable. Un diagrama de más de un par de centenares de nodos es una maraña, no algo que una persona pueda leer, y renderizarlo de todos modos sería peor respuesta que negarse. Es una clave de configuración y no una constante porque "ilegible" depende de la pantalla y de la aplicación.
+* **"Provided outside the container" no es una advertencia.** Esas etiquetas son tipos de constructor satisfechos por un binding del contenedor de Laravel y no por un bean escaneado — la `Request`, el repositorio de configuración, una conexión. Se listan en lugar de descartarse en silencio precisamente porque *"¿por qué no está mi bean en el grafo?"* es la pregunta que la página tiene que responder. Un tipo que aparezca ahí y que esperabas que fuera un bean *tuyo* significa que tu escaneo no lo vio, y `firefly.scan.paths` es lo primero que hay que revisar.
+
+!!! tip "Léelo junto a la página de Condiciones"
+    Las dos responden mitades complementarias de toda sorpresa de auto-configuración. **Condiciones** dice *si* un bean del framework se registró o se echó atrás, y sobre qué condición. **El grafo** dice a qué está cableado el bean que sí ganó, y a través de qué interfaz. Una arista `EventPublisher` apuntando a `InMemoryEventPublisher` cuando configuraste `firefly.eda.provider=rabbitmq` se ve de un vistazo en el grafo; Condiciones nombra entonces el `#[ConditionalOnProperty]` que no casó.
+
+!!! note "Lo que el grafo todavía no dibuja"
+    Las aristas salen únicamente de las `dependencies` del constructor. `BeansCatalog` publica además los parámetros propios de cada método fábrica `#[Bean]` (bajo `produces`), pero `BeanGraph` no los lee, así que una clase `#[Configuration]` aparece con las aristas que declara *su propio constructor* y el cableado que hacen sus métodos `#[Bean]` no se dibuja. Eso sub-dibuja específicamente las clases de auto-configuración del framework; tus beans `#[Service]`/`#[Repository]`, que cablean por constructor, se dibujan completos.
+
+---
+
 ### El modelo de acceso es toda la frontera de seguridad
 
 Como el panel sortea la exposición, su propia URL es lo único que se interpone delante de `beans`, `env` y `conditions`. Por eso no debe estar encendido por defecto en producción, y por eso la bandera de activación está escrita como está:
@@ -747,6 +841,7 @@ final readonly class AdminSettings
         public bool $enabled,
         public string $basePath,
         public string $title,
+        // ... mas las opciones de presentacion: refreshSeconds, theme, graphMaxNodes, excludedPages.
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -757,6 +852,8 @@ final readonly class AdminSettings
             enabled: $config->bool('firefly.admin.enabled', $config->bool('app.debug', false)),
             basePath: $base === '' ? 'firefly' : $base,
             title: $config->string('firefly.admin.title', $config->string('app.name', 'LaraFly')),
+            // ... firefly.admin.refresh-seconds (10, con suelo en 2), .theme (auto|light|dark),
+            // .graph.max-nodes (220) y .pages.exclude ('') tambien se leen aqui.
         );
     }
 }
@@ -818,8 +915,10 @@ También se echa atrás en silencio en un caso más, fácil de pasar por alto. B
 | `PrometheusTextFormat` | Exposición a prueba de locale — `number_format()`, nunca `sprintf('%f')` |
 | `MetricsFilter` | Filtro de cronometraje más externo `#[Order(-100)]`; etiqueta por la **plantilla** de la ruta, nunca la ruta en bruto — cardinalidad acotada |
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | El mismo truco de precedencia que la costura de seguridad del Capítulo 10: registra `cqrsMetrics()` antes de que `CqrsAutoConfiguration` evalúe su `#[ConditionalOnMissingBean]` |
-| `firefly/admin` | Un panel Blade renderizado en el servidor en `/firefly`; una página cuyo endpoint no está registrado o está apagado se oculta del menú en lugar de enlazarse |
+| `firefly/admin` | Un panel Blade renderizado en el servidor en `/firefly`; trece páginas, y una cuyo endpoint no está registrado o está apagado se oculta del menú en lugar de enlazarse |
 | `AdminEndpointReader` | Invoca cada `ActuatorEndpoint` **en proceso** desde el `ActuatorRegistry`, sorteando `ExposureModel` — así el panel muestra lo que la superficie HTTP no expone, y un endpoint que lanza degrada un solo panel |
+| `BeanGraph` | Convierte el catálogo de beans en un grafo de dependencias dibujado: aristas de constructor resueltas a través de un índice de interfaces (marcadas `via`), estratificación por camino más largo, ciclos reportados en lugar de colgarse, y el diagrama suprimido pasados `firefly.admin.graph.max-nodes` (220) |
+| `ComponentDescriptor::$dependencies` | Las aristas del grafo, registradas por `ComponentScanner` en tiempo de **escaneo** — solo tipos de clase e interfaz, porque un parámetro escalar es configuración, no cableado |
 | `firefly.admin.enabled` | Toma por defecto `app.debug`; un valor explícito gana en ambas direcciones, y encenderlo con debug apagado te obliga a poner tu propio middleware de autenticación delante de la ruta |
 
 ---
@@ -830,4 +929,5 @@ También se echa atrás en silencio en un caso más, fácil de pasar por alto. B
 2. **Configura una división liveness/readiness real.** Añade `firefly.management.endpoint.health.group.liveness.include = 'ping'` y `...readiness.include = 'ping,db'` (con el indicador de BD habilitado) a la configuración de un proyecto de pruebas, y confirma que `GET /actuator/health/liveness` y `GET /actuator/health/readiness` divergen en el momento en que dejas la base de datos inalcanzable.
 3. **Observa a la costura de métricas de CQRS ganar la carrera.** Instala `firefly/observability` en un proyecto de pruebas que ya use `firefly/cqrs`, envía un puñado de comandos, e inspecciona `GET /actuator/prometheus` en busca de muestras de `cqrs_commands_seconds` — luego comenta temporalmente el atributo `#[Order(500)]` de `ObservabilityAutoConfiguration` (revirtiendo al valor por defecto de la clase) y confirma si la métrica todavía aparece, para ver el truco de ordenamiento importar de verdad en lugar de solo leer sobre él.
 4. **Demuéstrate a ti mismo el sorteo de la exposición.** Instala `firefly/admin` en el sample, deja `firefly.management.endpoints.web.exposure.include` en su valor por defecto, y confirma que `GET /actuator/beans` devuelve un `404` mientras `/firefly/beans` renderiza la lista completa de beans en el mismo proceso. Luego pon `firefly.management.endpoint.beans.enabled` a `false` y confirma que la entrada Beans desaparece del menú del panel — el interruptor de apagado se honra allí donde la exposición no, y la diferencia entre ambas claves es todo el diseño.
-5. **Lee el valor por defecto de acceso como una decisión de seguridad.** Pon `app.debug` a `false` en un proyecto de pruebas con `firefly/admin` instalado y confirma que `/firefly` está genuinamente sin enrutar y no simplemente sin enlazar (`php artisan route:list` no debería listarla). Luego pon `firefly.admin.enabled` a `true` sin añadir ninguna regla de `HttpSecurity`, y mira qué divulga ahora un `GET /firefly/env` sin autenticar — esa es exactamente la brecha que este capítulo te dijo que cerraras con tu propio middleware de autenticación.
+5. **Dibuja tu propio cableado y luego rómpelo.** Abre `/firefly/graph` en el sample y encuentra la flecha de `WalletService` a `EloquentWalletRepository` — fíjate en que la columna *Wired by* dice `WalletRepository`, el puerto, y no `class`. Después introduce un ciclo deliberado (haz que un `#[Service]` tome un parámetro de constructor tipado como otro `#[Service]` que ya depende de él), recarga la página, y confirma que la estadística **Cycles** se pone en rojo y nombra ambas clases. Ahora arranca la app de cero sin abrir el panel, y compara lo que PHP te cuenta sobre ese mismo ciclo.
+6. **Lee el valor por defecto de acceso como una decisión de seguridad.** Pon `app.debug` a `false` en un proyecto de pruebas con `firefly/admin` instalado y confirma que `/firefly` está genuinamente sin enrutar y no simplemente sin enlazar (`php artisan route:list` no debería listarla). Luego pon `firefly.admin.enabled` a `true` sin añadir ninguna regla de `HttpSecurity`, y mira qué divulga ahora un `GET /firefly/env` sin autenticar — esa es exactamente la brecha que este capítulo te dijo que cerraras con tu propio middleware de autenticación.

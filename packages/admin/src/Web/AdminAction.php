@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Web;
 
+use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
@@ -30,10 +31,24 @@ final readonly class AdminAction
         private AdminEndpointReader $reader,
         private ViewFactory $views,
         private Container $container,
+        private ManagementPortGuard $guard,
     ) {}
 
     public function __invoke(Request $request, string $page = ''): SymfonyResponse
     {
+        // The management port boundary applies to the dashboard MORE than to the JSON actuator, not less.
+        // The actuator withholds sensitive endpoints behind ExposureModel; this dashboard deliberately
+        // bypasses that model so it can render beans, env and config properties in-process. If an operator
+        // has moved management traffic to a private port, a dashboard still answering on the public one
+        // would publish exactly the surface they moved — and with no signal that it had happened.
+        //
+        // 404, never 403: a 403 confirms a management surface exists on some other port, which is one more
+        // fact than an unauthenticated scan of the public port deserves. Same reasoning, same status, as
+        // ManagementPortGuard's own callers in the actuator.
+        if (! $this->guard->permits($request)) {
+            return $this->html($this->render('missing', ['slug' => trim($page, '/')]), 404);
+        }
+
         $slug = trim($page, '/');
         $current = null;
         foreach (AdminPage::all() as $candidate) {

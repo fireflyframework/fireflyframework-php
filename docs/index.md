@@ -27,7 +27,11 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 - **Secure by default** — a Spring-Security-6-shaped principal model, deny-by-default `HttpSecurity` URL DSL,
   and method security (`#[PreAuthorize]`) enforced with no proxy magic.
 - **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
-  metrics core, both secured by the same config as everything else.
+  metrics core, both secured by the same config as everything else, plus a server-rendered
+  [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md).
+- **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
+  same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
+  origin — no annotation dialect, no npm, no CDN.
 - **A first-party test kit** — a boot harness, recording doubles for every port, and web/data test-slice
   builders, dogfooded across the framework's own test suite.
 
@@ -58,13 +62,13 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | Group | Guides |
 |---|---|
 | **Foundation** | [Error Handling](modules/error-handling.md) · [Dependency Injection](modules/dependency-injection.md) · [Configuration](modules/configuration.md) · [Application Context](modules/context.md) · [Auto-Configuration](modules/starters.md) · [Validation](modules/validation.md) |
-| **Web & API** | [Web Layer](modules/web.md) · [Web Filters](modules/web-filters.md) |
+| **Web & API** | [Web Layer](modules/web.md) · [Web Filters](modules/web-filters.md) · [OpenAPI](modules/openapi.md) |
 | **Resilience & Scheduling** | [Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md) |
 | **Data & Domain** | [Domain (DDD)](modules/domain.md) · [Data & Repositories](modules/data.md) · [Relational Data](modules/data-relational.md) · [Transactions](modules/transactional.md) |
 | **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
 | **Security** | [Security](modules/security.md) |
-| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) |
+| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) |
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |
 

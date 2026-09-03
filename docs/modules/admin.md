@@ -1,0 +1,248 @@
+# Admin Dashboard
+
+`firefly/admin` is a server-rendered browser dashboard over the actuator — the Spring Boot Admin analogue, with one
+structural difference: it is not a separate monitoring application you deploy and register instances with. It is
+Blade views *inside* the application it reports on, which is why it can read the endpoint registry directly, and
+why its access model matters as much as it does.
+
+```bash
+composer require firefly/admin
+```
+
+Then open `/firefly`. It is not part of the `firefly/firefly` metapackage — like `firefly/openapi` and the broker
+adapters, it is an opt-in dependency.
+
+!!! warning "The access model is the whole security model"
+    `firefly.admin.enabled` defaults to `app.debug`, because the dashboard bypasses the actuator's
+    exposure model and its own URL is therefore the only thing in front of `beans`, `env` and
+    `conditions`. It ships **no authentication of its own**. Read
+    [Access: the whole security boundary](#access-the-whole-security-boundary) before enabling it
+    outside debug.
+
+## The thirteen pages
+
+Every page is a view over one `ActuatorEndpoint`'s payload. The menu groups them the way an operator thinks rather
+than the way the packages are laid out — *what is it doing right now*, *what did it wire at boot*, *how is it
+configured* — because a flat list of thirteen links is a worse menu than three short ones.
+
+| Group | Page | Path | Endpoint | Answers |
+|---|---|---|---|---|
+| Runtime | Overview | `/firefly` | several | Is it healthy, what is it doing, and what did it wire? |
+| Runtime | Health | `/firefly/health` | `health` | Every indicator this process registered, with its own status and details |
+| Runtime | Metrics | `/firefly/metrics` | `metrics` | Counters, timers and gauges, with their current measurements |
+| Runtime | HTTP traffic | `/firefly/http` | `httpexchanges` | The most recent requests this application served |
+| Wiring | Beans | `/firefly/beans` | `beans` | Every bean the container registered, with the stereotype that declared it |
+| Wiring | **Bean graph** | `/firefly/graph` | `beans` | How your beans depend on one another — see [Bean Graph](bean-graph.md) |
+| Wiring | Conditions | `/firefly/conditions` | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
+| Wiring | Routes | `/firefly/mappings` | `mappings` | The compiled route table the dispatcher serves from |
+| Wiring | Scheduled | `/firefly/scheduled` | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
+| Configuration | Environment | `/firefly/env` | `env` | Resolved `firefly.*` configuration, flattened to dotted keys, with secrets masked |
+| Configuration | Config properties | `/firefly/configprops` | `configprops` | Every `#[ConfigProperties]` DTO the application bound, with the values it resolved |
+| Configuration | Caches | `/firefly/caches` | `caches` | The cache stores this application has configured |
+| Configuration | Loggers | `/firefly/loggers` | `loggers` | Log channels and their levels, with a control to change one |
+
+A page whose endpoint is **not registered in this process** — or is switched off — is *hidden from the menu* rather
+than offered as a link that lands on an apology, and requesting it directly answers 404 with a page saying which
+endpoint it needed. That matters because the actuator's endpoints are conditional: `metrics` disappears when
+`firefly.observability.metrics.enabled` is false, and `configprops`, `caches` and `httpexchanges` exist only if the
+package contributing them is installed. The menu has to be built from what this process actually registered, so it
+is.
+
+The Overview is the page an operator leaves open, so it answers the three questions that matter without a click: the
+aggregate health status with every indicator beside it, the `/actuator/info` runtime fragment flattened to one row
+per fact (with byte-ish keys formatted as sizes rather than printed as raw JSON), bean/route/condition/task counts,
+the current metrics, the last eight HTTP exchanges, and whether this process booted **compiled** or **scanned** —
+read from `AppScan::cachedFile(...)`, not from configuration.
+
+Values are formatted for reading, not for scraping: `2.0 MB` rather than `2097152`, `31.2 ms` rather than `0.0312`.
+That formatting lives in the dashboard, never in the endpoint, because the JSON surface has to keep returning
+machine-readable numbers — Prometheus scrapes it.
+
+## It reads endpoints in-process, not over HTTP
+
+`AdminEndpointReader` holds the `ActuatorRegistry` and invokes each `ActuatorEndpoint` bean directly:
+
+```php
+public function read(string $id, array $subPath = [], array $query = []): ?array
+{
+    $endpoint = $this->registry->get($id);
+    if ($endpoint === null || ! $this->has($id)) {
+        return null;
+    }
+
+    try {
+        $response = $endpoint->handle(new EndpointRequest('GET', $subPath, $query));
+    } catch (Throwable) {
+        return null;
+    }
+
+    return $response === null || is_string($response->body) ? null : $response->body;
+}
+```
+
+What is **not** in that method is any mention of `ExposureModel`, and that is the single most important thing about
+this package. `firefly.management.endpoints.web.exposure.include` defaults to `health,info`, so fetching
+`/actuator/beans` or `/actuator/env` over HTTP 404s — [as it should](actuator.md).
+The dashboard needs none of that. It renders what the process already knows, in-process, so **it shows pages the
+HTTP surface deliberately does not expose**, and the JSON surface stays secure-by-default. Exposing `beans`,
+`conditions` and `env` to every anonymous caller just so a browser could read them would be exactly the wrong trade.
+
+The per-endpoint kill switch **is** honoured, and the asymmetry is the design:
+
+| Key | Means | Dashboard |
+|---|---|---|
+| `firefly.management.endpoint.{id}.enabled` | "this endpoint is off" — a statement about the endpoint | honoured; the page disappears from the menu |
+| `firefly.management.endpoints.web.exposure.include` | "this endpoint is unpublished" — a statement about the HTTP surface | **bypassed**; the dashboard is not the HTTP surface |
+
+A throwing endpoint is caught and reported as `null` rather than allowed to take the page down with it — the same
+fail-safe discipline `HealthEndpoint` applies to indicators, for the same reason: one broken contributor should
+degrade its own panel, not the dashboard.
+
+### Health details are read from the contributor registry
+
+`firefly.management.endpoint.health.show-details` defaults to `never`, and that default is right: it stops an
+anonymous HTTP caller learning your database host from a failed connection. Applying that *HTTP disclosure policy*
+to the dashboard, though, produced a Health panel whose entire content was an apology telling the operator to go
+and change a config key.
+
+The dashboard reads `HealthContributorRegistry` directly instead, calling each indicator in isolation so one that
+throws is reported `DOWN` with its exception class and message and nothing else is affected — exactly what
+`HealthEndpoint`'s own fail-safe read does. The JSON `/actuator/health` response is unchanged and still withholds
+components until `show-details` is `always`.
+
+## Access: the whole security boundary
+
+Because the dashboard bypasses exposure, **its own URL is the only thing standing in front of `beans`, `env` and
+`conditions`.** That is why it must not be on by default in production, and why the enable flag is written the way
+it is:
+
+```php
+enabled: $config->bool('firefly.admin.enabled', $config->bool('app.debug', false)),
+```
+
+`firefly.admin.enabled` **defaults to the value of `app.debug`**. An application already running with debug on is
+already serving stack traces to whoever asks and is a development environment by definition, so a dashboard there
+discloses nothing that was not already disclosed. An application with debug off has made the opposite statement
+about itself and must opt in explicitly. **Setting the key always wins over the debug default, in both directions**
+— you can turn the dashboard off in a debug environment, and on in a production one.
+
+!!! warning "Turning it on outside debug is only half the job"
+    `firefly.admin.enabled = true` with `app.debug = false` mounts a dashboard that renders your bean graph, your
+    resolved configuration and your route table at a known URL, to anyone who can reach it. **The dashboard ships
+    no authentication of its own** — it has no code dependency on `firefly/security` at all, exactly as
+    `firefly/actuator` does not. An application that enables it outside debug **must put the route behind its own
+    auth middleware.**
+
+`firefly/security`'s `HttpSecurityFilter` is a global middleware pushed onto Laravel's HTTP-kernel stack, so it runs
+for the dashboard's natively-registered routes exactly as it runs for your controllers. Locking it down is pure
+configuration:
+
+```php
+'firefly' => [
+    'admin' => [
+        'enabled' => true,          // explicit: this deployment wants the dashboard with app.debug off
+        'base-path' => '/firefly',
+    ],
+    'security' => [
+        'enabled' => true,
+        'http' => [
+            'enabled' => true,
+            'rules' => [
+                ['pattern' => 'firefly', 'access' => 'hasRole:ADMIN'],
+                ['pattern' => 'firefly/*', 'access' => 'hasRole:ADMIN'],
+            ],
+        ],
+    ],
+],
+```
+
+Both patterns are needed: `firefly` alone does not match `firefly/env`. Any other middleware works equally well —
+a VPN-only route group, basic auth, an SSO gateway — the requirement is that *something* stands in front of the
+path, not that it be `firefly/security`.
+
+When the dashboard is disabled, `AdminRouteRegistrar` registers **nothing at all**: there is no route to guess at
+and no handler to reach, and `php artisan route:list` does not list one.
+
+## How it is mounted
+
+`AdminRouteRegistrar` is a `BootPass` at `BootPhase::WiringPasses`, order **60** — one step after
+`ActuatorRouteRegistrar`'s 50, because it reads the registry that pass populates. It mounts two routes:
+
+```
+GET       {base}                     name: firefly.admin.index
+GET|POST  {base}/{page}              name: firefly.admin.page   where page: [A-Za-z0-9\-_/]*
+```
+
+They are registered natively on the illuminate `Router`, not declared with `#[GetMapping]`, for the same reason the
+actuator's and [OpenAPI's](openapi.md#the-routes-are-not-attribute-routes) are: `firefly.admin.base-path` has to be
+settable per application, and an attribute route bakes its literal path into a compiled `RouteDescriptor`. Leading
+and trailing slashes on the configured base path are optional, and an empty one falls back to `firefly`.
+
+It also **backs off silently in one more case that is easy to miss.** Blade is required to render the dashboard and
+is *not* a dependency of the package, so a JSON-only deployment with no `view` binding gets no routes rather than
+routes that would fatal on first request; the JSON actuator remains the management surface there.
+
+## No build step
+
+The views are plain Blade with inline CSS and system fonts. There is no npm step at install time and no CDN at
+request time — a Composer package cannot assume npm has run, and a dashboard that needs the network is useless in
+exactly the isolated environments where you most want to look at one. (The one other browser surface LaraFly ships,
+[`firefly/openapi`](openapi.md)'s console, reaches the same conclusion by a different route: it serves the official
+Swagger UI from the application's own origin out of a composer package.)
+
+## Three things it can only tell you about *this* process
+
+Under PHP-FPM every request is a different process, and three pages inherit that.
+
+- **Changing a log level affects this process only.** The control calls the same endpoint
+  `POST /actuator/loggers/{name}` does, which mutates the current process's Monolog handlers. The next request is a
+  different process and reverts to the configured level. Change `logging.channels` for anything that must persist —
+  the page says so, in place, rather than letting anyone believe they have changed production logging.
+- **Metrics are only as durable as your registry.** The default `SimpleMeterRegistry` keeps meters in process
+  memory, so the dashboard sees only its own request. Set
+  [`firefly.observability.metrics.store`](observability.md#configuration-fireflyobservability-kebab-case) to a cache
+  store to accumulate across workers.
+- **HTTP traffic has the same shape, more sharply.** The in-memory exchange ring under PHP-FPM is not merely stale
+  but always empty, because the request rendering the page has not been recorded yet — the filter records on the way
+  out. `firefly.observability.httpexchanges.store` is what makes that panel non-empty. While you are there, add the
+  dashboard's own base path to `firefly.observability.httpexchanges.exclude`: a polling dashboard will otherwise
+  evict every genuine request from a 100-row ring and show you nothing but itself. The framework does not add it for
+  you, because reaching into another package's configuration key to guess at its mount point is the kind of hidden
+  coupling that breaks the day somebody changes it.
+
+## Configuration (`firefly.admin.*`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `firefly.admin.enabled` | **`app.debug`** | Mount the dashboard at all. An explicit value wins in both directions. |
+| `firefly.admin.base-path` | `'/firefly'` | Where it is mounted. Leading and trailing slashes optional; empty falls back to `firefly`. |
+| `firefly.admin.title` | `app.name` (else `'LaraFly'`) | The name shown in the sidebar and the page title. |
+| `firefly.admin.refresh-seconds` | `10` | How often a live page reloads itself. **Floored at 2**: a shorter interval reloads faster than the page renders, so the countdown would never finish and the dashboard would hammer the application it is meant to be observing. |
+| `firefly.admin.theme` | `'auto'` | `auto` \| `light` \| `dark`. Anything unrecognised falls back to `auto` (follow the operating system) rather than rendering unstyled. |
+| `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
+| `firefly.admin.pages.exclude` | `''` | CSV of page slugs to refuse. This is a **refusal, not a menu preference**: an excluded page is hidden *and* its URL 404s — hiding `env` from the menu achieves nothing if the URL still answers. Use `overview` for the index page. |
+
+## Laravel comparison
+
+| Concern | Plain Laravel | LaraFly (`firefly/admin`) |
+|---|---|---|
+| A management UI | none first-party; Telescope is a *request* debugger, Horizon a *queue* dashboard — neither reports on wiring or configuration | one dashboard over the actuator's own endpoints |
+| Where it runs | Telescope/Horizon each add tables, a service provider and a middleware group | Blade views over beans that already exist; no storage of its own, nothing recorded |
+| Data source | a recorder writing to the database | the live `ActuatorRegistry`, read in-process at render time |
+| Enabling it safely | `TelescopeServiceProvider::gate()` — a closure you write | `firefly.admin.enabled` defaulting to `app.debug`, plus your own middleware when you override it |
+
+## Known-latent
+
+- **No instance registry.** Spring Boot Admin is a separate server that many applications register *with*, giving
+  one console across a fleet. This is a per-instance dashboard, which is what makes the in-process read possible;
+  a fleet view would need a different design and is not planned.
+- **No write operations besides the log level.** `/caches` is read-only for the same reason it is read-only on the
+  JSON surface — `firefly/actuator` carries no code edge to `firefly/security` and so cannot say who asked.
+- **`when-authorized` health details** degrade to `never` on the JSON surface (see
+  [Actuator](actuator.md#known-latent)); the dashboard sidesteps it entirely by reading the contributor registry.
+
+---
+
+See also: [Actuator](actuator.md) for the endpoints themselves, [Observability](observability.md) for the metrics
+and HTTP-exchange stores the dashboard renders, and [Bean Graph](bean-graph.md) for the one page that is more than
+a table.

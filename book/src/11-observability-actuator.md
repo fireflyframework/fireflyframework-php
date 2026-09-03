@@ -2,7 +2,7 @@
 
 # Observability: Health, Metrics, and the Actuator {.chtitle}
 
-By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — it reads them **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
+By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — thirteen pages including a drawn **bean graph** that resolves every constructor dependency through the interface it is wired by and reports the cycles a boot would otherwise die on with no message. It reads those endpoints **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
 
 !!! note "New term: actuator"
     An **actuator** is a management endpoint that reports on the *running process itself* — is it healthy, what did it boot with, how fast are its requests — rather than on the business domain the process serves. The term and the shape both come from Spring Boot Actuator; `firefly/actuator` is a first-party, dependency-light PHP analogue: framework endpoints mounted directly on the same Illuminate `Router` your own controllers use, not a separate admin process.
@@ -660,7 +660,7 @@ composer require firefly/admin
 
 Then open `/firefly`. There is no npm step at install time and no CDN at request time — the views are plain Blade with inline CSS and system fonts, because a Composer package cannot assume npm has run, and a dashboard that needs the network is useless in exactly the isolated environments where you most want to look at one.
 
-Each page is a view over one endpoint's payload, and the menu groups them the way an operator thinks rather than the way the packages are laid out — what is it doing right now, what did it wire at boot, and how is it configured:
+Thirteen pages, each a view over one endpoint's payload. The menu groups them the way an operator thinks rather than the way the packages are laid out — what is it doing right now, what did it wire at boot, and how is it configured — because a flat list of thirteen links is a worse menu than three short ones:
 
 | Group | Page | Reads | Answers |
 |---|---|---|---|
@@ -669,6 +669,7 @@ Each page is a view over one endpoint's payload, and the menu groups them the wa
 | Runtime | Metrics | `metrics` | Counters, timers and gauges, with their current measurements |
 | Runtime | HTTP traffic | `httpexchanges` | The most recent requests this application served |
 | Wiring | Beans | `beans` | Every bean the container registered, with the stereotype that declared it |
+| Wiring | Bean graph | `beans` | How your beans depend on one another, resolved through the interfaces they are wired by |
 | Wiring | Conditions | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
@@ -736,6 +737,99 @@ A throwing endpoint is caught and reported as `null` rather than allowed to take
 
 ---
 
+### The bean graph
+
+Twelve of the thirteen pages are tables. The thirteenth draws a picture, and it is the one that pays for the package on the day something is wired wrongly.
+
+`/actuator/beans` tells you *which* beans exist. It cannot tell you what each one is **wired to**, which is what you actually want when a `#[ConditionalOnMissingBean]` did not fire the way you expected, when an eager singleton cycle has hung a boot with no message, or when you are trying to work out what a package you just installed attached itself to. `/firefly/graph` answers that, as a layered SVG diagram plus a filterable relations table.
+
+Nothing is reflected to build it. `ComponentScanner` already records, at **scan** time, the class and interface types each component's constructor asks for, and that list rides the compiled manifest exactly like every other scanned fact (abridged):
+
+```php
+final class ComponentDescriptor
+{
+    public function __construct(
+        public string $class,
+        public string $stereotype,
+        public array $interfaces,
+        /**
+         * The class types this component's constructor asks for — the edges of the bean graph.
+         *
+         * Recorded at scan time, where reflection is already sanctioned, because the alternative is
+         * reflecting at request time to answer "what depends on what", which the reflection-free boot
+         * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is
+         * configuration, not a wiring edge, and putting it in the graph would drown the edges that matter.
+         */
+        public array $dependencies = [],
+    ) {}
+}
+```
+
+That last sentence is a design decision worth pausing on. A constructor parameter typed `string $name` is configuration; drawing it as an edge would bury the relationships that matter under `string`/`int` noise. A **nullable or defaulted class** parameter *is* kept, because an optional collaborator is still a relationship.
+
+#### The hard part is not drawing, it is resolving
+
+A constructor asks for a **type**, and that type is very often an interface — `EventPublisher`, `HealthIndicator`, `Cache` — while the bean that satisfies it is a concrete class that merely implements it. An edge list built naively from constructor types therefore points at nodes that do not exist, and the graph comes out as a field of disconnected dots. Ask yourself what `WalletService`'s dependency on `WalletRepository` should draw an arrow *to*: not to the port, which is an interface with no bean of its own, but to `EloquentWalletRepository`, which is the thing that will actually be constructed.
+
+So every dependency is resolved through an interface index before it becomes an edge:
+
+```php
+foreach ($rows as $class => $row) {
+    foreach ($row['dependencies'] as $dependency) {
+        $target = isset($rows[$dependency]) ? $dependency : ($byInterface[$dependency] ?? null);
+
+        if ($target === null || $target === $class) {
+            // A type nothing in the container provides: a framework contract satisfied by a binding
+            // rather than a bean, or a class the scan never saw. Reported, not silently dropped —
+            // "why is my bean not in the graph" is exactly the question this page has to answer.
+            if ($target === null) {
+                $unresolved[] = $dependency;
+            }
+
+            continue;
+        }
+
+        $edges[] = ['from' => $class, 'to' => $target, 'via' => $target === $dependency ? null : $dependency];
+    }
+}
+```
+
+The `via` member is the honesty in that loop. When the edge went through an interface, the diagram marks it and the Relations table's **Wired by** column names the interface, so a reader can see the indirection rather than being quietly shown a relationship they never wrote. When the constructor named the concrete class, the column just says `class`.
+
+The index is built in catalogue order and **first implementor wins**, deterministically — the catalogue is emitted in scan order, so the same application always draws the same graph rather than reshuffling between machines. An interface with several implementors is a real ambiguity that the container resolves with `#[Primary]`/`#[Qualifier]`, and the graph says so by listing the edge as `via` rather than pretending the choice was obvious.
+
+#### Layers, cycles, and the node ceiling
+
+Levels come from a **longest-path** walk over the resolved edges: a node's depth is one more than the deepest thing it depends on, and the levels are then flipped so level 0 holds the things nothing depends on. The effect is that a node always sits below everything that depends on it, arrows read consistently downward, and the eye can follow a chain from a controller to the repository at the bottom of it. The view only positions; the levels come from the model.
+
+Depth is memoised and the walk carries its own visited set, so a cycle terminates instead of recursing forever — and the edge that closed it is *reported*:
+
+```php
+foreach ($out[$node] ?? [] as $next) {
+    if (isset($path[$next])) {
+        $cycles[] = ['from' => $node, 'to' => $next];
+
+        continue;
+    }
+    $deepest = max($deepest, $walk($next, $path) + 1);
+}
+```
+
+That reporting is worth more than it looks. The container has no cycle detection of its own, so a cycle among eager singletons does not produce a helpful error — it exhausts memory at boot. A page that names the two classes involved turns "the app died with no message" into a five-second diagnosis, and the panel's own advice is the right one: break one of these edges, usually by injecting an interface and letting the other side depend on that.
+
+Two limits are stated in the page rather than hidden:
+
+* **Past `firefly.admin.graph.max-nodes` — 220 by default — the diagram is suppressed** and the Relations table below carries the same information as a filterable list. A diagram past a couple of hundred nodes is a hairball, not something a person can read, and rendering one anyway would be a worse answer than declining to. It is a config key rather than a constant because "unreadable" depends on the screen and the application.
+* **"Provided outside the container" is not a warning.** Those chips are constructor types satisfied by a Laravel container binding rather than a scanned bean — the `Request`, the config repository, a connection. They are listed rather than silently dropped precisely because *"why is my bean not in the graph"* is the question the page has to answer. A type appearing there that you expected to be a bean of *yours* means your scan did not see it, and `firefly.scan.paths` is the first thing to check.
+
+!!! tip "Read it next to the Conditions page"
+    The two answer complementary halves of every auto-configuration surprise. **Conditions** says *whether* a framework bean was registered or backed off, and on which condition. **The graph** says what the bean that did win is wired to, and through which interface. An `EventPublisher` edge pointing at `InMemoryEventPublisher` when you configured `firefly.eda.provider=rabbitmq` is one glance on the graph; Conditions then names the `#[ConditionalOnProperty]` that did not match.
+
+!!! note "What the graph does not draw yet"
+    Edges come from constructor `dependencies` only. `BeansCatalog` also publishes each `#[Bean]` factory method's own parameters (under `produces`), but `BeanGraph` does not read them, so a `#[Configuration]` class appears with the edges *its own constructor* declares and the wiring its `#[Bean]` methods perform is not drawn. That under-draws framework auto-configuration classes specifically; your `#[Service]`/`#[Repository]` beans, which wire through constructors, are drawn in full.
+
+---
+
 ### The access model is the whole security boundary
 
 Because the dashboard bypasses exposure, its own URL is the only thing standing in front of `beans`, `env` and `conditions`. That is why it must not be on by default in production, and why the enable flag is written the way it is:
@@ -747,6 +841,7 @@ final readonly class AdminSettings
         public bool $enabled,
         public string $basePath,
         public string $title,
+        // ... plus the presentation options: refreshSeconds, theme, graphMaxNodes, excludedPages.
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -757,6 +852,8 @@ final readonly class AdminSettings
             enabled: $config->bool('firefly.admin.enabled', $config->bool('app.debug', false)),
             basePath: $base === '' ? 'firefly' : $base,
             title: $config->string('firefly.admin.title', $config->string('app.name', 'LaraFly')),
+            // ... firefly.admin.refresh-seconds (10, floored at 2), .theme (auto|light|dark),
+            // .graph.max-nodes (220) and .pages.exclude ('') are read here too.
         );
     }
 }
@@ -818,8 +915,10 @@ It also backs off silently in one more case that is easy to miss. Blade is requi
 | `PrometheusTextFormat` | Locale-safe exposition — `number_format()`, never `sprintf('%f')` |
 | `MetricsFilter` | `#[Order(-100)]` outermost timing filter; tags by route **template**, never raw path — bounded cardinality |
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | The same precedence trick as Chapter 10's security seam: registers `cqrsMetrics()` before `CqrsAutoConfiguration` evaluates its `#[ConditionalOnMissingBean]` |
-| `firefly/admin` | A server-rendered Blade dashboard at `/firefly`; a page whose endpoint is unregistered or switched off is hidden from the menu rather than linked |
+| `firefly/admin` | A server-rendered Blade dashboard at `/firefly`; thirteen pages, and one whose endpoint is unregistered or switched off is hidden from the menu rather than linked |
 | `AdminEndpointReader` | Invokes each `ActuatorEndpoint` **in-process** from `ActuatorRegistry`, bypassing `ExposureModel` — so the dashboard shows what the HTTP surface does not expose, and a throwing endpoint degrades one panel |
+| `BeanGraph` | Turns the beans catalogue into a drawn dependency graph: constructor edges resolved through an interface index (marked `via`), longest-path layering, cycles reported rather than hung on, and the diagram suppressed past `firefly.admin.graph.max-nodes` (220) |
+| `ComponentDescriptor::$dependencies` | The graph's edges, recorded by `ComponentScanner` at **scan** time — class and interface types only, because a scalar parameter is configuration, not wiring |
 | `firefly.admin.enabled` | Defaults to `app.debug`; an explicit value wins in both directions, and turning it on with debug off obliges you to put your own auth middleware in front of the route |
 
 ---
@@ -830,4 +929,5 @@ It also backs off silently in one more case that is easy to miss. Blade is requi
 2. **Configure a real liveness/readiness split.** Add `firefly.management.endpoint.health.group.liveness.include = 'ping'` and `...readiness.include = 'ping,db'` (with the DB indicator enabled) to a scratch project's config, and confirm `GET /actuator/health/liveness` and `GET /actuator/health/readiness` diverge the moment you make the database unreachable.
 3. **Watch the CQRS metrics seam win the race.** Install `firefly/observability` into a scratch project already using `firefly/cqrs`, send a handful of commands, and inspect `GET /actuator/prometheus` for `cqrs_commands_seconds` samples — then temporarily comment out `ObservabilityAutoConfiguration`'s `#[Order(500)]` attribute (reverting to the class default) and confirm whether the metric still appears, to see the ordering trick actually matter rather than just reading about it.
 4. **Prove the dashboard's exposure bypass to yourself.** Install `firefly/admin` in the sample, leave `firefly.management.endpoints.web.exposure.include` at its default, and confirm that `GET /actuator/beans` returns a `404` while `/firefly/beans` renders the full bean list in the same process. Then set `firefly.management.endpoint.beans.enabled` to `false` and confirm the Beans entry vanishes from the dashboard's menu — the kill switch is honoured where exposure is not, and the difference between the two keys is the whole design.
-5. **Read the access default as a security decision.** Set `app.debug` to `false` in a scratch project with `firefly/admin` installed and confirm `/firefly` is genuinely unrouted rather than merely unlinked (`php artisan route:list` should not list it). Then set `firefly.admin.enabled` to `true` without adding any `HttpSecurity` rule, and look at what an unauthenticated `GET /firefly/env` now discloses — that is precisely the gap this chapter told you to close with your own auth middleware.
+5. **Draw your own wiring, then break it.** Open `/firefly/graph` in the sample and find the arrow from `WalletService` to `EloquentWalletRepository` — note that the *Wired by* column says `WalletRepository`, the port, not `class`. Then introduce a deliberate cycle (have a `#[Service]` take a constructor parameter typed as another `#[Service]` that already depends on it), reload the page, and confirm the **Cycles** stat turns red and names both classes. Now boot the app fresh without opening the dashboard, and compare what PHP tells you about the same cycle.
+6. **Read the access default as a security decision.** Set `app.debug` to `false` in a scratch project with `firefly/admin` installed and confirm `/firefly` is genuinely unrouted rather than merely unlinked (`php artisan route:list` should not list it). Then set `firefly.admin.enabled` to `true` without adding any `HttpSecurity` rule, and look at what an unauthenticated `GET /firefly/env` now discloses — that is precisely the gap this chapter told you to close with your own auth middleware.

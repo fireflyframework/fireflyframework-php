@@ -71,26 +71,35 @@ binding carries `#[Valid]`. The problem schema describes what LaraFly actually r
 *plus* Firefly's `code`, `category`, `severity` and `errors`, with the category and severity enumerations read
 straight off the kernel enums.
 
-## The viewer, and the CDN flag
+## The viewer
 
-The default console at `/openapi` is a single self-contained HTML page: **no npm build at install time and no
-network access at request time.** It groups operations by tag and resolves `$ref` pointers client-side so a
-reader sees a DTO's members rather than a pointer.
+`/openapi` serves the **official Swagger UI** — the real distribution, not a lookalike — from your own
+application's origin. **No npm build at install time and no third-party request at page view.**
 
-Every off-the-shelf viewer (Swagger UI, Redoc, Elements) is a bundled JavaScript application, which leaves
-only two options: vendor a multi-megabyte bundle into a PHP package, or fetch it from a CDN on every page
-view. The second is a supply-chain dependency and a data-protection question, and it does not render at all in
-the air-gapped and strict-CSP environments where an internal API console is most wanted.
+That combination used to look impossible. Shipping an off-the-shelf viewer seemed to leave only two options:
+vendor a multi-megabyte bundle into a PHP package's git history, or fetch it from a CDN on every page view.
+The second is a supply-chain dependency and a data-protection question, and it does not render at all in the
+air-gapped and strict-CSP environments where an internal API console is most wanted.
 
-Swagger UI is available for teams that want the full feature set:
+The way out is that Swagger already publishes its `dist` on Packagist, under Apache-2.0. `firefly/openapi`
+requires `swagger-api/swagger-ui`, so composer fetches and pins it like any other dependency, and this
+package serves the files from a route of its own. Only the seven basenames the page references are servable,
+each `realpath()`-checked inside the dist directory, and they are sent immutable with a long max-age —
+composer only changes them when the pinned version changes.
 
-```php
-'firefly' => ['openapi' => ['viewer' => ['cdn' => true]]],
-```
+Three styles, chosen with `firefly.openapi.viewer.style`:
 
-**This flag defaults to `false`, and turning it on means the browser fetches code from `cdn.jsdelivr.net` on
-every page view.** The version is pinned exactly; no Subresource Integrity hash is claimed, because a hash the
-framework cannot verify at release time is security theatre.
+| Style | What you get |
+| --- | --- |
+| `swagger` *(default)* | The official Swagger UI, served locally. Deep linking, try-it-out, OAuth2, the lot. |
+| `builtin` | A hand-written reference: one `<script>`, a few hundred bytes of CSS, zero third-party code. Operations by tag, resolved `$ref` schemas, constraint keywords, and a request console. |
+| `cdn` | Swagger UI from `cdn.jsdelivr.net`. The only style that makes a third-party request at page view; the version is pinned exactly. |
+
+`swagger` falls back to `builtin` when `swagger-api/swagger-ui` is not installed — a default that cannot
+render is worse than a different default.
+
+The older `'viewer' => ['cdn' => true]` spelling still forces the CDN page, so an application that set it
+before `style` existed keeps the behaviour it configured.
 
 ## Configuration
 
@@ -102,7 +111,8 @@ framework cannot verify at release time is security theatre.
     'viewer' => [
         'enabled' => true,
         'path' => '/openapi',
-        'cdn' => false,             // opt in to Swagger UI over a CDN — see above
+        'style' => 'swagger',       // swagger (official UI, served locally) | builtin | cdn
+        'cdn' => false,             // legacy spelling; true still forces the cdn style
     ],
     'title' => 'API',
     'version' => '0.0.0',

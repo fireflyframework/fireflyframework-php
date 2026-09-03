@@ -24,6 +24,11 @@ labels:
 # `num` es una etiqueta libre (el Apéndice A ya lo demuestra), así que intercalar un capítulo
 # aquí no exige renumerar los nueve siguientes — y renumerarlos habría invalidado cada
 # referencia cruzada "Capítulo N" de ambos manuscritos y de book/README.md.
+# Tarea B7: ningún capítulo nuevo. El explorador del grafo de beans amplía el Capítulo 11 (es una página
+# de firefly/admin, que ese capítulo ya presenta) y el visor con el Swagger UI oficial amplía el Capítulo
+# 4A (sustituye por completo la antigua sección de "la bandera de CDN", ya que `viewer.style` reemplaza a
+# `viewer.cdn`). Separar cualquiera de los dos en un capítulo propio habría desligado una funcionalidad
+# del paquete al que pertenece, y habría movido una referencia "Capítulo N" sin beneficio para el lector.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
