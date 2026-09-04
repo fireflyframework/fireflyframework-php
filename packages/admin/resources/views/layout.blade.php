@@ -123,13 +123,36 @@
         }
 
         .topbar{
-            grid-column:1 / -1;display:flex;align-items:center;gap:14px;
+            /*
+             | min-width:0 is load-bearing, not tidiness. A grid item defaults to min-width:auto, which
+             | refuses to size below its own min-content — so at 320px the bar grew to 398px and took the
+             | document's horizontal scrollbar with it, while its flex children sat at their natural widths
+             | and never shrank, because the CONTAINER had absorbed the pressure instead of passing it on.
+             | With this, the pressure reaches .topchips, which is the child built to give.
+            */
+            grid-column:1 / -1;min-width:0;display:flex;align-items:center;gap:14px;
             padding:0 16px;background:var(--shell);border-bottom:1px solid var(--line);
         }
-        .wordmark{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+        .wordmark{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:-.01em;white-space:nowrap;flex:none}
         .dot{width:9px;height:9px;border-radius:50%;background:var(--brand);flex:none;box-shadow:0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent)}
         .wordmark small{color:var(--ink-3);font-weight:400;font-size:11.5px;font-family:var(--mono)}
         .topbar .spacer{flex:1}
+
+        /*
+         | A page's own chips are the ONE part of the bar that varies in width, so they are the one part
+         | allowed to shrink and scroll. Everything else in here — the wordmark, Auto, Theme — is fixed and
+         | must stay reachable: a phone-width overview page pushed the whole bar 39px past the viewport and
+         | took the document's horizontal scrollbar with it, because every child was nowrap and none of them
+         | would give. min-width:0 is what actually lets a flex item shrink below its content.
+        */
+        .topchips{display:flex;align-items:center;gap:10px;min-width:0;overflow-x:auto;scrollbar-width:none}
+        .topchips::-webkit-scrollbar{display:none}
+
+        /* Below this the two words plus two buttons genuinely do not fit; the suffix is the redundant one. */
+        @media(max-width:520px){
+            .topbar{gap:10px;padding:0 12px}
+            .wordmark small{display:none}
+        }
 
         .chip{
             display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;
@@ -381,7 +404,7 @@
 <div class="app">
     <div class="topbar">
         <span class="wordmark"><span class="dot" aria-hidden="true"></span>{{ $settings->title }}<small>admin</small></span>
-        @hasSection('topchips') @yield('topchips') @endif
+        @hasSection('topchips')<span class="topchips">@yield('topchips')</span>@endif
         <span class="spacer"></span>
         <button class="tool" type="button" id="refresh" aria-pressed="false" title="Reload this page every 10 seconds">
             <span>Auto</span><span class="tick" id="tick"></span>
