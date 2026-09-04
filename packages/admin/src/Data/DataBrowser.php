@@ -569,10 +569,12 @@ final class DataBrowser
 
         return match ($column->type) {
             DataColumn::TYPE_INT => preg_match('/^-?\d+$/', $string) === 1 ? [(int) $string] : false,
-            // is_numeric rather than a regex: it already accepts every spelling a number field can produce
-            // — a leading sign, a decimal point, exponent notation — and rejects the ones a decimal column
-            // would otherwise silently store as 0.
-            DataColumn::TYPE_FLOAT => is_numeric($string) ? [(float) $string] : false,
+            // VALIDATED as a number, WRITTEN as the string. is_numeric accepts every spelling a number
+            // field can produce — a leading sign, a decimal point, exponent notation — and rejects the ones
+            // a decimal column would otherwise silently store as 0. Casting to float to store it would
+            // reintroduce exactly the precision loss a `decimal` column exists to avoid: PHP's float cannot
+            // hold `12345678901234567890.12`, and the driver can bind the digits verbatim. The DB parses it.
+            DataColumn::TYPE_FLOAT => is_numeric($string) ? [$string] : false,
             DataColumn::TYPE_BOOL => $this->coerceBool($string),
             DataColumn::TYPE_DATETIME => strtotime($string) === false ? false : [$string],
             DataColumn::TYPE_JSON => $this->coerceJson($entity, $column, $string),

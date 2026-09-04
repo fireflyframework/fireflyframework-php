@@ -81,8 +81,10 @@ $payload  = $response->toArray(); // omits null/empty optionals
 by `Firefly\Web\Exception\ProblemDetailsRenderer`, via `ErrorResponse::fromException(...)`, at the
 exception's own `httpStatus()` — the shape is exactly the payload above, produced by the same
 kernel-level `ErrorResponse` this page documents. A generic (non-`FireflyException`) `Throwable` is
-first wrapped as a category-`Internal`, HTTP-500 `FireflyException` before being rendered the same way,
-whenever the request expects JSON (`$request->expectsJson()`).
+first wrapped as a category-`Internal`, HTTP-500 `FireflyException` before being rendered the same way.
+That wrapping rule lives in one place — `Firefly\Web\Error\ProblemMapper` — because the HTML page below
+needs the same answer, and two copies of it would eventually tell a browser and a client different things
+about one failure.
 
 Before that generic rendering happens, LaraFly gives the application a chance to handle the exception
 itself:
@@ -99,3 +101,65 @@ itself:
 - If no handler matches at any scope, the exception propagates to the RFC-7807 renderer described above —
   so an unhandled 404/422/500 always still comes back as `application/problem+json`, never an uncaught
   framework error page.
+
+## Who gets JSON, and who gets a page
+
+The same failure is rendered two ways, and the choice is not "is this a `FireflyException`". It used to be,
+which meant a person clicking a stale link to `/orders/999999` in a browser was shown a raw JSON blob: the
+exception taxonomy that makes LaraFly's errors consistent for clients was the very thing that made them
+unreadable for people.
+
+| The caller | What it gets |
+|---|---|
+| Named `text/html` (or `application/xhtml+xml`) in `Accept` | The HTML error page |
+| Asked for JSON, or is an `XMLHttpRequest` | `application/problem+json` |
+| Sent only a wildcard `Accept` — a bare `curl` | `application/problem+json` |
+| Requested a path under `firefly.web.error-page.json-paths` | `application/problem+json`, whatever it asked for |
+
+The rule is **the client NAMED text/html**, not `acceptsHtml()`. A bare `curl` sends `*/*`, which
+`acceptsHtml()` answers true for, so keying off it would have turned every unadorned command-line request
+against an API into an HTML page — a worse regression than the bug being fixed.
+
+`json-paths` is the stronger statement and is checked **first**: the Accept header says who is asking, the
+path says what the URL *is*. It defaults to `api/*`, because a developer opening an API URL in a browser
+wants the payload their client will receive, not a styled page telling them the endpoint renders HTML.
+
+## The HTML error page
+
+`firefly/web` ships a page in the same visual language as the welcome page and the admin dashboard, showing
+the status, the reason, the stable error `code` — the same one the problem document carries, so a support
+ticket quoting it finds the same code in the log — and, when permitted, the exception, its `previous` chain,
+the source around the throwing line, and the stack trace with **your** frames separated from your
+dependencies'.
+
+```php
+// config/firefly.php
+'web' => [
+    'error-page' => [
+        'enabled' => true,                  // false falls back to Laravel's own page
+        'trace' => env('APP_DEBUG', false), // the disclosure gate; follows app.debug
+        'title' => env('APP_NAME', 'LaraFly'),
+        'excerpt-lines' => 7,               // source lines around the throw, clamped 0-40
+        'json-paths' => 'api/*',
+        'views' => ['404' => 'errors.not-found', 'default' => 'errors.generic'],
+    ],
+],
+```
+
+**`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never
+walks the stack, never opens a source file and never copies the exception message — so there is nothing
+assembled for a template mistake to leak. Production shows the status, the reason and the code: enough to
+quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
+advice about *how* to turn traces on is suppressed outside non-production environments too, because naming
+the framework and a config key to an anonymous visitor is a free hint about your stack.
+
+**Overriding it.** `views` hands a status — or `default` — to your own Blade view. The view receives the same
+`$error` report the built-in page gets, so it is bound by the same `trace` gate and cannot print a stack
+trace the settings withheld. A view that **throws** falls back to the built-in page rather than propagating:
+this renders while the application is already failing, and an override is application code (a renamed
+layout, a component querying the database that is down) — a white screen at that moment is the worst
+possible outcome.
+
+**It is not a Blade view itself.** The built-in page is assembled as a string with no container lookups, no
+view factory and no network font, because the failure being explained may *be* the view layer. String
+building is not the elegant choice; it is the one that still works when nothing else does.

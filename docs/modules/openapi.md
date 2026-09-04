@@ -74,13 +74,10 @@ self-referential DTO terminates as a `$ref` cycle instead of recursing forever. 
 declared types, compiled constraints, docblock prose — is
 [its own section below](#how-a-request-dto-becomes-a-schema).
 
-**Responses.** The success entry is keyed by the `#[Mapping]`'s declared status, and its body schema comes from the
-controller method's declared **return type** — the only place the shape of a successful response is stated anywhere
-in the framework, since `RouteDescriptor` records the status but not the payload. A `204` (or a `void`/`never`
-return) gets no `content` at all, because emitting a content map for a status that carries no body is exactly what a
-strict client generator turns into a phantom return type. A plain `array`/`iterable` return degrades to
-`type: object` rather than being expanded from a `@return array{…}` docblock: parsing PHPDoc here would make the
-generated document depend on comment text nothing else in the framework treats as binding.
+**Responses.** The success entry is keyed by the `#[Mapping]`'s declared status, and its body schema is derived from
+three sources, most specific first — see [What an endpoint returns](#what-an-endpoint-returns). A `204` (or a
+`void`/`never` return) gets no `content` at all, because emitting a content map for a status that carries no body is
+exactly what a strict client generator turns into a phantom return type.
 
 Beside it, every operation carries the shared `#/components/responses/Problem` as its `default`, plus a `400` when
 `ArgumentResolver` has something it can reject before the controller runs (a required binding, or one whose value
@@ -94,6 +91,91 @@ with no edit in this package.
 **`#[Controller]` HTML routes are excluded by default.** They are part of the HTTP surface but not JSON API
 operations, and describing one as `application/json` hands a generator a typed client for a response that is a web
 page. `firefly.openapi.include-html` documents them anyway, as `text/html`.
+
+## What an endpoint returns
+
+Every success response used to be `{"type": "object"}` — an object with no members. A viewer renders that as a blank
+panel and `openapi-generator` turns it into `any`, so the most useful sentence an API document contains was the one
+sentence missing, for every endpoint of every application.
+
+The shape was never unavailable. It is written one line above the method, and **PHPStan at level max already checks
+it against the code on every build** — which is exactly what makes reading it safe. An out-of-date `@return` is a
+failing gate, not a silent lie. (It is also no different in kind from the input side: `RouteScanner` already reads
+`@param list<X>` to compile the table `ArgumentResolver` hydrates from.)
+
+Three sources, in order:
+
+```php
+/**
+ * A page of orders.
+ *
+ * @return array{page: positive-int, size: positive-int, total: int, items: list<Order>}
+ */
+#[GetMapping]
+public function index(): array { /* … */ }
+```
+
+1. **The `@return` type expression.** The only place a PHP `array` can say what is *in* it. Prose after the type
+   becomes the response `description` — the only response description anyone actually writes.
+2. **The declared return type.** A class becomes a component `$ref`, a backed enum its value set, a scalar itself.
+3. **Neither** — `type: object`, the old behaviour, kept as the *fallback* for a bare `array` return with nothing
+   said about it. A `@return array<string, mixed>` parses fine and means nothing, so it is treated as saying nothing
+   rather than allowed to suppress what the declared type knew.
+
+### The type expressions it understands
+
+`Firefly\OpenApi\Schema\DocType` is a small recursive-descent compiler from a PHPDoc type expression to a JSON
+Schema fragment. It is used for `@return`, for `@param`/`@var` on collection members, and for
+`#[ApiResponse(type:)]`.
+
+| Written | Becomes |
+|---|---|
+| `list<Order>`, `Order[]`, `array<int, Order>` | `type: array` with `items: {$ref: Order}` |
+| `array<string, Money>` | `type: object` with `additionalProperties: {$ref: Money}` |
+| `array{a: int, b?: string}` | an object with `properties`, `required: [a]` and `additionalProperties: false` |
+| `array{a: int, ...}` | the same, but open — the `...` is the only thing that lifts `additionalProperties: false` |
+| `array{int, string}` | `prefixItems`, with `minItems`/`maxItems` — a tuple |
+| `'draft'\|'sent'` | `type: string` with `enum` |
+| `?Order`, `Order\|null` | `anyOf: [{$ref}, {type: null}]` |
+| `non-empty-string`, `positive-int` | `minLength: 1`, `minimum: 1` |
+| `mixed` | `{}` — the any-value schema, a real answer |
+| `never`, `callable`, an unresolvable name | **nothing**, so the caller falls back to what it already knew |
+
+A `?` on a shape KEY (`b?: string`) means "may be absent" and becomes `required`; a `?` on the VALUE means "may be
+null" and becomes the type union. Conflating them documents an omissible member as one a client must always send.
+
+Class names resolve through the **imports of the file the expression was written in** — reflection does not expose a
+file's `use` statements, so they are read from the source. Without that, only fully-qualified names would work,
+which is the one spelling nobody writes.
+
+### A returned class becomes a component
+
+`ResponseSchemaFactory` builds it from the **wire shape** — what `json_encode` emits — which is not the same thing as
+the request side's constructor:
+
+- A class implementing `JsonSerializable` serialises as whatever `jsonSerialize()` **returns**. Give that method a
+  `@return array{…}` and the schema is exact. The skeleton's `App\Orders\Order` is the case that matters: it
+  publishes a derived `total` that is a *method*, so reflection alone would document five of the six members the API
+  actually sends.
+- Everything else serialises as its **public properties**, which is what reflection reads.
+- A declared shape only wins when it says something. `@return array<string, mixed>` on `jsonSerialize()` means "an
+  object, members unknown" — strictly less than the property list it would have suppressed, so it is ignored.
+
+Nullability is not requiredness here. A response member is present or absent, and `?int $id` is always *present* and
+sometimes null — so response members stay `required` and nullable ones widen their type. The request side's rule
+would have told every client to expect an absence that never happens.
+
+### `#[ApiResponse]` takes a type expression
+
+```php
+#[PostMapping(status: 201)]
+#[ApiResponse(status: 409, description: 'That reference already exists.', type: Consignment::class)]
+#[ApiResponse(status: 202, description: 'Accepted for later booking.', type: 'list<Shipment>')]
+public function book(): array { /* … */ }
+```
+
+`type` is a full expression, not only a class or scalar name, and a short name resolves through the controller's own
+imports.
 
 ## How a request DTO becomes a schema
 
@@ -359,6 +441,30 @@ What the element becomes depends on what it is:
 | A DTO | `{"$ref": "#/components/schemas/OrderLineRequest"}` — its own component, like any nested DTO |
 | A backed enum, a `DateTimeInterface`, a scalar | **inlined** — an enum is not a reusable component, and minting one per enum would hand every generated client a named type where an inline union is what the payload is |
 | Something `TypeSchema` cannot resolve | no `items` at all, rather than an empty `{}` — both say "any element", and the absent one avoids a later `[]`-vs-`{}` decision |
+
+### Everything else a PHP `array` can be
+
+The table above answers for a list of **classes**, which is what the hydrator's compiled table knows about. Three
+collections it does not cover were published as a bare `type: array` for the same reason `list<X>` once was:
+
+| Written | Was | Is |
+|---|---|---|
+| `list<string> $tags` | `type: array` — `Array<any>` again | `items: {type: string}` |
+| `list<list<int>> $matrix` | `type: array` | nested `items` |
+| `array<string, int> $meta` | `type: array` — **the wrong JSON type** | `type: object` with `additionalProperties` |
+
+The third is the one that mattered. `array<string, int>` is a JSON *object*; publishing it as an array is not
+merely vague, and a generated client fails to decode the payload the server actually sends.
+
+The expression is read by [`DocType`](#the-type-expressions-it-understands) **after both element-type paths have
+declined** — the compiled table and its reflection mirror — so the same step runs whichever path was taken, and the
+hydrator's answer still wins wherever it has one. That placement is the whole design: the original reason for
+publishing nothing here was drift between two implementations of one rule, and running afterwards is what makes a
+third implementation impossible.
+
+A `#[Size]` on a map then had to stop emitting `minLength`, which is not a constraint on an object at all — a
+validator ignores it, so the document would silently drop a bound the server does enforce. `lengthKeyword()` now
+knows three shapes: `minItems` for a list, `minProperties` for a map, `minLength` for a string.
 
 A list of DTOs recurses safely for the same reason a plain nested DTO does: `SchemaRegistry` reserves the
 component name *before* the builder runs, so `CategoryNode { list<CategoryNode> $children }` closes its own cycle

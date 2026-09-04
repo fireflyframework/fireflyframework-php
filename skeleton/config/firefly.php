@@ -252,6 +252,32 @@ return [
         // Master gate: false unmounts every actuator route. Default: true.
         'enabled' => true,
 
+        /*
+         | THE MANAGEMENT PORT — Spring Boot's `management.server.*`, and the same idea.
+         |
+         | With `port` set, every management surface — the actuator, and the admin dashboard with it —
+         | answers ONLY on that port, and a request arriving on the application's port gets a 404. That is
+         | what lets you bind the application to the internet and the management traffic to a private
+         | interface, so an operator's URL is not merely unadvertised but unreachable.
+         |
+         | 404, NEVER 403. A 403 would confirm that a management surface exists on some other port, which is
+         | one more fact than an unauthenticated scan of the public port deserves.
+         |
+         | `address` is a BIND address for your process manager, not a request-time check: nothing here can
+         | make PHP listen on a second socket, so setting `port` tells the framework which requests to
+         | ACCEPT and your web server or `artisan serve --port` decides what actually listens. Setting
+         | `port` to the application's own port is rejected at boot rather than silently doing nothing.
+         |
+         | Defaults: port null (same port as the application), address null, base-path ''.
+        */
+        // 'server' => [
+        //     'port' => (int) env('MANAGEMENT_PORT', 9001),
+        //     'address' => env('MANAGEMENT_ADDRESS', '127.0.0.1'),
+        //     // A prefix in FRONT of `endpoints.web.base-path`: '/internal' makes the health endpoint
+        //     // '/internal/actuator/health'. Default: ''.
+        //     'base-path' => '',
+        // ],
+
         'endpoints' => [
             'web' => [
                 // Default: '/actuator'.
@@ -405,6 +431,36 @@ return [
     //         // How many source lines to show around a throwing line, clamped to 0-40. 0 shows none.
     //         // Default: 7.
     //         'excerpt-lines' => 7,
+    //
+    //         /*
+    //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
+    //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
+    //          | the path says what the URL is.
+    //          |
+    //          | Without it, a developer opening an API URL in a browser is shown a styled page instead of
+    //          | the payload their client will receive — and so is anything that follows a link into the API
+    //          | with a copied browser header. Patterns use Laravel's `Str::is` wildcards.
+    //          |
+    //          | Default: 'api/*'.
+    //         */
+    //         'json-paths' => 'api/*,webhooks/*',
+    //
+    //         /*
+    //          | Your OWN Blade view for a status, or for everything. The view is handed the same
+    //          | `$error` report the built-in page gets — so it is bound by the same `trace` gate above and
+    //          | cannot print a stack trace the settings withheld — plus `$settings`.
+    //          |
+    //          | A view that THROWS falls back to the built-in page rather than propagating: this renders
+    //          | while the application is already failing, and an override is application code (a renamed
+    //          | layout, a component querying the database that is down). A white screen at that moment is
+    //          | the worst possible outcome.
+    //          |
+    //          | Default: [] (the framework's page for every status).
+    //         */
+    //         'views' => [
+    //             '404' => 'errors.not-found',
+    //             'default' => 'errors.generic',
+    //         ],
     //     ],
     // ],
 
@@ -514,6 +570,83 @@ return [
     //          | Default: '' (nothing excluded).
     //         */
     //         'exclude' => 'order',
+    //
+    //         /*
+    //          | Whether to discover an entity's RELATIONS, so a record links to the rows it references and
+    //          | the Entity map page has edges to draw.
+    //          |
+    //          | Discovery CALLS the model methods that declare a relation, because a method's name says
+    //          | nothing and only the call reveals which columns it joins on. Only a public, no-argument
+    //          | method whose DECLARED RETURN TYPE is an Eloquent Relation is ever called — the same signal
+    //          | Laravel's own tooling relies on, and one an accessor cannot claim without lying about its
+    //          | signature. This key exists so an application with an unusual model base can switch that off
+    //          | without losing the rest of the browser.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'relations' => true,
+    //     ],
+    //
+    //     /*
+    //      | THE DATASOURCE PAGE — /firefly/datasource
+    //      |
+    //      | Connections (with secrets masked), whether PDO holds them open between requests, and the
+    //      | compiled #[Transactional] contract. It needs no key to appear; these two govern the parts that
+    //      | do something rather than report something.
+    //     */
+    //     'datasource' => [
+    //         /*
+    //          | Whether the page may OPEN a configured connection to report that it answers. One is probed
+    //          | per page load — the default, or the one named by `?probe=` — because opening a socket can
+    //          | hang against a firewalled host, and a page that opened every configured connection would
+    //          | take the slowest one's timeout to render, on the page you opened because something is wrong.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'probe' => true,
+    //
+    //         /*
+    //          | The connection WIZARD: a form that opens a connection you have not configured yet and
+    //          | reports the server version or the driver's own error, plus the config block to paste. It
+    //          | writes nothing.
+    //          |
+    //          | OFF BY DEFAULT, and refused outright when `app.env` is production — a check no key lifts. A
+    //          | form that opens a socket to a host somebody typed is a request-forgery primitive, and its
+    //          | errors distinguish "refused" from "timed out" well enough to map a private network. It is a
+    //          | convenience for a developer's machine and should be unreachable anywhere else.
+    //          |
+    //          | Default: false.
+    //         */
+    //         'wizard' => env('FIREFLY_ADMIN_DATASOURCE_WIZARD', false),
+    //     ],
+    //
+    //     /*
+    //      | THE FEATURE-SWITCH CONSOLE — /firefly/settings
+    //      |
+    //      | Every framework switch this application is running with, where each value came from, and —
+    //      | outside production — a control to change it.
+    //      |
+    //      | IT IS THE ONE PAGE THAT CHANGES THE APPLICATION rather than describing it, which is why it is
+    //      | off by default while the rest of the dashboard follows `app.debug`. A surface that alters a
+    //      | running system should never appear because somebody left a debug flag on.
+    //      |
+    //      | A change is written to ONE json file under bootstrap/cache and merged over configuration at
+    //      | boot; deleting that file restores your configured values exactly. Nothing is ever written to
+    //      | `.env` — a config cache would disagree with it until someone cleared it, the file is routinely
+    //      | read-only in a container image, and a web form that edits the file holding your database
+    //      | password is not a feature.
+    //      |
+    //      | Only a fixed, framework-owned list of switches can be written. A crafted POST naming `app.key`
+    //      | or a database host finds nothing to write, which is what keeps this a feature switch rather
+    //      | than a remote configuration endpoint.
+    //     */
+    //     'settings' => [
+    //         // Default: false.
+    //         'enabled' => env('FIREFLY_ADMIN_SETTINGS_ENABLED', false),
+    //
+    //         // Whether the page has controls as well as readings. Ineffective in production, where every
+    //         // write is refused whatever this says. Default: false.
+    //         'writable' => env('FIREFLY_ADMIN_SETTINGS_WRITABLE', false),
     //     ],
     // ],
 
@@ -584,10 +717,15 @@ return [
     //         // 'cdn' => false,
     //     ],
     //
-    //     // Info Object members, written verbatim into the document.
+    //     /*
+    //      | Info Object members, written verbatim into the document. `summary` is 3.1's short one-line
+    //      | form (3.0 had only `description`); `terms-of-service` must be a URL if you set it.
+    //     */
     //     'title' => env('APP_NAME', 'API'),
     //     'version' => '1.0.0',
     //     'description' => '',
+    //     'summary' => 'Orders, customers and fulfilment.',
+    //     'terms-of-service' => 'https://example.test/terms',
     //
     //     /*
     //      | Server Objects. Both spellings a real config file uses are accepted — a bare URL string, and

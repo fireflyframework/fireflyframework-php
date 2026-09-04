@@ -25,7 +25,7 @@ install line above.
     [Access: the whole security boundary](#access-the-whole-security-boundary) before enabling it
     outside debug.
 
-## The thirteen pages
+## The pages
 
 Every page is a view over one `ActuatorEndpoint`'s payload. The menu groups them the way an operator thinks rather
 than the way the packages are laid out — *what is it doing right now*, *what did it wire at boot*, *how is it
@@ -46,6 +46,13 @@ configured* — because a flat list of thirteen links is a worse menu than three
 | Configuration | Config properties | `/firefly/configprops` | `configprops` | Every `#[ConfigProperties]` DTO the application bound, with the values it resolved |
 | Configuration | Caches | `/firefly/caches` | `caches` | The cache stores this application has configured |
 | Configuration | Loggers | `/firefly/loggers` | `loggers` | Log channels and their levels, with a control to change one |
+| Configuration | **Feature switches** | `/firefly/settings` | — | Every framework switch, where its value came from, and — outside production — a control. **Off by default**; see [below](#the-feature-switch-console) |
+| Data | **Datasource** | `/firefly/datasource` | — | Connections, connection reuse, and the compiled `#[Transactional]` contract |
+| Data | **Browse data** | `/firefly/data` | — | The records behind your repositories — see [Data Browser](data-browser.md). **Off by default** |
+| Data | **Entity map** | `/firefly/data-map` | — | The entities and the foreign keys between them, drawn |
+
+The four pages with no endpoint read the container rather than the actuator, and each decides its own visibility:
+an entry that led to "there is nothing here" is worse than no entry.
 
 A page whose endpoint is **not registered in this process** — or is switched off — is *hidden from the menu* rather
 than offered as a link that lands on an apology, and requesting it directly answers 404 with a page saying which
@@ -227,16 +234,104 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 | `firefly.admin.theme` | `'auto'` | `auto` \| `light` \| `dark`. Anything unrecognised falls back to `auto` (follow the operating system) rather than rendering unstyled. |
 | `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
 | `firefly.admin.pages.exclude` | `''` | CSV of page slugs to refuse. This is a **refusal, not a menu preference**: an excluded page is hidden *and* its URL 404s — hiding `env` from the menu achieves nothing if the URL still answers. Use `overview` for the index page. |
+| `firefly.admin.datasource.probe` | `true` | Whether the datasource page may **open** a configured connection to report that it answers. |
+| `firefly.admin.datasource.wizard` | **`false`** | The connection wizard. Off by default and refused in production — see [below](#the-connection-wizard). |
+| `firefly.admin.settings.enabled` | **`false`** | The feature-switch console. |
+| `firefly.admin.settings.writable` | **`false`** | Whether that console has controls. Ineffective in production. |
 
 The `firefly.admin.data.*` keys are documented separately, in [Data Browser](data-browser.md#configuration-fireflyadmindata),
 because the browser is gated independently of everything above: `firefly.admin.enabled` does **not** switch it on,
 and neither does `app.debug`.
+
+## The datasource page
+
+Four questions an operator asks at 3am that this dashboard could not answer:
+
+- **Which database am I talking to?** Driver, host, port and database per connection, with `password` masked by the
+  same masker the actuator's `env` endpoint uses — the page is behind the dashboard's gate, and a connection array
+  dumped verbatim would put the database password on that URL.
+- **Is it up?** *One* connection is probed per page load — the default, or the one named by `?probe=` — because
+  opening a socket can hang against a firewalled host, and a page that opened every configured connection would
+  take the slowest one's timeout to render, on the page you opened *because* something is wrong. What comes back
+  is the server version, or the driver's own message.
+- **What does pooling mean here?** PHP has no connection pool, and a "pool size" gauge would be an invented number.
+  What exists is PDO's `ATTR_PERSISTENT`, reported as what it is — with the note that under php-fpm the effective
+  pool size is your worker count, decided by the process manager, and that real pooling in front of Postgres is
+  pgbouncer's job.
+- **What did `#[Transactional]` compile to?** One row per proxied method with its propagation, isolation, timeout
+  and connection. It existed only as a compiled artifact under `bootstrap/cache`.
+
+### The connection wizard
+
+`firefly.admin.datasource.wizard` adds a form that opens a connection you have **not** configured yet and reports
+the server version or the driver's own error, plus the `config/database.php` block to paste. It collapses the
+edit-`.env`, clear-cache, reload, read-a-useless-error loop into one round trip.
+
+It is **off by default and refused outright when `app.env` is production**, and no configuration key lifts that. A
+form that opens a socket to a host somebody typed is a request-forgery primitive by construction, and its failure
+messages distinguish "refused" from "timed out" well enough to map a private network. It is POST-only for the same
+reason — a link, an image tag or a prefetch must never be able to reach it — and it **writes nothing**: the result
+is a snippet, with the password always an `env()` call and never the value that was typed.
+
+!!! note "Why the errors are useful at all"
+    The connection is opened with `getPdo()` *before* the test query. Going through `selectOne()` puts Laravel's
+    reconnect wrapper in the way, which rethrows `Lost connection and no reconnector available` for a wrong
+    password, a closed port and a typo in the host alike. Forcing the socket and unwrapping to the innermost
+    exception is what turns the button into something worth pressing.
+
+## The entity map
+
+`/firefly/data-map` draws every browsable entity as a box with its columns, and every foreign key as a labelled
+edge, from the same discovery the [data browser](data-browser.md#relations) walks. Boxes are links into their own
+records.
+
+A `hasMany` and the `belongsTo` facing it are **one** key seen from two ends, so each is drawn once — pointing from
+the table that *holds* the key to the table it references, which is also what the arrow means. Relations the
+browser cannot express as a single column comparison (a pivot, a polymorphic type column) are listed on each record
+page but are not drawn, because a line with no join to name would be decoration. Entities with no relations at all
+*are* drawn: a standalone table is a fact about the model, and a diagram that quietly dropped it would let a reader
+conclude the application has fewer tables than it does.
+
+It is behind the browser's own switch, not the dashboard's: a schema diagram names every table and column an
+application has, which is the shape of its data even though it is not the data.
+
+## The feature-switch console
+
+`/firefly/settings` is the one page that **changes** the application rather than describing it, and it is gated
+accordingly.
+
+| Gate | Default | What it decides |
+|---|---|---|
+| `firefly.admin.settings.enabled` | `false` | Whether the page exists at all |
+| `firefly.admin.settings.writable` | `false` | Whether it has controls as well as readings |
+| `app.env` is `production` | — | **Not a configuration key.** Writes are refused, whatever the two above say |
+
+The third gate is deliberately unconfigurable. That is the difference between "we made it safe" and "we made it
+configurable to be safe", and only the first survives someone copying a `.env`.
+
+**It is a feature switch, not a remote configuration endpoint.** The list of switches is fixed and framework-owned,
+so a crafted POST naming `app.key` or a database host finds nothing to write — the method cannot express it. Each
+row shows where its value came from: `config` (yours), `default` (the framework's), or `console` (this page).
+
+A change is written to **one** JSON file under `bootstrap/cache`, filtered on the way in as well as out — a
+hand-edited entry cannot introduce a key the console would have refused — and merged over configuration during the
+provider's `register()`. Deleting that file restores your configured values exactly. Nothing is ever written to
+`.env`: a config cache would disagree with it until someone cleared it, the file is routinely read-only in a
+container image, and a web form that edits the file holding your database password is not a feature.
+
+!!! note "Why `register()` and not a boot pass"
+    Every settings object in this framework is built once from configuration and held for the process. Applying the
+    overrides from the dashboard's own boot pass wrote the file and showed the new state on the page while
+    `/openapi.json` kept answering 200 — a merge after the first read changes nothing. `register()` runs before any
+    boot pass and before any bean resolves, which is the only point at which the merge is true.
 
 ## Laravel comparison
 
 | Concern | Plain Laravel | LaraFly (`firefly/admin`) |
 |---|---|---|
 | A management UI | none first-party; Telescope is a *request* debugger, Horizon a *queue* dashboard — neither reports on wiring or configuration | one dashboard over the actuator's own endpoints |
+| Browsing your data | none; Nova and Filament are paid or app-scale admin *frameworks* you build screens in | a Django-style browser over the repositories you already declared, off by default |
+| Feature switches | a config file and a deploy | a gated console, with the production gate not configurable |
 | Where it runs | Telescope/Horizon each add tables, a service provider and a middleware group | Blade views over beans that already exist; no storage of its own, nothing recorded |
 | Data source | a recorder writing to the database | the live `ActuatorRegistry`, read in-process at render time |
 | Enabling it safely | `TelescopeServiceProvider::gate()` — a closure you write | `firefly.admin.enabled` defaulting to `app.debug`, plus your own middleware when you override it |
@@ -246,8 +341,9 @@ and neither does `app.debug`.
 - **No instance registry.** Spring Boot Admin is a separate server that many applications register *with*, giving
   one console across a fleet. This is a per-instance dashboard, which is what makes the in-process read possible;
   a fleet view would need a different design and is not planned.
-- **No write operations besides the log level.** `/caches` is read-only for the same reason it is read-only on the
-  JSON surface — `firefly/actuator` carries no code edge to `firefly/security` and so cannot say who asked.
+- **No write operations besides the log level, the data browser and the feature switches.** `/caches` is read-only
+  for the same reason it is read-only on the JSON surface — `firefly/actuator` carries no code edge to
+  `firefly/security` and so cannot say who asked.
 - **`when-authorized` health details** degrade to `never` on the JSON surface (see
   [Actuator](actuator.md#known-latent)); the dashboard sidesteps it entirely by reading the contributor registry.
 

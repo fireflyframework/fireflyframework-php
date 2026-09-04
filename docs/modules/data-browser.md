@@ -104,28 +104,27 @@ a table also armed the delete button.
 
 A write attempted with only one gate set is **refused with a stated reason**, not silently ignored.
 
-## Create is deliberately absent
+## Create exists for Eloquent, and is refused for everything else
 
-There is no `create()`, and that is not an omission to be filled in later.
+The browser once had no `create()` at all, and the argument for that was half right.
 
-A generic create form over an arbitrary entity is a promise the browser cannot keep. **An aggregate's
-constructor is where its invariants live** — an `Order` that must have at least one line, a `Wallet` whose
-balance starts at zero in the currency it was opened in, a value object that rejects a malformed IBAN — and a
-form built from a column list knows none of them.
+**An aggregate's constructor is where its invariants live** — an `Order` that must have at least one line, a
+`Wallet` whose balance starts at zero in the currency it was opened in, a value object that rejects a malformed
+IBAN — and a form built from a column list knows none of them. For a repository over a hand-written domain object
+there are only two ways to build the row and both are wrong: call the constructor, which needs arguments the form
+cannot supply in the right types or the right order; or write the columns straight to the table, which produces a
+row the domain model considers impossible and which every later read then has to cope with. The second is what a
+"just insert the columns" implementation actually does, and it is *worse than having no button*, because it looks
+like it worked. **That case is still refused, by name.**
 
-There are only two ways to build the row, and both are wrong:
+It was never true for an **Eloquent model**. Eloquent constructs one empty and fills it by attribute — which is
+exactly what `update()` has always done to a row that exists. Create was refusing on a risk update was already
+taking, and the inconsistency cost every application a CRUD surface that stopped at RUD.
 
-1. **Call the constructor** — which needs arguments the form cannot supply in the right types or the right
-   order, and which fails on the first entity with a non-trivial signature.
-2. **Write the columns straight to the table** — which produces a row the domain model considers impossible,
-   and which every later read then has to cope with.
-
-The second is what a "just insert the columns" implementation actually does, and it is *worse than having no
-button*, because it looks like it worked. Creation belongs to the application's own code, where the constructor
-is.
-
-The two writes that do exist pass that test. `update()` operates on a row that **already satisfies its
-invariants** and changes named columns on it; `delete()` needs no invariant at all.
+So: `create()` is offered when the resource is Eloquent-backed, under the same two switches, the same coercion and
+the same unknown-field refusal. The identifier and any masked column are **omitted from the form** rather than
+disabled in it — a field the browser would refuse to write should not appear to accept — so a crafted POST cannot
+choose a primary key or plant a value the page would only ever show as `******`.
 
 ## Reads: four paths, and one of them is a foot-gun
 
@@ -202,19 +201,21 @@ a number. The model's own `$casts` carry the semantic type the schema cannot exp
 
 ### The display type vocabulary is closed, and deliberately small
 
-`string`, `int`, `bool`, `datetime`, `json`. It is a **rendering hint, not a schema echo**: the view has to
-decide "right-align this", "draw a checkbox", "format this as a timestamp", "pretty-print this blob", and there
-are only those four decisions plus a default. Anything outside the vocabulary degrades to `string` rather than
-reaching the view.
+`string`, `int`, `float`, `bool`, `datetime`, `json`. It is a **rendering hint, not a schema echo**: the view has
+to decide "right-align this", "draw a chip", "format this as a timestamp", "clip this blob", and there are only
+those decisions plus a default. Anything outside the vocabulary degrades to `string` rather than reaching the view.
 
-!!! note "Why `decimal` and `float` map to `string`"
-    A `decimal(10,2)` column arrives from PDO as the string `"10.10"`, and that is not an accident of the
-    driver — it is how the value survives a round trip without binary floating point eating the last cent.
-    Typing it `int`/`float` invites the view to format it as a number, and the first thing a number formatter
-    does to `"10.10"` is render it as `10.1`. **A browser that silently rewrites a money column is worse than
-    one that shows the raw text**, so the raw text is what the type promises. `int` is reserved for genuinely
-    integral columns — keys, counters, foreign keys — where right-aligning is correct and no precision can be
-    lost.
+!!! note "`float` never reformats the value"
+    A `decimal(10,2)` column arrives from PDO as the string `"10.10"`, and that is not an accident of the driver
+    — it is how the value survives a round trip without binary floating point eating the last cent. Every
+    non-integer number used to be typed `string` for that reason, which meant a money column read as a string in
+    the explorer, was offered to a `LIKE` search, and let the editor save `"abc"` into it.
+
+    `float` is a hint about **alignment and validation**, not about formatting. The cell prints the value
+    verbatim, so `"10.10"` renders as `10.10`; it is right-aligned with tabular numerals so digits line up down
+    the column. And a write is **validated** with `is_numeric` but **stored as the string**: casting to a PHP
+    float to store it would reintroduce exactly the precision loss a `decimal` column exists to avoid —
+    `12345678901234567890.12` does not survive a `float`, and the driver can bind the digits verbatim.
 
 ### The identifier is derived, and allowed to be null
 
@@ -230,6 +231,71 @@ Records are projected against the schema's column list and inherit **its order**
 supply present as `null` rather than missing. `getAttributes()` returns keys in whatever order the driver
 returned them, which differs between drivers and can differ between two rows of the same table after a migration
 adds a column — and a detail page whose fields move between rows is unreadable.
+
+## Relations
+
+An entity's relations are discovered by **calling** the methods that declare one, because that is the only way to
+learn which columns they join on: a method's name says nothing and its return type says only the kind.
+
+Which makes "what is safe to call" the load-bearing question, and the answer is the **declared return type**. Only
+a public, non-static, no-argument method whose return type is an Eloquent `Relation` subclass is ever called — a
+method announcing `: HasMany` is a relation definition by construction, the same signal Laravel's own IDE tooling
+and `with()` validation rely on, and one an accessor cannot claim without lying about its signature. Anything
+without that annotation is left alone. The call itself executes no query: Eloquent defers until `get()`.
+
+```php
+class OrderEntity extends Model
+{
+    /** @return HasMany<OrderLineEntity, $this> */
+    public function lines(): HasMany
+    {
+        return $this->hasMany(OrderLineEntity::class, 'order_id');
+    }
+}
+```
+
+| Relation | On the record page | Where it goes |
+|---|---|---|
+| `BelongsTo` | **Open →** | the one parent record |
+| `HasOne`/`HasMany` | **Browse →** | the child listing, filtered to this row's key |
+| `BelongsToMany`, `HasManyThrough`, the morph family | listed, not linked | no single column to filter on |
+| `MorphTo` | listed, not linked | the other end is decided per row by a type column |
+
+A relation whose other end is **not a browsable resource** — no repository declares it, or its resource is excluded
+— is still shown, because it tells a reader the shape of the model, but is not rendered as a link: distinguishing
+the two in the model rather than in the template is what stops a view minting a URL that 404s.
+
+## Filtering, sorting and paging
+
+The listing is a **URL**. Every filtered, sorted, paged view is something an operator can bookmark, paste into a
+ticket or hand to someone else, which is most of what a data explorer is for — and every link on the page carries
+the whole state, because a sort that dropped the filter would widen the listing back to every row, which reads as
+rows appearing from nowhere.
+
+Eight comparisons, over the columns the resource already publishes:
+
+| Operator | Meaning |
+|---|---|
+| `eq`, `ne` | `=`, `!=` |
+| `contains`, `starts` | `LIKE`, with the wildcards added around an **escaped** value |
+| `gt`, `lt` | `>`, `<` |
+| `null`, `notnull` | `IS NULL`, `IS NOT NULL` |
+
+Two spellings in the URL: `?fk=order_id&fv=7` is a single equality and is what every relation link produces —
+short enough to read in a status bar — while `?fc[]=…&fo[]=…&fv[]=…` is what the filter bar builds. Both are
+validated identically.
+
+**A column the schema does not publish, and an operator outside that set, are dropped** rather than passed to the
+driver. Both arrive in a URL an operator can hand-edit, and a query that reached the driver with an arbitrary
+identifier in it is a column-name oracle at best. Dropping rather than erroring is deliberate too: an error that
+distinguished "no such column" from "no rows" would answer the same question more slowly.
+
+Filters **AND** with each other and with the search box, so narrowing a relation's listing cannot escape it. Every
+comparison binds its value, including the `LIKE` ones.
+
+The same eight comparisons are implemented for the [in-PHP fallback path](#reads-four-paths-and-one-of-them-is-a-foot-gun),
+because a repository that cannot page must be filtered by the same rules as one that can — two implementations
+would drift, and the drift would show as one filter meaning different things on different resources.
 
 ## Secrets
 
@@ -308,6 +374,7 @@ class name. The message stays in the exception, where a log can have it.
 | `firefly.admin.data.page-size` | `25` | Default rows per page. Clamped into `[1, max-page-size]`. |
 | `firefly.admin.data.max-page-size` | `200` | Ceiling applied to any caller-supplied page size. Itself capped at **1000**, because `?perPage=1000000` on a resource that cannot page is a request to materialise the table into PHP memory. |
 | `firefly.admin.data.exclude` | `''` | CSV of resource slugs to refuse. A **hard refusal, not a menu preference**: the resource is hidden *and* every operation on it is refused. Hiding `user` because the table holds PII achieves nothing if the row URL still answers. |
+| `firefly.admin.data.relations` | `true` | Discover relations, so records link to what they reference and the [entity map](admin.md#the-entity-map) has edges. Discovery **calls** the model methods that declare one — see [Relations](#relations) — so it is a key rather than a constant. |
 
 The page-size cap is applied to whatever the caller asks for, so the query layer never sees a size it did not
 agree to.
@@ -341,7 +408,8 @@ instead.
   reads and both writes are complete and tested, and `DataBrowser::forContainer()` makes them usable from an
   application's own code today. What has not landed is the Blade page and the route that would put them in
   the dashboard's menu — so at present the gates below govern a library, not a URL.
-- **No create**, permanently — see [above](#create-is-deliberately-absent).
+- **No create for a non-Eloquent repository**, permanently — see
+  [above](#create-exists-for-eloquent-and-is-refused-for-everything-else).
 - **Writes are Eloquent-only.** A plain `CrudRepository` over value objects is browsable and read-only.
 - **No relationship navigation.** A foreign key renders as its value, not as a link to the row it points at:
   the browser knows a column's type, not its target, and Eloquent relationships are methods rather than
