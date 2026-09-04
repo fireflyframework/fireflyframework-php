@@ -6,6 +6,7 @@ namespace Firefly\Web\Error;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Throwable;
@@ -36,12 +37,20 @@ final class ErrorPageRenderer
     public function __construct(
         private readonly ErrorPageSettings $settings,
         private readonly string $basePath = '',
+        private readonly ?ViewFactory $views = null,
     ) {}
 
     /** Whether this request should be answered with the HTML page rather than with problem+json. */
     public function handles(Request $request): bool
     {
         if (! $this->settings->enabled || $request->ajax() || $request->wantsJson()) {
+            return false;
+        }
+
+        // A path the application declares as an API answers with a problem document whatever the caller
+        // asked for. This is checked BEFORE the Accept header, not after, because it is the stronger
+        // statement: the header says who is asking, the path says what the URL IS.
+        if ($this->settings->isJsonPath($request->path())) {
             return false;
         }
 
@@ -66,9 +75,38 @@ final class ErrorPageRenderer
         );
 
         return new Response(
-            ErrorPage::render($report, $this->settings),
+            $this->body($report, $status),
             $status,
             ['Content-Type' => 'text/html; charset=UTF-8'],
         );
+    }
+
+    /**
+     * The application's own view for this status when it declared one, and the framework's page otherwise.
+     *
+     * THE FALLBACK IS NOT POLITENESS, IT IS THE POINT. This runs while the application is already failing,
+     * and an override is application code — a view that references a missing variable, a layout that was
+     * renamed, a component that queries a database which is the very thing that is down. Letting that throw
+     * would replace a diagnostic page with a white screen at exactly the moment someone needs to read one,
+     * so a failing override falls back to the built-in page rather than propagating. The override gets the
+     * same ErrorReport the built-in page does, so it can show as much or as little as it likes and is
+     * subject to the same `trace` gate — a custom view cannot print a stack trace the settings withheld,
+     * because the report it was handed never gathered one.
+     */
+    private function body(ErrorReport $report, int $status): string
+    {
+        $view = $this->settings->viewFor($status);
+
+        if ($view !== null && $this->views !== null) {
+            try {
+                if ($this->views->exists($view)) {
+                    return $this->views->make($view, ['error' => $report, 'settings' => $this->settings])->render();
+                }
+            } catch (Throwable) {
+                // Fall through to the built-in page.
+            }
+        }
+
+        return ErrorPage::render($report, $this->settings);
     }
 }

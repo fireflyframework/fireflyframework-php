@@ -75,11 +75,11 @@ it('narrows a listing to the rows on the other end of a relation', function () {
     $this->seedEntries();
 
     $all = $this->relatedBrowser()->list('admin-entry');
-    $mine = $this->relatedBrowser()->list('admin-entry', filter: new DataFilter('record_id', '1'));
+    $mine = $this->relatedBrowser()->list('admin-entry', filters: [new DataFilter('record_id', DataFilter::EQ, '1')]);
 
     expect($all->total)->toBe(3)
         ->and($mine->total)->toBe(2)
-        ->and($mine->filter?->column)->toBe('record_id')
+        ->and($mine->filters[0]->column)->toBe('record_id')
         ->and(array_column($mine->rows, 'note'))->toBe(['first for ada', 'second for ada']);
 });
 
@@ -91,12 +91,12 @@ it('combines a filter with a search rather than letting either escape the other'
     // Searching inside a relation's listing must NARROW it. An OR here would answer "every entry matching
     // 'ada', plus every entry of record 1" — which shows a reader rows from outside the relation they are
     // looking at.
-    $listing = $this->relatedBrowser()->list('admin-entry', search: 'second', filter: new DataFilter('record_id', '1'));
+    $listing = $this->relatedBrowser()->list('admin-entry', search: 'second', filters: [new DataFilter('record_id', DataFilter::EQ, '1')]);
 
     expect($listing->total)->toBe(1)
         ->and($listing->rows[0]['note'])->toBe('second for ada');
 
-    expect($this->relatedBrowser()->list('admin-entry', search: 'only', filter: new DataFilter('record_id', '1'))->total)->toBe(0);
+    expect($this->relatedBrowser()->list('admin-entry', search: 'only', filters: [new DataFilter('record_id', DataFilter::EQ, '1')])->total)->toBe(0);
 });
 
 it('drops a filter naming a column the resource does not have', function () {
@@ -107,11 +107,11 @@ it('drops a filter naming a column the resource does not have', function () {
     // The column arrives in a URL an operator can hand-edit. A query that reached the driver with an
     // arbitrary identifier in it is a column-name oracle at best, so an unknown column is dropped and the
     // listing widens rather than erroring — which also tells the caller nothing about what does exist.
-    $listing = $this->relatedBrowser()->list('admin-entry', filter: new DataFilter('no_such_column', '1'));
+    $listing = $this->relatedBrowser()->list('admin-entry', filters: [new DataFilter('no_such_column', DataFilter::EQ, '1')]);
 
     expect($listing->failed())->toBeFalse()
         ->and($listing->total)->toBe(3)
-        ->and($listing->filter)->toBeNull();
+        ->and($listing->filters)->toBe([]);
 });
 
 it('offers no relations when the browser or the feature is switched off', function () {

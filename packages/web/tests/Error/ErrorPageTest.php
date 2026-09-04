@@ -150,3 +150,18 @@ it('escapes an exception message rather than rendering it as markup', function (
     expect($html)->not->toContain('<script>alert(1)</script>')
         ->toContain('&lt;script&gt;');
 });
+
+it('answers an API path with a problem document even when a browser asks', function () {
+    // The header says who is asking; the path says what the URL IS, and the path wins. Without this a
+    // developer opening an API URL in a browser is shown a styled page instead of the payload their client
+    // will receive — and so is anything that follows a link into the API with a copied browser header.
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: true, jsonPaths: ['api/*', 'webhooks/*']));
+
+    $browserAccept = ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml'];
+
+    expect($renderer->handles(Request::create('/api/orders/9', 'GET', server: $browserAccept)))->toBeFalse()
+        ->and($renderer->handles(Request::create('/webhooks/stripe', 'POST', server: $browserAccept)))->toBeFalse()
+        // Everything outside those prefixes still negotiates normally.
+        ->and($renderer->handles(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeTrue()
+        ->and($renderer->handles(Request::create('/apiary', 'GET', server: $browserAccept)))->toBeTrue();
+});

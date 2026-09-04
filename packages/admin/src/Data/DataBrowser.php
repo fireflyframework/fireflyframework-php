@@ -131,6 +131,8 @@ final class DataBrowser
      * `$perPage` is null to mean "the configured default" and is clamped to `firefly.admin.data.max-page-size`
      * in every case, so a caller-supplied page size can never ask the fallback path to materialise a table.
      * `$page` is 1-based and floored at 1.
+     *
+     * @param  list<DataFilter>  $filters
      */
     public function list(
         string $slug,
@@ -139,7 +141,7 @@ final class DataBrowser
         ?string $sort = null,
         string $direction = 'asc',
         ?string $search = null,
-        ?DataFilter $filter = null,
+        array $filters = [],
     ): DataListing {
         $perPage = $this->settings->clampPageSize($perPage);
         $page = max(1, $page);
@@ -159,14 +161,31 @@ final class DataBrowser
             return DataListing::failure(self::UNRESOLVABLE, $resource, $schema, $page, $perPage);
         }
 
-        // A filter naming a column the resource does not have is DROPPED rather than passed to the
-        // database. The column arrives in a URL an operator can hand-edit, and a query that reached the
-        // driver with an arbitrary identifier in it is a column-name oracle at best.
-        if ($filter !== null && ! in_array($filter->column, array_map(static fn (DataColumn $c): string => $c->name, $schema->columns), true)) {
-            $filter = null;
-        }
+        return $this->engine->list($repository, $resource, $schema, $page, $perPage, $sort, $direction, $search, $this->validFilters($filters, $schema));
+    }
 
-        return $this->engine->list($repository, $resource, $schema, $page, $perPage, $sort, $direction, $search, $filter);
+    /**
+     * Filters the resource can actually answer, with everything else dropped.
+     *
+     * A filter naming a column the resource does not have is DROPPED rather than passed to the database, and
+     * so is one naming an operator that is not in the fixed set. Both arrive in a URL an operator can
+     * hand-edit, and a query that reached the driver with an arbitrary identifier or comparison in it is a
+     * column-name oracle at best. Dropping rather than erroring is deliberate too: an error message that
+     * distinguished "no such column" from "no rows" would answer the same question more slowly.
+     *
+     * @param  list<DataFilter>  $filters
+     * @return list<DataFilter>
+     */
+    private function validFilters(array $filters, DataSchema $schema): array
+    {
+        $columns = array_map(static fn (DataColumn $column): string => $column->name, $schema->columns);
+
+        return array_values(array_filter(
+            $filters,
+            static fn (DataFilter $filter): bool => in_array($filter->column, $columns, true)
+                && DataFilter::isOperator($filter->operator)
+                && ($filter->value !== '' || ! $filter->needsValue()),
+        ));
     }
 
     /**
@@ -382,6 +401,96 @@ final class DataBrowser
     }
 
     /**
+     * Insert a new record.
+     *
+     * WHY THIS EXISTS NOW, having been deliberately absent. The original argument was that a generic form
+     * cannot honour an entity's constructor invariants — true, and it still is for a repository over a
+     * hand-written domain object, which is why that case is still refused by name. It was never true for an
+     * ELOQUENT model: Eloquent constructs one empty and fills it by attribute, which is exactly what
+     * `update()` already does to a row that exists. Create was therefore refusing on a risk that update was
+     * already taking, and the inconsistency cost every application a CRUD surface that stopped at RUD.
+     *
+     * The same gate, the same coercion and the same unknown-field refusal apply. A column the schema calls
+     * uneditable — the identifier, a masked secret — is skipped exactly as it is on update, so a crafted
+     * POST cannot choose a primary key or write a value the page would only ever show as `******`.
+     *
+     * @param  array<array-key, mixed>  $fields
+     */
+    public function create(string $slug, array $fields): DataWriteResult
+    {
+        $refusal = $this->refuseWrite($slug, null);
+        if ($refusal !== null) {
+            return $refusal;
+        }
+
+        $resource = $this->registry->get($slug);
+        if ($resource === null) {
+            return DataWriteResult::notFound('No such resource.', $slug);
+        }
+
+        $schema = $this->schemas->for($resource);
+
+        $unknown = array_values(array_filter(
+            array_keys($fields),
+            static fn (int|string $name): bool => ! $schema->has((string) $name),
+        ));
+        if ($unknown !== []) {
+            return DataWriteResult::refused(
+                sprintf('%d submitted field(s) are not columns of this resource.', count($unknown)),
+                $slug,
+            );
+        }
+
+        $repository = $this->repositoryFor($resource);
+        if ($repository === null) {
+            return DataWriteResult::failed(self::UNRESOLVABLE, $slug);
+        }
+
+        $model = $resource->entityClass;
+        if (! $resource->isEloquentBacked() || $model === null || ! is_a($model, Model::class, true)) {
+            return DataWriteResult::refused(
+                'This resource is not backed by an Eloquent model. A generic form cannot honour an arbitrary '
+                .'entity\'s constructor invariants, so records for it must be created through your own use cases.',
+                $slug,
+            );
+        }
+
+        $entity = new $model;
+
+        foreach ($fields as $name => $value) {
+            $column = $schema->column((string) $name);
+            if ($column === null || ! $column->isEditable()) {
+                continue;
+            }
+
+            $coerced = $this->coerce($entity, $column, $value);
+            if ($coerced === false) {
+                return DataWriteResult::refused(
+                    sprintf('The value for `%s` is not a valid %s.', $column->name, $column->type),
+                    $slug,
+                );
+            }
+
+            $entity->setAttribute($column->name, $coerced[0]);
+        }
+
+        try {
+            $saved = $repository->save($entity);
+        } catch (Throwable $e) {
+            return DataWriteResult::failed($this->engine->safeReason('The insert failed', $e), $slug);
+        }
+
+        $id = $saved instanceof Model ? $saved->getKey() : null;
+
+        return DataWriteResult::done(
+            'Created.',
+            $slug,
+            is_int($id) || is_string($id) ? $id : null,
+            array_keys($entity->getAttributes()),
+        );
+    }
+
+    /**
      * @param  CrudRepository<object, mixed>  $repository
      * @param  array<array-key, mixed>  $fields
      */
@@ -508,7 +617,7 @@ final class DataBrowser
      * browser on and forgot the second key needs to be told which key, and an operator who never turned the
      * browser on at all should not be told that a write key exists.
      */
-    private function refuseWrite(string $slug, int|string $id): ?DataWriteResult
+    private function refuseWrite(string $slug, int|string|null $id): ?DataWriteResult
     {
         if (! $this->settings->enabled) {
             return DataWriteResult::refused(self::DISABLED, $slug, $id);

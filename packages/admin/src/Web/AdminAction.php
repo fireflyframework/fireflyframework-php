@@ -134,13 +134,29 @@ final readonly class AdminAction
         }
 
         $slug = $request->input('resource');
-        $id = $request->input('id');
-
-        if (! is_string($slug) || $slug === '' || ! is_string($id) || $id === '') {
-            return $this->html($this->render('data-missing', ['slug' => is_string($slug) ? $slug : '']), 400);
+        if (! is_string($slug) || $slug === '') {
+            return $this->html($this->render('data-missing', ['slug' => '']), 400);
         }
 
         $back = $this->settings->url('data').'?resource='.urlencode($slug);
+
+        // A create has no id yet — that is the whole difference — so it is dispatched before the id check
+        // the other two operations need.
+        if ($request->input('op') === 'create') {
+            /** @var array<string, mixed> $new */
+            $new = is_array($request->input('f')) ? $request->input('f') : [];
+            $result = $this->data->create($slug, $new);
+
+            return $this->redirect(
+                $result->isDone() && $result->id !== null ? $back.'&id='.urlencode((string) $result->id) : $back.'&new=1',
+                $result->reason,
+            );
+        }
+
+        $id = $request->input('id');
+        if (! is_string($id) || $id === '') {
+            return $this->html($this->render('data-missing', ['slug' => $slug]), 400);
+        }
 
         if ($request->input('op') === 'delete') {
             $result = $this->data->delete($slug, $id);
@@ -195,6 +211,19 @@ final readonly class AdminAction
             return $this->html($this->render('data-index', ['resources' => $this->data->resources()]), 200);
         }
 
+        if ($request->query('new') !== null) {
+            $resource = $this->data->resource($slug);
+            $schema = $this->data->schema($slug);
+
+            return $resource === null || $schema === null
+                ? $this->html($this->render('data-missing', ['slug' => $slug]), 404)
+                : $this->html($this->render('data-new', [
+                    'resource' => $resource,
+                    'schema' => $schema,
+                    'writable' => $this->data->isWritable(),
+                ]), 200);
+        }
+
         $id = $request->query('id');
         if (is_string($id) && $id !== '') {
             $record = $this->data->find($slug, $id);
@@ -213,27 +242,72 @@ final readonly class AdminAction
         $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
         $search = $request->query('q');
 
-        // `fk`/`fv` is how a relation link narrows a listing: "the lines whose order_id is 7". DataBrowser
-        // drops a column the schema does not have, so a hand-edited pair cannot reach the driver.
-        $column = $request->query('fk');
-        $value = $request->query('fv');
-        $filter = is_string($column) && $column !== '' && is_string($value) && $value !== ''
-            ? new DataFilter($column, $value)
-            : null;
+        $perPage = $request->query('size');
+        $filters = $this->filters($request);
+
+        $listing = $this->data->list(
+            $slug,
+            max(1, $page),
+            is_string($perPage) && ctype_digit($perPage) ? (int) $perPage : null,
+            is_string($sort) && $sort !== '' ? $sort : null,
+            $direction,
+            is_string($search) && $search !== '' ? $search : null,
+            $filters,
+        );
 
         return $this->html($this->render('data-list', [
-            'listing' => $this->data->list(
-                $slug,
-                max(1, $page),
-                null,
-                is_string($sort) && $sort !== '' ? $sort : null,
-                $direction,
-                is_string($search) && $search !== '' ? $search : null,
-                $filter,
-            ),
+            'listing' => $listing,
             'writable' => $this->data->isWritable(),
             'relations' => $this->data->relationsFor($slug),
+            'operators' => DataFilter::operators(),
         ]), 200);
+    }
+
+    /**
+     * The filters a listing URL carries, in either spelling.
+     *
+     * TWO SPELLINGS, ONE MEANING. `fk`/`fv` is a single equality and is what every relation link produces —
+     * short enough to read in a status bar. `fc[]`/`fo[]`/`fv[]` is what the filter bar builds, and carries a
+     * column, an operator and a value per condition. Both are validated identically downstream: DataBrowser
+     * drops any column the schema does not publish and any operator outside the fixed set, so neither
+     * spelling is a wider surface than the other.
+     *
+     * @return list<DataFilter>
+     */
+    private function filters(Request $request): array
+    {
+        $columns = $request->query('fc');
+        $operators = $request->query('fo');
+        $values = $request->query('fv');
+
+        if (is_array($columns)) {
+            $operators = is_array($operators) ? $operators : [];
+            $values = is_array($values) ? $values : [];
+
+            $filters = [];
+            foreach (array_values($columns) as $index => $column) {
+                if (! is_string($column) || $column === '') {
+                    continue;
+                }
+
+                $operator = $operators[$index] ?? DataFilter::EQ;
+                $value = $values[$index] ?? '';
+
+                $filters[] = new DataFilter(
+                    $column,
+                    is_string($operator) ? $operator : DataFilter::EQ,
+                    is_string($value) ? $value : '',
+                );
+            }
+
+            return $filters;
+        }
+
+        $short = $request->query('fk');
+
+        return is_string($short) && $short !== '' && is_string($values) && $values !== ''
+            ? [new DataFilter($short, DataFilter::EQ, $values)]
+            : [];
     }
 
     /** @return array<string,mixed> */

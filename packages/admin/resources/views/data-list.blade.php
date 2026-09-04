@@ -11,24 +11,13 @@
         $identifier = $schema?->identifierColumn();
         $base = $settings->url('data').'?resource='.urlencode($resource?->slug ?? '');
 
-        // Carried onto every sort link and both pager links. A filter that survived neither would widen the
-        // listing back to every row the moment someone sorted it, which reads as rows appearing from nowhere.
-        $keepFilter = $listing->filter !== null ? '&'.$listing->filter->toQuery() : '';
-
-        /**
-         * Values arrive RAW: an Eloquent-backed row holds the driver's value, so a bool column can be int 1
-         * and a json column a string. The column TYPE is the rendering hint — never the value's PHP type.
-         */
-        $render = static function (mixed $value, ?DataColumn $column): string {
-            if ($value === null) { return '—'; }
-            $type = $column?->type ?? DataColumn::TYPE_STRING;
-
-            return match ($type) {
-                DataColumn::TYPE_BOOL => ((int) $value) === 1 ? 'true' : 'false',
-                DataColumn::TYPE_JSON => is_string($value) ? $value : (string) json_encode($value, JSON_UNESCAPED_SLASHES),
-                default => is_scalar($value) ? (string) $value : (string) json_encode($value, JSON_UNESCAPED_SLASHES),
-            };
-        };
+        // Everything a link must carry to survive being clicked. A sort that dropped the filter would widen
+        // the listing back to every row, which reads as rows appearing from nowhere; a filter that dropped
+        // the page size would silently resize the table under the reader.
+        $keepFilter = $listing->filterQuery() === '' ? '' : '&'.$listing->filterQuery();
+        $keepSearch = $listing->search !== null ? '&q='.urlencode($listing->search) : '';
+        $keepSize = '&size='.$listing->perPage;
+        $keepSort = $listing->sort !== null ? '&sort='.urlencode($listing->sort).'&dir='.$listing->direction : '';
     @endphp
 
     <div class="head">
@@ -37,14 +26,26 @@
             @if ($resource?->entityClass !== null)<code>{{ Format::shortClass($resource->entityClass) }}</code>@endif
             @if ($resource?->table)· table <code>{{ $resource->table }}</code>@endif
             · <a href="{{ $settings->url('data') }}">all resources</a>
+            @if ($relations !== [])
+                · related:
+                @foreach ($relations as $relation)
+                    @if ($relation->navigable() && $relation->toMany === false)
+                        <a href="{{ $settings->url('data') }}?resource={{ urlencode($relation->relatedSlug) }}">{{ $relation->shortRelated() }}</a>@if (! $loop->last), @endif
+                    @else
+                        <span class="dim">{{ $relation->shortRelated() ?: $relation->kind }}</span>@if (! $loop->last), @endif
+                    @endif
+                @endforeach
+            @endif
         </p>
     </div>
 
-    @if ($listing->filter !== null)
+    @if ($listing->filters !== [])
         <p class="tip">
-            Showing only rows where <code>{{ $listing->filter->column }}</code> is
-            <code>{{ $listing->filter->value }}</code>.
-            <a href="{{ $base }}">Show all {{ strtolower($resource?->label ?? 'records') }}</a>
+            Showing only rows where
+            @foreach ($listing->filters as $filter)
+                <code>{{ $filter->describe() }}</code>@if (! $loop->last) and @endif
+            @endforeach
+            · <a href="{{ $base }}{{ $keepSize }}">clear</a>
         </p>
     @endif
 
@@ -60,35 +61,86 @@
             ])
         </div>
     @else
+
+        {{-- THE FILTER BAR. One row per condition, each a column, a comparison and a value. It is a GET form,
+             so every filtered view is a URL an operator can bookmark, paste into a ticket or hand to someone
+             else — which is most of what a data explorer is for. --}}
+        <details class="panel filters" @if ($listing->filters !== []) open @endif>
+            <summary>
+                <span>Filter</span>
+                <span class="spacer"></span>
+                <span class="meta">{{ count($listing->filters) ?: 'none' }}{{ count($listing->filters) ? ' active' : '' }}</span>
+            </summary>
+            <form method="get" action="{{ $settings->url('data') }}" class="filterform">
+                <input type="hidden" name="resource" value="{{ $resource?->slug }}">
+                @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
+                <input type="hidden" name="dir" value="{{ $listing->direction }}">
+                <input type="hidden" name="size" value="{{ $listing->perPage }}">
+                @if ($listing->search !== null)<input type="hidden" name="q" value="{{ $listing->search }}">@endif
+
+                @php $rows = $listing->filters; $rows[] = null; @endphp
+                @foreach ($rows as $row)
+                    <div class="frow">
+                        <select name="fc[]" aria-label="Column">
+                            <option value="">—</option>
+                            @foreach ($schema->columns as $column)
+                                <option value="{{ $column->name }}" @selected($row?->column === $column->name)>{{ $column->label() }}</option>
+                            @endforeach
+                        </select>
+                        <select name="fo[]" aria-label="Comparison">
+                            @foreach ($operators as $id => $label)
+                                <option value="{{ $id }}" @selected($row?->operator === $id)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <input name="fv[]" value="{{ $row?->value }}" placeholder="value" aria-label="Value">
+                    </div>
+                @endforeach
+
+                <div class="actions">
+                    <button class="go" type="submit">Apply</button>
+                    @if ($listing->filters !== [])
+                        <a class="act" href="{{ $base }}{{ $keepSize }}">Clear</a>
+                    @endif
+                </div>
+            </form>
+        </details>
+
         <div class="panel">
             <header>
                 <h2>Records</h2>
                 <span class="spacer"></span>
                 @if ($schema->searchable() !== [])
-                    <form method="get" action="{{ $settings->url('data') }}" style="display:flex;gap:6px">
+                    <form method="get" action="{{ $settings->url('data') }}" class="inline">
                         <input type="hidden" name="resource" value="{{ $resource?->slug }}">
                         @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
                         <input type="hidden" name="dir" value="{{ $listing->direction }}">
-                        {{-- Searching inside a relation's listing NARROWS it; without these the search box
-                             would silently drop the relation and search the whole table. --}}
-                        @if ($listing->filter !== null)
-                            <input type="hidden" name="fk" value="{{ $listing->filter->column }}">
-                            <input type="hidden" name="fv" value="{{ $listing->filter->value }}">
-                        @endif
+                        <input type="hidden" name="size" value="{{ $listing->perPage }}">
+                        {{-- Searching inside a filtered listing NARROWS it; without these the search box
+                             would silently drop the filter and search the whole table. --}}
+                        @foreach ($listing->filters as $filter)
+                            <input type="hidden" name="fc[]" value="{{ $filter->column }}">
+                            <input type="hidden" name="fo[]" value="{{ $filter->operator }}">
+                            <input type="hidden" name="fv[]" value="{{ $filter->value }}">
+                        @endforeach
                         <input class="filter" type="search" name="q" value="{{ $listing->search }}" placeholder="Search…" aria-label="Search records">
                     </form>
+                @endif
+                @if ($writable && $resource?->isEloquentBacked())
+                    <a class="act" href="{{ $base }}&new=1">New record</a>
                 @endif
                 <span class="meta">{{ number_format($listing->total) }} total</span>
             </header>
 
             @if ($listing->isEmpty())
                 @include('firefly-admin::_empty', [
-                    'title' => $listing->search !== null ? 'Nothing matches that search' : 'No records yet',
-                    'body' => $listing->search !== null ? 'Try a shorter term, or clear the search.' : 'This resource has no rows.',
+                    'title' => $listing->search !== null || $listing->filters !== [] ? 'Nothing matches' : 'No records yet',
+                    'body' => $listing->search !== null || $listing->filters !== []
+                        ? 'Loosen a condition, or <a href="'.e($base).'">clear them all</a>.'
+                        : 'This resource has no rows.',
                 ])
             @else
                 <div class="tw">
-                    <table>
+                    <table class="grid">
                         <thead>
                         <tr>
                             @foreach ($columns as $column)
@@ -98,10 +150,10 @@
                                     $isSorted = $listing->sort === $column->name;
                                     $next = $isSorted && $listing->direction === 'asc' ? 'desc' : 'asc';
                                 @endphp
-                                <th>
+                                <th class="t-{{ $column->type }}">
                                     @if ($sortable)
-                                        <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $listing->search !== null ? '&q='.urlencode($listing->search) : '' }}{{ $keepFilter }}">
-                                            {{ $column->label() }}@if ($isSorted) {{ $listing->direction === 'asc' ? '↑' : '↓' }}@endif
+                                        <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $keepSearch }}{{ $keepFilter }}{{ $keepSize }}">
+                                            {{ $column->label() }}<span class="ord">{{ $isSorted ? ($listing->direction === 'asc' ? '↑' : '↓') : '' }}</span>
                                         </a>
                                     @else
                                         {{ $column->label() }}
@@ -115,9 +167,7 @@
                         @foreach ($listing->rows as $row)
                             <tr>
                                 @foreach ($columns as $column)
-                                    <td class="mono {{ $column->sensitive ? 'dim' : '' }} wrap text">
-                                        {{ $render($row[$column->name] ?? null, $column) }}
-                                    </td>
+                                    @include('firefly-admin::_cell', ['value' => $row[$column->name] ?? null, 'column' => $column, 'base' => $base])
                                 @endforeach
                                 @if ($identifier !== null)
                                     <td class="tight">
@@ -133,28 +183,56 @@
                     </table>
                 </div>
 
-                @if ($listing->totalPages() > 1)
-                    <div class="pager">
-                        <span>Page {{ $listing->page }} of {{ $listing->totalPages() }}</span>
-                        <span class="spacer"></span>
-                        @php
-                            $keep = ($listing->sort !== null ? '&sort='.urlencode($listing->sort).'&dir='.$listing->direction : '')
-                                .($listing->search !== null ? '&q='.urlencode($listing->search) : '')
-                                .$keepFilter;
-                        @endphp
-                        @if ($listing->hasPrevious())
-                            <a class="act" href="{{ $base }}&page={{ $listing->page - 1 }}{{ $keep }}">Previous</a>
+                @php
+                    $keep = $keepSort.$keepSearch.$keepFilter.$keepSize;
+                    $last = $listing->totalPages();
+                    // A window around the current page. Rendering every page of a 400-page table is a
+                    // pagination control nobody can use, and the ends are kept because "first" and "last" are
+                    // the two jumps people actually make.
+                    $window = range(max(1, $listing->page - 2), min($last, $listing->page + 2));
+                @endphp
+                <div class="pager">
+                    <form method="get" action="{{ $settings->url('data') }}" class="inline">
+                        <input type="hidden" name="resource" value="{{ $resource?->slug }}">
+                        @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
+                        <input type="hidden" name="dir" value="{{ $listing->direction }}">
+                        @if ($listing->search !== null)<input type="hidden" name="q" value="{{ $listing->search }}">@endif
+                        @foreach ($listing->filters as $filter)
+                            <input type="hidden" name="fc[]" value="{{ $filter->column }}">
+                            <input type="hidden" name="fo[]" value="{{ $filter->operator }}">
+                            <input type="hidden" name="fv[]" value="{{ $filter->value }}">
+                        @endforeach
+                        <label class="sizer">
+                            <span>Rows</span>
+                            <select name="size" onchange="this.form.submit()" aria-label="Rows per page">
+                                @foreach ([10, 25, 50, 100, 200] as $size)
+                                    <option value="{{ $size }}" @selected($listing->perPage === $size)>{{ $size }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    </form>
+                    <span class="spacer"></span>
+                    @if ($last > 1)
+                        <a class="act @if (! $listing->hasPrevious()) off @endif"
+                           @if ($listing->hasPrevious()) href="{{ $base }}&page={{ $listing->page - 1 }}{{ $keep }}" @endif>Previous</a>
+                        @if ($window[0] > 1)
+                            <a class="act" href="{{ $base }}&page=1{{ $keep }}">1</a>
+                            @if ($window[0] > 2)<span class="gap">…</span>@endif
                         @endif
-                        @if ($listing->hasNext())
-                            <a class="act" href="{{ $base }}&page={{ $listing->page + 1 }}{{ $keep }}">Next</a>
+                        @foreach ($window as $n)
+                            <a class="act @if ($n === $listing->page) on @endif" href="{{ $base }}&page={{ $n }}{{ $keep }}">{{ $n }}</a>
+                        @endforeach
+                        @if (end($window) < $last)
+                            @if (end($window) < $last - 1)<span class="gap">…</span>@endif
+                            <a class="act" href="{{ $base }}&page={{ $last }}{{ $keep }}">{{ $last }}</a>
                         @endif
-                    </div>
-                @endif
+                        <a class="act @if (! $listing->hasNext()) off @endif"
+                           @if ($listing->hasNext()) href="{{ $base }}&page={{ $listing->page + 1 }}{{ $keep }}" @endif>Next</a>
+                    @else
+                        <span class="meta">Showing all {{ number_format($listing->total) }}</span>
+                    @endif
+                </div>
             @endif
         </div>
     @endif
-
-    @unless ($writable)
-        <p class="note">Read-only. Set <code>firefly.admin.data.writable</code> to allow edits and deletes.</p>
-    @endunless
 @endsection

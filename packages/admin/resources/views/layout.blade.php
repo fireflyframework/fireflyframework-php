@@ -317,6 +317,50 @@
         /* A settings row is a bag of small key/value facts, not a table of its own — a nested table for
            `charset: utf8mb4` would be four times the markup to say the same thing, and would not wrap. */
         .pair{display:inline-flex;align-items:baseline;gap:5px;margin:0 8px 4px 0;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+
+        /* ── The data grid ─────────────────────────────────────────────────────────────────────────────
+           A table is read DOWN a column, not across a row, so the type decides the alignment: figures are
+           right-aligned with tabular numerals so digits line up and a long number is visibly long, and text
+           stays left. Everything is clipped to one line with the full value on the title, because a table
+           whose row height depends on its longest json blob is not a table.
+        */
+        table.grid td.cell{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
+        table.grid td.cell .v,table.grid td.cell .idv{overflow:hidden;text-overflow:ellipsis;display:block}
+        table.grid td.t-int,table.grid td.t-float,table.grid th.t-int,table.grid th.t-float{text-align:right;font-variant-numeric:tabular-nums}
+        table.grid td.t-json{color:var(--ink-2)}
+        table.grid td.t-datetime{color:var(--ink-2);white-space:nowrap}
+        table.grid td.nil{text-align:center}
+        table.grid td.secret .v{color:var(--ink-3);letter-spacing:.08em}
+        .nul{color:var(--ink-3)}
+        .idv{font-weight:650}
+        th .ord{display:inline-block;width:10px;color:var(--brand)}
+
+        /* Two states read faster as a shape than as a word. */
+        .bool{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600}
+        .bool::before{content:"";width:7px;height:7px;border-radius:2px;background:currentColor}
+        .bool.yes{color:var(--up)}
+        .bool.no{color:var(--ink-3)}
+
+        /* ── The filter bar ── */
+        details.filters>summary{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;
+            font-size:13px;font-weight:650;background:var(--panel-2);border-bottom:1px solid var(--line);list-style:none}
+        details.filters>summary::-webkit-details-marker{display:none}
+        details.filters>summary::before{content:"▸";color:var(--ink-3);font-size:10px}
+        details.filters[open]>summary::before{content:"▾"}
+        .filterform{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+        .frow{display:flex;gap:8px;flex-wrap:wrap}
+        .frow select,.frow input{font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line-2);
+            border-radius:7px;background:var(--panel);color:var(--ink);min-width:0}
+        .frow select{flex:0 1 190px}
+        .frow input{flex:1 1 190px}
+        .filterform .actions{display:flex;gap:8px;align-items:center}
+        form.inline{display:flex;gap:6px;align-items:center;margin:0}
+
+        .pager .act.on{border-color:var(--brand);color:var(--brand);font-weight:650}
+        .pager .act.off{opacity:.45;pointer-events:none}
+        .pager .gap{color:var(--ink-3);padding:0 2px}
+        .sizer{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+        .sizer select{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);color:var(--ink)}
         .pair b{font-weight:600;color:var(--ink-3)}
         .pair.opt b{color:var(--accent)}
         .stat dd.sm{font-size:14px;word-break:break-all}

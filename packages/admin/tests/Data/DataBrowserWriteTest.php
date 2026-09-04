@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Data\DataWriteOutcome;
 use Firefly\Admin\Tests\Data\Support\DataBrowserTestCase;
 use Illuminate\Support\Facades\DB;
@@ -210,12 +209,52 @@ it('rejects a crafted numeric field name as data, not as a TypeError', function 
         ->and(DB::table('admin_records')->where('id', 1)->value('email'))->toBe('ada@example.test');
 });
 
-// Not a formality: `create()` is refused on principle (a generic form cannot honour a constructor's
-// invariants — see DataBrowser's class docblock), and this is the guard that keeps a future edit from
-// quietly adding one back.
-it('offers no create operation at all', function () {
-    expect(get_class_methods(DataBrowser::class))
-        ->not->toContain('create')
-        ->not->toContain('insert')
-        ->not->toContain('store');
+it('creates a record on an Eloquent-backed resource, under the same two switches', function () {
+    /** @var DataBrowserTestCase $this */
+    $browser = $this->browser(['enabled' => true, 'writable' => true]);
+
+    $result = $browser->create('admin-record', ['email' => 'new@example.test', 'amount' => '75', 'active' => '1']);
+
+    expect($result->isDone())->toBeTrue()
+        ->and(DB::table('admin_records')->where('email', 'new@example.test')->value('amount'))->toBe(75);
+});
+
+it('refuses create for a resource whose entity is not an Eloquent model', function () {
+    /** @var DataBrowserTestCase $this */
+    // THIS is the invariant the old blanket ban was protecting, and it is the only half of it that was ever
+    // true. A generic form cannot honour an arbitrary constructor — PlainNote takes a protected id and three
+    // promoted parameters — so a record for it must come from the application's own use cases. Eloquent is
+    // the opposite case: it builds one empty and fills it by attribute, which is exactly what update() has
+    // always done to a row that exists, so create was refusing on a risk update was already taking.
+    $result = $this->browser(['enabled' => true, 'writable' => true])->create('plain-note', ['title' => 'nope']);
+
+    expect($result->isDone())->toBeFalse()
+        ->and($result->reason)->toContain('not backed by an Eloquent model')
+        ->and(DB::table('admin_notes')->where('title', 'nope')->count())->toBe(0);
+});
+
+it('will not create while the browser is read-only or switched off', function () {
+    /** @var DataBrowserTestCase $this */
+    $readOnly = $this->browser(['enabled' => true, 'writable' => false]);
+    $off = $this->browser(['enabled' => false, 'writable' => true]);
+
+    expect($readOnly->create('admin-record', ['email' => 'sneak@example.test'])->isDone())->toBeFalse()
+        ->and($off->create('admin-record', ['email' => 'sneak@example.test'])->isDone())->toBeFalse()
+        ->and(DB::table('admin_records')->where('email', 'sneak@example.test')->count())->toBe(0);
+});
+
+it('refuses a create naming a column the resource does not have, and skips the ones it may not set', function () {
+    /** @var DataBrowserTestCase $this */
+    $browser = $this->browser(['enabled' => true, 'writable' => true]);
+
+    expect($browser->create('admin-record', ['email' => 'x@example.test', 'not_a_column' => '1'])->isDone())->toBeFalse();
+
+    // The identifier and the masked secret are uneditable, so a crafted POST cannot choose a primary key or
+    // write a value the page would only ever show as ******. They are SKIPPED rather than refused, exactly
+    // as on update, so a form that round-trips a whole row still works.
+    $result = $browser->create('admin-record', ['id' => '999', 'email' => 'chosen@example.test', 'api_token' => 'sk_live_planted', 'amount' => '1']);
+
+    expect($result->isDone())->toBeTrue()
+        ->and(DB::table('admin_records')->where('id', 999)->count())->toBe(0)
+        ->and(DB::table('admin_records')->where('email', 'chosen@example.test')->value('api_token'))->toBeNull();
 });

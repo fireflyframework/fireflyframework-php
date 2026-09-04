@@ -72,7 +72,12 @@ final class WebServiceProvider extends FireflyServiceProvider
                 // renderer stays constructible in a test that never booted a Laravel application.
                 $base = $app instanceof Application ? $app->basePath() : '';
 
-                return new ErrorPageRenderer($app->make(ErrorPageSettings::class), $base);
+                // The view factory is optional: an application may have none bound, and the built-in page
+                // needs none. It is resolved lazily so a broken view layer cannot break the renderer that
+                // exists to explain broken things.
+                $views = $app->bound(ViewFactory::class) ? $app->make(ViewFactory::class) : null;
+
+                return new ErrorPageRenderer($app->make(ErrorPageSettings::class), $base, $views);
             });
         }
 

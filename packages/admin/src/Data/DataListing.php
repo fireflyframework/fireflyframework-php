@@ -25,6 +25,7 @@ final readonly class DataListing
 {
     /**
      * @param  list<array<string, mixed>>  $rows  each row keyed by column name, in schema column order
+     * @param  list<DataFilter>  $filters
      */
     public function __construct(
         public ?DataResource $resource,
@@ -37,8 +38,14 @@ final readonly class DataListing
         public string $direction = 'asc',
         public ?string $search = null,
         public ?string $error = null,
-        public ?DataFilter $filter = null,
+        public array $filters = [],
     ) {}
+
+    /** The query-string form of this listing's filters, for every link that must preserve them. */
+    public function filterQuery(): string
+    {
+        return DataFilter::toQuery($this->filters);
+    }
 
     /**
      * The empty-with-a-reason constructor every refusal and every caught failure goes through.

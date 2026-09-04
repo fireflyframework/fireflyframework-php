@@ -96,6 +96,7 @@ final class DataQueryEngine
      * home, in DataBrowser, shared with the write path.
      *
      * @param  CrudRepository<object, mixed>  $repository
+     * @param  list<DataFilter>  $filters
      */
     public function list(
         CrudRepository $repository,
@@ -106,7 +107,7 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $search,
-        ?DataFilter $filter = null,
+        array $filters = [],
     ): DataListing {
         $sort = $this->sortColumn($schema, $sort);
         $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
@@ -116,7 +117,7 @@ final class DataQueryEngine
         // and stringifies whatever it finds, which is not obviously fallible until a model's accessor or a
         // value object's __toString throws — and a half-rendered page is exactly as broken as a failed query.
         try {
-            [$entities, $total] = $this->fetch($repository, $schema, $page, $perPage, $sort, $direction, $term, $filter);
+            [$entities, $total] = $this->fetch($repository, $schema, $page, $perPage, $sort, $direction, $term, $filters);
 
             $rows = [];
             foreach ($entities as $entity) {
@@ -126,7 +127,7 @@ final class DataQueryEngine
             return DataListing::failure($this->safeReason('The listing query failed', $e), $resource, $schema, $page, $perPage);
         }
 
-        return new DataListing($resource, $schema, $rows, $total, $page, $perPage, $sort, $direction, $term, null, $filter);
+        return new DataListing($resource, $schema, $rows, $total, $page, $perPage, $sort, $direction, $term, null, $filters);
     }
 
     /**
@@ -160,6 +161,7 @@ final class DataQueryEngine
      * Pick the page of entities and the grand total, by whichever of the four paths this repository supports.
      *
      * @param  CrudRepository<object, mixed>  $repository
+     * @param  list<DataFilter>  $filters
      * @return array{0: list<object>, 1: int}
      */
     private function fetch(
@@ -170,11 +172,11 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $term,
-        ?DataFilter $filter = null,
+        array $filters = [],
     ): array {
         $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction));
 
-        if (($term !== null || $filter !== null) && $repository instanceof EloquentRepository) {
+        if (($term !== null || $filters !== []) && $repository instanceof EloquentRepository) {
             $specifications = [];
 
             if ($term !== null) {
@@ -185,43 +187,60 @@ final class DataQueryEngine
                 $specifications[] = $this->searchSpecification($columns, $term);
             }
 
-            if ($filter !== null) {
+            foreach ($filters as $filter) {
                 $specifications[] = $this->filterSpecification($filter);
             }
 
-            // AND, so a search inside a relation's listing narrows that relation rather than escaping it —
-            // the same reasoning that keeps the search's OR group nested.
+            // AND throughout, so a search inside a relation's listing narrows that relation rather than
+            // escaping it, and a second filter narrows the first — the same reasoning that keeps the
+            // search's OR group nested.
             /** @var Page<object> $result */
             $result = $repository->findBySpecificationPaged(Specifications::allOf(...$specifications), $pageable);
 
             return [$result->items, $result->total];
         }
 
-        if ($term === null && $filter === null && $repository instanceof PagingAndSortingRepository) {
+        if ($term === null && $filters === [] && $repository instanceof PagingAndSortingRepository) {
             /** @var Page<object> $result */
             $result = $repository->findPaged($pageable);
 
             return [$result->items, $result->total];
         }
 
-        return $this->fetchInPhp($repository, $schema, $page, $perPage, $sort, $direction, $term, $filter);
+        return $this->fetchInPhp($repository, $schema, $page, $perPage, $sort, $direction, $term, $filters);
     }
 
     /**
-     * `column = value`, applied through the repository's own builder so anything its `query()` seam already
+     * One filter as a predicate on the repository's own builder, so anything its `query()` seam already
      * constrained still holds.
      *
-     * The comparison is a LOOSE string one, because the value arrives from a URL and is therefore always a
-     * string while the column may be an integer key. Binding it as-is lets the database do the coercion it
-     * would do for `where id = '7'` anyway, and keeps the value a bound parameter rather than anything
-     * concatenated.
+     * EVERY COMPARISON BINDS. The column has already been validated against the schema by the caller, and
+     * the value is passed as a parameter in every branch — including the LIKE ones, where the wildcards are
+     * added around an escaped value rather than by interpolating the value into a pattern. The result is
+     * that what an operator can express is exactly these eight comparisons over exactly the columns the
+     * resource publishes, and nothing about a hand-edited URL widens either.
+     *
+     * The comparisons are LOOSE on type, because a value arrives from a URL and is therefore always a string
+     * while the column may be an integer or a decimal. Binding it as-is lets the database do the coercion it
+     * would do for `where id = '7'` anyway.
      *
      * @return Specification<Model>
      */
     private function filterSpecification(DataFilter $filter): Specification
     {
         return Specifications::where(static function (Builder $query) use ($filter): void {
-            $query->where($filter->column, '=', $filter->value);
+            $escaped = addcslashes($filter->value, '%_\\');
+
+            match ($filter->operator) {
+                DataFilter::NE => $query->where($filter->column, '!=', $filter->value),
+                DataFilter::CONTAINS => $query->where($filter->column, 'like', '%'.$escaped.'%'),
+                DataFilter::STARTS => $query->where($filter->column, 'like', $escaped.'%'),
+                DataFilter::GT => $query->where($filter->column, '>', $filter->value),
+                DataFilter::LT => $query->where($filter->column, '<', $filter->value),
+                DataFilter::NULL => $query->whereNull($filter->column),
+                DataFilter::NOT_NULL => $query->whereNotNull($filter->column),
+                default => $query->where($filter->column, '=', $filter->value),
+            };
         });
     }
 
@@ -231,6 +250,7 @@ final class DataQueryEngine
      * on the first page.
      *
      * @param  CrudRepository<object, mixed>  $repository
+     * @param  list<DataFilter>  $filters
      * @return array{0: list<object>, 1: int}
      */
     private function fetchInPhp(
@@ -241,7 +261,7 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $term,
-        ?DataFilter $filter = null,
+        array $filters = [],
     ): array {
         $needle = $term === null ? null : mb_strtolower($term);
         $columns = $this->searchColumns($schema);
@@ -254,9 +274,10 @@ final class DataQueryEngine
                 continue;
             }
 
-            // Loose, for the same reason the SQL path binds a string: the value came from a URL and the
-            // column is as likely to be an int key as a string.
-            if ($filter !== null && ! $this->equals($values[$filter->column] ?? null, $filter->value)) {
+            // The same eight comparisons the SQL path applies, so a repository that cannot page is filtered
+            // by the same rules as one that can — two implementations of one predicate would drift, and the
+            // drift would show as the same filter meaning different things on different resources.
+            if (! $this->passes($values, $filters)) {
                 continue;
             }
 
@@ -300,9 +321,33 @@ final class DataQueryEngine
         });
     }
 
-    private function equals(mixed $value, string $expected): bool
+    /**
+     * @param  array<string, mixed>  $values
+     * @param  list<DataFilter>  $filters
+     */
+    private function passes(array $values, array $filters): bool
     {
-        return is_scalar($value) && (string) $value === $expected;
+        foreach ($filters as $filter) {
+            $value = $values[$filter->column] ?? null;
+            $string = is_scalar($value) ? (string) $value : null;
+
+            $ok = match ($filter->operator) {
+                DataFilter::NE => $string !== $filter->value,
+                DataFilter::CONTAINS => $string !== null && str_contains(mb_strtolower($string), mb_strtolower($filter->value)),
+                DataFilter::STARTS => $string !== null && str_starts_with(mb_strtolower($string), mb_strtolower($filter->value)),
+                DataFilter::GT => $string !== null && $this->compare($value, $filter->value) > 0,
+                DataFilter::LT => $string !== null && $this->compare($value, $filter->value) < 0,
+                DataFilter::NULL => $value === null,
+                DataFilter::NOT_NULL => $value !== null,
+                default => $string === $filter->value,
+            };
+
+            if (! $ok) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
