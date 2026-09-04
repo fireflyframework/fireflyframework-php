@@ -27,9 +27,12 @@ use Throwable;
  * feature-switch console, for the same reason: a convenience that is only ever wanted on a developer's
  * machine should be impossible to reach anywhere else.
  *
- * IT NEVER WRITES ANYTHING. The result is a config snippet to paste, not a file edit. Persisting a
- * connection would mean writing credentials from a browser form into a file on disk, and the wizard's value
- * — telling you whether the settings work — does not need that.
+ * IT NEVER WRITES ANYTHING, and that took two attempts to be true. The result is a config snippet to paste,
+ * not a file edit — persisting a connection would mean writing credentials from a browser form into a file
+ * on disk, and the wizard's value (telling you whether the settings work) does not need that. But the sqlite
+ * branch forwarded the caller's `database` straight to PDO, which CREATES the file it names: a field on this
+ * form could drop an attacker-named file anywhere the worker could write. sqlite is now always tested
+ * against `:memory:`, which is the only sqlite connection that has nothing to get wrong.
  */
 final class ConnectionWizard
 {
@@ -160,7 +163,13 @@ final class ConnectionWizard
         $get = static fn (string $key, string $fallback = ''): string => trim($input[$key] ?? '') !== '' ? trim($input[$key]) : $fallback;
 
         if ($driver === 'sqlite') {
-            return ['driver' => 'sqlite', 'database' => $get('database', ':memory:'), 'prefix' => '', 'foreign_key_constraints' => true];
+            // ONLY `:memory:`. Every other sqlite "database" is a PATH, and PDO CREATES it — so a form field
+            // that reached the driver was a write primitive: `database=/var/www/html/x.php` (or a `file:`
+            // URI with `?mode=rwc`) puts an attacker-named, attacker-located file on disk, which is a long
+            // way from "test a connection" and flatly contradicts this class's promise to write nothing.
+            // Testing a sqlite connection has no host and no credentials to get wrong, so there is nothing
+            // the path would teach that :memory: does not.
+            return ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '', 'foreign_key_constraints' => true];
         }
 
         return [

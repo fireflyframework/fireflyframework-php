@@ -64,13 +64,15 @@ it('reports the driver\'s own message when a connection fails', function () use 
     // and no reconnector available" for a wrong password, a closed port and a typo in the host alike. The
     // wizard forces the PDO open first and unwraps to the innermost exception, so the message that comes
     // back is the one that tells you where to look.
-    $result = $wizard()->test(['driver' => 'sqlite', 'database' => '/no/such/directory/at/all.sqlite']);
+    // Port 1 is refused immediately by the loopback stack, so this is deterministic and fast — and it is a
+    // network driver, which is the case sqlite (always :memory: now) cannot exercise.
+    $result = $wizard()->test(['driver' => 'pgsql', 'host' => '127.0.0.1', 'port' => '1', 'database' => 'x', 'username' => 'u', 'password' => 'p']);
 
     expect($result['ok'])->toBeFalse()
         ->and($result['message'])->not->toContain('no reconnector')
-        // Specific enough to act on: it names the path it tried, which is the whole difference from the
-        // wrapper's one-size-fits-all sentence.
-        ->and($result['message'])->toContain('/no/such/directory/at/all.sqlite');
+        // Specific enough to act on: the driver names what it tried and why it failed, which is the whole
+        // difference from the wrapper's one-size-fits-all sentence.
+        ->and(strtolower($result['message']))->toContain('refused');
 });
 
 it('refuses a driver it does not know rather than handing it to a connector', function () use ($wizard) {
@@ -85,4 +87,23 @@ it('never writes anything', function () {
         ->not->toContain('save')
         ->not->toContain('persist')
         ->not->toContain('write');
+});
+
+it('cannot be used to create a file anywhere on disk', function () use ($wizard) {
+    // sqlite's "database" is a PATH and PDO CREATES it, so forwarding the form field to the driver made this
+    // a write primitive — `database=/tmp/planted.php`, or a `file:` URI with `?mode=rwc`, puts an
+    // attacker-named file wherever the worker can write. That is a long way from "test a connection", and it
+    // contradicted this class's own promise to write nothing.
+    $planted = sys_get_temp_dir().'/firefly-wizard-planted-'.bin2hex(random_bytes(6)).'.php';
+    $uri = sys_get_temp_dir().'/firefly-wizard-uri-'.bin2hex(random_bytes(6)).'.php';
+
+    $wizard()->test(['driver' => 'sqlite', 'database' => $planted]);
+    $wizard()->test(['driver' => 'sqlite', 'database' => 'file:'.$uri.'?mode=rwc']);
+
+    expect(is_file($planted))->toBeFalse()
+        ->and(is_file($uri))->toBeFalse();
+
+    // And it still does the job: sqlite is tested against :memory:, which has no host, no credentials and
+    // nothing a path would have taught.
+    expect($wizard()->test(['driver' => 'sqlite', 'database' => $planted])['ok'])->toBeTrue();
 });

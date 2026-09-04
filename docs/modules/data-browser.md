@@ -6,13 +6,10 @@ The data browser is a Django-admin-style view over your application's own data, 
 It is **off by default, and it does not inherit the dashboard's default.** Read
 [The two gates](#the-two-gates) before you switch it on — that section is the point of this page.
 
-!!! warning "Today this is a library, not a URL"
-    Discovery, schema derivation, reads and both writes are complete, tested and usable from your own code via
-    `DataBrowser::forContainer()`. The Blade page and the route that would put it in the dashboard's menu have
-    **not landed** — `firefly/admin` registers no data-browser page, and `admin.md`'s page list is still
-    thirteen. Setting `firefly.admin.data.enabled` therefore opens an API, not a screen. See
-    [Known-latent](#known-latent).
-
+!!! tip "Two switches, and neither follows `app.debug`"
+    `firefly.admin.data.enabled` turns the browser on and `firefly.admin.data.writable` permits writes on top
+    of it. Both default to **false** and neither is implied by `app.debug` or by `firefly.admin.enabled` —
+    see [The two gates](#the-two-gates), which is the point of this page.
 ```bash
 composer require firefly/admin      # already required by firefly/firefly; the browser is a part of the dashboard, not a package of its own
 ```

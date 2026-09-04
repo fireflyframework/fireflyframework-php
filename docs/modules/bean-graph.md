@@ -172,7 +172,7 @@ check.
 
 ## Reading it against the Conditions page
 
-The graph and [Conditions](admin.md#the-thirteen-pages) answer complementary questions, and the pair is the fastest
+The graph and [Conditions](admin.md#the-pages) answer complementary questions, and the pair is the fastest
 way to diagnose an auto-configuration surprise:
 
 1. **Conditions** says *whether* a framework bean was registered or backed off, and on which condition.

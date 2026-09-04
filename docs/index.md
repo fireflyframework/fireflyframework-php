@@ -29,8 +29,8 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 - **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
   metrics core, both secured by the same config as everything else, plus a server-rendered
   [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md), and an
-  opt-in, off-by-default [data browser](modules/data-browser.md) over your own repositories — shipping today as
-  a library, with its dashboard page still to land.
+  opt-in, off-by-default [data browser](modules/data-browser.md) over your own repositories, with filtering,
+  full CRUD, relations you can walk and a drawn [entity map](modules/admin.md#the-entity-map).
 - **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
   same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
   origin — no annotation dialect, no npm, no CDN.
@@ -82,7 +82,7 @@ Want to see it all running together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *LaraFly by Example*
-book — 13 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
+book — 14 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 in [`book/`](https://github.com/fireflyframework/fireflyframework-php/tree/main/book).
 
 ## Quick Links

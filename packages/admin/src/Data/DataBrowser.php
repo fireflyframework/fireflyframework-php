@@ -13,20 +13,23 @@ use Illuminate\Database\Eloquent\Model;
 use Throwable;
 
 /**
- * The database browser's single entry point: discovery, schema, reads and the two writes, behind the gates.
+ * The database browser's single entry point: discovery, schema, reads and the three writes, behind the gates.
  *
- * WHY THERE IS NO `create()`, AND WHY THAT IS NOT AN OMISSION TO BE FILLED IN LATER. A generic create form
- * over an arbitrary entity is a promise the browser cannot keep. An aggregate's constructor is where its
- * invariants live — an Order that must have at least one line, a Wallet whose balance starts at zero in the
- * currency it was opened in, a value object that rejects a malformed IBAN — and a form built from a column
- * list knows none of them. There are only two ways to build the row: call the constructor, which needs
- * arguments the form cannot supply in the right types or the right order and will fail on the first entity
- * with a non-trivial signature; or write the columns straight to the table, which produces a row the domain
- * model considers impossible and which every later read then has to cope with. The second is what a "just
- * insert the columns" implementation actually does, and it is worse than having no button, because it looks
- * like it worked. Creation belongs to the application's own code, where the constructor is. `update()` is
- * offered because it operates on a row that ALREADY satisfies its invariants and changes named columns on it;
- * `delete()` because removal needs no invariant at all.
+ * WHICH ENTITIES MAY BE CREATED, AND WHY THE ANSWER IS NOT "ALL OF THEM". A generic create form over an
+ * ARBITRARY entity is a promise the browser cannot keep. An aggregate's constructor is where its invariants
+ * live — an Order that must have at least one line, a Wallet whose balance starts at zero in the currency it
+ * was opened in, a value object that rejects a malformed IBAN — and a form built from a column list knows
+ * none of them. There are only two ways to build such a row: call the constructor, which needs arguments the
+ * form cannot supply in the right types or the right order and will fail on the first entity with a
+ * non-trivial signature; or write the columns straight to the table, which produces a row the domain model
+ * considers impossible and which every later read then has to cope with. The second is what a "just insert
+ * the columns" implementation actually does, and it is worse than having no button, because it looks like it
+ * worked. That case is refused by name.
+ *
+ * It was never the case for an ELOQUENT model, which is constructed empty and filled by attribute — exactly
+ * what `update()` has always done to a row that exists. `create()` was therefore refusing on a risk
+ * `update()` was already taking, and the inconsistency cost every application a CRUD surface that stopped at
+ * RUD. `delete()` needs no invariant at all.
  *
  * EVERY OPERATION IS GATED TWICE — once by `firefly.admin.data.enabled` and, for writes, again by
  * `firefly.admin.data.writable`, both default false. See DataBrowserSettings for the argument about why this
@@ -324,7 +327,8 @@ final class DataBrowser
      *
      * WHY ONLY ELOQUENT-BACKED RESOURCES. Mutating a plain entity means either calling setters the browser
      * cannot know about or reflecting values into promoted `readonly` properties, which is exactly the
-     * invariant-bypassing that `create()` is refused for (see the class docblock) — with the additional
+     * invariant-bypassing `create()` still refuses for a NON-Eloquent entity (see the class docblock) — with
+     * the additional
      * problem that on a readonly property it is not even possible. A resource whose entities are value
      * objects is browsable and deletable, and its edit is refused with a reason.
      *

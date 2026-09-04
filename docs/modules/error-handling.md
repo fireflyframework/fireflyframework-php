@@ -80,11 +80,27 @@ $payload  = $response->toArray(); // omits null/empty optionals
 `FireflyException` thrown while handling a request is turned into an `application/problem+json` response
 by `Firefly\Web\Exception\ProblemDetailsRenderer`, via `ErrorResponse::fromException(...)`, at the
 exception's own `httpStatus()` — the shape is exactly the payload above, produced by the same
-kernel-level `ErrorResponse` this page documents. A generic (non-`FireflyException`) `Throwable` is
-first wrapped as a category-`Internal`, HTTP-500 `FireflyException` before being rendered the same way.
-That wrapping rule lives in one place — `Firefly\Web\Error\ProblemMapper` — because the HTML page below
-needs the same answer, and two copies of it would eventually tell a browser and a client different things
-about one failure.
+kernel-level `ErrorResponse` this page documents.
+
+`Firefly\Web\Error\ProblemMapper` owns the rule for turning *any* throwable into that shape, in one place,
+because the HTML page below needs the same answer and two copies of it would eventually tell a browser and a
+client different things about one failure. It has **three** cases, and only the third is a disclosure:
+
+| Throwable | Status | Whose message is it? |
+|---|---|---|
+| A `FireflyException` | its own `httpStatus()` | the application's, written **for** the client |
+| An `HttpExceptionInterface` (the router's own 404, `abort(409, '…')`) | its real status | the author's, via `abort()` |
+| Anything else | 500 `INTERNAL_ERROR` | **an accident**, and withheld — see below |
+
+!!! danger "A generic throwable's message is not for the client"
+    A `QueryException` stringifies the failing SQL *and its bindings*; a `TypeError` names an absolute path on
+    the server; a `PDOException` names the host it could not reach. All three were copied verbatim into
+    `detail` and published as problem+json — in production, with no `app.debug` gate anywhere on that path,
+    while the HTML page beside it withheld everything. Both renderings are now gated by the same switch,
+    `firefly.web.error-page.trace`, which follows `app.debug`: with it off an unhandled throwable answers
+    `An unexpected error occurred.` and its real message stays on the exception, where the log has it. When
+    no settings object is bound at all — a JSON-only deployment that never constructed one — the default is
+    the **safe** one; an absent gate must not mean an open one.
 
 Before that generic rendering happens, LaraFly gives the application a chance to handle the exception
 itself:
@@ -98,9 +114,9 @@ itself:
   handler for a more-derived exception class outranks one for an ancestor class.
 - A matched handler's return value is content-negotiated like any other controller return, but rendered
   at the **exception's** `httpStatus()` rather than the route's default status.
-- If no handler matches at any scope, the exception propagates to the RFC-7807 renderer described above —
-  so an unhandled 404/422/500 always still comes back as `application/problem+json`, never an uncaught
-  framework error page.
+- If no handler matches at any scope, the exception propagates to the renderers described above — so an
+  unhandled 404/422/500 comes back as `application/problem+json`, or as the LaraFly error page when the
+  caller asked for HTML (see the next section), and never as an uncaught framework error page.
 
 ## Who gets JSON, and who gets a page
 

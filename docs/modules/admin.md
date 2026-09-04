@@ -27,9 +27,10 @@ install line above.
 
 ## The pages
 
-Every page is a view over one `ActuatorEndpoint`'s payload. The menu groups them the way an operator thinks rather
-than the way the packages are laid out — *what is it doing right now*, *what did it wire at boot*, *how is it
-configured* — because a flat list of thirteen links is a worse menu than three short ones.
+Most pages are a view over one `ActuatorEndpoint`'s payload; four read the container instead. The menu groups
+them the way an operator thinks rather than the way the packages are laid out — *what is it doing right now*,
+*what did it wire at boot*, *what is its data*, *how is it configured* — because a flat list of seventeen links
+is a worse menu than four short ones.
 
 | Group | Page | Path | Endpoint | Answers |
 |---|---|---|---|---|

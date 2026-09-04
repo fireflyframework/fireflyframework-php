@@ -7,6 +7,8 @@ use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ErrorReport;
+use Firefly\Web\Error\ProblemMapper;
+use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -187,4 +189,59 @@ it('forces nothing at all when the page is switched off', function () {
     $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: false, jsonPaths: ['api/*']));
 
     expect($off->forcesJson(Request::create('/api/nope', 'GET')))->toBeFalse();
+});
+
+it('withholds an unhandled exception message from problem+json in production', function () {
+    // The HTML page has always been gated by `trace`; this path had none, so the SAME failure withheld
+    // everything from a browser and published a QueryException's SQL and bindings to a client. A generic
+    // Throwable's message is an accident — a table name, a bound value, an absolute path on the server —
+    // and is never written for the caller.
+    $leak = new RuntimeException("SQLSTATE[42S02]: no such table (SQL: select * from users where email = 'ada@example.test')");
+
+    $withheld = ProblemMapper::toFireflyException($leak, disclose: false);
+    $shown = ProblemMapper::toFireflyException($leak, disclose: true);
+
+    expect($withheld->getMessage())->toBe(ProblemMapper::OPAQUE)
+        ->not->toContain('SQLSTATE')
+        ->not->toContain('ada@example.test')
+        // The real message is still on the exception, where a log can have it: it is withheld from the
+        // response, not thrown away.
+        ->and($withheld->getPrevious()?->getMessage())->toBe($leak->getMessage())
+        ->and($shown->getMessage())->toContain('SQLSTATE');
+});
+
+it('keeps publishing a FireflyException\'s own message, which was written for the caller', function () {
+    // The taxonomy exists so an application can say "Order 42 does not exist." to a client. Gating that
+    // would turn every deliberate business error into "An unexpected error occurred." — the opposite of the
+    // point.
+    $business = new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND');
+
+    expect(ProblemMapper::toFireflyException($business, disclose: false)->getMessage())
+        ->toBe('Order 42 does not exist.');
+
+    // An abort(404, '…') message is equally author-supplied, so it survives too.
+    expect(ProblemMapper::toFireflyException(new NotFoundHttpException('No such tenant.'), disclose: false)->getMessage())
+        ->toBe('No such tenant.');
+});
+
+it('renders problem+json with the message withheld when the settings say so', function () {
+    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings(trace: false));
+    $body = (string) $renderer->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent();
+
+    expect($body)->not->toContain('/srv/app/.env')
+        ->toContain(ProblemMapper::OPAQUE)
+        ->toContain('INTERNAL_ERROR');
+
+    // And with the gate open — a developer's machine — the real message comes through.
+    $debug = new ProblemDetailsRenderer(new ErrorPageSettings(trace: true));
+    expect((string) $debug->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent())
+        ->toContain('/srv/app/.env');
+});
+
+it('defaults to withholding when no settings object was bound at all', function () {
+    // A JSON-only deployment may never construct ErrorPageSettings. The default has to be the safe one:
+    // an absent gate must not mean an open one.
+    expect((string) (new ProblemDetailsRenderer)->render(new RuntimeException('leak me'), Request::create('/api/x'))->getContent())
+        ->not->toContain('leak me')
+        ->toContain(ProblemMapper::OPAQUE);
 });

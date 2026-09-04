@@ -33,9 +33,9 @@ analogue) that requires every runtime package, `firefly/cli` included, so `firef
 composer require firefly/firefly
 ```
 
-The broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`), the browser dashboard
-(`firefly/admin`) and the test kit
-(`firefly/testing`) stay separate — require them only if you use them.
+The browser dashboard (`firefly/admin`) and the API-documentation package (`firefly/openapi`) come with it. The
+broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`) and the test kit
+(`firefly/testing`) stay separate — each binds you to an infrastructure choice or belongs in `require-dev`.
 
 Then point LaraFly at your app's classes and compile it:
 

@@ -147,7 +147,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 
 ---
 
-*The guided, book-style [*LaraFly by Example*](../book/README.md) book — 13 chapters plus appendices,
+*The guided, book-style [*LaraFly by Example*](../book/README.md) book — 14 chapters plus appendices,
 bilingual (English + Spanish), rendered to PDF + EPUB — is available now, alongside the step-by-step
 [Tutorial](tutorial.md).*
 

@@ -16,8 +16,8 @@ directly if you took the packages à la carte:
 composer require firefly/openapi
 ```
 
-It is *not* part of the `firefly/firefly` metapackage — like `firefly/admin` and the broker adapters, it is an
-opt-in dependency.
+`firefly/firefly` requires it, so a project built from the skeleton already has it; the line above is for an
+application that took the packages à la carte.
 
 ## What you get
 
@@ -762,9 +762,9 @@ compiled route manifest of *every* application for the benefit of one optional p
 
 ## Known-latent
 
-- **A success body typed `array` documents as `type: object`.** The success schema comes from the declared return
-  type, and LaraFly controllers commonly return `array`. Return a DTO (or a backed scalar) where the response
-  shape matters to a generated client; a `@return array{…}` docblock is deliberately not read.
+- **A success body typed `array` with no `@return` documents as `type: object`.** That is the fallback, not the
+  rule — see [What an endpoint returns](#what-an-endpoint-returns). Write the shape in a `@return array{…}` (or
+  return a DTO) and the generator publishes it.
 - **`x-firefly-constraints` is the escape hatch, not a vocabulary.** Anything JSON Schema cannot state lands there
   verbatim; no attempt is made to translate a checksum rule or a temporal predicate into an approximation that
   would be wrong.

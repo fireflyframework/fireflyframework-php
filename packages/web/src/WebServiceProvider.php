@@ -61,6 +61,12 @@ final class WebServiceProvider extends FireflyServiceProvider
 
     private function registerBindings(): void
     {
+        if (! $this->app->bound(ProblemDetailsRenderer::class)) {
+            $this->app->singleton(ProblemDetailsRenderer::class, static fn (Container $app): ProblemDetailsRenderer => new ProblemDetailsRenderer(
+                $app->make(ErrorPageSettings::class),
+            ));
+        }
+
         if (! $this->app->bound(ErrorPageSettings::class)) {
             $this->app->singleton(ErrorPageSettings::class, static fn (Container $app): ErrorPageSettings => ErrorPageSettings::fromConfig($app->make(Config::class)));
         }
