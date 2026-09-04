@@ -363,6 +363,53 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Error page — firefly/web
+    |--------------------------------------------------------------------------
+    |
+    | The HTML page a BROWSER gets when a request fails, in the same visual language as the welcome page and
+    | the admin dashboard, with the exception, its `previous` chain and a stack trace whose frames are split
+    | into yours and your dependencies'.
+    |
+    | WHO GETS IT. Only a client that NAMED `text/html` in its Accept header — which every browser does and
+    | no API client does by accident. A request that wants JSON, an XMLHttpRequest, and a bare `curl` (whose
+    | wildcard Accept expresses no preference) all still receive the RFC-7807 `application/problem+json`
+    | document, with the same status and the same `code` the page shows. One failure, two renderings, one
+    | vocabulary.
+    |
+    | Defaults: enabled true, trace = app.debug, title = app.name, excerpt-lines 7.
+    |
+    */
+
+    // 'web' => [
+    //     'error-page' => [
+    //         // Turn this off to fall back to Laravel's own error page. Default: true.
+    //         'enabled' => true,
+    //
+    //         /*
+    //          | Whether the page carries the exception MESSAGE, its file and line, a source excerpt and the
+    //          | stack trace. Follows `app.debug`, and setting it wins over that in both directions.
+    //          |
+    //          | It is enforced when the report is BUILT, not when it is rendered: with this off the
+    //          | framework never walks the trace, never opens a source file and never copies the message, so
+    //          | there is nothing assembled for a template mistake to leak. What production shows instead is
+    //          | the status, the reason and the stable error code — enough for a user to quote into a ticket
+    //          | and an operator to grep for, and nothing that names a class, a file or a row.
+    //          |
+    //          | Default: the value of `app.debug`.
+    //         */
+    //         'trace' => env('APP_DEBUG', false),
+    //
+    //         // The name in the page's wordmark and title. Default: `app.name`.
+    //         'title' => env('APP_NAME', 'LaraFly'),
+    //
+    //         // How many source lines to show around a throwing line, clamped to 0-40. 0 shows none.
+    //         // Default: 7.
+    //         'excerpt-lines' => 7,
+    //     ],
+    // ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Admin dashboard — firefly/admin
     |--------------------------------------------------------------------------
     |

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Web;
 
+use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
@@ -16,6 +17,8 @@ use Firefly\Web\Dispatch\ArgumentResolver;
 use Firefly\Web\Dispatch\ControllerDispatcher;
 use Firefly\Web\Dispatch\ResponseFactory;
 use Firefly\Web\Dispatch\RouteWiringPass;
+use Firefly\Web\Error\ErrorPageRenderer;
+use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Exception\ExceptionHandlerRegistry;
 use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Firefly\Web\Filter\FilterChainRegistrar;
@@ -58,6 +61,21 @@ final class WebServiceProvider extends FireflyServiceProvider
 
     private function registerBindings(): void
     {
+        if (! $this->app->bound(ErrorPageSettings::class)) {
+            $this->app->singleton(ErrorPageSettings::class, static fn (Container $app): ErrorPageSettings => ErrorPageSettings::fromConfig($app->make(Config::class)));
+        }
+
+        if (! $this->app->bound(ErrorPageRenderer::class)) {
+            $this->app->singleton(ErrorPageRenderer::class, static function (Container $app): ErrorPageRenderer {
+                // base_path() is what turns an absolute file name into `app/Http/OrderController.php` in the
+                // trace. Resolved through the container rather than through the global helper so the
+                // renderer stays constructible in a test that never booted a Laravel application.
+                $base = $app instanceof Application ? $app->basePath() : '';
+
+                return new ErrorPageRenderer($app->make(ErrorPageSettings::class), $base);
+            });
+        }
+
         if (! $this->app->bound(MessageConverterRegistry::class)) {
             $this->app->singleton(MessageConverterRegistry::class, static fn (): MessageConverterRegistry => new MessageConverterRegistry([new JsonMessageConverter]));
         }
@@ -153,6 +171,16 @@ final class WebServiceProvider extends FireflyServiceProvider
         }
     }
 
+    /**
+     * One renderable answering in two shapes: a page for a browser, a problem document for everything else.
+     *
+     * The order is the whole of it. A browser that names `text/html` gets the HTML page — which is what
+     * fixes a person clicking a stale link and being shown a raw JSON blob, the behaviour every
+     * FireflyException had. Everything else keeps the previous rule exactly: a FireflyException, or a
+     * request that wants JSON, renders as problem+json. A throwable that is NEITHER — an unrouted URL hit by
+     * a client that asked for neither — still falls through to Laravel's handler, because inventing a
+     * response shape for a caller that expressed no preference is not this package's decision to make.
+     */
     private function registerProblemDetailsRenderable(): void
     {
         $this->app->afterResolving(ExceptionHandlerContract::class, function (object $handler): void {
@@ -161,6 +189,12 @@ final class WebServiceProvider extends FireflyServiceProvider
             }
 
             $handler->renderable(function (Throwable $e, Request $request) {
+                $page = $this->app->make(ErrorPageRenderer::class);
+
+                if ($page->handles($request)) {
+                    return $page->render($e, $request);
+                }
+
                 if ($e instanceof FireflyException || $request->expectsJson()) {
                     return $this->app->make(ProblemDetailsRenderer::class)->render($e, $request);
                 }
