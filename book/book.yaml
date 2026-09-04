@@ -28,6 +28,13 @@ labels:
 # replaces the old "CDN flag" section outright, since `viewer.style` supersedes `viewer.cdn`). Splitting
 # either into a chapter of its own would have separated a feature from the package it belongs to, and
 # would have moved a "Chapter N" reference for no reader benefit.
+# Task B8: no new chapter, again, and for the same reason. The rebuilt bean graph (#[Bean] products and
+# #[ConfigProperties] DTOs are now nodes, not just declaring classes) and the new database browser are both
+# pages of firefly/admin, which Chapter 11 already introduces, so both extend that chapter rather than
+# claiming one of their own. The data browser in particular BELONGS beside the access-model section it
+# argues against: its whole design point is that `firefly.admin.data.enabled` deliberately does NOT inherit
+# the `app.debug` default the section above it justifies, and separating the two would have removed the
+# comparison that makes the decision legible.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}

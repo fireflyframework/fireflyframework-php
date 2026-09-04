@@ -19,6 +19,10 @@ use Firefly\Data\Repository\CrudRepository;
 use Firefly\Domain\Entity;
 use Firefly\Eda\Scanner\EventListenerScanner;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
+use Firefly\Validation\Constraint\ConstraintManifest;
+use Firefly\Validation\Constraint\ConstraintScanner;
+use Firefly\Web\Route\RouteDescriptor;
+use Firefly\Web\Route\RouteManifest;
 use Firefly\Web\Route\RouteScanner;
 
 /**
@@ -59,6 +63,29 @@ beforeEach(function (): void {
 afterEach(function (): void {
     GeneratedApp::clean();
 });
+
+/**
+ * The `store` route of whichever resource controller currently sits in the generated app.
+ *
+ * A named helper rather than an inline loop in three tests: the scan returns a list, so every caller would
+ * otherwise carry the same `RouteDescriptor|null` that PHPStan (level max) rightly refuses to dereference.
+ * Throwing here also makes "the generator emitted no store action at all" fail with a sentence rather than
+ * with a null-property access several assertions later.
+ *
+ * A class-based helper (the ArtisanAssertions/GeneratedApp convention) is unnecessary for a function this
+ * local, but the name still has to be globally unique: the whole monorepo suite runs in ONE PHPUnit process,
+ * so a second file declaring `storeAction()` would fatal with "Cannot redeclare function".
+ */
+function storeAction(): RouteDescriptor
+{
+    foreach ((new RouteScanner)->scan(GeneratedApp::psr4()) as $route) {
+        if ($route->methodName === 'store') {
+            return $route;
+        }
+    }
+
+    throw new RuntimeException('no generated controller exposes a store action.');
+}
 
 it('generates a #[CommandHandler] whose message type firefly:cache can actually resolve', function (): void {
     /** @var MakeCommandsTestCase $this */
@@ -192,22 +219,161 @@ it('generates listeners that are discoverable beans as well as discoverable list
     'message listener' => ['StubMessageListener', ['--message' => true], 'message'],
 ]);
 
-it('generates a controller the component scan and the route scan both see', function (): void {
+it('generates a controller whose five REST actions the route scan compiles onto a derived path', function (): void {
     /** @var MakeCommandsTestCase $this */
-    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubController']), 0);
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubOrderController']), 0);
 
-    GeneratedApp::lint(GeneratedApp::path().'/Http/StubController.php');
+    // BOTH files, and both syntactically valid: the controller names the DTO in its signature, so a
+    // controller emitted alone would be a file PHP cannot even load once the scanners reflect it.
+    GeneratedApp::lint(GeneratedApp::path().'/Http/StubOrderController.php');
+    GeneratedApp::lint(GeneratedApp::path().'/Http/StubOrderRequest.php');
 
+    // Exactly ONE bean: the controller. A request DTO carries no stereotype by design — it is hydrated per
+    // request from the body, never injected, and registering it as a singleton would be actively wrong.
     $components = (new ComponentScanner)->scan(GeneratedApp::psr4());
     expect($components)->toHaveCount(1);
-    expect($components[0]->class)->toBe('App\\Http\\StubController')
+    expect($components[0]->class)->toBe('App\\Http\\StubOrderController')
         ->and($components[0]->stereotype)->toBe('restcontroller');
 
     $routes = (new RouteScanner)->scan(GeneratedApp::psr4());
+    $actual = [];
+    foreach ($routes as $route) {
+        $actual[$route->methodName] = [$route->httpMethod, $route->path, $route->status];
+    }
+
+    // The whole point of the rewrite: five actions on a plural, kebab-cased path derived from the resource
+    // name — NOT one action mapped to `/StubOrderController`, which is what this scaffold used to emit.
+    expect($actual)->toBe([
+        'index' => ['GET', '/stub-orders', 200],
+        'show' => ['GET', '/stub-orders/{id}', 200],
+        'store' => ['POST', '/stub-orders', 201],
+        'update' => ['PUT', '/stub-orders/{id}', 200],
+        'destroy' => ['DELETE', '/stub-orders/{id}', 204],
+    ]);
+});
+
+it('compiles a request-body binding plan the argument resolver can actually hydrate', function (): void {
+    /** @var MakeCommandsTestCase $this */
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubOrderController']), 0);
+
+    $body = null;
+    foreach (storeAction()->bindings as $binding) {
+        if ($binding['kind'] === 'body') {
+            $body = $binding;
+        }
+    }
+
+    // A `body` binding at all is the assertion that matters. RouteScanner classifies an un-attributed class
+    // parameter as a container SERVICE; only #[RequestBody] makes it a body, and only #[Valid] makes the
+    // resolver run the compiled constraints before hydrating. `properties` is the constructor plan the
+    // reflection-free resolver unpacks by name — an empty list there means the DTO type did not resolve.
+    if ($body === null) {
+        throw new RuntimeException('the generated store action has no #[RequestBody] binding.');
+    }
+
+    expect($body['type'])->toBe('App\\Http\\StubOrderRequest')
+        ->and($body['valid'])->toBeTrue()
+        ->and($body['required'])->toBeTrue()
+        ->and($body['properties'])->toBe(['name', 'description']);
+});
+
+it('generates a request DTO whose constraints the validation compiler turns into real rules', function (): void {
+    /** @var MakeCommandsTestCase $this */
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubOrderController']), 0);
+
+    // The same call ManifestCacheWriter::writeManifests() makes for constraints.php. A DTO whose attributes
+    // compiled to nothing would still lint, still hydrate, and silently accept any body at all.
+    $rules = (new ConstraintScanner)->scan('App\\Http\\StubOrderRequest');
+
+    expect(array_keys($rules))->toBe(['name', 'description']);
+    expect($rules['name'])->toContain('required');
+
+    // `?string $description` admits null, so Jakarta's null contract applies: `nullable` is prepended and an
+    // explicit `{"description": null}` behaves exactly like an omitted key.
+    expect($rules['description'][0])->toBe('nullable');
+});
+
+it('derives the collection path by kebab-casing and pluralising the resource name', function (string $class, string $path): void {
+    /** @var MakeCommandsTestCase $this */
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => $class]), 0);
+
+    $paths = [];
+    foreach ((new RouteScanner)->scan(GeneratedApp::psr4()) as $route) {
+        $paths[$route->methodName] = $route->path;
+    }
+
+    expect($paths['index'])->toBe($path);
+})->with([
+    'simple noun' => ['StubOrderController', '/stub-orders'],
+    'compound noun' => ['StubOrderItemController', '/stub-order-items'],
+    'irregular plural' => ['StubPersonController', '/stub-people'],
+    'consonant + y' => ['StubCategoryController', '/stub-categories'],
+]);
+
+it('keeps the controller and its request DTO in the same sub-namespace', function (): void {
+    /** @var MakeCommandsTestCase $this */
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'Widget/StubNestedController']), 0);
+
+    GeneratedApp::lint(GeneratedApp::path().'/Http/Widget/StubNestedController.php');
+    GeneratedApp::lint(GeneratedApp::path().'/Http/Widget/StubNestedRequest.php');
+
+    $routes = (new RouteScanner)->scan(GeneratedApp::psr4());
+    expect($routes)->toHaveCount(5);
+    expect($routes[0]->controllerClass)->toBe('App\\Http\\Widget\\StubNestedController');
+
+    // A PHP sub-namespace is a code-organisation choice and has never implied a URL prefix here, so the
+    // derived path is still the bare collection — the class-level #[RequestMapping] is the one place to
+    // change that.
+    foreach ($routes as $route) {
+        expect($route->path)->toStartWith('/stub-nesteds');
+    }
+});
+
+it('never overwrites a request DTO the developer already wrote', function (): void {
+    /** @var MakeCommandsTestCase $this */
+    $existing = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        namespace App\Http;
+
+        final readonly class StubKeptRequest
+        {
+            public function __construct(public string $name = '', public ?string $description = null) {}
+        }
+
+        PHP;
+    if (! is_dir(GeneratedApp::path().'/Http')) {
+        mkdir(GeneratedApp::path().'/Http', 0o755, true);
+    }
+    file_put_contents(GeneratedApp::path().'/Http/StubKeptRequest.php', $existing);
+
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubKeptController']), 0);
+
+    expect((string) file_get_contents(GeneratedApp::path().'/Http/StubKeptRequest.php'))->toBe($existing);
+
+    // And the controller that was just generated still binds it — reusing the developer's own DTO is the
+    // correct outcome, not a second file with a mangled name.
+    expect(storeAction()->bindings[0]['type'])->toBe('App\\Http\\StubKeptRequest');
+});
+
+it('generates a single-action controller with no DTO under --plain', function (): void {
+    /** @var MakeCommandsTestCase $this */
+    ArtisanAssertions::exitCode($this->artisan('make:firefly-controller', ['name' => 'StubPlainController', '--plain' => true]), 0);
+
+    GeneratedApp::lint(GeneratedApp::path().'/Http/StubPlainController.php');
+
+    // The escape hatch for the endpoints that are not a collection: no request DTO is written at all.
+    expect(is_file(GeneratedApp::path().'/Http/StubPlainRequest.php'))->toBeFalse();
+
+    $routes = (new RouteScanner)->scan(GeneratedApp::psr4());
     expect($routes)->toHaveCount(1);
-    expect($routes[0]->controllerClass)->toBe('App\\Http\\StubController')
+    expect($routes[0]->controllerClass)->toBe('App\\Http\\StubPlainController')
         ->and($routes[0]->methodName)->toBe('index')
-        ->and($routes[0]->httpMethod)->toBe('GET');
+        ->and($routes[0]->httpMethod)->toBe('GET')
+        // Even the single-action shape gets a real path: it used to be `/StubPlainController`.
+        ->and($routes[0]->path)->toBe('/stub-plains');
 });
 
 it('generates plain stereotypes the component scan registers', function (string $command, string $name, string $stereotype): void {
@@ -285,7 +451,7 @@ it('compiles a whole scaffolded app in one real firefly:cache run', function ():
         // handler/event/message/scheduled/security/transactional artifacts were never written at all.
         ArtisanAssertions::exitCode($this->artisan('firefly:cache'), 0);
 
-        foreach ([FireflyCachePaths::COMPONENT, FireflyCachePaths::ROUTES, FireflyCachePaths::HANDLERS, FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_MAP] as $basename) {
+        foreach ([FireflyCachePaths::COMPONENT, FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS, FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_MAP] as $basename) {
             expect(is_file($dir.'/'.$basename))->toBeTrue("expected firefly:cache to write {$basename}");
         }
 
@@ -300,6 +466,29 @@ it('compiles a whole scaffolded app in one real firefly:cache run', function ():
             ->toContain('App\\CompiledRepository')
             ->toContain('App\\CompiledEventListener')
             ->toContain('App\\CompiledMessageListener');
+
+        // The generated REST resource compiled whole: all five actions in the route manifest, and the
+        // request DTO that the two body-taking actions reference in the CONSTRAINT manifest. The second half
+        // is the one that would silently rot — a DTO whose attributes failed to compile still lints, still
+        // hydrates, and quietly accepts anything a client sends.
+        $routes = RouteManifest::load($dir.'/'.FireflyCachePaths::ROUTES)->all();
+        $resource = [];
+        foreach ($routes as $route) {
+            if ($route->controllerClass === 'App\\Http\\CompiledController') {
+                $resource[$route->methodName] = $route->httpMethod.' '.$route->path;
+            }
+        }
+        expect($resource)->toBe([
+            'index' => 'GET /compileds',
+            'show' => 'GET /compileds/{id}',
+            'store' => 'POST /compileds',
+            'update' => 'PUT /compileds/{id}',
+            'destroy' => 'DELETE /compileds/{id}',
+        ]);
+
+        expect(ConstraintManifest::load($dir.'/'.FireflyCachePaths::CONSTRAINTS)->rulesFor('App\\Http\\CompiledRequest'))
+            ->toHaveKey('name')
+            ->toHaveKey('description');
     } finally {
         foreach (glob($dir.'/*.php') ?: [] as $file) {
             unlink($file);

@@ -125,11 +125,7 @@ final class RepositoryIntrospector
      */
     private function readEntity(string $repositoryClass): ?string
     {
-        try {
-            $reflection = new ReflectionClass($repositoryClass);
-        } catch (Throwable) {
-            return null;
-        }
+        $reflection = new ReflectionClass($repositoryClass);
 
         foreach (['findById', 'save'] as $method) {
             if (! $reflection->hasMethod($method)) {
@@ -179,11 +175,7 @@ final class RepositoryIntrospector
             return $this->fields[$entityClass];
         }
 
-        try {
-            $reflection = new ReflectionClass($entityClass);
-        } catch (Throwable) {
-            return $this->fields[$entityClass] = [];
-        }
+        $reflection = new ReflectionClass($entityClass);
 
         /** @var array<string, array{name: string, type: string, nullable: bool}> $fields */
         $fields = [];

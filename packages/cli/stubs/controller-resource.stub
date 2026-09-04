@@ -1,0 +1,109 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Validation\Valid;
+use Firefly\Web\Attributes\DeleteMapping;
+use Firefly\Web\Attributes\GetMapping;
+use Firefly\Web\Attributes\PathVariable;
+use Firefly\Web\Attributes\PostMapping;
+use Firefly\Web\Attributes\PutMapping;
+use Firefly\Web\Attributes\QueryParam;
+use Firefly\Web\Attributes\RequestBody;
+use Firefly\Web\Attributes\RequestMapping;
+use Firefly\Web\Attributes\RestController;
+
+/**
+ * The `{{ resourcePath }}` resource: list, read, create, replace and delete.
+ */
+#[RestController]
+#[RequestMapping('/{{ resourcePath }}')]
+final class {{ class }}
+{
+    // NOTE — THE DOCBLOCK ABOVE IS PUBLISHED, THIS COMMENT IS NOT. firefly/openapi uses a controller's
+    // class docblock as the tag description in /openapi.json and each action's docblock as that operation's
+    // summary and description, so anything written there is read by whoever consumes this API. Describe the
+    // resource up there; keep notes like these down here, where the generator never sees them.
+    //
+    // WHAT THIS SCAFFOLD ALREADY DOES, AND WHAT IS LEFT FOR YOU.
+    //
+    // The routing is complete. One class-level #[RequestMapping] fixes the collection path — derived from
+    // the class name, kebab-cased and pluralised, and written in exactly one place, so rename it freely —
+    // and each action adds only its own suffix and verb. `firefly:cache` compiles all five into the
+    // RouteManifest. Nothing goes in routes/web.php. `php artisan firefly:routes` lists them.
+    //
+    // The METHOD BODIES are the part to replace. They return correctly-shaped responses so the resource
+    // answers from the moment it is generated, but nothing here persists anything. Inject a #[Service]
+    // through the constructor and delegate to it. Throwing
+    // Firefly\Kernel\Exception\Business\ResourceNotFoundException from that service is how show/update/delete
+    // turn an unknown id into an RFC-7807 404, with no error handling in this class at all.
+
+    /**
+     * List the collection, one page at a time.
+     *
+     * @return array<string, mixed>
+     */
+    #[GetMapping(name: '{{ resourcePath }}.index')]
+    public function index(
+        // #[QueryParam] CARRIES ITS DEFAULT TWICE, and that is not redundant. RouteScanner compiles the
+        // binding's fallback from the ATTRIBUTE, never from the PHP default value: a parameter default is
+        // not reachable from the compiled, reflection-free plan the ArgumentResolver reads per request.
+        // Write only `int $page = 1` and an absent `?page` binds null, which then fails against the `int` in
+        // this very signature — a 500 for a request that merely omitted an optional parameter. The PHP
+        // default is kept beside it so the signature still reads honestly to a human and to static analysis.
+        #[QueryParam(default: 1)] int $page = 1,
+        #[QueryParam(default: 20)] int $size = 20,
+    ): array {
+        return ['page' => $page, 'size' => $size, 'total' => 0, 'items' => []];
+    }
+
+    /**
+     * Read one member of the collection by id.
+     *
+     * @return array<string, mixed>
+     */
+    #[GetMapping('/{id}', name: '{{ resourcePath }}.show')]
+    public function show(#[PathVariable] int $id): array
+    {
+        // #[PathVariable] binds AND coerces: the URL segment is a string, this parameter is an int.
+        return ['id' => $id];
+    }
+
+    /**
+     * Create a new member. Responds 201 with the created representation.
+     *
+     * @return array<string, mixed>
+     */
+    #[PostMapping(status: 201, name: '{{ resourcePath }}.store')]
+    public function store(#[Valid] #[RequestBody] {{ request }} $request): array
+    {
+        // #[Valid] runs {{ request }}'s compiled constraints BEFORE the DTO is hydrated, so an invalid body
+        // is a 422 carrying per-field errors and never reaches this line. The 201 is declared on the
+        // mapping; nothing here builds a response by hand.
+        return ['id' => 1, 'name' => $request->name, 'description' => $request->description];
+    }
+
+    /**
+     * Replace a member wholesale. Takes the same body as `store`.
+     *
+     * @return array<string, mixed>
+     */
+    #[PutMapping('/{id}', name: '{{ resourcePath }}.update')]
+    public function update(#[PathVariable] int $id, #[Valid] #[RequestBody] {{ request }} $request): array
+    {
+        // The same DTO as `store` on purpose: a PUT that accepted a laxer shape than the POST is how a
+        // resource ends up with two contradictory schemas in its own OpenAPI document.
+        return ['id' => $id, 'name' => $request->name, 'description' => $request->description];
+    }
+
+    /**
+     * Delete a member. Responds 204 with an empty body.
+     */
+    #[DeleteMapping('/{id}', status: 204, name: '{{ resourcePath }}.destroy')]
+    public function destroy(#[PathVariable] int $id): void
+    {
+        // A `void` action returns null, which at the mapping's 204 is written as an empty body.
+    }
+}

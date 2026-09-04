@@ -50,6 +50,19 @@ use ReflectionClass;
  * under the app's scan roots, not just body DTOs) its own rules are used. When it does not, the parent's
  * dotted `#[Valid]`-cascaded keys (`beneficiary.postcode`) are unflattened back into it, so a nested schema
  * is still constrained rather than a bare `type: object`.
+ *
+ * A LIST of nested DTOs is the same story told through `items`, and it is the case this factory used to get
+ * silently wrong: `#[Valid] array $lines` documented itself as a bare `type: array`, the element class never
+ * became a component at all, and a generated client got `Array<any>` for the one member that most needed a
+ * type. PHP's `array` says nothing about its elements, so the element class comes from ElementTypes — which
+ * reads the table RouteScanner already compiled for the HYDRATOR, so the document and the server agree by
+ * construction. That table is threaded down the whole descent rather than looked up once, because it is keyed
+ * by class and therefore answers for every level of the graph, not just the body DTO at the top.
+ *
+ * RULES FOR A LIST ELEMENT COME FROM THE ELEMENT'S OWN MANIFEST ENTRY, never from the parent's dotted keys.
+ * ConstraintScanner cascades a #[Valid] only through a CLASS-typed member (classTypeOf() returns null for an
+ * `array`), so a parent's dotted keys can never describe a list element in the first place — and unflattening
+ * a Laravel-style `lines.*.sku` into an element schema would invent a member literally named `*.sku`.
  */
 final class DtoSchemaFactory
 {
@@ -63,10 +76,12 @@ final class DtoSchemaFactory
      *                                    autoloaded in this process and reflection is therefore unavailable
      * @param  array<string, list<string|ValidationRule>>  $fallbackRules  a nested class's rules recovered
      *                                                                     from the parent's dotted keys
+     * @param  ElementTypes  $elements  the compiled `dtos` table of the binding this DTO was reached through;
+     *                                  defaults to an empty one, which resolves element types by reflection
      */
-    public function ref(string $class, SchemaRegistry $registry, array $properties = [], array $fallbackRules = []): string
+    public function ref(string $class, SchemaRegistry $registry, array $properties = [], array $fallbackRules = [], ElementTypes $elements = new ElementTypes): string
     {
-        return $registry->ref($class, fn (): array => $this->build($class, $registry, $properties, $fallbackRules));
+        return $registry->ref($class, fn (): array => $this->build($class, $registry, $properties, $fallbackRules, $elements));
     }
 
     /**
@@ -74,7 +89,7 @@ final class DtoSchemaFactory
      * @param  array<string, list<string|ValidationRule>>  $fallbackRules
      * @return array<string, mixed>
      */
-    private function build(string $class, SchemaRegistry $registry, array $properties, array $fallbackRules): array
+    private function build(string $class, SchemaRegistry $registry, array $properties, array $fallbackRules, ElementTypes $elements): array
     {
         $rules = $this->constraints->rulesFor($class);
         if ($rules === []) {
@@ -83,11 +98,16 @@ final class DtoSchemaFactory
 
         [$own, $nested] = $this->partition($rules);
 
+        // Resolved once for the whole class rather than per member: both paths behind it — a table row and a
+        // constructor docblock — answer for every member at once, and asking per member would re-read the
+        // same doc comment once per `array` property.
+        $lists = $elements->forClass($class);
+
         $fields = [];
         $required = [];
 
         foreach ($this->members($class, $properties, $own) as $name => $member) {
-            $property = $this->property($member, $own[$name] ?? [], $nested[$name] ?? [], $registry);
+            $property = $this->property($member, $own[$name] ?? [], $nested[$name] ?? [], $registry, $elements, $lists[$name] ?? null);
 
             $fields[$name] = $property->schema;
             if ($property->required) {
@@ -114,13 +134,14 @@ final class DtoSchemaFactory
     /**
      * @param  list<string|ValidationRule>  $rules  this member's own compiled rule list
      * @param  array<string, list<string|ValidationRule>>  $nestedRules  rules cascaded from a parent #[Valid]
+     * @param  string|null  $element  the class this member's list holds, when it holds a list of one
      */
-    private function property(MemberType $member, array $rules, array $nestedRules, SchemaRegistry $registry): PropertySchema
+    private function property(MemberType $member, array $rules, array $nestedRules, SchemaRegistry $registry, ElementTypes $elements, ?string $element): PropertySchema
     {
         $type = $member->type;
 
         if ($type !== null && TypeSchema::isDto($type)) {
-            $ref = $this->ref($type, $registry, [], $nestedRules);
+            $ref = $this->ref($type, $registry, [], $nestedRules, $elements);
 
             // A `$ref` cannot usefully be widened with a sibling `type` in 2020-12 — VALIDATION keywords
             // beside a reference are applied WITH it, so `type: 'null'` would have to pass as well as the
@@ -138,6 +159,16 @@ final class DtoSchemaFactory
         }
 
         $base = TypeSchema::for($type) ?? [];
+
+        // `items` is seeded into the BASE rather than layered on afterwards so the constraint mapper's
+        // first-writer-wins ordering sees a complete declared-type fragment — and so `minItems`/`maxItems`
+        // still resolve against the `type: array` sitting beside it, which is how MapperState tells a #[Size]
+        // on a list from a #[Size] on a string.
+        $items = $element === null ? null : $this->items($element, $registry, $elements);
+        if ($items !== null && ($base['type'] ?? null) === 'array') {
+            $base['items'] = $items;
+        }
+
         $property = $this->mapper->apply($base, $rules, $member->nullable, $member->required());
         $schema = $property->schema;
 
@@ -146,6 +177,33 @@ final class DtoSchemaFactory
         }
 
         return new PropertySchema($member->doc->apply($schema), $property->required);
+    }
+
+    /**
+     * The `items` subschema for a list member.
+     *
+     * A list of DTOs becomes a `$ref` — the recursion is safe for the same reason a plain nested DTO's is:
+     * SchemaRegistry reserves the component name BEFORE the builder runs, so `CategoryNode { list<CategoryNode>
+     * $children }` closes its own cycle on the component being built instead of expanding forever. A list of
+     * anything TypeSchema can state inline (a backed enum, a DateTimeInterface, a scalar) is inlined instead:
+     * an enum is not a reusable component, and minting one per enum would hand every generated client a named
+     * type where an inline union is what the payload actually is.
+     *
+     * An element TypeSchema cannot resolve at all yields null rather than an empty `{}` subschema. The two say
+     * exactly the same thing — an absent `items` accepts any element — and the empty one says it in the one
+     * spelling that has to survive a later `[]`-vs-`{}` decision at encoding time.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function items(string $element, SchemaRegistry $registry, ElementTypes $elements): ?array
+    {
+        if (TypeSchema::isDto($element)) {
+            return ['$ref' => $this->ref($element, $registry, [], [], $elements)];
+        }
+
+        $schema = TypeSchema::for($element) ?? [];
+
+        return $schema === [] ? null : $schema;
     }
 
     /**

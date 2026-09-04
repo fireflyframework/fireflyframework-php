@@ -341,6 +341,14 @@ deptrac:
     # its pages on the illuminate Router through a Context BootPass at a configurable base path, and reuses
     # Web's ProblemDetailsRenderer for its own failures (=> Web). It reads Config, carries Container/Context
     # attributes and extends AutoConfigure's base. NOTHING depends on it — it is a leaf, and an optional one.
+    #
+    # The => Data edge is the Django-style database browser (src/Data): it discovers browsable resources by
+    # looking for beans whose scan-time interface list contains Data's CrudRepository, and reads them through
+    # the ports Data already publishes — findPaged(Pageable)/Page/Sort for a page, findBySpecificationPaged
+    # for a searched page, findById/existsById/deleteById/save for a record. It consumes those ports and adds
+    # nothing to them; the direction is Admin -> Data and NEVER the reverse, exactly as with Actuator and Web.
+    # No Domain edge: the browser reflects over whatever entity a repository declares and knows nothing about
+    # Entity/AggregateRoot.
     Admin:
       - Kernel
       - Container
@@ -349,6 +357,7 @@ deptrac:
       - AutoConfigure
       - Web
       - Actuator
+      - Data
 
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/

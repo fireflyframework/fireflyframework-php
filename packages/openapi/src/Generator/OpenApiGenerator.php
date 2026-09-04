@@ -49,6 +49,17 @@ final class OpenApiGenerator
      */
     private const array VERB_ORDER = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
+    /**
+     * JSON Schema keywords whose value is an INSTANCE — a value the schema DESCRIBES, rather than a
+     * subschema or a map of them. An empty array under one of these is payload data, so its JSON type is
+     * decided by the schema it sits in; everywhere else in this document an empty array is a map. See
+     * objectify().
+     */
+    private const array INSTANCE_KEYWORDS = ['default', 'const', 'example'];
+
+    /** The same, for the keywords that hold a LIST of instances rather than one. */
+    private const array INSTANCE_LIST_KEYWORDS = ['enum', 'examples'];
+
     /** @var array<string, mixed>|null */
     private ?array $document = null;
 
@@ -80,10 +91,16 @@ final class OpenApiGenerator
      * cannot tell an empty map from an empty list: `json_encode([])` is `[]`, so an app with no routes would
      * serialise `"paths": []` and an unconstrained property would serialise as `[]` — both of which are type
      * errors against the OpenAPI 3.1 meta-schema, and both of which make a strict validator reject an
-     * otherwise perfect document. Every empty array is therefore re-encoded as `{}` here. That rewrite is
-     * unconditionally safe in THIS document because nothing in it ever emits an empty LIST: `required`,
-     * `tags`, `parameters`, `servers`, `allOf` and the constraint extension are each omitted entirely rather
-     * than emitted empty (see DtoSchemaFactory and OperationFactory, which say so at each site).
+     * otherwise perfect document. Empty arrays are therefore re-encoded as `{}` here.
+     *
+     * THAT REWRITE USED TO BE UNCONDITIONAL, and it was justified by a claim that had quietly stopped being
+     * true: "nothing in this document ever emits an empty LIST". A constructor default does.
+     * `array $lines = []` is documented as `default: []`, the rewrite turned it into `"default": {}`, and the
+     * document then told every client that omitting `lines` yields an empty OBJECT for a member the same
+     * schema declares `type: array` two lines above. A generated client either fails to compile against its
+     * own type or ships a wrong default. The value is data, not structure, and structure is all this rewrite
+     * was ever meant to fix — so the instance keywords are now resolved against the schema's own `type`
+     * instead (see objectify() and instance()).
      */
     public function toJson(): string
     {
@@ -297,8 +314,9 @@ final class OpenApiGenerator
     }
 
     /**
-     * Recursively re-encodes empty arrays as empty JSON OBJECTS — see toJson() for why this is both
-     * necessary and safe here.
+     * Recursively re-encodes empty arrays as empty JSON OBJECTS — see toJson() for why that is necessary —
+     * EXCEPT under the instance keywords, whose value is a payload value rather than part of the document's
+     * structure and is therefore handed to instance() to be typed by the schema it sits in.
      */
     private function objectify(mixed $value): mixed
     {
@@ -310,6 +328,89 @@ final class OpenApiGenerator
             return new stdClass;
         }
 
-        return array_map(fn (mixed $item): mixed => $this->objectify($item), $value);
+        $type = $this->declaredType($value);
+
+        $encoded = [];
+        foreach ($value as $key => $item) {
+            $encoded[$key] = match (true) {
+                $type === null => $this->objectify($item),
+                in_array($key, self::INSTANCE_KEYWORDS, true) => $this->instance($item, $type),
+                in_array($key, self::INSTANCE_LIST_KEYWORDS, true) && is_array($item) => array_map(
+                    fn (mixed $member): mixed => $this->instance($member, $type),
+                    $item,
+                ),
+                default => $this->objectify($item),
+            };
+        }
+
+        return $encoded;
+    }
+
+    /**
+     * The node's declared `type` in one of the two spellings OpenAPI 3.1 permits — a name, or a LIST of names,
+     * which is how 3.1 spells nullability now that 3.0's `nullable` keyword is gone — and null for anything
+     * else, which is this method's real job.
+     *
+     * Null means "not a Schema Object", and that is what keeps the instance-keyword exception from firing
+     * where it must not. Every keyword it names is also a legal map key elsewhere in the document: the
+     * Responses Object has a `default` status, and a DTO may perfectly well have members called `default`,
+     * `example` or `enum`, which appear as keys of a `properties` map. Neither node declares a type, so
+     * neither is ever treated as one — and a `properties` map that DOES happen to hold a member named `type`
+     * fails the shape test here, because that member's value is a schema map rather than a type name.
+     *
+     * @param  array<array-key, mixed>  $node
+     * @return list<string>|string|null
+     */
+    private function declaredType(array $node): array|string|null
+    {
+        /** @var mixed $type */
+        $type = $node['type'] ?? null;
+
+        if (is_string($type)) {
+            return $type;
+        }
+
+        // `$type !== []` is load-bearing, not defensive. An empty array passes every other test here
+        // (`array_is_list([])` and `array_filter([], 'is_string') === []` are both true), so without it a
+        // `properties` map holding an UNCONSTRAINED member named `type` — whose schema is `[]` — reads as a
+        // Schema Object declaring no types at all, and its sibling members named `enum`/`default`/`example`
+        // are then treated as instance keywords. That emitted `"enum": []` for a member named `enum`: a JSON
+        // array where the meta-schema requires a Schema Object, which is the very defect objectify() exists
+        // to prevent. No real schema declares an empty `type`; 3.1 requires at least one name.
+        if (is_array($type) && $type !== [] && array_is_list($type) && array_filter($type, 'is_string') === $type) {
+            /** @var list<string> $type */
+            return $type;
+        }
+
+        return null;
+    }
+
+    /**
+     * One instance value, passed through UNTOUCHED except for the single thing PHP cannot express on its own:
+     * `[]`, which is both the empty list and the empty map, and which only the schema's declared `type` can
+     * disambiguate. `type: array` (including the 3.1 nullable spelling `type: [array, 'null']`) makes it a
+     * JSON array; any other declared type falls back to the structural `{}` rewrite the document has always
+     * applied, which is the honest answer for `type: object` and a harmless one for the rest, since a schema
+     * that declares `type: string` cannot have a legitimate array default in the first place.
+     *
+     * The one case this deliberately does not fix is a member with no declared type at all — `mixed $tags = []`
+     * — where the schema states nothing for anything to decide from and the `{}` rewrite still applies.
+     * Guessing from the PHP value there would mean trusting a shape the document itself never claimed.
+     *
+     * Nothing recurses into a non-empty instance: json_encode's own list-vs-map rule is already exactly right
+     * for it, and objectify()ing a caller's #[ApiProperty] example would rewrite THEIR empty arrays into
+     * objects — the same bug this method exists to fix, one level down.
+     *
+     * @param  list<string>|string  $type
+     */
+    private function instance(mixed $value, array|string $type): mixed
+    {
+        if ($value !== []) {
+            return $value;
+        }
+
+        $admitsArray = is_array($type) ? in_array('array', $type, true) : $type === 'array';
+
+        return $admitsArray ? [] : new stdClass;
     }
 }

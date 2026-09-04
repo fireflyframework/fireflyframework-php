@@ -158,6 +158,36 @@ needs npm or a CDN.
   layer's HTML rendering, security's fail-open note and full config table, observability's cross-process
   registry, and the "compilation lands in M15 — until then bind the manifest yourself" caveat that five module
   guides still carried.
+- **Documentation for the rebuilt bean graph, the data browser and the OpenAPI schema pipeline.** A new
+  [Data Browser](docs/modules/data-browser.md) guide covers `firefly/admin`'s Django-admin-style view over the
+  data layer: what it discovers (every bean whose scan-time interface list contains `CrudRepository`, read from
+  the compiled `BeansCatalog` rather than a fresh scan, so it can never offer a resource the container never
+  registered), why `firefly.admin.data.enabled` defaults to **`false`** and deliberately does *not* follow
+  `app.debug` or `firefly.admin.enabled` (beans and config are facts about the application; these are facts
+  about its **users**), why writes need `firefly.admin.data.writable` **on top of that** (visibility and custody
+  are different decisions), and why **there is no `create()`** and never will be — an aggregate's invariants live
+  in its constructor, and a form built from a column list can only satisfy them by writing columns the domain
+  model considers impossible. Also documented: the four listing paths and the honest cost of the unpaged one,
+  search bound-never-interpolated, columns derived from the resource rather than from a row, the closed
+  five-value display-type vocabulary and why `decimal` maps to `string`, the identifier/secret write refusals
+  enforced twice, and why no rendered error text is ever an exception message.
+  [Bean Graph](docs/modules/bean-graph.md) is rewritten for the three node kinds — components, `#[Bean]`
+  **products** and `#[ConfigProperties]` DTOs — plus the `injects`/`produces` edge distinction, the identity
+  rule for a contested `#[Bean]` type, and why cycles are reported rather than fatal; the stale "`#[Bean]`
+  factory-method parameters are not drawn" limitation is gone, because they are.
+  [OpenAPI](docs/modules/openapi.md) gains a full "How a request DTO becomes a schema" section: the three
+  sources and why the compiled manifest beats the `#[Constraint]` attributes, why no `additionalProperties:
+  false` is emitted, the complete **attribute → compiled rule → JSON Schema keyword** table mapped from
+  `ConstraintSchemaMapper` (correcting `#[Negative]`, which produces `exclusiveMaximum`, not
+  `exclusiveMinimum`), first-writer-wins, the 3.1 nullable spelling, the one-`pattern`-slot `allOf` fallback,
+  `list<X>` element types read from the constructor docblock via the same `dtos` table `ArgumentResolver`
+  hydrates from, and the narrowed `{}`-vs-`[]` rewrite now that a constructor default genuinely does emit an
+  empty list. The `firefly.openapi.*` config table also gains the five optional Info Object keys that were
+  shipping undocumented — `summary`, `terms-of-service`, `contact.*` and `license.*`, with the rule that
+  `license.name` gates the whole object and `license.identifier` wins over `license.url`, since 3.1 makes the
+  two mutually exclusive. *LaraFly by Example* is extended in **both** languages: Chapter 11 gains a "three
+  kinds of node" section for the graph and a data-browser section placed deliberately beside the access-model
+  argument it contradicts. Every fenced PHP listing still passes `php -l` (220 per language).
 
 ### Fixed
 - **`packages/security` — method security failed OPEN.** Both enforcement sites treat "no rule for this

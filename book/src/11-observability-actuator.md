@@ -767,6 +767,31 @@ final class ComponentDescriptor
 
 That last sentence is a design decision worth pausing on. A constructor parameter typed `string $name` is configuration; drawing it as an edge would bury the relationships that matter under `string`/`int` noise. A **nullable or defaulted class** parameter *is* kept, because an optional collaborator is still a relationship.
 
+#### Three kinds of node, and why the first version was nearly empty
+
+Before the edges, the nodes — because the first version of this page got them wrong in a way worth learning from. A LaraFly application has **three kinds of bean**, and all three have to be nodes:
+
+| Kind | What it is | Where it comes from |
+|---|---|---|
+| `component` | A scanned `#[Component]`/`#[Service]`/`#[Repository]`/`#[RestController]`/`#[Configuration]` class | The beans catalogue |
+| `bean` | A value **produced by a `#[Bean]` factory method** on a `#[Configuration]` | The catalogue's `produces` rows |
+| `config` | A `#[ConfigProperties]` DTO bound from configuration | The `configprops` endpoint |
+
+Only the first kind was a node to begin with, and the consequence was not a cosmetic one. A framework's wiring lives almost entirely in the second kind: an auto-configuration is a `#[Configuration]` whose `#[Bean]` methods produce `MeterRegistry`, `TransactionTemplate`, `AggregateTracker` and the rest. With only declaring classes as nodes, every edge pointing at one of those products pointed at a node that did not exist. Measured on a stock skeleton: **42 nodes, 41 `#[Bean]` products missing, 21 dangling dependencies, and exactly one edge drawn.** The page was not showing a sparse graph — it was structurally incapable of showing framework wiring at all.
+
+The third kind is the same mistake in miniature. A `#[ConfigProperties]` DTO is bound and injectable, but it is neither scanned as a component nor produced by a factory, so nothing in the beans catalogue can see it: `App\GreetingProperties` turned up as an *unresolved dependency* of `GreetingService` rather than as the bean it is. That is why the page reads the `configprops` endpoint alongside the catalogue.
+
+So there are two kinds of edge, too, and they say different things:
+
+| Edge | From → to | Meaning |
+|---|---|---|
+| `injects` | A bean → something it declared a dependency on | The consumer asked for it; the container satisfies it |
+| `produces` | A `#[Configuration]` → the value one of its `#[Bean]` methods returns | This class is where that bean comes from |
+
+`injects` edges are collected from a component's **constructor** parameters *and* from every `#[Bean]` **factory method's** parameters — the product depends on whatever its factory asked for. That union is the wiring; constructors alone are a fraction of it.
+
+One subtlety about identity. A `#[Bean]` product is normally identified by the **type it produces**, because that is the key the container binds and the key every consumer asks for. But when two factory methods produce the same type — the shape that Chapter 2's `#[Primary]`/`#[Qualifier]` rules exist to disambiguate — the type alone would collapse them into a single node and hide exactly the ambiguity you opened the page to see. So each competitor gets `Declaring::method()` as its own id and the bare type resolves to the first of them, mirroring the container, where the type key aliases the winner while every candidate stays reachable by name.
+
 #### The hard part is not drawing, it is resolving
 
 A constructor asks for a **type**, and that type is very often an interface — `EventPublisher`, `HealthIndicator`, `Cache` — while the bean that satisfies it is a concrete class that merely implements it. An edge list built naively from constructor types therefore points at nodes that do not exist, and the graph comes out as a field of disconnected dots. Ask yourself what `WalletService`'s dependency on `WalletRepository` should draw an arrow *to*: not to the port, which is an interface with no bean of its own, but to `EloquentWalletRepository`, which is the thing that will actually be constructed.
@@ -825,8 +850,8 @@ Two limits are stated in the page rather than hidden:
 !!! tip "Read it next to the Conditions page"
     The two answer complementary halves of every auto-configuration surprise. **Conditions** says *whether* a framework bean was registered or backed off, and on which condition. **The graph** says what the bean that did win is wired to, and through which interface. An `EventPublisher` edge pointing at `InMemoryEventPublisher` when you configured `firefly.eda.provider=rabbitmq` is one glance on the graph; Conditions then names the `#[ConditionalOnProperty]` that did not match.
 
-!!! note "What the graph does not draw yet"
-    Edges come from constructor `dependencies` only. `BeansCatalog` also publishes each `#[Bean]` factory method's own parameters (under `produces`), but `BeanGraph` does not read them, so a `#[Configuration]` class appears with the edges *its own constructor* declares and the wiring its `#[Bean]` methods perform is not drawn. That under-draws framework auto-configuration classes specifically; your `#[Service]`/`#[Repository]` beans, which wire through constructors, are drawn in full.
+!!! note "What the graph still does not decide for you"
+    Two limits are worth knowing, and neither is a gap in the data. **`#[Primary]`/`#[Qualifier]` do not steer the index** — first writer in scan order wins, both for an interface with several implementors and for the bare type key of a contested `#[Bean]`. Every competitor still gets its own node and the edge is marked `via`, so the ambiguity is visible on the page, but the drawn target may not be the one the container resolves. And **an unresolved type is reported, never explained**: the page can tell you a type is provided outside the container, but not *which* binding provides it, because a Laravel container binding carries no descriptor to read.
 
 ---
 
@@ -896,6 +921,56 @@ It also backs off silently in one more case that is easy to miss. Blade is requi
 !!! warning "Three things the dashboard can only show you about *this* process"
     Under PHP-FPM every request is a different process, and three pages inherit that. **Changing a log level** calls the same endpoint `POST /actuator/loggers/{name}` does, which mutates the current process's Monolog handlers — the next request is a different process, so change `logging.channels` for anything that must persist. **Metrics** are only as durable as the registry: the default `SimpleMeterRegistry` keeps meters in process memory, so the dashboard sees only its own request unless `firefly.observability.metrics.store` points at a cache store. And **health details** stay hidden on the JSON `/actuator/health` response until `firefly.management.endpoint.health.show-details` is `always`, even though the dashboard's own Health page reads the indicators directly.
 
+### The data browser, and why it does not inherit that default
+
+`firefly/admin` ships one more surface, and it is the only one in this chapter whose gate is written differently from every other gate you have seen. It is a Django-admin-style **database browser** over the data layer of Chapter 5 — listing, detail, search, sorting and paging over your own repositories — reached through a single `DataBrowser` that `DataBrowser::forContainer($container)` assembles from the application container.
+
+It discovers what to browse the same way the rest of the dashboard discovers everything — from the compiled catalogue. **Every bean whose scan-time interface list contains `CrudRepository` is a browsable resource.** Nothing is registered, nothing is declared: a repository you write is browsable the moment the container has it, and one you delete stops being browsable without anyone editing a list. Each row of `BeansCatalog` already carries the full interface closure `ComponentScanner` recorded with `class_implements()`, so "is this bean a repository, and does it also page?" is two `in_array()` calls over data the process already holds — no reflection, and, decisively, no chance of offering a resource the container never registered.
+
+Now the gate:
+
+```php
+final readonly class DataBrowserSettings
+{
+    public static function fromConfig(Config $config): self
+    {
+        $max = min(self::PAGE_SIZE_CEILING, max(1, $config->int('firefly.admin.data.max-page-size', 200)));
+
+        return new self(
+            enabled: $config->bool('firefly.admin.data.enabled', false),
+            writable: $config->bool('firefly.admin.data.writable', false),
+            pageSize: min($max, max(1, $config->int('firefly.admin.data.page-size', 25))),
+            maxPageSize: $max,
+            excluded: self::csv($config->string('firefly.admin.data.exclude', '')),
+        );
+    }
+
+    /** Writing requires BOTH gates. */
+    public function canWrite(): bool
+    {
+        return $this->enabled && $this->writable;
+    }
+}
+```
+
+Look at the two defaults, and compare them with `AdminSettings`'s `$config->bool('app.debug', false)` a few pages up. The dashboard follows `app.debug`, and the argument for that was sound **for what the dashboard shows**: beans, conditions, mappings and resolved configuration are facts about the *application*, and an application already serving stack traces has already published facts of that kind.
+
+This page shows facts about the application's **users**. That is a categorically bigger disclosure, and the mistakes that expose it are the ordinary ones that cost nothing today: a debug flag left on in a staging environment that shares a database with production, a `.env` copied to a box that was supposed to be internal, a laptop tunnelled for a demo. Each becomes a customer-record disclosure the moment a data browser is wired to `app.debug`. So the gate is separate, explicit and off — **`app.debug` cannot switch it on, and neither can `firefly.admin.enabled`.** All three must be true.
+
+Writes then need a *second* key, and it is ineffective on its own. Reading the wrong row is a disclosure; deleting it is data loss with no undo, from a form, over a session that may be nothing more than "debug was on". Turning on the browser is a decision about **visibility**; turning on writes is a decision about **custody**. Collapse them into one key and the operator who wanted to look at a table has also armed the delete button.
+
+!!! warning "There is no create, and that is not a gap to be filled in later"
+    A generic create form over an arbitrary entity is a promise the browser cannot keep, and Chapter 6 is the reason why: **an aggregate's constructor is where its invariants live.** An `Order` that must have at least one line, a `Wallet` whose balance starts at zero in the currency it was opened in, a value object that rejects a malformed IBAN — a form built from a column list knows none of them. There are only two ways to build the row: call the constructor, which needs arguments the form cannot supply in the right types or the right order; or write the columns straight to the table, which produces a row the domain model considers impossible and which every later read then has to cope with. The second is what a "just insert the columns" implementation actually does, and it is *worse than having no button*, because it looks like it worked. `update()` is offered because it operates on a row that already satisfies its invariants; `delete()` because removal needs no invariant at all. Creation belongs in your own code, where the constructor is.
+
+Two more decisions are worth carrying out of this section, because both are the sort of thing that reads as a detail and is not.
+
+**The identifier and any masked secret are refused as update targets** — and refused twice, once so the view can render the field read-only and again in the write path, so a hand-crafted POST cannot reach what the form would not offer. Re-keying a row from a generic form is not an edit, it is a different row, and the foreign keys pointing at the old value do not follow. A secret's *displayed* value is `******`, so round-tripping a rendered form would write the mask over the real credential — a data-loss bug the masking itself created. Secrets are excluded from **search** for a related reason: a box that answers "yes, some row's `api_token` starts with `sk_live_9`" is an oracle an operator can walk one character at a time.
+
+**No error text the page renders is ever an exception message.** Laravel's `QueryException` stringifies the failing SQL *and its bindings* into `getMessage()`, so echoing it would publish the schema and the bound values — which on a search over a users table is the operator's own query, and on a detail lookup is a primary key. Every reason is a fixed sentence composed in the browser layer, plus at most the exception's class name; the message stays in the exception, where the log can have it. This is also why nothing in the layer throws at its caller: reads answer with a listing carrying a reason, writes with one of four outcomes (`Done`, `Refused`, `NotFound`, `Failed`), and a view rendering an admin page never has to be exception-safe to stay on its feet.
+
+!!! note "The listing path you get depends on the interface you implemented"
+    A `PagingAndSortingRepository` is paged **in the database**: the repository does the offset, the limit, the `ORDER BY` and the `COUNT`, and the cost is independent of table size. A plain `CrudRepository` cannot express any of that, so the browser calls `findAll()`, sorts and slices **in PHP**, and throws away all but 25 rows — which on ten thousand rows is a slow page and on ten million is an out-of-memory that kills the worker, on the *first* click. The interface has no limit, no offset and no count-with-predicate, so the honest options were "refuse to browse repositories that cannot page" or "browse them and say what it costs". LaraFly does the second, and this is the saying. Implement `PagingAndSortingRepository` on anything you intend to browse against a real table.
+
 !!! laravel "Laravel parity"
     Plain Laravel ships no health-check or metrics endpoint at all — most teams either hand-roll a `/health` route or reach for a third-party package, usually paired with the `ext-prometheus` extension. `firefly/actuator` and `firefly/observability` are first-party, dependency-light analogues of Spring Boot Actuator and Micrometer respectively: framework endpoints mounted on the same `Router` your app already uses, health checks that reuse Laravel's own `DB`/`Log`/config underneath, and a pure-PHP Prometheus exporter with no extension requirement. Both packages are opt-in Composer dependencies and both are secure-by-default — an app that adds `firefly/actuator` gets `health`/`info` and nothing else until it configures more. `firefly/admin` completes the set as the analogue of Spring Boot Admin, with the difference that it is not a separate monitoring application you deploy and register instances with: it is Blade views inside the application it reports on, which is why it can read the registry directly and why its access model matters as much as it does.
 
@@ -917,9 +992,13 @@ It also backs off silently in one more case that is easy to miss. Blade is requi
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | The same precedence trick as Chapter 10's security seam: registers `cqrsMetrics()` before `CqrsAutoConfiguration` evaluates its `#[ConditionalOnMissingBean]` |
 | `firefly/admin` | A server-rendered Blade dashboard at `/firefly`; thirteen pages, and one whose endpoint is unregistered or switched off is hidden from the menu rather than linked |
 | `AdminEndpointReader` | Invokes each `ActuatorEndpoint` **in-process** from `ActuatorRegistry`, bypassing `ExposureModel` — so the dashboard shows what the HTTP surface does not expose, and a throwing endpoint degrades one panel |
-| `BeanGraph` | Turns the beans catalogue into a drawn dependency graph: constructor edges resolved through an interface index (marked `via`), longest-path layering, cycles reported rather than hung on, and the diagram suppressed past `firefly.admin.graph.max-nodes` (220) |
+| `BeanGraph` | Turns the beans catalogue into a drawn dependency graph over **three kinds of node** — components, `#[Bean]` products and `#[ConfigProperties]` DTOs — with `injects`/`produces` edges resolved through an interface index (marked `via`), longest-path layering, cycles reported rather than hung on, and the diagram suppressed past `firefly.admin.graph.max-nodes` (220) |
+| `#[Bean]` products as nodes | A framework's wiring lives in factory methods, not constructors; with only declaring classes as nodes a stock skeleton drew **one** edge out of 42 beans |
 | `ComponentDescriptor::$dependencies` | The graph's edges, recorded by `ComponentScanner` at **scan** time — class and interface types only, because a scalar parameter is configuration, not wiring |
 | `firefly.admin.enabled` | Defaults to `app.debug`; an explicit value wins in both directions, and turning it on with debug off obliges you to put your own auth middleware in front of the route |
+| `firefly.admin.data.enabled` | The data browser's own gate, defaulting to **`false`** — it does *not* follow `app.debug` or `firefly.admin.enabled`, because this page shows facts about the application's users rather than about the application |
+| `firefly.admin.data.writable` | A **second** gate, also `false` and ineffective alone: visibility and custody are different decisions, and one key would arm the delete button for whoever wanted to look at a table |
+| No `create()` | Permanent, not pending: an aggregate's invariants live in its constructor, and a form built from a column list cannot satisfy them — writing the columns anyway produces a row the domain considers impossible |
 
 ---
 

@@ -222,6 +222,10 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 | `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
 | `firefly.admin.pages.exclude` | `''` | CSV of page slugs to refuse. This is a **refusal, not a menu preference**: an excluded page is hidden *and* its URL 404s — hiding `env` from the menu achieves nothing if the URL still answers. Use `overview` for the index page. |
 
+The `firefly.admin.data.*` keys are documented separately, in [Data Browser](data-browser.md#configuration-fireflyadmindata),
+because the browser is gated independently of everything above: `firefly.admin.enabled` does **not** switch it on,
+and neither does `app.debug`.
+
 ## Laravel comparison
 
 | Concern | Plain Laravel | LaraFly (`firefly/admin`) |
@@ -244,5 +248,6 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 ---
 
 See also: [Actuator](actuator.md) for the endpoints themselves, [Observability](observability.md) for the metrics
-and HTTP-exchange stores the dashboard renders, and [Bean Graph](bean-graph.md) for the one page that is more than
-a table.
+and HTTP-exchange stores the dashboard renders, [Bean Graph](bean-graph.md) for the one page that is more than
+a table, and [Data Browser](data-browser.md) for the Django-style view over your own repositories — which is
+**off by default and does not inherit `firefly.admin.enabled`**.

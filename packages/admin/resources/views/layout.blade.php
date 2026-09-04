@@ -352,6 +352,28 @@
         .nodes .node.off{display:none}
         .nodes .node:focus-visible rect{stroke:var(--accent);stroke-width:2}
 
+        /* ── data browser ────────────────────────────────────────────────── */
+        .pager{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);
+               font-size:12.5px;color:var(--ink-2)}
+        .pager .spacer{flex:1}
+        .pager .act{text-decoration:none;display:inline-flex;align-items:center}
+        .editor{padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+        .editor label{display:flex;flex-direction:column;gap:4px;min-width:0}
+        .editor label span{font-size:12px;color:var(--ink-2)}
+        .editor label em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+        .editor input{
+            font:12.5px var(--mono);height:30px;padding:0 9px;border-radius:7px;
+            border:1px solid var(--line-2);background:var(--bg);color:var(--ink);min-width:0;
+        }
+        .editor .actions{grid-column:1/-1;display:flex;gap:8px}
+        .go{height:30px;padding:0 14px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);
+            color:#fff;cursor:pointer;font-size:13px;font-weight:600}
+        .go:hover{filter:brightness(1.08)}
+        .act.danger{color:var(--down);border-color:var(--down)}
+        .act.danger:hover{background:var(--down-bg)}
+        .tip{margin:0 0 16px;border-radius:8px;background:var(--accent-soft);color:var(--ink);
+             padding:11px 14px;font-size:13.5px}
+
         [hidden]{display:none!important}
     </style>
 </head>

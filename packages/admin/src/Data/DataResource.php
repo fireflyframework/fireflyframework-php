@@ -36,8 +36,6 @@ final readonly class DataResource
     /**
      * Whether this resource has a live Eloquent model behind it — the precondition for schema-derived
      * columns, SQL-side search/sort, and any write at all.
-     *
-     * @phpstan-assert-if-true non-empty-string $this->entityClass
      */
     public function isEloquentBacked(): bool
     {

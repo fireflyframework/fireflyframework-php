@@ -634,6 +634,15 @@ pages the JSON surface deliberately keeps unexposed — which makes its own URL 
 **must put the route behind its own auth middleware**. Read
 [the access model](docs/modules/admin.md#access-the-whole-security-boundary) before you do.
 
+The package also ships a Django-admin-style [**data browser**](docs/modules/data-browser.md) over your own
+`CrudRepository` beans — discovered from the compiled bean catalogue, so nothing is registered by hand. It is
+gated *separately*: `firefly.admin.data.enabled` defaults to **`false`** and deliberately does **not** follow
+`app.debug` or `firefly.admin.enabled`, because beans and configuration are facts about the application while
+this page shows facts about its **users**. Writes need `firefly.admin.data.writable` on top of that, and there
+is deliberately no create — an aggregate's invariants live in its constructor, not in a column list. Discovery,
+reads and both writes are complete and usable from your own code today; the dashboard page that renders them is
+[not routed yet](docs/modules/data-browser.md#known-latent).
+
 `composer require firefly/openapi` mounts `GET /openapi.json` and a console at `/openapi`, both generated from
 the same `RouteManifest` the dispatcher dispatches from and the same `ConstraintManifest` the validator
 validates with — no annotation dialect, and nothing that can drift. `php artisan firefly:openapi --output=`
@@ -750,6 +759,7 @@ its own installable Composer package with its own tests and its own [module guid
 | Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics, `/actuator/prometheus` | `firefly/observability` |
 | Operations | [Admin Dashboard](docs/modules/admin.md) — the browser dashboard over the actuator, read in-process | `firefly/admin` |
 | Operations | [Bean Graph](docs/modules/bean-graph.md) — the dashboard's drawn dependency graph, with cycle reporting | `firefly/admin` |
+| Operations | [Data Browser](docs/modules/data-browser.md) — the dashboard's database browser over `CrudRepository` beans, off by default | `firefly/admin` |
 | Testing | [Testing](docs/modules/testing.md) — `FireflyTestCase`, recording doubles, Pest expectations | `firefly/testing` |
 | Testing | [Integration Testing](docs/modules/integration-testing.md) — `@group integration`, testcontainers | `firefly/testing` |
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
@@ -759,6 +769,8 @@ its own installable Composer package with its own tests and its own [module guid
 is the 28th unit, a `type: project` create-project template at the top level.
 
 ---
+
+## Documentation
 
 Start at the **[documentation table of contents](docs/README.md)** — it groups every guide by topic. Highlights:
 

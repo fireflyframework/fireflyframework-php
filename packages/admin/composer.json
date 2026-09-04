@@ -19,9 +19,11 @@
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
+        "firefly/data": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/web": "*@dev",
         "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
         "illuminate/http": "^13.0",
         "illuminate/routing": "^13.0",
         "illuminate/support": "^13.0"

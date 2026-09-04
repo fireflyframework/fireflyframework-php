@@ -767,6 +767,31 @@ final class ComponentDescriptor
 
 Esa última frase es una decisión de diseño en la que merece la pena detenerse. Un parámetro de constructor tipado `string $name` es configuración; dibujarlo como una arista enterraría las relaciones que importan bajo ruido de `string`/`int`. Un parámetro de **clase anulable o con valor por defecto** *sí* se conserva, porque un colaborador opcional sigue siendo una relación.
 
+#### Tres clases de nodo, y por qué la primera versión estaba casi vacía
+
+Antes que las aristas, los nodos — porque la primera versión de esta página los entendió mal de una forma de la que merece la pena aprender. Una aplicación LaraFly tiene **tres clases de bean**, y las tres tienen que ser nodos:
+
+| Clase | Qué es | De dónde sale |
+|---|---|---|
+| `component` | Una clase escaneada `#[Component]`/`#[Service]`/`#[Repository]`/`#[RestController]`/`#[Configuration]` | El catálogo de beans |
+| `bean` | Un valor **producido por un método fábrica `#[Bean]`** de una `#[Configuration]` | Las filas `produces` del catálogo |
+| `config` | Un DTO `#[ConfigProperties]` enlazado desde la configuración | El endpoint `configprops` |
+
+Al principio solo la primera clase era un nodo, y la consecuencia no fue cosmética. El cableado de un framework vive casi por completo en la segunda clase: una autoconfiguración es una `#[Configuration]` cuyos métodos `#[Bean]` producen `MeterRegistry`, `TransactionTemplate`, `AggregateTracker` y demás. Con solo las clases declarantes como nodos, cada arista que apuntaba a uno de esos productos apuntaba a un nodo que no existía. Medido sobre un esqueleto de serie: **42 nodos, 41 productos `#[Bean]` ausentes, 21 dependencias colgando y exactamente una arista dibujada.** La página no mostraba un grafo disperso — era estructuralmente incapaz de mostrar el cableado del framework.
+
+La tercera clase es el mismo error en miniatura. Un DTO `#[ConfigProperties]` está enlazado y es inyectable, pero no se escanea como componente ni lo produce una fábrica, así que nada en el catálogo de beans puede verlo: `App\GreetingProperties` aparecía como *dependencia no resuelta* de `GreetingService` en lugar de como el bean que es. Por eso la página lee el endpoint `configprops` junto al catálogo.
+
+De modo que también hay dos clases de arista, y dicen cosas distintas:
+
+| Arista | De → a | Significado |
+|---|---|---|
+| `injects` | Un bean → algo de lo que declaró depender | El consumidor lo pidió; el contenedor lo satisface |
+| `produces` | Una `#[Configuration]` → el valor que devuelve uno de sus métodos `#[Bean]` | Esta clase es de donde sale ese bean |
+
+Las aristas `injects` se recogen de los parámetros del **constructor** de un componente *y* de los parámetros de cada **método fábrica `#[Bean]`** — el producto depende de lo que su fábrica pidiera. Esa unión es el cableado; los constructores por sí solos son una fracción de él.
+
+Una sutileza sobre la identidad. Un producto `#[Bean]` se identifica normalmente por el **tipo que produce**, porque esa es la clave que enlaza el contenedor y la clave que pide todo consumidor. Pero cuando dos métodos fábrica producen el mismo tipo — la forma que las reglas `#[Primary]`/`#[Qualifier]` del Capítulo 2 existen para desambiguar — el tipo por sí solo los colapsaría en un único nodo y ocultaría justo la ambigüedad por la que abriste la página. Así que cada competidor recibe `Declarante::metodo()` como identidad propia y el tipo desnudo resuelve al primero de ellos, reflejando al contenedor, donde la clave de tipo es un alias del ganador mientras todo candidato sigue alcanzable por nombre.
+
 #### Lo difícil no es dibujar, es resolver
 
 Un constructor pide un **tipo**, y ese tipo es muy a menudo una interfaz — `EventPublisher`, `HealthIndicator`, `Cache` — mientras que el bean que lo satisface es una clase concreta que meramente la implementa. Una lista de aristas construida ingenuamente a partir de los tipos del constructor apunta entonces a nodos que no existen, y el grafo sale como un campo de puntos desconectados. Pregúntate a qué debería dibujar una flecha la dependencia de `WalletService` sobre `WalletRepository`: no al puerto, que es una interfaz sin bean propio, sino a `EloquentWalletRepository`, que es lo que de verdad se va a construir.
@@ -825,8 +850,8 @@ Dos límites se declaran en la página en lugar de ocultarse:
 !!! tip "Léelo junto a la página de Condiciones"
     Las dos responden mitades complementarias de toda sorpresa de auto-configuración. **Condiciones** dice *si* un bean del framework se registró o se echó atrás, y sobre qué condición. **El grafo** dice a qué está cableado el bean que sí ganó, y a través de qué interfaz. Una arista `EventPublisher` apuntando a `InMemoryEventPublisher` cuando configuraste `firefly.eda.provider=rabbitmq` se ve de un vistazo en el grafo; Condiciones nombra entonces el `#[ConditionalOnProperty]` que no casó.
 
-!!! note "Lo que el grafo todavía no dibuja"
-    Las aristas salen únicamente de las `dependencies` del constructor. `BeansCatalog` publica además los parámetros propios de cada método fábrica `#[Bean]` (bajo `produces`), pero `BeanGraph` no los lee, así que una clase `#[Configuration]` aparece con las aristas que declara *su propio constructor* y el cableado que hacen sus métodos `#[Bean]` no se dibuja. Eso sub-dibuja específicamente las clases de auto-configuración del framework; tus beans `#[Service]`/`#[Repository]`, que cablean por constructor, se dibujan completos.
+!!! note "Lo que el grafo sigue sin decidir por ti"
+    Dos límites merecen conocerse, y ninguno es una carencia de datos. **`#[Primary]`/`#[Qualifier]` no dirigen el índice** — gana quien escriba primero en orden de escaneo, tanto para una interfaz con varios implementadores como para la clave de tipo desnuda de un `#[Bean]` disputado. Cada competidor sigue teniendo su propio nodo y la arista se marca `via`, así que la ambigüedad es visible en la página, pero el destino dibujado puede no ser el que resuelve el contenedor. Y **un tipo no resuelto se reporta, nunca se explica**: la página puede decirte que un tipo lo provee algo fuera del contenedor, pero no *qué* enlace lo provee, porque un enlace del contenedor de Laravel no lleva descriptor que leer.
 
 ---
 
@@ -896,6 +921,56 @@ También se echa atrás en silencio en un caso más, fácil de pasar por alto. B
 !!! warning "Tres cosas que el panel solo puede mostrarte de *este* proceso"
     Bajo PHP-FPM cada petición es un proceso distinto, y tres páginas heredan eso. **Cambiar un nivel de log** llama al mismo endpoint que `POST /actuator/loggers/{name}`, que muta los manejadores de Monolog del proceso actual — la siguiente petición es otro proceso, así que cambia `logging.channels` para cualquier cosa que deba persistir. Las **métricas** son solo tan duraderas como el registro: el `SimpleMeterRegistry` por defecto guarda los medidores en memoria de proceso, así que el panel ve solo su propia petición salvo que `firefly.observability.metrics.store` apunte a un almacén de caché. Y los **detalles de salud** siguen ocultos en la respuesta JSON `/actuator/health` hasta que `firefly.management.endpoint.health.show-details` sea `always`, aunque la propia página de Salud del panel lea los indicadores directamente.
 
+### El navegador de datos, y por qué no hereda ese valor por defecto
+
+`firefly/admin` incluye una superficie más, y es la única de este capítulo cuya puerta está escrita de forma distinta a todas las que has visto. Es un **navegador de base de datos** al estilo del admin de Django sobre la capa de datos del Capítulo 5 — listado, detalle, búsqueda, ordenación y paginación sobre tus propios repositorios — al que se llega a través de un único `DataBrowser` que `DataBrowser::forContainer($container)` ensambla desde el contenedor de la aplicación.
+
+Descubre qué navegar igual que el resto del panel descubre todo lo demás — desde el catálogo compilado. **Todo bean cuya lista de interfaces de tiempo de escaneo contenga `CrudRepository` es un recurso navegable.** No se registra nada ni se declara nada: un repositorio que escribas es navegable en cuanto el contenedor lo tiene, y uno que borres deja de serlo sin que nadie edite una lista. Cada fila de `BeansCatalog` ya lleva el cierre completo de interfaces que `ComponentScanner` registró con `class_implements()`, así que «¿es este bean un repositorio, y además pagina?» son dos llamadas a `in_array()` sobre datos que el proceso ya tiene — sin reflexión y, de forma decisiva, sin posibilidad de ofrecer un recurso que el contenedor nunca registró.
+
+Ahora la puerta:
+
+```php
+final readonly class DataBrowserSettings
+{
+    public static function fromConfig(Config $config): self
+    {
+        $max = min(self::PAGE_SIZE_CEILING, max(1, $config->int('firefly.admin.data.max-page-size', 200)));
+
+        return new self(
+            enabled: $config->bool('firefly.admin.data.enabled', false),
+            writable: $config->bool('firefly.admin.data.writable', false),
+            pageSize: min($max, max(1, $config->int('firefly.admin.data.page-size', 25))),
+            maxPageSize: $max,
+            excluded: self::csv($config->string('firefly.admin.data.exclude', '')),
+        );
+    }
+
+    /** Escribir requiere AMBAS puertas. */
+    public function canWrite(): bool
+    {
+        return $this->enabled && $this->writable;
+    }
+}
+```
+
+Fíjate en los dos valores por defecto, y compáralos con el `$config->bool('app.debug', false)` de `AdminSettings` unas páginas más arriba. El panel sigue a `app.debug`, y el argumento para eso era sólido **para lo que el panel muestra**: beans, condiciones, mapeos y configuración resuelta son hechos sobre la *aplicación*, y una aplicación que ya sirve trazas de pila ya ha publicado hechos de esa clase.
+
+Esta página muestra hechos sobre los **usuarios** de la aplicación. Esa es una divulgación categóricamente mayor, y los errores que la exponen son los ordinarios, los que hoy no cuestan nada: una bandera de depuración olvidada en un entorno de staging que comparte base de datos con producción, un `.env` copiado a una máquina que debía ser interna, un portátil tunelizado para una demo. Cada uno se convierte en una divulgación de registros de clientes en cuanto hay un navegador de datos atado a `app.debug`. Así que la puerta es aparte, explícita y está cerrada — **`app.debug` no puede abrirla, y `firefly.admin.enabled` tampoco.** Las tres deben ser ciertas.
+
+Las escrituras necesitan entonces una *segunda* clave, y por sí sola no sirve de nada. Leer la fila equivocada es una divulgación; borrarla es pérdida de datos sin deshacer, desde un formulario, sobre una sesión que puede no ser más que «debug estaba encendido». Encender el navegador es una decisión sobre **visibilidad**; encender las escrituras es una decisión sobre **custodia**. Si las colapsas en una sola clave, quien quería mirar una tabla ha armado también el botón de borrar.
+
+!!! warning "No hay create, y no es un hueco que se rellene más adelante"
+    Un formulario de creación genérico sobre una entidad arbitraria es una promesa que el navegador no puede cumplir, y el Capítulo 6 explica por qué: **el constructor de un agregado es donde viven sus invariantes.** Un `Order` que debe tener al menos una línea, un `Wallet` cuyo saldo empieza a cero en la divisa en que se abrió, un objeto de valor que rechaza un IBAN mal formado — un formulario construido a partir de una lista de columnas no conoce ninguno. Solo hay dos maneras de construir la fila: llamar al constructor, que necesita argumentos que el formulario no puede aportar con los tipos ni el orden correctos; o escribir las columnas directamente en la tabla, lo que produce una fila que el modelo de dominio considera imposible y con la que toda lectura posterior tiene que apañarse. Lo segundo es lo que hace de verdad una implementación de «simplemente inserta las columnas», y es *peor que no tener botón*, porque parece que funcionó. `update()` sí se ofrece porque opera sobre una fila que ya satisface sus invariantes; `delete()` porque eliminar no necesita invariante alguna. Crear pertenece a tu propio código, donde está el constructor.
+
+Merece la pena llevarse otras dos decisiones de esta sección, porque ambas parecen un detalle y no lo son.
+
+**El identificador y cualquier secreto enmascarado se rechazan como destino de una actualización** — y se rechazan dos veces, una para que la vista pueda dibujar el campo como solo lectura y otra en la ruta de escritura, de modo que un POST fabricado a mano no alcance lo que el formulario no ofrecía. Recodificar la clave de una fila desde un formulario genérico no es una edición, es otra fila, y las claves foráneas que apuntaban al valor antiguo no la siguen. El valor *mostrado* de un secreto es `******`, así que devolver un formulario renderizado escribiría la máscara sobre la credencial real — un fallo de pérdida de datos creado por el propio enmascarado. Los secretos se excluyen de la **búsqueda** por una razón emparentada: una caja que responde «sí, el `api_token` de alguna fila empieza por `sk_live_9`» es un oráculo que un operador puede recorrer carácter a carácter.
+
+**Ningún texto de error que la página muestre es jamás un mensaje de excepción.** La `QueryException` de Laravel convierte a cadena el SQL fallido *y sus bindings* dentro de `getMessage()`, así que reproducirlo publicaría el esquema y los valores enlazados — que en una búsqueda sobre una tabla de usuarios es la propia consulta del operador, y en una consulta de detalle es una clave primaria. Toda razón es una frase fija compuesta en la capa del navegador, más como mucho el nombre de clase de la excepción; el mensaje se queda en la excepción, donde el log puede tenerlo. Por eso mismo nada en la capa lanza hacia su llamador: las lecturas responden con un listado que lleva una razón, las escrituras con uno de cuatro resultados (`Done`, `Refused`, `NotFound`, `Failed`), y una vista que dibuja una página de administración nunca tiene que ser a prueba de excepciones para mantenerse en pie.
+
+!!! note "La ruta de listado que obtienes depende de la interfaz que implementaste"
+    Un `PagingAndSortingRepository` se pagina **en la base de datos**: el repositorio hace el desplazamiento, el límite, el `ORDER BY` y el `COUNT`, y el coste es independiente del tamaño de la tabla. Un `CrudRepository` simple no puede expresar nada de eso, así que el navegador llama a `findAll()`, ordena y corta **en PHP**, y descarta todas las filas menos 25 — lo que con diez mil filas es una página lenta y con diez millones es un agotamiento de memoria que mata al worker, al *primer* clic. La interfaz no tiene límite, ni desplazamiento, ni conteo con predicado, así que las opciones honestas eran «negarse a navegar repositorios que no pueden paginar» o «navegarlos y decir lo que cuesta». LaraFly hace lo segundo, y esto es el decirlo. Implementa `PagingAndSortingRepository` en todo lo que pretendas navegar contra una tabla real.
+
 !!! laravel "Paridad con Laravel"
     Laravel puro no trae ningún endpoint de comprobación de salud ni de métricas en absoluto — la mayoría de los equipos o bien improvisan una ruta `/health` a mano o recurren a un paquete de terceros, normalmente emparejado con la extensión `ext-prometheus`. `firefly/actuator` y `firefly/observability` son análogos de primera parte y con pocas dependencias de Spring Boot Actuator y Micrometer respectivamente: endpoints de framework montados sobre el mismo `Router` que tu app ya usa, comprobaciones de salud que reutilizan por debajo los propios `DB`/`Log`/config de Laravel, y un exportador Prometheus en PHP puro sin requisito de extensión. Ambos paquetes son dependencias Composer opcionales y ambos son seguros por defecto — una app que añade `firefly/actuator` obtiene `health`/`info` y nada más hasta que configure más. `firefly/admin` completa el conjunto como análogo de Spring Boot Admin, con la diferencia de que no es una aplicación de monitorización aparte que despliegas y en la que registras instancias: son vistas Blade dentro de la propia aplicación sobre la que informan, que es por lo que puede leer el registro directamente y por lo que su modelo de acceso importa tanto como importa.
 
@@ -917,9 +992,13 @@ También se echa atrás en silencio en un caso más, fácil de pasar por alto. B
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | El mismo truco de precedencia que la costura de seguridad del Capítulo 10: registra `cqrsMetrics()` antes de que `CqrsAutoConfiguration` evalúe su `#[ConditionalOnMissingBean]` |
 | `firefly/admin` | Un panel Blade renderizado en el servidor en `/firefly`; trece páginas, y una cuyo endpoint no está registrado o está apagado se oculta del menú en lugar de enlazarse |
 | `AdminEndpointReader` | Invoca cada `ActuatorEndpoint` **en proceso** desde el `ActuatorRegistry`, sorteando `ExposureModel` — así el panel muestra lo que la superficie HTTP no expone, y un endpoint que lanza degrada un solo panel |
-| `BeanGraph` | Convierte el catálogo de beans en un grafo de dependencias dibujado: aristas de constructor resueltas a través de un índice de interfaces (marcadas `via`), estratificación por camino más largo, ciclos reportados en lugar de colgarse, y el diagrama suprimido pasados `firefly.admin.graph.max-nodes` (220) |
+| `BeanGraph` | Convierte el catálogo de beans en un grafo de dependencias dibujado sobre **tres clases de nodo** — componentes, productos `#[Bean]` y DTOs `#[ConfigProperties]` — con aristas `injects`/`produces` resueltas a través de un índice de interfaces (marcadas `via`), estratificación por camino más largo, ciclos reportados en lugar de colgarse, y el diagrama suprimido pasados `firefly.admin.graph.max-nodes` (220) |
+| Los productos `#[Bean]` como nodos | El cableado de un framework vive en métodos fábrica, no en constructores; con solo las clases declarantes como nodos, un esqueleto de serie dibujaba **una** arista de 42 beans |
 | `ComponentDescriptor::$dependencies` | Las aristas del grafo, registradas por `ComponentScanner` en tiempo de **escaneo** — solo tipos de clase e interfaz, porque un parámetro escalar es configuración, no cableado |
 | `firefly.admin.enabled` | Toma por defecto `app.debug`; un valor explícito gana en ambas direcciones, y encenderlo con debug apagado te obliga a poner tu propio middleware de autenticación delante de la ruta |
+| `firefly.admin.data.enabled` | La puerta propia del navegador de datos, con valor por defecto **`false`** — *no* sigue a `app.debug` ni a `firefly.admin.enabled`, porque esta página muestra hechos sobre los usuarios de la aplicación y no sobre la aplicación |
+| `firefly.admin.data.writable` | Una **segunda** puerta, también `false` e inútil por sí sola: visibilidad y custodia son decisiones distintas, y una sola clave armaría el botón de borrar para quien solo quería mirar una tabla |
+| Sin `create()` | Permanente, no pendiente: las invariantes de un agregado viven en su constructor, y un formulario construido a partir de una lista de columnas no puede satisfacerlas — escribir las columnas de todos modos produce una fila que el dominio considera imposible |
 
 ---
 

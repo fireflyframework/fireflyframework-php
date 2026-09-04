@@ -26,6 +26,8 @@ final readonly class AdminPage
 
     public const GROUP_CONFIG = 'Configuration';
 
+    public const GROUP_DATA = 'Data';
+
     public function __construct(
         public string $slug,
         public string $label,
@@ -66,6 +68,11 @@ final readonly class AdminPage
                 'The cache stores this application has configured.'),
             new self('loggers', 'Loggers', 'loggers', self::GROUP_CONFIG,
                 'Log channels and their levels.'),
+
+            // `requires` is null: the data browser reads repositories through the container, not an actuator
+            // endpoint. Its own switch decides whether the page appears — see AdminAction::nav().
+            new self('data', 'Browse data', null, self::GROUP_DATA,
+                'Every repository this application declared, and the records behind it.'),
         ];
     }
 
@@ -76,6 +83,6 @@ final readonly class AdminPage
      */
     public static function groups(): array
     {
-        return [self::GROUP_RUNTIME, self::GROUP_WIRING, self::GROUP_CONFIG];
+        return [self::GROUP_RUNTIME, self::GROUP_WIRING, self::GROUP_DATA, self::GROUP_CONFIG];
     }
 }

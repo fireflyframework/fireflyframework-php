@@ -111,16 +111,20 @@ final class DataResourceRegistry
     private function describe(string $class, bool $paged): array
     {
         $model = $this->introspector->modelOf($class);
-        $eloquent = $model !== null
-            && is_a($class, EloquentRepository::class, true)
-            && is_a($model, Model::class, true);
+
+        // Eloquent-backed means all three: the repository extends the Eloquent base, it declared a $model,
+        // and that $model really is a Model. A repository that declares a `$model` pointing at something else
+        // is not an error — it is just not schema-browsable, and it keeps the declared class as its entity.
+        if ($model !== null && is_a($class, EloquentRepository::class, true) && is_a($model, Model::class, true)) {
+            return ['class' => $class, 'entity' => $model, 'table' => $this->tableOf($model), 'paged' => $paged, 'eloquent' => true];
+        }
 
         return [
             'class' => $class,
             'entity' => $model ?? $this->introspector->entityOf($class),
-            'table' => $eloquent && is_a($model, Model::class, true) ? $this->tableOf($model) : null,
+            'table' => null,
             'paged' => $paged,
-            'eloquent' => $eloquent,
+            'eloquent' => false,
         ];
     }
 

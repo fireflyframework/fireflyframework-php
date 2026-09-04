@@ -29,6 +29,13 @@ labels:
 # 4A (sustituye por completo la antigua sección de "la bandera de CDN", ya que `viewer.style` reemplaza a
 # `viewer.cdn`). Separar cualquiera de los dos en un capítulo propio habría desligado una funcionalidad
 # del paquete al que pertenece, y habría movido una referencia "Capítulo N" sin beneficio para el lector.
+# Tarea B8: de nuevo ningún capítulo nuevo, y por la misma razón. El grafo de beans reconstruido (los
+# productos #[Bean] y los DTOs #[ConfigProperties] son ahora nodos, no solo las clases declarantes) y el
+# nuevo navegador de base de datos son ambos páginas de firefly/admin, que el Capítulo 11 ya presenta, así
+# que ambos amplían ese capítulo en lugar de reclamar uno propio. El navegador de datos en particular
+# PERTENECE junto a la sección del modelo de acceso contra la que argumenta: todo su punto de diseño es que
+# `firefly.admin.data.enabled` deliberadamente NO hereda el valor por defecto `app.debug` que la sección
+# anterior justifica, y separarlos habría eliminado la comparación que hace legible la decisión.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}

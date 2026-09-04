@@ -8,9 +8,9 @@ use Tests\TestCase;
 
 /**
  * The skeleton shipped no test suite at all, while its README referenced a tests/ directory and a Pest
- * plugin that did not exist. These two cases are the smoke test a new application should start from: the
- * HTML stereotype renders, and the JSON stereotype negotiates — the difference between #[Controller] and
- * #[RestController].
+ * plugin that did not exist. These cases are the smoke test a new application should start from: the HTML
+ * stereotype renders, and the JSON stereotype negotiates — the difference between #[Controller] and
+ * #[RestController]. The sample REST resource has its own file, OrderTest.
  */
 final class WelcomeTest extends TestCase
 {
@@ -30,6 +30,18 @@ final class WelcomeTest extends TestCase
         $this->getJson('/greetings/Ada')
             ->assertOk()
             ->assertExactJson(['message' => 'Hello, Ada!']);
+    }
+
+    public function test_the_welcome_page_lists_the_sample_resource(): void
+    {
+        // The page enumerates the RouteManifest the dispatcher itself reads, so this is a check that the
+        // sample resource is genuinely compiled and routable — not that a string was hard-coded in a view.
+        $response = $this->get('/');
+
+        $response->assertOk();
+        $response->assertSee('/orders', false);
+        $response->assertSee('/orders/{id}', false);
+        $response->assertSee('OrderController', false);
     }
 
     public function test_the_actuator_reports_health(): void

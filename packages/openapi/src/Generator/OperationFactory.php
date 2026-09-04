@@ -7,6 +7,7 @@ namespace Firefly\OpenApi\Generator;
 use Firefly\OpenApi\Attributes\ApiParameter;
 use Firefly\OpenApi\Attributes\ApiResponse;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
+use Firefly\OpenApi\Schema\ElementTypes;
 use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\SchemaRegistry;
 use Firefly\OpenApi\Schema\TypeSchema;
@@ -163,6 +164,14 @@ final class OperationFactory
     }
 
     /**
+     * The binding's `dtos` table is handed down with it, and that is the whole of the fix for a body DTO that
+     * documented `#[Valid] array $lines` as `Array<any>`. RouteScanner compiled that table so ArgumentResolver
+     * could HYDRATE the nested payload without reflecting; passing it here means the schema is written from
+     * the same statement of the payload's shape that the server binds against, for every class in the graph
+     * rather than only the one at the top. The key is optional on a compiled binding — it is written only
+     * when the DTO actually nests — so an absent one degrades to ElementTypes' own resolution rather than
+     * silently dropping `items` again.
+     *
      * @param  Binding  $binding
      * @return array<string, mixed>
      */
@@ -171,7 +180,7 @@ final class OperationFactory
         $type = $binding['type'];
 
         $schema = $type !== null && TypeSchema::isDto($type)
-            ? ['$ref' => $this->schemas->ref($type, $registry, $binding['properties'])]
+            ? ['$ref' => $this->schemas->ref($type, $registry, $binding['properties'], [], new ElementTypes($binding['dtos'] ?? []))]
             : ['type' => 'object'];
 
         return [

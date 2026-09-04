@@ -7,11 +7,30 @@ namespace {{ namespace }};
 use Firefly\Web\Attributes\GetMapping;
 use Firefly\Web\Attributes\RestController;
 
+/**
+ * The `{{ resourcePath }}` endpoint.
+ */
 #[RestController]
 final class {{ class }}
 {
-    /** @return array<string, mixed> */
-    #[GetMapping('/{{ class }}')]
+    // NOTE — THE DOCBLOCK ABOVE IS PUBLISHED, THIS COMMENT IS NOT: firefly/openapi uses a controller's
+    // class docblock as the tag description in /openapi.json and each action's docblock as that operation's
+    // summary and description.
+    //
+    // The `--plain` shape: ONE action, for the endpoints that are not a collection of things — a webhook
+    // receiver, a probe of your own, a report, an RPC-shaped action verb. `make:firefly-controller` WITHOUT
+    // `--plain` generates the five-action REST resource and its request DTO instead, which is what most
+    // endpoints want.
+    //
+    // The path was DERIVED from the class name ({{ class }} -> /{{ resourcePath }}), not copied from it;
+    // rename it to whatever this endpoint actually is.
+
+    /**
+     * Handle the request.
+     *
+     * @return array<string, mixed>
+     */
+    #[GetMapping('/{{ resourcePath }}', name: '{{ resourcePath }}.index')]
     public function index(): array
     {
         return [];

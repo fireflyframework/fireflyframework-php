@@ -8,6 +8,7 @@ use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
+use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Format;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
@@ -15,6 +16,7 @@ use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Session\Store;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -32,6 +34,7 @@ final readonly class AdminAction
         private ViewFactory $views,
         private Container $container,
         private ManagementPortGuard $guard,
+        private DataBrowser $data,
     ) {}
 
     public function __invoke(Request $request, string $page = ''): SymfonyResponse
@@ -70,7 +73,119 @@ final readonly class AdminAction
             return $this->setLoggerLevel($request);
         }
 
+        if ($slug === 'data') {
+            return $request->isMethod('POST') ? $this->dataWrite($request) : $this->dataPage($request);
+        }
+
         return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($slug), $current), 200);
+    }
+
+    /**
+     * An edit or a delete from the record page.
+     *
+     * Both go through DataBrowser, which refuses anything the two switches do not permit — this method never
+     * decides that itself. The outcome is carried back in the session so a refusal reads as a sentence on
+     * the page the operator was already looking at, rather than as a status code they have to interpret.
+     */
+    private function dataWrite(Request $request): SymfonyResponse
+    {
+        // A disabled browser answers the same way for every shape. DataBrowser refuses the write regardless
+        // — verified: the row is untouched — but redirecting to a page that then 404s tells the caller the
+        // request was understood and merely declined, which is a different fact from "this does not exist".
+        if (! $this->data->isEnabled()) {
+            return $this->html($this->render('data-disabled', []), 404);
+        }
+
+        $slug = $request->input('resource');
+        $id = $request->input('id');
+
+        if (! is_string($slug) || $slug === '' || ! is_string($id) || $id === '') {
+            return $this->html($this->render('data-missing', ['slug' => is_string($slug) ? $slug : '']), 400);
+        }
+
+        $back = $this->settings->url('data').'?resource='.urlencode($slug);
+
+        if ($request->input('op') === 'delete') {
+            $result = $this->data->delete($slug, $id);
+
+            // A successful delete has nowhere to go back TO, so it lands on the listing.
+            return $this->redirect($result->isDone() ? $back : $back.'&id='.urlencode($id), $result->reason);
+        }
+
+        /** @var array<string, mixed> $fields */
+        $fields = is_array($request->input('f')) ? $request->input('f') : [];
+
+        return $this->redirect($back.'&id='.urlencode($id), $this->data->update($slug, $id, $fields)->reason);
+    }
+
+    /**
+     * Redirect back with the outcome sentence flashed.
+     *
+     * Guarded on the session actually being started: the dashboard mounts on the plain router and an
+     * application can serve it without session middleware, where with() would throw — and a write that
+     * SUCCEEDED failing on its way to reporting success is the worst possible outcome for this control.
+     */
+    private function redirect(string $to, string $message): RedirectResponse
+    {
+        $response = new RedirectResponse($to);
+
+        $session = $this->container->bound('session') ? $this->container->get('session') : null;
+
+        if ($session instanceof Store && $session->isStarted()) {
+            $response->with('data-message', $message);
+        }
+
+        return $response;
+    }
+
+    /**
+     * The data browser: a resource index, one resource's records, or a single record.
+     *
+     * All three live behind one slug rather than three routes because the browser's own switch decides
+     * whether ANY of it exists, and a disabled browser must answer the same way for every shape rather than
+     * 404ing some paths and rendering others.
+     */
+    private function dataPage(Request $request): SymfonyResponse
+    {
+        if (! $this->data->isEnabled()) {
+            return $this->html($this->render('data-disabled', []), 404);
+        }
+
+        $slug = $request->query('resource');
+        $slug = is_string($slug) && $slug !== '' ? $slug : null;
+
+        if ($slug === null) {
+            return $this->html($this->render('data-index', ['resources' => $this->data->resources()]), 200);
+        }
+
+        $id = $request->query('id');
+        if (is_string($id) && $id !== '') {
+            $record = $this->data->find($slug, $id);
+
+            return $record === null
+                ? $this->html($this->render('data-missing', ['slug' => $slug]), 404)
+                : $this->html($this->render('data-record', [
+                    'record' => $record,
+                    'writable' => $this->data->isWritable(),
+                ]), 200);
+        }
+
+        $page = (int) ($request->query('page') ?? 1);
+        $sort = $request->query('sort');
+        $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
+        $search = $request->query('q');
+
+        return $this->html($this->render('data-list', [
+            'listing' => $this->data->list(
+                $slug,
+                max(1, $page),
+                null,
+                is_string($sort) && $sort !== '' ? $sort : null,
+                $direction,
+                is_string($search) && $search !== '' ? $search : null,
+            ),
+            'writable' => $this->data->isWritable(),
+        ]), 200);
     }
 
     /** @return array<string,mixed> */
@@ -349,6 +464,8 @@ final readonly class AdminAction
         return array_values(array_filter(
             AdminPage::all(),
             fn (AdminPage $page): bool => $this->settings->allows($page->slug)
+                // The data browser has no actuator endpoint; its own switch decides whether it is offered.
+                && ($page->slug !== 'data' || $this->data->isEnabled())
                 && ($page->requires === null || $this->reader->has($page->requires)),
         ));
     }

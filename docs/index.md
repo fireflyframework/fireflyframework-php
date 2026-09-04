@@ -28,7 +28,9 @@ request after that runs against plain PHP arrays — no runtime reflection on th
   and method security (`#[PreAuthorize]`) enforced with no proxy magic.
 - **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
   metrics core, both secured by the same config as everything else, plus a server-rendered
-  [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md).
+  [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md), and an
+  opt-in, off-by-default [data browser](modules/data-browser.md) over your own repositories — shipping today as
+  a library, with its dashboard page still to land.
 - **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
   same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
   origin — no annotation dialect, no npm, no CDN.
@@ -68,7 +70,7 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
 | **Security** | [Security](modules/security.md) |
-| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) |
+| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) |
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |
 

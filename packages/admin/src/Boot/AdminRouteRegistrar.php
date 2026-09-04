@@ -5,10 +5,17 @@ declare(strict_types=1);
 namespace Firefly\Admin\Boot;
 
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
+use Firefly\Actuator\Introspection\BeansCatalog;
 use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Actuator\Server\ManagementServerSettings;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
+use Firefly\Admin\Data\DataBrowser;
+use Firefly\Admin\Data\DataBrowserSettings;
+use Firefly\Admin\Data\DataQueryEngine;
+use Firefly\Admin\Data\DataResourceRegistry;
+use Firefly\Admin\Data\DataSchemaFactory;
+use Firefly\Admin\Data\RepositoryIntrospector;
 use Firefly\Admin\Web\AdminAction;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
@@ -63,6 +70,29 @@ final class AdminRouteRegistrar implements BootPass
             $context->config,
             $container,
         ));
+        // The data browser is assembled here rather than declared as beans because it must exist even when
+        // it is switched OFF: the dashboard asks it whether it is enabled, and a page that cannot ask has to
+        // guess. Its own settings answer false by default, so building it costs a few objects and grants
+        // nothing.
+        $container->singleton(DataBrowser::class, static function () use ($container, $context): DataBrowser {
+            $settings = DataBrowserSettings::fromConfig($context->config);
+            $introspector = new RepositoryIntrospector;
+
+            return new DataBrowser(
+                $settings,
+                new DataResourceRegistry(
+                    // Null when the actuator has not populated a catalogue — the registry treats that as
+                    // "nothing discoverable" rather than failing the page.
+                    $container->bound(BeansCatalog::class) ? $container->make(BeansCatalog::class) : null,
+                    $introspector,
+                    $settings,
+                ),
+                new DataSchemaFactory($introspector),
+                new DataQueryEngine($introspector),
+                $container,
+            );
+        });
+
         $container->singleton(AdminAction::class, static fn (): AdminAction => new AdminAction(
             $container->make(AdminSettings::class),
             $container->make(AdminEndpointReader::class),
@@ -71,6 +101,7 @@ final class AdminRouteRegistrar implements BootPass
             // Resolved here rather than injected as a bean so the dashboard works whether or not the
             // actuator's own wiring has bound one: the settings come from the same config keys either way.
             new ManagementPortGuard(ManagementServerSettings::fromConfig($context->config)),
+            $container->make(DataBrowser::class),
         ));
 
         /** @var Router $router */
