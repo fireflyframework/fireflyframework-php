@@ -15,6 +15,7 @@ use Firefly\Admin\Data\DataBrowserSettings;
 use Firefly\Admin\Data\DataQueryEngine;
 use Firefly\Admin\Data\DataResourceRegistry;
 use Firefly\Admin\Data\DataSchemaFactory;
+use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Data\RepositoryIntrospector;
 use Firefly\Admin\Web\AdminAction;
 use Firefly\Context\Boot\BootContext;
@@ -74,6 +75,10 @@ final class AdminRouteRegistrar implements BootPass
         // it is switched OFF: the dashboard asks it whether it is enabled, and a page that cannot ask has to
         // guess. Its own settings answer false by default, so building it costs a few objects and grants
         // nothing.
+        // Assembled here for the same reason DataBrowser is: it must exist even when there is no database
+        // manager to describe, because the page's job in that case is to say so.
+        $container->singleton(DatasourceReport::class, static fn (): DatasourceReport => DatasourceReport::forContainer($container));
+
         $container->singleton(DataBrowser::class, static function () use ($container, $context): DataBrowser {
             $settings = DataBrowserSettings::fromConfig($context->config);
             $introspector = new RepositoryIntrospector;
@@ -102,6 +107,7 @@ final class AdminRouteRegistrar implements BootPass
             // actuator's own wiring has bound one: the settings come from the same config keys either way.
             new ManagementPortGuard(ManagementServerSettings::fromConfig($context->config)),
             $container->make(DataBrowser::class),
+            $container->make(DatasourceReport::class),
         ));
 
         /** @var Router $router */

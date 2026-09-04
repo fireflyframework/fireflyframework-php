@@ -48,6 +48,61 @@
         </div>
     </div>
 
+    @if ($relations !== [])
+        <div class="panel">
+            @include('firefly-admin::_panel-head', ['title' => 'Related', 'count' => count($relations)])
+            <div class="tw">
+                <table>
+                    <thead><tr><th>Relation</th><th>Kind</th><th>Entity</th><th>Joined on</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach ($relations as $relation)
+                        @php
+                            // A to-one carries the key on THIS row and opens one record; a to-many carries it
+                            // on the other table and opens that listing filtered by this row's key. The two
+                            // produce different URLs from the same relation, which is why the direction is
+                            // recorded rather than inferred in the template.
+                            $value = $relation->toMany
+                                ? ($record->fields[$relation->target] ?? $record->id)
+                                : ($record->fields[$relation->column] ?? null);
+
+                            $href = null;
+                            if ($relation->navigable() && $value !== null && $value !== '') {
+                                $href = $settings->url('data').'?resource='.urlencode($relation->relatedSlug)
+                                    .($relation->toMany
+                                        ? '&fk='.urlencode($relation->column).'&fv='.urlencode((string) $value)
+                                        : '&id='.urlencode((string) $value));
+                            }
+                        @endphp
+                        <tr>
+                            <td class="mono tight">{{ $relation->label }}</td>
+                            <td class="mono dim tight">{{ $relation->kind }}</td>
+                            <td class="mono">{{ $relation->shortRelated() ?: '—' }}</td>
+                            <td class="mono dim">
+                                @if ($relation->column !== '')
+                                    {{ $relation->toMany ? $relation->shortRelated().'.'.$relation->column : $relation->column }}
+                                    @if ($relation->target !== '') → {{ $relation->target }} @endif
+                                @else
+                                    —
+                                @endif
+                            </td>
+                            <td class="tight">
+                                @if ($href !== null)
+                                    <a class="act" href="{{ $href }}">{{ $relation->toMany ? 'Browse' : 'Open' }} →</a>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @if (collect($relations)->every(fn ($r) => ! $r->navigable()))
+                <p class="note">None of these can be opened here: the entity on the other end is not exposed by
+                   a repository this application declared, or the join runs through a pivot or a type column
+                   that a single-column filter cannot express.</p>
+            @endif
+        </div>
+    @endif
+
     @if ($writable)
         <div class="panel">
             @include('firefly-admin::_panel-head', ['title' => 'Edit', 'count' => count($record->schema->columns) - 1])

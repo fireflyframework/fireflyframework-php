@@ -177,7 +177,8 @@ final class DataSchemaFactory
             'int', 'integer' => DataColumn::TYPE_INT,
             'date', 'datetime', 'immutable_date', 'immutable_datetime', 'custom_datetime',
             'immutable_custom_datetime', 'timestamp' => DataColumn::TYPE_DATETIME,
-            'real', 'float', 'double', 'decimal', 'string' => DataColumn::TYPE_STRING,
+            'real', 'float', 'double', 'decimal' => DataColumn::TYPE_FLOAT,
+            'string' => DataColumn::TYPE_STRING,
             default => null,
         };
     }
@@ -202,6 +203,8 @@ final class DataSchemaFactory
             'bool', 'boolean' => DataColumn::TYPE_BOOL,
             'int', 'integer', 'bigint', 'smallint', 'mediumint', 'int2', 'int4', 'int8',
             'serial', 'bigserial', 'smallserial' => DataColumn::TYPE_INT,
+            'decimal', 'numeric', 'float', 'float4', 'float8', 'double', 'double precision', 'real',
+            'money', 'smallmoney' => DataColumn::TYPE_FLOAT,
             'json', 'jsonb' => DataColumn::TYPE_JSON,
             'date', 'datetime', 'datetime2', 'smalldatetime', 'datetimeoffset',
             'timestamp', 'timestamptz', 'datetimetz' => DataColumn::TYPE_DATETIME,

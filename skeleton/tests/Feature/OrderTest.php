@@ -18,10 +18,15 @@ use Tests\TestCase;
  * derived collection path, a validated request body with a nested DTO and a list of DTOs, declared 201/204
  * statuses, and an RFC-7807 404 that no line of controller code produces.
  *
- * The store is the `orders` table, reached through App\Orders\OrderRepository — which is an
- * EloquentRepository with a model name and no method bodies. RefreshDatabase migrates the in-memory sqlite
- * configured in phpunit.xml and rolls each test back, so every case starts empty and none depends on
- * another's leftovers.
+ * The store is the `orders` and `order_lines` tables, reached through App\Orders\OrderRepository and
+ * OrderLineRepository — both EloquentRepositories with a model name and no method bodies. RefreshDatabase
+ * migrates the in-memory sqlite configured in phpunit.xml and rolls each test back, so every case starts
+ * empty and none depends on another's leftovers.
+ *
+ * TWO TABLES IS WHY THE WRITES ARE #[Transactional]. Placing an order is two statements and replacing one is
+ * three; a crash between them would leave an order with half its lines and a `total` matching neither. The
+ * cases below assert both tables after every write for that reason — a response that looked right while only
+ * one table was written is exactly the failure the annotation exists to prevent.
  *
  * THE PERSISTENCE ASSERTIONS BELOW ARE NOT DECORATION. An earlier version of this sample kept orders in an
  * array on a singleton repository, and this suite passed: Laravel reuses one application across the requests
@@ -82,6 +87,11 @@ final class OrderTest extends TestCase
             'email' => 'ada@example.com',
             'total' => 22.25,
         ]);
+
+        // The lines went to their own table with a foreign key, which is what makes them queryable and what
+        // lets the admin dashboard walk from an order to them.
+        $this->assertDatabaseHas('order_lines', ['order_id' => $response->json('id'), 'sku' => 'GEAR-77', 'quantity' => 1]);
+        $this->assertDatabaseCount('order_lines', 2);
     }
 
     public function test_it_reads_lists_replaces_and_deletes_an_order(): void
@@ -113,6 +123,36 @@ final class OrderTest extends TestCase
         $this->deleteJson('/orders/'.$id)->assertNoContent();
         $this->getJson('/orders/'.$id)->assertStatus(404);
         $this->assertDatabaseMissing('orders', ['id' => $id]);
+
+        // And the lines went with it. A cancelled order that left its lines behind would leave rows nothing
+        // can reach and every `sum(unit_price)` wrong.
+        $this->assertDatabaseCount('order_lines', 0);
+    }
+
+    /**
+     * Replacing an order replaces its lines outright.
+     *
+     * A PUT says nothing about which line is which, so matching the incoming lines to the stored ones would
+     * be inventing an identity the client never sent. Delete-and-reinsert is the honest reading, and it is
+     * only safe because #[Transactional] holds the window open — on its own it is a moment in which the
+     * order has no lines at all.
+     */
+    public function test_replacing_an_order_replaces_its_lines(): void
+    {
+        $id = $this->postJson('/orders', $this->body())->json('id');
+        $this->assertDatabaseCount('order_lines', 2);
+
+        $this->putJson('/orders/'.$id, $this->body(['lines' => [['sku' => 'BOLT-9', 'quantity' => 3, 'unitPrice' => 2.0]]]))
+            ->assertOk()
+            ->assertJsonPath('lines.0.sku', 'BOLT-9')
+            ->assertJsonCount(1, 'lines')
+            // The total is recomputed from the NEW lines, never carried over.
+            // JSON has one number type, so an exact total encodes as `6` and a fractional one as `22.25`.
+            ->assertJsonPath('total', 6);
+
+        $this->assertDatabaseCount('order_lines', 1);
+        $this->assertDatabaseHas('order_lines', ['order_id' => $id, 'sku' => 'BOLT-9', 'quantity' => 3]);
+        $this->assertDatabaseMissing('order_lines', ['sku' => 'WIDGET-1']);
     }
 
     /**
@@ -128,11 +168,17 @@ final class OrderTest extends TestCase
     {
         $id = $this->postJson('/orders', $this->body())->json('id');
 
-        // The raw row. `lines` is a json column, so the store holds the payload, not a PHP object graph.
+        // The raw rows, read straight off the connection. An order is two tables, so this is also where the
+        // second write is proved to have happened.
         $row = DB::table('orders')->where('id', $id)->first();
         $this->assertNotNull($row);
         $this->assertSame('ada@example.com', $row->email);
-        $this->assertCount(2, (array) json_decode((string) $row->lines, true));
+        $this->assertCount(2, DB::table('order_lines')->where('order_id', $id)->get());
+
+        // `ship_to` stays a json column: an address is a VALUE with no identity, so it is embedded rather
+        // than given a table of its own. That split — value embedded, entity related — is the sample's
+        // whole point about modelling.
+        $this->assertSame('London', ((array) json_decode((string) $row->ship_to, true))['city']);
 
         // A repository built now, by hand, with no connection to the one that served the POST.
         $found = (new OrderRepository)->findById($id);

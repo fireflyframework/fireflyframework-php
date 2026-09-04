@@ -106,6 +106,7 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $search,
+        ?DataFilter $filter = null,
     ): DataListing {
         $sort = $this->sortColumn($schema, $sort);
         $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
@@ -115,7 +116,7 @@ final class DataQueryEngine
         // and stringifies whatever it finds, which is not obviously fallible until a model's accessor or a
         // value object's __toString throws — and a half-rendered page is exactly as broken as a failed query.
         try {
-            [$entities, $total] = $this->fetch($repository, $schema, $page, $perPage, $sort, $direction, $term);
+            [$entities, $total] = $this->fetch($repository, $schema, $page, $perPage, $sort, $direction, $term, $filter);
 
             $rows = [];
             foreach ($entities as $entity) {
@@ -125,7 +126,7 @@ final class DataQueryEngine
             return DataListing::failure($this->safeReason('The listing query failed', $e), $resource, $schema, $page, $perPage);
         }
 
-        return new DataListing($resource, $schema, $rows, $total, $page, $perPage, $sort, $direction, $term);
+        return new DataListing($resource, $schema, $rows, $total, $page, $perPage, $sort, $direction, $term, null, $filter);
     }
 
     /**
@@ -169,29 +170,59 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $term,
+        ?DataFilter $filter = null,
     ): array {
         $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction));
 
-        if ($term !== null && $repository instanceof EloquentRepository) {
-            $columns = $this->searchColumns($schema);
-            if ($columns === []) {
-                return [[], 0];
+        if (($term !== null || $filter !== null) && $repository instanceof EloquentRepository) {
+            $specifications = [];
+
+            if ($term !== null) {
+                $columns = $this->searchColumns($schema);
+                if ($columns === []) {
+                    return [[], 0];
+                }
+                $specifications[] = $this->searchSpecification($columns, $term);
             }
 
+            if ($filter !== null) {
+                $specifications[] = $this->filterSpecification($filter);
+            }
+
+            // AND, so a search inside a relation's listing narrows that relation rather than escaping it —
+            // the same reasoning that keeps the search's OR group nested.
             /** @var Page<object> $result */
-            $result = $repository->findBySpecificationPaged($this->searchSpecification($columns, $term), $pageable);
+            $result = $repository->findBySpecificationPaged(Specifications::allOf(...$specifications), $pageable);
 
             return [$result->items, $result->total];
         }
 
-        if ($term === null && $repository instanceof PagingAndSortingRepository) {
+        if ($term === null && $filter === null && $repository instanceof PagingAndSortingRepository) {
             /** @var Page<object> $result */
             $result = $repository->findPaged($pageable);
 
             return [$result->items, $result->total];
         }
 
-        return $this->fetchInPhp($repository, $schema, $page, $perPage, $sort, $direction, $term);
+        return $this->fetchInPhp($repository, $schema, $page, $perPage, $sort, $direction, $term, $filter);
+    }
+
+    /**
+     * `column = value`, applied through the repository's own builder so anything its `query()` seam already
+     * constrained still holds.
+     *
+     * The comparison is a LOOSE string one, because the value arrives from a URL and is therefore always a
+     * string while the column may be an integer key. Binding it as-is lets the database do the coercion it
+     * would do for `where id = '7'` anyway, and keeps the value a bound parameter rather than anything
+     * concatenated.
+     *
+     * @return Specification<Model>
+     */
+    private function filterSpecification(DataFilter $filter): Specification
+    {
+        return Specifications::where(static function (Builder $query) use ($filter): void {
+            $query->where($filter->column, '=', $filter->value);
+        });
     }
 
     /**
@@ -210,6 +241,7 @@ final class DataQueryEngine
         ?string $sort,
         string $direction,
         ?string $term,
+        ?DataFilter $filter = null,
     ): array {
         $needle = $term === null ? null : mb_strtolower($term);
         $columns = $this->searchColumns($schema);
@@ -219,6 +251,12 @@ final class DataQueryEngine
             $values = $this->rawValues($entity, $schema);
 
             if ($needle !== null && ! $this->matches($values, $columns, $needle)) {
+                continue;
+            }
+
+            // Loose, for the same reason the SQL path binds a string: the value came from a URL and the
+            // column is as likely to be an int key as a string.
+            if ($filter !== null && ! $this->equals($values[$filter->column] ?? null, $filter->value)) {
                 continue;
             }
 
@@ -260,6 +298,11 @@ final class DataQueryEngine
                 }
             });
         });
+    }
+
+    private function equals(mixed $value, string $expected): bool
+    {
+        return is_scalar($value) && (string) $value === $expected;
     }
 
     /**

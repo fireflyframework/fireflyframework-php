@@ -37,6 +37,7 @@ final readonly class DataListing
         public string $direction = 'asc',
         public ?string $search = null,
         public ?string $error = null,
+        public ?DataFilter $filter = null,
     ) {}
 
     /**

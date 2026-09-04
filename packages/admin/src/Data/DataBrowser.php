@@ -52,6 +52,7 @@ final class DataBrowser
         private readonly DataSchemaFactory $schemas,
         private readonly DataQueryEngine $engine,
         private readonly Container $container,
+        private readonly RelationIntrospector $relations = new RelationIntrospector,
     ) {}
 
     /**
@@ -138,6 +139,7 @@ final class DataBrowser
         ?string $sort = null,
         string $direction = 'asc',
         ?string $search = null,
+        ?DataFilter $filter = null,
     ): DataListing {
         $perPage = $this->settings->clampPageSize($perPage);
         $page = max(1, $page);
@@ -157,7 +159,68 @@ final class DataBrowser
             return DataListing::failure(self::UNRESOLVABLE, $resource, $schema, $page, $perPage);
         }
 
-        return $this->engine->list($repository, $resource, $schema, $page, $perPage, $sort, $direction, $search);
+        // A filter naming a column the resource does not have is DROPPED rather than passed to the
+        // database. The column arrives in a URL an operator can hand-edit, and a query that reached the
+        // driver with an arbitrary identifier in it is a column-name oracle at best.
+        if ($filter !== null && ! in_array($filter->column, array_map(static fn (DataColumn $c): string => $c->name, $schema->columns), true)) {
+            $filter = null;
+        }
+
+        return $this->engine->list($repository, $resource, $schema, $page, $perPage, $sort, $direction, $search, $filter);
+    }
+
+    /**
+     * The relations this resource's entity declares, each already matched to a browsable resource where one
+     * exists.
+     *
+     * MATCHING HAPPENS HERE and not in RelationIntrospector because it needs the REGISTRY: whether the other
+     * end of a relation is browsable depends on whether some repository declares it and whether that
+     * resource is excluded, neither of which is a fact about the model. Keeping the two apart means the
+     * introspector answers "what does this model relate to" once per class, and this method answers "and can
+     * I open it" against whatever the registry currently offers.
+     *
+     * @return list<DataRelation>
+     */
+    public function relationsFor(string $slug): array
+    {
+        if (! $this->settings->enabled || ! $this->settings->relations) {
+            return [];
+        }
+
+        $resource = $this->registry->get($slug);
+        if ($resource === null || $resource->entityClass === null) {
+            return [];
+        }
+
+        $bySlugForClass = [];
+        foreach ($this->registry->all() as $candidate) {
+            if ($candidate->entityClass !== null && ! isset($bySlugForClass[$candidate->entityClass])) {
+                $bySlugForClass[$candidate->entityClass] = $candidate->slug;
+            }
+        }
+
+        $relations = [];
+        foreach ($this->relations->forEntity($resource->entityClass) as $found) {
+            $relations[] = new DataRelation(
+                name: $found['name'],
+                label: $this->humanise($found['name']),
+                kind: $found['kind'],
+                relatedClass: $found['related'],
+                relatedSlug: $bySlugForClass[$found['related']] ?? null,
+                column: $found['column'],
+                target: $found['target'],
+                toMany: $found['toMany'],
+            );
+        }
+
+        return $relations;
+    }
+
+    private function humanise(string $name): string
+    {
+        $spaced = trim((string) preg_replace('/(?<!^)[A-Z]/', ' $0', str_replace('_', ' ', $name)));
+
+        return ucfirst(strtolower($spaced));
     }
 
     /**
@@ -397,6 +460,10 @@ final class DataBrowser
 
         return match ($column->type) {
             DataColumn::TYPE_INT => preg_match('/^-?\d+$/', $string) === 1 ? [(int) $string] : false,
+            // is_numeric rather than a regex: it already accepts every spelling a number field can produce
+            // — a leading sign, a decimal point, exponent notation — and rejects the ones a decimal column
+            // would otherwise silently store as 0.
+            DataColumn::TYPE_FLOAT => is_numeric($string) ? [(float) $string] : false,
             DataColumn::TYPE_BOOL => $this->coerceBool($string),
             DataColumn::TYPE_DATETIME => strtotime($string) === false ? false : [$string],
             DataColumn::TYPE_JSON => $this->coerceJson($entity, $column, $string),

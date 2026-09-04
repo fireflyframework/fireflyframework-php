@@ -6,6 +6,7 @@ namespace App\Orders;
 
 use Firefly\Container\Attributes\Service;
 use Firefly\Data\Repository\Pageable;
+use Firefly\Data\Transaction\Attributes\Transactional;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 
 /**
@@ -29,11 +30,24 @@ use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
  * TOTAL IS COMPUTED, NEVER ACCEPTED. `Order::total()` derives the value from the lines; toRow() writes what
  * it computed into the column. A client that posts a `total` is ignored, because the request DTO has no such
  * field — the strongest way to say a value is not the client's to set.
+ *
+ * WHY THE WRITES ARE #[Transactional]. An order is two tables — the order row and its lines — so placing one
+ * is two statements and replacing one is three. Without a transaction a crash between them leaves an order
+ * with half its lines and a `total` that matches neither, which is not a state any reader can recover from.
+ * `firefly:cache` compiles the annotation into a proxy that opens and commits around the method, so nothing
+ * here calls `DB::transaction()` and nothing here has a `try/rollback` — the same trade Spring makes, and the
+ * reason this class is NOT final: the generated proxy `extends` it.
+ *
+ * The reads are deliberately not annotated. A single SELECT needs no transaction, and wrapping one in
+ * #[Transactional(readOnly: true)] to look symmetrical would buy a proxy and a round trip for nothing.
  */
 #[Service]
-final class OrderService
+class OrderService
 {
-    public function __construct(private readonly OrderRepository $orders) {}
+    public function __construct(
+        private readonly OrderRepository $orders,
+        private readonly OrderLineRepository $lines,
+    ) {}
 
     /**
      * @return array{page: int, size: int, total: int, items: list<Order>}
@@ -58,6 +72,7 @@ final class OrderService
         return $this->toDomain($this->row($id));
     }
 
+    #[Transactional]
     public function place(Order $order): Order
     {
         $row = new OrderEntity;
@@ -65,30 +80,67 @@ final class OrderService
         $saved = $this->orders->save($row);
         assert($saved instanceof OrderEntity);
 
+        $this->writeLines((int) $saved->getKey(), $order);
+
         return $this->toDomain($saved);
     }
 
     /** @throws ResourceNotFoundException when no order carries that id */
+    #[Transactional]
     public function replace(int $id, Order $order): Order
     {
         // PUT replaces the order wholesale but keeps its identity, so the existing row is refilled rather
         // than deleted and re-inserted: the id in the client's URL stays valid and so does anything holding
-        // a foreign key to it.
+        // a foreign key to it. The LINES are replaced outright, because a PUT says nothing about which line
+        // is which and matching them up would be inventing an identity the client never sent.
         $row = $this->row($id);
         $row->fill($this->toRow($order));
         $saved = $this->orders->save($row);
         assert($saved instanceof OrderEntity);
 
+        $this->writeLines($id, $order);
+
         return $this->toDomain($saved);
     }
 
     /** @throws ResourceNotFoundException when no order carries that id */
+    #[Transactional]
     public function cancel(int $id): void
     {
         // deleteById() returns void — deleting something absent is not an error to Eloquent — so the
         // existence check is what turns "nothing happened" into the 404 the API promised.
         $this->row($id);
+        $this->deleteLines($id);
         $this->orders->deleteById($id);
+    }
+
+    /**
+     * Replace an order's lines with the ones it now carries.
+     *
+     * The delete-then-insert is inside the caller's transaction, which is the only thing that makes it safe:
+     * on its own it is a window in which an order has no lines at all.
+     */
+    private function writeLines(int $orderId, Order $order): void
+    {
+        $this->deleteLines($orderId);
+
+        foreach ($order->lines as $line) {
+            $row = new OrderLineEntity;
+            $row->fill([
+                'order_id' => $orderId,
+                'sku' => $line->sku,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unitPrice,
+            ]);
+            $this->lines->save($row);
+        }
+    }
+
+    private function deleteLines(int $orderId): void
+    {
+        foreach ($this->lines->findByOrderIdOrderByIdAsc($orderId) as $line) {
+            $this->lines->deleteById($line->getKey());
+        }
     }
 
     /** @throws ResourceNotFoundException when no order carries that id */
@@ -103,14 +155,20 @@ final class OrderService
         return $row;
     }
 
-    /** A row as the domain understands it. */
+    /** A row, and the rows it owns, as the domain understands them. */
     private function toDomain(OrderEntity $row): Order
     {
         /** @var array{street?: string, city?: string, postcode?: string, country?: string} $shipTo */
         $shipTo = is_array($row->ship_to) ? $row->ship_to : [];
 
-        /** @var list<array{sku?: string, quantity?: int|string, unitPrice?: float|int|string}> $lines */
-        $lines = is_array($row->lines) ? array_values($row->lines) : [];
+        $lines = array_map(
+            static fn (OrderLineEntity $line): OrderLine => new OrderLine(
+                (string) $line->sku,
+                (int) $line->quantity,
+                (float) $line->unit_price,
+            ),
+            $this->lines->findByOrderIdOrderByIdAsc((int) $row->getKey()),
+        );
 
         return new Order(
             (int) $row->getKey(),
@@ -122,20 +180,14 @@ final class OrderService
                 (string) ($shipTo['postcode'] ?? ''),
                 (string) ($shipTo['country'] ?? ''),
             ),
-            array_map(
-                static fn (array $line): OrderLine => new OrderLine(
-                    (string) ($line['sku'] ?? ''),
-                    (int) ($line['quantity'] ?? 0),
-                    (float) ($line['unitPrice'] ?? 0),
-                ),
-                $lines,
-            ),
+            array_values($lines),
         );
     }
 
     /**
-     * A domain order as columns. The id is absent on purpose — it belongs to the row, and `place()` must not
-     * be able to choose it.
+     * A domain order as the ORDER table's columns. Its lines are not here: they are rows of their own, and
+     * writeLines() owns them. The id is absent on purpose too — it belongs to the row, and `place()` must
+     * not be able to choose it.
      *
      * @return array<string, mixed>
      */
@@ -150,14 +202,6 @@ final class OrderService
                 'postcode' => $order->shipTo->postcode,
                 'country' => $order->shipTo->country,
             ],
-            'lines' => array_map(
-                static fn (OrderLine $line): array => [
-                    'sku' => $line->sku,
-                    'quantity' => $line->quantity,
-                    'unitPrice' => $line->unitPrice,
-                ],
-                $order->lines,
-            ),
             'total' => $order->total(),
         ];
     }

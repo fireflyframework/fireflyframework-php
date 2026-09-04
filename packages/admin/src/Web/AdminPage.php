@@ -69,8 +69,11 @@ final readonly class AdminPage
             new self('loggers', 'Loggers', 'loggers', self::GROUP_CONFIG,
                 'Log channels and their levels.'),
 
-            // `requires` is null: the data browser reads repositories through the container, not an actuator
-            // endpoint. Its own switch decides whether the page appears — see AdminAction::nav().
+            // Both Data pages have a null `requires`: they read the container, not an actuator endpoint.
+            // Datasource is offered whenever a database manager is bound; the browser has its own switch on
+            // top of that — see AdminAction::nav().
+            new self('datasource', 'Datasource', null, self::GROUP_DATA,
+                'Connections, persistence settings and the compiled #[Transactional] contract.'),
             new self('data', 'Browse data', null, self::GROUP_DATA,
                 'Every repository this application declared, and the records behind it.'),
         ];

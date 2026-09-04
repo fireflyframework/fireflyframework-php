@@ -46,6 +46,7 @@ final readonly class DataBrowserSettings
         public int $pageSize = 25,
         public int $maxPageSize = 200,
         public array $excluded = [],
+        public bool $relations = true,
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -58,6 +59,12 @@ final readonly class DataBrowserSettings
             pageSize: min($max, max(1, $config->int('firefly.admin.data.page-size', 25))),
             maxPageSize: $max,
             excluded: self::csv($config->string('firefly.admin.data.exclude', '')),
+            // Relation discovery CONSTRUCTS each entity and CALLS the methods that declare a relation, which
+            // is more than reading configuration — see RelationIntrospector for why only a method whose
+            // declared return type is a Relation subclass is ever called. It defaults on because a record
+            // with no way to reach the rows it points at is half a browser, and it is a key so that an
+            // application with an unusual model base can switch it off without losing the rest.
+            relations: $config->bool('firefly.admin.data.relations', true),
         );
     }
 

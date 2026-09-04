@@ -10,6 +10,7 @@ use Firefly\Admin\Data\DataColumn;
 use Firefly\Admin\Data\DataRecord;
 use Firefly\Admin\Data\DataResource;
 use Firefly\Admin\Data\DataSchema;
+use Firefly\Admin\Tests\Data\Fixtures\AdminEntryRepository;
 use Firefly\Admin\Tests\Data\Fixtures\AdminRecordRepository;
 use Firefly\Admin\Tests\Data\Fixtures\NotARepository;
 use Firefly\Admin\Tests\Data\Fixtures\PlainNoteRepository;
@@ -45,6 +46,15 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
             $table->boolean('active')->default(true);
             $table->text('meta')->nullable();
             $table->dateTime('created_at')->nullable();
+        });
+
+        // The child half of the relation fixture: a foreign key back to admin_records, so a hasMany and a
+        // belongsTo are both walkable.
+        Schema::create('admin_entries', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->integer('record_id');
+            $table->string('note');
+            $table->decimal('amount', 10, 2)->default(0);
         });
 
         Schema::create('admin_notes', function (Blueprint $table): void {
@@ -97,6 +107,15 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
         DB::table('admin_records')->insert($rows);
     }
 
+    protected function seedEntries(): void
+    {
+        DB::table('admin_entries')->insert([
+            ['id' => 1, 'record_id' => 1, 'note' => 'first for ada', 'amount' => 10.50],
+            ['id' => 2, 'record_id' => 1, 'note' => 'second for ada', 'amount' => 20.25],
+            ['id' => 3, 'record_id' => 3, 'note' => 'only for grace', 'amount' => 30.00],
+        ]);
+    }
+
     protected function seedWidgets(): void
     {
         DB::table('widgets')->insert([
@@ -133,6 +152,16 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
             [AdminRecordRepository::class, PlainNoteRepository::class, NotARepository::class],
             $data,
         );
+    }
+
+    /**
+     * A browser over the two halves of the relation fixture — a parent and its children.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function relatedBrowser(array $data = ['enabled' => true]): DataBrowser
+    {
+        return $this->browserOver([AdminRecordRepository::class, AdminEntryRepository::class], $data);
     }
 
     /**

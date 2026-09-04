@@ -11,6 +11,10 @@
         $identifier = $schema?->identifierColumn();
         $base = $settings->url('data').'?resource='.urlencode($resource?->slug ?? '');
 
+        // Carried onto every sort link and both pager links. A filter that survived neither would widen the
+        // listing back to every row the moment someone sorted it, which reads as rows appearing from nowhere.
+        $keepFilter = $listing->filter !== null ? '&'.$listing->filter->toQuery() : '';
+
         /**
          * Values arrive RAW: an Eloquent-backed row holds the driver's value, so a bool column can be int 1
          * and a json column a string. The column TYPE is the rendering hint — never the value's PHP type.
@@ -36,6 +40,14 @@
         </p>
     </div>
 
+    @if ($listing->filter !== null)
+        <p class="tip">
+            Showing only rows where <code>{{ $listing->filter->column }}</code> is
+            <code>{{ $listing->filter->value }}</code>.
+            <a href="{{ $base }}">Show all {{ strtolower($resource?->label ?? 'records') }}</a>
+        </p>
+    @endif
+
     @if ($listing->failed())
         <div class="panel">
             @include('firefly-admin::_empty', ['title' => 'The listing failed', 'body' => e($listing->error)])
@@ -57,6 +69,12 @@
                         <input type="hidden" name="resource" value="{{ $resource?->slug }}">
                         @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
                         <input type="hidden" name="dir" value="{{ $listing->direction }}">
+                        {{-- Searching inside a relation's listing NARROWS it; without these the search box
+                             would silently drop the relation and search the whole table. --}}
+                        @if ($listing->filter !== null)
+                            <input type="hidden" name="fk" value="{{ $listing->filter->column }}">
+                            <input type="hidden" name="fv" value="{{ $listing->filter->value }}">
+                        @endif
                         <input class="filter" type="search" name="q" value="{{ $listing->search }}" placeholder="Search…" aria-label="Search records">
                     </form>
                 @endif
@@ -82,7 +100,7 @@
                                 @endphp
                                 <th>
                                     @if ($sortable)
-                                        <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $listing->search !== null ? '&q='.urlencode($listing->search) : '' }}">
+                                        <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $listing->search !== null ? '&q='.urlencode($listing->search) : '' }}{{ $keepFilter }}">
                                             {{ $column->label() }}@if ($isSorted) {{ $listing->direction === 'asc' ? '↑' : '↓' }}@endif
                                         </a>
                                     @else
@@ -121,7 +139,8 @@
                         <span class="spacer"></span>
                         @php
                             $keep = ($listing->sort !== null ? '&sort='.urlencode($listing->sort).'&dir='.$listing->direction : '')
-                                .($listing->search !== null ? '&q='.urlencode($listing->search) : '');
+                                .($listing->search !== null ? '&q='.urlencode($listing->search) : '')
+                                .$keepFilter;
                         @endphp
                         @if ($listing->hasPrevious())
                             <a class="act" href="{{ $base }}&page={{ $listing->page - 1 }}{{ $keep }}">Previous</a>

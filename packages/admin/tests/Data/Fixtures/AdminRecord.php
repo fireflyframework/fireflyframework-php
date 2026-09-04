@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Admin\Tests\Data\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A real Eloquent model over a real sqlite table, shaped to exercise every branch of column derivation at
@@ -20,6 +21,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $active
  * @property array<string, mixed>|null $meta
  * @property string|null $created_at
+ *
+ * It also declares the PARENT half of the relation fixture, so the browser has an edge to walk in both
+ * directions — a hasMany here and a belongsTo on AdminEntry.
  */
 final class AdminRecord extends Model
 {
@@ -36,5 +40,11 @@ final class AdminRecord extends Model
     protected function casts(): array
     {
         return ['meta' => 'array', 'active' => 'boolean'];
+    }
+
+    /** @return HasMany<AdminEntry, $this> */
+    public function entries(): HasMany
+    {
+        return $this->hasMany(AdminEntry::class, 'record_id');
     }
 }

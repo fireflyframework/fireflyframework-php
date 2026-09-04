@@ -258,6 +258,7 @@ final class RepositoryIntrospector
         if ($type->isBuiltin()) {
             return match ($type->getName()) {
                 'int' => DataColumn::TYPE_INT,
+                'float' => DataColumn::TYPE_FLOAT,
                 'bool' => DataColumn::TYPE_BOOL,
                 'array', 'iterable' => DataColumn::TYPE_JSON,
                 default => DataColumn::TYPE_STRING,

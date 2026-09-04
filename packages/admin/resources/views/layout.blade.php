@@ -31,7 +31,15 @@
 
             --ink:#20242a;
             --ink-2:#5f6672;
-            --ink-3:#8d95a1;
+            /*
+             | THE TERTIARY INK IS A READABLE COLOUR, not a faded one. It was #8d95a1, which is 2.8:1 on
+             | this page's own background — below WCAG AA for normal text — and it is not decorative: it
+             | paints table cells (.dim), the explanatory notes under every panel, the uppercase stat
+             | labels and the namespace half of every class name. Those are content. The hierarchy between
+             | --ink-2 and --ink-3 is now carried by size, weight and position, which is where it belonged;
+             | you cannot buy hierarchy with illegibility.
+            */
+            --ink-3:#667181;
 
             --brand:#e07a17;
             --accent:#0f62c9;
@@ -64,7 +72,7 @@
 
                 --ink:#e8ecef;
                 --ink-2:#9aa5af;
-                --ink-3:#6c7883;
+                --ink-3:#8592a0;
 
                 --brand:#ff9d3c;
                 --accent:#5da2ff;
@@ -90,7 +98,7 @@
 
             --ink:#e8ecef;
             --ink-2:#9aa5af;
-            --ink-3:#6c7883;
+            --ink-3:#8592a0;
 
             --brand:#ff9d3c;
             --accent:#5da2ff;
@@ -303,6 +311,15 @@
         .empty strong{display:block;font-size:14px;color:var(--ink);margin-bottom:4px;font-weight:600}
         .empty p{margin:0;font-size:13px;max-width:56ch;margin-inline:auto}
         .note{margin:12px 0 0;font-size:12.5px;color:var(--ink-3);max-width:80ch}
+        .note{padding:0 16px 14px}
+        .panel>.note:first-child{padding-top:14px}
+
+        /* A settings row is a bag of small key/value facts, not a table of its own — a nested table for
+           `charset: utf8mb4` would be four times the markup to say the same thing, and would not wrap. */
+        .pair{display:inline-flex;align-items:baseline;gap:5px;margin:0 8px 4px 0;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+        .pair b{font-weight:600;color:var(--ink-3)}
+        .pair.opt b{color:var(--accent)}
+        .stat dd.sm{font-size:14px;word-break:break-all}
 
         code{font-family:var(--mono);font-size:.9em;background:var(--hover);color:var(--ink-2);
              padding:1px 5px;border-radius:4px;border:1px solid var(--line)}

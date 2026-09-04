@@ -9,6 +9,8 @@ use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
 use Firefly\Admin\Data\DataBrowser;
+use Firefly\Admin\Data\DataFilter;
+use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
@@ -35,6 +37,7 @@ final readonly class AdminAction
         private Container $container,
         private ManagementPortGuard $guard,
         private DataBrowser $data,
+        private DatasourceReport $datasource,
     ) {}
 
     public function __invoke(Request $request, string $page = ''): SymfonyResponse
@@ -77,7 +80,41 @@ final readonly class AdminAction
             return $request->isMethod('POST') ? $this->dataWrite($request) : $this->dataPage($request);
         }
 
+        if ($slug === 'datasource') {
+            return $this->datasourcePage($request, $current);
+        }
+
         return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($slug), $current), 200);
+    }
+
+    /**
+     * The data-layer page.
+     *
+     * ONE CONNECTION IS PROBED PER PAGE LOAD, not all of them. Opening a socket can hang against a
+     * firewalled host, and a page that opened every configured connection would take the slowest one's
+     * timeout to render — on the page an operator opens precisely because something is wrong. So the
+     * default connection is probed on arrival and any other is probed only when asked for by name, which
+     * bounds the work to one connection whatever the config holds.
+     */
+    private function datasourcePage(Request $request, AdminPage $current): SymfonyResponse
+    {
+        $connections = $this->datasource->connections();
+
+        $requested = $request->query('probe');
+        $probing = is_string($requested) && $requested !== '' ? $requested : $this->datasource->defaultConnection();
+
+        $known = array_column($connections, 'name');
+        $probe = in_array($probing, $known, true) ? ['name' => $probing, ...$this->datasource->probe($probing)] : null;
+
+        return $this->html($this->render('datasource', [
+            'available' => $this->datasource->available(),
+            'default' => $this->datasource->defaultConnection(),
+            'connections' => $connections,
+            'pooling' => $this->datasource->pooling(),
+            'transactional' => $this->datasource->transactionalMethods(),
+            'probe' => $probe,
+            'probeEnabled' => $this->datasource->probeEnabled(),
+        ], $current), 200);
     }
 
     /**
@@ -167,6 +204,7 @@ final readonly class AdminAction
                 : $this->html($this->render('data-record', [
                     'record' => $record,
                     'writable' => $this->data->isWritable(),
+                    'relations' => $this->data->relationsFor($slug),
                 ]), 200);
         }
 
@@ -174,6 +212,14 @@ final readonly class AdminAction
         $sort = $request->query('sort');
         $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
         $search = $request->query('q');
+
+        // `fk`/`fv` is how a relation link narrows a listing: "the lines whose order_id is 7". DataBrowser
+        // drops a column the schema does not have, so a hand-edited pair cannot reach the driver.
+        $column = $request->query('fk');
+        $value = $request->query('fv');
+        $filter = is_string($column) && $column !== '' && is_string($value) && $value !== ''
+            ? new DataFilter($column, $value)
+            : null;
 
         return $this->html($this->render('data-list', [
             'listing' => $this->data->list(
@@ -183,8 +229,10 @@ final readonly class AdminAction
                 is_string($sort) && $sort !== '' ? $sort : null,
                 $direction,
                 is_string($search) && $search !== '' ? $search : null,
+                $filter,
             ),
             'writable' => $this->data->isWritable(),
+            'relations' => $this->data->relationsFor($slug),
         ]), 200);
     }
 
@@ -466,6 +514,10 @@ final readonly class AdminAction
             fn (AdminPage $page): bool => $this->settings->allows($page->slug)
                 // The data browser has no actuator endpoint; its own switch decides whether it is offered.
                 && ($page->slug !== 'data' || $this->data->isEnabled())
+                // Datasource needs a database manager to describe. An application with none is a legal
+                // LaraFly application, and a menu entry leading to "there is nothing here" is worse than no
+                // entry at all.
+                && ($page->slug !== 'datasource' || $this->datasource->available())
                 && ($page->requires === null || $this->reader->has($page->requires)),
         ));
     }

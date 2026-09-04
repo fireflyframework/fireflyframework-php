@@ -37,6 +37,14 @@ final readonly class DataColumn
 
     public const string TYPE_INT = 'int';
 
+    /*
+     | Every non-integer number used to be TYPE_STRING, which made a `decimal(12,2)` total read as a string
+     | in the explorer, offered it to a LIKE search, and let the editor save "abc" into it. A money column is
+     | the single most common non-integer column in an application, so the vocabulary had a hole exactly
+     | where it was most used.
+     */
+    public const string TYPE_FLOAT = 'float';
+
     public const string TYPE_BOOL = 'bool';
 
     public const string TYPE_DATETIME = 'datetime';
@@ -92,7 +100,7 @@ final readonly class DataColumn
     /** Any type name outside the closed vocabulary degrades to `string` rather than reaching the view. */
     private static function normalizeType(string $type): string
     {
-        return in_array($type, [self::TYPE_STRING, self::TYPE_INT, self::TYPE_BOOL, self::TYPE_DATETIME, self::TYPE_JSON], true)
+        return in_array($type, [self::TYPE_STRING, self::TYPE_INT, self::TYPE_FLOAT, self::TYPE_BOOL, self::TYPE_DATETIME, self::TYPE_JSON], true)
             ? $type
             : self::TYPE_STRING;
     }

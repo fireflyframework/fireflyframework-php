@@ -9,6 +9,7 @@ use Firefly\Container\Descriptor\ComponentDescriptor;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The shipped example, under the default gate.
@@ -270,3 +271,66 @@ it('keeps every sample route on a path a developer would actually ship', functio
             ->and(preg_match('/[A-Z]/', $path))->toBe(0, "route path [{$path}] contains an upper-case segment");
     }
 });
+
+it('writes an order and its lines into two tables, and cascades the delete', function () {
+    /** @var SkeletonExampleTestCase $this */
+    $id = $this->postJson('/orders', SkeletonApp::orderBody())->json('id');
+    if (! is_int($id)) {
+        throw new RuntimeException('the created order came back without an integer id.');
+    }
+
+    // The shipped sample has two tables because a LINE is an entity and an ADDRESS is a value: the address
+    // is embedded as a json column on the order, the lines are rows with a foreign key. That split is what
+    // gives the admin dashboard a relation to walk and what makes "how many WIDGET-1 did we sell" a query
+    // rather than a JSON scan — and it is only correct if both writes actually happen.
+    expect(DB::table('orders')->where('id', $id)->count())->toBe(1)
+        ->and(DB::table('order_lines')->where('order_id', $id)->count())->toBe(2)
+        ->and(DB::table('order_lines')->where('order_id', $id)->orderBy('id')->value('sku'))->toBe('WIDGET-1');
+
+    $this->deleteJson('/orders/'.$id)->assertNoContent();
+
+    // A cancelled order that left its lines behind would leave rows nothing can reach and every
+    // sum(unit_price) wrong.
+    expect(DB::table('order_lines')->where('order_id', $id)->count())->toBe(0);
+});
+
+it('replaces an order\'s lines wholesale rather than merging them', function () {
+    /** @var SkeletonExampleTestCase $this */
+    $id = $this->postJson('/orders', SkeletonApp::orderBody())->json('id');
+    if (! is_int($id)) {
+        throw new RuntimeException('the created order came back without an integer id.');
+    }
+
+    // A PUT says nothing about which line is which, so matching the incoming lines to the stored ones would
+    // invent an identity the client never sent.
+    $this->putJson('/orders/'.$id, SkeletonApp::orderBody([
+        'lines' => [['sku' => 'BOLT-9', 'quantity' => 3, 'unitPrice' => 2.0]],
+    ]))->assertOk()->assertJsonCount(1, 'lines');
+
+    expect(DB::table('order_lines')->where('order_id', $id)->count())->toBe(1)
+        ->and(DB::table('order_lines')->where('sku', 'WIDGET-1')->count())->toBe(0)
+        // The total is recomputed from the new lines, never carried over from the old ones.
+        // The driver hands a decimal back as a string, so the total is read as a scalar and cast once
+        // rather than compared against whichever spelling this connection happens to return.
+        ->and(scalarTotal($id))->toBe(6.0);
+});
+
+it('compiles a #[Transactional] proxy for the sample service', function () {
+    // Placing an order is two statements across two tables, so the sample annotates its writes — and the
+    // annotation is only real if `firefly:cache` actually emitted a proxy for it. A report of zero proxies
+    // here would mean every write in the shipped example runs unwrapped while the docblock says otherwise.
+    $report = SkeletonExampleTestCase::$report;
+    if ($report === null) {
+        throw new RuntimeException('the skeleton compile produced no report.');
+    }
+
+    expect($report->proxyCount)->toBeGreaterThan(0);
+});
+
+/** The stored total of one order, as a float whatever spelling the driver returned it in. */
+function scalarTotal(int $id): float
+{
+    $value = DB::table('orders')->where('id', $id)->value('total');
+
+    return is_scalar($value) ? (float) $value : 0.0;
+}

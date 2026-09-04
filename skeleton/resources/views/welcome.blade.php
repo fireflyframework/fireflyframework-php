@@ -24,7 +24,9 @@
 
             --text:#2b2521;
             --text-2:#6b6259;
-            --text-3:#9a9086;
+            /* 4.8:1 on this page's cream, where #9a9086 was 3.1 — below AA for the captions,
+               the footer and the path labels it paints. */
+            --text-3:#787066;
 
             --amber:#dc6b0c;
             --amber-2:#ffa53d;
@@ -51,7 +53,7 @@
 
                 --text:#f3ede5;
                 --text-2:#b5aa9d;
-                --text-3:#887d70;
+                --text-3:#948878;
 
                 --amber:#ffab52;
                 --amber-2:#ffbe72;
