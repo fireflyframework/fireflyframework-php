@@ -369,7 +369,7 @@ class name. The message stays in the exception, where a log can have it.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `firefly.admin.data.enabled` | **`false`** | Enable the browser at all — today that means the API, since no page is routed yet. Does **not** follow `app.debug` or `firefly.admin.enabled` — see [The two gates](#the-two-gates). |
+| `firefly.admin.data.enabled` | **`false`** | Enable the browser at all — the `/firefly/data` pages, the entity map, and the `DataBrowser` API. Does **not** follow `app.debug` or `firefly.admin.enabled` — see [The two gates](#the-two-gates). |
 | `firefly.admin.data.writable` | **`false`** | Allow `update` and `delete`. Requires `enabled` as well; ineffective alone. |
 | `firefly.admin.data.page-size` | `25` | Default rows per page. Clamped into `[1, max-page-size]`. |
 | `firefly.admin.data.max-page-size` | `200` | Ceiling applied to any caller-supplied page size. Itself capped at **1000**, because `?perPage=1000000` on a resource that cannot page is a request to materialise the table into PHP memory. |
@@ -404,16 +404,14 @@ instead.
 
 ## Known-latent
 
-- **The browser is the model layer; the dashboard page that renders it is not wired yet.** Discovery, schema,
-  reads and both writes are complete and tested, and `DataBrowser::forContainer()` makes them usable from an
-  application's own code today. What has not landed is the Blade page and the route that would put them in
-  the dashboard's menu — so at present the gates below govern a library, not a URL.
 - **No create for a non-Eloquent repository**, permanently — see
   [above](#create-exists-for-eloquent-and-is-refused-for-everything-else).
-- **Writes are Eloquent-only.** A plain `CrudRepository` over value objects is browsable and read-only.
-- **No relationship navigation.** A foreign key renders as its value, not as a link to the row it points at:
-  the browser knows a column's type, not its target, and Eloquent relationships are methods rather than
-  metadata.
+- **Writes are Eloquent-only.** A plain `CrudRepository` over value objects is browsable and read-only, for
+  the same reason.
+- **A pivot or a polymorphic relation is listed, not walkable.** `BelongsToMany`, `HasManyThrough` and the
+  morph family have no single column the browser can filter on — a `MorphTo`'s other end is decided per row
+  by a type column — so they appear on a record page and are absent from the [entity map](admin.md#the-entity-map),
+  because a line with no join to name would be decoration.
 - **`firefly/admin` still ships no authentication of its own.** The data browser inherits the dashboard's
   access model exactly, which means the [route-level protection](admin.md#access-the-whole-security-boundary)
   is your responsibility — and matters more here than anywhere else in the dashboard.

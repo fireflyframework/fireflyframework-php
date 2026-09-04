@@ -445,7 +445,111 @@ Which statuses an operation lists is **derived, not guessed**. Compare two real 
 
 `400` appears exactly when the operation has something `ArgumentResolver` can reject *before* the controller runs — a body to decode and bind, an upload to validate, a required query or header the client may omit, or a non-`string` parameter that has to be coerced out of the wire's string. It is deliberately absent from `balance`: nothing about that request can fail binding, because a missing path segment does not match the route at all, and a documented `400` an endpoint cannot produce is noise a generated client turns into a dead error branch. `422` appears exactly when some binding carries `#[Valid]`, because that is the only way `BeanValidator` runs and so the only way Chapter 4's `ValidationException` can be thrown. And `default` covers everything the handler itself may raise — a `404` from a `ResourceNotFoundException`, a `409` from a `ConflictException`, a `403` from a denied `#[PreAuthorize]` — which cannot be enumerated from the route manifest without reading the controller's body, and which all render through the same `ProblemDetailsRenderer` anyway.
 
-The success body comes from the controller method's declared **return type**, the only place the shape of a successful response is stated anywhere in the framework. A `204`, or a `void`/`never` return, gets no content at all, because emitting a content map for a status that carries no body is exactly what a strict client generator turns into a phantom return type. LaraFly's common `array` return degrades to `type: object` rather than being expanded from a `@return array{...}` docblock: parsing PHPDoc here would make the generated document depend on comment text nothing else in the framework treats as binding.
+A `204`, or a `void`/`never` return, gets no content at all, because emitting a content map for a status that carries no body is exactly what a strict client generator turns into a phantom return type. The success body of everything else is the subject of the next section.
+
+---
+
+## The success body: what an endpoint actually returns
+
+Look again at the two operations above. Both success responses are `{"type": "object"}` — an object with no members.
+
+That was every success response in every document this generator produced, and it is the one that matters most: a viewer renders it as a blank panel and `openapi-generator` turns it into `any`, so the single most useful sentence an API document contains — *here is what you get back* — was the one sentence missing, for every endpoint of every application.
+
+The reasoning had been that a `@return array{...}` is comment text nothing else in the framework treats as binding. That had already stopped being true. `RouteScanner` reads `@param list<X>` to compile the table `ArgumentResolver` **hydrates** from, so a docblock type expression is exactly as binding as a declared type on the way *in*. And there is a stronger argument still: **PHPStan at level max already checks these expressions against the code on every build**, which is what makes reading them safe. An out-of-date `@return` is a failing gate, not a silent lie.
+
+So the success body now comes from three sources, most specific first:
+
+```php
+final class OrderController
+{
+    /**
+     * A page of orders.
+     *
+     * @return array{page: positive-int, size: positive-int, total: int, items: list<Order>}
+     */
+    #[GetMapping]
+    public function index(int $page, int $size): array
+    {
+        return $this->orders->page($page, $size);
+    }
+}
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "page":  { "type": "integer", "minimum": 1 },
+    "size":  { "type": "integer", "minimum": 1 },
+    "total": { "type": "integer" },
+    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+  },
+  "required": ["page", "size", "total", "items"],
+  "additionalProperties": false
+}
+```
+
+1. The **`@return` type expression** — the only place a PHP `array` can say what is in it. Prose written after the type becomes the response `description`, which is the only response description anyone ever actually writes.
+2. The **declared return type** — a class becomes a component `$ref`, a backed enum its value set, a scalar itself.
+3. **Neither** — `type: object`, the old behaviour, kept as the *fallback* for a bare `array` return with nothing said about it. A `@return array<string, mixed>` parses fine and means nothing, so it is treated as saying nothing rather than allowed to suppress what the declared type knew.
+
+### A parser, not another regular expression
+
+The package already had two regexes for the one shape it handled, `list<X>` and `X[]`, and they cannot be extended to the rest. `array{items: list<array<string, Order>>}` needs balanced `<>` and `{}` and a comma that separates only at the outer level. That is a grammar, and a grammar wants a parser — about two hundred lines of recursive descent in `DocType`, against the four transitive dependencies `phpstan/phpdoc-parser` would put in every application that installs this package.
+
+| Written | Becomes |
+|---|---|
+| `list<Order>`, `Order[]`, `array<int, Order>` | `type: array` with `items: {$ref: Order}` |
+| `array<string, Money>` | `type: object` with `additionalProperties` |
+| `array{a: int, b?: string}` | an object, `required: [a]`, `additionalProperties: false` |
+| `array{a: int, ...}` | the same, open — the `...` is the only thing that lifts it |
+| `array{int, string}` | `prefixItems` — a tuple |
+| `'draft'\|'sent'` | `type: string` with `enum` |
+| `?Order` | `anyOf: [{$ref}, {type: null}]` |
+| `non-empty-string`, `positive-int` | `minLength: 1`, `minimum: 1` |
+| `never`, `callable`, an unresolvable name | **nothing** — the caller falls back to what it knew |
+
+A `?` on a shape **key** means "may be absent" and becomes `required`; a `?` on the **value** means "may be null". Conflating the two documents an omissible member as one a client must always send. Class names resolve through the imports of the file the expression was written in, because reflection does not expose a file's `use` statements — without that, only fully-qualified names would work, which is the one spelling nobody writes.
+
+### A returned class is built from its wire shape
+
+`ResponseSchemaFactory` is not `DtoSchemaFactory`, and the difference is the point. That factory derives members from the **constructor** and rules from the `ConstraintManifest` — the right two sources for a payload the server binds and validates, and the wrong two on the way out. A response is never validated, and its members are what `json_encode` emits.
+
+Which PHP spells two ways. A class implementing `JsonSerializable` serialises as whatever `jsonSerialize()` **returns**; everything else as its **public properties**. The skeleton's `App\Orders\Order` is the case that decides the design:
+
+```php
+final readonly class Order implements JsonSerializable
+{
+    /** @return array{id: int|null, customer: string, email: string, shipTo: Address, lines: list<OrderLine>, total: float} */
+    public function jsonSerialize(): array
+    {
+        return [/* … */ 'total' => $this->total()];
+    }
+}
+```
+
+`total` is a derived **method**, not a property. Reflecting properties alone would publish five of the six members the API actually sends. The array shape states all six, PHPStan checks it against the method, and the generator reads it — delete the annotation and `total` silently disappears from the document while the API keeps sending it.
+
+A declared shape only wins when it says something: `@return array<string, mixed>` on `jsonSerialize()` means "an object, members unknown", which is strictly less than the property list it would have suppressed, so it is ignored in favour of reflection.
+
+One rule inverts on the way out. **Nullability is not requiredness here.** A response member is present or absent, and `?int $id` is always *present* and sometimes null — so response members stay `required` and nullable ones widen their type. The request side's rule would have told every client to expect an absence that never happens.
+
+### `#[ApiResponse]` takes a type expression too
+
+```php
+final class ConsignmentController
+{
+    #[PostMapping(status: 201)]
+    #[ApiResponse(status: 409, description: 'That reference already exists.', type: Consignment::class)]
+    #[ApiResponse(status: 202, description: 'Accepted for later booking.', type: 'list<Shipment>')]
+    public function book(): array
+    {
+        return $this->consignments->book();
+    }
+}
+```
+
+`type` is a full expression, not only a class or a scalar name, and a short name resolves through the controller's own imports.
 
 ---
 
@@ -673,6 +777,9 @@ final class ApiDocsConfiguration
 | `x-firefly-constraints` | Records what JSON Schema cannot state (`after:now`, a checksum, a flagged PCRE, a third-party rule) instead of dropping it |
 | `ProblemSchema` | The one shared `application/problem+json` response; documents Firefly's `code`/`category`/`severity`/`errors`, with the enums read off the kernel's own cases |
 | Derived error set | `400` only when something is rejectable before the controller runs, `422` only under `#[Valid]`, `default` always |
+| `DocType` | Compiles a PHPDoc type expression to a JSON Schema fragment — shapes, generics, tuples, literal unions, PHPStan pseudo-types — and returns *nothing* rather than guessing when it cannot read one |
+| `ResponseSchemaFactory` | Builds a returned class from its WIRE shape: `jsonSerialize()`'s declared `@return` when there is one, public properties otherwise. Response members stay `required` and nullable ones widen their type |
+| `#[ApiResponse(type:)]` | A full type expression (`'list<Shipment>'`), resolved through the controller's own imports |
 | `$route->html` | `#[Controller]` HTML routes are excluded by default; `firefly.openapi.include-html` documents them as `text/html`, never as JSON |
 | `firefly.openapi.viewer.style` | `swagger` (default) \| `builtin` \| `cdn`. Only `cdn` makes a third-party request at page view; an unrecognised value falls back to `swagger` |
 | `SwaggerAssets` | Serves the OFFICIAL Swagger UI from your own origin out of the `swagger-api/swagger-ui` composer package — seven whitelisted basenames, each `realpath()`-checked inside the dist directory |
@@ -685,4 +792,5 @@ final class ApiDocsConfiguration
 1. **Generate Lumen's document and read it.** Run `php artisan firefly:openapi --output=openapi.json` in the sample, then open `/openapi` in a browser. Find `walletBalance` and confirm it has no `400` response, then find `walletDeposit` and confirm it has both a `400` and a `422` — and satisfy yourself, from this chapter's rules, why the two differ.
 2. **Make the spec a CI gate.** Commit the generated file, then add a job that regenerates it and runs `git diff --exit-code` over it. Change a DTO — add a `#[Size(max: 32)]` to `OpenWalletRequest::$owner_id` — and watch the job fail with a diff that names the exact schema keyword that changed.
 3. **Prove the default console makes no outbound request.** Open `/openapi` in the sample with the browser's network panel recording, and confirm every request is same-origin: the page, `openapi/assets/swagger-ui.css`, the two bundles, and `openapi.json`. Then set `firefly.openapi.viewer.style` to `cdn`, reload, and watch `cdn.jsdelivr.net` appear in the same panel — that request is the entire difference, and it is what a strict CSP or an air-gapped host would block.
-4. **Watch a constraint fall through to the extension.** Add `#[Future]` to a `string` property on a request DTO, regenerate, and find the property's `x-firefly-constraints` array carrying `after:now` beside a perfectly ordinary `format: date-time`. Then add `#[Pattern('/^[a-z]+$/i')]` to another property and compare: the pattern *is* published, and the original rule is recorded beside it because the `i` flag could not survive the translation.
+4. **Delete an annotation and watch the document lose a member.** In the skeleton, remove the `@return array{...}` from `App\Orders\Order::jsonSerialize()`, regenerate, and find `total` gone from the `Order` schema while `GET /orders/1` still returns it. Put it back, then change `total: float` to `total: string` and run PHPStan: the gate that keeps the document honest is the one that fails.
+5. **Watch a constraint fall through to the extension.** Add `#[Future]` to a `string` property on a request DTO, regenerate, and find the property's `x-firefly-constraints` array carrying `after:now` beside a perfectly ordinary `format: date-time`. Then add `#[Pattern('/^[a-z]+$/i')]` to another property and compare: the pattern *is* published, and the original rule is recorded beside it because the `i` flag could not survive the translation.

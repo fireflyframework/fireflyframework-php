@@ -626,23 +626,28 @@ built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — se
 ### Two browser surfaces, neither of which needs npm or a CDN
 
 `firefly/admin` — which arrives with the runtime family — mounts a server-rendered dashboard at `/firefly`
-behind `firefly.admin.enabled` (default: `app.debug`): thirteen pages over the
-actuator's own endpoints — health, metrics, HTTP traffic, beans, a drawn
+behind `firefly.admin.enabled` (default: `app.debug`): health, metrics, HTTP traffic, beans, a drawn
 [**bean graph**](docs/modules/bean-graph.md), conditions, routes, scheduled tasks, environment, config
-properties, caches and loggers. It reads those endpoints **in-process** rather than over HTTP, so it renders
-pages the JSON surface deliberately keeps unexposed — which makes its own URL the entire security boundary.
-`firefly.admin.enabled` therefore defaults to `app.debug`, and an application that enables it with debug off
-**must put the route behind its own auth middleware**. Read
-[the access model](docs/modules/admin.md#access-the-whole-security-boundary) before you do.
+properties, caches, loggers, and a [**datasource**](docs/modules/admin.md#the-datasource-page) page carrying
+your connections, what PDO does about holding them open, and the compiled `#[Transactional]` contract. It
+reads those endpoints **in-process** rather than over HTTP, so it renders pages the JSON surface deliberately
+keeps unexposed — which makes its own URL the entire security boundary. `firefly.admin.enabled` therefore
+defaults to `app.debug`, and an application that enables it with debug off **must put the route behind its own
+auth middleware**. Read [the access model](docs/modules/admin.md#access-the-whole-security-boundary) first.
 
 The package also ships a Django-admin-style [**data browser**](docs/modules/data-browser.md) over your own
-`CrudRepository` beans — discovered from the compiled bean catalogue, so nothing is registered by hand. It is
-gated *separately*: `firefly.admin.data.enabled` defaults to **`false`** and deliberately does **not** follow
+`CrudRepository` beans — discovered from the compiled bean catalogue, so nothing is registered by hand — with
+filtering, sorting, paging, full CRUD, relations you can walk in both directions, and an
+[**entity map**](docs/modules/admin.md#the-entity-map) that draws the foreign keys between them. It is gated
+*separately*: `firefly.admin.data.enabled` defaults to **`false`** and deliberately does **not** follow
 `app.debug` or `firefly.admin.enabled`, because beans and configuration are facts about the application while
-this page shows facts about its **users**. Writes need `firefly.admin.data.writable` on top of that, and there
-is deliberately no create — an aggregate's invariants live in its constructor, not in a column list. Discovery,
-reads and both writes are complete and usable from your own code today; the dashboard page that renders them is
-[not routed yet](docs/modules/data-browser.md#known-latent).
+this page shows facts about its **users**. Writes need `firefly.admin.data.writable` on top of that, and
+creating a record is offered only for an Eloquent-backed resource — for a hand-written aggregate the
+invariants live in its constructor, not in a column list, so that case is refused by name.
+
+One more page **changes** the application rather than describing it: a
+[feature-switch console](docs/modules/admin.md#the-feature-switch-console) with three gates, the third of
+which is not a configuration key — in production every write is refused whatever the other two say.
 
 `composer require firefly/openapi` mounts `GET /openapi.json` and a console at `/openapi`, both generated from
 the same `RouteManifest` the dispatcher dispatches from and the same `ConstraintManifest` the validator

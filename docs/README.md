@@ -92,7 +92,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 | [Observability](modules/observability.md) | `firefly/observability` — the `MeterRegistry`, Prometheus/Micrometer-JSON exposition, CQRS metrics |
 | [Admin Dashboard](modules/admin.md) | `firefly/admin` — the browser dashboard over the actuator; reads its endpoints in-process, so its own URL is the security boundary |
 | [Bean Graph](modules/bean-graph.md) | The dashboard's drawn dependency graph — components, `#[Bean]` products and `#[ConfigProperties]` DTOs as nodes, interface-resolved edges, longest-path layering, cycle reporting |
-| [Data Browser](modules/data-browser.md) | A Django-style database browser over `CrudRepository` beans — **off by default**, writes behind a second gate, and no create. The model layer ships today; the dashboard page is not routed yet |
+| [Data Browser](modules/data-browser.md) | A Django-style database browser over `CrudRepository` beans — **off by default**, writes behind a second gate, with filtering, paging, relations you can walk, and an entity map |
 
 ### Testing
 

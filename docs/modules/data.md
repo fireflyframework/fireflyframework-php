@@ -263,4 +263,6 @@ implements `PagingAndSortingRepository` is paged **in the database** rather than
 is the difference between one page of rows and an out-of-memory.
 
 It is **disabled by default** and does not follow `app.debug` or `firefly.admin.enabled`; writes need a second
-key on top of that, and there is deliberately no create. See [Data Browser](data-browser.md) for the reasoning.
+key on top of that, and create is offered only for an Eloquent-backed resource — for a hand-written aggregate
+the invariants live in its constructor, not in a column list. See [Data Browser](data-browser.md) for the
+reasoning, and for the relations it walks between your entities.

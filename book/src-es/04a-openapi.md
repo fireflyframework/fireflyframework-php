@@ -445,7 +445,111 @@ Qué estados enumera una operación es algo **derivado, no adivinado**. Compara 
 
 El `400` aparece exactamente cuando la operación tiene algo que `ArgumentResolver` pueda rechazar *antes* de que corra el controlador — un cuerpo que decodificar y enlazar, una subida que validar, una query o cabecera obligatoria que el cliente puede omitir, o un parámetro no-`string` que hay que coercer desde la cadena del cable. Está deliberadamente ausente de `balance`: nada de esa petición puede fallar el enlace, porque un segmento de ruta ausente no casa con la ruta en absoluto, y un `400` documentado que el endpoint no puede producir es ruido que un cliente generado convierte en una rama de error muerta. El `422` aparece exactamente cuando algún enlace lleva `#[Valid]`, porque esa es la única forma de que `BeanValidator` corra y por tanto la única forma de que se lance la `ValidationException` del Capítulo 4. Y `default` cubre todo lo que el propio manejador pueda levantar — un `404` de una `ResourceNotFoundException`, un `409` de una `ConflictException`, un `403` de un `#[PreAuthorize]` denegado — que no puede enumerarse desde el manifiesto de rutas sin leer el cuerpo del controlador, y que de todos modos se renderiza todo a través del mismo `ProblemDetailsRenderer`.
 
-El cuerpo de éxito sale del tipo de **retorno** declarado del método del controlador, el único sitio del framework donde se enuncia la forma de una respuesta correcta. Un `204`, o un retorno `void`/`never`, no obtiene contenido alguno, porque emitir un mapa de contenido para un estado que no lleva cuerpo es exactamente lo que un generador de clientes estricto convierte en un tipo de retorno fantasma. El habitual `array` de LaraFly degrada a `type: object` en lugar de expandirse desde un docblock `@return array{...}`: analizar PHPDoc aquí haría que el documento generado dependiera de un texto de comentario que ninguna otra parte del framework trata como vinculante.
+Un `204`, o un retorno `void`/`never`, no obtiene contenido alguno, porque emitir un mapa de contenido para un estado que no lleva cuerpo es exactamente lo que un generador de clientes estricto convierte en un tipo de retorno fantasma. El cuerpo de éxito de todo lo demás es el asunto de la siguiente sección.
+
+---
+
+## El cuerpo de éxito: lo que un endpoint devuelve de verdad
+
+Mira otra vez las dos operaciones de arriba. Ambas respuestas correctas son `{"type": "object"}` — un objeto sin miembros.
+
+Esa era toda respuesta correcta en todo documento que este generador producía, y es la que más importa: un visor la dibuja como un panel en blanco y `openapi-generator` la convierte en `any`, así que la frase más útil que contiene un documento de API — *esto es lo que recibes de vuelta* — era la única que faltaba, en todos los endpoints de todas las aplicaciones.
+
+El razonamiento había sido que un `@return array{...}` es texto de comentario que ninguna otra parte del framework trata como vinculante. Eso ya había dejado de ser cierto. `RouteScanner` lee `@param list<X>` para compilar la tabla desde la que `ArgumentResolver` **hidrata**, así que una expresión de tipo en un docblock es exactamente igual de vinculante que un tipo declarado a la *entrada*. Y hay un argumento aún más fuerte: **PHPStan en nivel max ya comprueba estas expresiones contra el código en cada build**, que es lo que hace seguro leerlas. Un `@return` desactualizado es una puerta que falla, no una mentira silenciosa.
+
+Así que el cuerpo de éxito sale ahora de tres fuentes, de la más específica a la menos:
+
+```php
+final class OrderController
+{
+    /**
+     * Una página de pedidos.
+     *
+     * @return array{page: positive-int, size: positive-int, total: int, items: list<Order>}
+     */
+    #[GetMapping]
+    public function index(int $page, int $size): array
+    {
+        return $this->orders->page($page, $size);
+    }
+}
+```
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "page":  { "type": "integer", "minimum": 1 },
+    "size":  { "type": "integer", "minimum": 1 },
+    "total": { "type": "integer" },
+    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+  },
+  "required": ["page", "size", "total", "items"],
+  "additionalProperties": false
+}
+```
+
+1. La **expresión de tipo de `@return`** — el único sitio donde un `array` de PHP puede decir qué lleva dentro. La prosa escrita después del tipo se convierte en la `description` de la respuesta, que es la única descripción de respuesta que alguien escribe de verdad.
+2. El **tipo de retorno declarado** — una clase se convierte en un `$ref` a un componente, un enum respaldado en su conjunto de valores, un escalar en sí mismo.
+3. **Ninguno de los dos** — `type: object`, el comportamiento anterior, conservado como *reserva* para un retorno `array` sin nada dicho sobre él. Un `@return array<string, mixed>` se analiza sin problema y no significa nada, así que se trata como que no dice nada en lugar de dejar que suprima lo que el tipo declarado sí sabía.
+
+### Un analizador, no otra expresión regular
+
+El paquete ya tenía dos regex para la única forma que manejaba, `list<X>` y `X[]`, y no se pueden extender al resto. `array{items: list<array<string, Order>>}` necesita `<>` y `{}` balanceados y una coma que solo separa en el nivel exterior. Eso es una gramática, y una gramática quiere un analizador — unas doscientas líneas de descenso recursivo en `DocType`, frente a las cuatro dependencias transitivas que `phpstan/phpdoc-parser` metería en toda aplicación que instale este paquete.
+
+| Escrito | Se convierte en |
+|---|---|
+| `list<Order>`, `Order[]`, `array<int, Order>` | `type: array` con `items: {$ref: Order}` |
+| `array<string, Money>` | `type: object` con `additionalProperties` |
+| `array{a: int, b?: string}` | un objeto, `required: [a]`, `additionalProperties: false` |
+| `array{a: int, ...}` | lo mismo, abierto — el `...` es lo único que lo levanta |
+| `array{int, string}` | `prefixItems` — una tupla |
+| `'draft'\|'sent'` | `type: string` con `enum` |
+| `?Order` | `anyOf: [{$ref}, {type: null}]` |
+| `non-empty-string`, `positive-int` | `minLength: 1`, `minimum: 1` |
+| `never`, `callable`, un nombre irresoluble | **nada** — quien llama vuelve a lo que ya sabía |
+
+Un `?` sobre una **clave** de shape significa «puede estar ausente» y se convierte en `required`; un `?` sobre el **valor** significa «puede ser null». Confundir ambos documenta como obligatorio un miembro omitible. Los nombres de clase se resuelven a través de los imports del fichero donde se escribió la expresión, porque la reflexión no expone las sentencias `use` de un fichero — sin eso solo funcionarían los nombres completamente cualificados, que es la única forma que nadie escribe.
+
+### Una clase devuelta se construye desde su forma de cable
+
+`ResponseSchemaFactory` no es `DtoSchemaFactory`, y la diferencia es el asunto. Esa fábrica deriva los miembros del **constructor** y las reglas del `ConstraintManifest` — las dos fuentes correctas para una carga que el servidor enlaza y valida, y las dos equivocadas a la salida. Una respuesta nunca se valida, y sus miembros son lo que `json_encode` emite.
+
+Que PHP escribe de dos maneras. Una clase que implementa `JsonSerializable` se serializa como lo que `jsonSerialize()` **devuelve**; todo lo demás como sus **propiedades públicas**. El `App\Orders\Order` del esqueleto es el caso que decide el diseño:
+
+```php
+final readonly class Order implements JsonSerializable
+{
+    /** @return array{id: int|null, customer: string, email: string, shipTo: Address, lines: list<OrderLine>, total: float} */
+    public function jsonSerialize(): array
+    {
+        return [/* … */ 'total' => $this->total()];
+    }
+}
+```
+
+`total` es un **método** derivado, no una propiedad. Reflejar solo las propiedades publicaría cinco de los seis miembros que la API envía de verdad. El array shape enuncia los seis, PHPStan lo comprueba contra el método, y el generador lo lee — borra la anotación y `total` desaparece en silencio del documento mientras la API sigue enviándolo.
+
+Una forma declarada solo gana cuando dice algo: `@return array<string, mixed>` en `jsonSerialize()` significa «un objeto, miembros desconocidos», que es estrictamente menos que la lista de propiedades que habría suprimido, así que se ignora en favor de la reflexión.
+
+Una regla se invierte a la salida. **Ser nullable no es ser opcional aquí.** Un miembro de respuesta está presente o ausente, y `?int $id` está siempre *presente* y a veces es null — así que los miembros de respuesta siguen siendo `required` y los nullables ensanchan su tipo. La regla del lado de la petición habría dicho a todo cliente que esperase una ausencia que nunca ocurre.
+
+### `#[ApiResponse]` también acepta una expresión de tipo
+
+```php
+final class ConsignmentController
+{
+    #[PostMapping(status: 201)]
+    #[ApiResponse(status: 409, description: 'Esa referencia ya existe.', type: Consignment::class)]
+    #[ApiResponse(status: 202, description: 'Aceptado para reservar más tarde.', type: 'list<Shipment>')]
+    public function book(): array
+    {
+        return $this->consignments->book();
+    }
+}
+```
+
+`type` es una expresión completa, no solo el nombre de una clase o de un escalar, y un nombre corto se resuelve a través de los propios imports del controlador.
 
 ---
 
@@ -673,6 +777,9 @@ final class ApiDocsConfiguration
 | `x-firefly-constraints` | Registra lo que JSON Schema no sabe enunciar (`after:now`, un dígito de control, un PCRE con banderas, una regla de terceros) en lugar de descartarlo |
 | `ProblemSchema` | La única respuesta compartida `application/problem+json`; documenta `code`/`category`/`severity`/`errors` de Firefly, con los enums leídos de los propios casos del kernel |
 | Conjunto de errores derivado | `400` solo cuando algo es rechazable antes de que corra el controlador, `422` solo bajo `#[Valid]`, `default` siempre |
+| `DocType` | Compila una expresión de tipo PHPDoc a un fragmento de JSON Schema — shapes, genéricos, tuplas, uniones de literales, pseudo-tipos de PHPStan — y devuelve *nada* en lugar de adivinar cuando no puede leer una |
+| `ResponseSchemaFactory` | Construye una clase devuelta desde su forma de CABLE: el `@return` declarado de `jsonSerialize()` cuando lo hay, las propiedades públicas si no. Los miembros de respuesta siguen siendo `required` y los nullables ensanchan su tipo |
+| `#[ApiResponse(type:)]` | Una expresión de tipo completa (`'list<Shipment>'`), resuelta con los propios imports del controlador |
 | `$route->html` | Las rutas HTML `#[Controller]` quedan excluidas por defecto; `firefly.openapi.include-html` las documenta como `text/html`, nunca como JSON |
 | `firefly.openapi.viewer.style` | `swagger` (por defecto) \| `builtin` \| `cdn`. Solo `cdn` hace una petición a un tercero en cada visita; un valor no reconocido cae de vuelta a `swagger` |
 | `SwaggerAssets` | Sirve el Swagger UI OFICIAL desde tu propio origen, desde el paquete de composer `swagger-api/swagger-ui` — siete nombres de fichero en lista blanca, cada uno comprobado con `realpath()` dentro del directorio dist |
