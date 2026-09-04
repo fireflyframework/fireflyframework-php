@@ -91,8 +91,13 @@ final class ConsumeEventsCommand extends Command
      */
     private function requestedDestinations(): array
     {
+        // `--destination` is declared as an array option, so Laravel always hands back an array — and a
+        // newer larastan proves it, which is why the `is_array()` that used to guard this line is gone
+        // rather than merely unnecessary. The element-by-element validation in strings() is the check that
+        // was ever doing work: an int or a nested array here is a subscription gap, and a subscription gap
+        // in this command is invisible at runtime.
         $option = $this->option('destination');
-        if (is_array($option) && $option !== []) {
+        if ($option !== []) {
             return $this->strings($option, '--destination');
         }
 

@@ -14,13 +14,13 @@ use Firefly\OpenApi\Schema\ProblemSchema;
  * in the abstract — the two differ, and the extension members are the half a client branches on.
  */
 it('declares exactly the members ErrorResponse always emits as required', function () {
-    $payload = new ErrorResponse(
+    $payload = (new ErrorResponse(
         status: 422,
         title: 'Unprocessable Entity',
         code: 'VALIDATION_FAILED',
         category: ErrorCategory::Validation,
         severity: ErrorSeverity::Warning,
-    )->toArray();
+    ))->toArray();
 
     /** @var list<string> $required */
     $required = ProblemSchema::schema()['required'];
@@ -29,7 +29,7 @@ it('declares exactly the members ErrorResponse always emits as required', functi
 });
 
 it('describes every optional member ErrorResponse can add', function () {
-    $payload = new ErrorResponse(
+    $payload = (new ErrorResponse(
         status: 422,
         title: 'Unprocessable Entity',
         code: 'VALIDATION_FAILED',
@@ -41,7 +41,7 @@ it('describes every optional member ErrorResponse can add', function () {
         traceId: 'abc123',
         errors: [new FieldError('reference', 'must not be blank', 'NotBlank', '')],
         timestamp: '2026-09-03T00:00:00+00:00',
-    )->toArray();
+    ))->toArray();
 
     /** @var array<string, mixed> $properties */
     $properties = ProblemSchema::schema()['properties'];
@@ -52,7 +52,7 @@ it('describes every optional member ErrorResponse can add', function () {
 });
 
 it('mirrors FieldError::toArray() in the errors item schema', function () {
-    $field = new FieldError('reference', 'must not be blank', 'NotBlank', 'x')->toArray();
+    $field = (new FieldError('reference', 'must not be blank', 'NotBlank', 'x'))->toArray();
 
     /** @var array<string, array<string, mixed>> $properties */
     $properties = ProblemSchema::schema()['properties'];

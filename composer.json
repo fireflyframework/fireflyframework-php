@@ -40,7 +40,7 @@
         "kwn/php-rdkafka-stubs": "^2.2",
         "larastan/larastan": "^3.9",
         "laravel/octane": "^2.0",
-        "laravel/pint": "^1.20",
+        "laravel/pint": "^1.30",
         "orchestra/testbench": "^11.1",
         "pestphp/pest": "^3.7",
         "phpstan/phpstan": "^2.1",
