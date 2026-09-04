@@ -172,3 +172,78 @@ it('does not interpolate untrusted github.event.* into a run: step', function ()
         }
     }
 });
+
+// The split action exits 0 even when its push fails. On v26.09.1 that produced 28 green jobs, no mirror
+// repositories, and nothing published — a release run that reported success while shipping nothing. The
+// workflow now carries two guards against that, and these tests exist so neither can be dropped quietly.
+
+it('refuses to start the split when ACCESS_TOKEN is absent, instead of running 28 no-op jobs', function () {
+    $yaml = releaseWorkflowYaml();
+    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
+
+    expect($jobs)->toHaveKey('preflight');
+
+    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
+    expect($splitJob['needs'] ?? null)->toBe('preflight');
+
+    $preflight = asYamlMap($jobs['preflight'] ?? null, 'jobs.preflight');
+    $steps = asYamlList($preflight['steps'] ?? null, 'jobs.preflight.steps');
+
+    $script = '';
+    foreach ($steps as $step) {
+        $stepMap = asYamlMap($step, 'step');
+        $run = $stepMap['run'] ?? null;
+        if (is_string($run)) {
+            $script .= $run;
+        }
+    }
+
+    // It must read the secret and exit non-zero when it is empty.
+    expect($script)->toContain('ACCESS_TOKEN')
+        ->and($script)->toContain('exit 1');
+});
+
+it('reads the tag back from each mirror, because a green split step does not mean anything was pushed', function () {
+    $yaml = releaseWorkflowYaml();
+    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
+    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
+    $steps = asYamlList($splitJob['steps'] ?? null, 'jobs.split.steps');
+
+    /** @var array<string, mixed> $verify */
+    $verify = [];
+    $splitIndex = null;
+    $verifyIndex = null;
+
+    foreach ($steps as $index => $step) {
+        $stepMap = asYamlMap($step, 'step');
+
+        $uses = $stepMap['uses'] ?? null;
+        if (is_string($uses) && str_starts_with($uses, 'symplify/monorepo-split-github-action')) {
+            $splitIndex = $index;
+        }
+
+        $run = $stepMap['run'] ?? null;
+        if (is_string($run) && str_contains($run, 'git/ref/tags/')) {
+            $verify = $stepMap;
+            $verifyIndex = $index;
+        }
+    }
+
+    expect($verify)->not->toBe([], 'no step reads the tag back from the mirror');
+    expect($splitIndex)->not->toBeNull();
+    // Verifying before the push would assert nothing.
+    expect($verifyIndex)->toBeGreaterThan((int) $splitIndex);
+
+    $run = $verify['run'] ?? null;
+    expect($run)->toBeString();
+
+    /** @var string $run */
+    // The mirror is asked about THIS tag, and a missing tag fails the job.
+    expect($run)->toContain('github.ref_name')
+        ->and($run)->toContain('matrix.package.split')
+        ->and($run)->toContain('exit 1');
+
+    // `set -e` alone would not catch it: the lookup is deliberately allowed to fail so the message can be
+    // ours, which only works if the emptiness of the result is what is actually tested.
+    expect($run)->toMatch('/if \[ -z .*sha/');
+});

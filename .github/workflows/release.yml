@@ -15,7 +15,25 @@ on:
       - 'v*'
 
 jobs:
+  preflight:
+    name: Preflight (release credentials)
+    runs-on: ubuntu-latest
+    steps:
+      # The split action below exits 0 even when its push fails, so without this gate a release with no
+      # credential produces 28 green jobs and zero published packages. Fail here instead, once, loudly.
+      - name: ACCESS_TOKEN must be present
+        env:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: |
+          if [ -z "${ACCESS_TOKEN}" ]; then
+            echo "::error::ACCESS_TOKEN is not set, so nothing can be pushed to the mirrors."
+            echo "::error::Create the org PAT and the fireflyframework/firefly-* repositories first — see docs/publishing.md steps 6-7."
+            exit 1
+          fi
+          echo "ACCESS_TOKEN is present."
+
   split:
+    needs: preflight
     name: Split ${{ matrix.package.local }}
     runs-on: ubuntu-latest
     strategy:
@@ -67,3 +85,20 @@ jobs:
           split-repository-name: ${{ matrix.package.split }}
           user-name: fireflybot
           user-email: bot@fireflyframework.dev
+      - name: Verify the mirror actually received the tag
+        # symplify/monorepo-split-github-action@v2.3.0 exits 0 whether or not the push succeeded: on
+        # v26.09.1 all 28 jobs went green while the mirrors did not exist and nothing was published.
+        # A release is only released once the tag is readable on the mirror, so assert exactly that.
+        env:
+          GH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="fireflyframework/${{ matrix.package.split }}"
+          tag="${{ github.ref_name }}"
+          sha="$(gh api "repos/${repo}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null || true)"
+          if [ -z "${sha}" ]; then
+            echo "::error::${repo} has no tag ${tag}. The split step reported success but published nothing."
+            echo "::error::Usual cause: the mirror repository does not exist, or ACCESS_TOKEN cannot write to it."
+            exit 1
+          fi
+          echo "${repo} @ ${tag} = ${sha}"

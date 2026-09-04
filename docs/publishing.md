@@ -25,6 +25,19 @@ once per shippable unit (all 27 `packages/*` + `skeleton`), pushing each subtree
 organization-level GitHub Personal Access Token with `repo` scope on every mirror — stored as a repository (or
 organization) secret, since the default `GITHUB_TOKEN` can't push to a *different* repository.
 
+**The mirror repositories must already exist when the tag is pushed.** The split action creates neither the
+repository nor the token, and — this is the trap — it **exits 0 when its push fails**. On `v26.09.1` all 28
+jobs reported success while no mirror existed and nothing whatsoever was published. The workflow therefore
+wraps the action in two guards of its own, and neither is optional:
+
+- a `preflight` job that fails the run once, with a pointer to this page, when `ACCESS_TOKEN` is unset —
+  rather than letting 28 credential-less jobs go green;
+- a per-package `Verify the mirror actually received the tag` step that reads the tag back from the mirror
+  through the GitHub API and fails if it is not there.
+
+So a green **Release (split mirrors)** run now means the packages really are published. Treat a green run
+from before those guards existed as unverified.
+
 ## Interdependency
 
 Dev uses `*@dev` path repos (untouched) — every package in `packages/*/composer.json` requires its siblings
@@ -68,11 +81,15 @@ history, create public mirror repositories, and register public Packagist packag
    `composer validate` per package, commit the result, and **re-tag** `v26.07.17` at this commit — so the tag
    that gets pushed and split in the next step is the one carrying `^26.07` constraints, not `*@dev`.
 5. **`git remote add origin git@github.com:fireflyframework/fireflyframework-php.git` then
-   `git push origin main --tags`** — **irreversible**: this publishes the monorepo's history and the release
-   tag publicly for the first time.
-6. **Create the 28 mirror repositories under the `fireflyframework` org, then run the split at the tag** —
-   **irreversible**: each `fireflyframework/firefly-<pkg>` mirror now exists publicly, carrying `^26.07`
-   sibling constraints.
+   `git push origin main`** — **irreversible**: this publishes the monorepo's history publicly for the first
+   time. Push the **branch only**; hold the tag back until step 6. Pushing `--tags` here fires the split
+   workflow immediately, before the mirrors of step 6 exist, and every job would then have nothing to push
+   to.
+6. **Create the 28 mirror repositories under the `fireflyframework` org, confirm `ACCESS_TOKEN` can write to
+   them, and only then `git push origin v26.07.17`** — **irreversible**: pushing the tag runs the split, and
+   each `fireflyframework/firefly-<pkg>` mirror now exists publicly, carrying `^26.07` sibling constraints.
+   Wait for the **Release (split mirrors)** run to go green: with the guards above in place, green means each
+   mirror answered with the tag.
 7. **Staged Packagist registration** — register only a first wave, then verify, before committing the rest:
    register `firefly/kernel`, `firefly/container`, `firefly/config`, and `firefly/eda` on Packagist first.
    Then, in a scratch directory, under Composer's default `minimum-stability: stable`:
