@@ -14,7 +14,7 @@
   <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.07.18-brightgreen" alt="Version: 26.07.18"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.1-brightgreen" alt="Version: 26.09.1"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
@@ -65,7 +65,7 @@
 [*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
-(it boots and its tests pass against this framework version, `26.07.18`).
+(it boots and its tests pass against this framework version, `26.09.1`).
 
 The book is **complete and bilingual (English + Spanish)**: a quick start, **thirteen chapters** across four
 parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD), Coordinating &
@@ -332,7 +332,7 @@ and the seam that makes this possible.
 
 Nine showcases below, each an accurate snippet lifted straight from `samples/lumen/` (the wallet-and-ledger
 sample) or the framework itself — no invented API. Every attribute and class shown here compiles against the
-shipped `26.07.18` release.
+shipped `26.09.1` release.
 
 ### Attribute DI — `#[Service]`
 

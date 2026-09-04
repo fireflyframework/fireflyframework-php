@@ -82,9 +82,14 @@
                     @php $rows = $listing->filters; $rows[] = null; @endphp
                     @foreach ($rows as $row)
                         <div class="frow">
+                            {{-- filterable(), not the whole column list: a masked column is not offered here
+                                 because a filter over it answers a yes/no question about the value the page
+                                 refuses to show, which repeated is an extraction oracle. DataBrowser drops
+                                 one anyway; this is so the control never appears to accept it. --}}
                             <select name="fc[]" aria-label="Column">
                                 <option value="">—</option>
                                 @foreach ($schema->columns as $column)
+                                    @continue (! in_array($column->name, $schema->filterable(), true))
                                     <option value="{{ $column->name }}" @selected($row?->column === $column->name)>{{ $column->label() }}</option>
                                 @endforeach
                             </select>

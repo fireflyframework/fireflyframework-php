@@ -176,6 +176,35 @@ path, not that it be `firefly/security`.
 When the dashboard is disabled, `AdminRouteRegistrar` registers **nothing at all**: there is no route to guess at
 and no handler to reach, and `php artisan route:list` does not list one.
 
+### The write surfaces are CSRF-protected, and were not
+
+The dashboard's routes were mounted on the router with **no middleware at all**, which in Laravel means no
+session and no `ValidateCsrfToken`. Every `@csrf` in these views was therefore decorative: a `curl -X POST`
+with no token against `/firefly/loggers` was accepted and changed the log level, and the same held for every
+write the data browser and the settings console added.
+
+A form that renders a CSRF field while the route ignores it is **worse than one that renders none**, because
+it looks protected. The routes now carry `EncryptCookies`, `AddQueuedCookiesToResponse`, `StartSession`,
+`ShareErrorsFromSession` and `ValidateCsrfToken`.
+
+!!! note "The classes, not the `web` group name"
+    Naming the group and guarding on `hasMiddlewareGroup('web')` looked right and attached **nothing**: this
+    registrar runs inside the framework's boot pipeline, *before* the application's `RouteServiceProvider`
+    defines that group, so the guard was false at registration time and silently produced an empty list — a
+    fix that appeared applied and was not. Referring to the classes needs no group and no ordering
+    assumption, and each is skipped if the installation does not have it.
+
+!!! warning "Your session driver has to persist"
+    An `array` session driver is discarded at the end of the request, so the token a form renders can never
+    match the one the next request checks and **every** dashboard POST answers `419`. The skeleton now ships
+    `SESSION_DRIVER=file` for exactly this reason; `file` needs no service, only the storage directory the
+    framework already writes to.
+
+    Laravel's CSRF middleware returns early when `runningUnitTests()` is true, so no feature test can prove
+    this either way — which is how the hole survived being written. `tests/AdminCsrfTest.php` therefore
+    asserts the middleware is *attached*, and the behaviour was verified over real HTTP: tokenless → `419`,
+    token with its session → `302` and the write lands.
+
 ## How it is mounted
 
 `AdminRouteRegistrar` is a `BootPass` at `BootPhase::WiringPasses`, order **60** — one step after

@@ -2,19 +2,16 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
-## [Unreleased]
-
-Cut as `26.09.1` when released: `Firefly\Kernel\Version::VERSION`, this heading, and the README version
-badge move together (see [Versioning](docs/versioning.md)), and `tests/VersionConsistencyTest.php` fails the
-build if any one of the three drifts.
+## [26.09.1] - 2026-09-03
 
 A correctness release that also grew two surfaces. Several headline features were found not to work at all
 outside the compiled boot, and two of the failures were **fail-open** in the security sense — the application
 kept serving, unguarded, with nothing logged; every fix below was reproduced by a failing test first. Alongside
 them, LaraFly gained the two things a framework this shape is expected to have and did not: a browser dashboard
 over the actuator (`firefly/admin`) and an OpenAPI 3.1 document generated from the manifests it already holds
-(`firefly/openapi`). Both are opt-in Composer packages, outside the `firefly/firefly` metapackage, and neither
-needs npm or a CDN.
+(`firefly/openapi`). Both now ship with the `firefly/firefly` metapackage — they were outside it, which meant
+a `composer create-project firefly/skeleton` resolved 260 packages and neither of them was among them — and
+neither needs npm or a CDN.
 
 ### BREAKING
 
@@ -124,6 +121,54 @@ needs npm or a CDN.
   mechanically against the keys the source actually reads, in both directions. `skeleton/.env.example` carries the ones that usually vary per environment. The skeleton
   also gains a `#[Controller]` welcome page (nothing on it hard-coded — real bean/condition counts, the real
   route table, the real actuator registry) and its first test suite.
+
+- **The OpenAPI document now says what an endpoint RETURNS.** Every success response was `{"type": "object"}`
+  — an object with no members, which a viewer renders as a blank panel and `openapi-generator` turns into
+  `any`. The shape was never unavailable: it is written in the `@return` one line above the method, where
+  PHPStan at level max already checks it against the code on every build, which is what makes reading it safe.
+  `DocType` compiles a PHPDoc type expression into a JSON Schema fragment — array shapes with optional keys,
+  `list<T>`, `array<K, V>` told apart as array-vs-object, tuples, literal unions, nullable references and the
+  PHPStan pseudo-types (`non-empty-string` → `minLength`, `positive-int` → `minimum`) — and returns *nothing*
+  rather than guessing when it cannot read one. `ResponseSchemaFactory` builds a returned class from its WIRE
+  shape: `jsonSerialize()`'s declared `@return` when there is one, public properties otherwise, because those
+  differ — the skeleton's `Order` publishes a derived `total` that is a method, so reflection alone documented
+  five of the six members the API sends. `#[ApiResponse(type:)]` takes a full expression (`'list<Shipment>'`),
+  resolved through the controller's own imports. Verified by validating live responses member-by-member
+  against the schema the generator wrote for them. See [OpenAPI](docs/modules/openapi.md).
+- **An HTML error page, in the framework's own design.** Any `FireflyException` rendered as `problem+json`
+  regardless of who asked, so a person clicking a stale link in a browser was shown a raw JSON blob; a URL
+  matching no route missed that branch entirely and fell through to Laravel's stock page, so one application
+  produced two unrelated-looking 404s. The page shows the status, the reason, the stable `code` the problem
+  document carries, and — when permitted — the exception, its `previous` chain, the source around the throwing
+  line and a stack trace with *your* frames separated from your dependencies'. `firefly.web.error-page.trace`
+  follows `app.debug` and is enforced where the data is GATHERED: with it off nothing walks the stack, opens a
+  source file or copies the message, so a template mistake cannot leak what was never collected.
+  `firefly.web.error-page.views` hands a status to your own Blade view, bound by the same gate, falling back to
+  the built-in page if it throws. `json-paths` (default `api/*`) forces `problem+json` on your API space
+  whatever the caller's Accept header says. The page itself is built as a string with no container lookups and
+  no view factory, because the failure being explained may *be* the view layer. See
+  [Error Handling](docs/modules/error-handling.md).
+- **The dashboard gained a datasource page, an entity map, and a feature-switch console.** `/firefly/datasource`
+  answers what a config dump cannot: which database (secrets masked), whether it is *up* (one connection probed
+  per load, because a page that opened every configured connection would take the slowest one's timeout to
+  render), what connection reuse actually means in PHP (`ATTR_PERSISTENT`, reported for what it is rather than
+  dressed up as a pool gauge), and what `#[Transactional]` compiled to. `/firefly/data-map` draws the entities
+  and the foreign keys between them. `/firefly/settings` is the only page that CHANGES the application, and has
+  three gates — off by default, writable by a second key, and refused outright in production by a check that is
+  deliberately **not** a configuration key. An optional connection wizard tests an unconfigured connection and
+  hands back a config block; it writes nothing, never inlines a password, is POST-only, and is unavailable in
+  production for the same reason. See [Admin Dashboard](docs/modules/admin.md).
+- **The data browser gained filtering, real pagination, create, and relations you can walk.** Eight
+  comparisons over the columns a resource publishes, always bound — including the `LIKE` ones, where the
+  wildcards go around an escaped value — with an unknown column or operator DROPPED before reaching the driver,
+  so a hand-edited URL cannot probe for column names. Conditions AND with each other and with the search box.
+  Relations are discovered by calling only the methods whose *declared return type* is an Eloquent `Relation`,
+  so a record links to what it references in both directions. `create()` is now offered for an Eloquent-backed
+  resource under the same two switches — the constructor-invariants argument that kept it out was right for a
+  hand-written aggregate and was never true for a model Eloquent builds empty and fills by attribute, which is
+  exactly what `update()` had always done. A `float` column type joins the vocabulary: every non-integer number
+  used to be typed `string`, so a money column read as a string, was offered to a `LIKE` search, and let the
+  editor save `"abc"` into it. See [Data Browser](docs/modules/data-browser.md).
 
 ### Changed
 - **`#[Qualifier]` on a parameter is honoured.** It declared `TARGET_PARAMETER` from day one and nothing read
@@ -236,6 +281,60 @@ needs npm or a CDN.
   the whole compile; `make:firefly-repository` generated an interface nothing could resolve;
   `make:firefly-listener` generated a class the scanner could not discover. Stub tests now generate from each
   stub and assert the output is valid PHP *and* discoverable by the relevant scanner.
+
+- **SECURITY — every dashboard write was forgeable from another site.** The admin routes were mounted with no
+  middleware at all, which in Laravel means no session and no `ValidateCsrfToken`, so the `@csrf` field in
+  every dashboard form was decorative: a tokenless `curl -X POST` against `/firefly/loggers` was accepted and
+  changed the log level, and the same held for the data browser's edit and delete and the settings console.
+  A form that renders a CSRF field while the route ignores it is worse than one that renders none. Fixed by
+  attaching the middleware CLASSES rather than the `web` group name — naming the group and guarding on
+  `hasMiddlewareGroup('web')` attached nothing, because the registrar runs before the application defines
+  that group. `skeleton/.env.example` moves to `SESSION_DRIVER=file`: an array session is discarded at the end
+  of the request, so the token could never match and every POST would answer 419. Found by an adversarial
+  review of this branch; Laravel's CSRF middleware skips itself under tests, which is how it survived being
+  written, so the regression test asserts the middleware is attached and the behaviour was proven over real
+  HTTP.
+- **SECURITY — a filter on a masked column was an extraction oracle.** Filtering shipped over every column,
+  which quietly re-opened the channel masking exists to close: a masked column renders as `******`, but a
+  filter over it answers a yes/no question about the real value, and a yes/no question you can ask repeatedly
+  recovers it. Proven against the fixture — twenty-one filtered requests returned `correct horse battery` from
+  a column the listing showed only as asterisks, and `>`/`<` do it faster by binary search. Sensitive columns
+  are now excluded from filtering exactly as they already were from search, in the model and in the control.
+- **Escaping a `LIKE` without an `ESCAPE` clause silently matched nothing.** `contains`/`starts with`
+  backslash-escaped the user's `%` and `_` and then emitted a plain `LIKE ?`, which leaves the driver with no
+  escape character declared — so the backslash was matched literally and a search for `ada_love` returned zero
+  rows against a table holding `ada_lovelace@example.test`. Suppressing the wildcards worked; finding an
+  underscore stopped working, which is the worse half. The predicate now emits an explicit `ESCAPE`, and the
+  search box — which had no escaping at all, so a bare `%` matched every row — goes through the same helper.
+- **`composer create-project firefly/skeleton` shipped neither the dashboard nor the API documentation.**
+  `firefly/admin` and `firefly/openapi` were built, tested, documented and offered by `firefly new --with` while
+  *nothing* required them. The welcome page checks `class_exists()` before linking, so it did not render a
+  broken link — it silently rendered two cards fewer, which is the worse failure because nothing looked wrong.
+  Fixed in the BOM rather than the skeleton, because the asymmetry was the actual bug: for eleven of thirteen
+  capabilities `--with` promotes an already-installed package to an explicit dependency, and for these two it
+  decided whether the code existed at all. `tests/MetapackageCoverageTest.php` holds both ends.
+- **The skeleton's sample REST resource did not persist, and its docblock said it did.** `OrderRepository` kept
+  orders in an array on a singleton and claimed the state survived between requests. PHP shares nothing between
+  requests, so `POST /orders` returned 201 with an id and the very next `GET /orders` reported an empty store —
+  the first thing a new user does. The skeleton's own suite passed throughout, because Laravel reuses ONE
+  application across the requests of a single test. It is now an `EloquentRepository` over two tables — an
+  address is a value and stays an embedded json column, a line is an entity and gets a table, a foreign key and
+  a repository — which also earns the sample its first `#[Transactional]`, gives the data browser something to
+  browse, and gives the entity map an edge to draw. `migrate` joins `post-create-project-cmd`.
+- **`skeleton/config/firefly.php` had drifted from the code it documents.** Three keys the framework reads were
+  undocumented, including `firefly.management.server.address` — half of the management-port feature.
+  `tests/ConfigReferenceTest.php` now checks all 84 keys read through the Config port and fails the build when
+  one is added without a word written about it.
+- **`packages/admin` — the data grid's columns did not line up with their headers.** The listing table carried
+  `class="grid"`, colliding with the layout's own `.grid{display:grid}` utility, so the table became a grid
+  CONTAINER, `thead` and `tbody` computed to `display:block`, and the two row groups sized their columns
+  independently. Invisible in the markup and not findable by reading the CSS — it came out of asking the
+  browser what `display` the element had ended up with.
+- **Tertiary text across the dashboard and the welcome page was below WCAG AA.** `#8d95a1` is 2.8:1 on the
+  dashboard's own background, and it painted table cells, every panel's explanatory note, the uppercase stat
+  labels and the namespace half of every class name — content, not decoration. Now 4.95:1 and 4.76:1 in light,
+  5.6:1 and 5.3:1 in dark. The brand orange was 3.01:1 as a foreground and is no longer used as text: shapes
+  and text take different oranges.
 
 ## [26.07.18] - 2026-07-28
 

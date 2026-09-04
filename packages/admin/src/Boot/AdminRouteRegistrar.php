@@ -24,8 +24,14 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Illuminate\Contracts\View\Factory as ViewFactory;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
  * Mounts the dashboard on the illuminate Router at phase WiringPasses, order 60 — after
@@ -120,9 +126,38 @@ final class AdminRouteRegistrar implements BootPass
         $router = $container->make('router');
         $base = $settings->basePath;
 
+        // THE `web` GROUP, AND WHY IT IS NOT OPTIONAL. These routes were mounted bare, and a bare route in
+        // Laravel carries NO middleware at all — no session, and no VerifyCsrfToken. Every `@csrf` in these
+        // views was therefore decorative: a tokenless POST to /firefly/loggers was accepted and changed the
+        // log level, and the same held for every write the data browser and the settings console added. A
+        // form that renders a CSRF field while the route ignores it is worse than one that renders none,
+        // because it looks protected.
+        //
+        // `web` is also what makes the rest of the page work: the session it starts is what carries the
+        // outcome sentence a write flashes on its way back, which is why AdminAction::redirect() had to
+        // guard on the session not being started at all.
+        //
+        // THE CLASSES, NOT THE `web` GROUP NAME, and that distinction is the fix working versus only
+        // appearing to. Naming the group and guarding on `hasMiddlewareGroup('web')` looked right and
+        // attached NOTHING: this pass runs inside the framework's boot pipeline, before the application's
+        // RouteServiceProvider has defined that group, so the guard was false at registration time and
+        // silently produced an empty list. Referring to the classes needs no group and no ordering
+        // assumption, and each is skipped if the installation does not have it.
+        $middleware = array_values(array_filter([
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
+            StartSession::class,
+            ShareErrorsFromSession::class,
+            // Laravel renamed this in 11; both spellings are accepted so the dashboard is not pinned to one
+            // minor version for its only line of CSRF defence.
+            class_exists(ValidateCsrfToken::class) ? ValidateCsrfToken::class : VerifyCsrfToken::class,
+        ], static fn (string $class): bool => class_exists($class)));
+
         $router->get($base, static fn (Request $request) => $container->make(AdminAction::class)($request))
+            ->middleware($middleware)
             ->name('firefly.admin.index');
         $router->match(['GET', 'POST'], $base.'/{page}', static fn (Request $request, string $page) => $container->make(AdminAction::class)($request, $page))
+            ->middleware($middleware)
             ->where('page', '[A-Za-z0-9\-_/]*')
             ->name('firefly.admin.page');
     }

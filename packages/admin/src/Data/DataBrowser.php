@@ -167,18 +167,21 @@ final class DataBrowser
     /**
      * Filters the resource can actually answer, with everything else dropped.
      *
-     * A filter naming a column the resource does not have is DROPPED rather than passed to the database, and
-     * so is one naming an operator that is not in the fixed set. Both arrive in a URL an operator can
-     * hand-edit, and a query that reached the driver with an arbitrary identifier or comparison in it is a
-     * column-name oracle at best. Dropping rather than erroring is deliberate too: an error message that
-     * distinguished "no such column" from "no rows" would answer the same question more slowly.
+     * A filter naming a column the resource does not PUBLISH FOR FILTERING is dropped rather than passed to
+     * the database, and so is one naming an operator that is not in the fixed set. Both arrive in a URL an
+     * operator can hand-edit, and a query that reached the driver with an arbitrary identifier or comparison
+     * in it is a column-name oracle at best. Dropping rather than erroring is deliberate too: an error
+     * message that distinguished "no such column" from "no rows" would answer the same question more slowly.
      *
      * @param  list<DataFilter>  $filters
      * @return list<DataFilter>
      */
     private function validFilters(array $filters, DataSchema $schema): array
     {
-        $columns = array_map(static fn (DataColumn $column): string => $column->name, $schema->columns);
+        // filterable(), NOT the whole column list. A masked column renders as `******` and a filter over it
+        // answers a yes/no question about the real value — which, asked repeatedly, recovers it. See
+        // DataSchema::filterable().
+        $columns = $schema->filterable();
 
         return array_values(array_filter(
             $filters,

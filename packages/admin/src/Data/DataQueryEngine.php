@@ -229,12 +229,12 @@ final class DataQueryEngine
     private function filterSpecification(DataFilter $filter): Specification
     {
         return Specifications::where(static function (Builder $query) use ($filter): void {
-            $escaped = addcslashes($filter->value, '%_\\');
+            $escaped = self::escapeLike($filter->value);
 
             match ($filter->operator) {
                 DataFilter::NE => $query->where($filter->column, '!=', $filter->value),
-                DataFilter::CONTAINS => $query->where($filter->column, 'like', '%'.$escaped.'%'),
-                DataFilter::STARTS => $query->where($filter->column, 'like', $escaped.'%'),
+                DataFilter::CONTAINS => self::like($query, $filter->column, '%'.$escaped.'%'),
+                DataFilter::STARTS => self::like($query, $filter->column, $escaped.'%'),
                 DataFilter::GT => $query->where($filter->column, '>', $filter->value),
                 DataFilter::LT => $query->where($filter->column, '<', $filter->value),
                 DataFilter::NULL => $query->whereNull($filter->column),
@@ -242,6 +242,41 @@ final class DataQueryEngine
                 default => $query->where($filter->column, '=', $filter->value),
             };
         });
+    }
+
+    /**
+     * A LIKE that treats the user's `%` and `_` as literals.
+     *
+     * ESCAPING ALONE WAS WORSE THAN NOT ESCAPING. Backslash-escaping the wildcards and then emitting a plain
+     * `LIKE ?` means the driver has no escape character declared, so `ada\_love` is matched literally — a
+     * search for `ada_love` returned ZERO rows against a table that contained `ada_lovelace@example.test`.
+     * Suppressing the wildcards worked; finding anything containing an underscore stopped working, silently.
+     * The `ESCAPE` clause is what makes the backslash mean "the next character is a literal", and every
+     * driver this framework supports understands it.
+     *
+     * The COLUMN is wrapped by the grammar rather than interpolated raw. It has already been validated
+     * against the schema by the caller, so this is belt-and-braces — but a raw identifier inside a
+     * `whereRaw` is exactly the shape that stops being safe the day someone loosens the validation.
+     *
+     * @param  Builder<Model>  $query
+     */
+    private static function like(Builder $query, string $column, string $pattern, string $boolean = 'and'): void
+    {
+        $wrapped = $query->getQuery()->getGrammar()->wrap($column);
+
+        // Raw because neither `where(…, 'like', …)` nor Laravel 13's own `whereLike()` emits an ESCAPE
+        // clause — both compile to a bare `LIKE ?`, which is precisely the shape that made an escaped
+        // underscore match nothing. PHPStan wants a literal-string here and cannot see that $wrapped came
+        // from the grammar's own quoting of a column the caller already checked against DataSchema::
+        // filterable(); the VALUE is a binding either way.
+        // @phpstan-ignore argument.type
+        $query->whereRaw($wrapped." like ? escape '\\'", [$pattern], $boolean);
+    }
+
+    /** Backslash-escapes the LIKE metacharacters, for use with the ESCAPE clause above. */
+    private static function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     /**
@@ -310,12 +345,10 @@ final class DataQueryEngine
      */
     private function searchSpecification(array $columns, string $term): Specification
     {
-        $pattern = '%'.$term.'%';
-
-        return Specifications::where(static function (Builder $query) use ($columns, $pattern): void {
-            $query->where(static function (Builder $group) use ($columns, $pattern): void {
+        return Specifications::where(static function (Builder $query) use ($columns, $term): void {
+            $query->where(static function (Builder $group) use ($columns, $term): void {
                 foreach ($columns as $column) {
-                    $group->orWhere($column, 'like', $pattern);
+                    self::like($group, $column, '%'.self::escapeLike($term).'%', 'or');
                 }
             });
         });

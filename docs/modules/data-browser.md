@@ -272,7 +272,7 @@ ticket or hand to someone else, which is most of what a data explorer is for —
 the whole state, because a sort that dropped the filter would widen the listing back to every row, which reads as
 rows appearing from nowhere.
 
-Eight comparisons, over the columns the resource already publishes:
+Eight comparisons, over the columns the resource publishes **minus the masked ones**:
 
 | Operator | Meaning |
 |---|---|
@@ -285,10 +285,28 @@ Two spellings in the URL: `?fk=order_id&fv=7` is a single equality and is what e
 short enough to read in a status bar — while `?fc[]=…&fo[]=…&fv[]=…` is what the filter bar builds. Both are
 validated identically.
 
-**A column the schema does not publish, and an operator outside that set, are dropped** rather than passed to the
-driver. Both arrive in a URL an operator can hand-edit, and a query that reached the driver with an arbitrary
-identifier in it is a column-name oracle at best. Dropping rather than erroring is deliberate too: an error that
-distinguished "no such column" from "no rows" would answer the same question more slowly.
+**A column the schema does not publish for filtering, and an operator outside that set, are dropped** rather
+than passed to the driver. Both arrive in a URL an operator can hand-edit, and a query that reached the driver
+with an arbitrary identifier in it is a column-name oracle at best. Dropping rather than erroring is deliberate
+too: an error that distinguished "no such column" from "no rows" would answer the same question more slowly.
+
+!!! danger "A sensitive column is not filterable, and this was learned the hard way"
+    Filtering was first shipped over *every* column, which quietly re-opened the channel masking exists to
+    close. A masked column renders as `******`, but a filter over it answers a yes/no question about the real
+    value — and a yes/no question you can ask repeatedly is an **extraction oracle**. An adversarial review of
+    the branch proved it against the fixture: twenty-one filtered requests recovered `correct horse battery`
+    from a column the listing showed only as asterisks, and `>`/`<` do it faster still by binary search. The
+    filterable set is now `searchable()`'s rule applied to every type — everything except the masked columns —
+    and `tests/Data/DataFilterSafetyTest.php` runs the original attack as a regression test.
+
+!!! danger "Escaping a `LIKE` without an `ESCAPE` clause is worse than not escaping"
+    The same review found the other half. `contains` and `starts with` backslash-escape the user's `%` and
+    `_` so they cannot act as wildcards — but a plain `LIKE ?` leaves the driver with no escape character
+    declared, so the backslash is matched *literally*. Suppressing the wildcards worked; finding anything
+    containing an underscore stopped working, and it failed **silently**: a search for `ada_love` returned
+    zero rows against a table holding `ada_lovelace@example.test`. The predicate now emits an explicit
+    `ESCAPE` clause, with the column wrapped by the grammar rather than interpolated, and the search box —
+    which had no escaping at all, so a bare `%` matched every row — goes through the same helper.
 
 Filters **AND** with each other and with the search box, so narrowing a relation's listing cannot escape it. Every
 comparison binds its value, including the `LIKE` ones.

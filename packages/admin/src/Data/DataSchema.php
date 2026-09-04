@@ -94,6 +94,29 @@ final readonly class DataSchema
     }
 
     /**
+     * The columns a FILTER may name.
+     *
+     * SENSITIVE COLUMNS ARE EXCLUDED, for exactly the reason they are excluded from search — and this had to
+     * be learned twice. A masked column renders as `******`, but a filter over it answers a yes/no question
+     * about its real value, and a yes/no question you can ask repeatedly is an extraction oracle: `starts
+     * with 'a'`, `starts with 'b'`, … recovers the whole secret one character at a time while the page never
+     * displays it. Proven against the fixture: the listing showed `******` and twenty-one filtered queries
+     * returned `correct horse battery`.
+     *
+     * Unlike `searchable()` this is not restricted to strings — filtering an `int` or a `datetime` is the
+     * ordinary case, and the comparison set includes `>` and `<` precisely for them.
+     *
+     * @return list<string>
+     */
+    public function filterable(): array
+    {
+        return array_values(array_map(
+            static fn (DataColumn $column): string => $column->name,
+            array_filter($this->columns, static fn (DataColumn $column): bool => ! $column->sensitive),
+        ));
+    }
+
+    /**
      * The columns an ORDER BY may name. JSON is excluded because ordering a serialized blob sorts its text,
      * which looks like it worked and means nothing.
      *
