@@ -200,7 +200,7 @@ final class WebServiceProvider extends FireflyServiceProvider
                     return $page->render($e, $request);
                 }
 
-                if ($e instanceof FireflyException || $request->expectsJson()) {
+                if ($e instanceof FireflyException || $request->expectsJson() || $page->forcesJson($request)) {
                     return $this->app->make(ProblemDetailsRenderer::class)->render($e, $request);
                 }
 

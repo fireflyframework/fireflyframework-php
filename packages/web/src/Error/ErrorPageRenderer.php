@@ -50,13 +50,27 @@ final class ErrorPageRenderer
         // A path the application declares as an API answers with a problem document whatever the caller
         // asked for. This is checked BEFORE the Accept header, not after, because it is the stronger
         // statement: the header says who is asking, the path says what the URL IS.
-        if ($this->settings->isJsonPath($request->path())) {
+        if ($this->forcesJson($request)) {
             return false;
         }
 
         $accept = (string) $request->headers->get('Accept', '');
 
         return str_contains($accept, 'text/html') || str_contains($accept, 'application/xhtml+xml');
+    }
+
+    /**
+     * Whether this path must answer as JSON even though nothing about the REQUEST asked for it.
+     *
+     * Declining the HTML page is only half of what `json-paths` has to do. A URL under `api/*` that matches
+     * no route at all throws a Symfony HttpException, which is not a FireflyException, and a browser's
+     * Accept header means `expectsJson()` is false — so both of the problem+json branches missed it and the
+     * request fell through to Laravel's own error page. An API path that answers with a framework's stock
+     * HTML is exactly the outcome this setting exists to prevent, so the caller asks this too.
+     */
+    public function forcesJson(Request $request): bool
+    {
+        return $this->settings->enabled && $this->settings->isJsonPath($request->path());
     }
 
     public function render(Throwable $e, Request $request): Response

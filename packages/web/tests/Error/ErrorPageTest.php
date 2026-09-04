@@ -165,3 +165,26 @@ it('answers an API path with a problem document even when a browser asks', funct
         ->and($renderer->handles(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeTrue()
         ->and($renderer->handles(Request::create('/apiary', 'GET', server: $browserAccept)))->toBeTrue();
 });
+
+it('answers an unrouted API path as JSON even when nothing about the request asked for it', function () {
+    // Declining the HTML page is only half of what json-paths has to do. A URL under `api/*` matching no
+    // route throws a Symfony HttpException — not a FireflyException — and a browser's Accept header makes
+    // `expectsJson()` false, so both problem+json branches missed it and the request fell through to
+    // Laravel's own error page. An API path answering with a framework's stock HTML is exactly what this
+    // setting exists to prevent.
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: true, jsonPaths: ['api/*']));
+
+    $browser = Request::create('/api/nope', 'GET', server: ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml']);
+
+    expect($renderer->handles($browser))->toBeFalse()
+        ->and($renderer->forcesJson($browser))->toBeTrue()
+        // Outside the API space nothing is forced, and a caller that expressed no preference still falls
+        // through to Laravel rather than having a shape invented for it.
+        ->and($renderer->forcesJson(Request::create('/orders/9', 'GET')))->toBeFalse();
+});
+
+it('forces nothing at all when the page is switched off', function () {
+    $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: false, jsonPaths: ['api/*']));
+
+    expect($off->forcesJson(Request::create('/api/nope', 'GET')))->toBeFalse();
+});
