@@ -68,6 +68,11 @@ final readonly class AdminPage
                 'The cache stores this application has configured.'),
             new self('loggers', 'Loggers', 'loggers', self::GROUP_CONFIG,
                 'Log channels and their levels.'),
+            // `requires` is null and its own settings decide whether it appears — see AdminAction::nav().
+            // It is the only page that CHANGES the application rather than describing it, which is why it is
+            // off by default and refused outright in production.
+            new self('settings', 'Feature switches', null, self::GROUP_CONFIG,
+                'The framework switches this application is running with, and where each value came from.'),
 
             // Both Data pages have a null `requires`: they read the container, not an actuator endpoint.
             // Datasource is offered whenever a database manager is bound; the browser has its own switch on
@@ -76,6 +81,8 @@ final readonly class AdminPage
                 'Connections, persistence settings and the compiled #[Transactional] contract.'),
             new self('data', 'Browse data', null, self::GROUP_DATA,
                 'Every repository this application declared, and the records behind it.'),
+            new self('data-map', 'Entity map', null, self::GROUP_DATA,
+                'The entities and the foreign keys between them, drawn.'),
         ];
     }
 

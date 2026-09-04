@@ -324,13 +324,40 @@
            stays left. Everything is clipped to one line with the full value on the title, because a table
            whose row height depends on its longest json blob is not a table.
         */
-        table.grid td.cell{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
-        table.grid td.cell .v,table.grid td.cell .idv{overflow:hidden;text-overflow:ellipsis;display:block}
-        table.grid td.t-int,table.grid td.t-float,table.grid th.t-int,table.grid th.t-float{text-align:right;font-variant-numeric:tabular-nums}
-        table.grid td.t-json{color:var(--ink-2)}
-        table.grid td.t-datetime{color:var(--ink-2);white-space:nowrap}
-        table.grid td.nil{text-align:center}
-        table.grid td.secret .v{color:var(--ink-3);letter-spacing:.08em}
+        /* THE CLASS IS `datatable`, NOT `grid`. It was `grid`, which is also this layout's own utility for
+           a CSS grid of panels — so the table became a grid CONTAINER, thead and tbody became independent
+           blocks, and the two rows laid out their columns separately: headers bunched into the left third
+           with the values spread across the full width beneath them. A one-word collision, invisible in the
+           markup, and only findable by asking the browser what `display` the table had ended up with.
+
+           A CAP, NOT A COLLAPSE. This was `max-width:0`, which is the trick for clipping a cell in a
+           table that has explicit column widths — and this table has none, so auto-layout sized every
+           column from its HEADER while the values overflowed their boxes: headers bunched into the left
+           third and data spread across the full width, misaligned from the row above it. A real cap lets
+           auto-layout size a column from its content up to a limit, which is what keeps the two rows in
+           the same grid. */
+        table.datatable{table-layout:auto}
+        table.datatable td.cell{max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px;vertical-align:middle}
+        table.datatable td.cell .v,table.datatable td.cell .idv{overflow:hidden;text-overflow:ellipsis;display:block}
+        table.datatable thead th{vertical-align:middle}
+        table.datatable td.t-int,table.datatable td.t-float{text-align:right;font-variant-numeric:tabular-nums}
+        table.datatable thead th.t-int,table.datatable thead th.t-float{text-align:right}
+        table.datatable thead th.t-int a,table.datatable thead th.t-float a{justify-content:flex-end}
+        table.datatable thead th a{display:inline-flex;align-items:center;gap:3px}
+        /* COLUMNS THAT CANNOT BE LONG SHOULD NOT BE WIDE. Auto-layout splits leftover width evenly, which
+           gave a one-digit `quantity` the same 200px as a timestamp and left the text columns cramped
+           between them. `width:1%` is the table idiom for "shrink to content": the numeric, boolean and
+           datetime columns take exactly what they need and the string and json columns absorb everything
+           left over, which is where a reader actually needs the room. */
+        table.datatable td.t-int,table.datatable td.t-float,table.datatable td.t-bool,table.datatable td.t-datetime,
+        table.datatable thead th.t-int,table.datatable thead th.t-float,table.datatable thead th.t-bool,table.datatable thead th.t-datetime{
+            width:1%;white-space:nowrap;
+        }
+        table.datatable td.t-string,table.datatable td.t-json{width:auto}
+        table.datatable td.t-json{color:var(--ink-2)}
+        table.datatable td.t-datetime{color:var(--ink-2);white-space:nowrap}
+        table.datatable td.nil{text-align:center}
+        table.datatable td.secret .v{color:var(--ink-3);letter-spacing:.08em}
         .nul{color:var(--ink-3)}
         .idv{font-weight:650}
         th .ord{display:inline-block;width:10px;color:var(--brand)}
@@ -348,19 +375,44 @@
         details.filters>summary::before{content:"▸";color:var(--ink-3);font-size:10px}
         details.filters[open]>summary::before{content:"▾"}
         .filterform{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
-        .frow{display:flex;gap:8px;flex-wrap:wrap}
+        .frow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
         .frow select,.frow input{font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line-2);
             border-radius:7px;background:var(--panel);color:var(--ink);min-width:0}
         .frow select{flex:0 1 190px}
         .frow input{flex:1 1 190px}
-        .filterform .actions{display:flex;gap:8px;align-items:center}
+        .frow .drop{flex:none;width:28px;height:28px;border-radius:7px;border:1px solid var(--line-2);
+            background:transparent;color:var(--ink-3);cursor:pointer;font-size:15px;line-height:1;padding:0}
+        .frow .drop:hover{border-color:var(--down);color:var(--down)}
+        .filterform .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .filterform .hint{color:var(--ink-2);font-size:12px;margin-left:auto}
         form.inline{display:flex;gap:6px;align-items:center;margin:0}
 
+        .pager .range{color:var(--ink-2);font-size:12.5px;font-variant-numeric:tabular-nums}
         .pager .act.on{border-color:var(--brand);color:var(--brand);font-weight:650}
         .pager .act.off{opacity:.45;pointer-events:none}
         .pager .gap{color:var(--ink-3);padding:0 2px}
         .sizer{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
         .sizer select{font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);color:var(--ink)}
+
+        /* ── The entity map ── */
+        .mapwrap{overflow:auto;padding:8px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+        svg.emap{display:block;margin:0 auto;color:var(--line-2)}
+        svg.emap .ebox{fill:var(--panel);stroke:var(--line-2);stroke-width:1}
+        svg.emap .ehead{fill:var(--panel-2);stroke:var(--line-2);stroke-width:1}
+        svg.emap .ename{fill:var(--ink);font:650 12.5px var(--sans)}
+        svg.emap .etable{fill:var(--ink-3);font:10.5px var(--mono)}
+        svg.emap .ecol{fill:var(--ink-2);font:11px var(--mono)}
+        svg.emap .ecol.key{fill:var(--brand);font-weight:700}
+        svg.emap .etype{fill:var(--ink-3);font:10px var(--mono)}
+        svg.emap .emore{fill:var(--ink-3);font:italic 10.5px var(--sans)}
+        svg.emap .eline{fill:none;stroke:var(--line-2);stroke-width:1.4}
+        svg.emap .elabel{fill:var(--ink-3);font:10px var(--mono);paint-order:stroke;stroke:var(--panel-2);stroke-width:3px}
+        svg.emap a:hover .ebox{stroke:var(--brand)}
+        svg.emap a:hover .ehead{fill:color-mix(in srgb, var(--brand) 10%, var(--panel-2))}
+        svg.emap a:focus-visible .ebox{stroke:var(--accent);stroke-width:2}
+        .stat dd.bad{color:var(--down)}
+        .tip.warnbox{background:var(--warn-bg);color:var(--warn)}
+        .tip.warnbox strong{color:inherit}
         .pair b{font-weight:600;color:var(--ink-3)}
         .pair.opt b{color:var(--accent)}
         .stat dd.sm{font-size:14px;word-break:break-all}
@@ -437,8 +489,8 @@
         .nodes .node:focus-visible rect{stroke:var(--accent);stroke-width:2}
 
         /* ── data browser ────────────────────────────────────────────────── */
-        .pager{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);
-               font-size:12.5px;color:var(--ink-2)}
+        .pager{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;
+               border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
         .pager .spacer{flex:1}
         .pager .act{text-decoration:none;display:inline-flex;align-items:center}
         .editor{padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}

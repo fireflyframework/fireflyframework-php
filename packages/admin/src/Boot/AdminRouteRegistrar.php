@@ -17,6 +17,7 @@ use Firefly\Admin\Data\DataResourceRegistry;
 use Firefly\Admin\Data\DataSchemaFactory;
 use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Data\RepositoryIntrospector;
+use Firefly\Admin\Settings\SettingsConsole;
 use Firefly\Admin\Web\AdminAction;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
@@ -66,6 +67,7 @@ final class AdminRouteRegistrar implements BootPass
         }
 
         $container->instance(AdminSettings::class, $settings);
+
         $container->singleton(AdminEndpointReader::class, static fn (): AdminEndpointReader => new AdminEndpointReader(
             $container->make(ActuatorRegistry::class),
             $context->config,
@@ -108,6 +110,7 @@ final class AdminRouteRegistrar implements BootPass
             new ManagementPortGuard(ManagementServerSettings::fromConfig($context->config)),
             $container->make(DataBrowser::class),
             $container->make(DatasourceReport::class),
+            $container->make(SettingsConsole::class),
         ));
 
         /** @var Router $router */

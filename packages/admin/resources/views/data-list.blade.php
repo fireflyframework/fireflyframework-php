@@ -78,29 +78,34 @@
                 <input type="hidden" name="size" value="{{ $listing->perPage }}">
                 @if ($listing->search !== null)<input type="hidden" name="q" value="{{ $listing->search }}">@endif
 
-                @php $rows = $listing->filters; $rows[] = null; @endphp
-                @foreach ($rows as $row)
-                    <div class="frow">
-                        <select name="fc[]" aria-label="Column">
-                            <option value="">—</option>
-                            @foreach ($schema->columns as $column)
-                                <option value="{{ $column->name }}" @selected($row?->column === $column->name)>{{ $column->label() }}</option>
-                            @endforeach
-                        </select>
-                        <select name="fo[]" aria-label="Comparison">
-                            @foreach ($operators as $id => $label)
-                                <option value="{{ $id }}" @selected($row?->operator === $id)>{{ $label }}</option>
-                            @endforeach
-                        </select>
-                        <input name="fv[]" value="{{ $row?->value }}" placeholder="value" aria-label="Value">
-                    </div>
-                @endforeach
+                <div id="frows">
+                    @php $rows = $listing->filters; $rows[] = null; @endphp
+                    @foreach ($rows as $row)
+                        <div class="frow">
+                            <select name="fc[]" aria-label="Column">
+                                <option value="">—</option>
+                                @foreach ($schema->columns as $column)
+                                    <option value="{{ $column->name }}" @selected($row?->column === $column->name)>{{ $column->label() }}</option>
+                                @endforeach
+                            </select>
+                            <select name="fo[]" aria-label="Comparison">
+                                @foreach ($operators as $id => $label)
+                                    <option value="{{ $id }}" @selected($row?->operator === $id)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <input name="fv[]" value="{{ $row?->value }}" placeholder="value" aria-label="Value">
+                            <button class="drop" type="button" title="Remove this condition" aria-label="Remove this condition">&times;</button>
+                        </div>
+                    @endforeach
+                </div>
 
                 <div class="actions">
                     <button class="go" type="submit">Apply</button>
+                    <button class="act" type="button" id="fadd">Add condition</button>
                     @if ($listing->filters !== [])
                         <a class="act" href="{{ $base }}{{ $keepSize }}">Clear</a>
                     @endif
+                    <span class="hint">Conditions are combined with <strong>and</strong>.</span>
                 </div>
             </form>
         </details>
@@ -140,7 +145,7 @@
                 ])
             @else
                 <div class="tw">
-                    <table class="grid">
+                    <table class="datatable">
                         <thead>
                         <tr>
                             @foreach ($columns as $column)
@@ -150,7 +155,7 @@
                                     $isSorted = $listing->sort === $column->name;
                                     $next = $isSorted && $listing->direction === 'asc' ? 'desc' : 'asc';
                                 @endphp
-                                <th class="t-{{ $column->type }}">
+                                <th class="t-{{ $column->type }} @if ($column->identifier) idcol @endif">
                                     @if ($sortable)
                                         <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $keepSearch }}{{ $keepFilter }}{{ $keepSize }}">
                                             {{ $column->label() }}<span class="ord">{{ $isSorted ? ($listing->direction === 'asc' ? '↑' : '↓') : '' }}</span>
@@ -185,13 +190,19 @@
 
                 @php
                     $keep = $keepSort.$keepSearch.$keepFilter.$keepSize;
-                    $last = $listing->totalPages();
+                    $last = max(1, $listing->totalPages());
+                    $from = $listing->total === 0 ? 0 : ($listing->page - 1) * $listing->perPage + 1;
+                    $to = min($listing->total, $listing->page * $listing->perPage);
                     // A window around the current page. Rendering every page of a 400-page table is a
                     // pagination control nobody can use, and the ends are kept because "first" and "last" are
                     // the two jumps people actually make.
                     $window = range(max(1, $listing->page - 2), min($last, $listing->page + 2));
                 @endphp
                 <div class="pager">
+                    <span class="range">
+                        {{ number_format($from) }}–{{ number_format($to) }} of {{ number_format($listing->total) }}
+                        @if ($last > 1) · page {{ $listing->page }} of {{ number_format($last) }} @endif
+                    </span>
                     <form method="get" action="{{ $settings->url('data') }}" class="inline">
                         <input type="hidden" name="resource" value="{{ $resource?->slug }}">
                         @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
@@ -228,11 +239,56 @@
                         @endif
                         <a class="act @if (! $listing->hasNext()) off @endif"
                            @if ($listing->hasNext()) href="{{ $base }}&page={{ $listing->page + 1 }}{{ $keep }}" @endif>Next</a>
-                    @else
-                        <span class="meta">Showing all {{ number_format($listing->total) }}</span>
                     @endif
                 </div>
             @endif
         </div>
     @endif
 @endsection
+
+@push('scripts')
+<script>
+    // ADDING A CONDITION MUST NOT REQUIRE SUBMITTING ONE. The bar renders the applied filters plus one empty
+    // row, which meant a second condition could only be reached by applying the first — so an "A and B"
+    // query took two round trips and a first result nobody wanted. Cloning the last row is the whole fix,
+    // and it is progressive: with scripts off the form still works, it just offers one row at a time.
+    (function () {
+        var rows = document.getElementById('frows');
+        var add = document.getElementById('fadd');
+        if (!rows || !add) { return; }
+
+        function blank() {
+            var last = rows.lastElementChild;
+            var copy = last.cloneNode(true);
+            copy.querySelectorAll('select').forEach(function (select) { select.selectedIndex = 0; });
+            copy.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+
+            return copy;
+        }
+
+        add.addEventListener('click', function () {
+            var copy = blank();
+            rows.appendChild(copy);
+            var first = copy.querySelector('select');
+            if (first) { first.focus(); }
+        });
+
+        // Delegated, so it also covers the rows added above. Removing the LAST row would leave nothing to
+        // clone, so it is emptied in place instead — the control never leaves the form unusable.
+        rows.addEventListener('click', function (event) {
+            var button = event.target.closest('.drop');
+            if (!button) { return; }
+
+            var row = button.closest('.frow');
+            if (rows.children.length > 1) {
+                row.remove();
+
+                return;
+            }
+
+            row.querySelectorAll('select').forEach(function (select) { select.selectedIndex = 0; });
+            row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        });
+    })();
+</script>
+@endpush

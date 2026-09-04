@@ -10,8 +10,11 @@ use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
 use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Data\DataFilter;
+use Firefly\Admin\Data\DataMap;
 use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
+use Firefly\Admin\Settings\FeatureToggle;
+use Firefly\Admin\Settings\SettingsConsole;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
@@ -38,6 +41,7 @@ final readonly class AdminAction
         private ManagementPortGuard $guard,
         private DataBrowser $data,
         private DatasourceReport $datasource,
+        private SettingsConsole $console,
     ) {}
 
     public function __invoke(Request $request, string $page = ''): SymfonyResponse
@@ -84,7 +88,64 @@ final readonly class AdminAction
             return $this->datasourcePage($request, $current);
         }
 
+        if ($slug === 'settings') {
+            return $request->isMethod('POST') ? $this->settingsWrite($request) : $this->settingsPage($current);
+        }
+
+        if ($slug === 'data-map') {
+            // Behind the browser's own switch, not the dashboard's: a schema diagram names every table and
+            // column an application has, which is the shape of its data even though it is not the data.
+            return $this->data->isEnabled()
+                ? $this->html($this->render('data-map', ['map' => DataMap::build($this->data)], $current), 200)
+                : $this->html($this->render('data-disabled', []), 404);
+        }
+
         return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($slug), $current), 200);
+    }
+
+    private function settingsPage(AdminPage $current): SymfonyResponse
+    {
+        if (! $this->console->isEnabled()) {
+            return $this->html($this->render('settings-disabled', []), 404);
+        }
+
+        return $this->html($this->render('settings', [
+            'toggles' => $this->console->toggles(),
+            // NOT `groups`: render() sets that itself, to the NAV's groups, after spreading this array —
+            // so a page variable of the same name is silently replaced and every panel keyed on it vanishes.
+            'toggleGroups' => FeatureToggle::groups(),
+            'writable' => $this->console->isWritable(),
+            'production' => $this->console->isProduction(),
+            'overrides' => $this->console->overrides(),
+            'file' => $this->console->file(),
+        ], $current), 200);
+    }
+
+    /**
+     * Flip one switch, or clear them all.
+     *
+     * Nothing is decided here: SettingsConsole refuses a write in production and a key that is not on its
+     * fixed list, and this method reports whatever sentence it returns. A 404 for a switched-OFF console is
+     * the same refusal the data browser makes for the same reason — a 403 confirms the surface exists.
+     */
+    private function settingsWrite(Request $request): SymfonyResponse
+    {
+        if (! $this->console->isEnabled()) {
+            return $this->html($this->render('settings-disabled', []), 404);
+        }
+
+        $back = $this->settings->url('settings');
+
+        if ($request->input('op') === 'reset') {
+            return $this->redirect($back, $this->console->reset());
+        }
+
+        $key = $request->input('key');
+        if (! is_string($key) || $key === '') {
+            return $this->redirect($back, 'Refused: no switch was named.');
+        }
+
+        return $this->redirect($back, $this->console->set($key, $request->input('value') === '1'));
     }
 
     /**
@@ -588,6 +649,8 @@ final readonly class AdminAction
             fn (AdminPage $page): bool => $this->settings->allows($page->slug)
                 // The data browser has no actuator endpoint; its own switch decides whether it is offered.
                 && ($page->slug !== 'data' || $this->data->isEnabled())
+                && ($page->slug !== 'data-map' || $this->data->isEnabled())
+                && ($page->slug !== 'settings' || $this->console->isEnabled())
                 // Datasource needs a database manager to describe. An application with none is a legal
                 // LaraFly application, and a menu entry leading to "there is nothing here" is worse than no
                 // entry at all.
