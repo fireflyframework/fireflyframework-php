@@ -10,6 +10,7 @@ use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Actuator\Server\ManagementServerSettings;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
+use Firefly\Admin\Data\ConnectionWizard;
 use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Data\DataBrowserSettings;
 use Firefly\Admin\Data\DataQueryEngine;
@@ -80,6 +81,7 @@ final class AdminRouteRegistrar implements BootPass
         // Assembled here for the same reason DataBrowser is: it must exist even when there is no database
         // manager to describe, because the page's job in that case is to say so.
         $container->singleton(DatasourceReport::class, static fn (): DatasourceReport => DatasourceReport::forContainer($container));
+        $container->singleton(ConnectionWizard::class, static fn (): ConnectionWizard => ConnectionWizard::forContainer($container, $context->config));
 
         $container->singleton(DataBrowser::class, static function () use ($container, $context): DataBrowser {
             $settings = DataBrowserSettings::fromConfig($context->config);
@@ -111,6 +113,7 @@ final class AdminRouteRegistrar implements BootPass
             $container->make(DataBrowser::class),
             $container->make(DatasourceReport::class),
             $container->make(SettingsConsole::class),
+            $container->make(ConnectionWizard::class),
         ));
 
         /** @var Router $router */

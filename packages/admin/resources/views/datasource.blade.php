@@ -107,6 +107,58 @@
         </p>
     </div>
 
+    {{-- THE WIZARD. A POST only: a GET must never be able to open an outbound socket to a host somebody
+         put in a URL, which keeps this surface out of reach of a link, an image tag or a prefetch. --}}
+    @if ($wizard->isAvailable())
+        <details class="panel filters" @if ($trial !== null) open @endif>
+            <summary>
+                <span>Try a connection</span>
+                <span class="spacer"></span>
+                <span class="meta">nothing is written</span>
+            </summary>
+
+            @isset($trial)
+                <p class="tip {{ $trial['ok'] ? '' : 'warnbox' }}" style="margin:14px 16px 0">
+                    <strong>{{ $trial['ok'] ? 'Works' : 'Failed' }}.</strong>
+                    {{ $trial['message'] }}
+                    @if ($trial['version'] !== '') <span class="dim">· server {{ $trial['version'] }}</span>@endif
+                </p>
+                @if ($trial['snippet'] !== '')
+                    <pre class="snippet">{{ $trial['snippet'] }}</pre>
+                @endif
+            @endisset
+
+            <form method="post" action="{{ $settings->url('datasource') }}" class="filterform">
+                @csrf
+                <div class="frow">
+                    <select name="driver" aria-label="Driver">
+                        @foreach ($wizard->drivers() as $driver)
+                            <option value="{{ $driver }}" @selected(($trialInput['driver'] ?? '') === $driver)>{{ $driver }}</option>
+                        @endforeach
+                    </select>
+                    <input name="host" value="{{ $trialInput['host'] ?? '' }}" placeholder="host (127.0.0.1)" aria-label="Host">
+                    <input name="port" value="{{ $trialInput['port'] ?? '' }}" placeholder="port" aria-label="Port" inputmode="numeric">
+                </div>
+                <div class="frow">
+                    <input name="database" value="{{ $trialInput['database'] ?? '' }}" placeholder="database" aria-label="Database">
+                    <input name="username" value="{{ $trialInput['username'] ?? '' }}" placeholder="username" aria-label="Username">
+                    <input name="password" type="password" placeholder="password" aria-label="Password">
+                </div>
+                <div class="actions">
+                    <button class="go" type="submit">Test connection</button>
+                    <span class="hint">The settings are used for this request only — nothing is saved, and the
+                        password never appears in the snippet.</span>
+                </div>
+            </form>
+        </details>
+    @elseif ($wizard->isProduction())
+        <p class="note">
+            The connection wizard is unavailable in production, and no configuration key changes that: a form
+            that opens a socket to a host you type is a request-forgery tool, and its error messages
+            distinguish “refused” from “timed out” well enough to map a private network.
+        </p>
+    @endif
+
     <div class="panel">
         @include('firefly-admin::_panel-head', [
             'title' => 'Transactional methods', 'count' => count($transactional),

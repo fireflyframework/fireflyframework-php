@@ -412,6 +412,8 @@
         svg.emap a:focus-visible .ebox{stroke:var(--accent);stroke-width:2}
         .stat dd.bad{color:var(--down)}
         .tip.warnbox{background:var(--warn-bg);color:var(--warn)}
+        pre.snippet{margin:12px 16px 0;padding:12px 14px;background:var(--panel-2);border:1px solid var(--line);
+            border-radius:8px;font-family:var(--mono);font-size:12px;overflow-x:auto;color:var(--ink-2);white-space:pre}
         .tip.warnbox strong{color:inherit}
         .pair b{font-weight:600;color:var(--ink-3)}
         .pair.opt b{color:var(--accent)}

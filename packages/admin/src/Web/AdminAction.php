@@ -8,6 +8,7 @@ use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
+use Firefly\Admin\Data\ConnectionWizard;
 use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Data\DataFilter;
 use Firefly\Admin\Data\DataMap;
@@ -42,6 +43,7 @@ final readonly class AdminAction
         private DataBrowser $data,
         private DatasourceReport $datasource,
         private SettingsConsole $console,
+        private ConnectionWizard $wizard,
     ) {}
 
     public function __invoke(Request $request, string $page = ''): SymfonyResponse
@@ -167,6 +169,12 @@ final readonly class AdminAction
         $known = array_column($connections, 'name');
         $probe = in_array($probing, $known, true) ? ['name' => $probing, ...$this->datasource->probe($probing)] : null;
 
+        // The wizard runs only on a POST — a GET can never open an outbound socket to a caller-supplied
+        // host, which keeps the whole surface out of reach of a link, an image tag or a prefetch.
+        $trial = $request->isMethod('POST') && $this->wizard->isAvailable()
+            ? $this->wizard->test($this->wizardInput($request))
+            : null;
+
         return $this->html($this->render('datasource', [
             'available' => $this->datasource->available(),
             'default' => $this->datasource->defaultConnection(),
@@ -175,7 +183,25 @@ final readonly class AdminAction
             'transactional' => $this->datasource->transactionalMethods(),
             'probe' => $probe,
             'probeEnabled' => $this->datasource->probeEnabled(),
+            'wizard' => $this->wizard,
+            'trial' => $trial,
+            'trialInput' => $this->wizardInput($request),
         ], $current), 200);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function wizardInput(Request $request): array
+    {
+        $input = [];
+
+        foreach (['driver', 'host', 'port', 'database', 'username', 'password', 'charset'] as $field) {
+            $value = $request->input($field);
+            $input[$field] = is_scalar($value) ? (string) $value : '';
+        }
+
+        return $input;
     }
 
     /**
