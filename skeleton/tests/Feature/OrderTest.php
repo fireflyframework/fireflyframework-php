@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Orders\OrderEntity;
+use App\Orders\OrderRepository;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -14,13 +18,22 @@ use Tests\TestCase;
  * derived collection path, a validated request body with a nested DTO and a list of DTOs, declared 201/204
  * statuses, and an RFC-7807 404 that no line of controller code produces.
  *
- * The store is in memory (see App\Orders\OrderRepository for why a skeleton must not assume a migrated
- * database), and the repository is a singleton, so state persists across the requests WITHIN one test. Each
- * test creates whatever it needs rather than relying on another test's leftovers, because PHPUnit gives no
- * ordering guarantee and a fresh application is booted per test.
+ * The store is the `orders` table, reached through App\Orders\OrderRepository — which is an
+ * EloquentRepository with a model name and no method bodies. RefreshDatabase migrates the in-memory sqlite
+ * configured in phpunit.xml and rolls each test back, so every case starts empty and none depends on
+ * another's leftovers.
+ *
+ * THE PERSISTENCE ASSERTIONS BELOW ARE NOT DECORATION. An earlier version of this sample kept orders in an
+ * array on a singleton repository, and this suite passed: Laravel reuses one application across the requests
+ * of a single test, so the array survived from the POST to the GET. Over real HTTP it does not — PHP shares
+ * nothing between requests, so `POST /orders` returned an id and the next `GET /orders` reported an empty
+ * store. A test that only ever asks the same process what it just remembered cannot tell the two apart,
+ * which is why these cases check the DATABASE as well as the response.
  */
 final class OrderTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
@@ -59,6 +72,16 @@ final class OrderTest extends TestCase
             ->assertJsonPath('total', 22.25);
 
         $this->assertIsInt($response->json('id'));
+
+        // The row, not the response. `total` is a decimal column written from Order::total(), and the two
+        // json columns hold the nested payloads — read back here so a controller that answered correctly
+        // while storing nothing could not pass.
+        $this->assertDatabaseHas('orders', [
+            'id' => $response->json('id'),
+            'customer' => 'Ada Lovelace',
+            'email' => 'ada@example.com',
+            'total' => 22.25,
+        ]);
     }
 
     public function test_it_reads_lists_replaces_and_deletes_an_order(): void
@@ -82,9 +105,42 @@ final class OrderTest extends TestCase
             ->assertOk()
             ->assertJsonPath('customer', 'Grace Hopper');
 
+        // Replacement keeps the identity: the same row, refilled, rather than a delete and re-insert.
+        $this->assertDatabaseHas('orders', ['id' => $id, 'customer' => 'Grace Hopper']);
+        $this->assertDatabaseCount('orders', 1);
+
         // A `void` action plus #[DeleteMapping(status: 204)] is how you say "no body".
         $this->deleteJson('/orders/'.$id)->assertNoContent();
         $this->getJson('/orders/'.$id)->assertStatus(404);
+        $this->assertDatabaseMissing('orders', ['id' => $id]);
+    }
+
+    /**
+     * The order left the process, and a reader that never saw the write can find it.
+     *
+     * This is the case the in-memory version could not have passed, and the reason it went unnoticed is that
+     * it never had to: `postJson()` followed by `getJson()` reuses one application, so an array on a
+     * singleton repository looked exactly like a database. Querying the connection directly — and reading
+     * back through a repository instance built after the write, which shares no state with the one that
+     * handled it — is what separates a store from a cache inside a single test process.
+     */
+    public function test_an_order_is_written_to_the_database_and_not_to_process_memory(): void
+    {
+        $id = $this->postJson('/orders', $this->body())->json('id');
+
+        // The raw row. `lines` is a json column, so the store holds the payload, not a PHP object graph.
+        $row = DB::table('orders')->where('id', $id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('ada@example.com', $row->email);
+        $this->assertCount(2, (array) json_decode((string) $row->lines, true));
+
+        // A repository built now, by hand, with no connection to the one that served the POST.
+        $found = (new OrderRepository)->findById($id);
+        $this->assertInstanceOf(OrderEntity::class, $found);
+        $this->assertSame('Ada Lovelace', $found->customer);
+
+        // And the derived query, parsed from its own name, finds it by a column nothing indexed by hand.
+        $this->assertCount(1, (new OrderRepository)->findByEmailOrderByIdDesc('ada@example.com'));
     }
 
     public function test_it_defaults_both_paging_parameters_when_the_query_string_omits_them(): void

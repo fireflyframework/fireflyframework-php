@@ -48,7 +48,9 @@ cd my-app
 
 `firefly/skeleton`'s `post-create-project-cmd` runs automatically and leaves you with a booting,
 already-cached app: it copies `.env.example` to `.env`, touches `database/database.sqlite`, runs
-`php artisan key:generate`, and runs `php artisan firefly:cache` — the zero-reflection compile step you'll
+`php artisan key:generate`, runs `php artisan migrate` (the sample resource stores into an `orders` table,
+so `POST /orders` works on the first request rather than after a step you have to be told about), and runs
+`php artisan firefly:cache` — the zero-reflection compile step you'll
 revisit in [Step 11](#step-11-the-zero-reflection-cache-and-health-introspection). See
 [Installation](installation.md) for the equivalent `firefly new my-app` global-installer shortcut.
 

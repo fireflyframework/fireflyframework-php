@@ -54,6 +54,31 @@ final class SkeletonApp
     }
 
     /**
+     * Builds the sample's schema by RUNNING THE SHIPPED MIGRATION, not by restating it here.
+     *
+     * App\Orders\OrderRepository is an EloquentRepository over the `orders` table, so the sample resource
+     * cannot answer a single request without one — and a hand-written CREATE TABLE in this file would be a
+     * second, quietly diverging definition of the schema a real `composer create-project` gets from
+     * `artisan migrate`. Executing the migration itself means a column renamed there fails here, which is
+     * the whole reason the shipped example is in this suite.
+     */
+    public static function migrate(): void
+    {
+        $files = glob(dirname(__DIR__, 4).'/skeleton/database/migrations/*.php') ?: [];
+
+        foreach ($files as $file) {
+            // Laravel migrations are anonymous classes extending Migration, which declares neither up() nor
+            // down() — the base is a marker and the methods are a convention, so method_exists() is both the
+            // guard and the only way to tell static analysis this call is real.
+            $migration = require $file;
+
+            if (is_object($migration) && method_exists($migration, 'up')) {
+                $migration->up();
+            }
+        }
+    }
+
+    /**
      * A complete, VALID order body for the sample resource — the shape App\Http\OrderRequest documents,
      * with a nested address and two lines.
      *

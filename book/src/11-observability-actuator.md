@@ -652,7 +652,7 @@ Finally, a `Tracer` port rounds out the package — a minimal `trace(string $nam
 
 ## The admin dashboard: `firefly/admin`
 
-Everything so far in this chapter is JSON, and JSON is the right shape for a load balancer, a Kubernetes probe and a Prometheus scraper. It is not the right shape for a person at 3am who wants to know whether this process compiled its manifests, which auto-configuration backed off, and what `firefly.data.*` actually resolved to. `firefly/admin` is a third opt-in package for that person: a server-rendered browser dashboard over the very same actuator endpoints, in the spirit of Spring Boot Admin.
+Everything so far in this chapter is JSON, and JSON is the right shape for a load balancer, a Kubernetes probe and a Prometheus scraper. It is not the right shape for a person at 3am who wants to know whether this process compiled its manifests, which auto-configuration backed off, and what `firefly.data.*` actually resolved to. `firefly/admin` is the package for that person: a server-rendered browser dashboard over the very same actuator endpoints, in the spirit of Spring Boot Admin. It arrives with `firefly/firefly` like the rest of the family, so a skeleton project already has it — and, as with `firefly/actuator`, having it installed is not the same as having it switched on. Add it directly only if you took the packages à la carte:
 
 ```bash
 composer require firefly/admin

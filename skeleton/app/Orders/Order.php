@@ -17,7 +17,7 @@ use JsonSerializable;
  * so a derived value has to be published deliberately.
  *
  * The id is nullable because an Order exists before it is stored — `OrderController::store()` builds one
- * with no id and OrderRepository::save() returns the stored copy that has one. Modelling "not yet
+ * with no id, and the id is assigned by the database when OrderService writes the row. Modelling "not yet
  * persisted" as a null id rather than as a second class keeps one type in play across the whole slice.
  */
 final readonly class Order implements JsonSerializable
@@ -37,12 +37,6 @@ final readonly class Order implements JsonSerializable
     public function total(): float
     {
         return round(array_sum(array_map(static fn (OrderLine $line): float => $line->subtotal(), $this->lines)), 2);
-    }
-
-    /** The stored copy of an order that had no id yet. */
-    public function withId(int $id): self
-    {
-        return new self($id, $this->customer, $this->email, $this->shipTo, $this->lines);
     }
 
     /** @return array<string, mixed> */

@@ -9,6 +9,9 @@ component. Install the package and a LaraFly app has a spec — and therefore ty
 Because every fact in the document is read from the same compiled artifacts the dispatcher dispatches from and the
 validator validates with, **the spec cannot drift from the server**.
 
+`firefly/firefly` requires it, so a skeleton project already serves `/openapi` and `/openapi.json`. Add it
+directly if you took the packages à la carte:
+
 ```bash
 composer require firefly/openapi
 ```

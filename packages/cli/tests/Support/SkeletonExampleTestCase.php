@@ -9,7 +9,8 @@ use Firefly\Cli\Cache\CacheReport;
 use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Cli\CliServiceProvider;
-use Firefly\Testing\FireflyTestCase;
+use Firefly\Data\DataServiceProvider;
+use Firefly\Testing\FireflyDatabaseTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Support\ServiceProvider;
@@ -35,7 +36,7 @@ use Illuminate\Support\ServiceProvider;
  * `new class extends FireflyTestCase {...}::class` constructs the class immediately, which throws before
  * Pest can bind it — the same fix already applied in MakeCommandsTestCase and friends.
  */
-abstract class SkeletonExampleTestCase extends FireflyTestCase
+abstract class SkeletonExampleTestCase extends FireflyDatabaseTestCase
 {
     /** The temp dir the compiled manifests are emitted into (shared across the class' tests). */
     public static ?string $cacheDir = null;
@@ -55,6 +56,8 @@ abstract class SkeletonExampleTestCase extends FireflyTestCase
         }
 
         parent::setUp();
+
+        SkeletonApp::migrate();
     }
 
     public static function tearDownAfterClass(): void
@@ -81,6 +84,7 @@ abstract class SkeletonExampleTestCase extends FireflyTestCase
         return [
             ValidationServiceProvider::class,
             WebServiceProvider::class,
+            DataServiceProvider::class,
             CliServiceProvider::class,
             // Last: its unconditional $app->instance() overrides beat every *WiringProvider's bound()-guarded
             // empty default regardless of ordering, and register() runs before any boot pass resolves a bean.

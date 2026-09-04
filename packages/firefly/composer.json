@@ -23,6 +23,7 @@
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
+        "firefly/admin": "*@dev",
         "firefly/autoconfigure": "*@dev",
         "firefly/cli": "*@dev",
         "firefly/config": "*@dev",
@@ -35,6 +36,7 @@
         "firefly/kernel": "*@dev",
         "firefly/messaging": "*@dev",
         "firefly/observability": "*@dev",
+        "firefly/openapi": "*@dev",
         "firefly/resilience": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/scheduling-postgres": "*@dev",

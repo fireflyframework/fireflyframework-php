@@ -420,6 +420,54 @@ return [
     //         */
     //         'exclude' => 'env,configprops',
     //     ],
+    //
+    //     /*
+    //      | THE DATA BROWSER — /firefly/data
+    //      |
+    //      | A browsable, searchable, sortable view of the records behind your repositories, in the shape
+    //      | Django's admin made familiar. It discovers every bean implementing CrudRepository — which you
+    //      | get from `extends EloquentRepository` — and reads THROUGH the repository, so what it shows is
+    //      | what your own data layer returns, not a raw table dump. Nothing to register: the sample
+    //      | App\Orders\OrderRepository shows up as "Order" the moment this is switched on.
+    //      |
+    //      | IT HAS ITS OWN SWITCH, DEFAULTING TO FALSE, even though the dashboard around it already
+    //      | defaults to app.debug. Beans, conditions and mappings describe the SHAPE of an application;
+    //      | these are its customers' records. "Debug is on" is a fine reason to show the first and not the
+    //      | second, so the browser is off until someone says otherwise — and when it is off, its pages
+    //      | 404 rather than 403, because a 403 confirms the surface exists.
+    //     */
+    //     'data' => [
+    //         // Default: false.
+    //         'enabled' => env('FIREFLY_ADMIN_DATA_ENABLED', false),
+    //
+    //         /*
+    //          | Whether the browser may EDIT and DELETE records. Ineffective on its own — a write needs
+    //          | this AND `enabled` — so switching the browser on never silently makes it writable. With
+    //          | this off the edit form is not rendered and the write URLs refuse.
+    //          |
+    //          | There is deliberately no "create": a generic form cannot honour the constructor
+    //          | invariants of an arbitrary entity, and one that quietly bypassed them would be worse than
+    //          | not having it. Create records through your own use cases.
+    //          |
+    //          | Default: false.
+    //         */
+    //         'writable' => env('FIREFLY_ADMIN_DATA_WRITABLE', false),
+    //
+    //         // Rows per page, and the ceiling a `?per-page=` in the URL may raise it to. Both are clamped
+    //         // to a hard maximum of 1000 so no query string can ask for the whole table at once.
+    //         // Defaults: 25 and 200.
+    //         'page-size' => 25,
+    //         'max-page-size' => 200,
+    //
+    //         /*
+    //          | CSV of resource slugs to REFUSE — same hard refusal as `pages.exclude` above: excluded
+    //          | resources are absent from the menu AND their URLs 404. Use it for the tables you do not
+    //          | want browsable even by someone who is allowed in at all.
+    //          |
+    //          | Default: '' (nothing excluded).
+    //         */
+    //         'exclude' => 'order',
+    //     ],
     // ],
 
     /*

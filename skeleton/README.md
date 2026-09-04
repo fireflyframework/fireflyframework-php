@@ -18,7 +18,8 @@ cd my-app
 1. copies `.env.example` to `.env`,
 2. touches the default `database/database.sqlite`,
 3. runs `php artisan key:generate` to set `APP_KEY`,
-4. runs `php artisan firefly:cache` to compile the app manifests into `bootstrap/cache/firefly/`.
+4. runs `php artisan migrate` to create the `orders` table the sample resource stores into,
+5. runs `php artisan firefly:cache` to compile the app manifests into `bootstrap/cache/firefly/`.
 
 ## The sample slice
 
@@ -29,8 +30,31 @@ cd my-app
   to JSON. The pair is the difference between the two stereotypes.
 - `app/GreetingService.php` — a `#[Service]` autowired into the controller.
 - `app/GreetingProperties.php` — a `#[ConfigProperties('greeting')]` DTO bound from configuration.
-- `tests/Feature/WelcomeTest.php` — the smoke test a new application should start from: HTML renders, JSON
-  negotiates, `/actuator/health` reports UP. Run it with `composer test`.
+
+The second slice is a full REST resource, and it is what `php artisan make:firefly-controller OrderController`
+generates, filled in:
+
+- `app/Http/OrderController.php` — five actions on `/orders` (`GET` collection, `GET` one, `POST`, `PUT`,
+  `DELETE`) from one class-level `#[RequestMapping]`. The `201` and the `204` are declared on their mappings,
+  the paging parameters are bound and coerced by `#[QueryParam]`, and nothing in the class handles a missing
+  order — `OrderService` throws, and `firefly/web` renders the whole exception taxonomy as RFC-7807
+  `problem+json` at the exception's own status.
+- `app/Http/OrderRequest.php`, `AddressPayload.php`, `OrderLinePayload.php` — the request body, a nested DTO
+  and a list of DTOs. `#[Valid]` runs the compiled constraints *before* hydration, so an invalid body is a 422
+  naming `shipTo.postcode` and never reaches an action. These are also what `/openapi.json` publishes as
+  component schemas, `$ref`s and all.
+- `app/Orders/` — the domain and the store. `Order`/`Address`/`OrderLine` are immutable value objects,
+  `OrderEntity` is the Eloquent row, and `OrderRepository` is the interesting one: `extends
+  EloquentRepository` plus a model name, and every CRUD method is inherited. `OrderService` maps between the
+  two shapes and is the only place that knows both exist.
+- `database/migrations/` — the `orders` table, created for you by `post-create-project-cmd`.
+- `tests/Feature/` — `WelcomeTest` is the smoke test a new application should start from (HTML renders, JSON
+  negotiates, `/actuator/health` reports UP); `OrderTest` drives the whole resource, response *and* row. Run
+  both with `composer test`.
+
+Because `OrderRepository` implements `CrudRepository`, the dashboard's data browser lists orders as a
+browsable resource the moment you set `firefly.admin.data.enabled` — see `config/firefly.php`. Delete
+`app/Orders`, `app/Http/Order*`, `app/Http/AddressPayload.php` and the migration to remove the sample.
 
 ## Configuration
 

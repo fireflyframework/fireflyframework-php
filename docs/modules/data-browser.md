@@ -14,7 +14,7 @@ It is **off by default, and it does not inherit the dashboard's default.** Read
     [Known-latent](#known-latent).
 
 ```bash
-composer require firefly/admin      # the browser is part of the dashboard, not a package of its own
+composer require firefly/admin      # already required by firefly/firefly; the browser is a part of the dashboard, not a package of its own
 ```
 
 `DataBrowser` is the single entry point, and `DataBrowser::forContainer($container)` assembles one from the

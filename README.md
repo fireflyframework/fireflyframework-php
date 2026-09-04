@@ -625,7 +625,8 @@ built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — se
 
 ### Two browser surfaces, neither of which needs npm or a CDN
 
-`composer require firefly/admin` mounts a server-rendered dashboard at `/firefly`: thirteen pages over the
+`firefly/admin` — which arrives with the runtime family — mounts a server-rendered dashboard at `/firefly`
+behind `firefly.admin.enabled` (default: `app.debug`): thirteen pages over the
 actuator's own endpoints — health, metrics, HTTP traffic, beans, a drawn
 [**bean graph**](docs/modules/bean-graph.md), conditions, routes, scheduled tasks, environment, config
 properties, caches and loggers. It reads those endpoints **in-process** rather than over HTTP, so it renders

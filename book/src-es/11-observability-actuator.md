@@ -652,7 +652,7 @@ Por último, un puerto `Tracer` remata el paquete — una abstracción mínima d
 
 ## El panel de administración: `firefly/admin`
 
-Todo lo visto hasta aquí en este capítulo es JSON, y JSON es la forma correcta para un balanceador de carga, una sonda de Kubernetes y un scraper de Prometheus. No es la forma correcta para una persona a las 3 de la madrugada que quiere saber si este proceso compiló sus manifiestos, qué auto-configuración se echó atrás, y a qué resolvió realmente `firefly.data.*`. `firefly/admin` es un tercer paquete opcional para esa persona: un panel de administración renderizado en el servidor sobre esos mismos endpoints del actuator, en el espíritu de Spring Boot Admin.
+Todo lo visto hasta aquí en este capítulo es JSON, y JSON es la forma correcta para un balanceador de carga, una sonda de Kubernetes y un scraper de Prometheus. No es la forma correcta para una persona a las 3 de la madrugada que quiere saber si este proceso compiló sus manifiestos, qué auto-configuración se echó atrás, y a qué resolvió realmente `firefly.data.*`. `firefly/admin` es el paquete para esa persona: un panel de administración renderizado en el servidor sobre esos mismos endpoints del actuator, en el espíritu de Spring Boot Admin. Llega con `firefly/firefly` como el resto de la familia, así que un proyecto del esqueleto ya lo tiene — y, igual que con `firefly/actuator`, tenerlo instalado no es lo mismo que tenerlo activado. Añádelo directamente solo si cogiste los paquetes por separado:
 
 ```bash
 composer require firefly/admin

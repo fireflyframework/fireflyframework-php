@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Cli\Tests\Support;
 
-use Firefly\Testing\FireflyTestCase;
+use Firefly\Data\DataServiceProvider;
+use Firefly\Testing\FireflyDatabaseTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Support\ServiceProvider;
@@ -22,13 +23,15 @@ use Illuminate\Support\ServiceProvider;
  *
  * So: `firefly.scan.paths` set, `firefly.cache.path` pointed at a directory with nothing in it.
  */
-abstract class SkeletonScannedBootTestCase extends FireflyTestCase
+abstract class SkeletonScannedBootTestCase extends FireflyDatabaseTestCase
 {
     protected function setUp(): void
     {
         SkeletonApp::register();
 
         parent::setUp();
+
+        SkeletonApp::migrate();
     }
 
     /** @return list<class-string<ServiceProvider>> */
@@ -37,6 +40,9 @@ abstract class SkeletonScannedBootTestCase extends FireflyTestCase
         return [
             ValidationServiceProvider::class,
             WebServiceProvider::class,
+            // The sample repository extends EloquentRepository, so the data layer has to be wired for the
+            // resource to answer at all — the uncached path resolves the same beans the cached one does.
+            DataServiceProvider::class,
         ];
     }
 

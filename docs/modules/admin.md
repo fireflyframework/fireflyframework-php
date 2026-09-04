@@ -5,12 +5,18 @@ structural difference: it is not a separate monitoring application you deploy an
 Blade views *inside* the application it reports on, which is why it can read the endpoint registry directly, and
 why its access model matters as much as it does.
 
+It arrives with the runtime family — `firefly/firefly` requires it, so a `composer create-project
+firefly/skeleton` project already has it and `firefly new --with admin` only makes the dependency explicit in
+your own `composer.json`. Add it directly if you took the packages à la carte:
+
 ```bash
 composer require firefly/admin
 ```
 
-Then open `/firefly`. It is not part of the `firefly/firefly` metapackage — like `firefly/openapi` and the broker
-adapters, it is an opt-in dependency.
+Then open `/firefly`. **Installed is not enabled**: `firefly.admin.enabled` defaults to `app.debug`, so the
+package being present costs a production deployment nothing. That default, not the absence of the package, is
+what stands between the dashboard and the internet — which is why the warning below matters more than the
+install line above.
 
 !!! warning "The access model is the whole security model"
     `firefly.admin.enabled` defaults to `app.debug`, because the dashboard bypasses the actuator's

@@ -13,8 +13,9 @@ php artisan firefly:cache
 php artisan firefly:serve
 ```
 
-`composer create-project` alone already ran `firefly:cache` for you (via `post-create-project-cmd`), so the app
-boots reflection-free from the first request; re-run `firefly:cache` whenever you add or change
+`composer create-project` alone already ran `migrate` and `firefly:cache` for you (via
+`post-create-project-cmd`), so the app boots reflection-free and its sample `POST /orders` persists from the
+first request; re-run `firefly:cache` whenever you add or change
 `#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. classes. `firefly:clear` drops back to the
 in-process scan, which costs a reflection pass per boot but is functionally identical — every manifest
 resolves to the compiled artifact if present, otherwise a scan of `firefly.scan.paths`, otherwise empty.

@@ -19,10 +19,17 @@ use InvalidArgumentException;
  *
  * The second candidate, "read the list out of the skeleton's composer.json", fails for a different reason:
  * the skeleton requires exactly `firefly/cli` + `firefly/firefly`. firefly/firefly is the runtime BOM (the
- * Composer analog of a Maven BOM) and firefly/cli transitively drags most of the family behind it, so the
- * skeleton's require block names TWO packages and describes seventeen. There is no capability list in it to
- * read, and reading one would require resolving the dependency graph — i.e. running Composer — before we
- * are allowed to ask the user anything.
+ * Composer analog of a Maven BOM) and drags the whole family behind it, so the skeleton's require block
+ * names two packages and describes the lot. There is no capability list in it to read, and reading one
+ * would require resolving the dependency graph — i.e. running Composer — before we are allowed to ask the
+ * user anything.
+ *
+ * WHICH IS ALSO WHY `--with` NEVER DECIDES WHETHER CODE EXISTS. Every non-adapter capability's package is
+ * required by the BOM, so `--with security` promotes an already-installed package to an explicit dependency
+ * in the generated composer.json — it does not fetch anything new. That uniformity is asserted by
+ * tests/MetapackageCoverageTest.php, and it is not free: firefly/admin and firefly/openapi were once
+ * offered here while the BOM required neither, so `--with admin` was the only way to get the dashboard at
+ * all and a plain `create-project` silently had none.
  *
  * So the map below is owned here, and the rot it invites is handled where it can actually be caught: the
  * CapabilityCatalogTest enumerates the REAL packages/* directory in the monorepo and fails the build if any

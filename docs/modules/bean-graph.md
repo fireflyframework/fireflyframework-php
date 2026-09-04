@@ -9,7 +9,7 @@ way you expected, when a cycle has hung a boot, or when you are trying to work o
 installed attached itself to.
 
 ```
-composer require firefly/admin      # the graph is a page of the dashboard, not a package of its own
+composer require firefly/admin      # already required by firefly/firefly; the graph is a page of the dashboard, not a package of its own
 ```
 
 ## What counts as a node
