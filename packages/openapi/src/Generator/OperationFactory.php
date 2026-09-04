@@ -6,12 +6,15 @@ namespace Firefly\OpenApi\Generator;
 
 use Firefly\OpenApi\Attributes\ApiParameter;
 use Firefly\OpenApi\Attributes\ApiResponse;
+use Firefly\OpenApi\Schema\DocType;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
 use Firefly\OpenApi\Schema\ElementTypes;
 use Firefly\OpenApi\Schema\ProblemSchema;
+use Firefly\OpenApi\Schema\ResponseSchemaFactory;
 use Firefly\OpenApi\Schema\SchemaRegistry;
 use Firefly\OpenApi\Schema\TypeSchema;
 use Firefly\Web\Route\RouteDescriptor;
+use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 
@@ -38,7 +41,10 @@ use ReflectionNamedType;
  */
 final class OperationFactory
 {
-    public function __construct(private readonly DtoSchemaFactory $schemas) {}
+    public function __construct(
+        private readonly DtoSchemaFactory $schemas,
+        private readonly ResponseSchemaFactory $responses = new ResponseSchemaFactory,
+    ) {}
 
     /**
      * $docs is threaded in rather than injected, for the same reason SchemaRegistry is: both are per-DOCUMENT
@@ -110,7 +116,7 @@ final class OperationFactory
             $operation['requestBody'] = $this->multipartBody($files);
         }
 
-        $operation['responses'] = $this->responses($route, $rejectable, $validated, $doc, $registry);
+        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
 
         return $operation;
     }
@@ -252,9 +258,9 @@ final class OperationFactory
      *
      * @return array<array-key, mixed>
      */
-    private function responses(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
+    private function responseSet(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
     {
-        $responses = [(string) $route->status => $this->successResponse($route)];
+        $responses = [(string) $route->status => $this->successResponse($route, $registry)];
 
         if ($rejectable) {
             $responses['400'] = ['$ref' => ProblemSchema::RESPONSE_REF];
@@ -267,7 +273,7 @@ final class OperationFactory
         $responses['default'] = ['$ref' => ProblemSchema::RESPONSE_REF];
 
         foreach ($doc->responses as $declared) {
-            $responses[(string) $declared->status] = $this->declaredResponse($declared, $registry);
+            $responses[(string) $declared->status] = $this->declaredResponse($declared, $registry, $this->method($route)?->getDeclaringClass());
         }
 
         return $this->sortStatuses($responses);
@@ -283,15 +289,16 @@ final class OperationFactory
      * common case for the error statuses this attribute mostly documents — those render through
      * ProblemDetailsRenderer, whose shape the shared problem component already states.
      *
-     * `array` is honoured here as `type: array`, where the DERIVED success response degrades the same PHP
-     * type to `type: object`. That is not an inconsistency: a controller's `array` return type genuinely does
-     * not say whether the payload is a list or a map (LaraFly controllers overwhelmingly return maps), so the
-     * derivation cannot know — whereas an author who typed `type: 'array'` into an attribute has said which
-     * one they meant.
+     * `type` is a full PHPDoc type EXPRESSION, not only a class or a scalar name: `'list<Shipment>'`,
+     * `'array<string, Money>'` and `'?Consignment'` all resolve, through the same parser that reads a
+     * `@return` line. A bare `'array'` is still honoured as `type: array`, where the DERIVED success
+     * response degrades the same PHP type to `type: object` — not an inconsistency, but the difference
+     * between a declared type that cannot say which it is and an author who has said.
      *
+     * @param  ReflectionClass<object>|null  $declaring
      * @return array<string, mixed>
      */
-    private function declaredResponse(ApiResponse $declared, SchemaRegistry $registry): array
+    private function declaredResponse(ApiResponse $declared, SchemaRegistry $registry, ?ReflectionClass $declaring = null): array
     {
         $response = ['description' => $declared->description];
 
@@ -299,9 +306,13 @@ final class OperationFactory
             return $response;
         }
 
-        $schema = TypeSchema::isDto($declared->type)
-            ? ['$ref' => $this->schemas->ref($declared->type, $registry)]
-            : TypeSchema::for($declared->type) ?? ['type' => 'object'];
+        // The controller is the context a short name in the attribute was written in — `#[ApiResponse(type:
+        // 'list<Shipment>')]` means whatever `Shipment` means in that file's imports, exactly as it would in
+        // a docblock three lines below. Without it only a fully-qualified name would resolve, which is the
+        // one spelling nobody writes.
+        $schema = DocType::schema($declared->type, fn (string $class): array => $this->responses->schema($class, $registry), $declaring)
+            ?? TypeSchema::for($declared->type)
+            ?? ['type' => 'object'];
 
         $response['content'] = ['application/json' => ['schema' => $schema]];
 
@@ -353,22 +364,40 @@ final class OperationFactory
     }
 
     /**
-     * The success body, from the controller method's declared RETURN type — the only place the shape of a
-     * successful response is stated anywhere in the framework, since RouteDescriptor records the status but
-     * not the payload. A `204` (or a `void`/`never` return) gets no content at all, because emitting a
-     * content map for a status that carries no body is exactly the sort of thing a strict client generator
-     * turns into a phantom return type.
+     * The success body — the shape of what the action actually returns.
      *
-     * `array` is the common LaraFly return and deliberately degrades to `type: object` rather than being
-     * expanded from the method's `@return array{...}` docblock: parsing a PHPDoc array shape here would make
-     * the generated document depend on comment text that nothing else in the framework treats as binding.
-     * A method's PROSE is now read (see ApiDocs) and its TYPES are still not, which is the line — prose has
-     * no other source and cannot mislead a client generator; a mistyped `@return` silently can.
+     * WHAT THIS USED TO SAY, AND WHY IT WAS WRONG. Every success response in every generated document was
+     * `{"type": "object"}`. A viewer renders that as an empty panel and a client generator turns it into
+     * `any`, so the single most useful thing an API document can state — what you get back — was the one
+     * thing this file did not state. The reasoning was that a `@return array{...}` is "comment text nothing
+     * else in the framework treats as binding", and that had already stopped being true: RouteScanner reads
+     * `@param list<X>` to compile the table ArgumentResolver HYDRATES from, so a docblock type expression is
+     * exactly as binding as a declared type on the way in. PHPStan at level max checks these expressions
+     * against the code on every build, which is what makes reading them safe: an out-of-date `@return` is a
+     * failing gate, not a silent lie.
+     *
+     * THREE SOURCES, most specific first.
+     *
+     *   `@return` — the only place `array` can say what is IN it. `array{page: int, items: list<Order>}`
+     *   becomes a real object schema with a `$ref` inside it. Prose after the type expression becomes the
+     *   response description, which is the only response description an author ever actually writes.
+     *
+     *   The DECLARED return type — a class becomes a component `$ref` built from its wire shape (see
+     *   ResponseSchemaFactory), a scalar becomes itself, a backed enum becomes its value set.
+     *
+     *   Neither — `type: object`, the old behaviour, kept for a bare `array` return with nothing said about
+     *   it. That is a real state (`array` genuinely does not say list-or-map, and LaraFly actions
+     *   overwhelmingly return maps) and it is now the FALLBACK rather than the answer.
+     *
+     * A 204, a `void`/`never` return and an HTML page keep their existing shapes: emitting a content map for
+     * a status that carries no body is exactly what a strict client generator turns into a phantom return
+     * type, and describing a rendered page as JSON would be a lie a generator would act on.
      *
      * @return array<string, mixed>
      */
-    private function successResponse(RouteDescriptor $route): array
+    private function successResponse(RouteDescriptor $route, SchemaRegistry $registry): array
     {
+        $method = $this->method($route);
         $type = $this->returnType($route);
 
         if ($route->status === 204 || $type === 'void' || $type === 'never') {
@@ -385,16 +414,73 @@ final class OperationFactory
             ];
         }
 
-        $schema = match (true) {
-            $type === null => [],
-            $type === 'array', $type === 'iterable' => ['type' => 'object'],
-            default => TypeSchema::for($type) ?? ['type' => 'object'],
-        };
+        [$documented, $prose] = $this->documentedReturn($method, $registry);
+
+        $schema = $documented ?? $this->declaredReturnSchema($type, $registry);
 
         return [
-            'description' => 'Successful response.',
+            'description' => $prose === '' ? 'Successful response.' : $prose,
             'content' => ['application/json' => ['schema' => $schema]],
         ];
+    }
+
+    /**
+     * The `@return` line as a schema plus its trailing prose.
+     *
+     * A parsed expression is used only when it says more than the declared type already would: a bare
+     * `@return array` or `@return array<string, mixed>` parses fine and means nothing, and letting it win
+     * would replace a `$ref` with an empty object for every action whose author wrote the loosest possible
+     * annotation. The prose is taken either way — it is a description of THIS response and does not depend
+     * on whether the type expression was informative.
+     *
+     * @return array{0: array<string, mixed>|null, 1: string}
+     */
+    private function documentedReturn(?ReflectionMethod $method, SchemaRegistry $registry): array
+    {
+        $line = DocBlock::parse($method?->getDocComment())->returnLine();
+
+        if ($line === null || $method === null) {
+            return [null, ''];
+        }
+
+        [$schema, $prose] = DocType::split(
+            $line,
+            fn (string $class): array => $this->responses->schema($class, $registry),
+            new ReflectionClass($method->getDeclaringClass()->getName()),
+        );
+
+        return [$this->informative($schema) ? $schema : null, $prose];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $schema
+     */
+    private function informative(?array $schema): bool
+    {
+        if ($schema === null) {
+            return false;
+        }
+
+        foreach (['properties', 'items', 'additionalProperties', '$ref', 'enum', 'anyOf', 'allOf', 'prefixItems'] as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function declaredReturnSchema(?string $type, SchemaRegistry $registry): array
+    {
+        return match (true) {
+            $type === null => [],
+            $type === 'array', $type === 'iterable' => ['type' => 'object'],
+            TypeSchema::isDto($type) => $this->responses->schema($type, $registry),
+            default => TypeSchema::for($type) ?? ['type' => 'object'],
+        };
     }
 
     /**
@@ -411,12 +497,22 @@ final class OperationFactory
 
     private function returnType(RouteDescriptor $route): ?string
     {
+        $type = $this->method($route)?->getReturnType();
+
+        return $type instanceof ReflectionNamedType ? $type->getName() : null;
+    }
+
+    /**
+     * The action, when this process can load it. A compiled route manifest outlives the class it names — a
+     * controller can be deleted between `firefly:cache` and a hit on the spec route — so every reflective
+     * read here is guarded rather than assumed, and an unloadable action simply documents less.
+     */
+    private function method(RouteDescriptor $route): ?ReflectionMethod
+    {
         if (! class_exists($route->controllerClass) || ! method_exists($route->controllerClass, $route->methodName)) {
             return null;
         }
 
-        $type = (new ReflectionMethod($route->controllerClass, $route->methodName))->getReturnType();
-
-        return $type instanceof ReflectionNamedType ? $type->getName() : null;
+        return new ReflectionMethod($route->controllerClass, $route->methodName);
     }
 }

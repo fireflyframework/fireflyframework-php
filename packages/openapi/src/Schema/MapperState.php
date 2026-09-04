@@ -219,15 +219,22 @@ final class MapperState
         return in_array($this->schema['type'] ?? null, ['integer', 'number'], true);
     }
 
+    /**
+     * Which JSON Schema keyword a #[Size] means, which depends entirely on what the property IS.
+     *
+     * Three shapes, three keyword pairs: a list is bounded with `minItems`/`maxItems`, a MAP with
+     * `minProperties`/`maxProperties`, and a string with `minLength`/`maxLength`. The map case exists because
+     * a documented `array<string, int>` is a JSON object, not a JSON array — before the type expression was
+     * read, every such member was typed `array` and the distinction could not arise. Leaving it out would
+     * have put `minLength` on an object, which is not a constraint on an object at all: a validator ignores
+     * it, so the document would silently stop stating a bound the server does enforce.
+     */
     private function lengthKeyword(bool $min): string
     {
-        $array = ($this->schema['type'] ?? null) === 'array';
-
-        return match (true) {
-            $array && $min => 'minItems',
-            $array => 'maxItems',
-            $min => 'minLength',
-            default => 'maxLength',
+        return match ($this->schema['type'] ?? null) {
+            'array' => $min ? 'minItems' : 'maxItems',
+            'object' => $min ? 'minProperties' : 'maxProperties',
+            default => $min ? 'minLength' : 'maxLength',
         };
     }
 

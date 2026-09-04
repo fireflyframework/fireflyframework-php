@@ -105,6 +105,81 @@ final readonly class DocBlock
     }
 
     /**
+     * Every occurrence of one tag, raw.
+     *
+     * @return list<string>
+     */
+    public function tag(string $name): array
+    {
+        return $this->tags[$name] ?? [];
+    }
+
+    /**
+     * `@param` lines as member name => TYPE EXPRESSION — the mirror of params(), which returns the same
+     * lines' prose.
+     *
+     * The two halves are split at the `$identifier`, because that is the one token whose position is fixed:
+     * everything before it is the type (which contains spaces of its own, `array<string, mixed>`), and
+     * everything after is English. A line with no type at all — `@param $id the id` — yields nothing rather
+     * than an empty expression, so a caller never has to distinguish "untyped" from "typed as nothing".
+     *
+     * @return array<string, string>
+     */
+    public function paramTypes(): array
+    {
+        $types = [];
+
+        foreach ($this->tags['param'] ?? [] as $line) {
+            if (preg_match('/^\s*(.*?)\s*(?:\.\.\.)?\$([A-Za-z_]\w*)/s', $line, $matches) !== 1) {
+                continue;
+            }
+
+            $type = trim($matches[1]);
+            if ($type !== '') {
+                $types[$matches[2]] = $type;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * The first `@return` line, raw — type expression and any prose after it, for DocType::split() to cut.
+     *
+     * Returned whole rather than pre-split because splitting it requires PARSING the type expression, and
+     * this class deliberately interprets no types (see the class docblock). It hands the line to the one
+     * place that does.
+     */
+    public function returnLine(): ?string
+    {
+        $lines = $this->tags['return'] ?? [];
+
+        return $lines === [] ? null : trim($lines[0]);
+    }
+
+    /**
+     * The first `@var` line's type expression, with any `$name` and trailing prose removed.
+     *
+     * `@var` is written three ways in the wild — bare (`@var list<Line>`), named (`@var list<Line> $lines`),
+     * and described (`@var list<Line> the lines`) — and only the first token group is the type in all three.
+     */
+    public function varType(): ?string
+    {
+        $lines = $this->tags['var'] ?? [];
+
+        if ($lines === []) {
+            return null;
+        }
+
+        $line = trim($lines[0]);
+        if (preg_match('/^(.*?)\s+\$[A-Za-z_]\w*/s', $line, $matches) === 1) {
+            return trim($matches[1]);
+        }
+
+        return $line === '' ? null : $line;
+    }
+
+    /**
      * `@param` lines as member name => description, dropping the type expression and any line with no prose.
      *
      * The name is found by scanning for the first `$identifier` rather than by splitting on whitespace,

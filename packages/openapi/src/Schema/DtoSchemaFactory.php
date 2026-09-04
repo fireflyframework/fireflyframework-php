@@ -103,11 +103,16 @@ final class DtoSchemaFactory
         // same doc comment once per `array` property.
         $lists = $elements->forClass($class);
 
+        // The constructor's own `@param` expressions, for the members PHP's `array` cannot describe. Read
+        // once per class for the same reason the element table is.
+        $reflection = $this->reflect($class);
+        $documented = DocBlock::parse($reflection?->getConstructor()?->getDocComment())->paramTypes();
+
         $fields = [];
         $required = [];
 
         foreach ($this->members($class, $properties, $own) as $name => $member) {
-            $property = $this->property($member, $own[$name] ?? [], $nested[$name] ?? [], $registry, $elements, $lists[$name] ?? null);
+            $property = $this->property($member, $own[$name] ?? [], $nested[$name] ?? [], $registry, $elements, $lists[$name] ?? null, $documented[$name] ?? null, $reflection);
 
             $fields[$name] = $property->schema;
             if ($property->required) {
@@ -135,8 +140,10 @@ final class DtoSchemaFactory
      * @param  list<string|ValidationRule>  $rules  this member's own compiled rule list
      * @param  array<string, list<string|ValidationRule>>  $nestedRules  rules cascaded from a parent #[Valid]
      * @param  string|null  $element  the class this member's list holds, when it holds a list of one
+     * @param  string|null  $documented  the constructor's `@param` type expression for this member
+     * @param  ReflectionClass<object>|null  $declaring  the class the expression was written inside
      */
-    private function property(MemberType $member, array $rules, array $nestedRules, SchemaRegistry $registry, ElementTypes $elements, ?string $element): PropertySchema
+    private function property(MemberType $member, array $rules, array $nestedRules, SchemaRegistry $registry, ElementTypes $elements, ?string $element, ?string $documented = null, ?ReflectionClass $declaring = null): PropertySchema
     {
         $type = $member->type;
 
@@ -167,6 +174,18 @@ final class DtoSchemaFactory
         $items = $element === null ? null : $this->items($element, $registry, $elements);
         if ($items !== null && ($base['type'] ?? null) === 'array') {
             $base['items'] = $items;
+        } elseif ($element === null && ($base['type'] ?? null) === 'array' && $documented !== null) {
+            // The compiled table had nothing for this member, which means the hydrator does not treat it as a
+            // list of DTOs — and that is every collection PHP's `array` describes and the table does not:
+            // `list<string>`, `array<string, int>`, `list<list<int>>`. Each of those was published as a bare
+            // `type: array`, so a list of scalars became Array<any> and a MAP was documented as an array,
+            // which is not merely vague but the wrong JSON type. The expression is read only when the table
+            // declined, so the hydrator's answer still wins wherever it has one.
+            $shape = DocType::schema($documented, fn (string $c): array => $this->classSchema($c, $registry, $elements), $declaring);
+
+            if ($shape !== null && isset($shape['type']) && in_array($shape['type'], ['array', 'object'], true)) {
+                $base = [...$shape, ...array_diff_key($base, ['type' => null])];
+            }
         }
 
         $property = $this->mapper->apply($base, $rules, $member->nullable, $member->required());
@@ -177,6 +196,21 @@ final class DtoSchemaFactory
         }
 
         return new PropertySchema($member->doc->apply($schema), $property->required);
+    }
+
+    /**
+     * The fragment that stands for a class inside a documented type expression — the same choice items()
+     * makes, hoisted so DocType can call it for a class at any depth of a shape.
+     *
+     * @return array<string, mixed>
+     */
+    private function classSchema(string $class, SchemaRegistry $registry, ElementTypes $elements): array
+    {
+        if (TypeSchema::isDto($class)) {
+            return ['$ref' => $this->ref($class, $registry, [], [], $elements)];
+        }
+
+        return TypeSchema::for($class) ?? [];
     }
 
     /**

@@ -16,9 +16,10 @@ use Firefly\Validation\Constraint\NotBlank;
 final class LineOptionRequest
 {
     /**
-     * `$notes` holds a list of SCALARS, which is the case both element-type paths deliberately decline to
-     * answer: `string` is not a class, so RouteScanner leaves the member out of its hydration table and the
-     * generator leaves `items` off rather than emit one only the reflection path could produce.
+     * `$notes` holds a list of SCALARS. Neither element-type path answers for it — `string` is not a class,
+     * so RouteScanner leaves the member out of its hydration table and ElementTypes' reflection mirror
+     * declines it too — which is exactly why the type expression is read afterwards, by the one step that
+     * runs after BOTH paths have declined and so cannot disagree with either.
      *
      * @param  list<string>  $notes
      */

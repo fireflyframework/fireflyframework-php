@@ -183,15 +183,30 @@ it('resolves element types by reflection for a DTO reached without a compiled bi
         ->toBe(['CategoryNode', 'CreateOrderRequest', 'LineOptionRequest', 'OrderLineRequest']);
 });
 
-it('does not invent items for a list whose element type is not a class', function () {
-    $document = FixtureDocument::generatorFor('NestedFixture')->generate();
+it('types a list of scalars identically down the compiled path and the reflected one', function () {
+    // `list<string>` names no class, so it is absent from RouteScanner's hydration table AND from
+    // ElementTypes' reflection mirror of that table. It used to be published as a bare `type: array` for
+    // exactly that reason, and the stated justification was drift: an `items` that only one of the two paths
+    // could produce would be two implementations of one rule disagreeing about the same member.
+    //
+    // The type expression is therefore read where that cannot happen — AFTER both element-type paths have
+    // declined, in DtoSchemaFactory, so the same step runs whichever path was taken. This asserts the
+    // property the old test was protecting, rather than the missing `items` it was protecting it with: the
+    // two paths agree. They now agree on `items: string` instead of on nothing.
+    $compiled = FixtureDocument::resolve(
+        FixtureDocument::generatorFor('NestedFixture')->generate(),
+        '#/components/schemas/LineOptionRequest/properties/notes',
+    );
 
-    // `list<string>` names no class, so RouteScanner leaves it out of the hydration table and the generator
-    // leaves `items` off. Widening the rule to cover scalars here would make the fallback path emit an
-    // `items` the compiled-table path does not — two implementations of one rule, disagreeing about the same
-    // member, which is precisely the drift that must not happen.
-    expect(FixtureDocument::resolve($document, '#/components/schemas/LineOptionRequest/properties/notes'))
-        ->toBe(['type' => 'array', 'default' => []]);
+    $registry = new SchemaRegistry;
+    FixtureDocument::schemas('NestedFixture')->ref(CreateOrderRequest::class, $registry);
+    $reflected = FixtureDocument::resolve(
+        ['components' => ['schemas' => $registry->all()]],
+        '#/components/schemas/LineOptionRequest/properties/notes',
+    );
+
+    expect($compiled)->toBe(['type' => 'array', 'items' => ['type' => 'string'], 'default' => []])
+        ->and($reflected)->toBe($compiled);
 });
 
 it('reads element types out of a manifest that has been through the compiled array form', function () {

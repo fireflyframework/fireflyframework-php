@@ -28,10 +28,10 @@ use ReflectionNamedType;
  * is still sitting in the docblock, and the choice is between reading it and shipping `Array<any>` again.
  * RouteScanner's resolution is private to packages/web and reachable only through a compiled binding, so it
  * cannot be called; it is therefore MIRRORED here, rule for rule — the same two `@param` spellings, the same
- * name resolution (qualified name, then the declaring class's namespace, then the file's `use` imports), and
- * the same restriction to a parameter DECLARED `array`, so a member the hydrator would leave alone is never
- * given `items` here either. Two implementations of one rule is a real cost; the alternative was a generator
- * whose output silently depended on whether a route happened to reach the class.
+ * name resolution (now factored into ClassNames, so this package holds one copy of it rather than one per
+ * consumer), and the same restriction to a parameter DECLARED `array`, so a member the hydrator would leave
+ * alone is never given `items` here either. Two implementations of one rule is a real cost; the alternative
+ * was a generator whose output silently depended on whether a route happened to reach the class.
  *
  * The mirror is deliberately not consulted when the table HAS a row for the class. A row is complete — the
  * scanner walked every constructor parameter to build it — so a member missing from it is a member the
@@ -136,7 +136,7 @@ final class ElementTypes
             }
 
             foreach ($matches as $match) {
-                $resolved = $this->resolveClassName(trim($match[1]), $declaring);
+                $resolved = ClassNames::resolve(trim($match[1]), $declaring);
                 if ($resolved !== null) {
                     $types[$match[2]] = $resolved;
                 }
@@ -149,61 +149,4 @@ final class ElementTypes
     /**
      * @param  ReflectionClass<object>  $declaring
      */
-    private function resolveClassName(string $name, ReflectionClass $declaring): ?string
-    {
-        $name = ltrim($name, '\\');
-
-        if (class_exists($name)) {
-            return $name;
-        }
-
-        $namespace = $declaring->getNamespaceName();
-        if ($namespace !== '' && class_exists($candidate = $namespace.'\\'.$name)) {
-            return $candidate;
-        }
-
-        foreach ($this->imports($declaring) as $alias => $fqcn) {
-            if ($alias === $name && class_exists($fqcn)) {
-                return $fqcn;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The file's `use` imports, alias => FQCN, read from the source because reflection does not expose them.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string>
-     */
-    private function imports(ReflectionClass $declaring): array
-    {
-        $file = $declaring->getFileName();
-
-        if ($file === false || ! is_file($file)) {
-            return [];
-        }
-
-        $source = (string) file_get_contents($file);
-
-        if (preg_match_all('/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?\s*;/mi', $source, $matches, PREG_SET_ORDER) === false) {
-            return [];
-        }
-
-        $imports = [];
-        foreach ($matches as $match) {
-            $fqcn = $match[1];
-            $alias = $match[2] ?? '';
-
-            if ($alias === '') {
-                $parts = explode('\\', $fqcn);
-                $alias = end($parts);
-            }
-
-            $imports[$alias] = $fqcn;
-        }
-
-        return $imports;
-    }
 }
