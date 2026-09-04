@@ -14,6 +14,7 @@ use Firefly\Messaging\Listener\MessageListenerManifest;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Validation\Constraint\ConstraintManifest;
+use Firefly\Web\Exception\ExceptionHandlerRegistry;
 use Firefly\Web\Route\RouteManifest;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Config\Repository;
@@ -38,6 +39,9 @@ final class FireflyCacheServiceProvider extends ServiceProvider
         // a generic class-string helper) so its concrete return type flows into instance() type-safely.
         if (is_file($path = $dir.'/'.FireflyCachePaths::ROUTES)) {
             $this->app->instance(RouteManifest::class, RouteManifest::load($path));
+        }
+        if (is_file($path = $dir.'/'.FireflyCachePaths::EXCEPTION_HANDLERS)) {
+            $this->app->instance(ExceptionHandlerRegistry::class, ExceptionHandlerRegistry::load($path));
         }
         if (is_file($path = $dir.'/'.FireflyCachePaths::HANDLERS)) {
             $this->app->instance(HandlerManifest::class, HandlerManifest::load($path));

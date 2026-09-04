@@ -43,6 +43,8 @@ jobs:
           - { local: packages/security,            split: firefly-security }
           - { local: packages/actuator,            split: firefly-actuator }
           - { local: packages/observability,       split: firefly-observability }
+          - { local: packages/admin,               split: firefly-admin }
+          - { local: packages/openapi,             split: firefly-openapi }
           - { local: packages/testing,             split: firefly-testing }
           - { local: packages/cli,                 split: firefly-cli }
           - { local: packages/firefly,              split: firefly-firefly }

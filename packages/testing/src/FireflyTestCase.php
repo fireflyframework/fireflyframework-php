@@ -84,6 +84,17 @@ abstract class FireflyTestCase extends TestCase
         $config->set('logging.default', 'errorlog');
         $config->set('logging.channels.errorlog', ['driver' => 'errorlog', 'level' => 'debug']);
 
+        // A FIXED APPLICATION KEY, because every real application has one — `key:generate` runs in the
+        // skeleton's post-create-project-cmd — and a test app that does not is a test app that cannot
+        // exercise anything touching the encrypter. That is not hypothetical: putting the admin dashboard
+        // behind EncryptCookies (its routes had no CSRF protection at all) turned twenty-seven passing
+        // tests into MissingAppKeyException, because the harness was the only place a LaraFly application
+        // ever runs without a key. Fixed, not random, so a failure is reproducible from the output alone.
+        if (! $config->has('app.key') || $config->get('app.key') === null || $config->get('app.key') === '') {
+            // Exactly 32 bytes: aes-256-cbc, Laravel's default cipher, accepts nothing else.
+            $config->set('app.key', 'base64:'.base64_encode(str_pad('firefly-testing-key', 32, '.')));
+        }
+
         if (! $config->has('firefly')) {
             $config->set('firefly', []);
         }

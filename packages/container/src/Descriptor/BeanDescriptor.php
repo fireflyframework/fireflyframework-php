@@ -14,11 +14,18 @@ final readonly class BeanDescriptor
         public ?string $name,
         public Scope $scope,
         /**
-         * Captured from #[Primary] on the #[Bean] method, but NOT yet
-         * consulted during registration in this milestone (registerBeans()
-         * ignores it). Reserved for future bean-collision disambiguation,
-         * analogous to how ContainerRegistrar::wireInterfaces() uses
-         * ComponentDescriptor::$primary to pick a default interface impl.
+         * Captured from #[Primary] on the #[Bean] method: when SEVERAL #[Bean]
+         * methods produce the same return type, this marks the one the bare type
+         * resolves to, while every candidate stays reachable under its own
+         * #[Bean] name. Exactly the role ComponentDescriptor::$primary plays for
+         * competing interface implementations in
+         * ContainerRegistrar::wireInterfaces().
+         *
+         * It was inert for a long time — registerBeans() read it NOWHERE, which
+         * is half of why two beans of one type used to collapse onto a single
+         * binding with no way to tell them apart. It is consulted now; see
+         * ContainerRegistrar::registerBeans() for the full rule, including the
+         * registration-time errors for shapes #[Primary] cannot rescue.
          */
         public bool $primary,
         public int $order,
@@ -29,10 +36,23 @@ final readonly class BeanDescriptor
          * captures it, and Firefly\Container\Attributes\Lazy's docblock).
          */
         public bool $lazy = false,
+        /**
+         * The class types this factory method asks for — the bean graph's edges for the #[Bean] path.
+         *
+         * Most of a framework's wiring lives HERE rather than in component constructors: an
+         * auto-configuration is a #[Configuration] whose #[Bean] methods take their collaborators as
+         * parameters. A graph built only from component constructors therefore draws almost no edges at
+         * all, which is exactly what it did before this field existed.
+         *
+         * Last, with a default, so a manifest compiled before the bean graph shipped still rehydrates.
+         *
+         * @var list<string>
+         */
+        public array $dependencies = [],
     ) {}
 
     /**
-     * @return array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy: bool}
+     * @return array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy: bool, dependencies: list<string>}
      */
     public function toArray(): array
     {
@@ -44,11 +64,12 @@ final readonly class BeanDescriptor
             'primary' => $this->primary,
             'order' => $this->order,
             'lazy' => $this->lazy,
+            'dependencies' => $this->dependencies,
         ];
     }
 
     /**
-     * @param  array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool}  $data
+     * @param  array{method: string, returns: string, name: string|null, scope: string, primary: bool, order: int, lazy?: bool, dependencies?: list<string>}  $data
      */
     public static function fromArray(array $data): self
     {
@@ -63,6 +84,8 @@ final readonly class BeanDescriptor
             // default false rather than fatal, so an old cached manifest on disk still loads
             // (see ComponentScanner / Firefly\Container\Attributes\Lazy).
             $data['lazy'] ?? false,
+            // Same reasoning as $lazy: absent on a manifest cached before the bean graph shipped.
+            $data['dependencies'] ?? [],
         );
     }
 }

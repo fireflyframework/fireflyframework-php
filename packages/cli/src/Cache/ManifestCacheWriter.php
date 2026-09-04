@@ -21,6 +21,7 @@ use Firefly\Scheduling\Schedule\ScheduledManifestCompiler;
 use Firefly\Security\Access\Method\SecurityMethodManifestCompiler;
 use Firefly\Security\Scanner\MethodSecurityScanner;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
+use Firefly\Web\Exception\ExceptionHandlerManifestCompiler;
 use Firefly\Web\Route\RouteManifestCompiler;
 use Firefly\Web\Route\RouteScanner;
 
@@ -104,9 +105,18 @@ final class ManifestCacheWriter
         );
 
         // web
+        $routeScanner = new RouteScanner;
         (new RouteManifestCompiler)->write(
-            (new RouteScanner)->scan($psr4),
+            $routeScanner->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::ROUTES,
+        );
+
+        // web — #[ControllerAdvice]/#[ExceptionHandler]. scanExceptionHandlers() has always existed but was
+        // never compiled, so ExceptionHandlerRegistry was empty in every real boot and every #[ControllerAdvice]
+        // was silently dead. Emitting the artifact is the other half of that fix.
+        (new ExceptionHandlerManifestCompiler)->write(
+            $routeScanner->scanExceptionHandlers($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::EXCEPTION_HANDLERS,
         );
 
         // validation — compiles from an explicit class list, not a PSR-4 scan (SPECIAL).

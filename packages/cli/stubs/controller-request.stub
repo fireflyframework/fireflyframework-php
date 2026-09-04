@@ -1,0 +1,50 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use Firefly\Validation\Constraint\NotBlank;
+use Firefly\Validation\Constraint\Size;
+
+/**
+ * The request body {{ controller }} accepts when creating or replacing a member.
+ */
+final readonly class {{ class }}
+{
+    // NOTE — THE DOCBLOCK ABOVE IS PUBLISHED AS THE SCHEMA DESCRIPTION in /openapi.json; line comments
+    // like this one are not. Describe the payload up there for the people who will send it; keep notes like
+    // these down here.
+    //
+    // WHY THIS FILE EXISTS AT ALL, AND WHY IT ARRIVED WITH THE CONTROLLER.
+    //
+    // {{ controller }} names this type in its signature, and `firefly:cache` reflects every controller
+    // parameter to compile its binding plan — so a controller generated without its request type would not
+    // merely be incomplete, it would be a file PHP cannot load. A DTO must live in its own PSR-4 file to be
+    // autoloadable, so it cannot be appended to the controller's own file.
+    //
+    // REPLACE THESE TWO PROPERTIES with the real ones. Two things are worth keeping when you do:
+    //
+    //  * The constraints are the whole contract, and one declaration has three consumers. `firefly:cache`
+    //    compiles them into constraints.php; the ArgumentResolver runs them BEFORE hydration, so an invalid
+    //    body is a 422 with per-field errors and never reaches the controller; and firefly/openapi reads the
+    //    same compiled rules to emit `required`, `maxLength` and friends into the schema. There is no
+    //    FormRequest and no parallel rules() array to keep in step.
+    //  * `?string $description` is nullable ON PURPOSE. Firefly applies Jakarta's null contract — a property
+    //    whose declared type admits null gets Laravel's `nullable` prepended — so `{"description": null}` and
+    //    an omitted key behave identically. Drop the `?` and an explicit null becomes a 422 while omitting
+    //    the key still passes: two spellings of "no value" with opposite outcomes.
+    //
+    // A nested DTO (`#[Valid] public AddressPayload $shipTo`) and a list of them (an `array` property with a
+    // `@param list<LinePayload> $lines` tag on this constructor) both hydrate and both validate. They are
+    // not scaffolded here only because the generator cannot invent their domain; the skeleton application's
+    // OrderRequest is a worked example of both shapes.
+
+    public function __construct(
+        #[NotBlank]
+        #[Size(max: 255)]
+        public string $name,
+        #[Size(max: 2000)]
+        public ?string $description = null,
+    ) {}
+}

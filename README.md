@@ -14,7 +14,7 @@
   <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.07.18-brightgreen" alt="Version: 26.07.18"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.1-brightgreen" alt="Version: 26.09.1"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
@@ -65,9 +65,9 @@
 [*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
-(it boots and its tests pass against this framework version, `26.07.18`).
+(it boots and its tests pass against this framework version, `26.09.1`).
 
-The book is **complete and bilingual (English + Spanish)**: a quick start, **thirteen chapters** across four
+The book is **complete and bilingual (English + Spanish)**: a quick start, **fourteen chapters** across four
 parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD), Coordinating &
 Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security), and Observability, Testing
 & Delivery (actuator, testing, the CLI + zero-reflection cache) — plus a Laravel→LaraFly cheat-sheet and a
@@ -131,8 +131,9 @@ final class GreetingController
 
 No service-provider boilerplate, no manual route registration: the component scanner finds `GreetingService`
 and `GreetingController`, the container autowires `GreetingProperties` into the service by constructor type,
-and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table — all from one
-`php artisan firefly:cache` run. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
+and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table. `php artisan
+firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it the same scan simply
+runs in-process at boot instead, so the app behaves identically either way. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
 outbox, and security tour, drawn from the runnable `samples/lumen/` wallet-ledger sample.
 
 LaraFly is not a fork of Laravel and does not hide it — every package layers cleanly on top of
@@ -167,10 +168,11 @@ php artisan firefly:serve
 ```
 
 `firefly new` wraps `composer create-project firefly/skeleton` (git-init included by default), which already
-wires a sample `#[RestController]`/`#[Service]` pair, sqlite for storage, and a `post-create-project-cmd` hook
-that ran `firefly:cache` for you — so the app is already booting reflection-free. Re-run `firefly:cache`
-yourself any time you add or change a `#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. class, and
-`firefly:clear` to fall back to the in-process scanner. See [Installation](#installation) for the
+wires a `#[Controller]` welcome page, a sample `#[RestController]`/`#[Service]` pair, sqlite for storage, and a
+`post-create-project-cmd` hook that ran `firefly:cache` for you — so the app is already booting
+reflection-free. Re-run `firefly:cache` any time you add or change a
+`#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. class; `firefly:clear` drops back to the
+in-process scan, which is slower but functionally identical. See [Installation](#installation) for the
 non-global-installer path and [CLI & Project Scaffolding](#cli--project-scaffolding) for the full command
 reference.
 
@@ -330,7 +332,7 @@ and the seam that makes this possible.
 
 Nine showcases below, each an accurate snippet lifted straight from `samples/lumen/` (the wallet-and-ledger
 sample) or the framework itself — no invented API. Every attribute and class shown here compiles against the
-shipped `26.07.18` release.
+shipped `26.09.1` release.
 
 ### Attribute DI — `#[Service]`
 
@@ -621,6 +623,42 @@ built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — se
 
 ---
 
+### Two browser surfaces, neither of which needs npm or a CDN
+
+`firefly/admin` — which arrives with the runtime family — mounts a server-rendered dashboard at `/firefly`
+behind `firefly.admin.enabled` (default: `app.debug`): health, metrics, HTTP traffic, beans, a drawn
+[**bean graph**](docs/modules/bean-graph.md), conditions, routes, scheduled tasks, environment, config
+properties, caches, loggers, and a [**datasource**](docs/modules/admin.md#the-datasource-page) page carrying
+your connections, what PDO does about holding them open, and the compiled `#[Transactional]` contract. It
+reads those endpoints **in-process** rather than over HTTP, so it renders pages the JSON surface deliberately
+keeps unexposed — which makes its own URL the entire security boundary. `firefly.admin.enabled` therefore
+defaults to `app.debug`, and an application that enables it with debug off **must put the route behind its own
+auth middleware**. Read [the access model](docs/modules/admin.md#access-the-whole-security-boundary) first.
+
+The package also ships a Django-admin-style [**data browser**](docs/modules/data-browser.md) over your own
+`CrudRepository` beans — discovered from the compiled bean catalogue, so nothing is registered by hand — with
+filtering, sorting, paging, full CRUD, relations you can walk in both directions, and an
+[**entity map**](docs/modules/admin.md#the-entity-map) that draws the foreign keys between them. It is gated
+*separately*: `firefly.admin.data.enabled` defaults to **`false`** and deliberately does **not** follow
+`app.debug` or `firefly.admin.enabled`, because beans and configuration are facts about the application while
+this page shows facts about its **users**. Writes need `firefly.admin.data.writable` on top of that, and
+creating a record is offered only for an Eloquent-backed resource — for a hand-written aggregate the
+invariants live in its constructor, not in a column list, so that case is refused by name.
+
+One more page **changes** the application rather than describing it: a
+[feature-switch console](docs/modules/admin.md#the-feature-switch-console) with three gates, the third of
+which is not a configuration key — in production every write is refused whatever the other two say.
+
+`composer require firefly/openapi` mounts `GET /openapi.json` and a console at `/openapi`, both generated from
+the same `RouteManifest` the dispatcher dispatches from and the same `ConstraintManifest` the validator
+validates with — no annotation dialect, and nothing that can drift. `php artisan firefly:openapi --output=`
+makes the document a committable build artifact a CI job can diff. The default console is the **official
+Swagger UI, served from your own origin** out of the `swagger-api/swagger-ui` composer package: full feature
+set, no CDN request, no npm step, and it still renders in an air-gapped or strict-CSP deployment. See
+[OpenAPI](docs/modules/openapi.md).
+
+---
+
 ## Installation
 
 **Requirements:** PHP 8.3+ (8.4 recommended), Composer 2, and an existing (or new) Laravel 13 application —
@@ -641,11 +679,19 @@ composer create-project firefly/skeleton my-app
 ```
 
 **Adding LaraFly to an existing Laravel app** — `firefly/firefly` is a `type: metapackage` (the Maven BOM
-analogue) that pulls in the whole runtime family with one line, and `firefly/cli` adds the developer console:
+analogue) that pulls in the whole runtime family, developer console included, with one line:
 
 ```bash
 composer require firefly/firefly
-composer require --dev firefly/cli
+```
+
+The browser dashboard (`firefly/admin`) and the API-documentation package (`firefly/openapi`) come with it. The
+broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`) and the test kit
+(`firefly/testing`) stay separate — each binds you to an infrastructure choice or belongs in `require-dev`.
+
+```bash
+composer require firefly/admin     # /firefly — the dashboard over the actuator (see its access model first)
+composer require firefly/openapi   # /openapi.json + /openapi — a spec that cannot drift, and Swagger UI
 ```
 
 Point LaraFly at your app's classes and compile it:
@@ -672,10 +718,10 @@ php artisan firefly:serve
 
 | Command | What it does |
 |---|---|
-| `firefly:cache` | Compiles the app into `bootstrap/cache/firefly/` — DI, routes, config properties, CQRS handlers, event/message listeners, scheduled tasks, security methods, and `#[Transactional]` proxy classes — for a zero-reflection boot. |
+| `firefly:cache` | Compiles the app into `bootstrap/cache/firefly/` — DI, routes, `#[ControllerAdvice]` exception handlers, validation constraints, config properties, CQRS handlers, event/message listeners, scheduled tasks, security methods, and `#[Transactional]` proxy classes — for a zero-reflection boot. |
 | `firefly:clear` | The inverse — deletes `bootstrap/cache/firefly/`; the app falls back to in-process scanning. |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Actuator-over-CLI: render the `info`/`env`/`beans`/`conditions`/`mappings` endpoints, the route table, aggregated health, or the metrics snapshot **in-process**, with no HTTP round-trip. |
-| `make:firefly-controller` / `-service` / `-component` / `-handler` / `-listener` / `-entity` / `-repository` / `-config-properties` | One generator per stereotype — `--query` on `-handler` scaffolds a `#[QueryHandler]`, `--message` on `-listener` scaffolds a `#[MessageListener]`. |
+| `make:firefly-controller` / `-service` / `-component` / `-handler` / `-listener` / `-entity` / `-repository` / `-config-properties` | One generator per stereotype — `--query` on `-handler` scaffolds a `#[QueryHandler]`, `--message` on `-listener` scaffolds a `#[MessageListener]`. `-handler` writes **two** files: the handler and the concrete command/query class its `handle()` takes. |
 | `firefly:serve` / `firefly:db` | Thin passthroughs to `artisan serve` (or `octane:start` when Octane is installed) and Laravel's own `migrate`/`db:seed`/`migrate:fresh`. |
 
 ```bash
@@ -690,7 +736,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 ## Modules
 
-25 packages under `packages/*` (plus `firefly/skeleton` at the top level — 26 shippable units in total), each
+27 packages under `packages/*` (plus `firefly/skeleton` at the top level — 28 shippable units in total), each
 its own installable Composer package with its own tests and its own [module guide](docs/modules/):
 
 | Group | Module | Package(s) |
@@ -701,8 +747,9 @@ its own installable Composer package with its own tests and its own [module guid
 | Foundation | [Application Context](docs/modules/context.md) — the phased boot engine (`ApplicationContext` port) | `firefly/context` |
 | Foundation | [Auto-Configuration](docs/modules/starters.md) — `#[Configuration]`/`#[Bean]` starters, conditions | `firefly/autoconfigure` |
 | Foundation | [Validation](docs/modules/validation.md) — constraint attributes, `#[Valid]`, structured 422s | `firefly/validation` |
-| Web & API | [Web Layer](docs/modules/web.md) — `#[RestController]` routing, `RouteManifest` | `firefly/web` |
+| Web & API | [Web Layer](docs/modules/web.md) — `#[RestController]`/`#[Controller]` routing, `RouteManifest`, JSON + HTML negotiation | `firefly/web` |
 | Web & API | [Web Filters](docs/modules/web-filters.md) — the ordered filter chain onto Laravel middleware | `firefly/web` |
+| Web & API | [OpenAPI](docs/modules/openapi.md) — OpenAPI 3.1 generated from the compiled manifests, `firefly:openapi`, official Swagger UI from your own origin | `firefly/openapi` |
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
 | Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |
 | Data & Domain | [Domain (DDD)](docs/modules/domain.md) — `Entity`, `ValueObject`, `AggregateRoot`, `DomainEvent` | `firefly/domain` |
@@ -716,15 +763,20 @@ its own installable Composer package with its own tests and its own [module guid
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Operations | [Actuator](docs/modules/actuator.md) — health, info, env, beans, conditions, mappings | `firefly/actuator` |
 | Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics, `/actuator/prometheus` | `firefly/observability` |
+| Operations | [Admin Dashboard](docs/modules/admin.md) — the browser dashboard over the actuator, read in-process | `firefly/admin` |
+| Operations | [Bean Graph](docs/modules/bean-graph.md) — the dashboard's drawn dependency graph, with cycle reporting | `firefly/admin` |
+| Operations | [Data Browser](docs/modules/data-browser.md) — the dashboard's database browser over `CrudRepository` beans, off by default | `firefly/admin` |
 | Testing | [Testing](docs/modules/testing.md) — `FireflyTestCase`, recording doubles, Pest expectations | `firefly/testing` |
 | Testing | [Integration Testing](docs/modules/integration-testing.md) — `@group integration`, testcontainers | `firefly/testing` |
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
 
 `firefly/firefly` (the runtime metapackage) and `firefly/cli` (the dev-console — see
-[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 25 packages; `firefly/skeleton`
-is the 26th unit, a `type: project` create-project template at the top level.
+[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 27 packages; `firefly/skeleton`
+is the 28th unit, a `type: project` create-project template at the top level.
 
 ---
+
+## Documentation
 
 Start at the **[documentation table of contents](docs/README.md)** — it groups every guide by topic. Highlights:
 
@@ -736,7 +788,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*LaraFly by Example*](book/README.md) — the complete bilingual book (13 chapters + appendices, PDF + EPUB).
+- [*LaraFly by Example*](book/README.md) — the complete bilingual book (14 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -769,7 +821,7 @@ still ahead, accurately:
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
-  [book](book/README.md) (13 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [book](book/README.md) (14 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 

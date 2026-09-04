@@ -44,8 +44,9 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 
 | Guide | Description |
 |-------|-------------|
-| [Web Layer](modules/web.md) | `firefly/web` — `#[RestController]` routing, parameter binding, RFC-7807 error rendering |
+| [Web Layer](modules/web.md) | `firefly/web` — `#[RestController]`/`#[Controller]` routing, parameter binding, JSON + HTML negotiation, RFC-7807 error rendering |
 | [Web Filters](modules/web-filters.md) | An ordered `WebFilter` chain bridged onto Laravel's own middleware pipeline |
+| [OpenAPI](modules/openapi.md) | `firefly/openapi` — an OpenAPI 3.1 document generated from the compiled manifests, `firefly:openapi`, and the official Swagger UI served from your own origin |
 
 ### Resilience & Scheduling
 
@@ -89,6 +90,9 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 |-------|-------------|
 | [Actuator](modules/actuator.md) | `firefly/actuator` — health/info/beans endpoints, the Spring-Boot-Actuator analogue |
 | [Observability](modules/observability.md) | `firefly/observability` — the `MeterRegistry`, Prometheus/Micrometer-JSON exposition, CQRS metrics |
+| [Admin Dashboard](modules/admin.md) | `firefly/admin` — the browser dashboard over the actuator; reads its endpoints in-process, so its own URL is the security boundary |
+| [Bean Graph](modules/bean-graph.md) | The dashboard's drawn dependency graph — components, `#[Bean]` products and `#[ConfigProperties]` DTOs as nodes, interface-resolved edges, longest-path layering, cycle reporting |
+| [Data Browser](modules/data-browser.md) | A Django-style database browser over `CrudRepository` beans — **off by default**, writes behind a second gate, with filtering, paging, relations you can walk, and an entity map |
 
 ### Testing
 
@@ -113,7 +117,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |
 | [Contributing](contributing.md) | Monorepo layout, local setup, conventions, how to add a package |
-| [Publishing](publishing.md) | The release/split runbook — one CalVer tag, 26 shippable units |
+| [Publishing](publishing.md) | The release/split runbook — one CalVer tag, 28 shippable units |
 
 ---
 
@@ -131,7 +135,11 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 - **Writing commands/queries?** See [CQRS](modules/cqrs.md).
 - **Securing an app?** See [Security](modules/security.md).
 - **Shipping to production?** See [Actuator](modules/actuator.md), [Observability](modules/observability.md),
-  and [Resilience](modules/resilience.md).
+  and [Resilience](modules/resilience.md) — then [Admin Dashboard](modules/admin.md) for the browser view over
+  all three, and read its [access model](modules/admin.md#access-the-whole-security-boundary) before enabling it
+  outside `app.debug`.
+- **Publishing an API?** See [OpenAPI](modules/openapi.md) — the spec is generated from the same manifests the
+  dispatcher and validator use, so it cannot drift.
 - **Writing tests?** See [Testing](modules/testing.md) and [Integration Testing](modules/integration-testing.md).
 - **Releasing a version?** See [Versioning](versioning.md) and [Publishing](publishing.md), and check the
   [`CHANGELOG.md`](../CHANGELOG.md) at the repo root.
@@ -139,7 +147,7 @@ Every module guide lives under [`modules/`](modules/), grouped below the same wa
 
 ---
 
-*The guided, book-style [*LaraFly by Example*](../book/README.md) book — 13 chapters plus appendices,
+*The guided, book-style [*LaraFly by Example*](../book/README.md) book — 14 chapters plus appendices,
 bilingual (English + Spanish), rendered to PDF + EPUB — is available now, alongside the step-by-step
 [Tutorial](tutorial.md).*
 

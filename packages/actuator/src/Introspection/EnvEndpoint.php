@@ -14,6 +14,12 @@ use Illuminate\Contracts\Config\Repository;
  * Exposes the firefly.* configuration tree with sensitive values masked (fail-safe invariant: /env values masked).
  * A key matching password|secret|token|key|credential|passwd (case-insensitive) is replaced with ******.
  *
+ * The rule itself moved to SensitiveValueMasker when /configprops arrived and needed the SAME rule — see that
+ * class for why it is shared rather than copied, and for the array-valued-secret bypass this endpoint used to
+ * have (a sensitive key holding an array was recursed into instead of masked, so a JWT keyring under
+ * `firefly.security.jwt.keys` rendered every private key in full). This endpoint's observable contract is
+ * unchanged for scalar values and strictly safer for array ones.
+ *
  * Return type is narrowed to the non-nullable EndpointResponse (a legal covariant narrowing of
  * ActuatorEndpoint::handle()'s `?EndpointResponse`, the same idiom InfoEndpoint uses): /env has no
  * sub-resource concept to 404 on, so handle() always produces a body — PHPStan (level max) flags the
@@ -22,10 +28,6 @@ use Illuminate\Contracts\Config\Repository;
 #[Component]
 final class EnvEndpoint implements ActuatorEndpoint
 {
-    private const MASK = '******';
-
-    private const SENSITIVE = '/password|secret|token|key|credential|passwd/i';
-
     public function __construct(private readonly Repository $config) {}
 
     public function endpointId(): string
@@ -43,26 +45,6 @@ final class EnvEndpoint implements ActuatorEndpoint
         /** @var array<string, mixed> $firefly */
         $firefly = (array) $this->config->get('firefly', []);
 
-        return EndpointResponse::json(['firefly' => $this->mask($firefly)]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $values
-     * @return array<string, mixed>
-     */
-    private function mask(array $values): array
-    {
-        $masked = [];
-        foreach ($values as $key => $value) {
-            if (is_array($value)) {
-                /** @var array<string, mixed> $value */
-                $masked[$key] = $this->mask($value);
-
-                continue;
-            }
-            $masked[$key] = preg_match(self::SENSITIVE, (string) $key) === 1 ? self::MASK : $value;
-        }
-
-        return $masked;
+        return EndpointResponse::json(['firefly' => SensitiveValueMasker::mask($firefly)]);
     }
 }

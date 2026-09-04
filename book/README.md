@@ -93,7 +93,7 @@ book/
   src/                         # EN manuscript (Markdown)
     00-front/                   # title/copyright/dedication/preface/conventions
     00-quickstart.md             # "Build Lumen step by step" quick start
-    01..13-*.md                  # the thirteen chapters (Parts I-IV)
+    01..13-*.md                  # the fourteen chapters, 4A included (Parts I-IV)
     90-appendix-a-laravel.md      # Laravel -> LaraFly cheat-sheet
     94-glossary.md                # glossary
   src-es/                        # ES manuscript, same structure/filenames
@@ -119,7 +119,7 @@ book/
 ## Manuscript status
 
 The manuscript is **complete** in both languages: a five-file front matter, a
-"Build Lumen step by step" quick start, thirteen chapters across four parts —
+"Build Lumen step by step" quick start, fourteen chapters across four parts —
 
 - **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
   Configuration/Profiles/Secrets, Your First HTTP API

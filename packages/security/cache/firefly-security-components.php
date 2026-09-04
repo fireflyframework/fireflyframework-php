@@ -19,6 +19,10 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\JwksProvider',
+            1 => 'Firefly\\Config\\Config',
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Security\\SecurityAutoConfiguration',
@@ -39,6 +43,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             1 => [
                 'method' => 'userDetailsService',
@@ -48,6 +54,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             2 => [
                 'method' => 'roleHierarchy',
@@ -57,6 +66,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             3 => [
                 'method' => 'permissionEvaluator',
@@ -66,6 +78,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             4 => [
                 'method' => 'securityExpressionEvaluator',
@@ -75,6 +89,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             5 => [
                 'method' => 'authenticationManager',
@@ -84,6 +100,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\User\\UserDetailsService',
+                    1 => 'Firefly\\Security\\Password\\PasswordEncoder',
+                ],
             ],
             6 => [
                 'method' => 'authorizationChecker',
@@ -93,6 +113,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
+                    1 => 'Firefly\\Security\\Access\\RoleHierarchy',
+                    2 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                ],
             ],
             7 => [
                 'method' => 'methodSecurityMessageEnforcer',
@@ -102,6 +127,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
+                    1 => 'Firefly\\Security\\Access\\Method\\SecurityMethodManifest',
+                    2 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
+                    3 => 'Firefly\\Security\\Access\\RoleHierarchy',
+                    4 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                ],
             ],
             8 => [
                 'method' => 'commandAuthorizer',
@@ -111,6 +143,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
+                ],
             ],
             9 => [
                 'method' => 'queryAuthorizer',
@@ -120,6 +155,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
+                ],
             ],
             10 => [
                 'method' => 'auditorAware',
@@ -129,6 +167,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             11 => [
                 'method' => 'jwtService',
@@ -138,6 +178,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             12 => [
                 'method' => 'httpSecurity',
@@ -147,6 +190,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             13 => [
                 'method' => 'jwksProvider',
@@ -156,9 +202,15 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     2 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
@@ -174,6 +226,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
     ],
     3 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
@@ -189,6 +244,13 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Access\\HttpSecurity',
+            1 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
+            2 => 'Firefly\\Security\\Access\\RoleHierarchy',
+            3 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+            4 => 'Firefly\\Config\\Config',
+        ],
     ],
     4 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
@@ -204,6 +266,10 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Jwt\\JwtService',
+            1 => 'Firefly\\Config\\Config',
+        ],
     ],
     5 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
@@ -219,5 +285,8 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
     ],
 ];

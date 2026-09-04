@@ -86,6 +86,14 @@ deptrac:
       collectors:
         - type: directory
           value: packages/observability/src/.*
+    - name: Admin
+      collectors:
+        - type: directory
+          value: packages/admin/src/.*
+    - name: OpenApi
+      collectors:
+        - type: directory
+          value: packages/openapi/src/.*
     - name: Testing
       collectors:
         - type: directory
@@ -327,6 +335,49 @@ deptrac:
       - Actuator
       - Cqrs
       - Resilience
+
+    # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
+    # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
+    # its pages on the illuminate Router through a Context BootPass at a configurable base path, and reuses
+    # Web's ProblemDetailsRenderer for its own failures (=> Web). It reads Config, carries Container/Context
+    # attributes and extends AutoConfigure's base. NOTHING depends on it — it is a leaf, and an optional one.
+    #
+    # The => Data edge is the Django-style database browser (src/Data): it discovers browsable resources by
+    # looking for beans whose scan-time interface list contains Data's CrudRepository, and reads them through
+    # the ports Data already publishes — findPaged(Pageable)/Page/Sort for a page, findBySpecificationPaged
+    # for a searched page, findById/existsById/deleteById/save for a record. It consumes those ports and adds
+    # nothing to them; the direction is Admin -> Data and NEVER the reverse, exactly as with Actuator and Web.
+    # No Domain edge: the browser reflects over whatever entity a repository declares and knows nothing about
+    # Entity/AggregateRoot.
+    Admin:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Actuator
+      - Data
+
+    # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
+    # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/
+    # RouteDescriptor (paths, verbs, statuses, binding plans) and Validation's ConstraintManifest + Rule
+    # objects (body schemas and their `required` lists), and mirrors Kernel's ErrorResponse/ErrorCategory/
+    # ErrorSeverity into the shared RFC-9457 problem component. It reads Config, carries Container
+    # stereotypes + Context boot/condition attributes, extends AutoConfigure's base, and mounts its two
+    # routes on the illuminate Router from a BootPass (the ActuatorRouteRegistrar precedent) because an
+    # attribute route cannot carry a configurable path. NO edge to Actuator (the two surfaces are
+    # independent; the ordering between their registrars is a tie-break, not a dependency) and NO edge to
+    # Cli (its firefly:openapi command is registered by its OWN provider, so the command ships wherever the
+    # package does — firefly/cli is require-dev in a real app). NOTHING depends on OpenApi.
+    OpenApi:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Validation
+      - Web
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
     # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it

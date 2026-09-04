@@ -6,6 +6,25 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Observability\\Endpoint\\HttpExchangesEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\HttpExchanges\\HttpExchangeRecorder',
+            1 => 'Firefly\\Config\\Config',
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Observability\\Endpoint\\MetricsEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -19,8 +38,30 @@ return [
         'beans' => [
         ],
         'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\Metrics\\MeterRegistry',
+        ],
     ],
-    1 => [
+    2 => [
+        'class' => 'Firefly\\Observability\\Endpoint\\ProcessEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\HttpExchanges\\HttpExchangeRecorder',
+            1 => 'Firefly\\Observability\\Process\\RuntimeSnapshot',
+        ],
+    ],
+    3 => [
         'class' => 'Firefly\\Observability\\Endpoint\\PrometheusEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -34,8 +75,12 @@ return [
         'beans' => [
         ],
         'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\Metrics\\MeterRegistry',
+            1 => 'Firefly\\Observability\\Prometheus\\PrometheusTextFormat',
+        ],
     ],
-    2 => [
+    4 => [
         'class' => 'Firefly\\Observability\\ObservabilityAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -54,6 +99,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                ],
             ],
             1 => [
                 'method' => 'metricsRecorder',
@@ -63,6 +112,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                ],
             ],
             2 => [
                 'method' => 'prometheusTextFormat',
@@ -72,6 +124,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             3 => [
                 'method' => 'tracer',
@@ -81,8 +135,23 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             4 => [
+                'method' => 'httpExchangeRecorder',
+                'returns' => 'Firefly\\Observability\\HttpExchanges\\HttpExchangeRecorder',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            5 => [
                 'method' => 'cqrsMetrics',
                 'returns' => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
                 'name' => null,
@@ -90,11 +159,35 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
-    3 => [
+    5 => [
+        'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -100,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\HttpExchanges\\HttpExchangeRecorder',
+            1 => 'Firefly\\Config\\Config',
+        ],
+    ],
+    6 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -108,5 +201,8 @@ return [
         'beans' => [
         ],
         'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+        ],
     ],
 ];

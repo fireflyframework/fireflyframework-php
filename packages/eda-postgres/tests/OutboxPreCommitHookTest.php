@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Cqrs\Correlation\CorrelationContext;
+use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\Tests\Fixtures\OutboxSampleEvent;
@@ -34,6 +35,7 @@ it('maps a DomainEvent into a same-tx outbox row with per-event destination + co
 
     $hook = new OutboxPreCommitHook(
         $connections,
+        new SubscriberRegistry,
         'firefly_eda_events',
         'cqrs.events',
         [OutboxSampleEvent::class => 'orders.events'],
@@ -68,7 +70,7 @@ it('rolls the mapped outbox row back with the aggregate (same-tx)', function () 
     /** @var ConnectionResolverInterface $connections */
     $connections = App::make(ConnectionResolverInterface::class);
 
-    $hook = new OutboxPreCommitHook($connections, 'firefly_eda_events', 'cqrs.events', [], null);
+    $hook = new OutboxPreCommitHook($connections, new SubscriberRegistry, 'firefly_eda_events', 'cqrs.events', [], null);
 
     try {
         DB::transaction(function () use ($hook): void {
@@ -86,7 +88,7 @@ it('ignores non-DomainEvent objects (handled by the generic after-commit dispatc
     /** @var ConnectionResolverInterface $connections */
     $connections = App::make(ConnectionResolverInterface::class);
 
-    $hook = new OutboxPreCommitHook($connections, 'firefly_eda_events', 'cqrs.events', [], null);
+    $hook = new OutboxPreCommitHook($connections, new SubscriberRegistry, 'firefly_eda_events', 'cqrs.events', [], null);
 
     DB::transaction(function () use ($hook): void {
         $hook->handle(new stdClass, null);

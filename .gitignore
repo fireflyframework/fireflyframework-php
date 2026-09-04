@@ -36,3 +36,8 @@ Thumbs.db
 *.log
 /coverage/
 /.claude/
+
+# Local design-review artifacts, at the repo ROOT only — book/art and docs/assets are tracked, so this
+# must never be a blanket *.png.
+/*.png
+/.playwright-mcp/

@@ -18,6 +18,23 @@ labels:
 # Task B4: Part II completed with Part III opened (Chapters 7-10: CQRS, EDA/outbox, transactions, security).
 # Task B5: Part IV added (Chapters 11-13: observability, testing, CLI/cache) + Appendices (Appendix A + Glossary).
 # This completes the book's ~13-chapter scope.
+# Task B6: firefly/openapi added as Chapter 4A, immediately after the HTTP chapter it builds on.
+# Chapter order comes from THIS list, not from the file names, and `num` is a free-form label
+# (Appendix A already proves that), so slotting a chapter in here needs no renumbering of the
+# nine chapters that follow — and renumbering them would have invalidated every "Chapter N"
+# cross-reference in both manuscripts plus book/README.md, which is not this task's to edit.
+# Task B7: no new chapter. The bean-graph explorer extends Chapter 11 (it is a page of firefly/admin,
+# which that chapter already introduces) and the official-Swagger-UI viewer extends Chapter 4A (it
+# replaces the old "CDN flag" section outright, since `viewer.style` supersedes `viewer.cdn`). Splitting
+# either into a chapter of its own would have separated a feature from the package it belongs to, and
+# would have moved a "Chapter N" reference for no reader benefit.
+# Task B8: no new chapter, again, and for the same reason. The rebuilt bean graph (#[Bean] products and
+# #[ConfigProperties] DTOs are now nodes, not just declaring classes) and the new database browser are both
+# pages of firefly/admin, which Chapter 11 already introduces, so both extend that chapter rather than
+# claiming one of their own. The data browser in particular BELONGS beside the access-model section it
+# argues against: its whole design point is that `firefly.admin.data.enabled` deliberately does NOT inherit
+# the `app.debug` default the section above it justifies, and separating the two would have removed the
+# comparison that makes the decision legible.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -34,6 +51,7 @@ parts:
       - {id: ch02, file: 02-dependency-injection.md, num: 2, title: "Dependency Injection & Auto-Configuration"}
       - {id: ch03, file: 03-configuration.md, num: 3, title: "Configuration, Profiles & Secrets"}
       - {id: ch04, file: 04-first-http-api.md, num: 4, title: "Your First HTTP API"}
+      - {id: ch04a, file: 04a-openapi.md, num: "4A", title: "Documenting the API: OpenAPI 3.1 from the Manifests"}
   - title: "Part II — Modeling & Persisting the Domain"
     chapters:
       - {id: ch05, file: 05-persistence-repositories.md, num: 5, title: "Persistence & the Repository Pattern"}

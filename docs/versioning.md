@@ -20,7 +20,7 @@ The single place the current version *is* asserted in code is:
 // packages/kernel/src/Version.php
 final class Version
 {
-    public const string VERSION = '26.07.16';
+    public const string VERSION = '26.09.1';
 }
 ```
 
@@ -28,14 +28,17 @@ final class Version
 endpoint. Consistency across the three human-visible surfaces that *should* always agree with it — the
 `Version::VERSION` constant, the CHANGELOG's latest `## [x.y.z]` heading, and the README version badge — is
 enforced by `tests/VersionConsistencyTest.php`, which fails the build the moment any of the three drifts from
-the others. A release always updates all three together.
+the others. A release always updates all three together. Work merged between releases therefore accumulates
+under a `## [Unreleased]` heading in the CHANGELOG — the test reads the first *versioned* heading, so an
+unreleased section is invisible to it and the constant stays the single source of truth until the release is
+actually cut.
 
 ## Reading the version at runtime
 
 ```php
 use Firefly\Kernel\Version;
 
-echo Version::VERSION; // "26.07.16"
+echo Version::VERSION; // "26.09.1"
 ```
 
 This is the only version string LaraFly itself exposes; there is no runtime version-detection mechanism

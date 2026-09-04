@@ -223,9 +223,9 @@ These are carried-forward, documented limitations of the M9 shipment — not bug
 - **"Async" is queue-backed, not coroutine-based** — under the `sync` queue driver (or with no worker
   running), `QueueMessageBroker` delivers synchronously (minus the group-drop above), same async→sync
   contract as the rest of LaraFly.
-- **App-level `#[MessageListener]` manifests compile via `firefly:cache` — landing in M15.** Until then, an
-  application supplies its compiled `MessageListenerManifest` inline rather than through an automated
-  cache-warm command; a consumer method absent from the compiled manifest silently never subscribes — the
-  same compile-inline caveat as `firefly/eda`'s listeners.
+- **A consumer outside `firefly.scan.paths` never subscribes.** The `MessageListenerManifest` resolves to
+  the `firefly:cache` artifact if present, otherwise an in-process scan of `firefly.scan.paths`, otherwise
+  empty — no hand-wiring needed, but a listener the scan cannot see is silently absent rather than an error.
+  Same shape as `firefly/eda`'s listeners.
 - **`firefly/messaging` and `firefly/eda` are independent sibling packages** with no dependency in either
   direction — see [Sibling of `firefly/eda`](#sibling-of-fireflyeda-no-shared-code) above.

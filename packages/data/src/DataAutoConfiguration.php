@@ -9,12 +9,16 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Data\Proxy\ProxyFactory;
+use Firefly\Data\Proxy\ProxyMaterializer;
+use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
 use Firefly\Data\Transaction\TransactionTemplate;
+use Illuminate\Contracts\Container\Container;
 
 /**
  * Always-on transaction-engine wiring. #[Order(1000)] places it after user definitions; each bean backs off
@@ -55,11 +59,37 @@ final class DataAutoConfiguration
         return new TransactionInterceptor($template);
     }
 
+    /**
+     * The #[Transactional] manifest, resolved like every other Category-B artifact: compiled file, then an
+     * in-process scan of firefly.scan.paths, then empty.
+     *
+     * This used to return an unconditional `new TransactionalManifest([], [])`. Nothing anywhere loaded the
+     * compiled transactional.php that firefly:cache emits — FireflyCachePaths::TRANSACTIONAL was referenced
+     * only by its own declaration — so hasProxyFor() was always false and TransactionalBeanPostProcessor
+     * returned every bean unwrapped. #[Transactional] was a silent no-op in any app that did not hand-write
+     * its own TransactionalManifest configuration.
+     *
+     * Proxies are made loadable before the manifest is handed out, because TransactionalBeanPostProcessor
+     * fails loud on a manifest that promises a proxy class it cannot find.
+     */
     #[Bean]
     #[ConditionalOnMissingBean(TransactionalManifest::class)]
-    public function transactionalManifest(): TransactionalManifest
+    public function transactionalManifest(Container $container): TransactionalManifest
     {
-        return new TransactionalManifest([], []);
+        if (($file = AppScan::cachedFile($container, AppScan::TRANSACTIONAL)) !== null) {
+            ProxyMaterializer::classmap($container);
+
+            return TransactionalManifest::load($file);
+        }
+
+        $paths = AppScan::paths($container);
+        if ($paths === []) {
+            return new TransactionalManifest([], []);
+        }
+
+        ProxyMaterializer::materialize($paths);
+
+        return (new TransactionalScanner)->scan($paths);
     }
 
     #[Bean]

@@ -8,6 +8,7 @@ use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Domain\AggregateRoot;
 use Firefly\Domain\DomainEvent;
+use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Testing\FireflyDatabaseTestCase;
@@ -25,7 +26,7 @@ it('writes EXACTLY ONE PENDING outbox row through the real dispatcher->hook path
     /** @var ConnectionResolverInterface $resolver */
     $resolver = App::make(ConnectionResolverInterface::class);
 
-    $hook = new OutboxPreCommitHook($resolver, 'firefly_eda_events', 'cqrs.events', [], new CorrelationContext);
+    $hook = new OutboxPreCommitHook($resolver, new SubscriberRegistry, 'firefly_eda_events', 'cqrs.events', [], new CorrelationContext);
     $afterCommit = new class implements ApplicationEventPublisher
     {
         public function publish(object $event): void {} // postgres mode NoOps the eda after-commit leg -> no second write

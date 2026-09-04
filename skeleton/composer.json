@@ -1,13 +1,21 @@
 {
     "name": "firefly/skeleton",
-    "description": "LaraFly application skeleton — a Laravel 13 app pre-wired with the Firefly family, a sample #[RestController]/#[Service], and firefly:cache in post-create-project-cmd.",
+    "description": "LaraFly application skeleton \u2014 a Laravel 13 app pre-wired with the Firefly family, a sample #[RestController]/#[Service], and firefly:cache in post-create-project-cmd.",
     "type": "project",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "skeleton", "create-project"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "skeleton",
+        "create-project"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/skeleton"
@@ -19,7 +27,9 @@
         "laravel/framework": "^13.0"
     },
     "extra": {
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
     "autoload": {
         "psr-4": {
@@ -31,8 +41,10 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan key:generate --ansi",
+            "@php artisan migrate --force --ansi",
             "@php artisan firefly:cache"
-        ]
+        ],
+        "test": "@php vendor/bin/phpunit"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -40,6 +52,15 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true
+        }
+    },
+    "require-dev": {
+        "mockery/mockery": "^1.6",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
         }
     }
 }

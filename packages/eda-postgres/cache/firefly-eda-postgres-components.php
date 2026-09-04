@@ -19,6 +19,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Database\\ConnectionResolverInterface',
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Eda\\Postgres\\PostgresOutboxAutoConfiguration',
@@ -39,6 +42,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             1 => [
                 'method' => 'eventPublisher',
@@ -48,6 +53,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Database\\ConnectionResolverInterface',
+                    2 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                ],
             ],
             2 => [
                 'method' => 'outboxPreCommitHook',
@@ -57,6 +67,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Database\\ConnectionResolverInterface',
+                    1 => 'Firefly\\Config\\Config',
+                    2 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
+                    3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
+                    4 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                ],
             ],
             3 => [
                 'method' => 'domainEventDispatcher',
@@ -66,6 +83,11 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Data\\Domain\\AggregateTracker',
+                    1 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                    2 => 'Firefly\\Eda\\Postgres\\Outbox\\OutboxPreCommitHook',
+                ],
             ],
             4 => [
                 'method' => 'commandEventPublisher',
@@ -75,6 +97,8 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
             5 => [
                 'method' => 'eventConsumer',
@@ -84,8 +108,14 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Database\\ConnectionResolverInterface',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

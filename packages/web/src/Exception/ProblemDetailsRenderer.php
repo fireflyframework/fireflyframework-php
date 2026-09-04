@@ -6,48 +6,38 @@ namespace Firefly\Web\Exception;
 
 use DateTimeImmutable;
 use DateTimeInterface;
-use Firefly\Kernel\Error\ErrorCategory;
 use Firefly\Kernel\Error\ErrorResponse;
-use Firefly\Kernel\Error\ErrorSeverity;
-use Firefly\Kernel\Exception\FireflyException;
+use Firefly\Web\Error\ErrorPageSettings;
+use Firefly\Web\Error\ProblemMapper;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 /**
- * Maps any FireflyException to an application/problem+json response via ErrorResponse::fromException (a thin
- * map — status/category/severity live on the exception). A Symfony/Illuminate HttpExceptionInterface (e.g. the
- * router's own NotFoundHttpException for a URL with NO matching route at all — distinct from a Firefly
- * ResourceNotFoundException thrown by a MATCHED route's handler) is converted preserving its REAL status code
- * (bug fix, T12/actuator-T10: this branch was missing, so every unmatched route rendered as a 500 INTERNAL_ERROR
- * for any JSON client — caught by the actuator HTTP capstone's master-gate-off assertion, which hits a
- * genuinely unrouted /actuator/health). Any OTHER Throwable is converted to a generic 500 FireflyException. Does
- * NOT redefine the error shape (that is kernel/M1's ErrorResponse).
+ * Renders any throwable as an application/problem+json response via ErrorResponse::fromException (a thin map
+ * — status/category/severity live on the exception). Does NOT redefine the error shape (that is kernel/M1's
+ * ErrorResponse), and no longer decides what a non-Firefly throwable BECOMES either: that rule moved to
+ * ProblemMapper when the HTML error page started needing the same answer, because two copies of it would
+ * eventually disagree about the same exception and hand a browser and a client different error codes for
+ * one failure.
  */
 final class ProblemDetailsRenderer
 {
+    /**
+     * ONE DISCLOSURE SWITCH FOR BOTH RENDERINGS. The HTML page has always been gated by
+     * `firefly.web.error-page.trace` (which follows `app.debug`); this path had no gate at all, so the same
+     * failure withheld everything from a browser and published a QueryException's SQL and bindings to a
+     * client. The settings object is optional so a JSON-only deployment that never bound one still renders —
+     * and when it is absent the default is the SAFE one.
+     */
+    public function __construct(private readonly ?ErrorPageSettings $settings = null) {}
+
     public function render(Throwable $e, Request $request): Response
     {
-        $exception = match (true) {
-            $e instanceof FireflyException => $e,
-            $e instanceof HttpExceptionInterface => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : self::statusText($e->getStatusCode()),
-                self::errorCode($e->getStatusCode()),
-                $e->getStatusCode(),
-                ErrorCategory::Framework,
-                ErrorSeverity::Warning,
-                $e,
-            ),
-            default => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : 'Internal Server Error',
-                'INTERNAL_ERROR',
-                500,
-                ErrorCategory::Internal,
-                ErrorSeverity::Error,
-                $e,
-            ),
-        };
+        // An absent settings object means the SAFE answer, not the open one — see the constructor.
+        $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->trace;
+
+        $exception = ProblemMapper::toFireflyException($e, $disclose);
 
         $payload = ErrorResponse::fromException(
             $exception,
@@ -60,22 +50,5 @@ final class ProblemDetailsRenderer
             $exception->httpStatus(),
             ['Content-Type' => 'application/problem+json'],
         );
-    }
-
-    private static function errorCode(int $status): string
-    {
-        return match ($status) {
-            404 => 'RESOURCE_NOT_FOUND',
-            405 => 'METHOD_NOT_ALLOWED',
-            default => 'HTTP_'.$status,
-        };
-    }
-
-    private static function statusText(int $status): string
-    {
-        /** @var array<int, string> $texts */
-        $texts = Response::$statusTexts;
-
-        return $texts[$status] ?? 'HTTP Error';
     }
 }

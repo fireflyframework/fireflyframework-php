@@ -252,3 +252,17 @@ enum Direction: string
 
 `Direction`'s backing value **is** the Eloquent `orderBy()` direction string, so the mapping at the Eloquent
 edge is a bare `->orderBy($order->property, $order->direction->value)` with no translation table.
+
+---
+
+## Browsing what a repository holds
+
+`firefly/admin` ships a [data browser](data-browser.md) that discovers its resources from exactly these ports:
+any bean whose scan-time interface list contains `CrudRepository` is browsable, and a repository that also
+implements `PagingAndSortingRepository` is paged **in the database** rather than in PHP — which on a large table
+is the difference between one page of rows and an out-of-memory.
+
+It is **disabled by default** and does not follow `app.debug` or `firefly.admin.enabled`; writes need a second
+key on top of that, and create is offered only for an Eloquent-backed resource — for a hand-written aggregate
+the invariants live in its constructor, not in a column list. See [Data Browser](data-browser.md) for the
+reasoning, and for the relations it walks between your entities.

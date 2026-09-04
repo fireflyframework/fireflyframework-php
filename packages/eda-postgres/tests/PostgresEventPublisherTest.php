@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
 use Firefly\Testing\FireflyDatabaseTestCase;
@@ -16,7 +17,7 @@ beforeEach(function () {
 });
 
 it('maps destination->channel and stores headers + transaction_id', function () {
-    (new PostgresEventPublisher(DB::connection(), 'firefly_eda_events'))
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry, 'firefly_eda_events'))
         ->publish('order.events', 'order.created', ['id' => 9], ['x-correlation-id' => 'c1']);
 
     // Every mapped column present on exactly one row: destination verbatim, channel from the ctor, headers as a
@@ -32,7 +33,7 @@ it('maps destination->channel and stores headers + transaction_id', function () 
 });
 
 it('records an empty headers map as a json object, not an array, with a null transaction_id', function () {
-    (new PostgresEventPublisher(DB::connection()))
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))
         ->publish('order.events', 'order.created', ['id' => 9]);
 
     // Empty headers must serialize to `{}` (object) not `[]` (array) so the jsonb column stays object-typed.

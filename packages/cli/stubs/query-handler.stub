@@ -6,14 +6,18 @@ namespace {{ namespace }};
 
 use Firefly\Cqrs\Attributes\QueryHandler;
 
+/**
+ * Resolves the {{ message }} query.
+ *
+ * HandlerScanner infers the resolved message type from handle()'s SOLE parameter, so that parameter must
+ * stay a concrete class (a builtin type such as `object` cannot be resolved to a message and makes
+ * `firefly:cache` fail loud). Point it somewhere else by naming the class explicitly instead:
+ * #[QueryHandler(SomeOtherQuery::class)].
+ */
 #[QueryHandler]
 final class {{ class }}
 {
-    /**
-     * Replace `object` with the concrete Query message class this handler resolves for
-     * (or pass it explicitly via #[QueryHandler(SomeQuery::class)]).
-     */
-    public function handle(object $query): mixed
+    public function handle({{ message }} $query): mixed
     {
         return null;
     }

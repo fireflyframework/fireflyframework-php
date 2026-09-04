@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Web\Route;
 
 use Firefly\Validation\Valid;
+use Firefly\Web\Attributes\Controller;
 use Firefly\Web\Attributes\ControllerAdvice;
 use Firefly\Web\Attributes\ExceptionHandler;
 use Firefly\Web\Attributes\Mapping;
@@ -44,6 +45,11 @@ final class RouteScanner
             $reflection = new ReflectionClass($class);
             $base = $this->basePath($reflection);
 
+            // #[Controller] is the HTML stereotype and extends #[RestController], so it is found by the same
+            // IS_INSTANCEOF scan; recording which one matched is the only way anything downstream can tell a
+            // web page from a JSON operation without reflecting again.
+            $html = $reflection->getAttributes(Controller::class, ReflectionAttribute::IS_INSTANCEOF) !== [];
+
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
                 foreach ($method->getAttributes(Mapping::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
                     $mapping = $attribute->newInstance();
@@ -55,6 +61,7 @@ final class RouteScanner
                         status: $mapping->status(),
                         name: $mapping->name(),
                         bindings: $this->bindings($method),
+                        html: $html,
                     );
                 }
             }
@@ -217,7 +224,7 @@ final class RouteScanner
         }
 
         if (($attrs = $parameter->getAttributes(RequestBody::class)) !== []) {
-            return $this->plan($name, 'body', '', $type, true, null, $valid, $this->constructorProperties($type));
+            return $this->plan($name, 'body', '', $type, true, null, $valid, $this->constructorProperties($type), $this->dtoShapes($type));
         }
 
         if (($attrs = $parameter->getAttributes(RequestHeader::class)) !== []) {
@@ -248,11 +255,12 @@ final class RouteScanner
 
     /**
      * @param  list<string>  $properties
+     * @param  array<string, array<string, array{class: string|null, list: bool}>>  $dtos
      * @return Binding
      */
-    private function plan(string $name, string $kind, string $key, ?string $type, bool $required, mixed $default, bool $valid, array $properties = []): array
+    private function plan(string $name, string $kind, string $key, ?string $type, bool $required, mixed $default, bool $valid, array $properties = [], array $dtos = []): array
     {
-        return [
+        $binding = [
             'name' => $name,
             'kind' => $kind,
             'key' => $key,
@@ -262,6 +270,15 @@ final class RouteScanner
             'valid' => $valid,
             'properties' => $properties,
         ];
+
+        // Emitted only when there is something to say, so a plan for a flat DTO is byte-identical to the one
+        // this scanner produced before nested hydration existed, and an already-compiled manifest without the
+        // key keeps working (ArgumentResolver reads `dtos` with a `?? []` default).
+        if ($dtos !== []) {
+            $binding['dtos'] = $dtos;
+        }
+
+        return $binding;
     }
 
     private function typeName(ReflectionParameter $parameter): ?string
@@ -287,5 +304,159 @@ final class RouteScanner
         }
 
         return $names;
+    }
+
+    /**
+     * The shape table ArgumentResolver hydrates a nested request body from: one row per class reachable from
+     * the body DTO, each row mapping a constructor parameter to the class it is built from (null for a
+     * builtin) and whether the payload holds a LIST of that class.
+     *
+     * Compiled here because this is the one sanctioned reflection site in the package — the resolver runs on
+     * the per-request hot path and must stay reflection-free (ReflectionFreeWebTest guards it).
+     *
+     * Keyed by CLASS rather than nested inline, so depth is unbounded: a DTO that points at itself is one row,
+     * and $seen stops the WALK from recursing forever without capping how deep a payload may nest.
+     *
+     * @param  array<string, true>  $seen
+     * @return array<string, array<string, array{class: string|null, list: bool}>>
+     */
+    private function dtoShapes(?string $type, array &$seen = []): array
+    {
+        if ($type === null || ! class_exists($type) || isset($seen[$type])) {
+            return [];
+        }
+
+        $reflection = new ReflectionClass($type);
+        $constructor = $reflection->getConstructor();
+        if ($constructor === null) {
+            return [];
+        }
+
+        $seen[$type] = true;
+        $docTypes = $this->docblockParamTypes($constructor->getDocComment() ?: '', $reflection);
+
+        $shape = [];
+        $shapes = [];
+        foreach ($constructor->getParameters() as $parameter) {
+            $name = $parameter->getName();
+            $parameterType = $parameter->getType();
+            $named = $parameterType instanceof ReflectionNamedType ? $parameterType->getName() : null;
+
+            // A class-typed parameter is a nested DTO; an `array` carries no element type in PHP, so its
+            // element class can only come from the docblock.
+            $nested = $named !== null && class_exists($named) ? $named : null;
+            $isList = false;
+
+            if ($nested === null && $named === 'array' && isset($docTypes[$name])) {
+                $nested = $docTypes[$name];
+                $isList = true;
+            }
+
+            $shape[$name] = ['class' => $nested, 'list' => $isList];
+
+            if ($nested !== null) {
+                $shapes = [...$shapes, ...$this->dtoShapes($nested, $seen)];
+            }
+        }
+
+        return [$type => $shape, ...$shapes];
+    }
+
+    /**
+     * Element classes read out of a constructor docblock: `@param list<Line> $lines`, `@param Line[] $lines`
+     * and `@param array<int, Line> $lines` all mean the same thing to the hydrator.
+     *
+     * A docblock name may be written short, so it is resolved the way PHP would resolve it: an explicitly
+     * leading-slashed or already-qualified name as-is, then the declaring class's own namespace, then the
+     * file's `use` imports. Anything that does not resolve to a real class is left out of the table entirely,
+     * which lands the value on the resolver's documented "plan cannot say" path — a clean 400 rather than a
+     * guess.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return array<string, string> parameter name => element class
+     */
+    private function docblockParamTypes(string $docComment, ReflectionClass $declaring): array
+    {
+        if ($docComment === '') {
+            return [];
+        }
+
+        // Two patterns rather than one alternation: `list<X>`/`array<int, X>`/`iterable<X>` and the
+        // `X[]` spelling. Kept separate so each match has a fixed shape.
+        $types = [];
+
+        foreach ([
+            '/@param\s+(?:list|array|iterable)<(?:[^,<>]+,\s*)?([^<>]+)>\s+\$(\w+)/',
+            '/@param\s+([\w\\\\]+)\[\]\s+\$(\w+)/',
+        ] as $pattern) {
+            if (preg_match_all($pattern, $docComment, $matches, PREG_SET_ORDER) === false) {
+                continue;
+            }
+
+            foreach ($matches as $match) {
+                $resolved = $this->resolveClassName(trim($match[1]), $declaring);
+                if ($resolved !== null) {
+                    $types[$match[2]] = $resolved;
+                }
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function resolveClassName(string $name, ReflectionClass $declaring): ?string
+    {
+        $name = ltrim($name, '\\');
+        if (class_exists($name)) {
+            return $name;
+        }
+
+        $namespace = $declaring->getNamespaceName();
+        if ($namespace !== '' && class_exists($candidate = $namespace.'\\'.$name)) {
+            return $candidate;
+        }
+
+        foreach ($this->imports($declaring) as $alias => $fqcn) {
+            if ($alias === $name && class_exists($fqcn)) {
+                return $fqcn;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The file's `use` imports, alias => FQCN. Read from the source because reflection does not expose them.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return array<string, string>
+     */
+    private function imports(ReflectionClass $declaring): array
+    {
+        $file = $declaring->getFileName();
+        if ($file === false || ! is_file($file)) {
+            return [];
+        }
+
+        $source = (string) file_get_contents($file);
+        if (preg_match_all('/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?\s*;/mi', $source, $matches, PREG_SET_ORDER) === false) {
+            return [];
+        }
+
+        $imports = [];
+        foreach ($matches as $match) {
+            $fqcn = $match[1];
+            $alias = $match[2] ?? '';
+            if ($alias === '') {
+                $parts = explode('\\', $fqcn);
+                $alias = end($parts);
+            }
+            $imports[$alias] = $fqcn;
+        }
+
+        return $imports;
     }
 }

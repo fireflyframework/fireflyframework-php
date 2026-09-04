@@ -111,6 +111,17 @@ return [
                 ],
             ],
             4 => [
+                'method' => 'httpExchangeRecorder',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\HttpExchanges\\HttpExchangeRecorder',
+                        ],
+                    ],
+                ],
+            ],
+            5 => [
                 'method' => 'cqrsMetrics',
                 'conditions' => [
                     0 => [
@@ -132,6 +143,27 @@ return [
         ],
     ],
     3 => [
+        'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.httpexchanges.enabled',
+                    1 => 'true',
+                    2 => true,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'postConstruct' => [
         ],

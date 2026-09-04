@@ -11,6 +11,7 @@ use Firefly\AutoConfigure\Pass\AutoConfigurationsPass;
 use Firefly\Config\Config;
 use Firefly\Config\Profile\ProfileResolver;
 use Firefly\Config\Scanner\ConfigPropertiesManifest;
+use Firefly\Config\Scanner\ConfigPropertiesScanner;
 use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
@@ -29,6 +30,7 @@ use Firefly\Context\Pass\InfrastructureStartPass;
 use Firefly\Context\Pass\RegisterBeanPostProcessorsPass;
 use Firefly\Context\Pass\RegisterEventListenersPass;
 use Firefly\Context\Pass\UserConfigurationsPass;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Context\Scanner\ContextManifest;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Config\Repository;
@@ -58,6 +60,9 @@ final class FireflyAutoConfigureServiceProvider extends FireflyServiceProvider
     /** @var array{0: ComponentManifest, 1: ContextManifest}|null memoized so the app is scanned at most once */
     private ?array $appManifests = null;
 
+    /** Memoized alongside $appManifests so the #[ConfigProperties] scan also runs at most once. */
+    private ?ConfigPropertiesManifest $configProperties = null;
+
     public function register(): void
     {
         $this->bindBootContextAndKernel();
@@ -81,7 +86,7 @@ final class FireflyAutoConfigureServiceProvider extends FireflyServiceProvider
             new AutoConfigDiscoveryPass($collector, $assembler),
             new AutoConfigurationsPass($collector),
             new ConditionPassTwoPass,
-            new FlushDefinitionsPass(new ConfigPropertiesManifest([])),
+            new FlushDefinitionsPass($this->resolveConfigProperties()),
             new RegisterBeanPostProcessorsPass,
             new RegisterEventListenersPass,
             new InfrastructureStartPass,
@@ -152,6 +157,32 @@ final class FireflyAutoConfigureServiceProvider extends FireflyServiceProvider
         }
 
         return [new ComponentManifest([]), new ContextManifest([])];
+    }
+
+    /**
+     * The #[ConfigProperties] manifest handed to FlushDefinitionsPass — the ONE place the boot pipeline binds
+     * those DTOs.
+     *
+     * This used to be an unconditional `new ConfigPropertiesManifest([])`, which meant the pipeline NEVER bound
+     * a #[ConfigProperties] DTO on any path. The only thing that ever bound them was firefly/cli's
+     * FireflyCacheServiceProvider, on the cached path alone — so on an uncached boot every #[ConfigProperties]
+     * DTO was unresolvable, and the class's own docblock said as much ("a pre-existing framework limitation").
+     * It now follows the same cached-then-scanned convention as the component/context manifests above.
+     */
+    private function resolveConfigProperties(): ConfigPropertiesManifest
+    {
+        return $this->configProperties ??= $this->computeConfigProperties();
+    }
+
+    private function computeConfigProperties(): ConfigPropertiesManifest
+    {
+        if (($file = AppScan::cachedFile($this->app, AppScan::CONFIG_PROPERTIES)) !== null) {
+            return ConfigPropertiesManifest::load($file);
+        }
+
+        $paths = AppScan::paths($this->app);
+
+        return new ConfigPropertiesManifest($paths === [] ? [] : (new ConfigPropertiesScanner)->scan($paths));
     }
 
     private function config(): Config

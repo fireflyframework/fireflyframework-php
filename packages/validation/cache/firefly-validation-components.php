@@ -24,8 +24,13 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Validation\\Factory',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

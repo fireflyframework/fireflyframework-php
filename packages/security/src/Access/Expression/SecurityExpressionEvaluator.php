@@ -40,6 +40,21 @@ final class SecurityExpressionEvaluator
 
     public function evaluate(string $expression, SecurityExpressionRoot $root): bool
     {
+        // RE-ENTRANCY (fail-open fix). This class is a Singleton bean whose parse state ($tokens/$pos/$root)
+        // lives on the instance, and hasPermission() is a dispatch into APPLICATION code — a user-supplied
+        // PermissionEvaluator, the extension point the book recommends — which may evaluate an expression of
+        // its own on this very object. The inner call used to clobber the outer state, so on return the outer
+        // parseExpression() resumed against the inner token stream, immediately saw eof, and returned the
+        // INNER result: every term after hasPermission(...) was silently dropped. That fails OPEN —
+        // "hasPermission(#id,'read') and hasRole('ADMIN')" granted access to a principal with no ROLE_ADMIN.
+        //
+        // Saving and restoring around the call makes nested evaluation correct without restructuring the
+        // recursive-descent parser. finally runs on the fail-closed catch path too, so a throwing inner
+        // evaluator cannot leave torn state behind for the next caller either.
+        $outerTokens = $this->tokens;
+        $outerPos = $this->pos;
+        $outerRoot = $this->root;
+
         try {
             $this->tokens = $this->tokenize($expression);
             $this->pos = 0;
@@ -53,17 +68,33 @@ final class SecurityExpressionEvaluator
             // deeper in evaluation (e.g. a custom PermissionEvaluator, #param resolution) denies with a clean 403
             // rather than surfacing a 500. Security errs to deny, never to allow.
             return false;
+        } finally {
+            $this->tokens = $outerTokens;
+            $this->pos = $outerPos;
+            $this->root = $outerRoot;
         }
     }
 
     /** Validate syntax + whitelist without a root (build-time). Throws on any problem. */
     public function parse(string $expression): void
     {
-        $this->tokens = $this->tokenize($expression);
-        $this->pos = 0;
-        $this->root = null; // parse-only: calls short-circuit to a dummy bool
-        $this->parseExpression();
-        $this->expect('eof');
+        // Same save/restore discipline as evaluate(): parse() is reachable from boot-time validation while an
+        // evaluation is in flight, and must not strand the caller's parse state.
+        $outerTokens = $this->tokens;
+        $outerPos = $this->pos;
+        $outerRoot = $this->root;
+
+        try {
+            $this->tokens = $this->tokenize($expression);
+            $this->pos = 0;
+            $this->root = null; // parse-only: calls short-circuit to a dummy bool
+            $this->parseExpression();
+            $this->expect('eof');
+        } finally {
+            $this->tokens = $outerTokens;
+            $this->pos = $outerPos;
+            $this->root = $outerRoot;
+        }
     }
 
     /**

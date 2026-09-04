@@ -49,13 +49,16 @@ A runnable Laravel 13 application, already on the cached, zero-reflection boot p
 
 - **sqlite** for the database and the **array**/**sync** drivers for cache/queue — zero external services
   required to boot.
-- A sample `#[RestController]` + `#[Service]` pair wired end-to-end, so `php artisan firefly:serve` gives you
-  a working HTTP endpoint immediately.
+- A `#[Controller]` welcome page (the HTML stereotype) plus a sample `#[RestController]` + `#[Service]` pair
+  wired end-to-end, so `php artisan firefly:serve` gives you a working page and a working JSON endpoint
+  immediately.
 - A sample `#[ConfigProperties]` DTO showing typed config binding.
-- `bootstrap/cache/firefly/` already populated — every scanner→compiler pair (DI, routes, config, CQRS
-  handlers, event listeners, scheduled tasks, security methods, `#[Transactional]` proxies) has already run,
-  so the first request boots with no reflection at all. Re-run `php artisan firefly:cache` whenever you add or
-  change an annotated class; `php artisan firefly:clear` falls back to the in-process scanner.
+- `config/firefly.php` as a full, commented reference of every `firefly.*` key the framework reads.
+- `bootstrap/cache/firefly/` already populated — every scanner→compiler pair (DI, routes, exception handlers,
+  validation constraints, config properties, CQRS handlers, event/message listeners, scheduled tasks, security
+  methods, `#[Transactional]` proxies) has already run, so the first request boots with no reflection at all.
+  Re-run `php artisan firefly:cache` whenever you add or change an annotated class; `php artisan
+  firefly:clear` drops back to the in-process scan, which is slower per boot but functionally identical.
 
 ## Next steps
 

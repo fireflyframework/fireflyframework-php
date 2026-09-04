@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace Firefly\Config\Scanner;
 
 use Firefly\Config\Attributes\ConfigProperties;
+use Firefly\Config\Profile\ProfileRequirement;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
 
 /**
- * Discovers #[ConfigProperties] DTOs under PSR-4 namespaces. Mirrors firefly/container's ComponentScanner
- * idiom: discovery uses class_exists() (autoloads), so each prefix => dir must also be registered with the
- * active Composer autoloader; a trailing "\\" on the prefix is optional (normalized internally).
+ * Discovers #[ConfigProperties] DTOs — and the #[Profile] requirement each one declares — under PSR-4
+ * namespaces. Mirrors firefly/container's ComponentScanner idiom: discovery uses class_exists()
+ * (autoloads), so each prefix => dir must also be registered with the active Composer autoloader; a
+ * trailing "\\" on the prefix is optional (normalized internally).
  */
 final class ConfigPropertiesScanner
 {
@@ -33,7 +35,15 @@ final class ConfigPropertiesScanner
                 if ($attrs === []) {
                     continue;
                 }
-                $descriptors[] = new ConfigPropertiesDescriptor($class, $attrs[0]->newInstance()->prefix);
+                // The #[Profile] requirement is read HERE, at scan time, and travels in the
+                // compiled manifest — the same discipline as the prefix itself. Before this the
+                // attribute was recorded nowhere, so ConfigRegistrar had no way to know a DTO was
+                // gated and bound it under every profile.
+                $descriptors[] = new ConfigPropertiesDescriptor(
+                    $class,
+                    $attrs[0]->newInstance()->prefix,
+                    ProfileRequirement::namesOf($reflection),
+                );
             }
         }
 

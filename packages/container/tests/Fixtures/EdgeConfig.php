@@ -10,7 +10,11 @@ use Firefly\Container\Attributes\Configuration;
 #[Configuration]
 final class EdgeConfig
 {
-    #[Bean]
+    // NAMED because three fixture #[Bean] methods across two #[Configuration]
+    // classes all return Gadget. Competing beans of one type must each carry an
+    // explicit name so they stay individually addressable — see
+    // ContainerRegistrar::registerBeans().
+    #[Bean('edgeGadget')]
     public function typedClass(): Gadget
     {
         return new Gadget;

@@ -78,7 +78,7 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
     $consumer->subscribe(['*']); // LISTEN <channel> on the consumer session BEFORE the writer commits
 
     $writer->transaction(function () use ($writer, $channel): void {
-        (new PostgresEventPublisher($writer, $channel, true))->publish('orders', 'order.created', ['id' => 7], ['x-a' => 'b']);
+        (new PostgresEventPublisher($writer, new SubscriberRegistry, $channel, true))->publish('orders', 'order.created', ['id' => 7], ['x-a' => 'b']);
         // Still inside the writer's tx: the row is NOT yet visible to the separate consumer session.
         expect(DB::connection('outbox_consumer')->table(OutboxSchema::TABLE)->count())->toBe(0);
     });
@@ -110,7 +110,7 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
         ->and(outbox_decode($row->headers))->toBe(['x-a' => 'b']);
 
     // ---- (4) CRASH-SAFETY: handler throw -> nack -> still PENDING; fresh consumer resumes; past max -> FAILED ----
-    (new PostgresEventPublisher($writer, $channel, true))->publish('orders', 'order.updated', ['id' => 8]);
+    (new PostgresEventPublisher($writer, new SubscriberRegistry, $channel, true))->publish('orders', 'order.updated', ['id' => 8]);
     $throwingConsumer = new PostgresEventConsumer($consumerConn, $channel);
     $throwingConsumer->subscribe(['*']);
     (new ConsumerLoop)->run($throwingConsumer, function (): void {
@@ -138,7 +138,7 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
     expect($resumed)->toBe(1)->and($resolved->status)->toBe(OutboxSchema::STATUS_PUBLISHED);
 
     // Past max_attempts -> FAILED (maxAttempts=1: the first nack fails it).
-    (new PostgresEventPublisher($writer, $channel, true))->publish('orders', 'order.cancelled', ['id' => 9]);
+    (new PostgresEventPublisher($writer, new SubscriberRegistry, $channel, true))->publish('orders', 'order.cancelled', ['id' => 9]);
     $failingConsumer = new PostgresEventConsumer($consumerConn, $channel, 1);
     $failingConsumer->subscribe(['*']);
     (new ConsumerLoop)->run($failingConsumer, function (): void {
@@ -152,7 +152,7 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
     expect($failed->status)->toBe(OutboxSchema::STATUS_FAILED)->and(OutboxRow::asInt($failed->attempts))->toBe(1);
 
     // ---- (5) OPTIONAL RELAY -> DISTINCT downstream broker (spy), FOR UPDATE SKIP LOCKED on pgsql ----
-    (new PostgresEventPublisher($writer, $channel, true))->publish('billing', 'invoice.raised', ['id' => 10], ['x-c' => 'd']);
+    (new PostgresEventPublisher($writer, new SubscriberRegistry, $channel, true))->publish('billing', 'invoice.raised', ['id' => 10], ['x-c' => 'd']);
     $spy = new SpyDownstreamPublisher;
     $relayed = (new OutboxRelay($writer, $spy, batchSize: 50, maxAttempts: 3, useSkipLocked: true))->relayBatch();
 
@@ -164,7 +164,7 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
         ->and($writer->table(OutboxSchema::TABLE)->where('event_type', 'invoice.raised')->value('status'))->toBe(OutboxSchema::STATUS_PUBLISHED);
 
     // B1: the relay ctor HARD-REFUSES a PostgresEventPublisher downstream (would re-insert PENDING rows -> loop).
-    expect(fn () => new OutboxRelay($writer, new PostgresEventPublisher($writer, $channel)))
+    expect(fn () => new OutboxRelay($writer, new PostgresEventPublisher($writer, new SubscriberRegistry, $channel)))
         ->toThrow(LogicException::class, 'PostgresEventPublisher');
 
     Schema::connection('outbox_writer')->dropIfExists(OutboxSchema::TABLE);

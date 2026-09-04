@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Observability;
 
+use Firefly\Config\Config;
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
@@ -11,6 +12,11 @@ use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
+use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
+use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
+use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
+use Firefly\Observability\HttpExchanges\InMemoryHttpExchangeRecorder;
+use Firefly\Observability\Metrics\CacheMeterRegistry;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\NoOpMetricsRecorder;
@@ -19,6 +25,7 @@ use Firefly\Observability\Prometheus\PrometheusTextFormat;
 use Firefly\Observability\Tracing\NoOpTracer;
 use Firefly\Observability\Tracing\Tracer;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Factory;
 
 /**
  * #[Order(500)] is DELIBERATELY below CqrsAutoConfiguration's #[Order(1000)] (§7 risk 4, mirrors
@@ -34,12 +41,35 @@ use Illuminate\Container\Container;
 #[Order(500)]
 final class ObservabilityAutoConfiguration
 {
+    /**
+     * The meter store. In-memory by default; cache-backed when `firefly.observability.metrics.store` names a
+     * cache store.
+     *
+     * SimpleMeterRegistry keeps meters in process memory, which is right for a long-lived worker (Octane,
+     * roadrunner) and wrong for PHP's usual deployment: under PHP-FPM each request is a fresh process, so a
+     * scrape of /actuator/metrics or /actuator/prometheus sees only what that scrape's own request recorded —
+     * which reads as data but is not. Naming a store swaps in CacheMeterRegistry, whose counters and timers
+     * accumulate across workers through the store's atomic increment.
+     *
+     * Opt-in rather than default: a metrics registry that silently begins writing to whatever cache an
+     * application happens to have configured is a surprise, and on the `array` driver it would be no better
+     * than memory anyway.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
-    public function meterRegistry(): MeterRegistry
+    public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
-        return new SimpleMeterRegistry;
+        $store = $config->string('firefly.observability.metrics.store', '');
+        if ($store === '' || ! $container->bound('cache')) {
+            return new SimpleMeterRegistry;
+        }
+
+        /** @var Factory $factory */
+        $factory = $container->make('cache');
+        $ttl = $config->int('firefly.observability.metrics.ttl', 0);
+
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null);
     }
 
     #[Bean]
@@ -80,6 +110,49 @@ final class ObservabilityAutoConfiguration
     public function tracer(): Tracer
     {
         return new NoOpTracer;
+    }
+
+    /**
+     * The rolling HTTP exchange buffer behind /actuator/httpexchanges and the request counter in
+     * /actuator/process. In-memory by default; cache-backed when `firefly.observability.httpexchanges.store`
+     * names a cache store — the SAME opt-in shape as meterRegistry() above, for the same reason, in a case where
+     * it matters more.
+     *
+     * The PHP process model makes the in-memory default genuinely empty rather than merely stale under PHP-FPM:
+     * each request is a fresh process, the ring is created empty, and the request that renders the endpoint has
+     * not been recorded yet because HttpExchangeFilter records on the way out. So the endpoint reports
+     * `storage`/`processLocal` in its payload rather than leaving an operator to conclude the application is
+     * serving no traffic. See HttpExchangeRecorder's docblock for the whole failure mode.
+     *
+     * DELIBERATELY NOT GATED on any #[ConditionalOnProperty]. `firefly.observability.httpexchanges.enabled`
+     * gates the FILTER — i.e. whether anything is written — while this bean must stay bound either way, because
+     * HttpExchangesEndpoint and ProcessEndpoint both depend on it and both have something true and useful to say
+     * when recording is off ("recording": false, "recorded": 0). Un-binding it would turn a switched-off feature
+     * into two 404s that explain nothing, which is the opposite of what an operator staring at an empty
+     * dashboard panel needs. Cost when disabled: one empty array.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(HttpExchangeRecorder::class)]
+    public function httpExchangeRecorder(Container $container, Config $config): HttpExchangeRecorder
+    {
+        $capacity = $config->int('firefly.observability.httpexchanges.capacity', HttpExchangeCapacity::DEFAULT);
+        $store = $config->string('firefly.observability.httpexchanges.store', '');
+
+        if ($store === '' || ! $container->bound('cache')) {
+            return new InMemoryHttpExchangeRecorder($capacity);
+        }
+
+        /** @var Factory $factory */
+        $factory = $container->make('cache');
+        $ttl = $config->int('firefly.observability.httpexchanges.ttl', 0);
+
+        return new CacheHttpExchangeRecorder(
+            $factory->store($store),
+            $store,
+            $capacity,
+            'firefly:httpexchanges:',
+            $ttl > 0 ? $ttl : null,
+        );
     }
 
     #[Bean]

@@ -24,9 +24,38 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            1 => [
+                'method' => 'managementServerSettings',
+                'returns' => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            2 => [
+                'method' => 'managementPortGuard',
+                'returns' => 'Firefly\\Actuator\\Server\\ManagementPortGuard',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     1 => [
         'class' => 'Firefly\\Actuator\\Health\\DbHealthIndicator',
@@ -42,6 +71,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Database\\ConnectionResolverInterface',
+        ],
     ],
     2 => [
         'class' => 'Firefly\\Actuator\\Health\\DiskSpaceHealthIndicator',
@@ -57,6 +89,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
     ],
     3 => [
         'class' => 'Firefly\\Actuator\\Health\\HealthEndpoint',
@@ -72,6 +107,11 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Actuator\\Health\\HealthContributorRegistry',
+            1 => 'Firefly\\Actuator\\Health\\StatusAggregator',
+            2 => 'Firefly\\Config\\Config',
+        ],
     ],
     4 => [
         'class' => 'Firefly\\Actuator\\Health\\PingHealthIndicator',
@@ -87,6 +127,8 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
     5 => [
         'class' => 'Firefly\\Actuator\\Info\\AppInfoContributor',
@@ -102,6 +144,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
     ],
     6 => [
         'class' => 'Firefly\\Actuator\\Info\\BuildInfoContributor',
@@ -117,6 +162,9 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
     ],
     7 => [
         'class' => 'Firefly\\Actuator\\Info\\InfoEndpoint',
@@ -132,8 +180,28 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Actuator\\Info\\InfoContributorRegistry',
+        ],
     ],
     8 => [
+        'class' => 'Firefly\\Actuator\\Info\\RuntimeInfoContributor',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Info\\InfoContributor',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    9 => [
         'class' => 'Firefly\\Actuator\\Introspection\\BeansEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -147,8 +215,29 @@ return [
         'beans' => [
         ],
         'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Actuator\\Introspection\\BeansCatalog',
+        ],
     ],
-    9 => [
+    10 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\CachesEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Contracts\\Config\\Repository',
+        ],
+    ],
+    11 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ConditionsEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -162,8 +251,29 @@ return [
         'beans' => [
         ],
         'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Context\\Condition\\ConditionEvaluationReport',
+        ],
     ],
-    10 => [
+    12 => [
+        'class' => 'Firefly\\Actuator\\Introspection\\ConfigPropsEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Contracts\\Container\\Container',
+        ],
+    ],
+    13 => [
         'class' => 'Firefly\\Actuator\\Introspection\\EnvEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -177,8 +287,11 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Contracts\\Config\\Repository',
+        ],
     ],
-    11 => [
+    14 => [
         'class' => 'Firefly\\Actuator\\Introspection\\LoggersEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -192,8 +305,12 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Log\\LogManager',
+            1 => 'Illuminate\\Contracts\\Config\\Repository',
+        ],
     ],
-    12 => [
+    15 => [
         'class' => 'Firefly\\Actuator\\Introspection\\MappingsEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -207,8 +324,11 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Web\\Route\\RouteManifest',
+        ],
     ],
-    13 => [
+    16 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -222,5 +342,8 @@ return [
         'beans' => [
         ],
         'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Scheduling\\Schedule\\ScheduledManifest',
+        ],
     ],
 ];

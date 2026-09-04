@@ -7,6 +7,7 @@ namespace Firefly\Actuator;
 use Firefly\Actuator\Boot\ActuatorRouteRegistrar;
 use Firefly\Actuator\Boot\HealthContributorRegistrar;
 use Firefly\Actuator\Boot\InfoContributorRegistrar;
+use Firefly\Actuator\Command\ManagementServeCommand;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Actuator\Health\StatusAggregator;
@@ -33,6 +34,12 @@ use Firefly\Context\Boot\FireflyServiceProvider;
  * a bare-skeleton boot. Keeping a second bound()-guarded default here would be redundant dead weight, not a safety
  * net: ContainerRegistrar::register() always calls Container::singleton() unconditionally for a surviving #[Bean],
  * which unconditionally rebinds (and clears any cached instance for) whatever this provider bound earlier anyway.
+ * ManagementServerSettings and ManagementPortGuard are owned by that same #[Configuration], for the same reason.
+ *
+ * firefly:management:serve is registered from boot(), not passes(): an Artisan command has no place in the boot
+ * pipeline, and commands() is a no-op outside a console process anyway. This is the OpenApiWiringProvider idiom,
+ * applied locally so firefly/actuator needs no dependency on firefly/cli — which is require-dev in a real
+ * application, i.e. absent from exactly the production image where a management port is worth configuring.
  */
 final class ActuatorWiringProvider extends FireflyServiceProvider
 {
@@ -63,5 +70,12 @@ final class ActuatorWiringProvider extends FireflyServiceProvider
     public function passes(): array
     {
         return [new HealthContributorRegistrar, new InfoContributorRegistrar, new ActuatorRouteRegistrar];
+    }
+
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([ManagementServeCommand::class]);
+        }
     }
 }

@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+/**
+ * The {{ class }} query — an immutable read-model request that never mutates state, dispatched with
+ * Firefly\Cqrs\Query\QueryBus::ask(). Add constructor-promoted readonly properties for the criteria its
+ * handler needs; the bus imposes no base class or marker.
+ */
+final readonly class {{ class }}
+{
+}

@@ -123,8 +123,7 @@ edge): the bridge listens for `DomainEvent`s on the in-process `Context` dispatc
 |---|---|---|
 | `firefly.cqrs.default_destination` | `cqrs.events` | Fallback integration-event destination. |
 | `firefly.cqrs.event_failure_strategy` | `log` | `log` (swallow) or `raise` (re-throw) on a post-commit publish failure. |
-| `firefly.cqrs.query.cache_ttl` | _(unset)_ | Reserved for the real query cache (firefly/cache). |
-| `firefly.cqrs.enabled` | `true` | Reserved — the auto-configuration is always-on in v1. |
+| `firefly.cqrs.query.cache_ttl` | _(unset)_ | Default TTL in seconds passed to `QueryCache::put()` for a `Cacheable` query result. **Unset means "no TTL"**, not zero — so leave the key out unless you want one. The shipped `QueryCache` is `NoOpQueryCache`; a real store arrives with `firefly/cache`. |
 
 ## Laravel comparison
 
@@ -140,8 +139,8 @@ edge): the bridge listens for `DomainEvent`s on the in-process `Context` dispatc
 Read-model / projection scaffolding (→ `firefly/eventsourcing`), real authorization (→ M11), real query
 cache (→ firefly/cache), CQRS metrics + health (→ M12), attribute-driven command validation, the fluent
 builder / distributed-tracing ergonomics, and exactly-once outbox durability (→ SP-4) are deferred and
-documented honestly. As with `#[Transactional]`/`#[EventListener]`, **app-level `HandlerManifest` compilation
-via `firefly:cache` lands in M15** — until then an application (or its test suite) supplies its compiled
-manifest inline (run `HandlerScanner::scan()` + bind the resulting `HandlerManifest`) rather than through an
-automated cache-warm command; a handler absent from the bound manifest simply never registers. Under
-Octane, `CorrelationContext` is per-request state and the `HandlerRegistry` is rebuilt per worker boot.
+documented honestly. The `HandlerManifest` needs no hand-wiring: like every other
+compiled manifest it resolves to the `firefly:cache` artifact if present, otherwise an in-process scan of
+`firefly.scan.paths`, otherwise empty — so an uncached app registers the same handlers a cached one does. A
+handler outside `firefly.scan.paths` still never registers. Under Octane, `CorrelationContext` is
+per-request state and the `HandlerRegistry` is rebuilt per worker boot.

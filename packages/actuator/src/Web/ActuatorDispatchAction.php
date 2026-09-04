@@ -8,6 +8,7 @@ use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\EndpointRequest;
 use Firefly\Actuator\Endpoint\EndpointResponse;
 use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Config\Config;
 use Firefly\Kernel\Error\ErrorCategory;
 use Firefly\Kernel\Error\ErrorSeverity;
@@ -30,11 +31,16 @@ final class ActuatorDispatchAction
         private readonly ExposureModel $exposure,
         private readonly Config $config,
         private readonly ProblemDetailsRenderer $problems,
+        private readonly ManagementPortGuard $guard,
     ) {}
 
     public function __invoke(Request $request, string $path): Response
     {
         try {
+            if (! $this->guard->permits($request)) {
+                return $this->problems->render($this->notFound(), $request);
+            }
+
             $segments = array_values(array_filter(explode('/', $path), static fn (string $s): bool => $s !== ''));
             $id = $segments[0] ?? '';
             $subPath = array_slice($segments, 1);
@@ -67,9 +73,15 @@ final class ActuatorDispatchAction
 
     private function toResponse(EndpointResponse $response): Response
     {
-        $body = is_string($response->body)
-            ? $response->body
-            : (string) json_encode($response->body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $body = match (true) {
+            is_string($response->body) => $response->body,
+            // An endpoint body is a JSON OBJECT by contract, but PHP encodes the empty array as `[]`. So
+            // /actuator/info with no InfoContributor answered `[]` — an array where every client, and every
+            // other response from the same endpoint, expects an object. A typed client deserialising into a
+            // map breaks on it. Spring returns `{}`.
+            $response->body === [] => '{}',
+            default => (string) json_encode($response->body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+        };
 
         return new Response($body, $response->status, ['Content-Type' => $response->contentType]);
     }

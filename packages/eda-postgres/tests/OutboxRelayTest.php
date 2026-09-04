@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\Outbox\OutboxRelay;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
@@ -16,7 +17,7 @@ uses(FireflyDatabaseTestCase::class);
 beforeEach(fn () => Schema::create(OutboxSchema::TABLE, fn (Blueprint $t) => OutboxSchema::blueprint($t)));
 
 it('claims PENDING rows, publishes them, and marks them PUBLISHED', function () {
-    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 1]);
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 1]);
     $spy = new SpyDownstreamPublisher;
 
     $count = (new OutboxRelay(DB::connection(), $spy))->relayBatch();
@@ -27,7 +28,7 @@ it('claims PENDING rows, publishes them, and marks them PUBLISHED', function () 
 });
 
 it('is idempotent — a PUBLISHED row is never re-published', function () {
-    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 1]);
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 1]);
     $spy = new SpyDownstreamPublisher;
     $relay = new OutboxRelay(DB::connection(), $spy);
 
@@ -38,7 +39,7 @@ it('is idempotent — a PUBLISHED row is never re-published', function () {
 });
 
 it('increments attempts and marks FAILED past maxAttempts', function () {
-    (new PostgresEventPublisher(DB::connection()))->publish('users', 'user.created', ['id' => 1]);
+    (new PostgresEventPublisher(DB::connection(), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 1]);
     $spy = new SpyDownstreamPublisher;
     $spy->fail = true;
     $relay = new OutboxRelay(DB::connection(), $spy, batchSize: 50, maxAttempts: 2);
@@ -55,6 +56,6 @@ it('increments attempts and marks FAILED past maxAttempts', function () {
 });
 
 it('REFUSES a PostgresEventPublisher downstream (B1 — no relay self-reference / re-insert loop)', function () {
-    expect(fn () => new OutboxRelay(DB::connection(), new PostgresEventPublisher(DB::connection())))
+    expect(fn () => new OutboxRelay(DB::connection(), new PostgresEventPublisher(DB::connection(), new SubscriberRegistry)))
         ->toThrow(LogicException::class, 'PostgresEventPublisher');
 });

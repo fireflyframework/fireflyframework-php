@@ -1,0 +1,43 @@
+{
+    "name": "firefly/admin",
+    "description": "LaraFly admin: a self-contained, server-rendered dashboard over the actuator — the Spring Boot Admin analog. Health, beans, conditional auto-configuration back-off, mappings, environment, metrics, loggers with live level editing, and scheduled tasks, rendered from the endpoints already registered in-process. No npm build, no CDN, no network at request time.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+    ],
+    "keywords": ["firefly", "laravel", "admin", "actuator", "dashboard"],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/admin"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/data": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Admin\\AdminServiceProvider"
+            ]
+        },
+        "branch-alias": { "dev-main": "26.x-dev" }
+    },
+    "autoload": { "psr-4": { "Firefly\\Admin\\": "src/" } },
+    "autoload-dev": { "psr-4": { "Firefly\\Admin\\Tests\\": "tests/" } },
+    "minimum-stability": "stable",
+    "config": { "sort-packages": true }
+}

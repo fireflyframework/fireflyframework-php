@@ -2,6 +2,340 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.09.1] - 2026-09-03
+
+A correctness release that also grew two surfaces. Several headline features were found not to work at all
+outside the compiled boot, and two of the failures were **fail-open** in the security sense — the application
+kept serving, unguarded, with nothing logged; every fix below was reproduced by a failing test first. Alongside
+them, LaraFly gained the two things a framework this shape is expected to have and did not: a browser dashboard
+over the actuator (`firefly/admin`) and an OpenAPI 3.1 document generated from the manifests it already holds
+(`firefly/openapi`). Both now ship with the `firefly/firefly` metapackage — they were outside it, which meant
+a `composer create-project firefly/skeleton` resolved 260 packages and neither of them was among them — and
+neither needs npm or a CDN.
+
+### BREAKING
+
+- **`packages/container` — two non-`#[Primary]` `#[Bean]` methods returning the same type now THROW at
+  registration.** They previously booted, and one of the two beans silently did not exist: a bean name was
+  only ever recorded as `alias($returns, $name)`, and an alias is a pointer to a key rather than a binding of
+  its own, so both names pointed at the single type key, that key held whichever factory registered last, and
+  `getByName('memoryCache')` and `getByName('redisCache')` handed back the identical object. `#[Primary]` could
+  not break the tie because `BeanDescriptor::$primary` was read nowhere in the bean path. **Migration:** give
+  each competing `#[Bean]` method a distinct name and mark exactly one `#[Primary]` — the type key then
+  aliases the primary and every candidate stays individually resolvable. Rejected at registration (where the
+  stack trace still points at the manifest): competing beans that are anonymous, that share a name, that are
+  named after the contested type itself, or that declare more than one `#[Primary]`. A contested type with no
+  `#[Primary]` stays *bound* — to a guard that throws naming every candidate — so `#[ConditionalOnMissingBean]`
+  still sees that a bean of that type exists. See [Dependency Injection](docs/modules/dependency-injection.md).
+
+### Added
+- **`firefly/openapi` — an OpenAPI 3.1 document that cannot drift from the server.** Generated from the
+  artifacts the framework already holds in memory: `RouteManifest` for paths, verbs, declared statuses, route
+  names and the per-parameter binding plan; `ConstraintManifest` for request-body schemas and their `required`
+  lists; `firefly/kernel`'s `ErrorResponse` for the RFC 9457 problem component. There is no annotation dialect
+  and no second description of the API, so there is nothing to keep in sync. `#[NotBlank]`, `#[Size]`,
+  `#[Min]`/`#[Max]`, `#[Email]`, `#[Pattern]`, `#[Percentage]`, `#[Money]` and the rest become JSON Schema
+  keywords; anything JSON Schema cannot state (`after:now`, a Luhn checksum, a PCRE flag ECMA-262 has no syntax
+  for) is recorded under the `x-firefly-constraints` specification extension rather than dropped silently.
+  Nested `#[Valid]` DTOs get their own component, so a self-referential DTO terminates as a `$ref` cycle. Paths,
+  verbs and components are sorted, so a regenerated document diffs cleanly and stays worth committing.
+  `php artisan firefly:openapi` writes it to `--output=` (with a summary line) or **raw** to stdout via
+  Symfony's `OUTPUT_RAW`, so `firefly:openapi | <client-generator>` gets exactly the document's bytes. Three
+  routes — spec, console, console assets — are mounted natively from a `BootPass` at configurable paths, which
+  an attribute route could not be, and which also keeps the package from documenting itself. See
+  [OpenAPI](docs/modules/openapi.md).
+- **`firefly.openapi.viewer.style` — `swagger` (default) | `builtin` | `cdn`.** The default console is the
+  **official Swagger UI, served from the application's own origin** out of the `swagger-api/swagger-ui` composer
+  package (a hard dependency, so the files are already on disk): byte-for-byte the distribution Swagger
+  publishes — full feature set, deep linking, try-it-out, OAuth2 — with **no CDN request and no npm step**, so
+  it still renders in the air-gapped and strict-CSP deployments where an internal API console is most wanted.
+  Asset serving is a whitelist of seven basenames, each `realpath()`-checked inside the dist directory, behind a
+  route whose `{file}` segment cannot express a traversal; the files are immutable for a pinned version and are
+  sent with a one-year `immutable` cache header and an auto ETag. `builtin` is the hand-written, dependency-free
+  reference (no third-party JavaScript at all) and is also the automatic fallback when the dist is absent, so a
+  missing package never renders a console whose assets 404. `cdn` fetches Swagger UI from `cdn.jsdelivr.net` and
+  is the only style that makes a third-party request at page view. The older boolean `firefly.openapi.viewer.cdn`
+  (default `false`) still forces the CDN page and wins over `style`, so an application that set it keeps the
+  behaviour it configured.
+- **`firefly/admin` — a browser dashboard over the actuator**, the Spring Boot Admin analogue, mounted at
+  `firefly.admin.base-path` (default `/firefly`). Thirteen pages in three operator-shaped groups: overview,
+  health, metrics and HTTP traffic; beans, **bean graph**, conditions, routes and scheduled tasks; environment,
+  config properties, caches and loggers. It reads each `ActuatorEndpoint` **in-process** from `ActuatorRegistry`,
+  deliberately bypassing `ExposureModel` — so it renders pages the JSON surface keeps unexposed while that
+  surface stays secure-by-default — and honours the per-endpoint kill switch
+  (`firefly.management.endpoint.{id}.enabled`), because that key means "off", not "unpublished". A page whose
+  endpoint is unregistered or switched off is hidden from the menu rather than linked; a throwing endpoint
+  degrades its own panel; health details are read from `HealthContributorRegistry` directly rather than through
+  the endpoint's `show-details` disclosure policy. Plain Blade with inline CSS — no npm step, no CDN — and it
+  mounts nothing at all when no view factory is bound. See [Admin Dashboard](docs/modules/admin.md).
+  - **SECURITY — `firefly.admin.enabled` defaults to the value of `app.debug`.** Because the dashboard bypasses
+    exposure, its own URL is the entire boundary in front of `beans`, `env` and `conditions`. An app already
+    serving stack traces is a development environment by definition; an app with debug off must opt in
+    explicitly, and an explicit value wins in both directions. The dashboard ships **no authentication of its
+    own** and has no code edge to `firefly/security`: an application that enables it outside debug **must put
+    the route behind its own auth middleware** (`firefly.security.http.rules` covers `firefly` and `firefly/*`
+    with no code change).
+- **The bean graph (`/firefly/graph`)** — a drawn, layered dependency diagram, not another table.
+  `ComponentScanner` now records each component's constructor class/interface types at **scan** time
+  (`ComponentDescriptor::$dependencies`, declared last with a default so an older compiled manifest still
+  rehydrates), and `BeansCatalog` publishes them, so answering "what depends on what" costs no request-time
+  reflection. `BeanGraph` resolves every dependency through an interface index first — a constructor asks for
+  `EventPublisher`, the bean that satisfies it is `PostgresEventPublisher` — and marks the edge `via` so the
+  indirection is visible rather than silently substituted; layering is a longest-path assignment so arrows read
+  downward; a cycle terminates the walk and is **reported** rather than hanging the page, which turns "the app
+  died at boot with no message" into a named pair of classes. Past 220 nodes the diagram is suppressed in favour
+  of the filterable relations table, and constructor types satisfied by a Laravel binding rather than a bean are
+  listed as "provided outside the container" rather than dropped. See [Bean Graph](docs/modules/bean-graph.md).
+- **`Firefly\Context\Scan\AppScan`** — the seam every capability package uses to resolve its own manifest:
+  compiled artifact, else an in-process scan of `firefly.scan.paths`, else empty. Routes, `#[ControllerAdvice]`
+  handlers, CQRS handlers, event/message listeners, scheduled tasks, validation constraints, method-security
+  rules, `#[ConfigProperties]` DTOs and the `#[Transactional]` manifest all resolve through it, so an uncached
+  application behaves exactly like a cached one. `firefly/cli` joins the `firefly/firefly` metapackage.
+- **`firefly.security.method.strict`** (default `false`) — refuses to boot when no compiled method-security
+  manifest exists, instead of falling back to the scan. The only defence against a build that ships without
+  the compile step.
+- **`firefly.observability.metrics.store` / `.ttl`** — names a cache store, swapping `SimpleMeterRegistry` for
+  the new `CacheMeterRegistry` so counters and timers survive the request that recorded them. `increment()`
+  and `record()` use the store's atomic increment (durations accumulate as integer microseconds, because
+  `increment()` is integer-only and a float read-modify-write drops samples); `setGauge()` is last-writer-wins;
+  `meters()` rehydrates from one index rather than a key scan. Opt-in: on the `array` driver it would be no
+  better than memory.
+- **`#[Controller]`** — the HTML stereotype (Spring's `@Controller` to `#[RestController]`'s
+  `@RestController`), extending `#[RestController]` so `RouteScanner`'s `IS_INSTANCEOF` filter finds it
+  unchanged. `ResponseFactory` now renders `View`/`Renderable`/`Htmlable` and the new `ModelAndView` as
+  `text/html`; arrays and scalars still negotiate to JSON. A bare `string` is deliberately **not** a view name.
+- **`#[ControllerAdvice]`/`#[ExceptionHandler]` are wired for the first time** — `RouteScanner`'s
+  `scanExceptionHandlers()` always existed, but nothing compiled the result, so `ExceptionHandlerRegistry` was
+  empty in every real boot while the docs taught it as working. `firefly:cache` now emits
+  `exception-handlers.php`, and compiles 13 manifests in total.
+- **`packages/config`** — relaxed binding (exact → `snake_case` → `kebab-case` → `SCREAMING_SNAKE_CASE`,
+  acronym-aware) and `#[Profile]` gating for `#[ConfigProperties]` DTOs.
+- **`packages/resilience`** — `circuit-breaker.minimum-number-of-calls` and `.half-open-probe-timeout`,
+  `bulkhead.permit-ttl`, and `firefly.resilience.store.lock-block-timeout` (default `0.5`s) for the mutex wait
+  budget.
+- **`skeleton/config/firefly.php` is now a full configuration reference** — every `firefly.*` key the framework
+  reads, grouped by capability, with its real default and what it does; advanced keys stay commented out at
+  their defaults. This release adds the `firefly.openapi.*` block (including `viewer.style` and the legacy
+  `viewer.cdn`), the `firefly.observability.httpexchanges.*` block (`enabled`, `capacity`, `store`, `ttl`,
+  `include-headers`, `exclude`) and `firefly.management.info.runtime.enabled`, and the file was re-derived
+  mechanically against the keys the source actually reads, in both directions. `skeleton/.env.example` carries the ones that usually vary per environment. The skeleton
+  also gains a `#[Controller]` welcome page (nothing on it hard-coded — real bean/condition counts, the real
+  route table, the real actuator registry) and its first test suite.
+
+- **The OpenAPI document now says what an endpoint RETURNS.** Every success response was `{"type": "object"}`
+  — an object with no members, which a viewer renders as a blank panel and `openapi-generator` turns into
+  `any`. The shape was never unavailable: it is written in the `@return` one line above the method, where
+  PHPStan at level max already checks it against the code on every build, which is what makes reading it safe.
+  `DocType` compiles a PHPDoc type expression into a JSON Schema fragment — array shapes with optional keys,
+  `list<T>`, `array<K, V>` told apart as array-vs-object, tuples, literal unions, nullable references and the
+  PHPStan pseudo-types (`non-empty-string` → `minLength`, `positive-int` → `minimum`) — and returns *nothing*
+  rather than guessing when it cannot read one. `ResponseSchemaFactory` builds a returned class from its WIRE
+  shape: `jsonSerialize()`'s declared `@return` when there is one, public properties otherwise, because those
+  differ — the skeleton's `Order` publishes a derived `total` that is a method, so reflection alone documented
+  five of the six members the API sends. `#[ApiResponse(type:)]` takes a full expression (`'list<Shipment>'`),
+  resolved through the controller's own imports. Verified by validating live responses member-by-member
+  against the schema the generator wrote for them. See [OpenAPI](docs/modules/openapi.md).
+- **An HTML error page, in the framework's own design.** Any `FireflyException` rendered as `problem+json`
+  regardless of who asked, so a person clicking a stale link in a browser was shown a raw JSON blob; a URL
+  matching no route missed that branch entirely and fell through to Laravel's stock page, so one application
+  produced two unrelated-looking 404s. The page shows the status, the reason, the stable `code` the problem
+  document carries, and — when permitted — the exception, its `previous` chain, the source around the throwing
+  line and a stack trace with *your* frames separated from your dependencies'. `firefly.web.error-page.trace`
+  follows `app.debug` and is enforced where the data is GATHERED: with it off nothing walks the stack, opens a
+  source file or copies the message, so a template mistake cannot leak what was never collected.
+  `firefly.web.error-page.views` hands a status to your own Blade view, bound by the same gate, falling back to
+  the built-in page if it throws. `json-paths` (default `api/*`) forces `problem+json` on your API space
+  whatever the caller's Accept header says. The page itself is built as a string with no container lookups and
+  no view factory, because the failure being explained may *be* the view layer. See
+  [Error Handling](docs/modules/error-handling.md).
+- **The dashboard gained a datasource page, an entity map, and a feature-switch console.** `/firefly/datasource`
+  answers what a config dump cannot: which database (secrets masked), whether it is *up* (one connection probed
+  per load, because a page that opened every configured connection would take the slowest one's timeout to
+  render), what connection reuse actually means in PHP (`ATTR_PERSISTENT`, reported for what it is rather than
+  dressed up as a pool gauge), and what `#[Transactional]` compiled to. `/firefly/data-map` draws the entities
+  and the foreign keys between them. `/firefly/settings` is the only page that CHANGES the application, and has
+  three gates — off by default, writable by a second key, and refused outright in production by a check that is
+  deliberately **not** a configuration key. An optional connection wizard tests an unconfigured connection and
+  hands back a config block; it writes nothing, never inlines a password, is POST-only, and is unavailable in
+  production for the same reason. See [Admin Dashboard](docs/modules/admin.md).
+- **The data browser gained filtering, real pagination, create, and relations you can walk.** Eight
+  comparisons over the columns a resource publishes, always bound — including the `LIKE` ones, where the
+  wildcards go around an escaped value — with an unknown column or operator DROPPED before reaching the driver,
+  so a hand-edited URL cannot probe for column names. Conditions AND with each other and with the search box.
+  Relations are discovered by calling only the methods whose *declared return type* is an Eloquent `Relation`,
+  so a record links to what it references in both directions. `create()` is now offered for an Eloquent-backed
+  resource under the same two switches — the constructor-invariants argument that kept it out was right for a
+  hand-written aggregate and was never true for a model Eloquent builds empty and fills by attribute, which is
+  exactly what `update()` had always done. A `float` column type joins the vocabulary: every non-integer number
+  used to be typed `string`, so a money column read as a string, was offered to a `LIKE` search, and let the
+  editor save `"abc"` into it. See [Data Browser](docs/modules/data-browser.md).
+
+### Changed
+- **`#[Qualifier]` on a parameter is honoured.** It declared `TARGET_PARAMETER` from day one and nothing read
+  it, so `#[Qualifier('redisCache')] Cache $cache` silently received whatever `Cache::class` resolved to. It
+  now rides `ContextualAttribute` — the seam `#[Value]` already used — adding no reflection that was not
+  already happening and leaving the compiled manifest shape untouched.
+- **`#[Bean]` discovery no longer compares stereotype short names.** The gate was `$shortAttr ===
+  'configuration'`, the one place in the scanner that abandoned `IS_INSTANCEOF`, so `#[Bean]` methods on a
+  user-defined stereotype extending `#[Configuration]` — or on a plain `#[Component]`, Spring's "lite mode" —
+  vanished from the manifest while the class itself was still bound.
+- **`make:firefly-*` output.** `-handler` writes two files (the handler *and* the concrete command/query class
+  its `handle()` takes); `-listener` puts `#[Component]` on the generated class; `-repository` generates a
+  concrete `#[Repository]` extending `EloquentRepository` instead of an unresolvable interface.
+- **`firefly.management.endpoints.web.exposure.exclude` honours `*`**, matching `include` and Spring — the
+  documented kill switch used to expose everything `include` named. An endpoint body renders as `{}` rather
+  than `[]` when empty.
+- The skeleton drops `app/Support/CachedTransactionalConfiguration.php`, the hand-written workaround every
+  application needed while `DataAutoConfiguration` bound an empty `TransactionalManifest`.
+- **Docs, book and README cover the two new packages.** New module guides
+  [OpenAPI](docs/modules/openapi.md), [Admin Dashboard](docs/modules/admin.md) and
+  [Bean Graph](docs/modules/bean-graph.md), wired into `docs/README.md` and `docs/index.md`; the actuator guide
+  gains `/actuator/httpexchanges` + `/actuator/process` and a pointer to the dashboard's access model; the CLI
+  reference gains a table of commands contributed by other packages (`firefly:openapi`, `firefly:eda:consume`,
+  `firefly:outbox:relay`). *LaraFly by Example* is updated in **both** languages: Chapter 11 gains the
+  thirteen-page dashboard table and a full bean-graph section (interface resolution, longest-path layering,
+  cycle reporting, the 220-node ceiling), and Chapter 4A's "CDN flag" section is replaced by the three viewer
+  styles, the whitelisted asset route and the honest cost of `cdn`. Every fenced PHP listing still passes
+  `php -l` (219 per language). Package counts corrected from 25/26 to **27 packages / 28 shippable units** in
+  the README and the publishing runbook.
+- Docs corrected against source throughout: the CLI's cached-vs-uncached boot, the resilience circuit-breaker
+  and bulkhead tables and their state prose, configuration's relaxed binding and profile gating, the web
+  layer's HTML rendering, security's fail-open note and full config table, observability's cross-process
+  registry, and the "compilation lands in M15 — until then bind the manifest yourself" caveat that five module
+  guides still carried.
+- **Documentation for the rebuilt bean graph, the data browser and the OpenAPI schema pipeline.** A new
+  [Data Browser](docs/modules/data-browser.md) guide covers `firefly/admin`'s Django-admin-style view over the
+  data layer: what it discovers (every bean whose scan-time interface list contains `CrudRepository`, read from
+  the compiled `BeansCatalog` rather than a fresh scan, so it can never offer a resource the container never
+  registered), why `firefly.admin.data.enabled` defaults to **`false`** and deliberately does *not* follow
+  `app.debug` or `firefly.admin.enabled` (beans and config are facts about the application; these are facts
+  about its **users**), why writes need `firefly.admin.data.writable` **on top of that** (visibility and custody
+  are different decisions), and why **there is no `create()`** and never will be — an aggregate's invariants live
+  in its constructor, and a form built from a column list can only satisfy them by writing columns the domain
+  model considers impossible. Also documented: the four listing paths and the honest cost of the unpaged one,
+  search bound-never-interpolated, columns derived from the resource rather than from a row, the closed
+  five-value display-type vocabulary and why `decimal` maps to `string`, the identifier/secret write refusals
+  enforced twice, and why no rendered error text is ever an exception message.
+  [Bean Graph](docs/modules/bean-graph.md) is rewritten for the three node kinds — components, `#[Bean]`
+  **products** and `#[ConfigProperties]` DTOs — plus the `injects`/`produces` edge distinction, the identity
+  rule for a contested `#[Bean]` type, and why cycles are reported rather than fatal; the stale "`#[Bean]`
+  factory-method parameters are not drawn" limitation is gone, because they are.
+  [OpenAPI](docs/modules/openapi.md) gains a full "How a request DTO becomes a schema" section: the three
+  sources and why the compiled manifest beats the `#[Constraint]` attributes, why no `additionalProperties:
+  false` is emitted, the complete **attribute → compiled rule → JSON Schema keyword** table mapped from
+  `ConstraintSchemaMapper` (correcting `#[Negative]`, which produces `exclusiveMaximum`, not
+  `exclusiveMinimum`), first-writer-wins, the 3.1 nullable spelling, the one-`pattern`-slot `allOf` fallback,
+  `list<X>` element types read from the constructor docblock via the same `dtos` table `ArgumentResolver`
+  hydrates from, and the narrowed `{}`-vs-`[]` rewrite now that a constructor default genuinely does emit an
+  empty list. The `firefly.openapi.*` config table also gains the five optional Info Object keys that were
+  shipping undocumented — `summary`, `terms-of-service`, `contact.*` and `license.*`, with the rule that
+  `license.name` gates the whole object and `license.identifier` wins over `license.url`, since 3.1 makes the
+  two mutually exclusive. *LaraFly by Example* is extended in **both** languages: Chapter 11 gains a "three
+  kinds of node" section for the graph and a data-browser section placed deliberately beside the access-model
+  argument it contradicts. Every fenced PHP listing still passes `php -l` (220 per language).
+
+### Fixed
+- **`packages/security` — method security failed OPEN.** Both enforcement sites treat "no rule for this
+  method" as ALLOW, so the unconditional empty `SecurityMethodManifest` silently disabled every
+  `#[PreAuthorize]`, `#[Secured]` and `#[RolesAllowed]` in the application. Only `firefly/cli` — then a
+  `require-dev` package absent from the metapackage — ever bound the compiled rules.
+- **`packages/security` — the expression evaluator failed OPEN.** `SecurityExpressionEvaluator` is a singleton
+  whose parse state lives on the instance, and `hasPermission()` calls application code (a user-supplied
+  `PermissionEvaluator`) that may evaluate an expression of its own on that same singleton. The inner call
+  overwrote the outer parse state, so `hasPermission(#id, 'read') and hasRole('ADMIN')` returned **true** for a
+  principal holding no authorities at all. State is now saved and restored in a `finally`.
+- **Boot — the framework only worked in its compiled state.** `firefly:clear` on a freshly created skeleton
+  made the app 404 every route it owned, and no quality gate could see it. Fixed by `AppScan` above.
+- **`packages/data` — `#[Transactional]` was a silent no-op.** Nothing ever loaded the compiled
+  `transactional.php`, so `hasProxyFor()` was always false. `ProxyMaterializer` now makes proxies loadable on
+  both paths (classmap when compiled, generated per-process when not) *before* the manifest is handed out.
+- **`packages/eda-postgres` — with `provider=postgres` no `#[EventListener]` was ever subscribed and outbox
+  rows were ACKed without being delivered**: silent data loss in the headline feature. `firefly:outbox:relay`
+  could not work either, because `downstream_provider` selected no publisher; it now resolves a shipped alias,
+  an `EventPublisher` class-string or a bound container id, validates at command time (not boot), refuses a
+  `PostgresEventPublisher` downstream, and fails loudly instead of exiting successfully when unconfigured.
+- **`packages/eda` — `#[EventListener(order:)]` was discarded at dispatch.** It round-tripped through the
+  manifest and the wiring pass then iterated `all()`; it now iterates `ordered()`.
+- **`packages/resilience` — the CircuitBreaker wedged permanently in HALF_OPEN** when a probe threw a
+  non-recorded exception or its worker died, rejecting 100% of traffic to a healthy dependency until an
+  operator flushed the cache. Probe permits are now expiring leases, an ignored exception explicitly returns
+  its permit, and bulkhead permits (which leaked the same way, and could be driven negative by an unmatched
+  `release()`) are leases too. `state()` reported a stale `open` for a breaker whose wait window had elapsed,
+  so the actuator gauge called a recovering breaker hard-down; it now reports the state `admit()` would decide.
+  The store's mutex WAIT budget is separated from its HOLD TTL, so a `timeout: 0` rate limiter no longer blocks
+  five seconds and then surfaces an unmapped `LockTimeoutException` as a bare HTTP 500 — it raises a 503
+  `RESILIENCE_STORE_LOCK_TIMEOUT`.
+- **`packages/validation`** — `#[Size]` silently flipped from length to numeric semantics beside any constraint
+  emitting `numeric`; a present-but-null value failed every constraint instead of only `@NotNull` (Jakarta
+  semantics); `#[Rules]` lost a custom `ValidationRule`'s constructor arguments on the compiled path, booting
+  `new StartsWith()` where the developer wrote `new StartsWith('ACME')`. Rules now declare their arguments via
+  `Compilable`, or have them recovered from promoted properties at COMPILE time, or are rejected then with an
+  actionable message — never silently stripped at runtime.
+- **`packages/config`** — `ProfileResolver` read raw `getenv()`, which returns `false` under both testbench and
+  `config:cache`, so profiles collapsed to `['default']` exactly where they mattered; `#[Profile]` was
+  declared, exported and documented with zero production readers.
+- **`packages/observability` — `/actuator/metrics` and `/actuator/prometheus` were effectively empty in
+  production.** Under PHP-FPM every request is a fresh process, so a scrape saw only what that scrape's own
+  request recorded — worse than empty, because it reads as data. See `CacheMeterRegistry` above.
+- **`packages/cli`** — `make:firefly-handler` generated code that made the next `firefly:cache` throw and abort
+  the whole compile; `make:firefly-repository` generated an interface nothing could resolve;
+  `make:firefly-listener` generated a class the scanner could not discover. Stub tests now generate from each
+  stub and assert the output is valid PHP *and* discoverable by the relevant scanner.
+
+- **SECURITY — every dashboard write was forgeable from another site.** The admin routes were mounted with no
+  middleware at all, which in Laravel means no session and no `ValidateCsrfToken`, so the `@csrf` field in
+  every dashboard form was decorative: a tokenless `curl -X POST` against `/firefly/loggers` was accepted and
+  changed the log level, and the same held for the data browser's edit and delete and the settings console.
+  A form that renders a CSRF field while the route ignores it is worse than one that renders none. Fixed by
+  attaching the middleware CLASSES rather than the `web` group name — naming the group and guarding on
+  `hasMiddlewareGroup('web')` attached nothing, because the registrar runs before the application defines
+  that group. `skeleton/.env.example` moves to `SESSION_DRIVER=file`: an array session is discarded at the end
+  of the request, so the token could never match and every POST would answer 419. Found by an adversarial
+  review of this branch; Laravel's CSRF middleware skips itself under tests, which is how it survived being
+  written, so the regression test asserts the middleware is attached and the behaviour was proven over real
+  HTTP.
+- **SECURITY — a filter on a masked column was an extraction oracle.** Filtering shipped over every column,
+  which quietly re-opened the channel masking exists to close: a masked column renders as `******`, but a
+  filter over it answers a yes/no question about the real value, and a yes/no question you can ask repeatedly
+  recovers it. Proven against the fixture — twenty-one filtered requests returned `correct horse battery` from
+  a column the listing showed only as asterisks, and `>`/`<` do it faster by binary search. Sensitive columns
+  are now excluded from filtering exactly as they already were from search, in the model and in the control.
+- **Escaping a `LIKE` without an `ESCAPE` clause silently matched nothing.** `contains`/`starts with`
+  backslash-escaped the user's `%` and `_` and then emitted a plain `LIKE ?`, which leaves the driver with no
+  escape character declared — so the backslash was matched literally and a search for `ada_love` returned zero
+  rows against a table holding `ada_lovelace@example.test`. Suppressing the wildcards worked; finding an
+  underscore stopped working, which is the worse half. The predicate now emits an explicit `ESCAPE`, and the
+  search box — which had no escaping at all, so a bare `%` matched every row — goes through the same helper.
+- **`composer create-project firefly/skeleton` shipped neither the dashboard nor the API documentation.**
+  `firefly/admin` and `firefly/openapi` were built, tested, documented and offered by `firefly new --with` while
+  *nothing* required them. The welcome page checks `class_exists()` before linking, so it did not render a
+  broken link — it silently rendered two cards fewer, which is the worse failure because nothing looked wrong.
+  Fixed in the BOM rather than the skeleton, because the asymmetry was the actual bug: for eleven of thirteen
+  capabilities `--with` promotes an already-installed package to an explicit dependency, and for these two it
+  decided whether the code existed at all. `tests/MetapackageCoverageTest.php` holds both ends.
+- **The skeleton's sample REST resource did not persist, and its docblock said it did.** `OrderRepository` kept
+  orders in an array on a singleton and claimed the state survived between requests. PHP shares nothing between
+  requests, so `POST /orders` returned 201 with an id and the very next `GET /orders` reported an empty store —
+  the first thing a new user does. The skeleton's own suite passed throughout, because Laravel reuses ONE
+  application across the requests of a single test. It is now an `EloquentRepository` over two tables — an
+  address is a value and stays an embedded json column, a line is an entity and gets a table, a foreign key and
+  a repository — which also earns the sample its first `#[Transactional]`, gives the data browser something to
+  browse, and gives the entity map an edge to draw. `migrate` joins `post-create-project-cmd`.
+- **`skeleton/config/firefly.php` had drifted from the code it documents.** Three keys the framework reads were
+  undocumented, including `firefly.management.server.address` — half of the management-port feature.
+  `tests/ConfigReferenceTest.php` now checks all 84 keys read through the Config port and fails the build when
+  one is added without a word written about it.
+- **`packages/admin` — the data grid's columns did not line up with their headers.** The listing table carried
+  `class="grid"`, colliding with the layout's own `.grid{display:grid}` utility, so the table became a grid
+  CONTAINER, `thead` and `tbody` computed to `display:block`, and the two row groups sized their columns
+  independently. Invisible in the markup and not findable by reading the CSS — it came out of asking the
+  browser what `display` the element had ended up with.
+- **Tertiary text across the dashboard and the welcome page was below WCAG AA.** `#8d95a1` is 2.8:1 on the
+  dashboard's own background, and it painted table cells, every panel's explanatory note, the uppercase stat
+  labels and the namespace half of every class name — content, not decoration. Now 4.95:1 and 4.76:1 in light,
+  5.6:1 and 5.3:1 in dark. The brand orange was 3.01:1 as a foreground and is no longer used as text: shapes
+  and text take different oranges.
+
 ## [26.07.18] - 2026-07-28
 
 ### Added

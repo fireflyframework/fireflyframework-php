@@ -27,6 +27,28 @@ return [
                     ],
                 ],
             ],
+            1 => [
+                'method' => 'managementServerSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'managementPortGuard',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Server\\ManagementPortGuard',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     1 => [
@@ -51,6 +73,27 @@ return [
         ],
     ],
     2 => [
+        'class' => 'Firefly\\Actuator\\Info\\RuntimeInfoContributor',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.management.info.runtime.enabled',
+                    1 => 'true',
+                    2 => true,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    3 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
         'postConstruct' => [
         ],

@@ -19,6 +19,7 @@
         "illuminate/config": "^13.0",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
+        "illuminate/support": "^13.0",
         "symfony/expression-language": "^7.4|^8.0"
     },
     "extra": {

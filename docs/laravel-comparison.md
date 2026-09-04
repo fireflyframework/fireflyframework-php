@@ -14,7 +14,7 @@ draws for Python, mapped onto Laravel instead.
 | Entry point | Service providers registered in `bootstrap/providers.php`, wired by hand | The same providers, plus auto-discovered `AutoConfiguration` classes assembled by a kernel-decided `BootPass` pipeline |
 | Dependency injection | `app()->bind()`/`app()->singleton()` in a provider's `register()` | `#[Component]`/`#[Service]`/`#[Repository]`/`#[Configuration]` stereotypes on the class itself; compiled component scan resolves constructor dependencies |
 | Configuration | `config('mail.host')` (array access, untyped) | `#[ConfigProperties]` DTOs bound from a config subtree — typed, fail-fast on a missing/mismatched key |
-| HTTP routing | `routes/web.php`/`routes/api.php` route files | `#[RestController]` + verb attributes (`#[GetMapping]`, …), compiled to a `RouteManifest`, still dispatched through native Laravel routes |
+| HTTP routing | `routes/web.php`/`routes/api.php` route files | `#[RestController]` (JSON) / `#[Controller]` (HTML) + verb attributes (`#[GetMapping]`, …), compiled to a `RouteManifest`, still dispatched through native Laravel routes |
 | Validation | `FormRequest::rules()` (array rules) | `#[Valid]` parameter interception over a Bean-Validation-style constraint model, still backed by Laravel's validator |
 | Transactions | `DB::transaction(fn () => …)` (closure-scoped) | `#[Transactional]` on a class/method — declarative propagation/isolation/rollback rules, manual `beginTransaction`/`commit`/`rollBack` under the hood |
 | Events | `Event::listen()` / `#[AsEventListener]`-style Laravel listeners, in-process only | Two distinct surfaces: the in-process bus (`#[AsEventListener]`) **and** a broker-backed EDA bus (`#[EventListener]`) — see below |
@@ -55,8 +55,10 @@ files remain the source of truth; LaraFly reads them, it doesn't replace them.
 
 Laravel routes live in `routes/*.php`, separate from the controller class. `firefly/web`'s
 `#[RestController]` + `#[GetMapping]`/`#[PostMapping]`/etc. attributes put the route on the controller
-method itself; a `RouteScanner` compiles them into a `RouteManifest` at cache time, and that manifest is what
-actually registers native Laravel routes at boot — there is no custom dispatch mechanism underneath. See
+method itself; a `RouteScanner` compiles them into a `RouteManifest` at cache time (or scans in-process when
+there is no cache), and that manifest is what actually registers native Laravel routes at boot — there is no
+custom dispatch mechanism underneath. `#[Controller]` is the HTML sibling: same routing, but a returned
+`View`/`ModelAndView`/`Htmlable` renders as `text/html` instead of negotiating to JSON. See
 [Web Layer](modules/web.md).
 
 ## Validation: `FormRequest` vs. `#[Valid]`

@@ -1,7 +1,7 @@
 # Publishing
 
-This page is the release/split runbook for the LaraFly monorepo: how the 25 packages under `packages/*`
-(including `firefly/installer`), plus `firefly/skeleton` at the top level — 26 shippable units in total — end
+This page is the release/split runbook for the LaraFly monorepo: how the 27 packages under `packages/*`
+(including `firefly/installer`), plus `firefly/skeleton` at the top level — 28 shippable units in total — end
 up as individually-installable Packagist packages, and the exact, gated sequence for the first manual publish.
 
 ## Model
@@ -13,14 +13,14 @@ once, at the same version, even for packages that had no code change that cycle.
 per-package versioning; see [Versioning](versioning.md) for why.
 
 The mirrors are read-only by design: nobody commits directly to `fireflyframework/firefly-kernel` — every
-change flows through the monorepo and gets split out mechanically. This keeps the 26 mirror repos from ever
+change flows through the monorepo and gets split out mechanically. This keeps the 28 mirror repos from ever
 drifting out of sync with each other or with the monorepo history.
 
 ## Automated split
 
 Once wired (tracked separately from this docs task), `.github/workflows/release.yml` fires on a pushed `v*`
 tag and runs [`symplify/monorepo-split-github-action`](https://github.com/symplify/monorepo-split-github-action)
-once per shippable unit (all 25 `packages/*` + `skeleton`), pushing each subtree to its own
+once per shippable unit (all 27 `packages/*` + `skeleton`), pushing each subtree to its own
 `fireflyframework/firefly-<pkg>` mirror repository at that tag. The workflow needs an `ACCESS_TOKEN` — an
 organization-level GitHub Personal Access Token with `repo` scope on every mirror — stored as a repository (or
 organization) secret, since the default `GITHUB_TOKEN` can't push to a *different* repository.
@@ -70,7 +70,7 @@ history, create public mirror repositories, and register public Packagist packag
 5. **`git remote add origin git@github.com:fireflyframework/fireflyframework-php.git` then
    `git push origin main --tags`** — **irreversible**: this publishes the monorepo's history and the release
    tag publicly for the first time.
-6. **Create the 26 mirror repositories under the `fireflyframework` org, then run the split at the tag** —
+6. **Create the 28 mirror repositories under the `fireflyframework` org, then run the split at the tag** —
    **irreversible**: each `fireflyframework/firefly-<pkg>` mirror now exists publicly, carrying `^26.07`
    sibling constraints.
 7. **Staged Packagist registration** — register only a first wave, then verify, before committing the rest:
@@ -84,7 +84,7 @@ history, create public mirror repositories, and register public Packagist packag
    **Confirm this resolves and installs cleanly** before doing anything else. Only if it succeeds, register
    every remaining package plus `firefly/firefly` (the runtime metapackage) and `firefly/installer`. If it
    fails, **stop** — the interdependency-constraint strategy needs fixing, and only four packages are affected
-   (versus discovering the same problem after all 26+ are already permanently registered on Packagist).
+   (versus discovering the same problem after all 28 are already permanently registered on Packagist).
 8. After publishing, restore the monorepo dev tree to `*@dev` — revert the `bump-interdependency` commit (or
    bump the constraints back by hand) — so local development on `main` continues exactly as before this
    runbook started.

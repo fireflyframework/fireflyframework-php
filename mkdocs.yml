@@ -40,6 +40,7 @@ nav:
       - Web & API:
           - Web Layer: modules/web.md
           - Web Filters: modules/web-filters.md
+          - OpenAPI: modules/openapi.md
       - Resilience & Scheduling:
           - Resilience: modules/resilience.md
           - Scheduling: modules/scheduling.md
@@ -59,6 +60,9 @@ nav:
       - Operations:
           - Actuator: modules/actuator.md
           - Observability: modules/observability.md
+          - Admin Dashboard: modules/admin.md
+          - Bean Graph: modules/bean-graph.md
+          - Data Browser: modules/data-browser.md
       - Testing:
           - Testing: modules/testing.md
           - Integration Testing: modules/integration-testing.md

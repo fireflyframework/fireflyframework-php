@@ -40,6 +40,9 @@ final class EagerLog
     }
 }
 
+/** A real declaring class for the #[Bean] factory entries below. */
+final class EagerBeanHolder {}
+
 final class EagerWidgetA
 {
     public function __construct(EagerLog $log)
@@ -174,9 +177,12 @@ it('resolves non-#[Lazy] #[Bean] factory methods eagerly, skipping ones marked #
         new BeanDescriptor('makeB', EagerWidgetB::class, null, Scope::Singleton, false, 0, lazy: true),
     ];
 
-    // Outer holder deliberately Scope::Transient so only the #[Bean] entries are under test here.
+    // Outer holder deliberately Scope::Transient so only the #[Bean] entries are under test here. It is a
+    // REAL class: EagerSingletonsPass skips a definition whose declaring class no longer exists, because a
+    // stale compiled manifest must not brick the application (see StaleManifestSurvivalTest), and a #[Bean]
+    // factory cannot run without the class that declares it either way.
     $context->definitions->add(new BeanDefinition(
-        eagerDescriptor('App\\BeanHolder', scope: Scope::Transient, beans: $beans)
+        eagerDescriptor(EagerBeanHolder::class, scope: Scope::Transient, beans: $beans)
     ));
 
     (new EagerSingletonsPass)->run($context);

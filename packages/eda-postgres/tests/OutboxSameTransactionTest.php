@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
 use Firefly\Testing\FireflyDatabaseTestCase;
@@ -16,7 +17,7 @@ beforeEach(function () {
 });
 
 it('writes the outbox row INSIDE the caller transaction (present after commit)', function () {
-    $publisher = new PostgresEventPublisher(DB::connection(), 'firefly_eda_events');
+    $publisher = new PostgresEventPublisher(DB::connection(), new SubscriberRegistry, 'firefly_eda_events');
 
     DB::transaction(function () use ($publisher): void {
         $publisher->publish('users', 'user.created', ['id' => 1], ['x-a' => 'b']);
@@ -35,7 +36,7 @@ it('writes the outbox row INSIDE the caller transaction (present after commit)',
 });
 
 it('rolls the outbox row back WITH the aggregate (absent after rollback)', function () {
-    $publisher = new PostgresEventPublisher(DB::connection(), 'firefly_eda_events');
+    $publisher = new PostgresEventPublisher(DB::connection(), new SubscriberRegistry, 'firefly_eda_events');
 
     try {
         DB::transaction(function () use ($publisher): void {
@@ -60,7 +61,7 @@ it('writes the outbox row on the aggregate OWN named connection (I1)', function 
     Schema::connection('audit')->create(OutboxSchema::TABLE, fn (Blueprint $t) => OutboxSchema::blueprint($t));
 
     DB::connection('audit')->transaction(function (): void {
-        (new PostgresEventPublisher(DB::connection('audit')))->publish('users', 'user.created', ['id' => 3]);
+        (new PostgresEventPublisher(DB::connection('audit'), new SubscriberRegistry))->publish('users', 'user.created', ['id' => 3]);
     });
 
     // The row lands on the aggregate's OWN connection ('audit')...

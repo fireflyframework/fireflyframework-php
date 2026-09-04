@@ -4,6 +4,12 @@ includes:
 
 parameters:
     level: max
+    # PARSE AT THE MINIMUM SUPPORTED VERSION, not at whatever the developer happens to run. Every package
+    # declares `php: ^8.3`, and PHP 8.4's `new Foo()->bar()` (no parentheses) is a PARSE ERROR on 8.3 — so a
+    # file using it is broken for the framework's own floor while analysing and testing perfectly on 8.5.
+    # That is exactly what happened: ten call sites across two test files shipped green locally and turned
+    # the 8.3 CI job red with "Parse error", which is the least actionable failure a contributor can get.
+    phpVersion: 80300
     universalObjectCratesClasses:
         - Pest\Mixins\Expectation
     paths:

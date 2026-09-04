@@ -24,6 +24,10 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
             ],
             1 => [
                 'method' => 'serializer',
@@ -33,6 +37,9 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
             ],
             2 => [
                 'method' => 'deadLetterStore',
@@ -42,8 +49,12 @@ return [
                 'primary' => false,
                 'order' => 0,
                 'lazy' => false,
+                'dependencies' => [
+                ],
             ],
         ],
         'lazy' => false,
+        'dependencies' => [
+        ],
     ],
 ];

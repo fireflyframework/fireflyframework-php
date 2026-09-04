@@ -14,7 +14,7 @@ final class ConfigPropertiesManifest
     public function __construct(public array $properties) {}
 
     /**
-     * @param  array<int, array{class: string, prefix: string}>  $data
+     * @param  array<int, array{class: string, prefix: string, profiles?: list<string>}>  $data
      */
     public static function fromArray(array $data): self
     {
@@ -36,7 +36,7 @@ final class ConfigPropertiesManifest
             throw new ConfigurationException("Config-properties manifest at {$path} did not return an array.");
         }
 
-        /** @var array<int, array{class: string, prefix: string}> $data */
+        /** @var array<int, array{class: string, prefix: string, profiles?: list<string>}> $data */
         return self::fromArray($data);
     }
 }

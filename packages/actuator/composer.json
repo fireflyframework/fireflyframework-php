@@ -21,6 +21,7 @@
         "firefly/kernel": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/web": "*@dev",
+        "illuminate/console": "^13.0",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
         "illuminate/database": "^13.0",
