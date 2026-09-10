@@ -21,7 +21,7 @@
     },
     "require": {
         "php": "^8.3",
-        "firefly/kernel": "^26.09",
+        "firefly/kernel": "*@dev",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
         "symfony/expression-language": "^7.4|^8.0"

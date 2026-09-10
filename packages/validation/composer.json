@@ -21,10 +21,10 @@
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "^26.09",
-        "firefly/container": "^26.09",
-        "firefly/context": "^26.09",
-        "firefly/kernel": "^26.09",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
         "illuminate/contracts": "^13.0",
         "illuminate/support": "^13.0",
         "illuminate/validation": "^13.0"
