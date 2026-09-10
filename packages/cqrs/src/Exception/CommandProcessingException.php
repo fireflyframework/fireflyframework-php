@@ -11,8 +11,8 @@ use Throwable;
 
 /**
  * The wrapper DefaultCommandBus re-throws any handler/stage throwable in (unless it is already a
- * CommandProcessingException, in which case the bus re-throws as-is). CATEGORY-PRESERVING: when the cause is a
- * FireflyException, its httpStatus/category/severity are copied so an expected client/domain fault (validation,
+ * CommandProcessingException, in which case the bus re-throws as-is). IDENTITY-PRESERVING: when the cause is a
+ * FireflyException, its errorCode/httpStatus/category/severity are copied so an expected client/domain fault (validation,
  * not-found) keeps its own kernel category and is NOT masked into a generic 500; a plain Throwable becomes
  * internal/500. Carries the command class + the cause as `previous` (design §2.3 / pyfly command/bus.py:153-164).
  */
@@ -22,7 +22,15 @@ final class CommandProcessingException extends CqrsException
     {
         parent::__construct(
             "Processing command [{$commandClass}] failed: {$cause->getMessage()}",
-            'COMMAND_PROCESSING_ERROR',
+            /*
+             | The cause's OWN code, not a generic one. The error code is part of a fault's identity in
+             | exactly the way its status, category and severity are, and copying three of the four left
+             | every domain failure indistinguishable on the wire — a duplicate as `409 COMMAND_PROCESSING_ERROR`,
+             | a missing row as `404 COMMAND_PROCESSING_ERROR` — so callers had nothing to branch on and
+             | worked around it by rethrowing getPrevious() in every controller. A cause that is not a
+             | FireflyException has no code of its own and still yields the generic one below.
+             */
+            $cause instanceof FireflyException ? $cause->errorCode() : 'COMMAND_PROCESSING_ERROR',
             $cause instanceof FireflyException ? $cause->httpStatus() : 500,
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,

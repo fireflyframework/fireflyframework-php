@@ -2,6 +2,67 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [26.09.2] - 2026-09-09
+
+A correctness release found by building a real application on `26.09.1`. Five defects, every one of them
+reproduced by a failing test first, and every one of them a case where the framework's behaviour contradicted
+what its own documentation and error messages said it did. Two are BREAKING in the sense that an application
+can observe the change; both changes are the behaviour that was always intended.
+
+### BREAKING
+
+- **`packages/cqrs` — `CommandProcessingException` / `QueryProcessingException` now carry the CAUSE's error
+  code.** Both wrappers copied a `FireflyException` cause's `httpStatus`, `category` and `severity` — and
+  then overwrote its `errorCode` with their own `COMMAND_PROCESSING_ERROR` / `QUERY_PROCESSING_ERROR`. Three
+  quarters of a fault's identity survived the bus and the quarter a client actually branches on did not: a
+  duplicate came back as `409 COMMAND_PROCESSING_ERROR`, a missing row as `404 COMMAND_PROCESSING_ERROR`, an
+  authorization denial as `403 COMMAND_PROCESSING_ERROR`. Applications worked around it by catching the
+  wrapper and re-throwing `getPrevious()` in every controller that dispatched a command. The cause's code is
+  now copied alongside the other three. **Migration:** if you assert on `COMMAND_PROCESSING_ERROR` for a
+  fault that has its own code, assert on that code instead — it is the one the cause always declared. A
+  cause that is not a `FireflyException` still yields the generic code, so genuine internal failures do not
+  start leaking codes. The Lumen capstone's own security assertion moved from `COMMAND_PROCESSING_ERROR` to
+  `ACCESS_DENIED` in this release for exactly this reason.
+
+- **`packages/container` — a component's class key is no longer rebound when the application has already
+  bound it.** The scan runs in `boot()`, after every provider's `register()`, and `ContainerRegistrar` bound
+  each `#[Component]` class to an autowiring closure unconditionally — so an application that had
+  deliberately bound a component, which is the normal way to hand one a value the container cannot autowire
+  (a string from config, a client built from credentials), silently lost that binding. The loss surfaced
+  nowhere near its cause: boot succeeded, and the first consumer died with `Unresolvable dependency
+  resolving [Parameter #0 [ <required> string $x ]]`, which reads like a defect in the component. Explicit
+  bindings now win, which is the precedence rule the bean sweep already applied where a `#[Bean]` name and a
+  component name collide. **Migration:** none for the common case. If you relied on the scan replacing a
+  binding you made yourself, remove the binding.
+
+### Fixed
+
+- **`packages/security` + `packages/context` — `php artisan firefly:cache` can now run on an application
+  that has no manifests yet.** With `firefly.security.method.strict` enabled and no compiled
+  `security-methods.php`, `SecurityWiringProvider` refused to boot — including for `firefly:cache`, the only
+  command that writes that file. Its own error message said "Run `php artisan firefly:cache`", and that
+  command hit the same error: a fresh clone, a cleared cache directory and the first layer of an image build
+  were all unrecoverable without turning strict mode off by hand. `AppScan::regenerating()` now reports when
+  `firefly:cache` is the running command, and the strict gate stands down for that boot in favour of the
+  in-process scan — the same code path that produces the manifest it is about to write.
+
+- **`packages/context` — a stale compiled manifest no longer bricks the command that would replace it.**
+  Every artefact under `bootstrap/cache/firefly` is treated as absent while `firefly:cache` is running, so a
+  `component.php` naming a class that has since stopped being autowirable is ignored rather than eagerly
+  resolved by `EagerSingletonsPass` before the writer is reached. `EagerSingletonsPass` already tolerated an
+  entry whose class no longer *exists*; this closes the neighbouring case, where the class exists and the
+  manifest is simply out of date. The recovery for both is now `firefly:cache` rather than
+  `rm -rf bootstrap/cache/firefly`.
+
+- **`skeleton` — `composer create-project firefly/skeleton` ships its test scaffold again.** The skeleton's
+  `.gitattributes` carried `/tests export-ignore`, which is right for a library and wrong for a project
+  template: Composer honours it when exporting the package into the new project, so every scaffolded
+  application arrived with a `phpunit.xml` pointing at `tests`, an `autoload-dev` mapping `Tests\` to
+  `tests/`, and no `tests/` directory at all. The first `vendor/bin/phpunit` fatalled with
+  `Trait "Tests\CreatesApplication" not found` before running a single assertion. Nothing in the template is
+  export-ignored now, and `tests/SkeletonScaffoldTest.php` asserts that every `autoload-dev` path the
+  skeleton declares is a directory it actually ships.
+
 ## [26.09.1] - 2026-09-03
 
 A correctness release that also grew two surfaces. Several headline features were found not to work at all

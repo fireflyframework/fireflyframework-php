@@ -39,32 +39,50 @@ final class SecurityWiringProvider extends FireflyServiceProvider
     public function register(): void
     {
         if (! $this->app->bound(SecurityMethodManifest::class)) {
-            $this->app->singleton(SecurityMethodManifest::class, static function (Container $app): SecurityMethodManifest {
-                $file = AppScan::cachedFile($app, AppScan::SECURITY_METHODS);
-
-                /** @var Repository $repository */
-                $repository = $app->get('config');
-                $strict = (new Config($repository))->bool('firefly.security.method.strict', false);
-
-                if ($file !== null) {
-                    return SecurityMethodManifest::load($file);
-                }
-
-                if ($strict) {
-                    throw new ConfigurationException(
-                        'Refusing to boot: firefly.security.method.strict is enabled but no compiled method-security '
-                        .'manifest was found at '.AppScan::dir($app).'/'.AppScan::SECURITY_METHODS.'. Run `php artisan '
-                        .'firefly:cache`, or disable strict mode to allow the in-process scan fallback.'
-                    );
-                }
-
-                $paths = AppScan::paths($app);
-
-                return new SecurityMethodManifest($paths === [] ? [] : (new MethodSecurityScanner)->scan($paths));
-            });
+            $this->app->singleton(
+                SecurityMethodManifest::class,
+                static fn (Container $app): SecurityMethodManifest => self::methodManifest($app),
+            );
         }
 
         parent::register();
+    }
+
+    /**
+     * The method-security manifest for this boot: the compiled artefact when there is one, an in-process
+     * scan when there is not, and a refusal when strict mode says a missing artefact is a build error.
+     *
+     * The one boot strict mode must NOT refuse is `php artisan firefly:cache` itself. That command is what
+     * writes security-methods.php, and it can only run by booting the application — so with strict mode on
+     * and no manifest yet (a fresh clone, a cleared cache directory, the first layer of an image build) the
+     * refusal made its own remedy unrunnable: the error said "Run `php artisan firefly:cache`" and that
+     * command hit the same error. While regenerating, the in-process scan is taken instead. That is not a
+     * hole in the guard: the process is a developer's or a build's own invocation, it serves no request,
+     * and the manifest it goes on to write is exactly what every later boot enforces strictly.
+     */
+    public static function methodManifest(Container $app): SecurityMethodManifest
+    {
+        $file = AppScan::cachedFile($app, AppScan::SECURITY_METHODS);
+
+        /** @var Repository $repository */
+        $repository = $app->get('config');
+        $strict = (new Config($repository))->bool('firefly.security.method.strict', false);
+
+        if ($file !== null) {
+            return SecurityMethodManifest::load($file);
+        }
+
+        if ($strict && ! AppScan::regenerating()) {
+            throw new ConfigurationException(
+                'Refusing to boot: firefly.security.method.strict is enabled but no compiled method-security '
+                .'manifest was found at '.AppScan::dir($app).'/'.AppScan::SECURITY_METHODS.'. Run `php artisan '
+                .'firefly:cache`, or disable strict mode to allow the in-process scan fallback.'
+            );
+        }
+
+        $paths = AppScan::paths($app);
+
+        return new SecurityMethodManifest($paths === [] ? [] : (new MethodSecurityScanner)->scan($paths));
     }
 
     /**

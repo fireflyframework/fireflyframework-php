@@ -36,6 +36,9 @@ use SplFileInfo;
  */
 final class AppScan
 {
+    /** The console command that regenerates every artefact below; see self::regenerating(). */
+    public const string REGENERATE_COMMAND = 'firefly:cache';
+
     public const string COMPONENT = 'component.php';
 
     public const string CONTEXT = 'context.php';
@@ -95,9 +98,43 @@ final class AppScan
      */
     public static function cachedFile(Container $app, string $basename): ?string
     {
+        if (self::regenerating()) {
+            return null;
+        }
+
         $path = self::dir($app).'/'.$basename;
 
         return is_file($path) ? $path : null;
+    }
+
+    /**
+     * True while `php artisan firefly:cache` is the command being run.
+     *
+     * The command that WRITES the manifests can only run by booting the very application whose manifests
+     * it is about to replace, so a boot that trusts what is already on disk makes the command unable to
+     * repair it: a `component.php` naming a class that no longer autowires kills EagerSingletonsPass
+     * before the writer is reached, and the only recovery is deleting the cache directory by hand. The
+     * same applies to strict method security, which refuses to boot without the manifest that this
+     * command is on its way to produce.
+     *
+     * While regenerating, every compiled artefact is therefore treated as absent and each capability
+     * falls back to its in-process scan — which is exactly the code path that produces the new manifest.
+     *
+     * `$_SERVER['argv']` is read rather than `Application::runningConsoleCommand()` because that helper
+     * inspects `argv[1]` only, so a global option before the command name (`artisan --no-ansi
+     * firefly:cache`) would defeat it, and because AppScan is handed a bare Container in tests and in
+     * Lumen, where the helper does not exist at all.
+     */
+    public static function regenerating(): bool
+    {
+        if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+            return false;
+        }
+
+        /** @var mixed $argv */
+        $argv = $_SERVER['argv'] ?? null;
+
+        return is_array($argv) && in_array(self::REGENERATE_COMMAND, $argv, true);
     }
 
     public static function dir(Container $app): string

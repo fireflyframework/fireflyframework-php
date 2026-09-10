@@ -198,3 +198,50 @@ it('is idempotent: a second register() does not duplicate tagged bindings', func
 
     expect($tagged)->toHaveCount(3);
 });
+
+/*
+ | An explicit binding the application made itself WINS over the scan.
+ |
+ | The scan runs during boot(), after every provider's register(), and used to rebind each component's
+ | class key unconditionally to an autowiring closure. So an application that had deliberately bound a
+ | #[Component] — the normal way to hand a component a value the container cannot autowire, such as a
+ | string read from config — silently lost that binding. Worse, the loss surfaced nowhere near its cause:
+ | boot succeeded, and the first thing to ask for the class died with `Unresolvable dependency resolving
+ | [Parameter #0 [ <required> string $producer ]]`, which reads like a defect in the component rather than
+ | a binding that was thrown away.
+ |
+ | This is the same precedence rule the bean sweep already applies where a #[Bean] name and a component
+ | name collide: what was declared explicitly wins.
+ */
+it('does not overwrite a binding the application registered for a component class', function () {
+    $illuminate = new IlluminateContainer;
+    $configured = new WithRequiredScalar('dw-control-plane@26.09.2');
+    $illuminate->instance(WithRequiredScalar::class, $configured);
+
+    (new ContainerRegistrar($illuminate))->register(new ComponentManifest([
+        new ComponentDescriptor(WithRequiredScalar::class, 'component', null, Scope::Singleton, false, 0, null, [], []),
+    ]));
+
+    expect($illuminate->make(WithRequiredScalar::class))->toBe($configured)
+        ->and($illuminate->make(WithRequiredScalar::class)->producer)->toBe('dw-control-plane@26.09.2');
+});
+
+it('still binds a component class the application has not bound itself', function () {
+    $illuminate = new IlluminateContainer;
+
+    (new ContainerRegistrar($illuminate))->register(new ComponentManifest([
+        new ComponentDescriptor(SoloBeeper::class, 'component', null, Scope::Singleton, false, 0, null, [], []),
+    ]));
+
+    expect($illuminate->bound(SoloBeeper::class))->toBeTrue()
+        ->and($illuminate->make(SoloBeeper::class))->toBeInstanceOf(SoloBeeper::class);
+});
+
+/**
+ * A component the container cannot autowire on its own: `string $producer` has no type to resolve.
+ * Declared here rather than under tests/Fixtures/ so the shared ComponentScanner never picks it up.
+ */
+final class WithRequiredScalar
+{
+    public function __construct(public readonly string $producer) {}
+}

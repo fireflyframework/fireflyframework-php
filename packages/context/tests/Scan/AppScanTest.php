@@ -80,3 +80,49 @@ it('agrees with firefly/cli on every compiled artifact basename', function () {
         expect($source)->toContain("'{$basename}'");
     }
 });
+
+/*
+ | `firefly:cache` is the command that WRITES the manifests, and it can only run by booting the very
+ | application whose manifests it is about to replace. Trusting the manifests already on disk during that
+ | boot makes the command unable to fix the thing it exists to fix: a component.php naming a class that
+ | can no longer be autowired kills EagerSingletonsPass before the writer runs, and the only recovery is
+ | deleting the cache directory by hand. While regenerating, the compiled artefacts are therefore ignored
+ | and every capability falls back to its in-process scan — which is what produces the correct manifest.
+ */
+it('reports that it is regenerating only while firefly:cache is the running command', function (array $argv, bool $expected) {
+    $original = $_SERVER['argv'] ?? null;
+    $_SERVER['argv'] = $argv;
+
+    try {
+        expect(AppScan::regenerating())->toBe($expected);
+    } finally {
+        $original === null ? array_key_exists('argv', $_SERVER) && ($_SERVER['argv'] = []) : $_SERVER['argv'] = $original;
+    }
+})->with([
+    'firefly:cache' => [['artisan', 'firefly:cache'], true],
+    'with options first' => [['artisan', '--no-ansi', 'firefly:cache'], true],
+    'another command' => [['artisan', 'migrate'], false],
+    'a lookalike' => [['artisan', 'firefly:cache-clear'], false],
+    'no command' => [['artisan'], false],
+]);
+
+it('ignores a compiled artefact that exists while firefly:cache is regenerating', function () {
+    $dir = sys_get_temp_dir().'/firefly-appscan-'.bin2hex(random_bytes(4));
+    mkdir($dir, 0777, true);
+    file_put_contents($dir.'/'.AppScan::COMPONENT, '<?php return [];');
+
+    $container = appScanContainer(['cache' => ['path' => $dir]]);
+    $original = $_SERVER['argv'] ?? [];
+
+    try {
+        $_SERVER['argv'] = ['artisan', 'migrate'];
+        expect(AppScan::cachedFile($container, AppScan::COMPONENT))->toBe($dir.'/'.AppScan::COMPONENT);
+
+        $_SERVER['argv'] = ['artisan', 'firefly:cache'];
+        expect(AppScan::cachedFile($container, AppScan::COMPONENT))->toBeNull();
+    } finally {
+        $_SERVER['argv'] = $original;
+        @unlink($dir.'/'.AppScan::COMPONENT);
+        @rmdir($dir);
+    }
+});
