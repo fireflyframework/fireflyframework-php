@@ -5,9 +5,17 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "outbox", "postgres"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "outbox",
+        "postgres"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/eda-postgres"
@@ -15,16 +23,16 @@
     "require": {
         "php": "^8.3",
         "ext-pdo_pgsql": "*",
-        "firefly/actuator": "*@dev",
-        "firefly/autoconfigure": "*@dev",
-        "firefly/config": "*@dev",
-        "firefly/container": "*@dev",
-        "firefly/context": "*@dev",
-        "firefly/cqrs": "*@dev",
-        "firefly/data": "*@dev",
-        "firefly/domain": "*@dev",
-        "firefly/eda": "*@dev",
-        "firefly/kernel": "*@dev",
+        "firefly/actuator": "^26.09",
+        "firefly/autoconfigure": "^26.09",
+        "firefly/config": "^26.09",
+        "firefly/container": "^26.09",
+        "firefly/context": "^26.09",
+        "firefly/cqrs": "^26.09",
+        "firefly/data": "^26.09",
+        "firefly/domain": "^26.09",
+        "firefly/eda": "^26.09",
+        "firefly/kernel": "^26.09",
         "illuminate/console": "^13.0",
         "illuminate/contracts": "^13.0",
         "illuminate/database": "^13.0",
@@ -37,10 +45,22 @@
                 "Firefly\\Eda\\Postgres\\EdaPostgresBootServiceProvider"
             ]
         },
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
-    "autoload": { "psr-4": { "Firefly\\Eda\\Postgres\\": "src/" } },
-    "autoload-dev": { "psr-4": { "Firefly\\Eda\\Postgres\\Tests\\": "tests/" } },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Eda\\Postgres\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Eda\\Postgres\\Tests\\": "tests/"
+        }
+    },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }

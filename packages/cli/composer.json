@@ -5,30 +5,37 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "cli"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "cli"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/cli"
     },
     "require": {
         "php": "^8.3",
-        "firefly/actuator": "*@dev",
-        "firefly/autoconfigure": "*@dev",
-        "firefly/config": "*@dev",
-        "firefly/container": "*@dev",
-        "firefly/context": "*@dev",
-        "firefly/cqrs": "*@dev",
-        "firefly/data": "*@dev",
-        "firefly/eda": "*@dev",
-        "firefly/kernel": "*@dev",
-        "firefly/messaging": "*@dev",
-        "firefly/observability": "*@dev",
-        "firefly/scheduling": "*@dev",
-        "firefly/security": "*@dev",
-        "firefly/validation": "*@dev",
-        "firefly/web": "*@dev",
+        "firefly/actuator": "^26.09",
+        "firefly/autoconfigure": "^26.09",
+        "firefly/config": "^26.09",
+        "firefly/container": "^26.09",
+        "firefly/context": "^26.09",
+        "firefly/cqrs": "^26.09",
+        "firefly/data": "^26.09",
+        "firefly/eda": "^26.09",
+        "firefly/kernel": "^26.09",
+        "firefly/messaging": "^26.09",
+        "firefly/observability": "^26.09",
+        "firefly/scheduling": "^26.09",
+        "firefly/security": "^26.09",
+        "firefly/validation": "^26.09",
+        "firefly/web": "^26.09",
         "illuminate/console": "^13.0",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
@@ -41,10 +48,22 @@
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         },
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
-    "autoload": { "psr-4": { "Firefly\\Cli\\": "src/" } },
-    "autoload-dev": { "psr-4": { "Firefly\\Cli\\Tests\\": "tests/" } },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Cli\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Cli\\Tests\\": "tests/"
+        }
+    },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }

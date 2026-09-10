@@ -5,21 +5,29 @@
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
     "authors": [
-        { "name": "Firefly Software Solutions Inc.", "homepage": "https://github.com/fireflyframework" }
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
     ],
-    "keywords": ["firefly", "laravel", "http", "rest"],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "http",
+        "rest"
+    ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/web"
     },
     "require": {
         "php": "^8.3",
-        "firefly/autoconfigure": "*@dev",
-        "firefly/config": "*@dev",
-        "firefly/container": "*@dev",
-        "firefly/context": "*@dev",
-        "firefly/kernel": "*@dev",
-        "firefly/validation": "*@dev",
+        "firefly/autoconfigure": "^26.09",
+        "firefly/config": "^26.09",
+        "firefly/container": "^26.09",
+        "firefly/context": "^26.09",
+        "firefly/kernel": "^26.09",
+        "firefly/validation": "^26.09",
         "illuminate/contracts": "^13.0",
         "illuminate/http": "^13.0",
         "illuminate/routing": "^13.0",
@@ -31,10 +39,22 @@
                 "Firefly\\Web\\WebServiceProvider"
             ]
         },
-        "branch-alias": { "dev-main": "26.x-dev" }
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
     },
-    "autoload": { "psr-4": { "Firefly\\Web\\": "src/" } },
-    "autoload-dev": { "psr-4": { "Firefly\\Web\\Tests\\": "tests/" } },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Web\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Web\\Tests\\": "tests/"
+        }
+    },
     "minimum-stability": "stable",
-    "config": { "sort-packages": true }
+    "config": {
+        "sort-packages": true
+    }
 }
