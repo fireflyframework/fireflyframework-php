@@ -20,7 +20,7 @@ The single place the current version *is* asserted in code is:
 // packages/kernel/src/Version.php
 final class Version
 {
-    public const string VERSION = '26.09.1';
+    public const string VERSION = '26.09.2';
 }
 ```
 
@@ -38,7 +38,7 @@ actually cut.
 ```php
 use Firefly\Kernel\Version;
 
-echo Version::VERSION; // "26.09.1"
+echo Version::VERSION; // "26.09.2"
 ```
 
 This is the only version string LaraFly itself exposes; there is no runtime version-detection mechanism

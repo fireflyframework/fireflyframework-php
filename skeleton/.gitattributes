@@ -1,2 +1,17 @@
-/tests           export-ignore
-/.gitattributes  export-ignore
+# The skeleton is a PROJECT TEMPLATE, not a library.
+#
+# `export-ignore` is how a library keeps its own tests out of a consumer's vendor directory, and Composer
+# honours it when exporting this package into a newly created project. Applied here it deleted the very
+# files the template exists to hand over: `/tests export-ignore` produced projects with a phpunit.xml
+# pointing at `tests`, an autoload-dev mapping `Tests\` to `tests/`, and no `tests/` directory — so the
+# first `vendor/bin/phpunit` fatalled on the missing `Tests\CreatesApplication` trait. Nothing in this
+# template is export-ignored; everything here is meant to arrive in the new project.
+
+* text=auto eol=lf
+
+*.php   text diff=php
+*.md    text diff=markdown
+*.json  text
+*.yml   text
+*.yaml  text
+*.sh    text eol=lf

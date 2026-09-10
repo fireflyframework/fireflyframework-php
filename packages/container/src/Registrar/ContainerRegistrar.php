@@ -62,6 +62,25 @@ final class ContainerRegistrar
     {
         $class = $component->class;
 
+        /*
+         | An explicit binding the application made itself WINS over the scan.
+         |
+         | The scan runs during boot(), after every provider's register(), and this method used to rebind
+         | the class key unconditionally to an autowiring closure — so an application that had deliberately
+         | bound a #[Component], which is the normal way to hand one a value the container cannot autowire
+         | (a string read from config, a client built from credentials), silently lost that binding. The
+         | loss surfaced nowhere near its cause: boot succeeded and the first consumer died with
+         | `Unresolvable dependency resolving [Parameter #0 [ <required> string $x ]]`, which reads like a
+         | defect in the component rather than a binding that was discarded.
+         |
+         | This is the precedence rule registerBeans() already applies where a #[Bean] name and a component
+         | name collide: what was declared explicitly wins. Re-registering the same manifest stays
+         | idempotent, because the second pass now finds the first pass's own binding and leaves it alone.
+         */
+        if ($this->container->bound($class)) {
+            return;
+        }
+
         match ($component->scope) {
             Scope::Singleton => $this->container->singleton($class, $class),
             Scope::Transient => $this->container->bind($class, $class),

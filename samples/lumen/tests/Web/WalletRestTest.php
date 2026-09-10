@@ -84,8 +84,9 @@ it('denies an unauthenticated withdraw as 403 problem+json (the endpoint IS secu
     // SecurityCommandAuthorizer at the bus. LumenTestCase's HTTP security filters (jwt/http/csrf) are OFF, so a
     // plain HTTP POST carries NO principal -> SecurityContextHolder::getContext() is anonymous -> the bus denies
     // the command -> AuthorizationException, wrapped as CommandProcessingException (which copies the cause's
-    // httpStatus/category but keeps its own COMMAND_PROCESSING_ERROR code) -> problem-details renders 403. This
-    // is a genuine teaching point, not a workaround: the endpoint really is guarded.
+    // errorCode/httpStatus/category, so the wire says ACCESS_DENIED rather than the bus's own generic code)
+    // -> problem-details renders 403. This is a genuine teaching point, not a workaround: the endpoint really
+    // is guarded, and a client can tell WHY it was refused.
     /** @var string $id */
     $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3', 'currency' => 'EUR'])->json('wallet_id');
     $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
@@ -94,7 +95,7 @@ it('denies an unauthenticated withdraw as 403 problem+json (the endpoint IS secu
         ->assertStatus(403)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('status', 403)
-        ->assertJsonPath('code', 'COMMAND_PROCESSING_ERROR')
+        ->assertJsonPath('code', 'ACCESS_DENIED')
         ->assertJsonPath('category', 'security');
 
     // Proof the denial happened BEFORE the handler touched the balance.

@@ -19,7 +19,15 @@ final class QueryProcessingException extends CqrsException
     {
         parent::__construct(
             "Processing query [{$queryClass}] failed: {$cause->getMessage()}",
-            'QUERY_PROCESSING_ERROR',
+            /*
+             | The cause's OWN code, not a generic one. The error code is part of a fault's identity in
+             | exactly the way its status, category and severity are, and copying three of the four left
+             | every domain failure indistinguishable on the wire — a duplicate as `409 QUERY_PROCESSING_ERROR`,
+             | a missing row as `404 QUERY_PROCESSING_ERROR` — so callers had nothing to branch on and
+             | worked around it by rethrowing getPrevious() in every controller. A cause that is not a
+             | FireflyException has no code of its own and still yields the generic one below.
+             */
+            $cause instanceof FireflyException ? $cause->errorCode() : 'QUERY_PROCESSING_ERROR',
             $cause instanceof FireflyException ? $cause->httpStatus() : 500,
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
