@@ -6,12 +6,12 @@ namespace Firefly\Eda\Kafka;
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
-use Firefly\Eda\Exception\SerializationException;
-use Firefly\Eda\JsonSerializer;
+use Firefly\Eda\Serializer;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
 use RdKafka\Producer;
 use RuntimeException;
+use Throwable;
 
 /**
  * The REAL KafkaConsumerClient over ext-rdkafka, wrapping the rdkafka KafkaConsumer (built lazily via
@@ -34,7 +34,7 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
     public function __construct(
         private readonly KafkaConsumerFactory $consumerFactory,
         private readonly KafkaProducerFactory $producerFactory,
-        private readonly JsonSerializer $serializer,
+        private readonly Serializer $serializer,
     ) {}
 
     /**
@@ -73,12 +73,20 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
      * onto the same offset for ever. A body the serializer refuses is now a POISON record carrying the raw
      * bytes and the topic; ConsumerLoop nacks it without requeue, KafkaEventConsumer produces the bytes to
      * `<topic>.DLT` and commits, and the loop is on the next record.
+     *
+     * THE CATCH IS `Throwable`, ON PURPOSE. The first cut caught SerializationException only, and a body with all
+     * six keys but a string payload, an int eventType or a timestamp PHP could not parse went past it as a
+     * TypeError or a DateMalformedStringException — the same crash, on the same offset, for the very
+     * cross-language bodies this path was written for. The shipped serializer now refuses those as
+     * SerializationException too, but the serializer is a PORT: a third-party implementation may throw anything,
+     * and nothing it throws changes what the bytes are. Whatever comes out of deserialize(), the record is
+     * poison and the worker lives.
      */
-    public static function received(string $payload, string $topic, mixed $deliveryTag, JsonSerializer $serializer): ReceivedEnvelope
+    public static function received(string $payload, string $topic, mixed $deliveryTag, Serializer $serializer): ReceivedEnvelope
     {
         try {
             return new ReceivedEnvelope($serializer->deserialize($payload), $deliveryTag, destination: $topic);
-        } catch (SerializationException $e) {
+        } catch (Throwable $e) {
             return ReceivedEnvelope::poison($payload, $deliveryTag, $e, $topic !== '' ? $topic : null);
         }
     }

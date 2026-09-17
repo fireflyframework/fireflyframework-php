@@ -180,8 +180,11 @@ interface Serializer
 ```
 
 `JsonSerializer` is the **only** shipped implementation: `json_encode`/`json_decode` over
-`EventEnvelope::toArray()`/`fromArray()`, `JSON_THROW_ON_ERROR`, re-wrapping any `JsonException` (or a
-decoded value missing an expected envelope key) as a fail-loud `SerializationException`. Selecting any other
+`EventEnvelope::toArray()`/`fromArray()`, `JSON_THROW_ON_ERROR`, re-wrapping any `JsonException` as a fail-loud
+`SerializationException` — and refusing, with the same exception, a decoded value that is not the envelope
+*shape*: a missing key, a member of the wrong type (a string `payload`, an int `eventType`, a non-string
+header), or a `timestamp` PHP cannot parse. One failure type for every malformed body is what lets the broker
+adapters turn it into a poison record instead of a crash. Selecting any other
 `firefly.eda.serialization_format` throws the same exception at boot — Avro/Protobuf are documented seams
 for their own future opt-in packages, not implemented here. Neither shipped adapter actually calls the
 serializer on its default path (in-memory delivers the envelope object directly in-process; the queue

@@ -9,6 +9,7 @@ use Firefly\Eda\JsonSerializer;
 use Firefly\Eda\Kafka\KafkaEventConsumer;
 use Firefly\Eda\Kafka\RdKafkaConsumerClient;
 use Firefly\Eda\Kafka\Tests\Fixtures\FakeKafkaConsumerClient;
+use Firefly\Eda\Serializer;
 
 /**
  * Socket-free unit tests for the KafkaEventConsumer ack/nack/DLT/wildcard correctness core, over the pure-PHP
@@ -101,3 +102,45 @@ it('turns a well-formed Kafka payload into an ordinary record', function () {
         ->and($received->envelope?->eventType)->toBe('order.created')
         ->and($received->deliveryTag)->toBe('tag');
 });
+
+/*
+ * THE CATCH IS `Throwable`, NOT `SerializationException`. The serializer is a port; a third-party implementation
+ * may throw anything, and even the shipped one used to leak a TypeError for a well-keyed body with a string
+ * payload. Whatever the decode throws, the bytes are the bytes: the record is poison, the failure is kept, and
+ * the worker lives.
+ */
+it('turns ANY throw from the serializer into a poison record, not only a SerializationException', function () {
+    $throwing = new class implements Serializer
+    {
+        public function serialize(EventEnvelope $envelope): string
+        {
+            return '';
+        }
+
+        public function deserialize(string $raw): EventEnvelope
+        {
+            throw new TypeError('EventEnvelope::__construct(): Argument #3 ($payload) must be of type array, string given');
+        }
+    };
+
+    $received = RdKafkaConsumerClient::received('{"payload":"str"}', 'order.events', 'tag-9', $throwing);
+
+    expect($received->isPoison())->toBeTrue()
+        ->and($received->raw)->toBe('{"payload":"str"}')
+        ->and($received->deliveryTag)->toBe('tag-9')
+        ->and($received->failure)->toBeInstanceOf(TypeError::class);
+});
+
+it('turns every malformed body the skeptic probe used into a poison record with the shipped serializer', function (string $raw) {
+    $received = RdKafkaConsumerClient::received($raw, 'order.events', 'tag', new JsonSerializer);
+
+    expect($received->isPoison())->toBeTrue()
+        ->and($received->raw)->toBe($raw)
+        ->and($received->failure)->toBeInstanceOf(SerializationException::class);
+})->with([
+    'not json' => '{oops',
+    'wrong shape' => '{"a":1}',
+    'payload is a string' => '{"eventType":"x","destination":"t","payload":"str","headers":{},"eventId":"1","timestamp":"2026-01-01T00:00:00Z"}',
+    'bad timestamp' => '{"eventType":"x","destination":"t","payload":{},"headers":{},"eventId":"1","timestamp":"garbage"}',
+    'eventType is int' => '{"eventType":5,"destination":"t","payload":{},"headers":{},"eventId":"1","timestamp":"2026-01-01T00:00:00Z"}',
+]);

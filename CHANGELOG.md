@@ -48,11 +48,18 @@ failing test first, and each one deletes a workaround downstream.
 - **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
   `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
   poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
-  catch in the process, that killed the worker onto the same offset for ever. `ConsumerLoop` nacks it without
-  requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
-  `RabbitMqEventConsumer` lets the queue's DLX take it. **Migration:** an `EventConsumer` implementation
-  outside this repo reads `$received->envelope` as nullable (`?->`), and a `KafkaConsumerClient` implements
-  `deadLetterRaw(string $raw, string $dltTopic)`.
+  catch in the process, that killed the worker onto the same offset for ever. The adapters catch `Throwable`
+  around the decode, not `SerializationException` alone, and `JsonSerializer::deserialize()` now refuses a
+  member of the wrong type (a string `payload`, an int `eventType`, a non-string header) and an unparseable
+  `timestamp` as a `SerializationException` instead of leaking a `TypeError` or a
+  `DateMalformedStringException` out of `EventEnvelope::fromArray`. `ConsumerLoop` nacks a poison record
+  without requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
+  `RabbitMqEventConsumer` lets the queue's DLX take it. `RdKafkaConsumerClient` and `RabbitMqEventConsumer`
+  take the `Serializer` port rather than `JsonSerializer` (a widening; every caller still passes
+  `JsonSerializer`). **Migration:** an `EventConsumer` implementation outside this repo reads
+  `$received->envelope` as nullable (`?->`), a `KafkaConsumerClient` implements `deadLetterRaw(string $raw,
+  string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
+  well-keyed body expects `SerializationException`.
 
 ### Added
 

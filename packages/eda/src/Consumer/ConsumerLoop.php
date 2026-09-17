@@ -50,6 +50,12 @@ final class ConsumerLoop
                     break;
                 }
 
+                // poll() sits OUTSIDE the try on purpose. Decoding is the adapter's job and happens inside ITS
+                // catch (RdKafkaConsumerClient::received(), the RabbitMQ basic_consume callback), so a body
+                // nobody can decode reaches here as a poison record, never as a throw. What CAN throw out of
+                // poll() is the transport itself — a lost connection, an auth refusal — and for that there
+                // is no record in hand to nack and nothing to dead-letter; letting it out to the supervisor is
+                // the honest answer. Wrapping poll() here would only turn a dead broker into a busy loop.
                 $received = $consumer->poll($options->pollTimeoutMs);
 
                 if ($received === null) {

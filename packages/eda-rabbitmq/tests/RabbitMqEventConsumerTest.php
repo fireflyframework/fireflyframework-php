@@ -8,6 +8,7 @@ use Firefly\Eda\Exception\SerializationException;
 use Firefly\Eda\JsonSerializer;
 use Firefly\Eda\Rabbitmq\RabbitMqEventConsumer;
 use Firefly\Eda\Rabbitmq\Tests\Fixtures\FakeConsumingChannel;
+use Firefly\Eda\Serializer;
 use PhpAmqpLib\Message\AMQPMessage;
 
 /**
@@ -184,3 +185,61 @@ it('poll() answers a poison record for an undeserialisable body instead of throw
     $consumer->nack($received, false);
     expect($channel->nacked)->toBe([[9, false]]);
 });
+
+/*
+ * THE CATCH IS `Throwable`, NOT `SerializationException`: a well-keyed body with a string payload used to leak a
+ * TypeError out of the basic_consume callback, past the catch, and kill the worker onto the same message. The
+ * serializer is a port and may throw anything; whatever it throws, the record is poison and the DLX gets it.
+ */
+it('poll() answers a poison record for ANY throw from the serializer, not only a SerializationException', function () {
+    $throwing = new class implements Serializer
+    {
+        public function serialize(EventEnvelope $envelope): string
+        {
+            return '';
+        }
+
+        public function deserialize(string $raw): EventEnvelope
+        {
+            throw new TypeError('EventEnvelope::__construct(): Argument #3 ($payload) must be of type array, string given');
+        }
+    };
+    $channel = new FakeConsumingChannel;
+    $consumer = new RabbitMqEventConsumer(null, $throwing, channelOverride: $channel);
+    $consumer->subscribe(['order.*']);
+    $msg = new AMQPMessage('{"payload":"str"}');
+    $msg->setDeliveryTag(11);
+    $channel->queuedMessages[] = $msg;
+
+    $received = $consumer->poll(1000);
+    if (! $received instanceof ReceivedEnvelope) {
+        throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');
+    }
+
+    expect($received->isPoison())->toBeTrue()
+        ->and($received->raw)->toBe('{"payload":"str"}')
+        ->and($received->deliveryTag)->toBe(11)
+        ->and($received->failure)->toBeInstanceOf(TypeError::class);
+
+    $consumer->nack($received, false);
+    expect($channel->nacked)->toBe([[11, false]]);
+});
+
+it('poll() answers a poison record for a well-keyed body the shipped serializer refuses on member type', function (string $raw) {
+    $channel = new FakeConsumingChannel;
+    $consumer = new RabbitMqEventConsumer(null, new JsonSerializer, channelOverride: $channel);
+    $consumer->subscribe(['order.*']);
+    $msg = new AMQPMessage($raw);
+    $msg->setDeliveryTag(12);
+    $channel->queuedMessages[] = $msg;
+
+    $received = $consumer->poll(1000);
+
+    expect($received?->isPoison())->toBeTrue()
+        ->and($received?->raw)->toBe($raw)
+        ->and($received?->failure)->toBeInstanceOf(SerializationException::class);
+})->with([
+    'payload is a string' => '{"eventType":"x","destination":"t","payload":"str","headers":{},"eventId":"1","timestamp":"2026-01-01T00:00:00Z"}',
+    'bad timestamp' => '{"eventType":"x","destination":"t","payload":{},"headers":{},"eventId":"1","timestamp":"garbage"}',
+    'eventType is int' => '{"eventType":5,"destination":"t","payload":{},"headers":{},"eventId":"1","timestamp":"2026-01-01T00:00:00Z"}',
+]);
