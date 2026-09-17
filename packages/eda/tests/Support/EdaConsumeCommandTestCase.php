@@ -52,8 +52,8 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
     }
 
     /**
-     * Run the command with a zero message budget: ConsumerLoop start()s, immediately trips the max-messages
-     * bound and stop()s, so subscribe() has run and nothing polls. Goes through Kernel::call() rather than
+     * Run the command with a zero message budget unless the caller sets one: ConsumerLoop start()s, immediately
+     * trips the max-messages bound and stop()s, so subscribe() has run and nothing polls. Goes through Kernel::call() rather than
      * $this->artisan() because InteractsWithConsole::artisan() is declared `PendingCommand|int` and every call
      * site would otherwise need the union handled for PHPStan (firefly/cli's ArtisanAssertions precedent).
      *
@@ -64,7 +64,7 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
         /** @var Kernel $kernel */
         $kernel = $this->app()->make(Kernel::class);
 
-        return $kernel->call('firefly:eda:consume', ['--max-messages' => 0] + $parameters);
+        return $kernel->call('firefly:eda:consume', $parameters + ['--max-messages' => 0]);
     }
 
     /**

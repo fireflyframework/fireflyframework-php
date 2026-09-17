@@ -6,26 +6,30 @@ namespace Firefly\Security\Cqrs;
 
 use Firefly\Cqrs\Handler\HandlerKind;
 use Firefly\Cqrs\Handler\HandlerManifest;
-use Firefly\Kernel\Exception\Security\AuthorizationException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
+use Firefly\Security\Access\Method\MethodSecurityRefusal;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContextHolder;
+use Psr\Log\LoggerInterface;
 
 /**
  * The shared join both bus authorizers delegate to: resolve the message's handler (class + method) from the CQRS
  * HandlerManifest, look up its method-security rule in the SecurityMethodManifest, and evaluate it against the
  * current SecurityContext with the message bound to the handler's single #param. A message with no handler, or a
  * handler with no rule, is allowed — method security is additive, not a second deny-by-default gate (that is the
- * HttpSecurityFilter's job). A failing rule throws the kernel AuthorizationException (403).
+ * HttpSecurityFilter's job). A failing rule throws the kernel AuthorizationException (403), worded by
+ * MethodSecurityRefusal so the handler's class name goes to the log and not to the client.
  */
 final class MethodSecurityMessageEnforcer
 {
     /** @var array<string,array{class:string,method:string}> messageClass => handler */
     private array $handlerByMessage = [];
+
+    private readonly MethodSecurityRefusal $refusal;
 
     public function __construct(
         HandlerManifest $handlers,
@@ -33,7 +37,9 @@ final class MethodSecurityMessageEnforcer
         private readonly SecurityExpressionEvaluator $evaluator,
         private readonly RoleHierarchy $roleHierarchy,
         private readonly PermissionEvaluator $permissionEvaluator,
+        ?LoggerInterface $logger = null,
     ) {
+        $this->refusal = new MethodSecurityRefusal($evaluator, $logger);
         foreach ($handlers->handlers() as $descriptor) {
             $this->handlerByMessage[$descriptor->kind->value.':'.$descriptor->messageClass] = [
                 'class' => $descriptor->handlerClass,
@@ -59,7 +65,7 @@ final class MethodSecurityMessageEnforcer
         $root = new SecurityExpressionRoot($authentication, $this->roleHierarchy, $this->permissionEvaluator, $args);
 
         if (! $this->evaluator->evaluate($rule->expression, $root)) {
-            throw new AuthorizationException("Access is denied for [{$handler['class']}::{$handler['method']}].");
+            throw $this->refusal->refuse($rule, $authentication);
         }
     }
 }

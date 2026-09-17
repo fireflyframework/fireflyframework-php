@@ -110,7 +110,7 @@ conventions that need no attribute at all:
 
 | Attribute | Source | Notes |
 |---|---|---|
-| `#[PathVariable(name?)]` | route segment | always required; defaults to the parameter name |
+| `#[PathVariable(name?, pattern?, notFoundCode?, notFoundMessage?)]` | route segment | always required; defaults to the parameter name. `pattern` (a PCRE body, anchored to the whole segment, case-insensitive) is checked **before** the handler runs and a miss answers `ResourceNotFoundException` with `notFoundCode` (default `RESOURCE_NOT_FOUND`) and `notFoundMessage` (default derived from the name: `roomId` → "That room does not exist."). `PathVariable::UUID` is the RFC 4122 shape. A malformed id is a 404, not a 400, so the wire cannot tell "no such row" from "not even an id" — the right property under row-level security. |
 | `#[QueryParam(name?, default?, required?)]` | query string | not required by default |
 | `#[RequestBody]` | request body | reads/decodes via the negotiated `MessageConverter`; combine with `#[Valid]` to gate on `BeanValidator` |
 | `#[RequestHeader(name?, default?)]` | HTTP header | not required |

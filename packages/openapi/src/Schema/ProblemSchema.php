@@ -28,6 +28,11 @@ use Firefly\Kernel\Error\ErrorSeverity;
  * FieldError::toArray() is mirrored by the nested `errors` item schema: `field`/`message` always, `code` and
  * `rejectedValue` only when non-null (hence not required). `rejectedValue` is deliberately untyped — it is
  * literally whatever the client sent.
+ *
+ * `additionalProperties` is TRUE, stated rather than left to the JSON Schema default, because ErrorResponse
+ * spreads a FireflyException's RFC 9457 extension members (`field`, `allowed`, `requiredAuthorities`, whatever
+ * the throw site chose) into the same object. A client generator that read a closed schema here would emit a
+ * decoder that drops exactly the members an application put there for the client to branch on.
  */
 final class ProblemSchema
 {
@@ -51,6 +56,7 @@ final class ProblemSchema
             'title' => 'Problem Details',
             'description' => 'RFC 9457 problem details as rendered by '.ErrorResponse::class.'::toArray(), served as '.self::MEDIA_TYPE.'.',
             'required' => ['status', 'title', 'code', 'category', 'severity'],
+            'additionalProperties' => true,
             'properties' => [
                 'status' => ['type' => 'integer', 'description' => 'The HTTP status code, repeated in the body.', 'minimum' => 100, 'maximum' => 599],
                 'title' => ['type' => 'string', 'description' => 'A short, human-readable summary of the status.'],

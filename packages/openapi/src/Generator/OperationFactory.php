@@ -150,6 +150,14 @@ final class OperationFactory
             $schema['default'] = $binding['default'];
         }
 
+        // The shape ArgumentResolver enforces before the controller, published exactly as it is enforced —
+        // anchored to the whole segment — so a generated client can refuse a malformed id before the call,
+        // and the document says what the server will answer 404 to. Case-insensitivity has no JSON Schema
+        // spelling; PathVariable::UUID admits both cases itself, and that is the pattern in practice.
+        if (isset($binding['pattern'])) {
+            $schema['pattern'] = '^(?:'.$binding['pattern'].')$';
+        }
+
         $parameter = ['name' => $binding['key'], 'in' => $in];
 
         if ($enrichment !== null && trim($enrichment->description) !== '') {

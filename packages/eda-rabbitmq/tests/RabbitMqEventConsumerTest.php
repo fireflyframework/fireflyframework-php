@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\Exception\SerializationException;
 use Firefly\Eda\JsonSerializer;
 use Firefly\Eda\Rabbitmq\RabbitMqEventConsumer;
 use Firefly\Eda\Rabbitmq\Tests\Fixtures\FakeConsumingChannel;
@@ -86,8 +87,8 @@ it('poll() returns a ReceivedEnvelope carrying the decoded envelope and the AMQP
         throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');
     }
 
-    expect($received->envelope->eventType)->toBe('order.created')
-        ->and($received->envelope->payload)->toBe(['id' => 42])
+    expect($received->envelope?->eventType)->toBe('order.created')
+        ->and($received->envelope?->payload)->toBe(['id' => 42])
         ->and($received->deliveryTag)->toBe(7);
 });
 
@@ -158,4 +159,28 @@ it('stop() releases the channel and consumer-registration state', function () {
     $consumer->stop();
 
     expect(fn () => $consumer->start())->toThrow(RuntimeException::class, 'RabbitMqEventConsumer has no connection factory and no channel override.');
+});
+
+it('poll() answers a poison record for an undeserialisable body instead of throwing out of the consume callback', function () {
+    $channel = new FakeConsumingChannel;
+    $consumer = new RabbitMqEventConsumer(null, new JsonSerializer, channelOverride: $channel);
+    $consumer->subscribe(['order.*']);
+    $msg = new AMQPMessage('this is not an envelope');
+    $msg->setDeliveryTag(9);
+    $channel->queuedMessages[] = $msg;
+
+    $received = $consumer->poll(1000);
+    if (! $received instanceof ReceivedEnvelope) {
+        throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');
+    }
+
+    // ConsumerLoop nacks it without requeue, which the queue's x-dead-letter-exchange routes to the DLX —
+    // the broker-native dead letter, with the original body intact.
+    expect($received->isPoison())->toBeTrue()
+        ->and($received->raw)->toBe('this is not an envelope')
+        ->and($received->deliveryTag)->toBe(9)
+        ->and($received->failure)->toBeInstanceOf(SerializationException::class);
+
+    $consumer->nack($received, false);
+    expect($channel->nacked)->toBe([[9, false]]);
 });

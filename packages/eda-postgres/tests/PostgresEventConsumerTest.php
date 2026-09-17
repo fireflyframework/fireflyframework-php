@@ -74,7 +74,7 @@ it('poll() swallows a throwing NOTIFY wait and still delivers via the poll-fallb
         throw new RuntimeException('Expected poll() to return a ReceivedEnvelope.');
     }
 
-    expect($received->envelope->eventType)->toBe('user.created')
-        ->and($received->envelope->destination)->toBe('users')
-        ->and($received->envelope->payload)->toBe(['id' => 42]);
+    expect($received->envelope?->eventType)->toBe('user.created')
+        ->and($received->envelope?->destination)->toBe('users')
+        ->and($received->envelope?->payload)->toBe(['id' => 42]);
 });

@@ -107,3 +107,18 @@ it('does not leak a command-kind rule onto the query authorizer for the same mes
 
     (new SecurityQueryAuthorizer($enforcer))->authorize(new AdminCommand);
 })->throwsNoExceptions();
+
+it('refuses a command with the client sentence and the required authorities, not the handler class', function () {
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('u', 'u', [new SimpleGrantedAuthority('ROLE_USER')])
+    ));
+
+    try {
+        commandAuthorizer()->authorize(new AdminCommand);
+        throw new LogicException('not refused');
+    } catch (AuthorizationException $e) {
+        expect($e->getMessage())->not->toContain('AdminCommandHandler')
+            ->not->toContain('\\')
+            ->and($e->extensions())->toBe(['requiredAuthorities' => ['ROLE_ADMIN']]);
+    }
+});

@@ -7,6 +7,7 @@ use Firefly\Kernel\Error\ErrorSeverity;
 use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Business\BusinessException;
 use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Kernel\Exception\Business\PaymentRequiredException;
 use Firefly\Kernel\Exception\Business\PreconditionFailedException;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\Kernel\Exception\Business\ValidationException;
@@ -35,6 +36,7 @@ dataset('taxonomy', [
     [ValidationException::class, 'VALIDATION_ERROR', 422, ErrorCategory::Validation, ErrorSeverity::Warning],
     [ResourceNotFoundException::class, 'RESOURCE_NOT_FOUND', 404, ErrorCategory::Business, ErrorSeverity::Warning],
     [ConflictException::class, 'CONFLICT', 409, ErrorCategory::Business, ErrorSeverity::Warning],
+    [PaymentRequiredException::class, 'PAYMENT_REQUIRED', 402, ErrorCategory::Business, ErrorSeverity::Warning],
     [PreconditionFailedException::class, 'PRECONDITION_FAILED', 412, ErrorCategory::Business, ErrorSeverity::Warning],
     [SecurityException::class, 'SECURITY_ERROR', 403, ErrorCategory::Security, ErrorSeverity::Warning],
     [AuthenticationException::class, 'AUTHENTICATION_FAILED', 401, ErrorCategory::Security, ErrorSeverity::Warning],

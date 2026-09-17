@@ -81,7 +81,19 @@ final class KafkaEventConsumer implements EventConsumer
             return; // leave the offset uncommitted -> Kafka redelivers on the next rebalance/restart (at-least-once).
         }
 
-        $this->client->deadLetter($received->envelope, $received->envelope->destination.$this->deadLetterSuffix);
+        $envelope = $received->envelope;
+
+        if ($envelope === null) {
+            // A poison record: the RAW bytes go to the DLT of the topic they were read from, verbatim, and the
+            // offset is committed so the loop never reads them again. The topic comes from the record because
+            // there is no envelope to read a destination off.
+            $this->client->deadLetterRaw((string) $received->raw, ($received->destination ?? 'unknown').$this->deadLetterSuffix);
+            $this->client->commit($received->deliveryTag);
+
+            return;
+        }
+
+        $this->client->deadLetter($envelope, $envelope->destination.$this->deadLetterSuffix);
         $this->client->commit($received->deliveryTag);
     }
 

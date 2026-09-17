@@ -2,6 +2,112 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [Unreleased]
+
+Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
+application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught
+at a hundred and forty-four sites, three exception renderables registered ahead of the framework's, a
+RouteMatched listener validating ids, a replacement JWKS provider, thirty-five hand-written role checks, a
+whole Kafka consumer command, and a shell script whose body was one line. Each fix was reproduced by a
+failing test first, and each one deletes a workaround downstream.
+
+### BREAKING
+
+- **`packages/web` — problem+json no longer discloses an unhandled throwable's message when `app.debug` is
+  on.** The JSON renderer shared the HTML page's `firefly.web.error-page.trace` gate, which follows
+  `app.debug` — the wrong gate for a machine surface. Every local and compose environment sets `APP_DEBUG`,
+  so a console fed by problem+json rendered a duplicate-key insert as the DSN, the tenant id, the acting user
+  and the full statement in a red banner, while the HTML page beside it withheld everything. The problem
+  document now has its own gate, **`firefly.web.problem.disclose`**, default `false`, inheriting from
+  nothing. **Migration:** a developer who wants driver messages inside JSON `detail` sets that key; nothing
+  else changes, and the message is still on the exception for the log.
+
+- **`packages/web` — the router's own 404 and 405 sentences are replaced with ones written for a person.**
+  `The route api/x could not be found.` becomes `There is nothing at this address.` and `The GET method is
+  not supported for route api/x. Supported methods: POST.` becomes `This address only accepts POST.`, with
+  the verbs in an `allowed` extension member and the `Allow` header copied through (it used to be dropped).
+  "Route" is the framework's word and the path is already in `instance`. An author's `abort(404, '…')`
+  message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
+  not on the router's sentence.
+
+- **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
+  denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
+  rule asked for in a `requiredAuthorities` extension member; the class, method, principal and authorities go
+  to the log at warning. One real application kept every `#[PreAuthorize]` at `isAuthenticated()` and judged
+  roles by hand at thirty-five sites because a consultant had read a class name on a panel. **Migration:**
+  assert on `ACCESS_DENIED` and `requiredAuthorities`, not on the sentence.
+
+- **`packages/security` — a JWKS outage is a `503 JWKS_UNAVAILABLE`, not a `401 INVALID_TOKEN`.**
+  `OAuth2ResourceServerFilter` wrapped every throwable from `JWT::decode($token, $this->jwks->keys())` — the
+  key fetch included — as an invalid token, so an unreachable issuer told every caller their token was bad and
+  a well-behaved client rotated a good one. The keys are resolved before the try that maps decoding failures.
+  `RemoteJwksProvider` throws `JwksUnavailableException` (a `ServiceUnavailableException`) for every fetch
+  failure — 5xx, refused, timed out, not JSON — where it used to let the HTTP client's `RequestException`
+  escape. **Migration:** a test asserting `RequestException` asserts `JwksUnavailableException`.
+
+- **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
+  `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
+  poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
+  catch in the process, that killed the worker onto the same offset for ever. `ConsumerLoop` nacks it without
+  requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
+  `RabbitMqEventConsumer` lets the queue's DLX take it. **Migration:** an `EventConsumer` implementation
+  outside this repo reads `$received->envelope` as nullable (`?->`), and a `KafkaConsumerClient` implements
+  `deadLetterRaw(string $raw, string $dltTopic)`.
+
+### Added
+
+- **`packages/kernel` — RFC 9457 extension members and a per-exception title on `FireflyException`.**
+  `withExtensions([...])`/`extensions()` and `withTitle('…')`/`title()` (also constructor arguments), spread
+  by `ErrorResponse::toArray()` after the standard members — so an extension can never override `status`,
+  `code` or `title`. `Business\PaymentRequiredException` (402 `PAYMENT_REQUIRED`) joins the taxonomy: a sales
+  event, not a permission problem. `ErrorResponse::titleFor()` is public and knows 402, 405 and the other
+  common statuses. The OpenAPI problem schema declares `additionalProperties: true` so a generated client
+  keeps the members an application put there.
+
+- **`packages/web` — every problem document carries `traceId` and `X-Correlation-Id`.** The request's
+  correlation id (`CorrelationIdFilter::of()`: Context, then the header, then minted) is in the body and on
+  the response, and an opaque 5xx names it: `An unexpected error occurred. It has been logged; quote
+  reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum execution time of N
+  seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500 quoting the engine.
+
+- **`packages/web` — `#[PathVariable(pattern:, notFoundCode:, notFoundMessage:)]`.** The segment's shape is
+  checked by `ArgumentResolver` before the controller runs, and a miss is the entity's own 404 (default
+  `RESOURCE_NOT_FOUND`, sentence derived from the parameter name) — a 404 and not a 400, so under row-level
+  security the wire cannot tell "no such row" from "not even an id". `PathVariable::UUID` is the RFC 4122
+  shape. `RouteScanner` refuses an invalid pattern at cache time; `firefly/openapi` publishes it as the
+  parameter's JSON Schema `pattern`. A malformed uuid used to reach `?::uuid` and answer 500.
+
+- **`packages/security` — `#[PreAuthorize(expression, code:, message:)]`.** A rule can carry its own product
+  code and sentence (`RUN_ROLE_REQUIRED`, "Only a manager may start a run.") so the role rule and the words
+  for breaking it live beside the method they guard. Compiled into `SecurityMethodDescriptor`; a manifest
+  compiled before the keys existed still loads. `SecurityExpressionEvaluator::authorities()` lists the
+  authorities an expression names, roles normalised to `ROLE_`.
+
+- **`packages/security` — bounded, typed, in-process JWKS.** `RemoteJwksProvider` connects and reads with
+  five-second timeouts (`jwks_connect_timeout`/`jwks_timeout`; Laravel's default of thirty equals PHP's
+  execution limit and turned a slow issuer into a fatal error). `JwksDocumentSource` is the port a server
+  that signs its own tokens implements; `LocalJwksProvider` answers from it with no socket, and
+  `firefly.security.oauth2.resource_server.jwks_source` (`auto`|`local`|`remote`) chooses — `auto` when the
+  source is bound and `JwksUri::isOwn()` says `jwks_uri` names this application. A server fetching its own
+  keys from itself over HTTP was one nested request per authenticated call (844 of 3,000 measured) and a
+  deadlock on a single-process dev server.
+
+- **`packages/eda` — `EnvelopeSink`, the port `firefly:eda:consume` delivers to.** Bind one and the command
+  delivers every envelope to it instead of the `#[EventListener]` registry (`SubscriberRegistrySink`, the
+  default). An application whose events go to a command bus used to write its own consumer command, loop,
+  signal handling, offset commits and dead-letter path because the only seam was a callable the command built
+  and never let anyone replace. `ConsumerLoop` takes an optional PSR logger and reports each poison record.
+
+- **`packages/scheduling` — sub-minute `fixedRate`/`fixedDelay`.** Everything at or under sixty seconds
+  used to bucket onto `everyMinute()`, so `fixedRate: '10s'` ran six times less often than it said.
+  `Cadence` maps a rate onto Laravel's repeat-seconds cadences (1, 2, 5, 10, 15, 20, 30 s), rounding *up*
+  (`'7s'` → 10 s, `'45s'` → a minute), and is the one table both the wiring pass and `firefly:schedule` use.
+
+- **`packages/cli` — `php artisan firefly:schedule {--once}`.** The companion to `firefly:serve`: lists every
+  `#[Scheduled]` task with the cadence it will really run at, its lock and its zone, then delegates to
+  `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
+  and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
+
 ## [26.09.2] - 2026-09-09
 
 A correctness release found by building a real application on `26.09.1`. Five defects, every one of them

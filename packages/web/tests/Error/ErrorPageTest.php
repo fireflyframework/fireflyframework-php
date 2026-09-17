@@ -225,15 +225,16 @@ it('keeps publishing a FireflyException\'s own message, which was written for th
 });
 
 it('renders problem+json with the message withheld when the settings say so', function () {
-    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings(trace: false));
+    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings(disclose: false));
     $body = (string) $renderer->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent();
 
     expect($body)->not->toContain('/srv/app/.env')
-        ->toContain(ProblemMapper::OPAQUE)
+        ->toContain('An unexpected error occurred.')
         ->toContain('INTERNAL_ERROR');
 
-    // And with the gate open — a developer's machine — the real message comes through.
-    $debug = new ProblemDetailsRenderer(new ErrorPageSettings(trace: true));
+    // And with the problem gate open — set explicitly, never inherited from app.debug — the real message
+    // comes through.
+    $debug = new ProblemDetailsRenderer(new ErrorPageSettings(disclose: true));
     expect((string) $debug->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent())
         ->toContain('/srv/app/.env');
 });
@@ -243,5 +244,5 @@ it('defaults to withholding when no settings object was bound at all', function 
     // an absent gate must not mean an open one.
     expect((string) (new ProblemDetailsRenderer)->render(new RuntimeException('leak me'), Request::create('/api/x'))->getContent())
         ->not->toContain('leak me')
-        ->toContain(ProblemMapper::OPAQUE);
+        ->toContain('An unexpected error occurred.');
 });

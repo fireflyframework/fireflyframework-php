@@ -8,19 +8,21 @@ use Firefly\Config\Config;
 use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\ConsumerLoop;
 use Firefly\Eda\Consumer\ConsumerOptions;
+use Firefly\Eda\Consumer\EnvelopeSink;
 use Firefly\Eda\Consumer\EventConsumer;
+use Firefly\Eda\Consumer\SubscriberRegistrySink;
 use Firefly\Eda\Consumer\TopicSubscriptionResolver;
-use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Listener\EventListenerManifest;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Console\Command;
+use Psr\Log\LoggerInterface;
 
 /**
  * Drives the active broker's EventConsumer until a bound trips or a signal arrives. Resolves the EventConsumer +
  * SubscriberRegistry a broker package bound (the same registry EventListenerWiringPass populated this process's boot),
- * derives the concrete broker DESTINATIONS to bind, and feeds every polled envelope into the registry. A clear error
- * when no broker consumer is bound (memory/queue providers have no long-running consumer — queue uses
- * `php artisan queue:work`).
+ * derives the concrete broker DESTINATIONS to bind, and feeds every polled envelope into the application's
+ * EnvelopeSink when one is bound, else into the registry. A clear error when no broker consumer is bound
+ * (memory/queue providers have no long-running consumer — queue uses `php artisan queue:work`).
  *
  * 🔴 DESTINATIONS, NOT EVENT TYPES. This command used to bind the compiled #[EventListener] patterns as broker
  * routes — `$consumer->subscribe((new TopicSubscriptionResolver)->resolve($manifest))` where resolve() returned
@@ -68,11 +70,16 @@ final class ConsumeEventsCommand extends Command
             idleSleepMs: (int) $this->option('sleep'),
         );
 
-        $processed = (new ConsumerLoop)->run(
-            $consumer,
-            fn (EventEnvelope $envelope) => $registry->deliver($envelope),
-            $options,
-        );
+        // The application's own sink when it bound one, the #[EventListener] registry otherwise — see
+        // EnvelopeSink for why an application whose events go to a bus needed this seam.
+        /** @var EnvelopeSink $sink */
+        $sink = $this->laravel->bound(EnvelopeSink::class)
+            ? $this->laravel->make(EnvelopeSink::class)
+            : new SubscriberRegistrySink($registry);
+
+        $logger = $this->laravel->bound(LoggerInterface::class) ? $this->laravel->make(LoggerInterface::class) : null;
+
+        $processed = (new ConsumerLoop($logger instanceof LoggerInterface ? $logger : null))->run($consumer, $sink, $options);
 
         $this->info("firefly:eda:consume — processed {$processed} message(s).");
 

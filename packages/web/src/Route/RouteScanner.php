@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Web\Route;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Validation\Valid;
 use Firefly\Web\Attributes\Controller;
 use Firefly\Web\Attributes\ControllerAdvice;
@@ -220,7 +221,7 @@ final class RouteScanner
         if (($attrs = $parameter->getAttributes(PathVariable::class)) !== []) {
             $pathVariable = $attrs[0]->newInstance();
 
-            return $this->plan($name, 'path', $pathVariable->name ?? $name, $type, true, null, $valid);
+            return $this->pathPlan($parameter, $pathVariable, $name, $type, $valid);
         }
 
         if (($attrs = $parameter->getAttributes(RequestBody::class)) !== []) {
@@ -251,6 +252,61 @@ final class RouteScanner
         }
 
         return $this->plan($name, 'query', $name, $type, ! $parameter->isOptional(), $default, $valid);
+    }
+
+    /**
+     * A path binding, plus the shape rule the attribute declares. The pattern is compiled ONCE here, with the
+     * anchors and flag the resolver will use, so an invalid expression is a ConfigurationException naming the
+     * method at cache time rather than a preg_match() returning false on every request — which the resolver
+     * would have to treat as a miss, turning every request to that route into a 404 with no build-time
+     * signal. The three keys are emitted only when given, so a plan for an unpatterned variable is byte-
+     * identical to the one this scanner produced before shapes existed.
+     *
+     * @return Binding
+     */
+    private function pathPlan(ReflectionParameter $parameter, PathVariable $pathVariable, string $name, ?string $type, bool $valid): array
+    {
+        $plan = $this->plan($name, 'path', $pathVariable->name ?? $name, $type, true, null, $valid);
+
+        if ($pathVariable->pattern !== null) {
+            if (! self::compiles($pathVariable->pattern)) {
+                $method = $parameter->getDeclaringFunction();
+                $class = $parameter->getDeclaringClass()?->getName() ?? '';
+
+                throw new ConfigurationException(
+                    "Invalid #[PathVariable] pattern on {$class}::{$method->getName()} \${$name}: `{$pathVariable->pattern}` is not a valid regular expression.",
+                );
+            }
+
+            $plan['pattern'] = $pathVariable->pattern;
+        }
+
+        if ($pathVariable->notFoundCode !== null) {
+            $plan['notFoundCode'] = $pathVariable->notFoundCode;
+        }
+
+        if ($pathVariable->notFoundMessage !== null) {
+            $plan['notFoundMessage'] = $pathVariable->notFoundMessage;
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Whether a #[PathVariable] pattern is a regular expression PCRE accepts, exactly as the resolver will
+     * run it. PCRE reports a bad pattern as a warning plus `false`; the warning is turned into the return
+     * value here rather than silenced with `@`, because a silenced warning still reaches a test runner's
+     * error handler and a scan-time check must be quiet when it passes.
+     */
+    private static function compiles(string $pattern): bool
+    {
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            return preg_match('~^(?:'.$pattern.')$~i', '') !== false;
+        } finally {
+            restore_error_handler();
+        }
     }
 
     /**

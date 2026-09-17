@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\Exception\SerializationException;
+use Firefly\Eda\JsonSerializer;
 use Firefly\Eda\Kafka\KafkaEventConsumer;
+use Firefly\Eda\Kafka\RdKafkaConsumerClient;
 use Firefly\Eda\Kafka\Tests\Fixtures\FakeKafkaConsumerClient;
 
 /**
@@ -58,4 +61,43 @@ it('nack(requeue: false) dead-letters the envelope to "<destination>.DLT" THEN c
 
     expect($client->deadLettered)->toBe([[$envelope, 'order.events.DLT']])
         ->and($client->committed)->toBe(['tag-5']);
+});
+
+it('dead-letters a POISON record\'s raw bytes to "<topic>.DLT" then commits, so the loop never re-reads it', function () {
+    $client = new FakeKafkaConsumerClient;
+    $consumer = new KafkaEventConsumer($client);
+    $poison = ReceivedEnvelope::poison('{"eventId": 1, "no": "shape"}', 'tag-3', new RuntimeException('shape'), 'order.events');
+
+    $consumer->nack($poison, false);
+
+    // The RAW bytes, not a re-encoded approximation, so a fixed producer can be replayed byte for byte.
+    expect($client->deadLetteredRaw)->toBe([['{"eventId": 1, "no": "shape"}', 'order.events.DLT']])
+        ->and($client->deadLettered)->toBe([])
+        ->and($client->committed)->toBe(['tag-3']);
+});
+
+/*
+ * THE DESERIALISATION IS INSIDE THE RECORD, NOT AROUND THE POLL. RdKafkaConsumerClient::consume() deserialised the
+ * payload on the way out, outside every try/catch in the process, so one malformed body killed the worker.
+ * received() is the pure half of consume() — testable without ext-rdkafka's Message — and it answers a poison
+ * record instead of throwing.
+ */
+it('turns an undeserialisable Kafka payload into a poison record carrying the raw bytes and the topic', function () {
+    $received = RdKafkaConsumerClient::received('not json at all', 'order.events', 'the-rdkafka-message', new JsonSerializer);
+
+    expect($received->isPoison())->toBeTrue()
+        ->and($received->envelope)->toBeNull()
+        ->and($received->raw)->toBe('not json at all')
+        ->and($received->destination)->toBe('order.events')
+        ->and($received->deliveryTag)->toBe('the-rdkafka-message')
+        ->and($received->failure)->toBeInstanceOf(SerializationException::class);
+});
+
+it('turns a well-formed Kafka payload into an ordinary record', function () {
+    $envelope = new EventEnvelope('order.created', 'order.events', ['id' => 1]);
+    $received = RdKafkaConsumerClient::received((new JsonSerializer)->serialize($envelope), 'order.events', 'tag', new JsonSerializer);
+
+    expect($received->isPoison())->toBeFalse()
+        ->and($received->envelope?->eventType)->toBe('order.created')
+        ->and($received->deliveryTag)->toBe('tag');
 });

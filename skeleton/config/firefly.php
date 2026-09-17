@@ -204,6 +204,25 @@ return [
                 'audience' => env('FIREFLY_OAUTH2_AUDIENCE', ''),
                 'authorities_claim' => 'roles',
                 'cache_ttl' => 3600,
+
+                /*
+                 | Where the signing keys come from: `auto` (default), `local` or `remote`.
+                 |
+                 | `remote` fetches `jwks_uri` over HTTP, bounded by the two timeouts below, and answers a
+                 | 503 JWKS_UNAVAILABLE (never a 401) when the issuer cannot be reached. `local` answers from
+                 | a Firefly\Security\OAuth2\JwksDocumentSource bean YOU bind — the key set this
+                 | application signs its own tokens with — and refuses to boot without one. `auto` picks
+                 | `local` when such a bean is bound AND `jwks_uri` names this very application (its
+                 | `/.well-known/jwks.json` at `app.url`, or at a loopback address on `firefly.server.port`),
+                 | and `remote` otherwise. A server must never fetch its own keys from itself over HTTP: on a
+                 | single-process dev server that nested request is a deadlock.
+                */
+                'jwks_source' => 'auto',
+
+                // Seconds to connect to, and to read from, the JWKS URI. Laravel's default is thirty — the
+                // same as PHP's execution limit, which turns a slow issuer into a fatal error. Default: 5.
+                'jwks_connect_timeout' => 5,
+                'jwks_timeout' => 5,
             ],
         ],
 
@@ -461,6 +480,24 @@ return [
     //             '404' => 'errors.not-found',
     //             'default' => 'errors.generic',
     //         ],
+    //     ],
+    //
+    //     /*
+    //      | The problem+json document — what a CLIENT receives for a failure.
+    //     */
+    //     'problem' => [
+    //         /*
+    //          | Whether an UNHANDLED throwable's own message (a QueryException's SQL and bindings, a
+    //          | TypeError's absolute path, a PDOException's host) may appear in `detail`. This is the
+    //          | problem document's OWN gate: it does NOT follow `app.debug` and it does NOT follow
+    //          | `error-page.trace`, because every local and compose environment sets APP_DEBUG and a console
+    //          | fed by problem+json then renders a driver message in a red banner. With it off the client
+    //          | gets `An unexpected error occurred. It has been logged; quote reference <traceId> …` and the
+    //          | message stays on the exception, where the log has it beside the same traceId.
+    //          |
+    //          | Default: false. Turn it on deliberately, on a machine where the payload is yours to read.
+    //         */
+    //         'disclose' => false,
     //     ],
     // ],
 

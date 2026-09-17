@@ -6,6 +6,7 @@ namespace Firefly\Eda\Rabbitmq;
 
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\Consumer\ReceivedEnvelope;
+use Firefly\Eda\Exception\SerializationException;
 use Firefly\Eda\JsonSerializer;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
@@ -80,10 +81,19 @@ final class RabbitMqEventConsumer implements EventConsumer
 
         if (! $this->consuming) {
             $channel->basic_consume($this->queue, function (AMQPMessage $msg): void {
-                $this->pending = new ReceivedEnvelope(
-                    $this->serializer->deserialize($msg->getBody()),
-                    $msg->getDeliveryTag(),
-                );
+                // Decoded INSIDE a catch: a body the serializer refuses becomes a poison record that
+                // ConsumerLoop nacks without requeue — which the queue's x-dead-letter-exchange routes to the
+                // DLX with the original body intact — instead of an exception thrown out of an AMQP callback
+                // that killed the worker onto the same message for ever.
+                try {
+                    $this->pending = new ReceivedEnvelope(
+                        $this->serializer->deserialize($msg->getBody()),
+                        $msg->getDeliveryTag(),
+                        destination: $this->queue,
+                    );
+                } catch (SerializationException $e) {
+                    $this->pending = ReceivedEnvelope::poison($msg->getBody(), $msg->getDeliveryTag(), $e, $this->queue);
+                }
             });
             $this->consuming = true;
         }

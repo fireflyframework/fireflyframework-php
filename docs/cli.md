@@ -4,7 +4,7 @@
 a set of Artisan commands. It compiles the app for a zero-reflection boot (`firefly:cache`), introspects a booted
 app in-process at the terminal (`firefly:about`/`:routes`/`:health`/`:metrics` — actuator-over-CLI, no HTTP
 round-trip), scaffolds every framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own
-`serve`/database commands (`firefly:serve`/`firefly:db`). New Deptrac `Cli` layer — depends on the rest of the
+`serve`/scheduler/database commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). New Deptrac `Cli` layer — depends on the rest of the
 framework, depended on by nothing.
 
 ## `firefly:cache`
@@ -167,7 +167,7 @@ php artisan make:firefly-repository WidgetRepository
 php artisan make:firefly-config-properties GreetingProperties
 ```
 
-## Thin passthroughs: `firefly:serve`, `firefly:db`
+## Thin passthroughs: `firefly:serve`, `firefly:schedule`, `firefly:db`
 
 ```
 php artisan firefly:serve {--host=127.0.0.1} {--port=8000}
@@ -175,6 +175,20 @@ php artisan firefly:serve {--host=127.0.0.1} {--port=8000}
 
 Delegates to `artisan serve`, or to `octane:start` when `laravel/octane` is installed (probed via `class_exists()`
 only — Octane stays an optional runtime dependency, never required by `firefly/cli`'s `composer.json`).
+
+```
+php artisan firefly:schedule {--once}
+```
+
+The companion to `firefly:serve` for the other process an application needs: a `#[Scheduled]` method fires
+only under Laravel's `schedule:work` (or a cron-driven `schedule:run`), and nothing starts either by itself —
+a developer who has written `#[Scheduled(fixedRate: '60s')]` on the method that advances every workflow is
+otherwise testing a product whose clock is stopped. The command prints every scheduled task the
+`ScheduledManifest` holds (the compiled artifact or the in-process scan, whichever this boot uses) with the
+cadence it will *really* run at (`Cadence::describe()`, the same table `ScheduleWiringPass` wires with, so
+`'7s'` is reported as `every 10 seconds`), its lock and its timezone, then delegates to `schedule:work`; with
+`--once` it delegates to a single `schedule:run` instead, for a cron entry or a health probe. A task missing
+from the listing was never compiled, and that is visible on line one.
 
 ```
 php artisan firefly:db {action=migrate}

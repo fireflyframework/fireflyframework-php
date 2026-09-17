@@ -6,6 +6,7 @@ namespace Firefly\Eda\Kafka;
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\Exception\SerializationException;
 use Firefly\Eda\JsonSerializer;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
@@ -57,12 +58,29 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         $message = $this->consumer()->consume($timeoutMs);
 
         return match ($message->err) {
-            RD_KAFKA_RESP_ERR_NO_ERROR => new ReceivedEnvelope(
-                $this->serializer->deserialize((string) $message->payload),
-                $message,
-            ),
+            RD_KAFKA_RESP_ERR_NO_ERROR => self::received((string) $message->payload, $message->topic_name, $message, $this->serializer),
             default => null,
         };
+    }
+
+    /**
+     * The pure half of consume(): the record for one delivered payload. Public and static so it is testable
+     * without ext-rdkafka's Message class, which is the only reason consume() itself is not.
+     *
+     * THE DESERIALISATION HAPPENS HERE, INSIDE A CATCH. It used to happen on the way out of consume() with no
+     * catch anywhere between it and ConsumerLoop's `poll()` call, so one malformed body — the most ordinary
+     * failure on a topic another language also writes to — killed the worker, and the supervisor restarted it
+     * onto the same offset for ever. A body the serializer refuses is now a POISON record carrying the raw
+     * bytes and the topic; ConsumerLoop nacks it without requeue, KafkaEventConsumer produces the bytes to
+     * `<topic>.DLT` and commits, and the loop is on the next record.
+     */
+    public static function received(string $payload, string $topic, mixed $deliveryTag, JsonSerializer $serializer): ReceivedEnvelope
+    {
+        try {
+            return new ReceivedEnvelope($serializer->deserialize($payload), $deliveryTag, destination: $topic);
+        } catch (SerializationException $e) {
+            return ReceivedEnvelope::poison($payload, $deliveryTag, $e, $topic !== '' ? $topic : null);
+        }
     }
 
     public function commit(mixed $deliveryTag): void
@@ -82,6 +100,15 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         // RD_KAFKA_PARTITION_UA (-1) = librdkafka picks the partition; a dead-lettered record carries no partition
         // key, so there is no "correct" partition to preserve.
         $topic->produce(RD_KAFKA_PARTITION_UA, 0, $this->serializer->serialize($envelope));
+        $producer->flush(2000);
+    }
+
+    public function deadLetterRaw(string $raw, string $dltTopic): void
+    {
+        $producer = $this->producer();
+        $topic = $producer->newTopic($dltTopic);
+
+        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $raw);
         $producer->flush(2000);
     }
 

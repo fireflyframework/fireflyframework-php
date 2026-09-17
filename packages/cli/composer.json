@@ -1,6 +1,6 @@
 {
     "name": "firefly/cli",
-    "description": "LaraFly CLI: the developer-experience console — firefly:cache (compile all app manifests + emit #[Transactional] proxies to bootstrap/cache/firefly for a zero-reflection boot), firefly:clear, firefly:about + actuator-over-CLI (routes/health/metrics), the make:firefly-* generator family, and thin serve/db passthroughs.",
+    "description": "LaraFly CLI: the developer-experience console — firefly:cache (compile all app manifests + emit #[Transactional] proxies to bootstrap/cache/firefly for a zero-reflection boot), firefly:clear, firefly:about + actuator-over-CLI (routes/health/metrics), the make:firefly-* generator family, and thin serve/schedule/db passthroughs.",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",

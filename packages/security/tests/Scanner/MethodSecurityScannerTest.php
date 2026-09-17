@@ -22,6 +22,40 @@ it('compiles method-security attributes into normalised expressions with param n
     expect($manifest->ruleFor(SecuredController::class, 'destroy')?->expression)->toBe("hasAnyRole('ADMIN', 'STAFF')")
         ->and($manifest->ruleFor(SecuredController::class, 'store')?->expression)->toBe("hasAnyAuthority('orders:write')")
         ->and($manifest->ruleFor(SecuredController::class, 'unguarded'))->toBeNull();
+
+    // A rule that carries no product code and no sentence compiles with neither, so the guard falls back to
+    // ACCESS_DENIED and the framework's client sentence.
+    expect($show?->code)->toBeNull()
+        ->and($show?->message)->toBeNull();
+});
+
+it('compiles the product code and sentence a #[PreAuthorize] names, and round-trips them', function () {
+    $rules = (new MethodSecurityScanner)->scan(['Firefly\\Security\\Tests\\Fixtures\\' => __DIR__.'/../Fixtures']);
+    $manifest = new SecurityMethodManifest($rules);
+
+    $start = $manifest->ruleFor(SecuredController::class, 'start');
+    expect($start?->expression)->toBe("hasAnyRole('MANAGER', 'TENANT_ADMIN')")
+        ->and($start?->code)->toBe('RUN_ROLE_REQUIRED')
+        ->and($start?->message)->toBe('Only a manager may start a run.');
+
+    $path = sys_get_temp_dir().'/firefly-security-methods-'.bin2hex(random_bytes(6)).'.php';
+    try {
+        (new SecurityMethodManifestCompiler)->write($rules, $path);
+        $loaded = SecurityMethodManifest::load($path)->ruleFor(SecuredController::class, 'start');
+        expect($loaded?->code)->toBe('RUN_ROLE_REQUIRED')
+            ->and($loaded?->message)->toBe('Only a manager may start a run.');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('loads a manifest compiled before rules carried a code or a sentence', function () {
+    $manifest = SecurityMethodManifest::fromArray([
+        ['class' => 'App\\Ctrl', 'method' => 'show', 'expression' => "hasRole('USER')", 'params' => ['id']],
+    ]);
+
+    expect($manifest->ruleFor('App\\Ctrl', 'show')?->code)->toBeNull()
+        ->and($manifest->ruleFor('App\\Ctrl', 'show')?->message)->toBeNull();
 });
 
 it('round-trips through the compiled var_export manifest', function () {

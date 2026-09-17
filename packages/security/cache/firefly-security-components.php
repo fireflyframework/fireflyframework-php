@@ -133,6 +133,7 @@ return [
                     2 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
                     3 => 'Firefly\\Security\\Access\\RoleHierarchy',
                     4 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                    5 => 'Psr\\Log\\LoggerInterface',
                 ],
             ],
             8 => [

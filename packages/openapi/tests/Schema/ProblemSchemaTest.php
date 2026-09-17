@@ -80,3 +80,25 @@ it('serves the shared response as problem+json pointing at the shared schema', f
         ->and(ProblemSchema::REF)->toBe('#/components/schemas/ProblemDetails')
         ->and(ProblemSchema::RESPONSE_REF)->toBe('#/components/responses/Problem');
 });
+
+it('admits RFC 9457 extension members, which ErrorResponse now spreads into the document', function () {
+    $payload = (new ErrorResponse(
+        status: 402,
+        title: 'Your plan does not include this',
+        code: 'EDITION_REQUIRED',
+        category: ErrorCategory::Business,
+        severity: ErrorSeverity::Warning,
+        extensions: ['field' => 'limit', 'edition' => 'team'],
+    ))->toArray();
+
+    $schema = ProblemSchema::schema();
+    /** @var array<string, mixed> $properties */
+    $properties = $schema['properties'];
+
+    $extensions = array_values(array_diff(array_keys($payload), array_keys($properties)));
+
+    // The two members the schema does not name are the extensions, and the schema must say they may appear:
+    // a generated client with `additionalProperties: false` would drop the very members a caller branches on.
+    expect($extensions)->toBe(['field', 'edition'])
+        ->and($schema['additionalProperties'])->toBeTrue();
+});

@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\Kernel\Exception\Business\ValidationException;
 use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
 use Firefly\Validation\IlluminateValidator;
+use Firefly\Web\Attributes\PathVariable;
 use Firefly\Web\Dispatch\ArgumentResolver;
 use Firefly\Web\Exception\InvalidRequestException;
 use Firefly\Web\Http\JsonMessageConverter;
@@ -569,4 +571,72 @@ it('refuses an ENUM-typed property with a 400 rather than letting "cannot instan
                 ->and($e->getMessage())->toContain('currency');
         }
     }
+});
+
+/*
+ * A MALFORMED ID IS A 404, DECIDED BEFORE THE CONTROLLER. `#[PathVariable]` used to be a binding marker only, so
+ * `GET /rooms/not-a-uuid` reached the controller, reached the repository, reached PostgreSQL as `where id =
+ * ?::uuid`, and came back as a 500 INTERNAL_ERROR with a correlation id — for a request that was simply wrong,
+ * on every `{id}` route of one real application, where three controllers remembered to check the shape and
+ * thirty did not. A rule that depends on every future controller remembering is not a rule. The attribute now
+ * states the shape and the resolver enforces it: a segment that does not match answers with the entity's OWN
+ * 404 code, so the wire cannot tell "no such room" from "not even a room id" — the right property under
+ * row-level security, where a distinct code would let a caller learn which ids are well-formed.
+ */
+it('answers a path variable that misses its pattern with the entity\'s own 404 before the controller runs', function () {
+    $request = requestWithRoute(Request::create('/rooms/not-a-uuid', 'GET'), '/rooms/{roomId}', ['roomId' => 'not-a-uuid']);
+
+    try {
+        resolverFor()->resolve([
+            ['name' => 'roomId', 'kind' => 'path', 'key' => 'roomId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => PathVariable::UUID, 'notFoundCode' => 'ROOM_NOT_FOUND', 'notFoundMessage' => 'That room does not exist, or is not yours.'],
+        ], $request, new Container);
+        $this->fail('Expected ResourceNotFoundException');
+    } catch (ResourceNotFoundException $e) {
+        expect($e->httpStatus())->toBe(404)
+            ->and($e->errorCode())->toBe('ROOM_NOT_FOUND')
+            ->and($e->getMessage())->toBe('That room does not exist, or is not yours.');
+    }
+});
+
+it('passes a path variable that matches its pattern through untouched', function () {
+    $uuid = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    $request = requestWithRoute(Request::create("/rooms/{$uuid}", 'GET'), '/rooms/{roomId}', ['roomId' => $uuid]);
+
+    $args = resolverFor()->resolve([
+        ['name' => 'roomId', 'kind' => 'path', 'key' => 'roomId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => PathVariable::UUID, 'notFoundCode' => 'ROOM_NOT_FOUND'],
+    ], $request, new Container);
+
+    expect($args)->toBe([$uuid]);
+});
+
+it('anchors the pattern to the whole segment and matches a uuid in either case', function () {
+    $upper = '0F8FAD5B-D9CB-469F-A165-70867728950E';
+    $ok = requestWithRoute(Request::create("/rooms/{$upper}", 'GET'), '/rooms/{roomId}', ['roomId' => $upper]);
+    $tail = requestWithRoute(Request::create('/rooms/x', 'GET'), '/rooms/{roomId}', ['roomId' => '0f8fad5b-d9cb-469f-a165-70867728950e-extra']);
+    $binding = ['name' => 'roomId', 'kind' => 'path', 'key' => 'roomId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => PathVariable::UUID];
+
+    expect(resolverFor()->resolve([$binding], $ok, new Container))->toBe([$upper])
+        ->and(fn () => resolverFor()->resolve([$binding], $tail, new Container))->toThrow(ResourceNotFoundException::class);
+});
+
+it('falls back to RESOURCE_NOT_FOUND and a sentence derived from the parameter name', function () {
+    $request = requestWithRoute(Request::create('/x/abc', 'GET'), '/x/{planStepId}', ['planStepId' => 'abc']);
+
+    try {
+        resolverFor()->resolve([
+            ['name' => 'planStepId', 'kind' => 'path', 'key' => 'planStepId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => '[0-9]+'],
+        ], $request, new Container);
+        $this->fail('Expected ResourceNotFoundException');
+    } catch (ResourceNotFoundException $e) {
+        expect($e->errorCode())->toBe('RESOURCE_NOT_FOUND')
+            ->and($e->getMessage())->toBe('That plan step does not exist.');
+    }
+});
+
+it('checks the pattern before coercion, so a malformed int id is a 404 and not a TYPE_CONVERSION_ERROR', function () {
+    $request = requestWithRoute(Request::create('/accounts/abc', 'GET'), '/accounts/{id}', ['id' => 'abc']);
+
+    expect(fn () => resolverFor()->resolve([
+        ['name' => 'id', 'kind' => 'path', 'key' => 'id', 'type' => 'int', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => '[0-9]+', 'notFoundCode' => 'ACCOUNT_NOT_FOUND'],
+    ], $request, new Container))->toThrow(ResourceNotFoundException::class);
 });

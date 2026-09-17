@@ -33,3 +33,32 @@ it('defaults to a 500 internal error', function () {
         ->and($e->category())->toBe(ErrorCategory::Internal)
         ->and($e->severity())->toBe(ErrorSeverity::Error);
 });
+
+it('carries RFC 9457 extension members and a title of its own', function () {
+    $e = (new FireflyException('The plan does not include this.', 'EDITION_REQUIRED', 402))
+        ->withExtensions(['field' => 'limit', 'edition' => 'team'])
+        ->withTitle('Your plan does not include this');
+
+    expect($e->extensions())->toBe(['field' => 'limit', 'edition' => 'team'])
+        ->and($e->title())->toBe('Your plan does not include this');
+});
+
+it('has no extensions and no title unless given some', function () {
+    $e = new FireflyException('unexpected', 'INTERNAL_ERROR');
+
+    expect($e->extensions())->toBe([])
+        ->and($e->title())->toBeNull();
+});
+
+it('accepts extensions and a title through the constructor as well', function () {
+    $e = new FireflyException(
+        message: 'Nope.',
+        errorCode: 'X',
+        httpStatus: 409,
+        extensions: ['retryable' => true],
+        title: 'That cannot be done yet',
+    );
+
+    expect($e->extensions())->toBe(['retryable' => true])
+        ->and($e->title())->toBe('That cannot be done yet');
+});

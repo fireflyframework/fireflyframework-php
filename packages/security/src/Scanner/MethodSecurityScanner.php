@@ -43,7 +43,7 @@ final class MethodSecurityScanner
             $reflection = new ReflectionClass($class);
 
             try {
-                $classExpression = $this->expressionFrom($reflection->getAttributes());
+                $classExpression = $this->ruleFrom($reflection->getAttributes());
             } catch (ExpressionParseException $e) {
                 throw new ConfigurationException("Invalid method-security expression on {$class}: {$e->getMessage()}", previous: $e);
             }
@@ -54,11 +54,11 @@ final class MethodSecurityScanner
                 }
 
                 try {
-                    $expression = $this->expressionFrom($method->getAttributes()) ?? $classExpression;
-                    if ($expression === null) {
+                    $rule = $this->ruleFrom($method->getAttributes()) ?? $classExpression;
+                    if ($rule === null) {
                         continue;
                     }
-                    $evaluator->parse($expression);
+                    $evaluator->parse($rule['expression']);
                 } catch (ExpressionParseException $e) {
                     throw new ConfigurationException(
                         "Invalid method-security expression on {$class}::{$method->getName()}: {$e->getMessage()}",
@@ -67,7 +67,7 @@ final class MethodSecurityScanner
                 }
 
                 $params = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), $method->getParameters());
-                $rules[] = new SecurityMethodDescriptor($class, $method->getName(), $expression, $params);
+                $rules[] = new SecurityMethodDescriptor($class, $method->getName(), $rule['expression'], $params, $rule['code'], $rule['message']);
             }
         }
 
@@ -75,26 +75,37 @@ final class MethodSecurityScanner
     }
 
     /**
+     * The expression an attribute list declares, with the product code and sentence a #[PreAuthorize] may
+     * carry beside it. #[Secured]/#[RolesAllowed] carry neither: they are the JSR-250 shorthands and have no
+     * slot for words, so a refusal on them reads the framework's sentence with the authorities named.
+     *
      * @param  list<\ReflectionAttribute<object>>  $attributes
+     * @return array{expression: string, code: string|null, message: string|null}|null
      */
-    private function expressionFrom(array $attributes): ?string
+    private function ruleFrom(array $attributes): ?array
     {
         foreach ($attributes as $attribute) {
             $name = $attribute->getName();
             if ($name === PreAuthorize::class) {
                 $instance = $attribute->newInstance();
 
-                return $instance instanceof PreAuthorize ? $instance->expression : null;
+                return $instance instanceof PreAuthorize
+                    ? ['expression' => $instance->expression, 'code' => $instance->code, 'message' => $instance->message]
+                    : null;
             }
             if ($name === Secured::class) {
                 $instance = $attribute->newInstance();
 
-                return $instance instanceof Secured ? 'hasAnyAuthority('.$this->quoteList($instance->authorities).')' : null;
+                return $instance instanceof Secured
+                    ? ['expression' => 'hasAnyAuthority('.$this->quoteList($instance->authorities).')', 'code' => null, 'message' => null]
+                    : null;
             }
             if ($name === RolesAllowed::class) {
                 $instance = $attribute->newInstance();
 
-                return $instance instanceof RolesAllowed ? 'hasAnyRole('.$this->quoteList($instance->roles).')' : null;
+                return $instance instanceof RolesAllowed
+                    ? ['expression' => 'hasAnyRole('.$this->quoteList($instance->roles).')', 'code' => null, 'message' => null]
+                    : null;
             }
         }
 

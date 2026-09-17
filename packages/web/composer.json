@@ -30,6 +30,7 @@
         "firefly/validation": "*@dev",
         "illuminate/contracts": "^13.0",
         "illuminate/http": "^13.0",
+        "illuminate/log": "^13.0",
         "illuminate/routing": "^13.0",
         "illuminate/support": "^13.0"
     },

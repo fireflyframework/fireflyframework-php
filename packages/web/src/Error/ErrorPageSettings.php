@@ -28,6 +28,14 @@ use Illuminate\Support\Str;
  * deliberate: a page that assembled the details and then declined to print them would put a stack trace one
  * misplaced `@if` away from the response body, and the file reads alone are a reason to not do the work.
  *
+ * `disclose` IS THE PROBLEM DOCUMENT'S OWN GATE, AND IT DOES NOT FOLLOW `app.debug`. For one release the
+ * JSON renderer shared `trace`, and that was the wrong gate for a machine surface: every local and compose
+ * environment sets APP_DEBUG, so a console fed by problem+json rendered a duplicate-key insert as the DSN,
+ * the tenant id, the acting user and the full statement in a red banner — the HTML page next to it withheld
+ * everything, because a developer with debug on is looking at a page, not at the payload a client parses. A
+ * person who wants a driver message inside a JSON `detail` says so with `firefly.web.problem.disclose=true`;
+ * nothing infers it. The two gates are independent so that turning one on never opens the other.
+ *
  * WHAT PRODUCTION SEES with `trace` off is the status, the reason phrase and the stable error code — the
  * same `code` the problem+json carries, so a user can quote it into a support ticket and an operator can
  * find it in the log. Not the message: an exception message is written for a developer and routinely names
@@ -48,6 +56,7 @@ final readonly class ErrorPageSettings
         public bool $hints = false,
         public array $jsonPaths = ['api/*'],
         public array $views = [],
+        public bool $disclose = false,
     ) {}
 
     /**
@@ -106,6 +115,9 @@ final readonly class ErrorPageSettings
             hints: $config->string('app.env', 'production') !== 'production',
             jsonPaths: self::patterns($config->string('firefly.web.error-page.json-paths', 'api/*')),
             views: self::views($config->array('firefly.web.error-page.views', [])),
+            // Explicit, and only explicit: no fallback to app.debug, no fallback to `trace`. See the class
+            // comment for the leak that a shared gate produced.
+            disclose: $config->bool('firefly.web.problem.disclose', false),
         );
     }
 

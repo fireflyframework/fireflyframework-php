@@ -5,30 +5,40 @@ declare(strict_types=1);
 namespace Firefly\Security\Web;
 
 use Firefly\Kernel\Exception\Security\AuthenticationException;
-use Firefly\Kernel\Exception\Security\AuthorizationException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
+use Firefly\Security\Access\Method\MethodSecurityRefusal;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Web\Security\ControllerSecurityGuard;
+use Psr\Log\LoggerInterface;
 
 /**
  * The real dispatch-time guard: looks up the controller method's rule in the compiled method-security manifest
  * and evaluates it (no-eval) against the current SecurityContext, binding the resolved positional args to their
  * parameter names for #param references. A method with no rule is allowed (method security is additive over the
- * HttpSecurityFilter's deny-by-default URL rules). A denial is a 401 when anonymous, a 403 when authenticated.
+ * HttpSecurityFilter's deny-by-default URL rules). A denial is a 401 when anonymous, a 403 when authenticated —
+ * and the 403 is worded by MethodSecurityRefusal, which is where the class name stopped reaching the wire.
  */
 final class MethodSecurityControllerGuard implements ControllerSecurityGuard
 {
+    /** The framework's refusal sentence; the rule's own `message` replaces it when the attribute has one. */
+    public const string REFUSAL = MethodSecurityRefusal::SENTENCE;
+
+    private readonly MethodSecurityRefusal $refusal;
+
     public function __construct(
         private readonly SecurityMethodManifest $methods,
         private readonly SecurityExpressionEvaluator $evaluator,
         private readonly RoleHierarchy $roleHierarchy,
         private readonly PermissionEvaluator $permissionEvaluator,
-    ) {}
+        ?LoggerInterface $logger = null,
+    ) {
+        $this->refusal = new MethodSecurityRefusal($evaluator, $logger);
+    }
 
     public function check(string $controllerClass, string $method, array $args): void
     {
@@ -53,7 +63,7 @@ final class MethodSecurityControllerGuard implements ControllerSecurityGuard
         }
 
         throw $context->isAuthenticated()
-            ? new AuthorizationException("Access is denied for [{$controllerClass}::{$method}].")
+            ? $this->refusal->refuse($rule, $authentication)
             : new AuthenticationException('Authentication is required.');
     }
 }

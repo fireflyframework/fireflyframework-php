@@ -93,3 +93,54 @@ it('renders a generic Throwable as problem+json ONLY when the request expects JS
     $base = $html->baseResponse;
     expect((string) $base->headers->get('Content-Type'))->not->toContain('application/problem+json');
 });
+
+it('answers a malformed #[PathVariable(pattern:)] segment with the entity\'s own 404 through the real pipeline', function () {
+    /** @var WebCapstoneTestCase $this */
+    // RoomsController::show declares PathVariable::UUID with ROOM_NOT_FOUND; the resolver refuses the
+    // segment before the controller, and the problem renderer answers it exactly as a missing row would be.
+    $this->getJson('/rooms/not-a-uuid')
+        ->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'ROOM_NOT_FOUND')
+        ->assertJsonPath('detail', 'That room does not exist, or is not yours.')
+        ->assertHeader('X-Correlation-Id');
+
+    $this->getJson('/rooms/0f8fad5b-d9cb-469f-a165-70867728950e')
+        ->assertStatus(200)
+        ->assertExactJson(['id' => '0f8fad5b-d9cb-469f-a165-70867728950e']);
+});
+
+it('answers a wrong verb as a 405 with the reason phrase, a client sentence, `allowed` and the Allow header', function () {
+    /** @var WebCapstoneTestCase $this */
+    $response = $this->deleteJson('/balances/7');
+
+    $response->assertStatus(405)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('title', 'Method Not Allowed')
+        ->assertJsonPath('code', 'METHOD_NOT_ALLOWED')
+        ->assertJsonPath('detail', 'This address only accepts GET.')
+        ->assertJsonPath('allowed', ['GET'])
+        ->assertHeader('Allow');
+
+    expect($response->headers->get('Allow'))->toContain('GET');
+});
+
+it('withholds an unhandled exception from problem+json even though the test app runs with app.debug on, and names the reference', function () {
+    /** @var WebCapstoneTestCase $this */
+    // BoomController throws a plain RuntimeException; its message must not reach the wire whatever app.debug says.
+    config()->set('app.debug', true);
+    $response = $this->getJson('/boom/generic');
+
+    $response->assertStatus(500)
+        ->assertJsonPath('code', 'INTERNAL_ERROR')
+        ->assertHeader('X-Correlation-Id');
+
+    /** @var string $traceId */
+    $traceId = $response->json('traceId');
+    /** @var string $detail */
+    $detail = $response->json('detail');
+
+    expect($response->headers->get('X-Correlation-Id'))->toBe($traceId)
+        ->and($detail)->toContain($traceId)
+        ->and($detail)->not->toContain('kaboom');
+});

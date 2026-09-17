@@ -14,6 +14,7 @@ use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Cqrs\Security\QueryAuthorizer;
 use Firefly\Data\Repository\Auditing\AuditorAware;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Access\AuthorizationChecker;
 use Firefly\Security\Access\DenyAllPermissionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
@@ -29,7 +30,10 @@ use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Cqrs\SecurityQueryAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
 use Firefly\Security\Jwt\JwtService;
+use Firefly\Security\OAuth2\JwksDocumentSource;
 use Firefly\Security\OAuth2\JwksProvider;
+use Firefly\Security\OAuth2\JwksUri;
+use Firefly\Security\OAuth2\LocalJwksProvider;
 use Firefly\Security\OAuth2\RemoteJwksProvider;
 use Firefly\Security\Password\Argon2idPasswordEncoder;
 use Firefly\Security\Password\BcryptPasswordEncoder;
@@ -40,6 +44,7 @@ use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Repository as Cache;
+use Psr\Log\LoggerInterface;
 
 /**
  * The opt-in, secure-by-default bean source. The master flag firefly.security.enabled gates the core stack
@@ -124,9 +129,9 @@ final class SecurityAutoConfiguration
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
-    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions): MethodSecurityMessageEnforcer
+    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, ?LoggerInterface $logger = null): MethodSecurityMessageEnforcer
     {
-        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions);
+        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $logger);
     }
 
     #[Bean]
@@ -176,18 +181,54 @@ final class SecurityAutoConfiguration
         return HttpSecurity::fromConfig($rules);
     }
 
+    /**
+     * WHERE THE KEYS COME FROM: `firefly.security.oauth2.resource_server.jwks_source` is `auto` (default),
+     * `local` or `remote`. `local` answers from a JwksDocumentSource bound by the application — the key set
+     * it signs its own tokens with — and refuses to boot when none is bound; `remote` fetches `jwks_uri`
+     * over HTTP with bounded timeouts; `auto` picks `local` when a source is bound AND the URI names this
+     * application (JwksUri::isOwn), and `remote` otherwise. See LocalJwksProvider for why a server must never
+     * fetch its own keys from itself.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.resource_server.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(JwksProvider::class)]
     public function jwksProvider(Config $config, Container $container): JwksProvider
     {
+        $jwksUri = $config->string('firefly.security.oauth2.resource_server.jwks_uri');
+        $source = $config->string('firefly.security.oauth2.resource_server.jwks_source', 'auto');
+        $hasLocal = $container->bound(JwksDocumentSource::class);
+
+        $local = match ($source) {
+            'local' => $hasLocal ? true : throw new ConfigurationException(
+                'firefly.security.oauth2.resource_server.jwks_source is `local` but no '.JwksDocumentSource::class.' is bound. Bind the key set this application signs with, or set jwks_source to `remote`.',
+            ),
+            'remote' => false,
+            'auto' => $hasLocal && JwksUri::isOwn(
+                $jwksUri,
+                $config->string('app.url', ''),
+                $config->int('firefly.server.port', 0),
+            ),
+            default => throw new ConfigurationException(
+                "firefly.security.oauth2.resource_server.jwks_source must be one of auto, local or remote; got `{$source}`.",
+            ),
+        };
+
+        if ($local) {
+            /** @var JwksDocumentSource $documentSource */
+            $documentSource = $container->make(JwksDocumentSource::class);
+
+            return new LocalJwksProvider($documentSource);
+        }
+
         /** @var Cache $cache */
         $cache = $container->make(Cache::class);
 
         return new RemoteJwksProvider(
-            $config->string('firefly.security.oauth2.resource_server.jwks_uri'),
+            $jwksUri,
             $cache,
             $config->int('firefly.security.oauth2.resource_server.cache_ttl', 3600),
+            $config->int('firefly.security.oauth2.resource_server.jwks_connect_timeout', RemoteJwksProvider::DEFAULT_CONNECT_TIMEOUT_SECONDS),
+            $config->int('firefly.security.oauth2.resource_server.jwks_timeout', RemoteJwksProvider::DEFAULT_TIMEOUT_SECONDS),
         );
     }
 }

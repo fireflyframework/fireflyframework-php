@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Consumer\EnvelopeSink;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\Consumer\TopicSubscriptionResolver;
+use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Tests\Support\EdaConsumeCommandTestCase;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 
@@ -62,4 +64,24 @@ it('exits FAILURE without subscribing when no broker EventConsumer is bound', fu
 
     expect($this->runConsume())->toBe(1)
         ->and($this->consumer->subscribed)->toBe([]);
+});
+
+it('delivers to the application\'s EnvelopeSink when one is bound, instead of the #[EventListener] registry', function () {
+    /** @var EdaConsumeCommandTestCase $this */
+    $sink = new class implements EnvelopeSink
+    {
+        /** @var list<string> */
+        public array $types = [];
+
+        public function handle(EventEnvelope $envelope): void
+        {
+            $this->types[] = $envelope->eventType;
+        }
+    };
+    $this->app()->instance(EnvelopeSink::class, $sink);
+    $this->consumer->enqueue(new EventEnvelope('order.created', 'orders', ['id' => 7]));
+
+    expect($this->runConsume(['--max-messages' => 1]))->toBe(0)
+        ->and($sink->types)->toBe(['order.created'])
+        ->and($this->consumer->acked)->toHaveCount(1);
 });

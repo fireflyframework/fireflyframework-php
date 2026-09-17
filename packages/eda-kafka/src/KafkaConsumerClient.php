@@ -18,7 +18,8 @@ use Firefly\Eda\EventEnvelope;
  * consume() returns a mapped ?ReceivedEnvelope (null = "nothing this tick"): the RD_KAFKA_RESP_ERR_* `match` that
  * decides message-vs-nothing lives inside RdKafkaConsumerClient because those constants are ext-only. commit()'s
  * $deliveryTag is the broker-native handle carried on the ReceivedEnvelope (the rdkafka Message for the real adapter);
- * deadLetter() re-produces $envelope to the already-computed $dltTopic string.
+ * deadLetter() re-produces $envelope to the already-computed $dltTopic string; deadLetterRaw() does the same for the
+ * bytes of a POISON record (ReceivedEnvelope::poison()), which has no envelope to re-encode.
  */
 interface KafkaConsumerClient
 {
@@ -31,6 +32,9 @@ interface KafkaConsumerClient
     public function commit(mixed $deliveryTag): void;
 
     public function deadLetter(EventEnvelope $envelope, string $dltTopic): void;
+
+    /** Re-produce RAW bytes that could not be decoded to $dltTopic — verbatim, so a fixed producer can replay them. */
+    public function deadLetterRaw(string $raw, string $dltTopic): void;
 
     public function close(): void;
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Tests\Support\FixtureDocument;
+use Firefly\Web\Attributes\PathVariable;
 
 /**
  * Structural assertions, never a snapshot. A blob comparison would fail on every harmless wording change and
@@ -217,4 +218,23 @@ it('drops routes under a configured exclude prefix', function () {
 
 it('is deterministic across generations', function () {
     expect(FixtureDocument::generator()->toJson())->toBe(FixtureDocument::generator()->toJson());
+});
+
+it('publishes a #[PathVariable] pattern as the path parameter\'s JSON Schema pattern', function () {
+    $document = FixtureDocument::generator()->generate();
+    /** @var array<string, array<string, array<string, mixed>>> $paths */
+    $paths = $document['paths'];
+
+    /** @var list<array<string, mixed>> $parameters */
+    $parameters = $paths['/api/orders/{id}']['delete']['parameters'];
+    $id = array_values(array_filter($parameters, static fn (array $p): bool => $p['name'] === 'id'))[0];
+
+    // A pattern the resolver enforces before the controller is part of the contract: a generated client can
+    // refuse a malformed id before making the call, and the document says what the server will 404.
+    expect($id['schema'])->toBe(['type' => 'string', 'pattern' => '^(?:'.PathVariable::UUID.')$']);
+
+    /** @var list<array<string, mixed>> $unpatterned */
+    $unpatterned = $paths['/api/orders/{id}']['get']['parameters'];
+    $plain = array_values(array_filter($unpatterned, static fn (array $p): bool => $p['name'] === 'id'))[0];
+    expect($plain['schema'])->toBe(['type' => 'string']);
 });

@@ -22,8 +22,13 @@ namespace Firefly\Web\Route;
  * without reflection. Optional so a plan for a flat DTO — and a manifest compiled before the scanner emitted
  * the key — stays exactly as it was.
  *
+ * `pattern`, `notFoundCode` and `notFoundMessage` are optional and present only on a path binding whose
+ * #[PathVariable] declared a shape: the PCRE body ArgumentResolver anchors and matches the segment against
+ * before the handler runs, and the 404 it answers a miss with. Optional for the same reason as `dtos`: a plan
+ * for an unpatterned variable, and a manifest compiled before the keys existed, stays exactly as it was.
+ *
  * @phpstan-type PropertyPlan array{class: string|null, list: bool}
- * @phpstan-type Binding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, array<string, PropertyPlan>>}
+ * @phpstan-type Binding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, array<string, PropertyPlan>>, pattern?: string, notFoundCode?: string, notFoundMessage?: string}
  */
 final readonly class RouteDescriptor
 {

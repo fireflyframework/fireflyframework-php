@@ -98,6 +98,55 @@ final class SecurityExpressionEvaluator
     }
 
     /**
+     * The authorities an expression ASKS FOR, read off its tokens without evaluating anything: every string
+     * literal that is a direct argument of hasRole()/hasAnyRole()/hasAuthority()/hasAnyAuthority(), with roles
+     * normalised to `ROLE_` exactly as SecurityExpressionRoot::hasRole() normalises them at evaluation. A
+     * refusal reports this list as `requiredAuthorities` so a client can say "you need ROLE_ADMIN" without
+     * ever seeing the expression or the class it guards. hasPermission() and the nullary functions name no
+     * authority and contribute nothing; a malformed expression contributes nothing rather than throwing,
+     * because this runs inside the refusal path and a refusal must never turn into a 500.
+     *
+     * @return list<string>
+     */
+    public function authorities(string $expression): array
+    {
+        try {
+            $tokens = $this->tokenize($expression);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $authorities = [];
+        $count = count($tokens);
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+            if ($token['type'] !== 'ident' || ! in_array($token['value'], ['hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority'], true)) {
+                continue;
+            }
+            if (($tokens[$i + 1]['type'] ?? '') !== '(') {
+                continue;
+            }
+
+            $role = $token['value'] === 'hasRole' || $token['value'] === 'hasAnyRole';
+            for ($j = $i + 2; $j < $count && $tokens[$j]['type'] !== ')'; $j++) {
+                if ($tokens[$j]['type'] !== 'string') {
+                    continue;
+                }
+                $value = $tokens[$j]['value'];
+                if ($role && ! str_starts_with($value, 'ROLE_')) {
+                    $value = 'ROLE_'.$value;
+                }
+                if (! in_array($value, $authorities, true)) {
+                    $authorities[] = $value;
+                }
+            }
+        }
+
+        return $authorities;
+    }
+
+    /**
      * @return list<Token>
      */
     private function tokenize(string $expression): array

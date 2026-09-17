@@ -59,6 +59,25 @@ model.
   likewise reject a role/authority value containing a single quote, for the same expression-injection reason as
   method security above — a legitimate role/authority string never needs one.
 
+### What a refused principal reads
+
+A method-security denial is a `403 ACCESS_DENIED` whose `detail` is `You do not have permission to do this.`
+and whose problem document carries the authorities the rule asked for as an RFC 9457 extension member —
+`"requiredAuthorities": ["ROLE_ADMIN", "orders:write"]`, read off the expression's `hasRole`/`hasAnyRole`/
+`hasAuthority`/`hasAnyAuthority` literals with roles normalised to `ROLE_`. The guarded **class and method go
+to the log**, at warning, with the principal and its authorities — they used to be the wire sentence
+("Access is denied for [App\Ctrl::admin].") and a PHP class name is not something a person should read on a
+panel. A rule can carry its own product code and sentence:
+
+```php
+#[PreAuthorize("hasAnyRole('MANAGER', 'TENANT_ADMIN')", code: 'RUN_ROLE_REQUIRED', message: 'Only a manager may start a run.')]
+public function start(): void {}
+```
+
+so the role rule and the words for breaking it live on the same line, beside the method they guard, instead
+of in a service the controller has to call first. An anonymous caller still gets `401` `Authentication is
+required.`; `#[Secured]` and `#[RolesAllowed]` have no slot for words and use the framework's sentence.
+
 ### Method security fails open on an empty manifest
 
 Both enforcement sites (`MethodSecurityMessageEnforcer::enforce()` and the controller guard) read "no rule
@@ -141,6 +160,9 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | `firefly.security.oauth2.resource_server.enabled` | `false` | Enables the JWKS resource-server filter. Independent of the master flag. Mutually exclusive with `jwt.enabled` (refused at boot). |
 | `firefly.security.oauth2.resource_server.jwks_uri` | _(required when enabled)_ | Issuer JWKS URI (cached). |
 | `firefly.security.oauth2.resource_server.cache_ttl` | `3600` | Seconds the fetched JWKS is cached for. |
+| `firefly.security.oauth2.resource_server.jwks_source` | `auto` | `remote` fetches `jwks_uri` over HTTP; `local` answers from a `JwksDocumentSource` bean the application binds (the key set it signs its own tokens with) and refuses to boot without one; `auto` picks `local` when such a bean exists **and** `jwks_uri` names this application (`JwksUri::isOwn`: its `/.well-known/jwks.json` at `app.url`, or at a loopback address on `firefly.server.port`), `remote` otherwise. A server must never fetch its own keys from itself over HTTP — on a single-process dev server that nested request deadlocks the pool. |
+| `firefly.security.oauth2.resource_server.jwks_connect_timeout` | `5` | Seconds to connect to the JWKS URI. Laravel's default (30) equals PHP's execution limit and turns a slow issuer into a fatal error. |
+| `firefly.security.oauth2.resource_server.jwks_timeout` | `5` | Seconds to wait for the JWKS response. Any fetch failure — 5xx, refused, timed out, not JSON — is a `503 JWKS_UNAVAILABLE` (`JwksUnavailableException`), never a `401`: the token was not examined. |
 | `firefly.security.oauth2.resource_server.issuer` | `''` | Expected `iss` claim. When set, a token whose `iss` doesn't match is rejected (confused-deputy protection, RFC 9700); empty skips the check. |
 | `firefly.security.oauth2.resource_server.audience` | `''` | Expected `aud` claim (checked against a string or array `aud`, per RFC 7519). When set, a token whose `aud` doesn't include it is rejected; empty skips the check. |
 | `firefly.security.oauth2.resource_server.authorities_claim` | `roles` | Claim carrying the authority list (distinct from the local-JWT default). |
