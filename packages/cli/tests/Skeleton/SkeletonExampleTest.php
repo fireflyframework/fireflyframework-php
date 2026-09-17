@@ -243,7 +243,33 @@ it('answers an unknown order with an RFC-7807 problem document, not a bare 404',
         ->assertStatus(404)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('code', 'ORDER_NOT_FOUND')
-        ->assertJsonPath('detail', 'Order 424242 does not exist.');
+        ->assertJsonPath('detail', 'That order does not exist.');
+});
+
+it('answers a malformed order id with the same 404 as a missing one, before the service is asked', function (): void {
+    /** @var SkeletonExampleTestCase $this */
+    // `/orders/abc` used to be a 400 TYPE_CONVERSION_ERROR ("Could not convert id to int.") — the framework's
+    // sentence, naming a parameter — and on a uuid-keyed resource it was a 500 from the database. The sample
+    // declares the id's shape on the attribute with the resource's own 404 code, so the two answers read alike
+    // and the wire cannot tell "no such order" from "not even an order id".
+    $this->getJson('/orders/abc')
+        ->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'ORDER_NOT_FOUND')
+        ->assertJsonPath('detail', 'That order does not exist.')
+        ->assertHeader('X-Correlation-Id');
+});
+
+it('answers a wrong verb on the sample resource in the product\'s words, with Allow', function (): void {
+    /** @var SkeletonExampleTestCase $this */
+    $response = $this->patchJson('/orders/1', []);
+
+    $response->assertStatus(405)
+        ->assertJsonPath('title', 'Method Not Allowed')
+        ->assertJsonPath('code', 'METHOD_NOT_ALLOWED')
+        ->assertJsonPath('detail', 'This address only accepts GET, PUT or DELETE.')
+        ->assertJsonPath('allowed', ['GET', 'PUT', 'DELETE'])
+        ->assertHeader('Allow');
 });
 
 it('still serves the minimal greeting slice the tutorial is built on', function (): void {

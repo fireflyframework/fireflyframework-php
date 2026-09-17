@@ -45,7 +45,9 @@ final class OrderController
     //  * BINDING. #[PathVariable] and #[QueryParam] bind AND coerce (`/orders/7` arrives as an int), and
     //    #[RequestBody] decodes JSON into a DTO — including the nested AddressPayload and the list of
     //    OrderLinePayloads, built from a shape table compiled at cache time so the request path never
-    //    reflects.
+    //    reflects. The id's SHAPE is on the attribute too (`pattern: '[0-9]+'`, with the resource's own
+    //    404 code): `/orders/abc` is answered `404 ORDER_NOT_FOUND` before this class runs, exactly as a
+    //    missing order is, so the wire cannot tell "no such order" from "not even an order id".
     //  * VALIDATION. #[Valid] runs the compiled constraints BEFORE hydration, so an invalid body is a 422
     //    with per-field errors (`shipTo.postcode`) and never reaches these method bodies. There is no
     //    FormRequest and no `$request->validate(...)` call anywhere.
@@ -89,9 +91,12 @@ final class OrderController
         return $this->orders->page(max(1, $page), min(self::MAX_PAGE_SIZE, max(1, $size)));
     }
 
+    /** The id's shape and the 404 a malformed one gets — stated once, used on every `{id}` action. */
+    private const string ID = '[0-9]+';
+
     /** Read one order by id. */
     #[GetMapping('/{id}', name: 'orders.show')]
-    public function show(#[PathVariable] int $id): Order
+    public function show(#[PathVariable(pattern: self::ID, notFoundCode: OrderService::NOT_FOUND, notFoundMessage: OrderService::NOT_FOUND_SENTENCE)] int $id): Order
     {
         return $this->orders->find($id);
     }
@@ -107,7 +112,7 @@ final class OrderController
      * Replace an order wholesale, keeping its id. Takes the same body as placing one.
      */
     #[PutMapping('/{id}', name: 'orders.update')]
-    public function update(#[PathVariable] int $id, #[Valid] #[RequestBody] OrderRequest $request): Order
+    public function update(#[PathVariable(pattern: self::ID, notFoundCode: OrderService::NOT_FOUND, notFoundMessage: OrderService::NOT_FOUND_SENTENCE)] int $id, #[Valid] #[RequestBody] OrderRequest $request): Order
     {
         // The same DTO as `store` on purpose: a PUT that accepted a laxer shape than the POST is how a
         // resource ends up with two contradictory schemas in its own OpenAPI document.
@@ -116,7 +121,7 @@ final class OrderController
 
     /** Cancel an order. Responds 204 with an empty body. */
     #[DeleteMapping('/{id}', status: 204, name: 'orders.destroy')]
-    public function destroy(#[PathVariable] int $id): void
+    public function destroy(#[PathVariable(pattern: self::ID, notFoundCode: OrderService::NOT_FOUND, notFoundMessage: OrderService::NOT_FOUND_SENTENCE)] int $id): void
     {
         $this->orders->cancel($id);
     }
