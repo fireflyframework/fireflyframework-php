@@ -9,6 +9,7 @@ use Closure;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\Example\Example;
+use Firefly\Data\Repository\Projection\ProjectionHydrator;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
@@ -16,6 +17,7 @@ use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\Exception\TransactionRequiredException;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Domain\RecordsDomainEvents;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Kernel\Exception\Infrastructure\EmptyResultDataAccessException;
 use Firefly\Kernel\Exception\Infrastructure\IncorrectResultSizeDataAccessException;
 use Illuminate\Database\Connection;
@@ -70,6 +72,15 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
     /** @var array<string, ParsedQuery> */
     private static array $parsedCache = [];
+
+    /**
+     * The model's table columns, read once per model class per process for #[Projection]'s first-use check —
+     * the same one-time schema read, cached the same way, that Eloquent's own guarded-attribute check makes
+     * (Model::$guardableColumns).
+     *
+     * @var array<class-string, list<string>>
+     */
+    private static array $projectableColumns = [];
 
     /**
      * The dynamic entry for UNDECLARED derived-query methods (declared #[Query] methods call dispatchQuery directly).
@@ -129,11 +140,13 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      * A #[Modifying] row runs the SQL as a STATEMENT — Connection::affectingStatement(), the affected-row count
      * back — and, unless the attribute says otherwise, only inside an open transaction on the model's connection:
      * an update that auto-commits under a caller who believed it was part of a unit of work is the bug Spring's
-     * "@Modifying needs @Transactional" rule exists to prevent.
+     * "@Modifying needs @Transactional" rule exists to prevent. A #[Projection] row hands every fetched row to the
+     * ProjectionHydrator — the SQL owns its select list, so a column the DTO needs and the SQL forgot is the
+     * hydrator's ConfigurationException on the first row.
      *
      * @param  list<mixed>  $args
      * @param  RepositoryMethodRow|null  $row
-     * @return list<array<string, mixed>>|int
+     * @return list<array<string, mixed>>|list<object>|int
      */
     protected function runExplicitQuery(string $sql, array $args, ?array $row = null): array|int
     {
@@ -151,9 +164,16 @@ abstract class EloquentRepository implements PagingAndSortingRepository
             return $connection->affectingStatement($normalized, $args);
         }
 
-        $rows = $connection->select($normalized, $args);
+        $rows = array_values(array_map(self::rowToArray(...), $connection->select($normalized, $args)));
 
-        return array_values(array_map(self::rowToArray(...), $rows));
+        $projection = $row['projection'] ?? null;
+        if ($projection === null) {
+            return $rows;
+        }
+
+        $hydrator = new ProjectionHydrator($projection);
+
+        return array_map($hydrator->hydrate(...), $rows);
     }
 
     /**
@@ -199,6 +219,11 @@ abstract class EloquentRepository implements PagingAndSortingRepository
             $query->limit($parsed->top);
         }
 
+        $projection = $row['projection'] ?? null;
+        if ($projection !== null && $parsed->prefix === 'find') {
+            return $this->projectDerived($query, $parsed, new ProjectionHydrator($projection));
+        }
+
         return match ($parsed->prefix) {
             'count' => $query->count(),
             'exists' => $query->exists(),
@@ -207,6 +232,95 @@ abstract class EloquentRepository implements PagingAndSortingRepository
                 ? $query->first()
                 : $this->narrow($query->get()->all()),
         };
+    }
+
+    /**
+     * A derived `find` under #[Projection]: the SELECT list is the DTO's columns (or the attribute's), and the
+     * rows are read from the base query — never hydrated into the model — so the hydrator sees the driver's raw
+     * values (no casts, no accessors) exactly as a #[Query] projection does. `count`/`exists`/`delete` ignore a
+     * projection. The columns are checked against the table FIRST (see assertProjectable()):
+     * a column the DTO wants and the table lacks must be a ConfigurationException that names it, and the driver
+     * cannot be trusted to say so — MySQL rejects the SELECT with a grammar error, while sqlite silently reads a
+     * double-quoted unknown identifier as a string literal and hands back a row full of the column's own name.
+     *
+     * @param  Builder<Model>  $query
+     * @return object|list<object>|null
+     */
+    private function projectDerived(Builder $query, ParsedQuery $parsed, ProjectionHydrator $hydrator): object|array|null
+    {
+        $this->assertProjectable($hydrator);
+
+        $base = $query->select($hydrator->columns())->toBase();
+
+        if ($parsed->top === 1) {
+            $first = $base->first();
+
+            return $first === null ? null : $hydrator->hydrate(self::rowToArray($first));
+        }
+
+        $projected = [];
+        foreach ($base->get() as $row) {
+            $projected[] = $hydrator->hydrate(self::rowToArray($row));
+        }
+
+        return $projected;
+    }
+
+    /**
+     * #[Projection]'s first-use check: every bare-identifier column the DTO selects must be a column of the
+     * model's table, or the ConfigurationException names the missing ones, the table and what it does have. The
+     * listing is read once per model class per process and cached (Eloquent's Model::isGuardableColumn() makes
+     * the identical read, cached the identical way, for the identical reason); a schema that cannot be read — an
+     * empty listing, a driver without introspection — is not cached, skips the check and leaves the verdict to
+     * the driver. Qualified or aliased entries
+     * in a `columns:` list (`records.id`, `amount as total`) are the driver's to judge as well.
+     */
+    private function assertProjectable(ProjectionHydrator $hydrator): void
+    {
+        $known = self::$projectableColumns[$this->model] ?? $this->columnListing();
+        if ($known === []) {
+            return;
+        }
+        self::$projectableColumns[$this->model] = $known;
+
+        $missing = [];
+        foreach ($hydrator->columns() as $column) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) === 1 && ! in_array(strtolower($column), $known, true)) {
+                $missing[] = $column;
+            }
+        }
+
+        if ($missing === []) {
+            return;
+        }
+
+        throw new ConfigurationException(sprintf(
+            'Projection [%s] on %s selects column%s [%s], which table [%s] does not have (it has [%s]).',
+            $hydrator->dto(),
+            class_basename($this->model),
+            count($missing) === 1 ? '' : 's',
+            implode(', ', $missing),
+            (new $this->model)->getTable(),
+            implode(', ', $known),
+        ));
+    }
+
+    /**
+     * The model table's column names, lower-cased for a case-insensitive comparison; empty when the schema cannot
+     * be read.
+     *
+     * @return list<string>
+     */
+    private function columnListing(): array
+    {
+        try {
+            $model = new $this->model;
+            $columns = $model->getConnection()->getSchemaBuilder()->getColumnListing($model->getTable());
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(strtolower(...), $columns);
     }
 
     /**
