@@ -47,6 +47,19 @@ class ReportService
         return ['purged' => $ids, 'reason' => $reason];
     }
 
+    /**
+     * No filterTarget: `$ids` is the sole array/iterable parameter, and it is deliberately NOT the first one,
+     * so the inference has to find it by type rather than by position.
+     *
+     * @param  list<int>  $ids
+     * @return array{archived: list<int>, reason: string}
+     */
+    #[PreFilter("hasPermission(#filterObject, 'WRITE')")]
+    public function archive(string $reason, array $ids): array
+    {
+        return ['archived' => $ids, 'reason' => $reason];
+    }
+
     public function unguarded(): string
     {
         return 'open';

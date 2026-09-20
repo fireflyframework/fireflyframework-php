@@ -92,6 +92,30 @@ it('narrows an array, a list and a Collection through PostFilter, and the named 
     expect($evaluator->before($preFilter, ['ids' => [1, 2, 3, 4], 'reason' => 'stale']))->toBe(['ids' => [2, 4], 'reason' => 'stale']);
 });
 
+it('filters any other Traversable into an array, keeping int and string keys and appending the elements under any other key', function () {
+    signInAs('ada');
+    $evaluator = evaluatorWith(new RecordingAuthenticationEvents);
+    $rule = new SecurityMethodDescriptor('App\\S', 'stream', 'permitAll()', [], postFilter: "hasPermission(#filterObject, 'READ')");
+
+    // A generator may yield ANY key: a string and an int are array-legal and kept, an object is not and its
+    // element is appended after the highest int key seen so far.
+    $stream = static function (): Generator {
+        yield 'first' => new Report(1, 'bob');
+        yield 'second' => new Report(2, 'ada');
+        yield 7 => new Report(3, 'bob');
+        yield 8 => new Report(4, 'ada');
+        yield new stdClass => new Report(6, 'ada');
+        yield new stdClass => new Report(5, 'bob');
+    };
+
+    expect($evaluator->after($rule, [], $stream()))->toEqual(['second' => new Report(2, 'ada'), 8 => new Report(4, 'ada'), 9 => new Report(6, 'ada')]);
+
+    // The same branch narrows a Traversable ARGUMENT through PreFilter: the method receives a plain array.
+    $preFilter = new SecurityMethodDescriptor('App\\S', 'purge', 'permitAll()', ['ids'], preFilter: "hasPermission(#filterObject, 'WRITE')", preFilterTarget: 'ids');
+
+    expect($evaluator->before($preFilter, ['ids' => new ArrayIterator([1, 2, 3, 4])]))->toBe(['ids' => [1 => 2, 3 => 4]]);
+});
+
 it('fails closed when a filter rule meets a value that is not iterable', function () {
     signInAs('ada');
     $rule = new SecurityMethodDescriptor('App\\S', 'one', 'permitAll()', [], postFilter: "hasPermission(#filterObject, 'READ')");

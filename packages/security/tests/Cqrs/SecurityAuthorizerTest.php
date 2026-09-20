@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Cqrs\Handler\HandlerDescriptor;
 use Firefly\Cqrs\Handler\HandlerKind;
 use Firefly\Cqrs\Handler\HandlerManifest;
+use Firefly\Kernel\Exception\Security\AuthenticationException;
 use Firefly\Kernel\Exception\Security\AuthorizationException;
 use Firefly\Security\Access\DenyAllPermissionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
@@ -59,6 +60,18 @@ it('denies a command when the handler rule is not satisfied', function () {
 
     commandAuthorizer()->authorize(new AdminCommand);
 })->throws(AuthorizationException::class);
+
+it('refuses a command from nobody with a 401, not the 403 the enforcer used to answer on its own', function () {
+    // No context at all: the enforcer now goes through MethodSecurityEvaluator, which says "authenticate first"
+    // for an anonymous caller — the same answer the dispatcher guard and the proxy interceptor give.
+    try {
+        commandAuthorizer()->authorize(new AdminCommand);
+        throw new LogicException('not refused');
+    } catch (AuthenticationException $e) {
+        expect($e->errorCode())->toBe('AUTHENTICATION_FAILED')
+            ->and($e->getMessage())->toBe('Authentication is required.');
+    }
+});
 
 it('allows a command when the handler rule is satisfied', function () {
     SecurityContextHolder::setContext(new SecurityContext(

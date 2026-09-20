@@ -117,11 +117,19 @@ final class MethodSecurityScanner
 
     /**
      * The rows the proxy plan enforces: every rule on a class that has a #[Component]-family stereotype (a
-     * plain class is never post-processed, so it cannot be proxied — its rules stay reachable through
-     * AuthorizationChecker), EXCEPT a #[RestController]/#[Controller] (the dispatcher enforces pre and post
-     * rules) and a #[CommandHandler]/#[QueryHandler] whose rules are all pre-invocation (the bus enforces
-     * them). A class this leaves needing a proxy while being `final` is refused: the proxy must extend it,
-     * and before this scan existed such a rule was silently unenforced.
+     * plain class is never post-processed, so it cannot be proxied — its pre expressions stay reachable
+     * through AuthorizationChecker), EXCEPT a #[RestController]/#[Controller] (the dispatcher enforces pre
+     * and post rules) and a #[CommandHandler]/#[QueryHandler] whose rules are all pre-invocation (the bus
+     * enforces them). A class this leaves needing a proxy while being `final` is refused: the proxy must
+     * extend it, and before this scan existed such a rule was silently unenforced.
+     *
+     * The same policy — a rule that compiles and is then enforced by nothing is a fail-open, so the scan
+     * refuses it — covers the two seams that cannot carry every kind of rule. A #[PreFilter] on a controller
+     * action is refused: the dispatcher's guard can evaluate it, but the arguments it resolved are already
+     * bound and check() cannot hand the narrowed one back, so the action would receive the unfiltered
+     * value with nothing thrown and nothing logged. A #[PostAuthorize], #[PreFilter] or #[PostFilter] on a
+     * class with no stereotype is refused for the same reason: no proxy wraps it, no dispatcher or bus
+     * looks its rule up, and unlike a pre expression there is no imperative equivalent to reach for.
      *
      * @param  array<string,string>  $psr4
      * @return array<class-string, array<string, SecurityMethodRow>>
@@ -141,9 +149,28 @@ final class MethodSecurityScanner
             $reflection = new ReflectionClass($class);
 
             if ($reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF) === []) {
+                foreach ($rules as $rule) {
+                    if ($rule->postExpression !== null || $rule->preFilter !== null || $rule->postFilter !== null) {
+                        throw new ConfigurationException(
+                            "Method security on {$rule->key()} cannot be enforced: the class carries no #[Component]-family "
+                            .'stereotype, so no proxy wraps it and no dispatch seam reaches its #[PostAuthorize]/#[PreFilter]/'
+                            .'#[PostFilter]. Add a stereotype such as #[Service], or move the rule onto the bean that calls it.'
+                        );
+                    }
+                }
+
                 continue;
             }
             if ($reflection->getAttributes(RestController::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
+                foreach ($rules as $rule) {
+                    if ($rule->preFilter !== null) {
+                        throw new ConfigurationException(
+                            "#[PreFilter] on {$rule->key()} cannot be enforced on a controller: the dispatcher cannot rewrite "
+                            .'the arguments it resolved. Move the rule onto the service the controller calls.'
+                        );
+                    }
+                }
+
                 continue;
             }
 
