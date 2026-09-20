@@ -9,6 +9,8 @@ use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Observability\Boot\HttpClientTracingPass;
 use Firefly\Observability\Boot\MeterBindingsPass;
 use Firefly\Observability\Logging\CorrelationIdLogProcessor;
+use Firefly\Observability\Logging\TraceContextLogProcessor;
+use Firefly\Observability\Tracing\Tracer;
 use Illuminate\Log\Logger;
 use Illuminate\Log\LogManager;
 use Monolog\Logger as MonologLogger;
@@ -20,7 +22,8 @@ use Monolog\Logger as MonologLogger;
  * Tracer, the real CqrsMetrics) as #[Bean]s; this class contributes MeterBindingsPass — which registers the
  * process/circuit-breaker gauges into the MeterRegistry once it is bound — and HttpClientTracingPass, which
  * installs the outbound-HTTP tracing middleware on the Http client factory when tracing is on, plus the
- * correlation-id log processor wiring. Both this and ObservabilityServiceProvider are in extra.laravel.providers.
+ * correlation-id and trace-context log processor wiring. Both this and ObservabilityServiceProvider are in
+ * extra.laravel.providers.
  */
 final class ObservabilityWiringProvider extends FireflyServiceProvider
 {
@@ -60,6 +63,10 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
      * resolved rather than at first Log:: write — functionally equivalent (LogManager caches channels by name
      * regardless of when they're first built) and the same "first use" moment the naive guard was already
      * trying to hook.
+     *
+     * TraceContextLogProcessor is pushed right after it, with a closure that resolves the Tracer bean lazily — at
+     * this point in a boot nothing is bound yet, and the processor must never make the log service's first
+     * resolution depend on the tracing auto-configuration having run.
      */
     private function attachCorrelationIdProcessor(object $log): void
     {
@@ -75,6 +82,16 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
         $monolog = $channel->getLogger();
         if ($monolog instanceof MonologLogger) {
             $monolog->pushProcessor(new CorrelationIdLogProcessor);
+            $monolog->pushProcessor(new TraceContextLogProcessor(function (): ?Tracer {
+                if (! $this->app->bound(Tracer::class)) {
+                    return null;
+                }
+
+                /** @var Tracer $tracer */
+                $tracer = $this->app->make(Tracer::class);
+
+                return $tracer;
+            }));
         }
     }
 }
