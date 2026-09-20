@@ -52,9 +52,11 @@
                     @continue (! $column->isEditable())
                     <label>
                         <span>{{ $column->label() }} <em>{{ $column->type }}{{ $column->nullable ? '?' : '' }}</em></span>
+                        {{-- isRequired(), not nullability: a NOT NULL column with a DEFAULT is filled by the
+                             database when this field is left blank, so it is optional to the person typing. --}}
                         <input name="f[{{ $column->name }}]"
                                @if ($column->type === 'int' || $column->type === 'float') inputmode="decimal" @endif
-                               placeholder="{{ $column->nullable ? 'optional' : 'required' }}">
+                               placeholder="{{ $column->isRequired() ? 'required' : 'optional' }}">
                     </label>
                 @endforeach
 

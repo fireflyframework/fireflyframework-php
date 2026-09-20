@@ -115,6 +115,24 @@ failing test first, and each one deletes a workaround downstream.
   `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
   and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
 
+### Fixed
+
+- **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved
+  the `session` binding — the `SessionManager`, never a `Store` — so its "is the session started" guard was
+  false on every request and `Created.`, `Updated N field(s).` and every refusal were dropped: a refused create
+  looked exactly like a page reload. It now resolves the request's `session.store` and hands it to the redirect
+  before flashing. Found by the browser suite, which watched a create come back to an empty form in silence.
+
+- **`packages/admin` — a blank in a column the person did not have to fill is left to the schema on create.**
+  The form marked every NOT NULL column `required` and a blank in one was refused as "not a valid float", so
+  the skeleton's own order — `total decimal NOT NULL DEFAULT 0` — could not be created from the dashboard
+  without typing the total the domain computes; and a blank in a nullable timestamp was written as an explicit
+  null, which is "dirty" to Eloquent and silenced its own `created_at`/`updated_at`. `DataColumn` now carries
+  `hasDefault` (read from the table) and `isRequired()` (NOT NULL and no default); the new-record form marks
+  the rest `optional`, and `DataBrowser::create()` omits a blank in any non-required column from the insert so
+  the `DEFAULT`, the `NULL` or the model's clock fills it. A blank in a genuinely required column is still
+  refused; an update treats a blank as an edit, as before.
+
 ## [26.09.2] - 2026-09-09
 
 A correctness release found by building a real application on `26.09.1`. Five defects, every one of them

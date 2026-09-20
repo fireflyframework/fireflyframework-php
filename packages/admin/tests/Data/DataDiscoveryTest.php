@@ -80,6 +80,22 @@ it('marks the identifier and reports nullability from the schema', function () {
         ->and($this->schemaOf($browser, 'admin-record')->identifierColumn()?->name)->toBe('id');
 });
 
+it('reports a database default, so a NOT NULL column the schema fills is not required of the form', function () {
+    /** @var DataBrowserTestCase $this */
+    $browser = $this->browser();
+
+    // `active` is NOT NULL DEFAULT true: nothing has to be typed for it. `email` is NOT NULL with no default:
+    // something must. `api_token` is nullable, which is a third way of not being required.
+    expect($this->columnOf($browser, 'admin-record', 'active')->hasDefault)->toBeTrue()
+        ->and($this->columnOf($browser, 'admin-record', 'active')->isRequired())->toBeFalse()
+        ->and($this->columnOf($browser, 'admin-record', 'email')->hasDefault)->toBeFalse()
+        ->and($this->columnOf($browser, 'admin-record', 'email')->isRequired())->toBeTrue()
+        ->and($this->columnOf($browser, 'admin-record', 'api_token')->hasDefault)->toBeFalse()
+        ->and($this->columnOf($browser, 'admin-record', 'api_token')->isRequired())->toBeFalse()
+        // An entity-derived schema knows nothing about defaults; it never claims one.
+        ->and($this->columnOf($browser, 'plain-note', 'pinned')->hasDefault)->toBeFalse();
+});
+
 it('flags a secret by name AND a column the model hides', function () {
     /** @var DataBrowserTestCase $this */
     $browser = $this->browser();

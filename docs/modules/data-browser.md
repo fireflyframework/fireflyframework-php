@@ -123,6 +123,17 @@ the same unknown-field refusal. The identifier and any masked column are **omitt
 disabled in it — a field the browser would refuse to write should not appear to accept — so a crafted POST cannot
 choose a primary key or plant a value the page would only ever show as `******`.
 
+**A field left blank is left to the schema.** The form renders every editable column, and a browser submits `''`
+for each one the person did not touch. On create, a blank in a column that is not *required* — nullable, or
+carrying a `DEFAULT` clause (`DataColumn::$hasDefault`, read from the table) — is **omitted from the insert**
+rather than coerced: a `total decimal NOT NULL DEFAULT 0` lands as `0`, and a model's own `created_at`/`updated_at`
+are stamped by Eloquent, which an explicit null would have silenced (a null attribute is "dirty", and
+`updateTimestamps()` steps aside for a dirty column). The form marks such a column `optional`; `required`
+(`DataColumn::isRequired()`) is reserved for a NOT NULL column with no default, where a blank is still refused
+because nothing could fill it. Before this rule the skeleton's own order could not be created from the dashboard
+without typing the total the domain computes. On update a blank is an edit, as before: an emptied nullable field
+becomes null, an emptied NOT NULL field is refused.
+
 ## Reads: four paths, and one of them is a foot-gun
 
 | # | Path | How |
@@ -365,6 +376,14 @@ the row reappear on the next page load.
 
 **A non-Eloquent resource is refused for writes**, with a reason. There is no table to address and no
 `setAttribute` to call.
+
+**The outcome's sentence is flashed onto the page the write redirects to** — the record after an edit or a
+create, the form after a refused create — so `Updated 1 field(s).`, `Created.` or `The value for \`total\` is not
+a valid float.` is read where the person is already looking, not inferred from a status code. It rides the
+session the dashboard's routes start, and the dashboard resolves the request's `session.store` for it (the
+`session` binding is the manager that makes stores, never a store itself — which is how the sentence was lost on
+every write for a while); an application serving the dashboard without session middleware gets the redirect and
+no sentence, never an exception.
 
 ## Nothing throws at the caller, and no error text is an exception message
 

@@ -94,6 +94,13 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
             $table->string('left')->primary();
             $table->string('right');
         });
+
+        // The timestamped fixture's table: the two nullable columns are Eloquent's, not the form's.
+        Schema::create('admin_stamps', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('label');
+            $table->timestamps();
+        });
     }
 
     /**

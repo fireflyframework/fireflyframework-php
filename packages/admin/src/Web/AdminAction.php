@@ -261,17 +261,24 @@ final readonly class AdminAction
     /**
      * Redirect back with the outcome sentence flashed.
      *
-     * Guarded on the session actually being started: the dashboard mounts on the plain router and an
-     * application can serve it without session middleware, where with() would throw — and a write that
-     * SUCCEEDED failing on its way to reporting success is the worst possible outcome for this control.
+     * Guarded on the session actually being started: an application can serve the dashboard without
+     * session middleware, where with() would throw — and a write that SUCCEEDED failing on its way to
+     * reporting success is the worst possible outcome for this control.
+     *
+     * `session.store`, NOT `session`. The `session` binding is the SessionManager — the factory that hands
+     * out stores — and a manager is never a Store, so the guard below was false on every request and no
+     * outcome ever reached a page: a refused create looked exactly like a page reload. `session.store` is
+     * the Store the StartSession middleware started for this request. And a RedirectResponse built by hand
+     * carries no session of its own, so it is handed the store before with() asks it to flash.
      */
     private function redirect(string $to, string $message): RedirectResponse
     {
         $response = new RedirectResponse($to);
 
-        $session = $this->container->bound('session') ? $this->container->get('session') : null;
+        $session = $this->container->bound('session.store') ? $this->container->get('session.store') : null;
 
         if ($session instanceof Store && $session->isStarted()) {
+            $response->setSession($session);
             $response->with('data-message', $message);
         }
 
