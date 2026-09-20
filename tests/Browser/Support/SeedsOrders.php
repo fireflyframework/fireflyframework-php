@@ -13,8 +13,14 @@ use RuntimeException;
  */
 trait SeedsOrders
 {
-    /** @return list<int> the created ids, in the order of the customers below */
-    protected function seedOrders(): array
+    /**
+     * Public, not protected: the Pest closures that call it run with `$this` bound to the class Pest generates
+     * per file, and PHPStan sees that as a call from outside the hierarchy — the same reason
+     * FireflyTestCase::app() and the admin package's closure-facing helpers are public.
+     *
+     * @return list<int> the created ids, in the order of the customers below
+     */
+    public function seedOrders(): array
     {
         $ids = [];
 
