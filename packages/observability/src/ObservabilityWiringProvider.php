@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Firefly\Observability;
 
+use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Observability\Boot\HttpClientTracingPass;
 use Firefly\Observability\Boot\MeterBindingsPass;
 use Firefly\Observability\Logging\CorrelationIdLogProcessor;
+use Firefly\Observability\Logging\StructuredLogging;
 use Firefly\Observability\Logging\TraceContextLogProcessor;
 use Firefly\Observability\Tracing\Tracer;
 use Illuminate\Log\Logger;
 use Illuminate\Log\LogManager;
 use Monolog\Logger as MonologLogger;
+use Throwable;
 
 /**
  * The boot-pass + default-binding half of firefly/observability (cannot ride on ObservabilityServiceProvider —
@@ -21,8 +24,9 @@ use Monolog\Logger as MonologLogger;
  * bean source) binds the framework infrastructure collectors (MeterRegistry, MetricsRecorder, PrometheusTextFormat,
  * Tracer, the real CqrsMetrics) as #[Bean]s; this class contributes MeterBindingsPass — which registers the
  * process/circuit-breaker gauges into the MeterRegistry once it is bound — and HttpClientTracingPass, which
- * installs the outbound-HTTP tracing middleware on the Http client factory when tracing is on, plus the
- * correlation-id and trace-context log processor wiring. Both this and ObservabilityServiceProvider are in
+ * installs the outbound-HTTP tracing middleware on the Http client factory when tracing is on, plus the log
+ * wiring: the correlation-id and trace-context processors on every configured channel, and the structured
+ * formatter when `firefly.logging.structured.format` names one. Both this and ObservabilityServiceProvider are in
  * extra.laravel.providers.
  */
 final class ObservabilityWiringProvider extends FireflyServiceProvider
@@ -38,49 +42,60 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
     public function register(): void
     {
         $this->app->afterResolving('log', function (object $log): void {
-            $this->attachCorrelationIdProcessor($log);
+            $this->attachLogProcessors($log);
         });
 
         parent::register();
     }
 
     /**
-     * Attaches CorrelationIdLogProcessor to the DEFAULT channel's real Monolog logger — deliberately NOT the
-     * naive `method_exists($log, 'pushProcessor') && $log->pushProcessor(...)` a first read of the task brief
-     * suggests: `afterResolving('log', ...)` hands back the raw `Illuminate\Log\LogManager` returned by
-     * LogServiceProvider's `singleton('log', fn ($app) => new LogManager($app))`, and LogManager does NOT
-     * literally declare a `pushProcessor` method — it only forwards unknown calls to `$this->driver()` via
-     * `__call()`. `method_exists()` is blind to `__call` magic, so that guard is ALWAYS false for a bare
-     * LogManager and the processor would silently never attach in any real application (confirmed empirically
-     * against the installed illuminate/log version — see the task report). The fix mirrors Laravel's OWN
-     * internal idiom for attaching its built-in Illuminate\Log\Context\ContextLogProcessor
-     * (Illuminate\Log\LogManager::get()): resolve the concrete per-channel Illuminate\Log\Logger via driver(),
-     * unwrap its real Monolog\Logger via getLogger() (a literal method on Illuminate\Log\Logger, unlike
-     * pushProcessor), and push the processor there directly — every check below is a real, statically-checkable
-     * instanceof narrowing, not a magic-method-blind method_exists() guess.
+     * Attaches the framework's log processors — and, when `firefly.logging.structured.format` names one, the
+     * structured formatter — to each configured channel's real Monolog logger.
      *
-     * Resolving the default channel here (via driver()) forces its lazy creation at the moment 'log' is first
-     * resolved rather than at first Log:: write — functionally equivalent (LogManager caches channels by name
-     * regardless of when they're first built) and the same "first use" moment the naive guard was already
-     * trying to hook.
+     * Deliberately NOT the naive `method_exists($log, 'pushProcessor') && $log->pushProcessor(...)`:
+     * `afterResolving('log', ...)` hands back the raw `Illuminate\Log\LogManager`, which does NOT literally
+     * declare `pushProcessor` — it only forwards unknown calls to `$this->driver()` via `__call()`, and
+     * `method_exists()` is blind to `__call`, so that guard is ALWAYS false and the processor would silently
+     * never attach (confirmed empirically). The fix mirrors Laravel's OWN idiom for attaching its built-in
+     * ContextLogProcessor (LogManager::get()): resolve the concrete per-channel Illuminate\Log\Logger via
+     * channel(), unwrap its real Monolog\Logger via getLogger() (a literal method on Illuminate\Log\Logger),
+     * and push there — every check below is a real, statically-checkable instanceof narrowing.
      *
-     * TraceContextLogProcessor is pushed right after it, with a closure that resolves the Tracer bean lazily — at
-     * this point in a boot nothing is bound yet, and the processor must never make the log service's first
-     * resolution depend on the tracing auto-configuration having run.
+     * Resolving a channel here forces its lazy creation the moment 'log' is first resolved rather than at the
+     * first Log:: write — functionally equivalent (LogManager caches channels by name). The Tracer is
+     * resolved lazily inside TraceContextLogProcessor on every record, because at this point in a boot
+     * nothing may be bound yet and the log service's first resolution must never depend on the tracing
+     * auto-configuration having run. A channel that cannot be built (a typo in the configured list) is
+     * skipped rather than turning the first log write into a boot failure: LogManager already falls back to
+     * its emergency logger for that case, and a log line lost is better than an application that cannot
+     * start because of its logging.
      */
-    private function attachCorrelationIdProcessor(object $log): void
+    private function attachLogProcessors(object $log): void
     {
         if (! $log instanceof LogManager) {
             return;
         }
 
-        $channel = $log->driver();
-        if (! $channel instanceof Logger) {
-            return;
-        }
+        /** @var Config $config */
+        $config = $this->app->make(Config::class);
+        $structured = new StructuredLogging($config);
 
-        $monolog = $channel->getLogger();
-        if ($monolog instanceof MonologLogger) {
+        foreach ($structured->channels() as $name) {
+            try {
+                $channel = $log->channel($name);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (! $channel instanceof Logger) {
+                continue;
+            }
+
+            $monolog = $channel->getLogger();
+            if (! $monolog instanceof MonologLogger) {
+                continue;
+            }
+
             $monolog->pushProcessor(new CorrelationIdLogProcessor);
             $monolog->pushProcessor(new TraceContextLogProcessor(function (): ?Tracer {
                 if (! $this->app->bound(Tracer::class)) {
@@ -92,6 +107,8 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
 
                 return $tracer;
             }));
+
+            $structured->apply($monolog);
         }
     }
 }

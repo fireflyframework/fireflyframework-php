@@ -1026,6 +1026,46 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Logging — firefly/observability
+    |--------------------------------------------------------------------------
+    |
+    | What a log LINE looks like, on top of Laravel's own logging.php (which still decides where lines go).
+    | Spring Boot's `logging.structured.format`, for Monolog channels: the formatter is set on the listed
+    | channels' EXISTING handlers, never replacing them. Every line — structured or not — already carries
+    | the correlation id, the request id and, with tracing on, the trace and span ids in Monolog `extra`.
+    |
+    */
+
+    'logging' => [
+        'structured' => [
+
+            /*
+             | '' keeps Laravel's plain-text lines. `json` is Monolog's JsonFormatter
+             | ({"message","context","level","level_name","channel","datetime","extra":{"trace_id",
+             | "span_id","correlation_id","request_id","service_name","service_environment"}}); `ecs` is
+             | Elastic Common Schema 8 (@timestamp, log.level, message, ecs.version, log.logger,
+             | service.{name,environment}, trace.id, span.id, labels.{correlation_id,request_id}, error.*,
+             | context, extra); `logstash` is Monolog's LogstashFormatter (@timestamp, @version, host,
+             | message, type, channel, level, monolog_level, fields, context). See docs/modules/logging.md
+             | for one full line of each.
+             |
+             | Default: ''.
+            */
+            'format' => env('FIREFLY_LOG_FORMAT', ''),
+
+            /*
+             | The channels whose handlers get the formatter (and the id processors). Empty means the default
+             | channel (logging.default). A `stack` channel's handlers ARE its members' handlers, so listing
+             | the stack formats every member.
+             |
+             | Default: [] (the default channel).
+            */
+            // 'channels' => ['stack', 'stderr'],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Resilience — firefly/resilience
     |--------------------------------------------------------------------------
     |
