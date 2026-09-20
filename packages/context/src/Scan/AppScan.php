@@ -65,6 +65,8 @@ final class AppScan
 
     public const string PROXY_MAP = 'proxies.php';
 
+    public const string PROXY_PLAN = 'proxy-plan.php';
+
     /**
      * The app's PSR-4 scan roots (namespace-prefix => absolute directory), or [] when unconfigured.
      *

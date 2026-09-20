@@ -33,4 +33,16 @@ final class UnsupportedTransactionalMethodException extends ConfigurationExcepti
             'UNSUPPORTED_TRANSACTIONAL_METHOD',
         );
     }
+
+    public static function finalClass(string $class): self
+    {
+        return new self(
+            sprintf(
+                '%s is final, and a proxied method needs a subclass: remove `final` from the class, or move the '
+                .'#[Transactional] / method-security attribute onto a non-final collaborator.',
+                $class,
+            ),
+            'UNSUPPORTED_TRANSACTIONAL_METHOD',
+        );
+    }
 }

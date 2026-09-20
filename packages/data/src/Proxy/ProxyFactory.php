@@ -6,6 +6,7 @@ namespace Firefly\Data\Proxy;
 
 use Closure;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use ReflectionClass;
 
 /**
@@ -17,7 +18,11 @@ use ReflectionClass;
  *   2. A Closure bound to $declaredClass copies the bean's scope-visible state (public/protected/private of
  *      $declaredClass) via get_object_vars — NOT ReflectionProperty. readonly properties left uninitialized by
  *      (1) accept this one in-scope initialization.
- *   3. A Closure bound to $proxyClass sets the proxy's own private $__fireflyTxInterceptor.
+ *   3. A Closure bound to $proxyClass sets ONE private interceptor property per advice the proxy runs — read
+ *      off the generated `__fireflyAdvice()` table — from the map the post-processor resolved. The
+ *      transactional interceptor is the explicit fourth parameter (the signature every proxy test pins); every
+ *      other advice arrives keyed by id in $interceptors, and an advice the proxy declares but nobody supplied
+ *      is a ConfigurationException rather than an uninitialised typed property blowing up on first call.
  *
  * KNOWN LATENT (design §7): state private to a PARENT of $declaredClass is not visible to the scoped closure;
  * typical services/repositories hold their own private fields and are unaffected. The proxy IS-A $declaredClass,
@@ -28,8 +33,9 @@ final class ProxyFactory
     /**
      * @param  class-string  $declaredClass
      * @param  class-string  $proxyClass
+     * @param  array<string, MethodInterceptor>  $interceptors  advice id => interceptor, for every advice but the transactional one
      */
-    public function wrap(object $bean, string $declaredClass, string $proxyClass, TransactionInterceptor $interceptor): object
+    public function wrap(object $bean, string $declaredClass, string $proxyClass, TransactionInterceptor $interceptor, array $interceptors = []): object
     {
         $proxy = (new ReflectionClass($proxyClass))->newInstanceWithoutConstructor();
 
@@ -41,13 +47,26 @@ final class ProxyFactory
         }, $proxy, $declaredClass);
         $copyState($bean);
 
-        // The property name is data (as in the state copy above): the proxy's private $__fireflyTxInterceptor is
-        // invisible to this file's scope, so it is written dynamically through a closure bound to $proxyClass.
-        /** @var Closure(string, TransactionInterceptor): void $setInterceptor */
-        $setInterceptor = Closure::bind(function (string $property, TransactionInterceptor $interceptor): void {
+        $interceptors[Advice::TRANSACTIONAL] = $interceptor;
+
+        // A proxy generated before the advice table existed runs the transactional advice alone. The table is
+        // read through a callable array rather than `$proxyClass::__fireflyAdvice()` so the call is honest to
+        // static analysis: $proxyClass is an arbitrary class-string.
+        $table = [$proxyClass, '__fireflyAdvice'];
+        /** @var array<string, class-string> $advice */
+        $advice = is_callable($table) ? $table() : [Advice::TRANSACTIONAL => TransactionInterceptor::class];
+
+        // The property names are data (as in the state copy above): the proxy's private members are invisible
+        // to this file's scope, so they are written dynamically through a closure bound to $proxyClass.
+        /** @var Closure(string, MethodInterceptor): void $setInterceptor */
+        $setInterceptor = Closure::bind(function (string $property, MethodInterceptor $interceptor): void {
             $this->$property = $interceptor;
         }, $proxy, $proxyClass);
-        $setInterceptor('__fireflyTxInterceptor', $interceptor);
+
+        foreach (array_keys($advice) as $id) {
+            $link = $interceptors[$id] ?? throw new ConfigurationException("Proxy [{$proxyClass}] runs the [{$id}] advice but no interceptor was supplied for it.");
+            $setInterceptor('__firefly'.ucfirst($id).'Interceptor', $link);
+        }
 
         return $proxy;
     }
