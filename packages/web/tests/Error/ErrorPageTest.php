@@ -246,3 +246,34 @@ it('defaults to withholding when no settings object was bound at all', function 
         ->not->toContain('leak me')
         ->toContain('An unexpected error occurred.');
 });
+
+it('publishes the request reference on the production page so a person can quote it', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-1234-abcd']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($error->reference)->toBe('ref-1234-abcd')
+        ->and($html)->toContain('ref-1234-abcd')
+        ->toContain('quote reference ref-1234-abcd if you report it')
+        // The reference is the ONLY thing the production 500 adds; the cause stays withheld.
+        ->not->toContain('boom')
+        ->not->toContain('RuntimeException');
+});
+
+it('carries the same reference the problem document does, on the detailed page too', function () {
+    $settings = new ErrorPageSettings(trace: true, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_ACCEPT' => 'text/html', 'HTTP_X_CORRELATION_ID' => 'ref-5678-efgh']);
+    $renderer = new ErrorPageRenderer($settings, dirname(__DIR__, 4));
+
+    $html = (string) $renderer->render(new RuntimeException('boom'), $request)->getContent();
+
+    // The fact-row MARKUP, not the bare words: with the trace on the page embeds a source excerpt of this
+    // very test file, which contains the words "Reference" and the id as text — but HTML-escaped, so the
+    // unescaped <dt>/<dd> pair can only come from the facts table.
+    expect($html)->toContain('<dt>Reference</dt><dd>ref-5678-efgh</dd>')
+        // With the trace on the message is shown, so the reassurance sentence is not — the fact row is
+        // where the reference lives on this variant.
+        ->not->toContain('quote reference')
+        ->toContain('boom');
+});

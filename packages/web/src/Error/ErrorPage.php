@@ -64,7 +64,7 @@ final class ErrorPage
         if ($report->detailed && $report->message !== '') {
             $html .= '<p class="message">'.self::e($report->message).'</p>';
         } elseif (! $report->detailed) {
-            $html .= '<p class="message muted">'.self::e(self::reassurance($report->status)).'</p>';
+            $html .= '<p class="message muted">'.self::e(self::reassurance($report->status, $report->reference)).'</p>';
         }
 
         return $html.'</header>';
@@ -78,6 +78,7 @@ final class ErrorPage
             'Category' => $report->category,
             'Severity' => $report->severity,
             'When' => $report->timestamp,
+            'Reference' => $report->reference,
         ];
 
         if ($report->detailed) {
@@ -201,15 +202,26 @@ final class ErrorPage
             .'<p class="muted">The same failure is served as <code>application/problem+json</code> to a client that asks for JSON.</p></footer>';
     }
 
-    /** A short, honest sentence for a production page — no message, no internals. */
-    private static function reassurance(int $status): string
+    /**
+     * A short, honest sentence for a production page — no message, no internals.
+     *
+     * The 5xx sentence names the request reference, because that is the ONE thing a reader of a production
+     * page can do about a failure they cannot see: quote the id, so an operator can find the log line it
+     * stamps. The problem document has said "quote reference <id>" since it carried `traceId`; the page a
+     * person actually looks at said only that the error had been logged, which left them nothing to quote.
+     * The wording mirrors ProblemMapper::OPAQUE_WITH_REFERENCE so a ticket reads the same whichever form
+     * the failure was seen in.
+     */
+    private static function reassurance(int $status, string $reference): string
     {
         return match (true) {
             $status === 404 => 'That page does not exist.',
             $status === 403 => 'You do not have access to that.',
             $status === 401 => 'You need to sign in to see that.',
             $status === 405 => 'That address does not accept this kind of request.',
-            $status >= 500 => 'Something went wrong on our side. The error has been logged.',
+            $status >= 500 => $reference === ''
+                ? 'Something went wrong on our side. The error has been logged.'
+                : "Something went wrong on our side. It has been logged; quote reference {$reference} if you report it.",
             default => 'That request could not be completed.',
         };
     }

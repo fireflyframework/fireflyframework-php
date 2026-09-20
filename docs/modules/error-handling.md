@@ -214,8 +214,10 @@ dependencies'.
 
 **`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never
 walks the stack, never opens a source file and never copies the exception message — so there is nothing
-assembled for a template mistake to leak. Production shows the status, the reason and the code: enough to
-quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
+assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
+**reference** — the same correlation id the problem document publishes as `traceId`, so the 500 page reads
+"quote reference `<id>` if you report it" and an operator can find the log line it stamps: enough to quote
+into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
 advice about *how* to turn traces on is suppressed outside non-production environments too, because naming
 the framework and a config key to an anonymous visitor is a free hint about your stack.
 
