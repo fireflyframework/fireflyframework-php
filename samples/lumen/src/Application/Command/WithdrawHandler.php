@@ -20,7 +20,8 @@ use Lumen\Infrastructure\WalletRepository;
  * whitelist (booleans and/or/not, string literals, #param, and eight fixed functions — no `==`, no `.property`
  * navigation), so ownership is modelled as a granted WALLET_OWNER authority rather than an `#command.ownerId ==
  * authentication.name` comparison, which the parser cannot express. SecurityCommandAuthorizer enforces this at the bus
- * BEFORE the handler runs; a denied withdraw surfaces as CommandProcessingException wrapping AuthorizationException.
+ * BEFORE the handler runs; a denied withdraw surfaces as CommandProcessingException wrapping AuthorizationException
+ * (403) for a signed-in principal without the role, or AuthenticationException (401) when there is no principal at all.
  * (The faithful owner-only alternative — hasPermission(#command, 'withdraw') backed by a custom PermissionEvaluator
  * bean that loads the wallet and compares its owner_id to the current principal — is left to a later step.)
  *
