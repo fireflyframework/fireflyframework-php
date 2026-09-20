@@ -109,7 +109,7 @@ return [
         'enabled' => env('FIREFLY_SECURITY_ENABLED', false),
 
         /*
-         | Method security (#[PreAuthorize], #[PostAuthorize], #[Secured], #[RolesAllowed]).
+         | Method security (#[PreAuthorize], #[PostAuthorize], #[Secured], #[RolesAllowed], #[PreFilter], #[PostFilter]).
          |
          | Enforcement treats "no rule recorded for this method" as ALLOW, so an EMPTY method-security
          | manifest silently disables every annotation in the application — it fails OPEN. Boot resolves
@@ -120,6 +120,17 @@ return [
          | Default: false.
         */
         'method' => [
+            /*
+             | Method security on every stereotyped bean. With the master flag on, #[PreAuthorize],
+             | #[PostAuthorize], #[Secured], #[RolesAllowed], #[PreFilter] and #[PostFilter] are enforced on
+             | any #[Service]/#[Component]/#[Repository] method through the same proxy #[Transactional] uses
+             | (security runs before the transaction). Turning this off keeps the controller dispatcher and
+             | the CQRS bus enforcing their rules and makes the proxy link a pass-through. Read live.
+             |
+             | Default: true.
+            */
+            'enabled' => env('FIREFLY_SECURITY_METHOD_ENABLED', true),
+
             'strict' => env('FIREFLY_SECURITY_METHOD_STRICT', false),
         ],
 

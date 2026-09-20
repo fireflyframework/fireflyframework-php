@@ -20,6 +20,8 @@ use Firefly\Security\Access\AuthorizationChecker;
 use Firefly\Security\Access\DenyAllPermissionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\HttpSecurity;
+use Firefly\Security\Access\Method\MethodSecurityEvaluator;
+use Firefly\Security\Access\Method\MethodSecurityInterceptor;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
@@ -130,10 +132,33 @@ final class SecurityAutoConfiguration
 
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
-    #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
-    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, ?LoggerInterface $logger = null): MethodSecurityMessageEnforcer
+    #[ConditionalOnMissingBean(MethodSecurityEvaluator::class)]
+    public function methodSecurityEvaluator(SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, AuthenticationEventPublisher $events, ?LoggerInterface $logger = null): MethodSecurityEvaluator
     {
-        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $logger);
+        return new MethodSecurityEvaluator($evaluator, $roles, $permissions, $events, $logger);
+    }
+
+    /**
+     * The proxy link for #[PreAuthorize]/#[PostAuthorize]/#[Secured]/#[RolesAllowed]/#[PreFilter]/#[PostFilter]
+     * on any stereotyped bean. Gated by the master flag AND `firefly.security.method.enabled` (default true):
+     * with either off the bean is absent and every planned proxy runs a pass-through in its place — the same
+     * "annotations are inert until security is on" rule the controller guard has always had.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.method.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnMissingBean(MethodSecurityInterceptor::class)]
+    public function methodSecurityInterceptor(MethodSecurityEvaluator $evaluator, Config $config): MethodSecurityInterceptor
+    {
+        return new MethodSecurityInterceptor($evaluator, $config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
+    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, ?LoggerInterface $logger = null, ?AuthenticationEventPublisher $events = null): MethodSecurityMessageEnforcer
+    {
+        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $logger, $events);
     }
 
     #[Bean]

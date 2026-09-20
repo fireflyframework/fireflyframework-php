@@ -36,9 +36,15 @@ final class MethodSecurityRefusal
         private readonly ?LoggerInterface $logger = null,
     ) {}
 
-    public function refuse(SecurityMethodDescriptor $rule, Authentication $authentication): AuthorizationException
+    /**
+     * @param  ?string  $expression  the rule that refused — the post expression after a call; the pre one (the default) before it
+     * @param  ?string  $code  the code that rule carries, when it is not the descriptor's pre code
+     * @param  ?string  $message  likewise
+     */
+    public function refuse(SecurityMethodDescriptor $rule, Authentication $authentication, ?string $expression = null, ?string $code = null, ?string $message = null): AuthorizationException
     {
-        $required = $this->evaluator->authorities($rule->expression);
+        $expression ??= $rule->expression;
+        $required = $this->evaluator->authorities($expression);
 
         $this->logger?->warning(
             "Method security refused {$rule->class}::{$rule->method}.",
@@ -48,11 +54,11 @@ final class MethodSecurityRefusal
                 'principal' => $authentication->getName(),
                 'authorities' => $authentication->authorityStrings(),
                 'requiredAuthorities' => $required,
-                'expression' => $rule->expression,
+                'expression' => $expression,
             ],
         );
 
-        return (new AuthorizationException($rule->message ?? self::SENTENCE, $rule->code ?? 'ACCESS_DENIED'))
+        return (new AuthorizationException($message ?? $rule->message ?? self::SENTENCE, $code ?? $rule->code ?? 'ACCESS_DENIED'))
             ->withExtensions(['requiredAuthorities' => $required]);
     }
 }

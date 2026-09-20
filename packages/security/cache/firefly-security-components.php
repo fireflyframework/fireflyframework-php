@@ -6,6 +6,23 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Security\\Access\\Method\\MethodSecurityAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Security\\OAuth2\\OAuth2ResourceServerFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -24,7 +41,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Security\\SecurityAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -120,6 +137,35 @@ return [
                 ],
             ],
             7 => [
+                'method' => 'methodSecurityEvaluator',
+                'returns' => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
+                    1 => 'Firefly\\Security\\Access\\RoleHierarchy',
+                    2 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                    3 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                    4 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            8 => [
+                'method' => 'methodSecurityInterceptor',
+                'returns' => 'Firefly\\Security\\Access\\Method\\MethodSecurityInterceptor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            9 => [
                 'method' => 'methodSecurityMessageEnforcer',
                 'returns' => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 'name' => null,
@@ -134,9 +180,10 @@ return [
                     3 => 'Firefly\\Security\\Access\\RoleHierarchy',
                     4 => 'Firefly\\Security\\Access\\PermissionEvaluator',
                     5 => 'Psr\\Log\\LoggerInterface',
+                    6 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
                 ],
             ],
-            8 => [
+            10 => [
                 'method' => 'commandAuthorizer',
                 'returns' => 'Firefly\\Cqrs\\Security\\CommandAuthorizer',
                 'name' => null,
@@ -148,7 +195,7 @@ return [
                     0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 ],
             ],
-            9 => [
+            11 => [
                 'method' => 'queryAuthorizer',
                 'returns' => 'Firefly\\Cqrs\\Security\\QueryAuthorizer',
                 'name' => null,
@@ -160,7 +207,7 @@ return [
                     0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 ],
             ],
-            10 => [
+            12 => [
                 'method' => 'auditorAware',
                 'returns' => 'Firefly\\Data\\Repository\\Auditing\\AuditorAware',
                 'name' => null,
@@ -171,7 +218,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            11 => [
+            13 => [
                 'method' => 'authenticationEventPublisher',
                 'returns' => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
                 'name' => null,
@@ -183,7 +230,7 @@ return [
                     0 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
                 ],
             ],
-            12 => [
+            14 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -195,7 +242,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            13 => [
+            15 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -207,7 +254,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            14 => [
+            16 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,
@@ -225,7 +272,7 @@ return [
         'dependencies' => [
         ],
     ],
-    2 => [
+    3 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -243,7 +290,7 @@ return [
             0 => 'Firefly\\Config\\Config',
         ],
     ],
-    3 => [
+    4 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -265,7 +312,7 @@ return [
             4 => 'Firefly\\Config\\Config',
         ],
     ],
-    4 => [
+    5 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -284,7 +331,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,

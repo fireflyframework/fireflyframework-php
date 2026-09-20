@@ -13,6 +13,8 @@ use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Security\Core\SimpleGrantedAuthority;
+use Firefly\Security\Tests\Fixtures\Advice\OwnerPermissionEvaluator;
+use Firefly\Security\Tests\Fixtures\Advice\Report;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
 use Orchestra\Testbench\TestCase;
 use Psr\Log\AbstractLogger;
@@ -130,4 +132,18 @@ it('logs the class, the method and the principal the wire never sees', function 
         ->and($log->records[0][0])->toContain('App\\Ctrl::admin')
         ->and($log->records[0][1]['principal'])->toBe('ada')
         ->and($log->records[0][1]['requiredAuthorities'])->toBe(['ROLE_ADMIN']);
+});
+
+it('refuses a returned object through afterInvocation() and passes an ungoverned result through', function () {
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('ada', 'ada', [new SimpleGrantedAuthority('ROLE_USER')])
+    ));
+    $guard = new MethodSecurityControllerGuard(
+        new SecurityMethodManifest([new SecurityMethodDescriptor('App\\Ctrl', 'find', 'permitAll()', ['id'], postExpression: "hasPermission(#returnObject, 'READ')")]),
+        new SecurityExpressionEvaluator, RoleHierarchy::fromRules([]), new OwnerPermissionEvaluator,
+    );
+
+    expect($guard->afterInvocation('App\\Ctrl', 'find', [2], new Report(2, 'ada')))->toEqual(new Report(2, 'ada'))
+        ->and($guard->afterInvocation('App\\Ctrl', 'other', [], 'anything'))->toBe('anything')
+        ->and(fn () => $guard->afterInvocation('App\\Ctrl', 'find', [1], new Report(1, 'bob')))->toThrow(AuthorizationException::class);
 });

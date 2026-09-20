@@ -171,6 +171,52 @@ return [
                 ],
             ],
             7 => [
+                'method' => 'methodSecurityEvaluator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                        ],
+                    ],
+                ],
+            ],
+            8 => [
+                'method' => 'methodSecurityInterceptor',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.method.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityInterceptor',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
                 'method' => 'methodSecurityMessageEnforcer',
                 'conditions' => [
                     0 => [
@@ -189,7 +235,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            10 => [
                 'method' => 'commandAuthorizer',
                 'conditions' => [
                     0 => [
@@ -208,7 +254,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            11 => [
                 'method' => 'queryAuthorizer',
                 'conditions' => [
                     0 => [
@@ -227,7 +273,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            12 => [
                 'method' => 'auditorAware',
                 'conditions' => [
                     0 => [
@@ -246,7 +292,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            13 => [
                 'method' => 'authenticationEventPublisher',
                 'conditions' => [
                     0 => [
@@ -265,7 +311,7 @@ return [
                     ],
                 ],
             ],
-            12 => [
+            14 => [
                 'method' => 'jwtService',
                 'conditions' => [
                     0 => [
@@ -284,7 +330,7 @@ return [
                     ],
                 ],
             ],
-            13 => [
+            15 => [
                 'method' => 'httpSecurity',
                 'conditions' => [
                     0 => [
@@ -303,7 +349,7 @@ return [
                     ],
                 ],
             ],
-            14 => [
+            16 => [
                 'method' => 'jwksProvider',
                 'conditions' => [
                     0 => [
