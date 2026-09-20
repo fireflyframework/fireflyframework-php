@@ -84,3 +84,19 @@ it('accepts an integer durationMs from a JSON-serialising cache driver and norma
 
     expect($restored?->durationMs)->toBe(12.0);
 });
+
+it('carries the trace id when a span was active, and omits the key entirely when none was', function () {
+    $traced = new HttpExchange('2026-09-03T10:11:12.131415Z', 'GET', '/users/{id}', 200, 1.0, 'corr-1', [], '4bf92f3577b34da6a3ce929d0e0e4736');
+
+    expect($traced->toArray())->toBe([
+        'timestamp' => '2026-09-03T10:11:12.131415Z',
+        'method' => 'GET',
+        'uri' => '/users/{id}',
+        'status' => 200,
+        'durationMs' => 1.0,
+        'correlationId' => 'corr-1',
+        'traceId' => '4bf92f3577b34da6a3ce929d0e0e4736',
+    ])
+        ->and(HttpExchange::fromArray($traced->toArray())?->traceId)->toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+        ->and(array_key_exists('traceId', (new HttpExchange('2026-09-03T10:11:12.131415Z', 'GET', '/x', 200, 1.0, null))->toArray()))->toBeFalse();
+});

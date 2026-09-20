@@ -246,4 +246,24 @@ return [
             0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
         ],
     ],
+    8 => [
+        'class' => 'Firefly\\Observability\\Web\\TracingFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -110,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\Tracing\\Tracer',
+            1 => 'Firefly\\Observability\\Tracing\\W3CTraceContextPropagator',
+            2 => 'Firefly\\Config\\Config',
+        ],
+    ],
 ];

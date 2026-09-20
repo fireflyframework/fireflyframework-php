@@ -233,4 +233,33 @@ return [
         'beanConditions' => [
         ],
     ],
+    6 => [
+        'class' => 'Firefly\\Observability\\Web\\TracingFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.http-server.enabled',
+                    1 => 'true',
+                    2 => true,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
 ];
