@@ -13,6 +13,7 @@ use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
 use Firefly\Data\Repository\Specification\Specification;
+use Firefly\Data\Transaction\Exception\TransactionRequiredException;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Domain\RecordsDomainEvents;
 use Firefly\Kernel\Exception\Infrastructure\EmptyResultDataAccessException;
@@ -43,6 +44,8 @@ use Throwable;
  * repositoryClass() is what manifest lookups key on, not static::class: a #[Repository] that is also
  * #[Transactional] runs as its generated `__FireflyTransactionalProxy` subclass, and the manifest knows the
  * declared class.
+ *
+ * @phpstan-import-type RepositoryMethodRow from TransactionalManifest
  *
  * @template TModel of Model
  *
@@ -79,17 +82,20 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     }
 
     /**
-     * The single dispatcher shared by __call (derived) and declared #[Query] method bodies: explicit SQL from the
-     * manifest wins; otherwise the method name is parsed into a derived query and drives the Builder.
+     * The single dispatcher shared by __call (derived) and declared method bodies: explicit SQL from the manifest
+     * wins; otherwise the method name is parsed into a derived query and drives the Builder. The method's
+     * repository row (#[Modifying]/#[Projection]/#[Lock]/#[EntityGraph]/Slice, compiled by the scanner) rides
+     * along so either path can honour it.
      *
      * @param  list<mixed>  $args
      */
     protected function dispatchQuery(string $method, array $args): mixed
     {
         return $this->translating(function () use ($method, $args): mixed {
+            $row = $this->methodRow($method);
             $queries = $this->manifest?->queriesFor($this->repositoryClass()) ?? [];
             if (isset($queries[$method])) {
-                return $this->runExplicitQuery($queries[$method]['sql'], $args);
+                return $this->runExplicitQuery($queries[$method]['sql'], $args, $row);
             }
 
             try {
@@ -102,21 +108,50 @@ abstract class EloquentRepository implements PagingAndSortingRepository
                 );
             }
 
-            return $this->driveDerivedQuery($parsed, $args);
+            return $this->driveDerivedQuery($parsed, $args, $row);
         });
+    }
+
+    /**
+     * The compiled repository row for one of THIS repository's declared methods, or null for a method that
+     * carries no attribute and declares no Slice/Page return (every undeclared __call method).
+     *
+     * @return RepositoryMethodRow|null
+     */
+    protected function methodRow(string $method): ?array
+    {
+        return $this->manifest?->repositoryMethod($this->repositoryClass(), $method);
     }
 
     /**
      * Run explicit #[Query] SQL. Named `:placeholders` are rewritten to positional `?` in appearance order and the
      * method arguments bind positionally (name-based binding needs param metadata — deferred; positional works now).
+     * A #[Modifying] row runs the SQL as a STATEMENT — Connection::affectingStatement(), the affected-row count
+     * back — and, unless the attribute says otherwise, only inside an open transaction on the model's connection:
+     * an update that auto-commits under a caller who believed it was part of a unit of work is the bug Spring's
+     * "@Modifying needs @Transactional" rule exists to prevent.
      *
      * @param  list<mixed>  $args
-     * @return list<array<string, mixed>>
+     * @param  RepositoryMethodRow|null  $row
+     * @return list<array<string, mixed>>|int
      */
-    protected function runExplicitQuery(string $sql, array $args): array
+    protected function runExplicitQuery(string $sql, array $args, ?array $row = null): array|int
     {
         $normalized = (string) preg_replace('/:[A-Za-z_][A-Za-z0-9_]*/', '?', $sql);
-        $rows = (new $this->model)->getConnection()->select($normalized, $args);
+        $connection = (new $this->model)->getConnection();
+
+        $modifying = $row['modifying'] ?? null;
+        if ($modifying !== null) {
+            if ($modifying['requiresTransaction'] && $connection->transactionLevel() === 0) {
+                throw new TransactionRequiredException(
+                    'A #[Modifying] query requires an active transaction; declare #[Modifying(requiresTransaction: false)] to run it outside one.',
+                );
+            }
+
+            return $connection->affectingStatement($normalized, $args);
+        }
+
+        $rows = $connection->select($normalized, $args);
 
         return array_values(array_map(self::rowToArray(...), $rows));
     }
@@ -140,8 +175,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
     /**
      * @param  list<mixed>  $args
+     * @param  RepositoryMethodRow|null  $row
      */
-    protected function driveDerivedQuery(ParsedQuery $parsed, array $args): mixed
+    protected function driveDerivedQuery(ParsedQuery $parsed, array $args, ?array $row = null): mixed
     {
         $query = $this->query();
         $cursor = 0;
