@@ -14,6 +14,7 @@ use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 use Illuminate\Config\Repository;
@@ -34,12 +35,13 @@ it('builds the transaction engine beans incl. the after-commit dispatch graph', 
 
     $tracker = $config->aggregateTracker();
     $dispatcher = $config->domainEventDispatcher($tracker, new RecordingApplicationEventPublisher);
-    $template = $config->transactionTemplate($dispatcher, new PersistenceExceptionTranslator, new DataSettings);
+    $template = $config->transactionTemplate($dispatcher, new PersistenceExceptionTranslator, new DataSettings, $config->transactionSynchronizationRegistry());
 
     expect($tracker)->toBeInstanceOf(AggregateTracker::class)
         ->and($dispatcher)->toBeInstanceOf(DomainEventDispatcher::class)
         ->and($template)->toBeInstanceOf(TransactionTemplate::class)
         ->and($config->transactionInterceptor($template))->toBeInstanceOf(TransactionInterceptor::class)
+        ->and($config->transactionSynchronizationRegistry())->toBeInstanceOf(TransactionSynchronizationRegistry::class)
         ->and($config->transactionalManifest(dataConfigContainer()))->toBeInstanceOf(TransactionalManifest::class)
         ->and($config->transactionalManifest(dataConfigContainer())->all())->toBe([])
         ->and($config->proxyFactory())->toBeInstanceOf(ProxyFactory::class);

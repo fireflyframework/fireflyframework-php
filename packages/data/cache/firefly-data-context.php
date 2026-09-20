@@ -61,6 +61,17 @@ return [
                 ],
             ],
             4 => [
+                'method' => 'transactionSynchronizationRegistry',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Transaction\\TransactionSynchronizationRegistry',
+                        ],
+                    ],
+                ],
+            ],
+            5 => [
                 'method' => 'transactionTemplate',
                 'conditions' => [
                     0 => [
@@ -71,7 +82,7 @@ return [
                     ],
                 ],
             ],
-            5 => [
+            6 => [
                 'method' => 'transactionInterceptor',
                 'conditions' => [
                     0 => [
@@ -82,7 +93,7 @@ return [
                     ],
                 ],
             ],
-            6 => [
+            7 => [
                 'method' => 'transactionalManifest',
                 'conditions' => [
                     0 => [
@@ -93,7 +104,7 @@ return [
                     ],
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'proxyFactory',
                 'conditions' => [
                     0 => [

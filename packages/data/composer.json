@@ -35,7 +35,8 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Firefly\\Data\\DataServiceProvider"
+                "Firefly\\Data\\DataServiceProvider",
+                "Firefly\\Data\\DataWiringProvider"
             ]
         },
         "branch-alias": {

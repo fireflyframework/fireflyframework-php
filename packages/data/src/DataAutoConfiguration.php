@@ -19,6 +19,7 @@ use Firefly\Data\Proxy\ProxyMaterializer;
 use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Illuminate\Contracts\Container\Container;
 
@@ -66,11 +67,27 @@ final class DataAutoConfiguration
         return new PersistenceExceptionTranslator($settings->exceptionTranslation);
     }
 
+    /**
+     * Spring's TransactionSynchronizationRegistry — the queue #[TransactionalEventListener]s are parked on. One
+     * per process; TransactionTemplate tells it which connection is current, Laravel's own after-commit /
+     * after-rollback callbacks do the rest.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(TransactionSynchronizationRegistry::class)]
+    public function transactionSynchronizationRegistry(): TransactionSynchronizationRegistry
+    {
+        return new TransactionSynchronizationRegistry;
+    }
+
     #[Bean]
     #[ConditionalOnMissingBean(TransactionTemplate::class)]
-    public function transactionTemplate(DomainEventDispatcher $dispatcher, PersistenceExceptionTranslator $translator, DataSettings $settings): TransactionTemplate
-    {
-        return new TransactionTemplate($dispatcher, $translator, $settings);
+    public function transactionTemplate(
+        DomainEventDispatcher $dispatcher,
+        PersistenceExceptionTranslator $translator,
+        DataSettings $settings,
+        TransactionSynchronizationRegistry $synchronizations,
+    ): TransactionTemplate {
+        return new TransactionTemplate($dispatcher, $translator, $settings, $synchronizations);
     }
 
     #[Bean]

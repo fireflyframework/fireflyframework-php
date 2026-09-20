@@ -65,6 +65,17 @@ return [
                 ],
             ],
             4 => [
+                'method' => 'transactionSynchronizationRegistry',
+                'returns' => 'Firefly\\Data\\Transaction\\TransactionSynchronizationRegistry',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            5 => [
                 'method' => 'transactionTemplate',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionTemplate',
                 'name' => null,
@@ -76,9 +87,10 @@ return [
                     0 => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
                     1 => 'Firefly\\Data\\Exception\\PersistenceExceptionTranslator',
                     2 => 'Firefly\\Data\\DataSettings',
+                    3 => 'Firefly\\Data\\Transaction\\TransactionSynchronizationRegistry',
                 ],
             ],
-            5 => [
+            6 => [
                 'method' => 'transactionInterceptor',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionInterceptor',
                 'name' => null,
@@ -90,7 +102,7 @@ return [
                     0 => 'Firefly\\Data\\Transaction\\TransactionTemplate',
                 ],
             ],
-            6 => [
+            7 => [
                 'method' => 'transactionalManifest',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionalManifest',
                 'name' => null,
@@ -102,7 +114,7 @@ return [
                     0 => 'Illuminate\\Contracts\\Container\\Container',
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'proxyFactory',
                 'returns' => 'Firefly\\Data\\Proxy\\ProxyFactory',
                 'name' => null,

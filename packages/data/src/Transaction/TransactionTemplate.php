@@ -45,6 +45,12 @@ use Throwable;
  * past that deadline the transaction is rolled back and TransactionTimedOutException (504) is thrown — a
  * method whose own exception is what ended it keeps that exception. `#[Transactional(timeout:)]` wins over
  * firefly.data.transaction.default-timeout; 0 on both means no deadline.
+ *
+ * SYNCHRONIZATIONS: the TransactionSynchronizationRegistry learns which connection the outermost transaction
+ * runs on (enter/leave, always paired in the finally) so a #[TransactionalEventListener] queued while this
+ * template runs binds to THIS transaction; the BEFORE_COMMIT drain happens inside Connection::commit()
+ * (Laravel's TransactionCommitting event), which is why commit() below rolls back when the commit itself
+ * throws.
  */
 final class TransactionTemplate
 {
@@ -58,6 +64,7 @@ final class TransactionTemplate
         private readonly ?DomainEventDispatcher $dispatcher = null,
         ?PersistenceExceptionTranslator $translator = null,
         ?DataSettings $settings = null,
+        private readonly ?TransactionSynchronizationRegistry $synchronizations = null,
     ) {
         $this->translator = $translator ?? new PersistenceExceptionTranslator;
         $this->settings = $settings ?? new DataSettings;
@@ -102,6 +109,12 @@ final class TransactionTemplate
         }
 
         $connection->beginTransaction();
+
+        if ($outermost) {
+            // Every connection the manager builds carries its name (ConnectionFactory writes config['name']); one
+            // that does not can only be re-resolved as the default, which is what DB::connection(null) returns.
+            $this->synchronizations?->enter($connection->getName() ?? DB::getDefaultConnection());
+        }
 
         $timeout = $outermost ? $this->effectiveTimeout($d) : 0;
         $restore = $timeout > 0 && $this->settings->statementTimeout ? $this->timeouts->apply($connection, $timeout) : null;
@@ -153,6 +166,9 @@ final class TransactionTemplate
 
             return $result;
         } finally {
+            if ($outermost) {
+                $this->synchronizations?->leave();
+            }
             if ($restore !== null) {
                 $restore();
             }
