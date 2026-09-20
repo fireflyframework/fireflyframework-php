@@ -101,13 +101,16 @@ final class DataAutoConfiguration
      *
      *   1. proxy-plan.php, when a compiler wrote one (the classmap autoloader is registered first so the
      *      proxies it names are loadable);
-     *   2. else transactional.php, when firefly:cache wrote one: a transactional-only plan bridged from the
-     *      TransactionalManifest bean that loaded it. Today's firefly:cache emits transactional.php and the
-     *      proxies.php classmap but no proxy-plan.php, and before this bridge existed such an app fell through
-     *      to the scan below on EVERY boot — reflecting over every class under firefly.scan.paths and generating
-     *      proxies into a temp directory (a RuntimeException on a read-only filesystem) in what used to be a
-     *      zero-reflection cached boot. A cached app trusts its artifacts; the compiled proxies in that cache
-     *      were generated for exactly this transactional-only plan, so nothing else could be consulted anyway;
+     *   2. else transactional.php, when a firefly:cache from before proxy-plan.php existed wrote one: a
+     *      transactional-only plan bridged from the TransactionalManifest bean that loaded it. Such a cache
+     *      holds transactional.php and the proxies.php classmap but no plan, and before this bridge existed
+     *      the app fell through to the scan below on EVERY boot — reflecting over every class under
+     *      firefly.scan.paths and generating proxies into a temp directory (a RuntimeException on a read-only
+     *      filesystem) in what used to be a zero-reflection cached boot. A cached app trusts its artifacts; the
+     *      compiled proxies in that cache were generated for exactly this transactional-only plan, so nothing
+     *      else could be consulted anyway. Every other advice such a plan knows nothing about is a reason to
+     *      recompile, which is why firefly/security refuses the boot when its compiled rules sit beside a
+     *      cache with no plan (SecurityWiringPass);
      *   3. else an in-process scan of firefly.scan.paths through every AdviceSource bean (development);
      *   4. else — no scan paths at all — a transactional-only plan derived from whatever TransactionalManifest
      *      is bound, so a boot that compiles its manifest by hand (the capstone fixtures) still gets its

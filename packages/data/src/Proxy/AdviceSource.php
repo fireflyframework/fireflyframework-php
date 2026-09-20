@@ -7,9 +7,8 @@ namespace Firefly\Data\Proxy;
 /**
  * How a capability package contributes advice to the proxy plan (the port firefly/security implements for
  * method security). A source is a #[Component] so the uncached boot can collect every one of them through
- * Container::getAll(); a compiler that writes proxy-plan.php names its sources explicitly. (firefly:cache does
- * not write that file yet: it still compiles transactional.php and the proxies from the transactional advice
- * alone, and the ProxyPlan bean bridges from that manifest so a cached app never scans.)
+ * Container::getAll(); a compiler that writes proxy-plan.php names its sources explicitly — firefly:cache's
+ * ManifestCacheWriter plans through Data's and Security's, and generates one proxy per class the plan names.
  *
  * scan() is the source's SCAN-TIME half and may reflect — inside that package's own sanctioned scanner file —
  * returning pure arrays that var_export cleanly into proxy-plan.php. render() turns one of those rows back

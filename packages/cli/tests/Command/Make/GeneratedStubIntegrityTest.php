@@ -451,7 +451,7 @@ it('compiles a whole scaffolded app in one real firefly:cache run', function ():
         // handler/event/message/scheduled/security/transactional artifacts were never written at all.
         ArtisanAssertions::exitCode($this->artisan('firefly:cache'), 0);
 
-        foreach ([FireflyCachePaths::COMPONENT, FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS, FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_MAP] as $basename) {
+        foreach ([FireflyCachePaths::COMPONENT, FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS, FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_MAP, FireflyCachePaths::PROXY_PLAN] as $basename) {
             expect(is_file($dir.'/'.$basename))->toBeTrue("expected firefly:cache to write {$basename}");
         }
 

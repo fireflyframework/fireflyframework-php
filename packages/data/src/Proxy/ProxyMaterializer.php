@@ -20,8 +20,8 @@ use Illuminate\Contracts\Container\Container;
  *   - UNCACHED: nothing has been generated at all. We rescan through every AdviceSource and materialise each
  *     proxy the plan names through ProxyClassGenerator::load(), which writes into a private per-process 0700
  *     directory with O_EXCL and requires it. Dev-time cost only: a cached app — one holding proxy-plan.php, or
- *     the transactional.php + proxies.php today's firefly:cache emits, from which DataAutoConfiguration::
- *     proxyPlan() bridges a transactional-only plan — never reaches this branch.
+ *     the transactional.php + proxies.php a firefly:cache from before that file existed emitted, from which
+ *     DataAutoConfiguration::proxyPlan() bridges a transactional-only plan — never reaches this branch.
  *
  * Before this existed, DataAutoConfiguration bound an unconditional empty TransactionalManifest and nothing
  * ever loaded the compiled transactional.php, so hasProxyFor() was always false and #[Transactional] was a

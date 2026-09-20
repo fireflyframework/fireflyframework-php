@@ -6,10 +6,13 @@ use Firefly\Cli\Boot\FireflyCacheServiceProvider;
 use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Cli\Tests\Fixtures\App\DemoConfigProperties;
+use Firefly\Cli\Tests\Fixtures\App\DemoSecuredService;
 use Firefly\Cli\Tests\Fixtures\App\DemoTransactionalService;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\DataServiceProvider;
+use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
+use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
@@ -41,6 +44,38 @@ it('emits proxy class files + a loadable classmap', function () {
     $proxyClass = DemoTransactionalService::class.'__FireflyTransactionalProxy';
     expect($map)->toHaveKey($proxyClass)
         ->and(is_file($map[$proxyClass]))->toBeTrue();
+});
+
+/*
+ | firefly:cache used to plan through TransactionalScanner alone: security-methods.php listed every rule while
+ | proxies.php named only the #[Transactional] classes and no proxy-plan.php was written, so a cached boot took
+ | DataAutoConfiguration::proxyPlan()'s transactional-only bridge and a #[Service] carrying nothing but
+ | #[PreAuthorize] was handed out bare — its rule compiled, enforced by nothing, and nothing logged. The plan is
+ | now compiled through every AdviceSource, exactly as the uncached boot collects them.
+ */
+it('emits proxy-plan.php naming the security-only service beside the transactional one', function () {
+    $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
+
+    $report = (new ManifestCacheWriter)->write(cachedBootPsr4(), $dir);
+
+    expect($report->files)->toContain($dir.'/'.FireflyCachePaths::PROXY_PLAN)
+        ->and(is_file($dir.'/'.FireflyCachePaths::PROXY_PLAN))->toBeTrue();
+
+    $plan = ProxyPlan::load($dir.'/'.FireflyCachePaths::PROXY_PLAN);
+
+    expect($plan->hasProxyFor(DemoTransactionalService::class))->toBeTrue()
+        ->and(array_keys($plan->adviceFor(DemoTransactionalService::class)))->toBe(['tx'])
+        ->and($plan->hasProxyFor(DemoSecuredService::class))->toBeTrue()
+        ->and(array_keys($plan->adviceFor(DemoSecuredService::class)))->toBe([MethodSecurityAdviceSource::ID])
+        ->and($plan->methodsFor(DemoSecuredService::class)['secret'][0]['row']['expression'])->toBe("hasRole('ADMIN')");
+
+    /** @var array<string,string> $map */
+    $map = require $dir.'/'.FireflyCachePaths::PROXY_MAP;
+
+    // One proxy per PLANNED class, generated with the security link baked in — not one per #[Transactional] class.
+    expect($report->proxyCount)->toBe(count($plan->classes()))
+        ->and($map)->toHaveKey(DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX)
+        ->and((string) file_get_contents($map[DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX]))->toContain('__fireflySecurityInterceptor');
 });
 
 it('boots the fixture app on the CACHED zero-reflection path with a working #[Transactional] proxy', function () {
@@ -102,6 +137,14 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
     $service = $context->get(DemoTransactionalService::class);
     expect($service::class)->toBe(DemoTransactionalService::class.'__FireflyTransactionalProxy')
         ->and($service->save('x'))->toBe('saved:x');
+
+    // (c') a class planned for SECURITY advice alone is proxied on the cached path too — and, with no
+    // security provider in this app, its rule is inert: the interceptor bean is absent, so the proxy runs a
+    // pass-through link and the call goes through. Enforcement is proven in packages/security.
+    /** @var DemoSecuredService $secured */
+    $secured = $context->get(DemoSecuredService::class);
+    expect($secured::class)->toBe(DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX)
+        ->and($secured->secret())->toBe('secret');
 
     // Category C: the compiled TransactionalManifest is populated (the #[Configuration] #[Bean] loaded it).
     /** @var TransactionalManifest $manifest */

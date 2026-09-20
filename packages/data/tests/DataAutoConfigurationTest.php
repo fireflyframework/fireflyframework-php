@@ -136,9 +136,9 @@ it('loads proxy-plan.php when a compiler wrote one, before anything else is cons
         ->and($plan->hasProxyFor(ChainedLedger::class))->toBeFalse();
 });
 
-// Today's firefly:cache writes transactional.php (and the proxies for it) but no proxy-plan.php. Such an app used
-// to fall through to the scan branch on every boot — ProxyChainBootTest's uncached path, with its reflection and
-// its in-process proxy generation — although its compiled proxies were generated for exactly this plan.
+// A firefly:cache from before proxy-plan.php existed wrote transactional.php (and the proxies for it) alone. Such
+// an app used to fall through to the scan branch on every boot — ProxyChainBootTest's uncached path, with its
+// reflection and its in-process proxy generation — although its compiled proxies were generated for exactly this plan.
 it('bridges a transactional-only plan from a compiled transactional.php rather than scanning', function () {
     $dir = freshCacheDir();
     $psr4 = ['Firefly\\Data\\Tests\\Fixtures\\Transactional\\' => __DIR__.'/Fixtures/Transactional'];

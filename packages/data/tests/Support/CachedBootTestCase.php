@@ -14,9 +14,10 @@ use Firefly\Testing\FireflyDatabaseTestCase;
 
 /**
  * Boots the REAL kernel with the shipped DataServiceProvider over sqlite the way a skeleton application boots
- * after `php artisan firefly:cache` TODAY: `firefly.scan.paths` SET (the skeleton ships `['App\\' => app_path()]`)
- * and the cache directory holding component.php, context.php, transactional.php, proxies/<mangled>.php and the
- * proxies.php classmap — but NO proxy-plan.php, because firefly:cache does not write one yet.
+ * after a `php artisan firefly:cache` from BEFORE proxy-plan.php existed: `firefly.scan.paths` SET (the skeleton
+ * ships `['App\\' => app_path()]`) and the cache directory holding component.php, context.php, transactional.php,
+ * proxies/<mangled>.php and the proxies.php classmap — but NO proxy-plan.php. Today's writer emits the plan
+ * (packages/cli's CachedBootTest covers that path); this base pins the bridge that keeps the older cache booting.
  *
  * The artifacts are compiled inline with the same compilers firefly/cli's ManifestCacheWriter drives
  * (AutoConfigManifestCompiler, TransactionalScanner + TransactionalManifestCompiler, scanProxyMethods() +

@@ -14,9 +14,9 @@ uses(CachedBootTestCase::class);
 
 /*
  | A cached application must never scan. Before the transactional.php bridge in DataAutoConfiguration::proxyPlan(),
- | a boot with firefly.scan.paths set and a cache written by today's firefly:cache (no proxy-plan.php) fell through
- | to the scan branch on every request — reflecting over the app and generating proxies into a temp directory in
- | what had been a zero-reflection boot. Two discriminators pin the cached branch: the plan lists the transactional
+ | a boot with firefly.scan.paths set and a cache written by a firefly:cache from before proxy-plan.php existed fell
+ | through to the scan branch on every request — reflecting over the app and generating proxies into a temp directory
+ | in what had been a zero-reflection boot. Two discriminators pin the cached branch: the plan lists the transactional
  | advice ALONE although a scan would have collected CachedAuditAdviceSource (a registered #[Component]) and added
  | 'audit', and the proxy class the bean resolves to was loaded from the cache directory's classmap, not written
  | anywhere else.
