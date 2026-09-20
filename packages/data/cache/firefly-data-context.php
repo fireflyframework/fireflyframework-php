@@ -39,6 +39,28 @@ return [
                 ],
             ],
             2 => [
+                'method' => 'dataSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\DataSettings',
+                        ],
+                    ],
+                ],
+            ],
+            3 => [
+                'method' => 'persistenceExceptionTranslator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Exception\\PersistenceExceptionTranslator',
+                        ],
+                    ],
+                ],
+            ],
+            4 => [
                 'method' => 'transactionTemplate',
                 'conditions' => [
                     0 => [
@@ -49,7 +71,7 @@ return [
                     ],
                 ],
             ],
-            3 => [
+            5 => [
                 'method' => 'transactionInterceptor',
                 'conditions' => [
                     0 => [
@@ -60,7 +82,7 @@ return [
                     ],
                 ],
             ],
-            4 => [
+            6 => [
                 'method' => 'transactionalManifest',
                 'conditions' => [
                     0 => [
@@ -71,7 +93,7 @@ return [
                     ],
                 ],
             ],
-            5 => [
+            7 => [
                 'method' => 'proxyFactory',
                 'conditions' => [
                     0 => [

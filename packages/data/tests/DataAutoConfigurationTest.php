@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use Firefly\Config\Config;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Data\DataAutoConfiguration;
+use Firefly\Data\DataSettings;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
+use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
@@ -67,4 +70,15 @@ it('scans #[Transactional] in-process when firefly.scan.paths is set and nothing
 
     expect($manifest)->toBeInstanceOf(TransactionalManifest::class)
         ->and($manifest->all())->not->toBe([]);
+});
+
+it('builds the data settings and the translator from config', function () {
+    $config = new DataAutoConfiguration;
+    $settings = $config->dataSettings(new Config(new Repository(['firefly' => ['data' => ['exception-translation' => ['enabled' => false]]]])));
+
+    expect($settings)->toBeInstanceOf(DataSettings::class)
+        ->and($settings->exceptionTranslation)->toBeFalse()
+        ->and($config->persistenceExceptionTranslator($settings))->toBeInstanceOf(PersistenceExceptionTranslator::class)
+        ->and($config->persistenceExceptionTranslator($settings)->isEnabled())->toBeFalse()
+        ->and($config->persistenceExceptionTranslator(new DataSettings)->isEnabled())->toBeTrue();
 });

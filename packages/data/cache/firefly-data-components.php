@@ -41,6 +41,30 @@ return [
                 ],
             ],
             2 => [
+                'method' => 'dataSettings',
+                'returns' => 'Firefly\\Data\\DataSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            3 => [
+                'method' => 'persistenceExceptionTranslator',
+                'returns' => 'Firefly\\Data\\Exception\\PersistenceExceptionTranslator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Data\\DataSettings',
+                ],
+            ],
+            4 => [
                 'method' => 'transactionTemplate',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionTemplate',
                 'name' => null,
@@ -52,7 +76,7 @@ return [
                     0 => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
                 ],
             ],
-            3 => [
+            5 => [
                 'method' => 'transactionInterceptor',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionInterceptor',
                 'name' => null,
@@ -64,7 +88,7 @@ return [
                     0 => 'Firefly\\Data\\Transaction\\TransactionTemplate',
                 ],
             ],
-            4 => [
+            6 => [
                 'method' => 'transactionalManifest',
                 'returns' => 'Firefly\\Data\\Transaction\\TransactionalManifest',
                 'name' => null,
@@ -76,7 +100,7 @@ return [
                     0 => 'Illuminate\\Contracts\\Container\\Container',
                 ],
             ],
-            5 => [
+            7 => [
                 'method' => 'proxyFactory',
                 'returns' => 'Firefly\\Data\\Proxy\\ProxyFactory',
                 'name' => null,
