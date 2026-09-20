@@ -38,8 +38,12 @@ use ReflectionParameter;
  * through SecurityExpressionEvaluator::parse() before it is accepted: a malformed or whitelist-violating expression
  * would otherwise compile silently and then DENY every call to that method forever (a permanent production 403
  * with no build-time signal), so scan() fails loud with a ConfigurationException naming the offending Class::method
- * instead. Runs only at cache time; production loads the compiled manifest via require+map. Mirrors
- * data/TransactionalScanner.
+ * instead. The same fail-loud policy covers a rule that would compile and then be enforced by NOTHING — see
+ * refuseUnenforceable() — and it lives in scan() rather than in the proxy-advice selection because scan() is what
+ * every entry point calls: firefly:cache compiles security-methods.php from it, and SecurityWiringProvider's
+ * in-process manifest is it. A refusal that fired only when the proxy plan was scanned would let a cached app
+ * compile the rule, hand it to a seam that cannot apply it, and fail open. Runs only at cache time; production
+ * loads the compiled manifest via require+map. Mirrors data/TransactionalScanner.
  *
  * @phpstan-import-type SecurityMethodRow from SecurityMethodDescriptor
  */
@@ -63,6 +67,9 @@ final class MethodSecurityScanner
             } catch (ExpressionParseException $e) {
                 throw new ConfigurationException("Invalid method-security expression on {$class}: {$e->getMessage()}", previous: $e);
             }
+
+            /** @var list<SecurityMethodDescriptor> $classRules */
+            $classRules = [];
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
                 if ($method->isStatic() || $method->isConstructor() || str_starts_with($method->getName(), '__')) {
@@ -95,7 +102,7 @@ final class MethodSecurityScanner
                 $params = array_map(static fn (ReflectionParameter $p): string => $p->getName(), $method->getParameters());
                 $target = $preFilter === null ? null : $this->filterTarget($method, $preFilter, $site);
 
-                $rules[] = new SecurityMethodDescriptor(
+                $classRules[] = new SecurityMethodDescriptor(
                     $class,
                     $method->getName(),
                     $pre['expression'] ?? 'permitAll()',
@@ -110,26 +117,22 @@ final class MethodSecurityScanner
                     $postFilter?->expression,
                 );
             }
+
+            if ($classRules === []) {
+                continue;
+            }
+
+            $this->refuseUnenforceable($reflection, $classRules);
+            $rules = [...$rules, ...$classRules];
         }
 
         return $rules;
     }
 
     /**
-     * The rows the proxy plan enforces: every rule on a class that has a #[Component]-family stereotype (a
-     * plain class is never post-processed, so it cannot be proxied — its pre expressions stay reachable
-     * through AuthorizationChecker), EXCEPT a #[RestController]/#[Controller] (the dispatcher enforces pre
-     * and post rules) and a #[CommandHandler]/#[QueryHandler] whose rules are all pre-invocation (the bus
-     * enforces them). A class this leaves needing a proxy while being `final` is refused: the proxy must
-     * extend it, and before this scan existed such a rule was silently unenforced.
-     *
-     * The same policy — a rule that compiles and is then enforced by nothing is a fail-open, so the scan
-     * refuses it — covers the two seams that cannot carry every kind of rule. A #[PreFilter] on a controller
-     * action is refused: the dispatcher's guard can evaluate it, but the arguments it resolved are already
-     * bound and check() cannot hand the narrowed one back, so the action would receive the unfiltered
-     * value with nothing thrown and nothing logged. A #[PostAuthorize], #[PreFilter] or #[PostFilter] on a
-     * class with no stereotype is refused for the same reason: no proxy wraps it, no dispatcher or bus
-     * looks its rule up, and unlike a pre expression there is no imperative equivalent to reach for.
+     * The rows the proxy plan enforces: every rule on a class that needsProxy() says no dispatch seam covers.
+     * A pure selection over scan()'s output — the refusals already fired there, so a class that reaches this
+     * point either has a seam or can be proxied.
      *
      * @param  array<string,string>  $psr4
      * @return array<class-string, array<string, SecurityMethodRow>>
@@ -146,50 +149,8 @@ final class MethodSecurityScanner
 
         $advice = [];
         foreach ($byClass as $class => $rules) {
-            $reflection = new ReflectionClass($class);
-
-            if ($reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF) === []) {
-                foreach ($rules as $rule) {
-                    if ($rule->postExpression !== null || $rule->preFilter !== null || $rule->postFilter !== null) {
-                        throw new ConfigurationException(
-                            "Method security on {$rule->key()} cannot be enforced: the class carries no #[Component]-family "
-                            .'stereotype, so no proxy wraps it and no dispatch seam reaches its #[PostAuthorize]/#[PreFilter]/'
-                            .'#[PostFilter]. Add a stereotype such as #[Service], or move the rule onto the bean that calls it.'
-                        );
-                    }
-                }
-
+            if (! $this->needsProxy(new ReflectionClass($class), $rules)) {
                 continue;
-            }
-            if ($reflection->getAttributes(RestController::class, ReflectionAttribute::IS_INSTANCEOF) !== []) {
-                foreach ($rules as $rule) {
-                    if ($rule->preFilter !== null) {
-                        throw new ConfigurationException(
-                            "#[PreFilter] on {$rule->key()} cannot be enforced on a controller: the dispatcher cannot rewrite "
-                            .'the arguments it resolved. Move the rule onto the service the controller calls.'
-                        );
-                    }
-                }
-
-                continue;
-            }
-
-            $handler = $reflection->getAttributes(CommandHandler::class) !== [] || $reflection->getAttributes(QueryHandler::class) !== [];
-            $needsProxy = false;
-            foreach ($rules as $rule) {
-                if (! $handler || $rule->postExpression !== null || $rule->preFilter !== null || $rule->postFilter !== null) {
-                    $needsProxy = true;
-                }
-            }
-            if (! $needsProxy) {
-                continue;
-            }
-
-            if ($reflection->isFinal()) {
-                throw new ConfigurationException(
-                    "Method security on {$class} cannot be enforced: the class is final and a proxy must extend it. "
-                    .'Remove `final`, or move the rule onto the controller or handler that calls it.'
-                );
             }
 
             foreach ($rules as $rule) {
@@ -199,6 +160,108 @@ final class MethodSecurityScanner
         }
 
         return $advice;
+    }
+
+    /**
+     * A rule that compiles and is then enforced by nothing is a fail-open, so the scan refuses it. Three seams
+     * cannot carry every kind of rule:
+     *
+     *   - A class with no #[Component]-family stereotype is never post-processed, so no proxy wraps it, and no
+     *     dispatcher or bus looks its rules up. Its PRE expressions stay reachable through AuthorizationChecker,
+     *     so they compile; a #[PostAuthorize], #[PreFilter] or #[PostFilter] has no imperative equivalent and
+     *     is refused.
+     *   - A #[RestController]/#[Controller] is enforced by the dispatcher, which can evaluate pre and post rules
+     *     but cannot rewrite the arguments it already resolved: a #[PreFilter] there would be evaluated and its
+     *     narrowed value discarded, so the action received the unfiltered one with nothing thrown and nothing
+     *     logged. Refused.
+     *   - A class needsProxy() leaves to the proxy while being `final` cannot be extended by it. Before this
+     *     scan existed such a rule was silently unenforced. Refused.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @param  list<SecurityMethodDescriptor>  $rules  the class's rules, as scan() compiled them
+     */
+    private function refuseUnenforceable(ReflectionClass $reflection, array $rules): void
+    {
+        if (! $this->stereotyped($reflection)) {
+            foreach ($rules as $rule) {
+                if ($this->beyondPre($rule)) {
+                    throw new ConfigurationException(
+                        "Method security on {$rule->key()} cannot be enforced: the class carries no #[Component]-family "
+                        .'stereotype, so no proxy wraps it and no dispatch seam reaches its #[PostAuthorize]/#[PreFilter]/'
+                        .'#[PostFilter]. Add a stereotype such as #[Service], or move the rule onto the bean that calls it.'
+                    );
+                }
+            }
+
+            return;
+        }
+
+        if ($this->controller($reflection)) {
+            foreach ($rules as $rule) {
+                if ($rule->preFilter !== null) {
+                    throw new ConfigurationException(
+                        "#[PreFilter] on {$rule->key()} cannot be enforced on a controller: the dispatcher cannot rewrite "
+                        .'the arguments it resolved. Move the rule onto the service the controller calls.'
+                    );
+                }
+            }
+
+            return;
+        }
+
+        if ($reflection->isFinal() && $this->needsProxy($reflection, $rules)) {
+            throw new ConfigurationException(
+                "Method security on {$reflection->getName()} cannot be enforced: the class is final and a proxy must extend it. "
+                .'Remove `final`, or move the rule onto the controller or handler that calls it.'
+            );
+        }
+    }
+
+    /**
+     * Whether the class's rules need the proxy: it carries a #[Component]-family stereotype (a plain class is
+     * never post-processed), it is not a controller (the dispatcher enforces pre and post rules), and it is
+     * either not a #[CommandHandler]/#[QueryHandler] or carries a rule the bus cannot enforce — the bus
+     * enforces pre-invocation rules only.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @param  list<SecurityMethodDescriptor>  $rules
+     */
+    private function needsProxy(ReflectionClass $reflection, array $rules): bool
+    {
+        if (! $this->stereotyped($reflection) || $this->controller($reflection)) {
+            return false;
+        }
+
+        $handler = $reflection->getAttributes(CommandHandler::class) !== [] || $reflection->getAttributes(QueryHandler::class) !== [];
+        foreach ($rules as $rule) {
+            if (! $handler || $this->beyondPre($rule)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A rule with a #[PostAuthorize], #[PreFilter] or #[PostFilter] — the kinds only a proxy or the dispatcher apply. */
+    private function beyondPre(SecurityMethodDescriptor $rule): bool
+    {
+        return $rule->postExpression !== null || $rule->preFilter !== null || $rule->postFilter !== null;
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function stereotyped(ReflectionClass $reflection): bool
+    {
+        return $reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF) !== [];
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function controller(ReflectionClass $reflection): bool
+    {
+        return $reflection->getAttributes(RestController::class, ReflectionAttribute::IS_INSTANCEOF) !== [];
     }
 
     /**

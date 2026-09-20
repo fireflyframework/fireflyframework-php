@@ -9,6 +9,7 @@ use Firefly\Security\Tests\Fixtures\Advice\ArchiveHandler;
 use Firefly\Security\Tests\Fixtures\Advice\OwnedReportService;
 use Firefly\Security\Tests\Fixtures\Advice\ReportController;
 use Firefly\Security\Tests\Fixtures\Advice\ReportService;
+use Firefly\Security\Tests\Fixtures\SecuredController;
 
 /** @return array<string,string> */
 function advicePsr4(): array
@@ -86,6 +87,30 @@ it('plans a proxy for the stereotyped services and leaves the controller and the
         ->and($advice)->not->toHaveKey(ArchiveHandler::class);
 });
 
+/*
+ | The three seam refusals live in scan(), not only in the proxy-advice selection: scan() is what firefly:cache
+ | compiles security-methods.php from and what SecurityWiringProvider's in-process manifest calls, and a rule
+ | that either of them compiled while only scanProxyAdvice() refused it would reach a seam that cannot enforce
+ | it — the controller guard evaluates a #[PreFilter] and discards the narrowed argument, nothing at all reads
+ | a #[PostAuthorize] on an unstereotyped class — with nothing thrown and nothing logged. Every entry point
+ | therefore fails loud, and the proxy-advice selection is proven to refuse the same way by being built on it.
+ */
+
+it('refuses, from scan() itself, a final bean whose rules nothing but a proxy could enforce', function () {
+    expect(fn () => (new MethodSecurityScanner)->scan(malformedPsr4('FinalService')))
+        ->toThrow(ConfigurationException::class, 'SealedService');
+});
+
+it('refuses, from scan() itself, a #[PreFilter] on a controller action, which the dispatcher could evaluate but never apply', function () {
+    expect(fn () => (new MethodSecurityScanner)->scan(malformedPsr4('ControllerPreFilter')))
+        ->toThrow(ConfigurationException::class, 'FilteringController::purge');
+});
+
+it('refuses, from scan() itself, a #[PostAuthorize] on a class with no stereotype, which no proxy and no dispatch seam would enforce', function () {
+    expect(fn () => (new MethodSecurityScanner)->scan(malformedPsr4('PlainPostAuthorize')))
+        ->toThrow(ConfigurationException::class, 'UnstereotypedReports::find');
+});
+
 it('refuses a final bean whose rules nothing but a proxy could enforce', function () {
     expect(fn () => (new MethodSecurityScanner)->scanProxyAdvice(malformedPsr4('FinalService')))
         ->toThrow(ConfigurationException::class, 'SealedService');
@@ -99,6 +124,15 @@ it('refuses a #[PreFilter] on a controller action, which the dispatcher could ev
 it('refuses a #[PostAuthorize] on a class with no stereotype, which no proxy and no dispatch seam would enforce', function () {
     expect(fn () => (new MethodSecurityScanner)->scanProxyAdvice(malformedPsr4('PlainPostAuthorize')))
         ->toThrow(ConfigurationException::class, 'UnstereotypedReports::find');
+});
+
+it('still compiles a pre-only rule on a class with no stereotype, which AuthorizationChecker can reach imperatively', function () {
+    // SecuredController carries no #[RestController] and only pre rules: nothing proxies it and no dispatcher
+    // looks it up, but its expressions are reachable through AuthorizationChecker, so it is a rule, not a fault.
+    $rules = (new MethodSecurityScanner)->scan(['Firefly\\Security\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']);
+
+    expect(array_filter($rules, static fn (SecurityMethodDescriptor $rule): bool => $rule->class === SecuredController::class))->not->toBe([])
+        ->and((new MethodSecurityScanner)->scanProxyAdvice(['Firefly\\Security\\Tests\\Fixtures\\' => dirname(__DIR__).'/Fixtures']))->not->toHaveKey(SecuredController::class);
 });
 
 it('refuses a #[PreFilter] whose filterTarget names a parameter the method does not declare', function () {
