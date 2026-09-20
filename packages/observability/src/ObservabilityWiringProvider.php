@@ -6,6 +6,7 @@ namespace Firefly\Observability;
 
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
+use Firefly\Observability\Boot\HttpClientTracingPass;
 use Firefly\Observability\Boot\MeterBindingsPass;
 use Firefly\Observability\Logging\CorrelationIdLogProcessor;
 use Illuminate\Log\Logger;
@@ -17,8 +18,9 @@ use Monolog\Logger as MonologLogger;
  * AutoConfiguration's final register() records candidacy only). ObservabilityAutoConfiguration (the #[Configuration]
  * bean source) binds the framework infrastructure collectors (MeterRegistry, MetricsRecorder, PrometheusTextFormat,
  * Tracer, the real CqrsMetrics) as #[Bean]s; this class contributes MeterBindingsPass — which registers the
- * process/circuit-breaker gauges into the MeterRegistry once it is bound — plus the correlation-id log processor
- * wiring. Both this and ObservabilityServiceProvider are in extra.laravel.providers.
+ * process/circuit-breaker gauges into the MeterRegistry once it is bound — and HttpClientTracingPass, which
+ * installs the outbound-HTTP tracing middleware on the Http client factory when tracing is on, plus the
+ * correlation-id log processor wiring. Both this and ObservabilityServiceProvider are in extra.laravel.providers.
  */
 final class ObservabilityWiringProvider extends FireflyServiceProvider
 {
@@ -27,7 +29,7 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new MeterBindingsPass];
+        return [new MeterBindingsPass, new HttpClientTracingPass];
     }
 
     public function register(): void

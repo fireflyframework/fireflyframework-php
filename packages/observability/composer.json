@@ -31,11 +31,13 @@
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",
         "firefly/web": "*@dev",
+        "guzzlehttp/promises": "^2.0 || ^3.0",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
         "illuminate/http": "^13.0",
         "illuminate/log": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/support": "^13.0",
+        "psr/http-message": "^1.0 || ^2.0"
     },
     "suggest": {
         "open-telemetry/api": "The OpenTelemetry API — required with open-telemetry/sdk for the OpenTelemetryTracer adapter (firefly.observability.tracing.enabled).",

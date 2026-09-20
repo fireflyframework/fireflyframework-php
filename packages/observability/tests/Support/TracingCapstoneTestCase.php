@@ -21,6 +21,7 @@ use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Http;
 use OpenTelemetry\SDK\Trace\ImmutableSpan;
 use OpenTelemetry\SDK\Trace\SpanExporter\InMemoryExporter;
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
@@ -95,6 +96,9 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
         $router->get('/missing', static function (): never {
             abort(404, 'no such thing');
         });
+
+        // An outbound Http client call made inside the request: the CLIENT span nests under the SERVER span.
+        $router->get('/outbound', static fn (): array => ['body' => Http::get('https://downstream.test/api/ping')->body()]);
     }
 
     protected function defineFireflyEnvironment(Application $app): void

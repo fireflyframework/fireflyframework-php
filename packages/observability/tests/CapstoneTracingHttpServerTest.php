@@ -8,6 +8,8 @@ use Firefly\Observability\Tracing\Tracer;
 use Firefly\Observability\Web\TracingFilter;
 use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use OpenTelemetry\API\Trace\SpanKind as OtelSpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\SDK\Trace\EventInterface;
@@ -99,4 +101,28 @@ it('leaves a rendered 4xx Unset with no exception event, and the exchange row st
         ->assertJsonPath('exchanges.0.uri', '/missing')
         ->assertJsonPath('exchanges.0.status', 404)
         ->assertJsonPath('exchanges.0.traceId', $span?->getTraceId());
+});
+
+it('gives an outbound Http client call a CLIENT span under the request span and sends traceparent', function () {
+    /** @var TracingCapstoneTestCase $this */
+    Http::fake(['https://downstream.test/*' => Http::response('pong', 200)]);
+
+    $this->getJson('/outbound')->assertStatus(200)->assertJsonPath('body', 'pong');
+
+    $server = $this->spanNamed('GET /outbound');
+    $client = $this->spanNamed('GET');
+
+    expect($server)->not->toBeNull()
+        ->and($client?->getKind())->toBe(OtelSpanKind::KIND_CLIENT)
+        ->and($client?->getParentSpanId())->toBe($server?->getSpanId())
+        ->and($client?->getTraceId())->toBe($server?->getTraceId())
+        ->and($client?->getAttributes()->toArray())->toMatchArray([
+            'http.request.method' => 'GET',
+            'server.address' => 'downstream.test',
+            'url.path' => '/api/ping',
+            'http.response.status_code' => 200,
+        ]);
+
+    Http::assertSentCount(1);
+    Http::assertSent(static fn (Request $request): bool => $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$client?->getSpanId().'-01'));
 });
