@@ -169,6 +169,47 @@ return [
         ],
     ],
     5 => [
+        'class' => 'Firefly\\Observability\\Tracing\\OpenTelemetry\\OpenTelemetryAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 400,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'tracerProvider',
+                'returns' => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            1 => [
+                'method' => 'tracer',
+                'returns' => 'Firefly\\Observability\\Tracing\\Tracer',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    6 => [
         'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -187,7 +228,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'stereotype' => 'component',
         'name' => null,

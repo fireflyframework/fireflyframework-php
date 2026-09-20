@@ -801,7 +801,8 @@ return [
     |
     | The Micrometer analogue. `metrics.enabled` gates the MeterRegistry, the HTTP MetricsFilter, the
     | CQRS metrics recorder and both /actuator/metrics and /actuator/prometheus, with the same key on
-    | each so they can never disagree.
+    | each so they can never disagree. `tracing.enabled` is the second gate: distributed tracing over
+    | OpenTelemetry, off by default.
     |
     */
 
@@ -906,6 +907,118 @@ return [
              | Default: the value of management.endpoints.web.base-path, plus that path with `/*`.
             */
             // 'exclude' => ['actuator', 'actuator/*', 'firefly', 'firefly/*'],
+        ],
+
+        /*
+         | Distributed tracing — the Spring Boot `management.tracing` analogue over OpenTelemetry. Off by
+         | default, and inert without the SDK: `composer require open-telemetry/sdk` (plus
+         | open-telemetry/exporter-otlp for `exporter => otlp`) makes OpenTelemetryAutoConfiguration bind the
+         | real Tracer ahead of the NoOp. With it on, every request gets a SERVER span continued from an inbound
+         | W3C traceparent, outbound Laravel Http calls get CLIENT spans and carry traceparent, commands and
+         | queries get INTERNAL spans, and events carry traceparent in their envelope headers with
+         | PRODUCER/CONSUMER spans. The trace and span ids reach Laravel Context (firefly.trace_id /
+         | firefly.span_id), every log line (see `logging.structured`), and /actuator/httpexchanges.
+        */
+        'tracing' => [
+
+            /*
+             | The master gate. Compared as a string by #[ConditionalOnProperty], so use a boolean.
+             |
+             | Default: false.
+            */
+            'enabled' => env('FIREFLY_TRACING_ENABLED', false),
+
+            /*
+             | Where finished spans go: `none` (recorded for ids and propagation, exported nowhere),
+             | `console` (one JSON document per span on stdout) or `otlp` (see `otlp` below). An application
+             | that binds its own OpenTelemetry\SDK\Trace\SpanExporterInterface bean overrides this.
+             |
+             | Default: 'none'.
+            */
+            'exporter' => env('FIREFLY_TRACING_EXPORTER', 'none'),
+
+            /*
+             | The `service.name` resource attribute a backend groups spans by. Empty falls back to app.name;
+             | `logging.structured` uses the same name for `service.name` in log lines.
+             |
+             | Default: '' (app.name).
+            */
+            'service-name' => env('FIREFLY_TRACING_SERVICE_NAME', ''),
+
+            /*
+             | Extra resource attributes (scalar values only) stamped on every span beside service.name and
+             | deployment.environment.name (app.env).
+             |
+             | Default: [].
+            */
+            // 'resource-attributes' => ['deployment.region' => 'eu-west-1', 'service.version' => '26.09.3'],
+
+            /*
+             | How new traces are sampled. An inbound traceparent's sampled flag always wins (ParentBased), so
+             | this only decides for traces that START here. `ratio` keeps the given share of traces.
+             |
+             | Defaults: type 'always_on', ratio 1.0.
+            */
+            'sampler' => [
+                'type' => env('FIREFLY_TRACING_SAMPLER', 'always_on'),
+                'ratio' => (float) env('FIREFLY_TRACING_SAMPLER_RATIO', 1.0),
+            ],
+
+            /*
+             | The OTLP exporter. `endpoint` is the collector's base URL (`/v1/traces` is appended for the
+             | http protocols, exactly as OTEL_EXPORTER_OTLP_ENDPOINT would be); `protocol` is http/protobuf
+             | (the default every collector accepts), http/json, or grpc (needs open-telemetry/transport-grpc
+             | and ext-grpc); `headers` is `name=value,name2=value2` — the OTEL_EXPORTER_OTLP_HEADERS shape —
+             | or a map, for a vendor's auth header. Spans are batched and flushed when the request terminates.
+             |
+             | Defaults: endpoint 'http://localhost:4318', protocol 'http/protobuf', headers ''.
+            */
+            'otlp' => [
+                'endpoint' => env('FIREFLY_TRACING_OTLP_ENDPOINT', 'http://localhost:4318'),
+                'protocol' => env('FIREFLY_TRACING_OTLP_PROTOCOL', 'http/protobuf'),
+                'headers' => env('FIREFLY_TRACING_OTLP_HEADERS', ''),
+            ],
+
+            /*
+             | The SERVER span per request (TracingFilter). `exclude` is a glob list of paths that get no span;
+             | like httpexchanges.exclude it defaults to the management base path so a polling dashboard does
+             | not produce a trace every five seconds, and setting it REPLACES that default.
+             |
+             | Defaults: enabled true; exclude = management.endpoints.web.base-path plus that path with `/*`.
+            */
+            'http-server' => [
+                'enabled' => true,
+                // 'exclude' => ['actuator', 'actuator/*', 'firefly', 'firefly/*'],
+            ],
+
+            /*
+             | CLIENT spans and traceparent on every Laravel Http client request (a Guzzle middleware
+             | installed on the Http factory at boot).
+             |
+             | Default: true.
+            */
+            'http-client' => [
+                'enabled' => true,
+            ],
+
+            /*
+             | INTERNAL spans around every command and query the buses dispatch, named by the message class.
+             |
+             | Default: true.
+            */
+            'cqrs' => [
+                'enabled' => true,
+            ],
+
+            /*
+             | PRODUCER spans on publish (traceparent stamped into the envelope headers) and CONSUMER spans on
+             | delivery, in-memory, queue and every broker consumer alike.
+             |
+             | Default: true.
+            */
+            'eda' => [
+                'enabled' => true,
+            ],
         ],
     ],
 

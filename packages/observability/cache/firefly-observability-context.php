@@ -143,6 +143,55 @@ return [
         ],
     ],
     3 => [
+        'class' => 'Firefly\\Observability\\Tracing\\OpenTelemetry\\OpenTelemetryAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnClass',
+                'args' => [
+                    0 => 'OpenTelemetry\\SDK\\Trace\\TracerProvider',
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'tracerProvider',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'tracer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
         'postConstruct' => [
         ],
@@ -163,7 +212,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    4 => [
+    5 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'postConstruct' => [
         ],

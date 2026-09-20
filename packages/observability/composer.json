@@ -37,6 +37,12 @@
         "illuminate/log": "^13.0",
         "illuminate/support": "^13.0"
     },
+    "suggest": {
+        "open-telemetry/api": "The OpenTelemetry API — required with open-telemetry/sdk for the OpenTelemetryTracer adapter (firefly.observability.tracing.enabled).",
+        "open-telemetry/sdk": "The OpenTelemetry SDK (TracerProvider, samplers, console exporter) behind OpenTelemetryTracer.",
+        "open-telemetry/exporter-otlp": "OTLP span export over http/protobuf or http/json (firefly.observability.tracing.exporter=otlp).",
+        "open-telemetry/transport-grpc": "OTLP export over gRPC (firefly.observability.tracing.otlp.protocol=grpc; needs ext-grpc)."
+    },
     "extra": {
         "laravel": {
             "providers": [
