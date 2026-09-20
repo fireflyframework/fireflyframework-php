@@ -968,8 +968,10 @@ return [
              | The OTLP exporter. `endpoint` is the collector's base URL (`/v1/traces` is appended for the
              | http protocols, exactly as OTEL_EXPORTER_OTLP_ENDPOINT would be); `protocol` is http/protobuf
              | (the default every collector accepts), http/json, or grpc (needs open-telemetry/transport-grpc
-             | and ext-grpc); `headers` is `name=value,name2=value2` — the OTEL_EXPORTER_OTLP_HEADERS shape —
-             | or a map, for a vendor's auth header. Spans are batched and flushed when the request terminates.
+             | and ext-grpc); `headers` is `name=value,name2=value2` — the OTEL_EXPORTER_OTLP_HEADERS shape,
+             | parsed by the SDK's own parser and percent-decoded the same way, so a vendor's documented
+             | `Authorization=Basic%20<b64>` works verbatim and a pair without `=` refuses to boot — or a map,
+             | whose values are taken as written. Spans are batched and flushed when the request terminates.
              |
              | Defaults: endpoint 'http://localhost:4318', protocol 'http/protobuf', headers ''.
             */

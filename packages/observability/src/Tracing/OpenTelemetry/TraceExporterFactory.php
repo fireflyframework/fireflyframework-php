@@ -6,6 +6,7 @@ namespace Firefly\Observability\Tracing\OpenTelemetry;
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use InvalidArgumentException;
 use OpenTelemetry\API\Signals;
 use OpenTelemetry\Contrib\Otlp\ContentTypes;
 use OpenTelemetry\Contrib\Otlp\HttpEndpointResolver;
@@ -13,6 +14,7 @@ use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\Contrib\Otlp\OtlpUtil;
 use OpenTelemetry\Contrib\Otlp\Protocols;
 use OpenTelemetry\Contrib\Otlp\SpanExporter as OtlpSpanExporter;
+use OpenTelemetry\SDK\Common\Configuration\Parser\MapParser;
 use OpenTelemetry\SDK\Common\Export\Stream\StreamTransportFactory;
 use OpenTelemetry\SDK\Common\Export\TransportFactoryInterface;
 use OpenTelemetry\SDK\Trace\SpanExporter\ConsoleSpanExporter;
@@ -55,6 +57,18 @@ final class TraceExporterFactory
     /**
      * `k=v,k2=v2` (the OTEL_EXPORTER_OTLP_HEADERS shape, so one value works in both places) or a plain map.
      *
+     * The string shape is handed to the SDK's own MapParser and then percent-decoded, which is exactly what
+     * OtlpUtil::getHeaders() does with the environment variable: the OTel exporter spec encodes a value the
+     * way W3C Baggage does, so a vendor's documented `Authorization=Basic%20<b64>` must reach the collector
+     * as `Basic <b64>` here too, or the collector answers 401 at the first flush with nothing said at boot.
+     * A pair without `=` is the SDK's InvalidArgumentException, re-thrown as a ConfigurationException that
+     * names the key and the pair's POSITION plus its leading token — never the rest of the pair, because
+     * the likeliest mistake (`x-honeycomb-team hcaik_…`, a space or a colon instead of `=`) has the
+     * credential right there and a boot exception's message is logged.
+     *
+     * The map shape is taken as written: a PHP array has no delimiter to escape, so its values are neither
+     * parsed nor decoded, and a non-scalar leaf is simply not a header.
+     *
      * @return array<string, string>
      */
     public static function headers(mixed $raw): array
@@ -75,16 +89,55 @@ final class TraceExporterFactory
             return [];
         }
 
-        foreach (explode(',', $raw) as $pair) {
-            $pair = trim($pair);
-            $eq = strpos($pair, '=');
-            if ($pair === '' || $eq === false || $eq === 0) {
-                continue;
+        try {
+            $parsed = MapParser::parse($raw);
+        } catch (InvalidArgumentException $e) {
+            throw new ConfigurationException(
+                'firefly.observability.tracing.otlp.headers has a pair without `=`: '
+                .self::describeMalformedPair($raw, static fn (string $pair): bool => ! str_contains($pair, '='))
+                .'; use name=value,name2=value2 (values percent-encoded, as in OTEL_EXPORTER_OTLP_HEADERS).',
+                previous: $e,
+            );
+        }
+
+        foreach ($parsed as $name => $value) {
+            $name = (string) $name;
+            if ($name === '') {
+                throw new ConfigurationException(
+                    'firefly.observability.tracing.otlp.headers has a pair with an empty header name: '
+                    .self::describeMalformedPair($raw, static fn (string $pair): bool => trim((string) strstr($pair, '=', true)) === '')
+                    .'; use name=value,name2=value2.',
+                );
             }
-            $headers[trim(substr($pair, 0, $eq))] = trim(substr($pair, $eq + 1));
+
+            $headers[$name] = rawurldecode(is_scalar($value) ? (string) $value : '');
         }
 
         return $headers;
+    }
+
+    /**
+     * `pair N ('leading-token…')` for the first comma-separated pair $malformed accepts. Only the text up to
+     * the first whitespace or `=` is quoted, so a credential typed after a space, a colon or a bare `=`
+     * stays out of the message and out of the log the boot exception lands in.
+     *
+     * @param  callable(string): bool  $malformed
+     */
+    private static function describeMalformedPair(string $raw, callable $malformed): string
+    {
+        foreach (explode(',', $raw) as $index => $pair) {
+            $pair = trim($pair);
+            if (! $malformed($pair)) {
+                continue;
+            }
+
+            $token = (string) preg_replace('/[\\s=].*$/su', '', $pair);
+            $shown = mb_substr($token, 0, 32).($token !== $pair || mb_strlen($token) > 32 ? '…' : '');
+
+            return sprintf("pair %d ('%s')", $index + 1, $shown);
+        }
+
+        return 'pair ?';
     }
 
     private static function otlp(Config $config): SpanExporterInterface
