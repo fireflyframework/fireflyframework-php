@@ -72,5 +72,24 @@ it('refuses a NULL for a non-nullable parameter and a value that cannot be coerc
 
     expect(fn () => $hydrator->hydrate(['id' => null] + $row))->toThrow(ConfigurationException::class, 'column [id] is NULL')
         ->and(fn () => $hydrator->hydrate(['score' => 'not-a-number'] + $row))->toThrow(ConfigurationException::class, 'column [score] holds string')
+        ->and(fn () => $hydrator->hydrate(['active' => 'abc'] + $row))->toThrow(ConfigurationException::class, 'column [active] holds string')
+        ->and(fn () => $hydrator->hydrate(['active' => 2] + $row))->toThrow(ConfigurationException::class, 'column [active] holds int')
         ->and(fn () => $hydrator->hydrate(['tier' => 'bronze'] + $row))->toThrow(ValueError::class);
+});
+
+it('accepts only the boolean spellings a driver actually hands back for a bool parameter', function () {
+    $hydrator = new ProjectionHydrator(hydratedProjection());
+    $row = ['id' => 1, 'score' => 1.0, 'note' => 'n', 'tier' => 'gold', 'created_at' => '2026-01-01'];
+
+    foreach ([true, 1, '1', 'true', 'on', 'yes'] as $truthy) {
+        $dto = $hydrator->hydrate(['active' => $truthy] + $row);
+        assert($dto instanceof HydratedRow);
+        expect($dto->active)->toBeTrue();
+    }
+
+    foreach ([false, 0, '0', 'false', 'off', 'no', ''] as $falsy) {
+        $dto = $hydrator->hydrate(['active' => $falsy] + $row);
+        assert($dto instanceof HydratedRow);
+        expect($dto->active)->toBeFalse();
+    }
 });

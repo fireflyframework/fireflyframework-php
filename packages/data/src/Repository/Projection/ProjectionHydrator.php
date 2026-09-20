@@ -105,9 +105,27 @@ final class ProjectionHydrator
             'int' => is_int($value) ? $value : (is_numeric($value) ? (int) $value : $this->mismatch($value, $parameter)),
             'float' => is_float($value) ? $value : (is_numeric($value) ? (float) $value : $this->mismatch($value, $parameter)),
             'string' => is_string($value) ? $value : (is_scalar($value) ? (string) $value : $this->mismatch($value, $parameter)),
-            'bool' => is_bool($value) ? $value : (is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN) : $this->mismatch($value, $parameter)),
+            'bool' => is_bool($value) ? $value : $this->bool($value, $parameter),
             default => $this->object($value, $type, $parameter),
         };
+    }
+
+    /**
+     * Only the spellings a driver actually hands back for a boolean column become a bool: 1/0 (MySQL tinyint,
+     * SQLite), '1'/'0' (emulated prepares), 'true'/'false', 'yes'/'no', 'on'/'off' and ''. Anything else —
+     * 'abc', 'active', 2 — is NOT quietly flattened to false, because that is exactly the surprising conversion
+     * the class docblock promises not to make: a string column mapped onto a bool parameter is a misconfiguration
+     * the developer needs to see, so FILTER_NULL_ON_FAILURE turns it into the named mismatch instead.
+     *
+     * @param  ProjectionParameterRow  $parameter
+     */
+    private function bool(mixed $value, array $parameter): bool
+    {
+        if (! is_scalar($value)) {
+            $this->mismatch($value, $parameter);
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $this->mismatch($value, $parameter);
     }
 
     /**
