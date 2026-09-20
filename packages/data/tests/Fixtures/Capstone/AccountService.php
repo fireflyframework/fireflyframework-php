@@ -44,6 +44,15 @@ class AccountService
         DB::table('accounts')->insert(['id' => 1, 'name' => 'second']);
     }
 
+    /** A method-level timeout: the slow statement plus the sleep overrun one second, so the proxy must roll back. */
+    #[Transactional(timeout: 1)]
+    public function slowTransfer(): void
+    {
+        DB::table('accounts')->insert(['name' => 'slow']);
+        DB::select('with recursive c(x) as (select 1 union all select x + 1 from c where x < 500000) select count(*) as n from c');
+        usleep(1_100_000);
+    }
+
     #[Transactional(noRollbackFor: [IgnorableException::class])]
     public function logButKeep(): void
     {
