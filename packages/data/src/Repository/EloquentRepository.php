@@ -61,6 +61,15 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     /** @var class-string<TModel> */
     protected string $model;
 
+    /**
+     * Named entity graphs a #[EntityGraph('Order.full')] can refer to: graph name => relation paths for with().
+     * Plain data on the repository, so the scanner never has to read it and an application can build it from
+     * constants. An unknown name is a ConfigurationException at first use.
+     *
+     * @var array<string, list<string>>
+     */
+    protected array $entityGraphs = [];
+
     private readonly PersistenceExceptionTranslator $translator;
 
     public function __construct(
@@ -136,6 +145,48 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     }
 
     /**
+     * The builder every read starts from: query() plus the #[EntityGraph] the manifest holds for THIS repository
+     * class and the calling method (`reading(__FUNCTION__)`). An inherited read therefore honours the attribute a
+     * subclass puts on its `return parent::findAll();` override — the Spring shape — and a repository without a
+     * manifest, or a method without a row, gets a plain builder. Spell the call in the method's own body, never
+     * inside the closure handed to translating(): within a closure `__FUNCTION__` reads `{closure}`, which no
+     * manifest row is keyed by. Building the builder touches no driver (Eloquent opens its PDO lazily, at the
+     * first statement), so nothing that needs translating happens before the closure.
+     *
+     * @return Builder<Model>
+     */
+    protected function reading(string $method): Builder
+    {
+        return $this->withGraph($this->query(), $this->methodRow($method));
+    }
+
+    /**
+     * @param  Builder<Model>  $query
+     * @param  RepositoryMethodRow|null  $row
+     * @return Builder<Model>
+     */
+    private function withGraph(Builder $query, ?array $row): Builder
+    {
+        $graph = $row['entityGraph'] ?? null;
+        if ($graph === null) {
+            return $query;
+        }
+
+        if ($graph['value'] !== null) {
+            $paths = $this->entityGraphs[$graph['value']] ?? throw new ConfigurationException(sprintf(
+                '%s names entity graph [%s], but its $entityGraphs declares only [%s].',
+                $this->repositoryClass(),
+                $graph['value'],
+                implode(', ', array_keys($this->entityGraphs)),
+            ));
+
+            return $query->with($paths);
+        }
+
+        return $graph['attributePaths'] === [] ? $query : $query->with($graph['attributePaths']);
+    }
+
+    /**
      * Run explicit #[Query] SQL. Named `:placeholders` are rewritten to positional `?` in appearance order and the
      * method arguments bind positionally (name-based binding needs param metadata — deferred; positional works now).
      * A #[Modifying] row runs the SQL as a STATEMENT — Connection::affectingStatement(), the affected-row count
@@ -195,12 +246,20 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     }
 
     /**
+     * Drive the Eloquent Builder from a parsed method name. The row's #[EntityGraph] is applied to the builder
+     * first, so every arm below eager-loads it. A trailing Pageable argument pages the result — a Slice when the
+     * declared method returns Slice (the manifest row's `returns`), a Page otherwise, so an undeclared @method
+     * derived query with a Pageable is always a Page. The Pageable is popped before the predicates bind, so it is
+     * never mistaken for a predicate argument.
+     *
      * @param  list<mixed>  $args
      * @param  RepositoryMethodRow|null  $row
      */
     protected function driveDerivedQuery(ParsedQuery $parsed, array $args, ?array $row = null): mixed
     {
-        $query = $this->query();
+        $pageable = end($args) instanceof Pageable ? array_pop($args) : null;
+
+        $query = $this->withGraph($this->query(), $row);
         $cursor = 0;
 
         foreach ($parsed->predicates as $index => $predicate) {
@@ -228,6 +287,12 @@ abstract class EloquentRepository implements PagingAndSortingRepository
         $projection = $row['projection'] ?? null;
         if ($projection !== null && $parsed->prefix === 'find') {
             return $this->projectDerived($query, $parsed, new ProjectionHydrator($projection));
+        }
+
+        if ($pageable instanceof Pageable && $parsed->prefix === 'find') {
+            return ($row['returns'] ?? null) === 'slice'
+                ? $this->sliceOf($query, $pageable)
+                : $this->pageOf($query, $pageable);
         }
 
         return match ($parsed->prefix) {
@@ -523,8 +588,10 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findById(mixed $id): ?object
     {
-        return $this->translating(function () use ($id): ?object {
-            $found = $this->query()->find($id);
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(function () use ($query, $id): ?object {
+            $found = $query->find($id);
 
             return $found instanceof $this->model ? $found : null;
         });
@@ -552,8 +619,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findByIdForUpdate(mixed $id): ?object
     {
-        return $this->translating(function () use ($id): ?object {
-            $query = $this->query();
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(function () use ($query, $id): ?object {
             $this->applyLock($query, LockMode::PESSIMISTIC_WRITE);
             $found = $query->find($id);
 
@@ -591,7 +659,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findAll(): array
     {
-        return $this->translating(fn (): array => $this->narrow($this->query()->get()->all()));
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): array => $this->narrow($query->get()->all()));
     }
 
     /**
@@ -601,8 +671,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     public function findAllById(iterable $ids): array
     {
         $ids = is_array($ids) ? array_values($ids) : iterator_to_array($ids, false);
+        $query = $this->reading(__FUNCTION__);
 
-        return $this->translating(fn (): array => $this->narrow($this->query()->whereIn($this->keyName(), $ids)->get()->all()));
+        return $this->translating(fn (): array => $this->narrow($query->whereIn($this->keyName(), $ids)->get()->all()));
     }
 
     public function existsById(mixed $id): bool
@@ -644,17 +715,19 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findPaged(Pageable $pageable): Page
     {
-        return $this->translating(function () use ($pageable): Page {
-            $total = $this->query()->count();
+        $query = $this->reading(__FUNCTION__);
 
-            $items = $this->applySort($this->query(), $pageable->sort)
-                ->skip($pageable->offset())
-                ->take($pageable->size)
-                ->get()
-                ->all();
+        return $this->translating(fn (): Page => $this->pageOf($query, $pageable));
+    }
 
-            return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
-        });
+    /**
+     * @return Slice<TModel>
+     */
+    public function findSlice(Pageable $pageable): Slice
+    {
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): Slice => $this->sliceOf($query, $pageable));
     }
 
     /**
@@ -662,7 +735,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findSorted(Sort $sort): array
     {
-        return $this->translating(fn (): array => $this->narrow($this->applySort($this->query(), $sort)->get()->all()));
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): array => $this->narrow($this->applySort($query, $sort)->get()->all()));
     }
 
     /**
@@ -675,40 +750,37 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findBySpecification(Specification $specification): array
     {
-        return $this->translating(fn (): array => $this->narrow($specification->toBuilder($this->query())->get()->all()));
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): array => $this->narrow($specification->toBuilder($query)->get()->all()));
     }
 
     /**
-     * Paged variant: the specification is applied to a fresh builder twice — once for the total count, once for the
-     * sorted slice — for the same `Specification<Model>` / `narrow()`-at-terminal reason as findBySpecification.
+     * Paged variant: the specification is applied to one builder that pageOf() counts over a clone of and then
+     * windows — for the same `Specification<Model>` / `narrow()`-at-terminal reason as findBySpecification.
      *
      * @param  Specification<Model>  $specification
      * @return Page<TModel>
      */
     public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page
     {
-        return $this->translating(function () use ($specification, $pageable): Page {
-            $total = $specification->toBuilder($this->query())->count();
+        $query = $this->reading(__FUNCTION__);
 
-            $items = $this->applySort($specification->toBuilder($this->query()), $pageable->sort)
-                ->skip($pageable->offset())
-                ->take($pageable->size)
-                ->get()
-                ->all();
-
-            return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
-        });
+        return $this->translating(fn (): Page => $this->pageOf($specification->toBuilder($query), $pageable));
     }
 
     /**
      * Query by example: the probe's set attributes under the matcher's rules. An Example IS a Specification, so
-     * this is findBySpecification() with a name Spring Data users expect.
+     * this is findBySpecification() with a name Spring Data users expect — spelled out rather than delegated so
+     * that an #[EntityGraph] on an override of THIS method (reading(__FUNCTION__)) is the one that applies.
      *
      * @return list<TModel>
      */
     public function findByExample(Example $example): array
     {
-        return $this->findBySpecification($example);
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): array => $this->narrow($example->toBuilder($query)->get()->all()));
     }
 
     /**
@@ -720,8 +792,10 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findOneByExample(Example $example): ?object
     {
-        return $this->translating(function () use ($example): ?object {
-            $rows = $this->narrow($example->toBuilder($this->query())->limit(2)->get()->all());
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(function () use ($query, $example): ?object {
+            $rows = $this->narrow($example->toBuilder($query)->limit(2)->get()->all());
 
             if (count($rows) > 1) {
                 throw new IncorrectResultSizeDataAccessException(
@@ -748,7 +822,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findByExamplePaged(Example $example, Pageable $pageable): Page
     {
-        return $this->findBySpecificationPaged($example, $pageable);
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): Page => $this->pageOf($example->toBuilder($query), $pageable));
     }
 
     /**
@@ -760,7 +836,9 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findAllIncludingDeleted(): array
     {
-        return $this->translating(fn (): array => $this->narrow($this->query()->withoutGlobalScope(SoftDeletingScope::class)->get()->all()));
+        $query = $this->reading(__FUNCTION__);
+
+        return $this->translating(fn (): array => $this->narrow($query->withoutGlobalScope(SoftDeletingScope::class)->get()->all()));
     }
 
     /**
@@ -850,6 +928,53 @@ abstract class EloquentRepository implements PagingAndSortingRepository
         }
 
         return $query;
+    }
+
+    /**
+     * A Page: the total from a count over a clone of the builder (Eloquent clones its query builder), then the
+     * sorted window.
+     *
+     * @param  Builder<Model>  $query
+     * @return Page<TModel>
+     */
+    private function pageOf(Builder $query, Pageable $pageable): Page
+    {
+        $total = (clone $query)->count();
+
+        $items = $this->applySort($query, $pageable->sort)
+            ->skip($pageable->offset())
+            ->take($pageable->size)
+            ->get()
+            ->all();
+
+        return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+    }
+
+    /**
+     * A Slice: size + 1 rows fetched, the extra one dropped and remembered as "there is a next page". An unpaged
+     * Pageable (size PHP_INT_MAX) cannot add one, so it fetches everything and never has a next page.
+     *
+     * @param  Builder<Model>  $query
+     * @return Slice<TModel>
+     */
+    private function sliceOf(Builder $query, Pageable $pageable): Slice
+    {
+        $take = $pageable->isPaged() ? $pageable->size + 1 : PHP_INT_MAX;
+
+        $rows = $this->applySort($query, $pageable->sort)
+            ->skip($pageable->offset())
+            ->take($take)
+            ->get()
+            ->all();
+
+        $hasNext = $pageable->isPaged() && count($rows) > $pageable->size;
+
+        return new Slice(
+            $this->narrow($hasNext ? array_slice($rows, 0, $pageable->size) : $rows),
+            $hasNext,
+            $pageable->page,
+            $pageable->size,
+        );
     }
 
     protected function keyName(): string
