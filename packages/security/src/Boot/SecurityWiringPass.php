@@ -11,10 +11,11 @@ use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Jwt\JwtService;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
+use Firefly\Security\Web\Settings\RememberMeSettings;
 use Firefly\Web\Security\ControllerSecurityGuard;
 
 /**
- * Three boot-time actions gated for correctness, in this order:
+ * Five boot-time actions gated for correctness, in this order:
  *
  * (0) MUTUAL-EXCLUSIVITY GUARD, unconditional (runs even when the master flag is off): local-JWT
  * (JwtAuthenticationFilter, #[Order(-90)]) and the OAuth2 resource server (OAuth2ResourceServerFilter,
@@ -34,10 +35,14 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * scalars, never on anything master-gated) forces its constructor's weak-secret guard to run now, so
  * WeakSigningSecretException surfaces at boot instead of as a 500 on first use.
  *
+ * (2) WEAK REMEMBER-ME KEY GUARD, unconditional like (1): RememberMeSettings::fromConfig() runs the JwtService
+ * secret rule on firefly.security.remember_me.key whenever remember_me.enabled — the key signs every long-lived
+ * cookie, so a placeholder is refused at boot rather than on the first sign-in.
+ *
  * The remaining actions run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
  * #[Bean] is registered):
  *
- * (2) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
+ * (3) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
  * security-methods.php with no proxy-plan.php beside it was written by a firefly:cache from before the proxy plan
  * existed. Such a cache lists every rule in the manifest while DataAutoConfiguration::proxyPlan() bridges a
  * transactional-only plan from transactional.php, so a #[Service] whose rules are method security alone is
@@ -48,7 +53,7 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * null while regenerating), which is what writes the missing file. Skipped when `method.enabled` is off,
  * because the proxy link is then a pass-through by the operator's own choice and the stale plan changes nothing.
  *
- * (3) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
+ * (4) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
  * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
  * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
  */
@@ -74,6 +79,12 @@ final class SecurityWiringPass implements BootPass
 
         if ($config->bool('firefly.security.jwt.enabled', false)) {
             $context->container->make(JwtService::class); // fail-fast weak-secret guard at boot, independent of the master flag
+        }
+
+        if ($config->bool('firefly.security.remember_me.enabled', false)) {
+            // The same fail-fast the JWT secret gets, independent of the master flag: a weak remember-me key
+            // signs every long-lived cookie, and a boot is the moment to refuse it.
+            RememberMeSettings::fromConfig($config);
         }
 
         if (! $config->bool('firefly.security.enabled', false)) {

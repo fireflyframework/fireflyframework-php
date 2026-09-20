@@ -139,6 +139,98 @@ return [
         ],
 
         /*
+         | Session-persisted SecurityContext. Firefly filters are GLOBAL middleware and Laravel starts the
+         | session in the `web` route group, later — so when this is on the framework pushes EncryptCookies,
+         | AddQueuedCookiesToResponse and StartSession onto the global stack ahead of the security filters
+         | (and strips them from routes, where a second EncryptCookies pass would null every cookie). It is
+         | switched on implicitly by form_login, remember_me and http_basic.session below; set it yourself to
+         | persist a principal another mechanism (JWT, a controller) established. A session driver is required.
+         |
+         | `fixation_protection` regenerates the session id on every interactive sign-in.
+         |
+         | Defaults: enabled false, fixation_protection true.
+        */
+        'session' => [
+            'enabled' => env('FIREFLY_SECURITY_SESSION_ENABLED', false),
+            // 'fixation_protection' => true,
+        ],
+
+        /*
+         | Form login: the framework's own server-rendered sign-in page (or your Blade `view`), a POST to
+         | `login_processing_url` verified against the session CSRF token, the AuthenticationManager, and a
+         | redirect to the page the person was refused at (or `default_success_url`). Failure redirects to
+         | `failure_url` and publishes an AuthenticationFailure* event carrying the username and the source
+         | ip — never the password. Turning this on turns `session` and `logout` on with it.
+         |
+         | `view` receives `$login` (a LoginPageModel: action, usernameParameter, passwordParameter,
+         | csrfToken, error, loggedOut, rememberMeParameter, title).
+         |
+         | Defaults: enabled false, login_page '/login', login_processing_url '/login', username_parameter
+         | 'username', password_parameter 'password', default_success_url '/',
+         | always_use_default_success_url false, failure_url '/login?error', view '' (the framework page).
+        */
+        'form_login' => [
+            'enabled' => env('FIREFLY_SECURITY_FORM_LOGIN_ENABLED', false),
+            // 'login_page' => '/login',
+            // 'login_processing_url' => '/login',
+            // 'username_parameter' => 'username',
+            // 'password_parameter' => 'password',
+            // 'default_success_url' => '/',
+            // 'always_use_default_success_url' => false,
+            // 'failure_url' => '/login?error',
+            // 'view' => 'auth.login',
+        ],
+
+        /*
+         | HTTP Basic: the `Authorization: Basic` header is authenticated on every request (stateless) unless
+         | `session` is true, in which case a browser's first success is stored in the session. The entry
+         | point answers a 401 with `WWW-Authenticate: Basic realm="…"` to non-browser clients.
+         |
+         | Defaults: enabled false, realm 'LaraFly', session false.
+        */
+        'http_basic' => [
+            'enabled' => env('FIREFLY_SECURITY_HTTP_BASIC_ENABLED', false),
+            // 'realm' => 'LaraFly',
+            // 'session' => false,
+        ],
+
+        /*
+         | Logout: a POST to `logout_url` (verified against the session CSRF token — a GET that signs someone
+         | out is a link an attacker can plant) invalidates the session, expires the remember-me cookie and any
+         | cookie named in `delete_cookies`, publishes LogoutSuccessEvent and redirects to `logout_success_url`.
+         |
+         | Defaults: enabled follows form_login.enabled, logout_url '/logout', logout_success_url
+         | '/login?logout', invalidate_session true, delete_cookies [], clear_authentication true.
+        */
+        'logout' => [
+            // 'enabled' => true,
+            // 'logout_url' => '/logout',
+            // 'logout_success_url' => '/login?logout',
+            // 'invalidate_session' => true,
+            // 'delete_cookies' => [],
+            // 'clear_authentication' => true,
+        ],
+
+        /*
+         | Remember-me: a signed cookie (`username:expiry:HMAC-SHA256(username:expiry:password-hash:key)`,
+         | Spring's TokenBasedRememberMeServices) set when the login form's `parameter` is checked (or always,
+         | with `always_remember`), that re-authenticates a request whose session holds no principal. A
+         | password change invalidates it, because the hash is part of the signature. `key` is required once
+         | enabled and is held to the JWT secret rule: a placeholder or fewer than 32 bytes REFUSES TO BOOT.
+         |
+         | Defaults: enabled false, parameter 'remember-me', cookie_name 'remember-me',
+         | token_validity_seconds 1209600 (14 days), always_remember false.
+        */
+        'remember_me' => [
+            'enabled' => env('FIREFLY_SECURITY_REMEMBER_ME_ENABLED', false),
+            'key' => env('FIREFLY_SECURITY_REMEMBER_ME_KEY', ''),
+            // 'parameter' => 'remember-me',
+            // 'cookie_name' => 'remember-me',
+            // 'token_validity_seconds' => 1209600,
+            // 'always_remember' => false,
+        ],
+
+        /*
          | The shipped in-memory user store, keyed by username. `password` is the ENCODED string —
          | typically `{id}`-prefixed for the DelegatingPasswordEncoder, e.g. `{bcrypt}$2y$...`.
          | `authorities` defaults to [], `enabled` to true, `locked` to false.

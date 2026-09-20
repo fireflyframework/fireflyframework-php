@@ -31,9 +31,18 @@ final class JwtService
         private readonly string $algorithm = 'HS256',
         private readonly int $leewaySeconds = 0,
     ) {
+        self::assertStrongSecret($secret, 'firefly.security.jwt.secret');
+    }
+
+    /**
+     * The weak-secret rule, shared with every other signing key the package reads (the remember-me key): a
+     * placeholder or fewer than 32 bytes refuses to boot. $setting names the config key in the message.
+     */
+    public static function assertStrongSecret(string $secret, string $setting): void
+    {
         if (in_array(strtolower($secret), self::PLACEHOLDERS, true) || strlen($secret) < self::MIN_SECRET_BYTES) {
             throw new WeakSigningSecretException(
-                'Refusing to boot: the JWT signing secret is a placeholder or shorter than '.self::MIN_SECRET_BYTES.' bytes. Set firefly.security.jwt.secret to a strong random value.'
+                "Refusing to boot: {$setting} is a placeholder or shorter than ".self::MIN_SECRET_BYTES.' bytes. Set it to a strong random value.'
             );
         }
     }

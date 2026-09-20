@@ -8,6 +8,8 @@ use Firefly\Security\Web\CsrfFilter;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
 
 /**
  * @param  list<string>  $except
@@ -47,3 +49,19 @@ it('403s an unsafe method with no cookie and no header at all (canonical double-
 
     csrfFilter()->handle($request, fn () => new Response('ok'));
 })->throws(AuthorizationException::class);
+
+it('prefers the session token over the double-submit cookie when the request has a session', function () {
+    $store = new Store('firefly_session', new ArraySessionHandler(120));
+    $store->start();
+
+    $request = Request::create('/x', 'POST', ['_token' => $store->token()], cookies: ['XSRF-TOKEN' => 'ignored']);
+    $request->setLaravelSession($store);
+
+    expect(csrfFilter()->handle($request, fn () => new Response('ok')))->toBeInstanceOf(Response::class);
+
+    $wrong = Request::create('/x', 'POST', ['_token' => 'not-the-token'], cookies: ['XSRF-TOKEN' => 'ignored']);
+    $wrong->headers->set('X-XSRF-TOKEN', 'ignored');
+    $wrong->setLaravelSession($store);
+
+    expect(fn () => csrfFilter()->handle($wrong, fn () => new Response('ok')))->toThrow(AuthorizationException::class);
+});

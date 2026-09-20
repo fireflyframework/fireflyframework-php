@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Security\InvalidTokenException;
+use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Security\Jwt\JwtService;
 use Firefly\Security\Web\JwtAuthenticationFilter;
@@ -65,3 +67,17 @@ it('propagates a 401 for a present-but-invalid token', function () {
 
     $filter->handle($request, fn () => new Response('ok'));
 })->throws(InvalidTokenException::class);
+
+it('leaves a context another filter established alone when no bearer token is presented', function () {
+    [$filter] = jwtFilter();
+    SecurityContextHolder::setContext(new SecurityContext(Authentication::authenticated('ada', 'ada', [])));
+
+    $seen = null;
+    $filter->handle(Request::create('/x', 'GET'), function () use (&$seen): Response {
+        $seen = SecurityContextHolder::getAuthentication()?->getName();
+
+        return new Response('ok');
+    });
+
+    expect($seen)->toBe('ada');
+});

@@ -167,6 +167,28 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | `firefly.security.method.enabled` | `true` | With the master flag on, enforces method-security attributes on **any** stereotyped bean through the proxy chain (security advice before the transactional one), on both boot paths: `firefly:cache` compiles the plan into `proxy-plan.php` and a proxy per planned class, and the uncached boot scans the same advice sources. A cache written before `proxy-plan.php` existed (`security-methods.php` with no plan beside it) is **refused at boot** — recompile — because such a cache lists every rule and enforces none of the bean-level ones. Off keeps the dispatcher and bus enforcing theirs; the proxy link becomes a pass-through, and the stale-cache refusal stands down with it. Read live. |
 | `firefly.security.users` | _(unset)_ | `InMemoryUserDetailsService` map (`{username: {password, authorities, enabled, locked}}`). `password` is the **encoded** string, typically `{id}`-prefixed; `authorities` defaults to `[]`, `enabled` to `true`, `locked` to `false`. |
 | `firefly.security.role_hierarchy` | `[]` | Single-arrow implication rules, e.g. `["ROLE_ADMIN > ROLE_USER"]` (one implication per entry — not chainable in one string). |
+| `firefly.security.session.enabled` | `false` | Carry the `SecurityContext` in the Laravel session (`SecurityContextPersistenceFilter`, `-94`). Implied by `form_login`, `remember_me` and `http_basic.session`. Requires a session driver (boot refuses otherwise). |
+| `firefly.security.session.fixation_protection` | `true` | Regenerate the session id on every interactive sign-in. |
+| `firefly.security.form_login.enabled` | `false` | Form login (`FormLoginFilter`, `-92`, plus the login page route). Implies `session` and `logout`. |
+| `firefly.security.form_login.login_page` | `/login` | The page a browser is redirected to; always permitted by `HttpSecurityFilter`. |
+| `firefly.security.form_login.login_processing_url` | `/login` | The POST the filter authenticates. |
+| `firefly.security.form_login.username_parameter` / `password_parameter` | `username` / `password` | Form field names. |
+| `firefly.security.form_login.default_success_url` | `/` | Where a login goes when no request was saved. |
+| `firefly.security.form_login.always_use_default_success_url` | `false` | Ignore the saved request. |
+| `firefly.security.form_login.failure_url` | `/login?error` | Where a failed login is redirected. |
+| `firefly.security.form_login.view` | `''` | A Blade view rendered instead of the framework page; receives `$login` (`LoginPageModel`). |
+| `firefly.security.http_basic.enabled` | `false` | HTTP Basic (`HttpBasicFilter`, `-91`). |
+| `firefly.security.http_basic.realm` | `LaraFly` | The `WWW-Authenticate` realm. |
+| `firefly.security.http_basic.session` | `false` | Store a successful Basic authentication in the session (implies `session`). |
+| `firefly.security.logout.enabled` | follows `form_login.enabled` | `LogoutFilter` (`-93`), POST only, CSRF-checked. |
+| `firefly.security.logout.logout_url` / `logout_success_url` | `/logout` / `/login?logout` | The POST address and the redirect after it. |
+| `firefly.security.logout.invalidate_session` / `clear_authentication` | `true` / `true` | Invalidate the whole session, or only remove the context. |
+| `firefly.security.logout.delete_cookies` | `[]` | Extra cookie names expired on logout (the remember-me cookie always is). |
+| `firefly.security.remember_me.enabled` | `false` | Signed remember-me cookie (`RememberMeAuthenticationFilter`, `-83`). Implies `session`. |
+| `firefly.security.remember_me.key` | _(required when enabled)_ | HMAC key, ≥ 32 bytes, no placeholders — refused at boot like the JWT secret. |
+| `firefly.security.remember_me.parameter` / `cookie_name` | `remember-me` / `remember-me` | The form checkbox name and the cookie name. |
+| `firefly.security.remember_me.token_validity_seconds` | `1209600` | Cookie lifetime (14 days). |
+| `firefly.security.remember_me.always_remember` | `false` | Set the cookie on every login, checkbox or not. |
 | `firefly.security.jwt.enabled` | `false` | Enables `JwtAuthenticationFilter` + `JwtService` (refuses a weak secret at boot). Independent of the master flag. Mutually exclusive with `oauth2.resource_server.enabled` (refused at boot). |
 | `firefly.security.jwt.secret` | _(required when jwt.enabled)_ | HMAC signing secret (≥ 32 bytes, no placeholders). |
 | `firefly.security.jwt.algorithm` | `HS256` | HMAC algorithm passed to `JwtService`. |

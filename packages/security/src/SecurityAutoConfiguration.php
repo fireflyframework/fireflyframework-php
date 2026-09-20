@@ -44,8 +44,15 @@ use Firefly\Security\Password\BcryptPasswordEncoder;
 use Firefly\Security\Password\DelegatingPasswordEncoder;
 use Firefly\Security\Password\NoOpPasswordEncoder;
 use Firefly\Security\Password\PasswordEncoder;
+use Firefly\Security\Session\SecurityContextRepository;
+use Firefly\Security\Session\SessionSecurityContextRepository;
+use Firefly\Security\Session\SessionSecuritySettings;
 use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
+use Firefly\Security\Web\Settings\FormLoginSettings;
+use Firefly\Security\Web\Settings\HttpBasicSettings;
+use Firefly\Security\Web\Settings\LogoutSettings;
+use Firefly\Security\Web\Settings\RememberMeSettings;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Psr\Log\LoggerInterface;
@@ -196,6 +203,63 @@ final class SecurityAutoConfiguration
     public function authenticationEventPublisher(ApplicationEventPublisher $events): AuthenticationEventPublisher
     {
         return new AuthenticationEventPublisher($events);
+    }
+
+    /**
+     * The session half: whether the SecurityContext is carried between requests (read live), and where it is
+     * kept. The repository is the Laravel session unless the application binds its own.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(SessionSecuritySettings::class)]
+    public function sessionSecuritySettings(Config $config): SessionSecuritySettings
+    {
+        return new SessionSecuritySettings($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(SecurityContextRepository::class)]
+    public function securityContextRepository(): SecurityContextRepository
+    {
+        return new SessionSecurityContextRepository;
+    }
+
+    /**
+     * The settings every web mechanism reads, each a value object built once from its `firefly.security.*`
+     * block. Master-gated like the filters that consume them; RememberMeSettings::fromConfig() refuses a weak
+     * key when remember-me is on, the same rule the JWT secret is held to.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(FormLoginSettings::class)]
+    public function formLoginSettings(Config $config): FormLoginSettings
+    {
+        return FormLoginSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(HttpBasicSettings::class)]
+    public function httpBasicSettings(Config $config): HttpBasicSettings
+    {
+        return HttpBasicSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(LogoutSettings::class)]
+    public function logoutSettings(Config $config): LogoutSettings
+    {
+        return LogoutSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(RememberMeSettings::class)]
+    public function rememberMeSettings(Config $config): RememberMeSettings
+    {
+        return RememberMeSettings::fromConfig($config);
     }
 
     #[Bean]

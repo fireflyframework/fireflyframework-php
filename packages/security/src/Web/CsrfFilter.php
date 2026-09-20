@@ -18,7 +18,8 @@ use Illuminate\Support\Str;
  * Stateless CSRF protection via the double-submit-cookie pattern: an unsafe request must echo the XSRF-TOKEN
  * cookie back in the X-XSRF-TOKEN header (or the _token body field), compared constant-time. Because it needs no
  * server-side session it composes with token/JWT auth. Safe methods and configured path globs are exempt; any
- * other mismatch is a 403 rendered as RFC-7807. Ordered −80.
+ * other mismatch is a 403 rendered as RFC-7807. Ordered −80. When the request has a started session (session
+ * security is on), Laravel's session token is checked instead — one token model per request.
  */
 #[Component]
 #[Order(-80)]
@@ -53,6 +54,21 @@ final class CsrfFilter extends OncePerRequestFilter
 
     protected function doFilter(Request $request, Closure $next): mixed
     {
+        // A request with a started session carries Laravel's session token, and that is the one token model
+        // a browser session should have: the login form, the logout form and every other form agree. The
+        // double-submit cookie remains the stateless path for token-authenticated clients.
+        if ($request->hasSession()) {
+            $expected = $request->session()->token();
+            /** @var mixed $presented */
+            $presented = $request->input('_token') ?? $request->header('X-CSRF-TOKEN');
+
+            if ($expected === '' || ! is_string($presented) || ! hash_equals($expected, $presented)) {
+                throw new AuthorizationException('CSRF token mismatch.');
+            }
+
+            return $next($request);
+        }
+
         $cookie = $request->cookie(self::COOKIE);
         $header = $request->header(self::HEADER) ?? $request->input('_token');
 
