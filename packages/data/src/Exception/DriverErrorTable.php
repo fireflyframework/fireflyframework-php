@@ -39,12 +39,19 @@ final class DriverErrorTable
 
     public const string GRAMMAR = 'grammar';
 
-    /** @var array<int, string> shared by mysql and mariadb (mariadb speaks the mysql error vocabulary) */
+    /**
+     * Shared by mysql and mariadb: mariadb speaks the mysql error vocabulary, and its own numbers (the 19xx
+     * range) are unused by mysql — so a `mysql`-configured connection that is really talking to mariadb,
+     * the way one was set up before Laravel 11 had a `mariadb` driver, translates those too.
+     *
+     * @var array<int, string>
+     */
     private const array MYSQL_CODES = [
         1062 => self::DUPLICATE_KEY,  // ER_DUP_ENTRY
         1213 => self::DEADLOCK,       // ER_LOCK_DEADLOCK
         1205 => self::LOCK,           // ER_LOCK_WAIT_TIMEOUT
-        3024 => self::TIMEOUT,        // ER_QUERY_TIMEOUT (max_execution_time)
+        3024 => self::TIMEOUT,        // ER_QUERY_TIMEOUT (mysql max_execution_time)
+        1969 => self::TIMEOUT,        // ER_STATEMENT_TIMEOUT (mariadb max_statement_time)
         2002 => self::RESOURCE,       // CR_CONNECTION_ERROR (refused / socket)
         2006 => self::TRANSIENT,      // CR_SERVER_GONE_ERROR
         2013 => self::TRANSIENT,      // CR_SERVER_LOST

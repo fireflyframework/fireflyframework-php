@@ -1000,7 +1000,8 @@ return [
             /*
              | Seconds a #[Transactional] unit of work may run when its attribute names no `timeout:`.
              | On the outermost transaction the driver is told to give up on a statement past the budget
-             | (pgsql statement_timeout, mysql/mariadb max_execution_time + innodb_lock_wait_timeout,
+             | (pgsql statement_timeout; mysql max_execution_time, mariadb max_statement_time — each with
+             | innodb_lock_wait_timeout, and a `mysql` connection whose server is mariadb is detected;
              | sqlite the busy timeout) and a wall-clock deadline is checked when the method returns: an
              | overrun is rolled back and answered 504 TRANSACTION_TIMED_OUT. 0 means no deadline.
              |

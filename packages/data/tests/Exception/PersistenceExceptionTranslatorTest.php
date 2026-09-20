@@ -60,6 +60,7 @@ it('translates every kind to its exception', function (string $driver, string $s
     'mysql deadlock' => ['mysql', '40001', 1213, 'Deadlock found when trying to get lock', DeadlockLoserDataAccessException::class],
     'mysql lock wait' => ['mysql', 'HY000', 1205, 'Lock wait timeout exceeded', CannotAcquireLockException::class],
     'mysql statement timeout' => ['mysql', 'HY000', 3024, 'Query execution was interrupted, maximum statement execution time exceeded', QueryTimeoutException::class],
+    'mariadb statement timeout' => ['mariadb', '70100', 1969, 'Query execution was interrupted (max_statement_time exceeded)', QueryTimeoutException::class],
     'mysql refused' => ['mysql', 'HY000', 2002, 'Connection refused', DataAccessResourceFailureException::class],
     'mysql gone away' => ['mysql', 'HY000', 2006, 'MySQL server has gone away', TransientDataAccessResourceException::class],
     'mysql syntax' => ['mysql', '42000', 1064, 'You have an error in your SQL syntax', BadSqlGrammarException::class],

@@ -8,8 +8,8 @@ use Throwable;
 
 /**
  * The database cancelled a statement because it ran past its statement timeout (pgsql `statement_timeout`,
- * mysql `max_execution_time`). 504: the gateway to the data did not answer in time. Spring's
- * QueryTimeoutException.
+ * mysql `max_execution_time`, mariadb `max_statement_time`). 504: the gateway to the data did not answer in
+ * time. Spring's QueryTimeoutException.
  */
 class QueryTimeoutException extends DataAccessException
 {

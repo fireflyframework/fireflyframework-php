@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use Firefly\Data\DataSettings;
 use Firefly\Data\Tests\Support\DatabaseTestCase;
+use Firefly\Data\Tests\Support\SessionVariableConnection;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Firefly\Kernel\Exception\Infrastructure\TransactionTimedOutException;
+use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\PostgresConnection;
 use Illuminate\Support\Facades\DB;
 
@@ -79,4 +81,35 @@ it('issues the driver statement timeout at transaction start, unless statement-t
 
     expect(array_column($on, 'query'))->toBe(['set local statement_timeout = 3000'])
         ->and($off)->toBe([]);
+});
+
+it('puts the previous mysql session values back in the finally, whether the work committed or was rolled back', function () {
+    config()->set('database.connections.mysqlish', ['driver' => 'mysql', 'database' => 'pretend']);
+    DB::extend('mysqlish', static fn (array $config, string $name): MySqlConnection => new SessionVariableConnection('mysql', ['max_execution_time' => 0, 'innodb_lock_wait_timeout' => 50], name: $name));
+    $connection = DB::connection('mysqlish');
+    $template = new TransactionTemplate(null, null, new DataSettings(defaultTimeout: 3));
+
+    $committed = $connection->pretend(static function () use ($template): void {
+        $template->execute(static fn (): int => 1, new TransactionalDescriptor(connection: 'mysqlish'));
+    });
+    $rolledBack = $connection->pretend(static function () use ($template): void {
+        try {
+            $template->execute(static fn () => throw new RuntimeException('the work failed'), new TransactionalDescriptor(connection: 'mysqlish'));
+        } catch (RuntimeException) {
+            // the rollback path
+        }
+    });
+
+    $budgetThenRestore = [
+        'select @@session.max_execution_time as value',
+        'set session max_execution_time = 3000',
+        'select @@session.innodb_lock_wait_timeout as value',
+        'set session innodb_lock_wait_timeout = 3',
+        'set session innodb_lock_wait_timeout = 50',
+        'set session max_execution_time = 0',
+    ];
+
+    expect(array_column($committed, 'query'))->toBe($budgetThenRestore)
+        ->and(array_column($rolledBack, 'query'))->toBe($budgetThenRestore)
+        ->and($connection->transactionLevel())->toBe(0);
 });

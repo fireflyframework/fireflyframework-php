@@ -17,6 +17,7 @@ dataset('driver codes', [
     'mysql 1213 deadlock' => ['mysql', 1213, DriverErrorTable::DEADLOCK],
     'mysql 1205 lock wait timeout' => ['mysql', 1205, DriverErrorTable::LOCK],
     'mysql 3024 max_execution_time' => ['mysql', 3024, DriverErrorTable::TIMEOUT],
+    'mysql 1969 max_statement_time (a mariadb server behind the mysql driver)' => ['mysql', 1969, DriverErrorTable::TIMEOUT],
     'mysql 2002 cannot connect' => ['mysql', 2002, DriverErrorTable::RESOURCE],
     'mysql 2006 server gone away' => ['mysql', 2006, DriverErrorTable::TRANSIENT],
     'mysql 2013 lost connection' => ['mysql', 2013, DriverErrorTable::TRANSIENT],
@@ -30,6 +31,7 @@ dataset('driver codes', [
     'mariadb 1213 deadlock' => ['mariadb', 1213, DriverErrorTable::DEADLOCK],
     'mariadb 1205 lock wait timeout' => ['mariadb', 1205, DriverErrorTable::LOCK],
     'mariadb 3024 max_execution_time' => ['mariadb', 3024, DriverErrorTable::TIMEOUT],
+    'mariadb 1969 max_statement_time' => ['mariadb', 1969, DriverErrorTable::TIMEOUT],
     'mariadb 2002 cannot connect' => ['mariadb', 2002, DriverErrorTable::RESOURCE],
     'mariadb 2006 server gone away' => ['mariadb', 2006, DriverErrorTable::TRANSIENT],
     'mariadb 2013 lost connection' => ['mariadb', 2013, DriverErrorTable::TRANSIENT],
@@ -125,7 +127,7 @@ it('has a test row for every table row', function () {
         $driverRows += count($codes);
     }
 
-    expect($driverRows)->toBe(41)
+    expect($driverRows)->toBe(43)
         ->and(count(DriverErrorTable::SQLSTATES))->toBe(21)
         ->and(count(DriverErrorTable::SQLSTATE_CLASSES))->toBe(17);
 });
