@@ -28,13 +28,28 @@ use Throwable;
  * span is named by the method alone (the conventions' `{method}`: a client has no route template, and a path
  * with ids in it would be an unbounded name).
  *
- * WHEN IT ENDS. In the promise's then(): a fulfilled response sets the status code (ERROR at 4xx/5xx — the
- * client-side convention, unlike a server span's 5xx-only rule) and ends; a rejection records the reason as
- * the exception, marks ERROR, ends, and re-rejects untouched so RequestException handling downstream is
- * unaffected. A handler that throws synchronously (a stray-request guard, a malformed option) ends the span
- * before the throwable escapes. Laravel's own before-sending, recorder and stub handlers sit INSIDE this one
- * (global middleware is pushed first, so it is outermost), which is why Http::fake() exercises the whole path
- * and Http::recorded() sees the injected header.
+ * WHEN IT IS CURRENT, and when it ends — two different moments, because a Guzzle handler returns a promise.
+ * The span is the tracer's current span only while the handler runs: the synchronous part of the send, which
+ * is where the inner handlers (and anything they start) belong under it. The moment the handler returns, the
+ * span is deactivate()d — released as current, kept open — and it ends later, in the promise's then(): a
+ * fulfilled response sets the status code (ERROR at 4xx/5xx — the client-side convention, unlike a server
+ * span's 5xx-only rule) and ends; a rejection records the reason as the exception, marks ERROR, ends, and
+ * re-rejects untouched so RequestException handling downstream is unaffected. A handler that throws
+ * synchronously (a stray-request guard, a malformed option) ends the span before the throwable escapes.
+ *
+ * The early release is what Laravel's concurrent APIs need. Http::pool() and Http::batch() build every
+ * request's promise — running this middleware for each — BEFORE waiting on any of them, so the second request
+ * starts while the first has not settled (an Http::async() request is a LazyPromise built on wait(), which
+ * happens to serialise the sends, but nothing here relies on that). Were the span current until end(), the
+ * second CLIENT span would be a child of the first, the traceparent it sent would carry that ancestry to the
+ * downstream service, a log line written between the two sends would carry the first request's span id, and
+ * the OpenTelemetry SDK's scope stack would unwind out of order (a notice, and under Laravel's error handler
+ * an exception, whenever assertions are on). With the release, every request of a pool is a sibling under
+ * the span that issued it, which is what a trace of a fan-out should look like.
+ *
+ * Laravel's own before-sending, recorder and stub handlers sit INSIDE this one (global middleware is pushed
+ * first, so it is outermost), which is why Http::fake() exercises the whole path and Http::recorded() sees
+ * the injected header.
  */
 final class HttpClientTracingMiddleware
 {
@@ -70,6 +85,9 @@ final class HttpClientTracingMiddleware
 
                 throw $e;
             }
+
+            // The synchronous part is over: release the span as current now, end it when the response lands.
+            $span->deactivate();
 
             return $promise->then(
                 function (ResponseInterface $response) use ($span): ResponseInterface {

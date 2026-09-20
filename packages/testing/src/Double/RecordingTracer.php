@@ -13,9 +13,10 @@ use Throwable;
 
 /**
  * The first-party in-memory tracer: the full Tracer port with nothing exported — spans are kept as RecordedSpan
- * rows, ids are minted with random_bytes in the W3C shape, and the active stack is a plain array. Bind it as the
- * Tracer in a test (or hand it to a filter directly) and assert on recorded(); the M13 `$spans` list of names is
- * kept so the original one-line assertion still holds.
+ * rows, ids are minted with random_bytes in the W3C shape, and the active stack is a plain array a span leaves
+ * on deactivate() or end(), whichever comes first. Bind it as the Tracer in a test (or hand it to a filter
+ * directly) and assert on recorded(); the M13 `$spans` list of names is kept so the original one-line assertion
+ * still holds.
  */
 final class RecordingTracer implements Tracer
 {
@@ -37,8 +38,8 @@ final class RecordingTracer implements Tracer
             ? SpanContext::generate()
             : SpanContext::generate($parent->traceId, $parent->sampled, $parent->traceState);
 
-        $span = new RecordedSpan($name, $kind, $context, $parent, $attributes, function (RecordedSpan $ended): void {
-            $this->active = array_values(array_filter($this->active, static fn (RecordedSpan $span): bool => $span !== $ended));
+        $span = new RecordedSpan($name, $kind, $context, $parent, $attributes, function (RecordedSpan $released): void {
+            $this->active = array_values(array_filter($this->active, static fn (RecordedSpan $span): bool => $span !== $released));
         });
 
         $this->spans[] = $name;

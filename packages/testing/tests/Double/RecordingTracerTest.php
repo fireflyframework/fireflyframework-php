@@ -48,6 +48,30 @@ it('nests: a child started under a current span shares its trace id and records 
     $parentSpan->end();
 });
 
+it('deactivate() pops the span from the active stack while leaving it open, so the next span is a sibling', function () {
+    $tracer = new RecordingTracer;
+    $parentSpan = $tracer->startSpan('parent');
+    $firstSpan = $tracer->startSpan('first');
+
+    $firstSpan->deactivate();
+    expect($tracer->currentSpan())->toBe($parentSpan);
+
+    $secondSpan = $tracer->startSpan('second');
+    $secondSpan->end();
+    $firstSpan->setAttribute('late', true);
+    [$parent, $first, $second] = $tracer->recorded();
+
+    expect($first->ended)->toBeFalse()
+        ->and($first->attributes)->toBe(['late' => true])
+        ->and($first->parent?->spanId)->toBe($parent->spanId())
+        ->and($second->parent?->spanId)->toBe($parent->spanId())
+        ->and($tracer->currentSpan())->toBe($parentSpan);
+
+    $firstSpan->end();
+    $firstSpan->deactivate();
+    expect($first->ended)->toBeTrue()->and($tracer->currentSpan())->toBe($parentSpan);
+});
+
 it('continues an explicit remote parent, and starts a new root for an explicitly invalid one', function () {
     $tracer = new RecordingTracer;
     $remote = new SpanContext('4bf92f3577b34da6a3ce929d0e0e4736', '00f067aa0ba902b7', true, 'congo=t61rcWkgMzE', remote: true);

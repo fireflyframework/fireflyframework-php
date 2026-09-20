@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Http;
 use OpenTelemetry\API\Trace\SpanKind as OtelSpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\SDK\Trace\EventInterface;
+use OpenTelemetry\SDK\Trace\ImmutableSpan;
 
 uses(TracingCapstoneTestCase::class);
 
@@ -125,4 +126,44 @@ it('gives an outbound Http client call a CLIENT span under the request span and 
 
     Http::assertSentCount(1);
     Http::assertSent(static fn (Request $request): bool => $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$client?->getSpanId().'-01'));
+});
+
+it('makes the CLIENT spans of an Http::pool() fan-out siblings under the request span, each sending its own traceparent', function () {
+    /** @var TracingCapstoneTestCase $this */
+    Http::fake([
+        'https://downstream.test/api/a' => Http::response('alpha', 200),
+        'https://downstream.test/api/b' => Http::response('bravo', 503),
+    ]);
+
+    $this->getJson('/fanout')->assertStatus(200)->assertExactJson(['a' => 'alpha', 'b' => 'bravo']);
+
+    $server = $this->spanNamed('GET /fanout');
+    $clientTo = function (string $path): ?ImmutableSpan {
+        foreach ($this->spans() as $span) {
+            if ($span->getKind() === OtelSpanKind::KIND_CLIENT && $span->getAttributes()->get('url.path') === $path) {
+                return $span;
+            }
+        }
+
+        return null;
+    };
+    $a = $clientTo('/api/a');
+    $b = $clientTo('/api/b');
+
+    expect($server)->not->toBeNull()
+        ->and($this->spans())->toHaveCount(3)
+        ->and($a?->getParentSpanId())->toBe($server?->getSpanId())
+        ->and($b?->getParentSpanId())->toBe($server?->getSpanId())
+        ->and($a?->getTraceId())->toBe($server?->getTraceId())
+        ->and($b?->getTraceId())->toBe($server?->getTraceId())
+        ->and($a?->getAttributes()->get('http.response.status_code'))->toBe(200)
+        ->and($a?->getStatus()->getCode())->toBe(StatusCode::STATUS_UNSET)
+        ->and($b?->getAttributes()->get('http.response.status_code'))->toBe(503)
+        ->and($b?->getStatus()->getCode())->toBe(StatusCode::STATUS_ERROR);
+
+    Http::assertSentCount(2);
+    Http::assertSent(static fn (Request $request): bool => $request->url() === 'https://downstream.test/api/a'
+        && $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$a?->getSpanId().'-01'));
+    Http::assertSent(static fn (Request $request): bool => $request->url() === 'https://downstream.test/api/b'
+        && $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$b?->getSpanId().'-01'));
 });

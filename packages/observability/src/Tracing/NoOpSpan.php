@@ -70,5 +70,7 @@ final class NoOpSpan implements Span
         return $this;
     }
 
+    public function deactivate(): void {}
+
     public function end(): void {}
 }

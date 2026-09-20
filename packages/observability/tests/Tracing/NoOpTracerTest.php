@@ -17,9 +17,11 @@ it('hands out non-recording spans with an invalid context and no current span', 
         ->and($span->context()->isValid())->toBeFalse()
         ->and($tracer->currentSpan())->toBeNull();
 
-    // Every setter is a fluent no-op, and end() is idempotent.
+    // Every setter is a fluent no-op, and deactivate() and end() are idempotent.
     $span->updateName('other')->setAttribute('a', 1)->setAttributes(['b' => true])->addEvent('e')
-        ->setStatus(SpanStatus::Error, 'boom')->recordException(new RuntimeException('x'))->end();
+        ->setStatus(SpanStatus::Error, 'boom')->recordException(new RuntimeException('x'))->deactivate();
+    $span->deactivate();
+    $span->end();
     $span->end();
 });
 

@@ -14,9 +14,11 @@ use Throwable;
 
 /**
  * The port's Span over an OpenTelemetry span. The activation scope — what makes the span "current" for the
- * SDK's own Context — is detached on end(), which is why end() is idempotent here: a span ended twice must not
- * detach twice. A span obtained from OpenTelemetryTracer::currentSpan() carries no scope, because the scope
- * belongs to whoever started the span.
+ * SDK's own Context — is detached on deactivate() or on end(), whichever comes first, and forgotten once
+ * detached: the SDK's scopes are a stack that must unwind in order (its DebugScope raises a notice for an
+ * out-of-order or repeated detach whenever assertions are on), so a span ended twice, or deactivated and then
+ * ended, must detach exactly once. A span obtained from OpenTelemetryTracer::currentSpan() carries no scope,
+ * because the scope belongs to whoever started the span.
  */
 final class OpenTelemetrySpan implements Span
 {
@@ -38,7 +40,7 @@ final class OpenTelemetrySpan implements Span
         );
     }
 
-    /** Makes the span the SDK's current one until end() — what startSpan() does right after building it. */
+    /** Makes the span the SDK's current one until deactivate() or end() — what startSpan() does right after building it. */
     public function activated(): self
     {
         $this->scope ??= $this->span->activate();
@@ -120,6 +122,12 @@ final class OpenTelemetrySpan implements Span
         return $this;
     }
 
+    public function deactivate(): void
+    {
+        $this->scope?->detach();
+        $this->scope = null;
+    }
+
     public function end(): void
     {
         if ($this->ended) {
@@ -128,6 +136,6 @@ final class OpenTelemetrySpan implements Span
 
         $this->ended = true;
         $this->span->end();
-        $this->scope?->detach();
+        $this->deactivate();
     }
 }

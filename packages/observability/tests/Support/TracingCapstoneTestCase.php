@@ -19,6 +19,8 @@ use Firefly\Testing\FireflyTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
@@ -26,6 +28,7 @@ use OpenTelemetry\SDK\Trace\ImmutableSpan;
 use OpenTelemetry\SDK\Trace\SpanExporter\InMemoryExporter;
 use OpenTelemetry\SDK\Trace\SpanExporterInterface;
 use RuntimeException;
+use Throwable;
 
 /**
  * ObservabilityCapstoneTestCase's twin with tracing ON: the real Web layer, actuator, CQRS, EDA (in-memory) and
@@ -99,6 +102,16 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
 
         // An outbound Http client call made inside the request: the CLIENT span nests under the SERVER span.
         $router->get('/outbound', static fn (): array => ['body' => Http::get('https://downstream.test/api/ping')->body()]);
+
+        // A fan-out through Http::pool(): every request's promise is built before any is awaited, and each
+        // CLIENT span must still hang directly under the SERVER span — siblings, not a chain.
+        $router->get('/fanout', static fn (): array => array_map(
+            static fn (Response|Throwable $result): string => $result instanceof Response ? $result->body() : $result->getMessage(),
+            Http::pool(static fn (Pool $pool): array => [
+                $pool->as('a')->get('https://downstream.test/api/a'),
+                $pool->as('b')->get('https://downstream.test/api/b'),
+            ]),
+        ));
     }
 
     protected function defineFireflyEnvironment(Application $app): void

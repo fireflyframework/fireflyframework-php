@@ -87,6 +87,33 @@ it('nests under the current span by default and starts a root for an explicitly 
         ->and($byName['root']->getTraceId())->not->toBe($parent->traceId());
 });
 
+it('deactivate() releases the activation without ending the span, so what starts next is a sibling, not a child', function () {
+    [$tracer, $exporter] = otelTracer();
+
+    $parent = $tracer->startSpan('parent');
+    $first = $tracer->startSpan('first');
+    $first->deactivate();
+    expect($tracer->currentSpan()?->spanId())->toBe($parent->spanId());
+
+    $second = $tracer->startSpan('second');
+    $second->end();
+    // The deactivated span is still open: a late attribute lands, and end() exports it without a second detach.
+    $first->setAttribute('late', true)->end();
+    $first->deactivate();
+    $parent->end();
+
+    $byName = [];
+    foreach (exportedSpans($exporter) as $span) {
+        $byName[$span->getName()] = $span;
+    }
+
+    expect(array_keys($byName))->toBe(['second', 'first', 'parent'])
+        ->and($byName['second']->getParentSpanId())->toBe($parent->spanId())
+        ->and($byName['first']->getParentSpanId())->toBe($parent->spanId())
+        ->and($byName['first']->getAttributes()->get('late'))->toBeTrue()
+        ->and($tracer->currentSpan())->toBeNull();
+});
+
 it('maps status, events and a recorded exception onto the OTel span', function () {
     [$tracer, $exporter] = otelTracer();
 

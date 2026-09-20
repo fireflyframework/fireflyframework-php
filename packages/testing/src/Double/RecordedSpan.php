@@ -34,9 +34,12 @@ final class RecordedSpan implements Span
 
     public bool $ended = false;
 
+    private bool $active = true;
+
     /**
      * @param  array<string, bool|int|float|string|array<mixed>|null>  $attributes
-     * @param  Closure(self): void  $onEnd  the tracer's "this span is no longer current" hook
+     * @param  Closure(self): void  $onDeactivate  the tracer's "this span is no longer current" hook — fired
+     *                                             once, by deactivate() or by the end() that comes first
      */
     public function __construct(
         string $name,
@@ -44,7 +47,7 @@ final class RecordedSpan implements Span
         private readonly SpanContext $context,
         public readonly ?SpanContext $parent,
         array $attributes,
-        private readonly Closure $onEnd,
+        private readonly Closure $onDeactivate,
     ) {
         $this->name = $name;
         $this->attributes = $attributes;
@@ -116,6 +119,16 @@ final class RecordedSpan implements Span
         return $this;
     }
 
+    public function deactivate(): void
+    {
+        if (! $this->active) {
+            return;
+        }
+
+        $this->active = false;
+        ($this->onDeactivate)($this);
+    }
+
     public function end(): void
     {
         if ($this->ended) {
@@ -123,6 +136,6 @@ final class RecordedSpan implements Span
         }
 
         $this->ended = true;
-        ($this->onEnd)($this);
+        $this->deactivate();
     }
 }
