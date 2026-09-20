@@ -115,6 +115,20 @@ failing test first, and each one deletes a workaround downstream.
   `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
   and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
 
+### Fixed
+
+- **`packages/data` — a `#[Transactional]` proxy now carries the state its bean inherits.** `ProxyFactory`
+  copied the bean's state through one closure bound to the declared class, which cannot see a `private`
+  declared on a parent and, on PHP 8.3, cannot initialise a parent's `protected readonly` either — so a
+  `#[Repository]` that was also `#[Transactional]` lost `EloquentRepository`'s translator (every driver failure
+  surfaced as a bare `Error: … must not be accessed before initialization` with the `QueryException` gone) and
+  on the 8.3 floor could not be wrapped at all. Every slot is now written from the class that declares it;
+  the Known-latent note in the transactions module is retired. `TransactionTemplate` also no longer drops the
+  exception a `noRollbackFor` rule kept when the commit-and-rethrow's commit itself fails: both escape as
+  `Firefly\Data\Transaction\Exception\TransactionSystemException` (`TRANSACTION_SYSTEM_ERROR`), the commit
+  failure as `previous` and the method's exception as `$applicationException`, after the open transaction is
+  rolled back.
+
 ## [26.09.2] - 2026-09-09
 
 A correctness release found by building a real application on `26.09.1`. Five defects, every one of them

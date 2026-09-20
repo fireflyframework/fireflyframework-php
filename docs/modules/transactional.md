@@ -90,6 +90,12 @@ whole transaction — see [Known-latent](#known-latent).
 3. Otherwise (matches neither list — only reachable with a narrowed `rollbackFor`), the transaction
    **commits** and the exception is rethrown.
 
+If that commit-and-rethrow's commit itself fails (a deferred constraint reported at `COMMIT`, a connection
+lost on the way), the transaction is rolled back instead and a `TransactionSystemException`
+(`TRANSACTION_SYSTEM_ERROR`, 500) escapes carrying both failures — Spring's shape: the commit failure is its
+`previous`, the method's own exception its `$applicationException`. A commit that fails after the method
+*returned* is rolled back the same way and the failure is rethrown on its own.
+
 ```php
 #[Transactional(noRollbackFor: [IgnorableException::class])]
 public function logButKeep(): void
@@ -126,10 +132,15 @@ public function transfer(int $amount): int
 
 — routing the real call through `TransactionInterceptor::run()` (which delegates to
 `TransactionTemplate::execute()`) before falling through to `parent::`. `ProxyFactory` instantiates the proxy
-**state-preservingly**: `newInstanceWithoutConstructor()` (so `#[PostConstruct]` is not re-run), then a bound
-closure copies the real bean's scope-visible state via `get_object_vars()` — not `ReflectionProperty` — onto
-the proxy, and a second bound closure sets the proxy's own private interceptor property. The proxy *is-a*
-`{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the original bean.
+**state-preservingly**: `newInstanceWithoutConstructor()` (so `#[PostConstruct]` is not re-run), then the real
+bean's initialised state is copied slot by slot, each slot written by a closure bound to the class that
+*declares* it — never `ReflectionProperty::setValue()` — and a last bound closure sets the proxy's own private
+interceptor property. Writing from the declaring class is what lets the copy reach a `private` on a parent
+(`EloquentRepository`'s translator under every `#[Repository]`) and initialise a parent's `protected readonly`
+(`EloquentRepository`'s manifest and tracker) on PHP 8.3, where a readonly property is initialisable from its
+declaring class's scope alone; two privates under one name in a parent and a child stay two slots. The proxy
+*is-a* `{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the
+original bean.
 
 **Self-invocation bypasses the proxy** — the same well-known Spring limitation. A method calling
 `$this->otherMethod()` from inside the proxied class calls straight through `parent::`, skipping the
@@ -188,11 +199,6 @@ $template->execute($work, new TransactionalDescriptor(
   the compiled `transactional.php`, so `#[Transactional]` was a **silent no-op** in any application that did
   not hand-write its own manifest configuration — which is precisely what the skeleton's
   `app/Support/CachedTransactionalConfiguration.php` existed to do, and why it has been deleted.
-- **The proxy's state-copy cannot see state private to a non-framework parent of the proxied class.**
-  `ProxyFactory`'s scoped closure copies `get_object_vars()` visible from `$declaredClass`'s own scope; state
-  declared `private` on some class *above* `$declaredClass` in its inheritance chain is invisible to it. A
-  typical service or repository holds its own fields (not a private-parent's), so this is unaffected in
-  practice.
 - **`REQUIRES_NEW`/`NOT_SUPPORTED` cannot truly suspend an active transaction on the same connection** —
   Laravel has no suspend primitive. `REQUIRES_NEW` is genuinely independent only when it targets a distinct
   configured `connection` from the caller's; on the *same* connection it degrades to a nested savepoint

@@ -10,6 +10,7 @@ use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Transaction\Exception\TransactionNotAllowedException;
 use Firefly\Data\Transaction\Exception\TransactionRequiredException;
+use Firefly\Data\Transaction\Exception\TransactionSystemException;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -30,7 +31,10 @@ use Throwable;
  * are evaluated against the translated exception AND the original underneath it, so a `noRollbackFor:
  * [QueryException::class]` written before translation existed still matches. A commit that itself fails (a
  * deferred constraint, a lost connection) is rolled back if the connection still reports an open transaction,
- * then translated and rethrown — never left open.
+ * then translated and rethrown — never left open. When that failed commit was the commit-and-rethrow the
+ * rollback rules promised for an exception the method had already thrown, both failures escape as one
+ * TransactionSystemException: the commit failure is its `previous`, the method's exception its
+ * $applicationException (Spring's shape — the commit exception overrides, the application exception is kept).
  */
 final class TransactionTemplate
 {
@@ -100,7 +104,11 @@ final class TransactionTemplate
             if ($this->shouldRollBack($translated, $e, $d)) {
                 $connection->rollBack();
             } else {
-                $this->commit($connection);
+                try {
+                    $this->commit($connection);
+                } catch (Throwable $commitFailure) {
+                    throw new TransactionSystemException($translated, $this->translator->translate($commitFailure, $connection->getDriverName()));
+                }
             }
 
             throw $translated;
@@ -117,7 +125,11 @@ final class TransactionTemplate
 
     /**
      * Commit, and if the commit itself throws, unwind whatever is still open before letting the failure out — a
-     * transaction left open on a pooled connection outlives the request that started it.
+     * transaction left open on a pooled connection outlives the request that started it. A deferred constraint
+     * is the textbook case: the INSERT succeeds, COMMIT reports the violation, and sqlite/Postgres leave the
+     * transaction open (level still 1) for the caller to roll back. The failure leaves raw; execute()'s catch
+     * translates it like any other, so the caller sees the DataAccessException family with the driver's
+     * exception as `previous`.
      */
     private function commit(Connection $connection): void
     {
