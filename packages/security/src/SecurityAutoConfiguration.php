@@ -10,6 +10,7 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Cqrs\Security\QueryAuthorizer;
@@ -29,6 +30,7 @@ use Firefly\Security\Cqrs\MethodSecurityMessageEnforcer;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Cqrs\SecurityQueryAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
+use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\JwtService;
 use Firefly\Security\OAuth2\JwksDocumentSource;
 use Firefly\Security\OAuth2\JwksProvider;
@@ -156,6 +158,19 @@ final class SecurityAutoConfiguration
     public function auditorAware(): AuditorAware
     {
         return new SecurityContextAuditorAware;
+    }
+
+    /**
+     * The one publisher every mechanism reports through. It wraps whatever ApplicationEventPublisher is bound
+     * — the DispatcherEventPublisher in an application, a recording double in a test — so security events are
+     * ordinary application events: #[AsEventListener] methods receive them and Event::fake() intercepts them.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(AuthenticationEventPublisher::class)]
+    public function authenticationEventPublisher(ApplicationEventPublisher $events): AuthenticationEventPublisher
+    {
+        return new AuthenticationEventPublisher($events);
     }
 
     #[Bean]

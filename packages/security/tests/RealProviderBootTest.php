@@ -3,17 +3,21 @@
 declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Security\AllowAllAuthorizer;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Data\Repository\Auditing\AuditorAware;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\Core\Authentication;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
+use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
+use Firefly\Testing\Double\RecordingAuthenticationEvents;
 use Illuminate\Foundation\Application;
 
 /**
@@ -49,6 +53,37 @@ it('leaves the AllowAll authorizer in place when security is disabled', function
     $context = bootSecurityApp(false)->make(ApplicationContext::class);
 
     expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(AllowAllAuthorizer::class);
+});
+
+it('binds an AuthenticationEventPublisher over whatever ApplicationEventPublisher was bound before boot', function () {
+    // The recording double is bound with instance() BEFORE the providers register, which is exactly how a
+    // Testbench suite hands it in: FireflyServiceProvider's own DispatcherEventPublisher binding is
+    // bound()-guarded, so the instance wins and the security bean wraps it.
+    $events = new RecordingAuthenticationEvents;
+
+    /** @var ApplicationContext $context */
+    $context = fireflyApplication(
+        config: ['firefly' => ['cqrs' => [], 'security' => ['enabled' => true]]],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class],
+        bindings: [ApplicationEventPublisher::class => $events],
+        needs: ['cache'],
+    )->make(ApplicationContext::class);
+
+    $publisher = $context->get(AuthenticationEventPublisher::class);
+    if (! $publisher instanceof AuthenticationEventPublisher) {
+        throw new RuntimeException('Expected an AuthenticationEventPublisher instance.');
+    }
+    $publisher->publishAuthenticationSuccess(Authentication::authenticated('ada', 'ada', []));
+
+    expect($events->successes())->toHaveCount(1)
+        ->and($events->successes()[0]->authentication->getName())->toBe('ada');
+});
+
+it('does not bind an AuthenticationEventPublisher when security is disabled', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityApp(false)->make(ApplicationContext::class);
+
+    expect($context->has(AuthenticationEventPublisher::class))->toBeFalse();
 });
 
 it('refuses to boot when both local-JWT and the OAuth2 resource server are enabled', function () {

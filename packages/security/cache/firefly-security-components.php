@@ -172,6 +172,18 @@ return [
                 ],
             ],
             11 => [
+                'method' => 'authenticationEventPublisher',
+                'returns' => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                ],
+            ],
+            12 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -183,7 +195,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -195,7 +207,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,

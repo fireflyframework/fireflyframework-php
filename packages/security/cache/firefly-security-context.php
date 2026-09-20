@@ -247,6 +247,25 @@ return [
                 ],
             ],
             11 => [
+                'method' => 'authenticationEventPublisher',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                        ],
+                    ],
+                ],
+            ],
+            12 => [
                 'method' => 'jwtService',
                 'conditions' => [
                     0 => [
@@ -265,7 +284,7 @@ return [
                     ],
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'httpSecurity',
                 'conditions' => [
                     0 => [
@@ -284,7 +303,7 @@ return [
                     ],
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'jwksProvider',
                 'conditions' => [
                     0 => [
