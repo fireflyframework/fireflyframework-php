@@ -13,6 +13,7 @@ use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
 use Throwable;
 
 /**
@@ -24,9 +25,15 @@ use Throwable;
  * WHAT IS ON THE SPAN, and what is deliberately not. Attributes follow the OTel HTTP client semantic
  * conventions — http.request.method, url.scheme, server.address, server.port, url.path,
  * http.response.status_code — and NOT url.full: a full URL carries the query string, and `?token=`,
- * `?api_key=` and signed URLs live there. The same rule keeps the query out of /actuator/httpexchanges. The
- * span is named by the method alone (the conventions' `{method}`: a client has no route template, and a path
- * with ids in it would be an unbounded name).
+ * `?api_key=` and signed URLs live there. The same rule keeps the query out of /actuator/httpexchanges, and
+ * it governs a failure's message too: Guzzle 7's transport errors end in `for <uri>` with only the password
+ * masked (its psr7 redactUserInfo leaves the query and fragment in), Laravel's Http::failedConnection() fake
+ * and StrayRequestException print the whole URI, and Guzzle 8 is the first to strip the query itself. So
+ * the request's query, fragment and userinfo are cut out of the message before it becomes the span's status
+ * description and the exception event's exception.message — the throwable that is rethrown, and the
+ * RequestException a caller handles, keep their message as is. The span is named by the method alone (the
+ * conventions' `{method}`: a client has no route template, and a path with ids in it would be an unbounded
+ * name).
  *
  * WHEN IT IS CURRENT, and when it ends — two different moments, because a Guzzle handler returns a promise.
  * The span is the tracer's current span only while the handler runs: the synchronous part of the send, which
@@ -81,7 +88,7 @@ final class HttpClientTracingMiddleware
             try {
                 $promise = $handler($request, $options);
             } catch (Throwable $e) {
-                $this->fail($span, $e);
+                $this->fail($span, $e, $uri);
 
                 throw $e;
             }
@@ -99,9 +106,9 @@ final class HttpClientTracingMiddleware
 
                     return $response;
                 },
-                function (mixed $reason) use ($span): PromiseInterface {
+                function (mixed $reason) use ($span, $uri): PromiseInterface {
                     if ($reason instanceof Throwable) {
-                        $this->fail($span, $reason);
+                        $this->fail($span, $reason, $uri);
                     } else {
                         $span->setStatus(SpanStatus::Error);
                         $span->end();
@@ -113,9 +120,39 @@ final class HttpClientTracingMiddleware
         };
     }
 
-    private function fail(Span $span, Throwable $e): void
+    private function fail(Span $span, Throwable $e, UriInterface $uri): void
     {
-        $span->recordException($e)->setStatus(SpanStatus::Error, $e->getMessage());
+        $message = self::redact($e->getMessage(), $uri);
+
+        $span->recordException($e, ['exception.message' => $message])->setStatus(SpanStatus::Error, $message);
         $span->end();
+    }
+
+    /**
+     * Cuts the request URI's query, fragment and userinfo out of a message, wherever they appear. The needles
+     * are the components themselves rather than one rendering of the whole URI, because the renderings differ
+     * — psr7 2 (Guzzle 7) prints the userinfo with the password replaced by three asterisks, psr7 3 replaces
+     * the whole userinfo with them, and Laravel's own messages print it raw — while the query and fragment are
+     * printed verbatim by all of them, straight from this Uri.
+     */
+    private static function redact(string $message, UriInterface $uri): string
+    {
+        $needles = [];
+
+        if ($uri->getQuery() !== '') {
+            $needles[] = '?'.$uri->getQuery();
+        }
+
+        if ($uri->getFragment() !== '') {
+            $needles[] = '#'.$uri->getFragment();
+        }
+
+        if ($uri->getUserInfo() !== '') {
+            $needles[] = $uri->getUserInfo().'@';
+            $needles[] = explode(':', $uri->getUserInfo(), 2)[0].':***@';
+            $needles[] = '***@';
+        }
+
+        return $needles === [] ? $message : str_replace($needles, '', $message);
     }
 }

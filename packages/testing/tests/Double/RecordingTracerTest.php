@@ -115,6 +115,20 @@ it('captures name changes, attributes, events, status and exceptions', function 
         ->and($tracer->ofKind(SpanKind::Internal))->toBe([$span]);
 });
 
+it('merges recordException() attributes over the event it derives from the throwable', function () {
+    $tracer = new RecordingTracer;
+    $e = new RuntimeException('boom for https://gone.test/?token=secret');
+
+    $tracer->startSpan('outbound')->recordException($e, ['exception.message' => 'boom for https://gone.test/', 'exception.escaped' => true]);
+
+    $span = $tracer->find('outbound');
+    expect($span?->exception)->toBe($e)
+        ->and($span?->events)->toBe([[
+            'name' => 'exception',
+            'attributes' => ['exception.type' => RuntimeException::class, 'exception.message' => 'boom for https://gone.test/', 'exception.escaped' => true],
+        ]]);
+});
+
 it('trace() ends the span on the way out and records a throwable before rethrowing it', function () {
     $tracer = new RecordingTracer;
 

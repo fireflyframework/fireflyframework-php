@@ -129,6 +129,28 @@ it('maps status, events and a recorded exception onto the OTel span', function (
         ->and(array_map(static fn (EventInterface $event): string => $event->getName(), $exported[0]->getEvents()))->toBe(['retry', 'exception']);
 });
 
+/**
+ * The SDK derives exception.type, exception.message and exception.stacktrace from the throwable and lets the
+ * caller's attributes win — and its Java-style stacktrace opens with `Type: message`, so an overridden message
+ * has to reach that header too or the original would still ride out on the event.
+ */
+it('lets a recordException() attribute override the exported exception.message, stacktrace header included', function () {
+    [$tracer, $exporter] = otelTracer();
+
+    $span = $tracer->startSpan('outbound');
+    $span->recordException(new RuntimeException('refused for https://gone.test/pay?token=secret'), ['exception.message' => 'refused for https://gone.test/pay']);
+    $span->end();
+
+    $event = exportedSpans($exporter)[0]->getEvents()[0];
+    $attributes = $event->getAttributes()->toArray();
+    expect($event->getName())->toBe('exception')
+        ->and($attributes['exception.type'])->toBe(RuntimeException::class)
+        ->and($attributes['exception.message'])->toBe('refused for https://gone.test/pay')
+        ->and($attributes['exception.stacktrace'])->toStartWith('RuntimeException: refused for https://gone.test/pay'."\n")
+        ->and($attributes['exception.stacktrace'])->toContain("\n\tat ")
+        ->and(json_encode($attributes, JSON_THROW_ON_ERROR))->not->toContain('secret');
+});
+
 it('trace() hands the span to the callback, ends it, and records a throwable as ERROR before rethrowing', function () {
     [$tracer, $exporter] = otelTracer();
 

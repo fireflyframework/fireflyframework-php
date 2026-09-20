@@ -19,6 +19,7 @@ use Firefly\Testing\FireflyTestCase;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Routing\Router;
@@ -102,6 +103,16 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
 
         // An outbound Http client call made inside the request: the CLIENT span nests under the SERVER span.
         $router->get('/outbound', static fn (): array => ['body' => Http::get('https://downstream.test/api/ping')->body()]);
+
+        // An outbound call to a signed URL that fails to connect: the query must not reach the CLIENT span
+        // through the exception's message, which Http::failedConnection() (like Guzzle 7) ends with the URI.
+        $router->get('/outbound-signed', static function (): array {
+            try {
+                return ['body' => Http::get('https://downstream.test/api/object?X-Amz-Signature=secret')->body()];
+            } catch (ConnectionException) {
+                return ['error' => 'downstream unreachable'];
+            }
+        });
 
         // A fan-out through Http::pool(): every request's promise is built before any is awaited, and each
         // CLIENT span must still hang directly under the SERVER span — siblings, not a chain.

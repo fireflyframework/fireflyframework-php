@@ -65,7 +65,7 @@ final class NoOpSpan implements Span
         return $this;
     }
 
-    public function recordException(Throwable $exception): static
+    public function recordException(Throwable $exception, array $attributes = []): static
     {
         return $this;
     }

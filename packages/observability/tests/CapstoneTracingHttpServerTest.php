@@ -128,6 +128,30 @@ it('gives an outbound Http client call a CLIENT span under the request span and 
     Http::assertSent(static fn (Request $request): bool => $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$client?->getSpanId().'-01'));
 });
 
+/**
+ * Http::failedConnection() builds its message the way Guzzle 7's CurlFactory does — `... for <uri>` with the
+ * query intact — so this is the real pipeline carrying a signed URL's secret to the span's doorstep. What the
+ * exporter receives must have the query stripped from the exception event (message and stacktrace header) and
+ * the status description, while the attributes the span does carry are unaffected.
+ */
+it('keeps the query of a failed outbound request out of the CLIENT span\'s exception event and status', function () {
+    /** @var TracingCapstoneTestCase $this */
+    Http::fake(['https://downstream.test/*' => Http::failedConnection()]);
+
+    $this->getJson('/outbound-signed')->assertStatus(200)->assertJsonPath('error', 'downstream unreachable');
+
+    $client = $this->spanNamed('GET');
+    $events = $client?->getEvents() ?? [];
+    expect($client?->getKind())->toBe(OtelSpanKind::KIND_CLIENT)
+        ->and($client?->getStatus()->getCode())->toBe(StatusCode::STATUS_ERROR)
+        ->and($client?->getStatus()->getDescription())->toEndWith('for https://downstream.test/api/object.')
+        ->and($client?->getAttributes()->toArray())->toMatchArray(['server.address' => 'downstream.test', 'url.path' => '/api/object'])
+        ->and($client?->getAttributes()->has('url.full'))->toBeFalse()
+        ->and(array_map(static fn (EventInterface $event): string => $event->getName(), $events))->toBe(['exception'])
+        ->and($events[0]->getAttributes()->get('exception.message'))->toEndWith('for https://downstream.test/api/object.')
+        ->and(json_encode([$client?->getAttributes()->toArray(), $client?->getStatus()->getDescription(), $events[0]->getAttributes()->toArray()], JSON_THROW_ON_ERROR))->not->toContain('secret');
+});
+
 it('makes the CLIENT spans of an Http::pool() fan-out siblings under the request span, each sending its own traceparent', function () {
     /** @var TracingCapstoneTestCase $this */
     Http::fake([

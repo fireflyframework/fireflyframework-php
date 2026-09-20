@@ -111,10 +111,14 @@ final class RecordedSpan implements Span
         return $this;
     }
 
-    public function recordException(Throwable $exception): static
+    /** The event carries the derived type and message with the caller's attributes merged over them, as the SDK does. */
+    public function recordException(Throwable $exception, array $attributes = []): static
     {
         $this->exception = $exception;
-        $this->events[] = ['name' => 'exception', 'attributes' => ['exception.type' => $exception::class, 'exception.message' => $exception->getMessage()]];
+        $this->events[] = [
+            'name' => 'exception',
+            'attributes' => array_merge(['exception.type' => $exception::class, 'exception.message' => $exception->getMessage()], $attributes),
+        ];
 
         return $this;
     }

@@ -83,6 +83,53 @@ it('marks a 4xx/5xx response and a rejected promise as ERROR, and re-rejects', f
         ->and($gone->ended)->toBeTrue();
 });
 
+/**
+ * Guzzle 7's transport errors end in `for <uri>` with only the password masked (psr7 2's redactUserInfo), so
+ * the query and fragment ride along; Laravel's own Http::failedConnection() fake prints the whole URI. Either
+ * way the message is the one place a `?token=` the span deliberately keeps out of its attributes could still
+ * reach the backend — through the exception event and the status description. The rejection itself must
+ * stay untouched: RequestException handling downstream reads it.
+ */
+it('redacts the query, fragment and userinfo out of a rejection before it lands on the span', function () {
+    $tracer = new RecordingTracer;
+    $request = new Request('GET', 'https://alice:hunter2@gone.test/pay?token=secret#frag');
+    $failure = new ConnectException(
+        'cURL error 7: Failed to connect to gone.test port 443 (see https://curl.se/libcurl/c/libcurl-errors.html) for https://alice:***@gone.test/pay?token=secret#frag',
+        $request,
+    );
+
+    expect(fn () => traced($tracer, fn (): PromiseInterface => new RejectedPromise($failure), $request))
+        ->toThrow(ConnectException::class, 'for https://alice:***@gone.test/pay?token=secret#frag');
+
+    $span = $tracer->recorded()[0];
+    $redacted = 'cURL error 7: Failed to connect to gone.test port 443 (see https://curl.se/libcurl/c/libcurl-errors.html) for https://gone.test/pay';
+    expect($span->exception)->toBe($failure)
+        ->and($span->status)->toBe(SpanStatus::Error)
+        ->and($span->statusDescription)->toBe($redacted)
+        ->and($span->events)->toBe([['name' => 'exception', 'attributes' => ['exception.type' => ConnectException::class, 'exception.message' => $redacted]]])
+        ->and($span->attributes)->toMatchArray(['server.address' => 'gone.test', 'url.path' => '/pay'])
+        ->and($span->ended)->toBeTrue();
+
+    $exported = json_encode([$span->attributes, $span->events, $span->statusDescription], JSON_THROW_ON_ERROR);
+    expect($exported)->not->toContain('secret')->not->toContain('hunter2')->not->toContain('alice')->not->toContain('frag');
+});
+
+it('redacts the same way when the handler throws synchronously with the full URI in the message', function () {
+    $tracer = new RecordingTracer;
+    $request = new Request('GET', 'https://signed.test/object?X-Amz-Signature=abc123');
+
+    // The shape of Laravel's StrayRequestException: the whole URI, query included, inside the message.
+    expect(fn () => traced($tracer, function (): never {
+        throw new RuntimeException('Attempted request to [https://signed.test/object?X-Amz-Signature=abc123] without a matching fake.');
+    }, $request))->toThrow(RuntimeException::class, 'X-Amz-Signature=abc123');
+
+    $span = $tracer->recorded()[0];
+    expect($span->statusDescription)->toBe('Attempted request to [https://signed.test/object] without a matching fake.')
+        ->and($span->events[0]['attributes']['exception.message'])->toBe('Attempted request to [https://signed.test/object] without a matching fake.')
+        ->and($span->status)->toBe(SpanStatus::Error)
+        ->and($span->ended)->toBeTrue();
+});
+
 it('ends the span and rethrows when the handler itself throws', function () {
     $tracer = new RecordingTracer;
 

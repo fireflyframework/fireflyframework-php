@@ -10,6 +10,7 @@ use Firefly\Observability\Tracing\SpanStatus;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\ScopeInterface;
+use OpenTelemetry\SDK\Common\Exception\StackTraceFormatter;
 use Throwable;
 
 /**
@@ -115,9 +116,20 @@ final class OpenTelemetrySpan implements Span
         return $this;
     }
 
-    public function recordException(Throwable $exception): static
+    public function recordException(Throwable $exception, array $attributes = []): static
     {
-        $this->span->recordException($exception);
+        // The SDK derives exception.stacktrace itself, and its Java-style rendering opens with `Type: message`
+        // (again after every `Caused by:`), so a message override that stopped at exception.message would still
+        // ship the original through the stacktrace. It is rewritten with the same formatter unless the caller
+        // set a stacktrace of their own.
+        $message = $attributes['exception.message'] ?? null;
+        $original = $exception->getMessage();
+
+        if (is_string($message) && $original !== '' && $message !== $original && ! array_key_exists('exception.stacktrace', $attributes)) {
+            $attributes['exception.stacktrace'] = str_replace($original, $message, StackTraceFormatter::format($exception));
+        }
+
+        $this->span->recordException($exception, $attributes);
 
         return $this;
     }

@@ -46,7 +46,16 @@ interface Span
 
     public function setStatus(SpanStatus $status, string $description = ''): static;
 
-    public function recordException(Throwable $exception): static;
+    /**
+     * Records the throwable as an `exception` event — exception.type, exception.message and exception.stacktrace
+     * derived from it, the OpenTelemetry API's shape. `$attributes` are merged over those, and that is the seam
+     * for an instrumentation that must not put the throwable's own message on the wire: an outbound HTTP
+     * failure whose message ends in the request URI, query string and all, records itself with a redacted
+     * `exception.message` while the throwable it rethrows stays untouched.
+     *
+     * @param  array<string, bool|int|float|string|array<mixed>|null>  $attributes
+     */
+    public function recordException(Throwable $exception, array $attributes = []): static;
 
     /**
      * Stops the span being the tracer's current span without ending it, so what starts next is a sibling
