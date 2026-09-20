@@ -12,8 +12,10 @@ use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
 use Firefly\Observability\Cqrs\TracerCqrsTracing;
+use Firefly\Observability\Eda\TracerEdaTracing;
 use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
@@ -26,6 +28,7 @@ use Firefly\Observability\Metrics\SimpleMeterRegistry;
 use Firefly\Observability\Prometheus\PrometheusTextFormat;
 use Firefly\Observability\Tracing\NoOpTracer;
 use Firefly\Observability\Tracing\Tracer;
+use Firefly\Observability\Tracing\W3CTraceContextPropagator;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Factory;
 
@@ -178,5 +181,15 @@ final class ObservabilityAutoConfiguration
     public function cqrsTracing(Tracer $tracer): CqrsTracing
     {
         return new TracerCqrsTracing($tracer);
+    }
+
+    /** The EdaTracing drop-in — the same precedence over EdaAutoConfiguration's #[Order(1000)] NoOp as cqrsTracing() above. */
+    #[Bean]
+    #[ConditionalOnMissingBean(EdaTracing::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.eda.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function edaTracing(Tracer $tracer): EdaTracing
+    {
+        return new TracerEdaTracing($tracer, new W3CTraceContextPropagator);
     }
 }

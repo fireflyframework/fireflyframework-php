@@ -9,8 +9,13 @@ use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Metrics\NoOpCqrsMetrics;
 use Firefly\Cqrs\Tracing\CqrsTracing;
 use Firefly\Cqrs\Tracing\NoOpCqrsTracing;
+use Firefly\Eda\EdaServiceProvider;
+use Firefly\Eda\EdaWiringProvider;
+use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
 use Firefly\Observability\Cqrs\TracerCqrsTracing;
+use Firefly\Observability\Eda\TracerEdaTracing;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\ObservabilityServiceProvider;
 use Firefly\Observability\ObservabilityWiringProvider;
@@ -42,7 +47,7 @@ function bootObservability(array $observability): Application
             'firefly' => ['cqrs' => [], 'observability' => $observability],
             'logging' => ['default' => 'test', 'channels' => ['test' => ['driver' => 'errorlog']]],
         ],
-        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, ObservabilityServiceProvider::class, ObservabilityWiringProvider::class],
+        providers: [EdaServiceProvider::class, EdaWiringProvider::class, CqrsServiceProvider::class, CqrsWiringProvider::class, ObservabilityServiceProvider::class, ObservabilityWiringProvider::class],
     );
 }
 
@@ -78,4 +83,14 @@ it('leaves the cqrs NoOp when the cqrs instrumentation switch is off under an en
     $context = bootObservability(['tracing' => ['enabled' => true, 'cqrs' => ['enabled' => false]]])->make(ApplicationContext::class);
 
     expect($context->get(CqrsTracing::class))->toBeInstanceOf(NoOpCqrsTracing::class);
+});
+
+it('makes TracerEdaTracing win over the eda NoOp when tracing is enabled, and leaves the NoOp otherwise', function () {
+    /** @var ApplicationContext $traced */
+    $traced = bootObservability(['tracing' => ['enabled' => true]])->make(ApplicationContext::class);
+    /** @var ApplicationContext $plain */
+    $plain = bootObservability([])->make(ApplicationContext::class);
+
+    expect($traced->get(EdaTracing::class))->toBeInstanceOf(TracerEdaTracing::class)
+        ->and($plain->get(EdaTracing::class))->toBeInstanceOf(NoOpEdaTracing::class);
 });

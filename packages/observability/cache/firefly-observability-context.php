@@ -167,6 +167,33 @@ return [
                     ],
                 ],
             ],
+            7 => [
+                'method' => 'edaTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Eda\\Tracing\\EdaTracing',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.eda.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     3 => [

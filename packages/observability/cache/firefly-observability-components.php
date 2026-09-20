@@ -175,6 +175,18 @@ return [
                     0 => 'Firefly\\Observability\\Tracing\\Tracer',
                 ],
             ],
+            7 => [
+                'method' => 'edaTracing',
+                'returns' => 'Firefly\\Eda\\Tracing\\EdaTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

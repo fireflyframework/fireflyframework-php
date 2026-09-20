@@ -1,6 +1,6 @@
 {
     "name": "firefly/observability",
-    "description": "LaraFly observability: a first-party pure-PHP MeterRegistry (counter/gauge/timer) with Prometheus 0.0.4 text exposition and a Micrometer-JSON /metrics endpoint, HTTP request auto-instrumentation, the real MeterRegistry-backed CqrsMetrics recorder, a resilience circuit-breaker gauge, process metrics, and a Tracer port (NoOp; OTel drops in at SP-7). Top-of-stack, gated on a MeterRegistry bean.",
+    "description": "LaraFly observability: a first-party pure-PHP MeterRegistry (counter/gauge/timer) with Prometheus 0.0.4 text exposition and a Micrometer-JSON /metrics endpoint, HTTP request auto-instrumentation, the real MeterRegistry-backed CqrsMetrics recorder, a resilience circuit-breaker gauge, process metrics, a Spring/OTel-shaped Tracer port with an OpenTelemetry adapter and W3C traceparent propagation over HTTP, CQRS and EDA, trace-aware structured logging, histogram buckets. Top-of-stack, gated on a MeterRegistry bean.",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
@@ -28,6 +28,7 @@
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
         "firefly/cqrs": "*@dev",
+        "firefly/eda": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",
         "firefly/web": "*@dev",

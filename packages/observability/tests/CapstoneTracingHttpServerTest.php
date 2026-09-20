@@ -204,3 +204,20 @@ it('gives a command sent through the real CommandBus an INTERNAL span under the 
         ->and($command?->getParentSpanId())->toBe($server?->getSpanId())
         ->and($command?->getAttributes()->toArray())->toBe(['firefly.cqrs.kind' => 'command', 'firefly.cqrs.message' => 'Firefly\\Observability\\Tests\\Support\\CapstonePing']);
 });
+
+it('gives an in-memory publish a PRODUCER span and its delivery a CONSUMER span linked by the envelope traceparent', function () {
+    /** @var TracingCapstoneTestCase $this */
+    $this->getJson('/publish')->assertStatus(200)->assertJsonPath('delivered', 'order.created');
+
+    $server = $this->spanNamed('GET /publish');
+    $producer = $this->spanNamed('publish orders');
+    $consumer = $this->spanNamed('process orders');
+
+    expect($producer?->getKind())->toBe(OtelSpanKind::KIND_PRODUCER)
+        ->and($producer?->getParentSpanId())->toBe($server?->getSpanId())
+        ->and($consumer?->getKind())->toBe(OtelSpanKind::KIND_CONSUMER)
+        ->and($consumer?->getParentSpanId())->toBe($producer?->getSpanId())
+        ->and($consumer?->getTraceId())->toBe($server?->getTraceId())
+        ->and($consumer?->getAttributes()->get('messaging.destination.name'))->toBe('orders')
+        ->and($this->getJson('/publish')->json('traceparent'))->toMatch('/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/');
+});

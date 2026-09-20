@@ -12,6 +12,8 @@ use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Handler\HandlerRegistry;
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
+use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Listener\EventListenerManifest;
 use Firefly\Observability\ObservabilityServiceProvider;
 use Firefly\Observability\ObservabilityWiringProvider;
@@ -139,6 +141,20 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
                 $pool->as('b')->get('https://downstream.test/api/b'),
             ]),
         ));
+
+        // An event published on the in-memory bus inside the request: the PRODUCER span nests under the SERVER
+        // span and the synchronous delivery's CONSUMER span under the PRODUCER, joined by the envelope traceparent.
+        $router->get('/publish', static function (EventPublisher $bus): array {
+            $delivered = null;
+            $traceparent = null;
+            $bus->subscribe('order.*', static function (EventEnvelope $envelope) use (&$delivered, &$traceparent): void {
+                $delivered = $envelope->eventType;
+                $traceparent = $envelope->headers['traceparent'] ?? null;
+            });
+            $bus->publish('orders', 'order.created', ['id' => 1]);
+
+            return ['delivered' => $delivered, 'traceparent' => $traceparent];
+        });
     }
 
     protected function defineFireflyEnvironment(Application $app): void
