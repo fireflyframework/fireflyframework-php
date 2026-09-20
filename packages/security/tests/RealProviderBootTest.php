@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Security\AllowAllAuthorizer;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Data\Repository\Auditing\AuditorAware;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\Access\Method\SecurityMethodManifestCompiler;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
@@ -121,4 +123,61 @@ it('refuses to boot on a weak JWT secret even when the master flag is off', func
             'secret' => 'changeme',
         ],
     ]))->toThrow(WeakSigningSecretException::class);
+});
+
+/*
+ | A cache compiled before firefly:cache wrote proxy-plan.php lists every rule in security-methods.php while the
+ | proxy plan bridged from transactional.php knows nothing about method security: a #[Service] whose rules are
+ | method security alone is handed out bare, its rows compiled and enforced by nothing. `method.strict` cannot
+ | see it — the manifest it checks for is present — so SecurityWiringPass refuses the boot itself, naming the
+ | remedy. The guard is two file probes, so a hand-written manifest with no plan beside it is the whole fixture.
+ */
+
+/** A cache directory holding security-methods.php and nothing else — what an older firefly:cache left behind. */
+function staleSecurityCache(): string
+{
+    $dir = sys_get_temp_dir().'/firefly-security-stale-cache-'.bin2hex(random_bytes(6));
+    mkdir($dir, 0o700, true);
+    (new SecurityMethodManifestCompiler)->write([], $dir.'/'.AppScan::SECURITY_METHODS);
+
+    return $dir;
+}
+
+/**
+ * @param  array<string,mixed>  $security
+ */
+function bootSecurityAppOverCache(string $dir, array $security): Application
+{
+    return fireflyApplication(
+        config: ['firefly' => ['cqrs' => [], 'cache' => ['path' => $dir], 'security' => $security]],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class],
+        needs: ['cache'],
+    );
+}
+
+it('refuses to boot over a compiled method-security manifest that has no proxy plan beside it', function () {
+    $dir = staleSecurityCache();
+
+    try {
+        bootSecurityAppOverCache($dir, ['enabled' => true]);
+        throw new LogicException('not refused');
+    } catch (ConfigurationException $e) {
+        expect($e->getMessage())->toContain($dir.'/'.AppScan::SECURITY_METHODS)
+            ->and($e->getMessage())->toContain(AppScan::PROXY_PLAN)
+            ->and($e->getMessage())->toContain('firefly:cache');
+    }
+});
+
+it('lets the same stale cache boot when method security on beans is switched off, since the proxy link is then a pass-through by choice', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityAppOverCache(staleSecurityCache(), ['enabled' => true, 'method' => ['enabled' => false]])->make(ApplicationContext::class);
+
+    expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(SecurityCommandAuthorizer::class);
+});
+
+it('lets the same stale cache boot when the master flag is off, since nothing enforces then', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityAppOverCache(staleSecurityCache(), ['enabled' => false])->make(ApplicationContext::class);
+
+    expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(AllowAllAuthorizer::class);
 });

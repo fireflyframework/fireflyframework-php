@@ -97,6 +97,20 @@ compiled artifact **refuses to start** rather than falling back to the scan. Set
 `firefly:cache` — it converts "someone forgot the compile step" from silently unguarded handlers into a
 startup failure, and it is the only defence against a build that ships without the manifest.
 
+Rules on a `#[Service]` or any other stereotyped bean have a second artifact: the proxy plan. `firefly:cache`
+plans every class through Data's transactional advice source *and* Security's `MethodSecurityAdviceSource`,
+writes `proxy-plan.php`, and generates one `{Target}__FireflyTransactionalProxy` per planned class with the
+security link baked in — so a bean whose only rule is `#[PreAuthorize]` is proxied exactly like a
+`#[Transactional]` one. A cache written before that file existed holds `security-methods.php` listing every
+rule while the proxy plan bridged from `transactional.php` knows nothing about method security: the rows
+compile, nothing enforces the bean-level ones, and `strict` cannot see it because the manifest it checks for
+*is* present. `SecurityWiringPass` therefore **refuses to boot** over `security-methods.php` with no
+`proxy-plan.php` beside it (under the master flag and `method.enabled`), naming the remedy: run
+`php artisan firefly:cache` again. The scan itself refuses, at compile time and on every entry point, a rule
+no seam could apply — a `#[PreFilter]` on a controller action, a `#[PostAuthorize]`/`#[PreFilter]`/
+`#[PostFilter]` on a class with no stereotype, and a `final` bean whose rules only a proxy could enforce —
+rather than compile a row that would be evaluated and discarded.
+
 ### Expression evaluation is re-entrant
 
 `SecurityExpressionEvaluator` is a singleton whose recursive-descent parse state lives on the instance, and
@@ -150,7 +164,7 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 |---|---|---|
 | `firefly.security.enabled` | `false` | Master flag — enables the core stack (password encoder, user store, role hierarchy, permission evaluator, expression evaluator, authentication manager, `AuthorizationChecker`, CQRS authorizers, `AuditorAware`). Required by the `http` surface flag below (its filter depends on master-gated beans); `jwt`/`oauth2.resource_server`/`csrf`/`headers` do not require it. |
 | `firefly.security.method.strict` | `false` | Refuse to boot when no compiled method-security manifest exists, instead of falling back to the in-process scan. See [above](#method-security-fails-open-on-an-empty-manifest). Independent of the master flag — the manifest binding is registered whether or not security is enabled. |
-| `firefly.security.method.enabled` | `true` | With the master flag on, enforces method-security attributes on **any** stereotyped bean through the proxy chain (security advice before the transactional one). Off keeps the dispatcher and bus enforcing theirs; the proxy link becomes a pass-through. Read live. |
+| `firefly.security.method.enabled` | `true` | With the master flag on, enforces method-security attributes on **any** stereotyped bean through the proxy chain (security advice before the transactional one), on both boot paths: `firefly:cache` compiles the plan into `proxy-plan.php` and a proxy per planned class, and the uncached boot scans the same advice sources. A cache written before `proxy-plan.php` existed (`security-methods.php` with no plan beside it) is **refused at boot** — recompile — because such a cache lists every rule and enforces none of the bean-level ones. Off keeps the dispatcher and bus enforcing theirs; the proxy link becomes a pass-through, and the stale-cache refusal stands down with it. Read live. |
 | `firefly.security.users` | _(unset)_ | `InMemoryUserDetailsService` map (`{username: {password, authorities, enabled, locked}}`). `password` is the **encoded** string, typically `{id}`-prefixed; `authorities` defaults to `[]`, `enabled` to `true`, `locked` to `false`. |
 | `firefly.security.role_hierarchy` | `[]` | Single-arrow implication rules, e.g. `["ROLE_ADMIN > ROLE_USER"]` (one implication per entry — not chainable in one string). |
 | `firefly.security.jwt.enabled` | `false` | Enables `JwtAuthenticationFilter` + `JwtService` (refuses a weak secret at boot). Independent of the master flag. Mutually exclusive with `oauth2.resource_server.enabled` (refused at boot). |

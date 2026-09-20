@@ -7,6 +7,7 @@ namespace Firefly\Security\Boot;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Jwt\JwtService;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
@@ -33,11 +34,23 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * scalars, never on anything master-gated) forces its constructor's weak-secret guard to run now, so
  * WeakSigningSecretException surfaces at boot instead of as a 500 on first use.
  *
- * The remaining action runs only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
- * #[Bean] is registered): OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard
- * via a container instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher
- * resolves the guard fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll
- * guard) untouched.
+ * The remaining actions run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
+ * #[Bean] is registered):
+ *
+ * (2) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
+ * security-methods.php with no proxy-plan.php beside it was written by a firefly:cache from before the proxy plan
+ * existed. Such a cache lists every rule in the manifest while DataAutoConfiguration::proxyPlan() bridges a
+ * transactional-only plan from transactional.php, so a #[Service] whose rules are method security alone is
+ * handed out bare and one that also carries #[Transactional] gets a proxy with no security link — the rows
+ * compile, nothing enforces them, nothing logs it, and `method.strict` cannot see it because the manifest it
+ * checks for IS present. Refused at boot, fail-closed, with the remedy named: recompile. Reflection-free — two
+ * file probes — and quiet while `firefly:cache` itself is the running command (AppScan::cachedFile() answers
+ * null while regenerating), which is what writes the missing file. Skipped when `method.enabled` is off,
+ * because the proxy link is then a pass-through by the operator's own choice and the stale plan changes nothing.
+ *
+ * (3) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
+ * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
+ * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
  */
 final class SecurityWiringPass implements BootPass
 {
@@ -68,6 +81,19 @@ final class SecurityWiringPass implements BootPass
         }
 
         $container = $context->container;
+
+        if ($config->bool('firefly.security.method.enabled', true)
+            && ($methods = AppScan::cachedFile($container, AppScan::SECURITY_METHODS)) !== null
+            && AppScan::cachedFile($container, AppScan::PROXY_PLAN) === null) {
+            throw new ConfigurationException(
+                "Refusing to boot: the compiled method-security manifest at {$methods} has no proxy plan beside it ("
+                .AppScan::dir($container).'/'.AppScan::PROXY_PLAN.'). The cache was written before firefly:cache compiled '
+                .'the proxy plan, so a #[PreAuthorize]/#[PostAuthorize]/#[PreFilter]/#[PostFilter] on a #[Service] or any '
+                .'other stereotyped bean would be compiled and never enforced. Run `php artisan firefly:cache` to recompile '
+                .'every artefact.'
+            );
+        }
+
         $container->instance(ControllerSecurityGuard::class, $container->make(MethodSecurityControllerGuard::class));
     }
 }

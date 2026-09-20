@@ -124,8 +124,12 @@ return [
              | Method security on every stereotyped bean. With the master flag on, #[PreAuthorize],
              | #[PostAuthorize], #[Secured], #[RolesAllowed], #[PreFilter] and #[PostFilter] are enforced on
              | any #[Service]/#[Component]/#[Repository] method through the same proxy #[Transactional] uses
-             | (security runs before the transaction). Turning this off keeps the controller dispatcher and
-             | the CQRS bus enforcing their rules and makes the proxy link a pass-through. Read live.
+             | (security runs before the transaction), on both boot paths: `firefly:cache` compiles the plan
+             | into proxy-plan.php plus a proxy per planned class, and the uncached boot scans the same advice
+             | sources. A cache from before proxy-plan.php existed — security-methods.php with no plan beside
+             | it — is refused at boot; run `php artisan firefly:cache` again. Turning this off keeps the
+             | controller dispatcher and the CQRS bus enforcing their rules, makes the proxy link a
+             | pass-through, and stands the stale-cache refusal down with it. Read live.
              |
              | Default: true.
             */
