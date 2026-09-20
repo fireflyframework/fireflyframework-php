@@ -62,11 +62,17 @@ end-to-end: with the lockdown rules above and `env` exposed, an anonymous `GET /
 (`AuthenticationException`, no matching rule's expression is satisfied) while `GET /actuator/health` stays **200**
 (`permitAll`).
 
-`/actuator/env` and `/actuator/configprops` additionally mask any key matching `password|secret|token|key|credential|passwd`
-(case-insensitive, recursive — the shared `SensitiveValueMasker`) with `******`. The key is tested **before** the value's
-type, so a sensitive key holding an array (a JWT keyring, a credentials pair) is replaced wholesale rather than recursed
-into, independent of whether the URL lockdown above is configured — defense in depth for an
-endpoint that is reachable at all only once explicitly exposed.
+`/actuator/env` and `/actuator/configprops` additionally mask any key matching
+`password|secret|token|key|credential|passwd|authorization|headers` (case-insensitive, substring, recursive — the shared
+`SensitiveValueMasker`) with `******`. The key is tested **before** the value's type, so a sensitive key holding an array
+(a JWT keyring, a credentials pair) is replaced wholesale rather than recursed into, independent of whether the URL
+lockdown above is configured — defense in depth for an endpoint that is reachable at all only once explicitly exposed.
+`headers` is in the list because a bag of outbound headers is where a client's credential travels
+(`firefly.observability.tracing.otlp.headers` documents `authorization=Bearer …` as its contents, and a vendor's
+`x-honeycomb-team` leaf matches nothing on its own, so only the bag's key can decide); the accepted cost is that
+`firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block, nothing an operator cannot read
+off any response — renders as `******` too. The singular `header` is deliberately not matched: the same rule names the
+data browser's sensitive columns, and `page_header` is page furniture, not a credential.
 
 ## Configuration (`firefly.management.*`, kebab-case)
 

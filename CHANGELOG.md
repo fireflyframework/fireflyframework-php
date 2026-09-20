@@ -115,6 +115,18 @@ failing test first, and each one deletes a workaround downstream.
   `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
   and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
 
+### Fixed
+
+- **`packages/actuator` — `/actuator/env`, `/actuator/configprops` and the admin's environment page mask a
+  `headers` or `authorization` key.** `SensitiveValueMasker`'s rule grows from
+  `password|secret|token|key|credential|passwd` to include `authorization` and the plural `headers`: the
+  framework had just introduced `firefly.observability.tracing.otlp.headers`, documented as the place for a
+  vendor's auth header, and rendered it in clear because `headers` matched none of the six words. The bag's
+  key decides, not its leaves (a map's `x-honeycomb-team` matches nothing on its own). The accepted cost is
+  `firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block — showing as
+  `******`, and a `headers` column counting as sensitive in the data browser; the singular `header`
+  (`page_header`, `header_image`) is deliberately not matched.
+
 ## [26.09.2] - 2026-09-09
 
 A correctness release found by building a real application on `26.09.1`. Five defects, every one of them
