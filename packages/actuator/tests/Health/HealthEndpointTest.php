@@ -11,7 +11,6 @@ use Firefly\Actuator\Health\HealthIndicator;
 use Firefly\Actuator\Health\StatusAggregator;
 use Firefly\Config\Config;
 use Illuminate\Config\Repository;
-use RuntimeException;
 
 /**
  * handle() is declared `?EndpointResponse` (null signals 404 — see the unknown-group test below), so PHPStan
