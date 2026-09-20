@@ -16,6 +16,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Route;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
  * Tested against a BARE Request with no booted application, like MetricsFilterTest and HttpExchangeFilterTest:
@@ -118,6 +120,34 @@ it('records the exception Laravel already rendered into a 500 response, with its
         ->and($span->attributes['http.response.status_code'])->toBe(500)
         ->and(array_column($span->events, 'name'))->toContain('exception')
         ->and($span->ended)->toBeTrue();
+});
+
+/**
+ * The same pipeline attaches the throwable to a 4xx it rendered (abort(404), a ValidationException, an
+ * AuthenticationException...) — the bulk of a real application's non-2xx traffic. The OTel HTTP semantic
+ * conventions say a 4xx MUST leave a SERVER span's status Unset, and MetricsFilter tags the same request
+ * outcome=CLIENT_ERROR exception=none, so neither Illuminate response class may turn one into an errored trace.
+ */
+it('leaves a rendered 4xx Unset and records no exception event', function () {
+    $tracer = new RecordingTracer;
+    $notFound = (new Response('Not Found', 404))->withException(new NotFoundHttpException('gone'));
+    $invalid = (new JsonResponse(['title' => 'Unprocessable Entity'], 422))->withException(new UnprocessableEntityHttpException('invalid'));
+
+    tracingFilter($tracer)->handle(Request::create('/missing', 'GET'), fn () => $notFound);
+    tracingFilter($tracer)->handle(Request::create('/orders', 'POST'), fn () => $invalid);
+
+    [$missing, $orders] = $tracer->recorded();
+    expect($missing->status)->toBe(SpanStatus::Unset)
+        ->and($missing->statusDescription)->toBe('')
+        ->and($missing->exception)->toBeNull()
+        ->and(array_column($missing->events, 'name'))->not->toContain('exception')
+        ->and($missing->attributes['http.response.status_code'])->toBe(404)
+        ->and($missing->ended)->toBeTrue()
+        ->and($orders->status)->toBe(SpanStatus::Unset)
+        ->and($orders->exception)->toBeNull()
+        ->and(array_column($orders->events, 'name'))->not->toContain('exception')
+        ->and($orders->attributes['http.response.status_code'])->toBe(422)
+        ->and($orders->ended)->toBeTrue();
 });
 
 it('does not trace management traffic by default, and an explicit exclude list replaces that default', function () {

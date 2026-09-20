@@ -78,3 +78,25 @@ it('marks a thrown request ERROR with the exception recorded, and the problem re
         ->and($span?->getAttributes()->get('http.response.status_code'))->toBe(500)
         ->and(array_map(static fn (EventInterface $event): string => $event->getName(), $span?->getEvents() ?? []))->toContain('exception');
 });
+
+/**
+ * abort(404) throws a NotFoundHttpException the routing pipeline renders and attaches to the 404 it hands the
+ * outer middleware — the same shape as /boom, one status class down. The OTel HTTP server-span rule says a 4xx
+ * stays Unset, and the exchange row still records it like any other request.
+ */
+it('leaves a rendered 4xx Unset with no exception event, and the exchange row still records the 404', function () {
+    /** @var TracingCapstoneTestCase $this */
+    $this->getJson('/missing')->assertStatus(404);
+
+    $span = $this->spanNamed('GET /missing');
+    expect($span)->not->toBeNull()
+        ->and($span?->getStatus()->getCode())->toBe(StatusCode::STATUS_UNSET)
+        ->and($span?->getAttributes()->get('http.response.status_code'))->toBe(404)
+        ->and(array_map(static fn (EventInterface $event): string => $event->getName(), $span?->getEvents() ?? []))->not->toContain('exception');
+
+    $this->getJson('/actuator/httpexchanges')
+        ->assertStatus(200)
+        ->assertJsonPath('exchanges.0.uri', '/missing')
+        ->assertJsonPath('exchanges.0.status', 404)
+        ->assertJsonPath('exchanges.0.traceId', $span?->getTraceId());
+});

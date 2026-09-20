@@ -90,6 +90,11 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
         $router->get('/boom', static function (): never {
             throw new RuntimeException('boom');
         });
+
+        // A 4xx the pipeline renders from a throwable: the NotFoundHttpException rides out on the response.
+        $router->get('/missing', static function (): never {
+            abort(404, 'no such thing');
+        });
     }
 
     protected function defineFireflyEnvironment(Application $app): void

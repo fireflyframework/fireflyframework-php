@@ -47,6 +47,16 @@ use Throwable;
  * block is still needed for a throwable that escapes the pipeline (no ExceptionHandler bound, a bare Request
  * in a unit test): the span is marked ERROR either way and never left open.
  *
+ * ONLY A 5xx IS AN ERROR. The pipeline attaches the throwable to EVERY response it rendered, not just the 500s:
+ * abort(404), a ModelNotFoundException, a ValidationException (422), an AuthenticationException (401), an
+ * AuthorizationException (403) and a throttled 429 all arrive here as a 4xx with an exception on it, and those
+ * are the bulk of a real application's non-2xx traffic. The OTel HTTP semantic conventions are explicit that a
+ * 4xx MUST leave a SERVER span's status Unset (the client got what it asked for; the server did its job), and
+ * MetricsFilter tags the same request outcome=CLIENT_ERROR exception=none — so the rendered exception is
+ * recorded, and the status set to ERROR, only when the response is a 5xx. Spring draws the same line: a
+ * handled ResponseStatusException is CLIENT_ERROR, not an error; only an exception that escapes the handler
+ * chain is. An escaped throwable is always a 500 here, so the catch path is unchanged.
+ *
  * PROPAGATION. An inbound traceparent/tracestate is continued as a remote parent; nothing is written on the
  * response (W3C defines no response header). The ids are published twice: to Laravel Context
  * (firefly.trace_id / firefly.span_id — what TraceContextLogProcessor and any application code read) and to
@@ -140,8 +150,12 @@ final class TracingFilter extends OncePerRequestFilter
     }
 
     /**
-     * Names the span by the matched route, stamps the status code, sets the status ONCE (an exception carries
-     * its message as the description; a bare 5xx carries none) and ends the span.
+     * Names the span by the matched route, stamps the status code, sets the status ONCE and ends the span.
+     *
+     * The status is decided by the status code alone, per the OTel HTTP server-span rule: a 5xx is ERROR (with
+     * the exception recorded and its message as the description when there is one; a bare 5xx carries none),
+     * and anything below — including a 4xx the pipeline rendered from a throwable — stays Unset, with no
+     * exception event. $exception is therefore consulted only once the status code has said "server failure".
      */
     private function finish(Span $span, Request $request, int $status, ?Throwable $exception): void
     {
@@ -153,10 +167,12 @@ final class TracingFilter extends OncePerRequestFilter
 
         $span->setAttribute('http.response.status_code', $status);
 
-        if ($exception !== null) {
-            $span->recordException($exception)->setStatus(SpanStatus::Error, $exception->getMessage());
-        } elseif ($status >= 500) {
-            $span->setStatus(SpanStatus::Error);
+        if ($status >= 500) {
+            if ($exception !== null) {
+                $span->recordException($exception);
+            }
+
+            $span->setStatus(SpanStatus::Error, $exception?->getMessage() ?? '');
         }
 
         $span->end();
@@ -165,6 +181,7 @@ final class TracingFilter extends OncePerRequestFilter
     /**
      * The throwable Laravel's routing pipeline already rendered into this response, if any. Only the two
      * Illuminate response classes carry ResponseTrait; a Symfony response or a non-response return has none.
+     * Whether it counts as an error is finish()'s call, made on the status code, not on its presence.
      */
     private function renderedException(mixed $response): ?Throwable
     {
