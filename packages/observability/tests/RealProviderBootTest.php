@@ -7,7 +7,10 @@ use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Metrics\NoOpCqrsMetrics;
+use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Cqrs\Tracing\NoOpCqrsTracing;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
+use Firefly\Observability\Cqrs\TracerCqrsTracing;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\ObservabilityServiceProvider;
 use Firefly\Observability\ObservabilityWiringProvider;
@@ -58,4 +61,21 @@ it('leaves the M10 NoOpCqrsMetrics and binds no MeterRegistry when metrics are d
 
     expect($context->get(CqrsMetrics::class))->toBeInstanceOf(NoOpCqrsMetrics::class)
         ->and($app->bound(MeterRegistry::class))->toBeFalse();
+});
+
+it('makes TracerCqrsTracing win over the cqrs NoOp when tracing is enabled, and leaves the NoOp otherwise', function () {
+    /** @var ApplicationContext $traced */
+    $traced = bootObservability(['tracing' => ['enabled' => true]])->make(ApplicationContext::class);
+    /** @var ApplicationContext $plain */
+    $plain = bootObservability([])->make(ApplicationContext::class);
+
+    expect($traced->get(CqrsTracing::class))->toBeInstanceOf(TracerCqrsTracing::class)
+        ->and($plain->get(CqrsTracing::class))->toBeInstanceOf(NoOpCqrsTracing::class);
+});
+
+it('leaves the cqrs NoOp when the cqrs instrumentation switch is off under an enabled tracing master gate', function () {
+    /** @var ApplicationContext $context */
+    $context = bootObservability(['tracing' => ['enabled' => true, 'cqrs' => ['enabled' => false]]])->make(ApplicationContext::class);
+
+    expect($context->get(CqrsTracing::class))->toBeInstanceOf(NoOpCqrsTracing::class);
 });

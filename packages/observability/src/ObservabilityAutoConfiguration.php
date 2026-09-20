@@ -11,7 +11,9 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
+use Firefly\Cqrs\Tracing\CqrsTracing;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
+use Firefly\Observability\Cqrs\TracerCqrsTracing;
 use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
@@ -161,5 +163,20 @@ final class ObservabilityAutoConfiguration
     public function cqrsMetrics(MetricsRecorder $recorder): CqrsMetrics
     {
         return new MeterRegistryCqrsMetrics($recorder);
+    }
+
+    /**
+     * The CqrsTracing drop-in, by the same #[Order(500)] precedence cqrsMetrics() relies on: registered before
+     * CqrsAutoConfiguration's #[Order(1000)] NoOp evaluates its #[ConditionalOnMissingBean]. Gated on the
+     * tracing master switch and the cqrs instrumentation switch rather than on the Tracer bean, for the
+     * order-safety reason every gate in this class shares.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(CqrsTracing::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.cqrs.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function cqrsTracing(Tracer $tracer): CqrsTracing
+    {
+        return new TracerCqrsTracing($tracer);
     }
 }

@@ -14,6 +14,8 @@ use Firefly\Cqrs\Event\EdaCommandEventPublisher;
 use Firefly\Cqrs\Event\NoOpEventPublisher;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Handler\HandlerRegistry;
+use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Cqrs\Tracing\NoOpCqrsTracing;
 use Firefly\Eda\EventPublisher;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
@@ -57,4 +59,12 @@ it('builds an EdaCommandEventPublisher when an EventPublisher IS bound', functio
     $bridge = $auto->commandEventPublisher($container, cqrsConfig(['default_destination' => 'x.events']), new HandlerManifest([], []), $auto->correlationContext());
 
     expect($bridge)->toBeInstanceOf(EdaCommandEventPublisher::class);
+});
+
+it('binds a NoOp CqrsTracing behind #[ConditionalOnMissingBean], the seam observability swaps', function () {
+    $auto = new CqrsAutoConfiguration;
+    $class = new ReflectionClass(CqrsAutoConfiguration::class);
+
+    expect($auto->cqrsTracing())->toBeInstanceOf(NoOpCqrsTracing::class)
+        ->and($class->getMethod('cqrsTracing')->getAttributes(ConditionalOnMissingBean::class)[0]->newInstance()->type)->toBe(CqrsTracing::class);
 });

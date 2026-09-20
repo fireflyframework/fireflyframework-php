@@ -28,6 +28,8 @@ use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Cqrs\Security\AllowAllAuthorizer;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Cqrs\Security\QueryAuthorizer;
+use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Cqrs\Tracing\NoOpCqrsTracing;
 use Firefly\Cqrs\Validation\MessageValidator;
 use Firefly\Eda\EventPublisher;
 use Firefly\Validation\Validator;
@@ -95,6 +97,19 @@ final class CqrsAutoConfiguration
         return new NoOpCqrsMetrics;
     }
 
+    /**
+     * The tracing seam's default, the same shape as cqrsMetrics(): a NoOp behind #[ConditionalOnMissingBean], so
+     * ObservabilityAutoConfiguration's #[Order(500)] TracerCqrsTracing bean — registered before this class's
+     * #[Order(1000)] evaluates — makes this one back off, and the buses receive INTERNAL spans without cqrs ever
+     * naming observability.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(CqrsTracing::class)]
+    public function cqrsTracing(): CqrsTracing
+    {
+        return new NoOpCqrsTracing;
+    }
+
     #[Bean]
     #[ConditionalOnMissingBean(QueryCache::class)]
     public function queryCache(): QueryCache
@@ -133,17 +148,17 @@ final class CqrsAutoConfiguration
 
     #[Bean]
     #[ConditionalOnMissingBean(CommandBus::class)]
-    public function commandBus(HandlerRegistry $registry, MessageValidator $validator, CommandAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics): CommandBus
+    public function commandBus(HandlerRegistry $registry, MessageValidator $validator, CommandAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics, ?CqrsTracing $tracing = null): CommandBus
     {
-        return new DefaultCommandBus($registry, $validator, $authorizer, $correlation, $metrics);
+        return new DefaultCommandBus($registry, $validator, $authorizer, $correlation, $metrics, $tracing);
     }
 
     #[Bean]
     #[ConditionalOnMissingBean(QueryBus::class)]
-    public function queryBus(HandlerRegistry $registry, MessageValidator $validator, QueryAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics, QueryCache $cache, Config $config): QueryBus
+    public function queryBus(HandlerRegistry $registry, MessageValidator $validator, QueryAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics, QueryCache $cache, Config $config, ?CqrsTracing $tracing = null): QueryBus
     {
         $ttl = $config->has('firefly.cqrs.query.cache_ttl') ? $config->int('firefly.cqrs.query.cache_ttl') : null;
 
-        return new DefaultQueryBus($registry, $validator, $authorizer, $correlation, $metrics, $cache, $ttl);
+        return new DefaultQueryBus($registry, $validator, $authorizer, $correlation, $metrics, $cache, $ttl, $tracing);
     }
 }

@@ -191,3 +191,16 @@ it('makes the CLIENT spans of an Http::pool() fan-out siblings under the request
     Http::assertSent(static fn (Request $request): bool => $request->url() === 'https://downstream.test/api/b'
         && $request->hasHeader('traceparent', '00-'.$server?->getTraceId().'-'.$b?->getSpanId().'-01'));
 });
+
+it('gives a command sent through the real CommandBus an INTERNAL span under the request span', function () {
+    /** @var TracingCapstoneTestCase $this */
+    $this->getJson('/command')->assertStatus(200)->assertJsonPath('result', 'pinged');
+
+    $server = $this->spanNamed('GET /command');
+    $command = $this->spanNamed('CapstonePing');
+
+    expect($command)->not->toBeNull()
+        ->and($command?->getKind())->toBe(OtelSpanKind::KIND_INTERNAL)
+        ->and($command?->getParentSpanId())->toBe($server?->getSpanId())
+        ->and($command?->getAttributes()->toArray())->toBe(['firefly.cqrs.kind' => 'command', 'firefly.cqrs.message' => 'Firefly\\Observability\\Tests\\Support\\CapstonePing']);
+});

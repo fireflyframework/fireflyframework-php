@@ -9,6 +9,8 @@ use Firefly\Cqrs\Exception\CommandProcessingException;
 use Firefly\Cqrs\Handler\HandlerRegistry;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Security\CommandAuthorizer;
+use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Cqrs\Tracing\NoOpCqrsTracing;
 use Firefly\Cqrs\Validation\MessageValidator;
 use Throwable;
 
@@ -21,17 +23,24 @@ use Throwable;
  * domain events flow through M8's after-commit dispatch + the cqrs bridge, keeping the bus pure and avoiding double
  * publish. Any handler/stage throwable is metrics-recorded as a failure and re-thrown WRAPPED in a category-preserving
  * CommandProcessingException (unless it already is one, then re-thrown as-is) so validation/not-found faults keep
- * their kernel category for RFC-7807 rendering.
+ * their kernel category for RFC-7807 rendering. The whole validate → authorize → resolve → invoke sequence runs
+ * inside the CqrsTracing seam (an INTERNAL span when observability is on), so a validation refusal is visible on
+ * the trace; correlation and metrics stay outside it, because they must observe the seam's own failures too.
  */
 final class DefaultCommandBus implements CommandBus
 {
+    private readonly CqrsTracing $tracing;
+
     public function __construct(
         private readonly HandlerRegistry $registry,
         private readonly MessageValidator $validator,
         private readonly CommandAuthorizer $authorizer,
         private readonly CorrelationContext $correlation,
         private readonly CqrsMetrics $metrics,
-    ) {}
+        ?CqrsTracing $tracing = null,
+    ) {
+        $this->tracing = $tracing ?? new NoOpCqrsTracing;
+    }
 
     public function send(object $command): mixed
     {
@@ -39,11 +48,14 @@ final class DefaultCommandBus implements CommandBus
         $startedAt = microtime(true);
 
         try {
-            $this->validator->validate($command);
-            $this->authorizer->authorize($command);
+            $result = $this->tracing->traceCommand($command, function () use ($command): mixed {
+                $this->validator->validate($command);
+                $this->authorizer->authorize($command);
 
-            $handler = $this->registry->findCommandHandler($command::class);
-            $result = $handler($command);
+                $handler = $this->registry->findCommandHandler($command::class);
+
+                return $handler($command);
+            });
 
             $this->metrics->recordCommandSuccess($command, microtime(true) - $startedAt);
 

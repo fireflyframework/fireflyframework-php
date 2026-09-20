@@ -163,6 +163,18 @@ return [
                     0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
                 ],
             ],
+            6 => [
+                'method' => 'cqrsTracing',
+                'returns' => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

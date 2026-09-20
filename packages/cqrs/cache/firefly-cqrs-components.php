@@ -84,6 +84,17 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'cqrsTracing',
+                'returns' => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            7 => [
                 'method' => 'queryCache',
                 'returns' => 'Firefly\\Cqrs\\Cache\\QueryCache',
                 'name' => null,
@@ -94,7 +105,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'commandEventPublisher',
                 'returns' => 'Firefly\\Cqrs\\Event\\CommandEventPublisher',
                 'name' => null,
@@ -109,7 +120,7 @@ return [
                     3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'domainEventBridge',
                 'returns' => 'Firefly\\Cqrs\\Event\\DomainEventBridge',
                 'name' => null,
@@ -123,7 +134,7 @@ return [
                     2 => 'Illuminate\\Container\\Container',
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'commandBus',
                 'returns' => 'Firefly\\Cqrs\\Command\\CommandBus',
                 'name' => null,
@@ -137,9 +148,10 @@ return [
                     2 => 'Firefly\\Cqrs\\Security\\CommandAuthorizer',
                     3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
                     4 => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
+                    5 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'queryBus',
                 'returns' => 'Firefly\\Cqrs\\Query\\QueryBus',
                 'name' => null,
@@ -155,6 +167,7 @@ return [
                     4 => 'Firefly\\Cqrs\\Metrics\\CqrsMetrics',
                     5 => 'Firefly\\Cqrs\\Cache\\QueryCache',
                     6 => 'Firefly\\Config\\Config',
+                    7 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
                 ],
             ],
         ],

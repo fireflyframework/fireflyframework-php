@@ -140,6 +140,33 @@ return [
                     ],
                 ],
             ],
+            6 => [
+                'method' => 'cqrsTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.cqrs.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     3 => [

@@ -6,8 +6,10 @@ namespace Firefly\Observability\Tests\Support;
 
 use Firefly\Actuator\ActuatorServiceProvider;
 use Firefly\Actuator\ActuatorWiringProvider;
+use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
+use Firefly\Cqrs\Handler\HandlerRegistry;
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
 use Firefly\Eda\Listener\EventListenerManifest;
@@ -40,11 +42,22 @@ use Throwable;
  * parent — not a recording double's view of it.
  *
  * The EventListenerManifest is bound empty so the EDA wiring pass has nothing to subscribe; a test subscribes
- * its own closure on the EventPublisher bean instead.
+ * its own closure on the EventPublisher bean instead. The CQRS handler manifest is likewise empty (no scanned
+ * handlers in a test package), so setUp() registers the one CapstonePing handler on the HandlerRegistry bean by
+ * hand — the same registry the real CommandBus resolves through, so /command exercises the traced bus.
  */
 abstract class TracingCapstoneTestCase extends FireflyTestCase
 {
     public InMemoryExporter $exporter;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        /** @var HandlerRegistry $handlers */
+        $handlers = $this->app()->make(HandlerRegistry::class);
+        $handlers->registerCommandHandler(CapstonePing::class, static fn (object $command): string => 'pinged');
+    }
 
     protected function fireflyProviders(): array
     {
@@ -95,6 +108,9 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
         $router->get('/boom', static function (): never {
             throw new RuntimeException('boom');
         });
+
+        // A command sent through the real CommandBus inside the request: the INTERNAL span nests under the SERVER span.
+        $router->get('/command', static fn (CommandBus $bus): array => ['result' => $bus->send(new CapstonePing)]);
 
         // A 4xx the pipeline renders from a throwable: the NotFoundHttpException rides out on the response.
         $router->get('/missing', static function (): never {
@@ -154,3 +170,6 @@ abstract class TracingCapstoneTestCase extends FireflyTestCase
         return null;
     }
 }
+
+/** The command /command sends: a fixture with no handler class of its own, so a closure handler registered in setUp() serves it. */
+final class CapstonePing {}
