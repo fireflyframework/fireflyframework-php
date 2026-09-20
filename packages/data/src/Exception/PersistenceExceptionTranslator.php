@@ -34,6 +34,12 @@ use Throwable;
  * IS one) unless it is one of the four typed exceptions Laravel itself raises, and everything when the
  * `firefly.data.exception-translation.enabled` key is false.
  *
+ * The four typed exceptions are looked for on the throwable AND, when it is a QueryException, on the cause
+ * underneath it: Connection::runQueryCallback() wraps everything the callback throws, and the lazy PDO
+ * resolver runs inside that callback, so a missing sqlite file (SQLiteDatabaseDoesNotExistException) or a
+ * connection lost mid-statement (LostConnectionException) arrives as a QueryException with code 0 and no
+ * errorInfo — unclassifiable by any table — and the typed cause is the only evidence of what happened.
+ *
  * WHY THE MESSAGE IS A FIXED SENTENCE: a FireflyException's message is the problem document's `detail`, and
  * a QueryException's message is the statement with its bindings interpolated — an email address, a token, a
  * tenant id. The driver's text stays on `previous` for the log; the SQLSTATE, harmless and useful, rides as
@@ -61,17 +67,20 @@ final class PersistenceExceptionTranslator
             return $e;
         }
 
-        // Laravel already classified these four; its answer is at least as good as the tables'.
+        // Laravel already classified these four; its answer is at least as good as the tables'. A QueryException
+        // may be carrying one of them as its cause (see the class docblock); the wrapper stays `previous`.
+        $cause = $e instanceof QueryException ? $e->getPrevious() : null;
+
         if ($e instanceof UniqueConstraintViolationException) {
             return self::build(DriverErrorTable::DUPLICATE_KEY, $e, self::sqlState($e));
         }
-        if ($e instanceof SQLiteDatabaseDoesNotExistException) {
+        if ($e instanceof SQLiteDatabaseDoesNotExistException || $cause instanceof SQLiteDatabaseDoesNotExistException) {
             return self::build(DriverErrorTable::RESOURCE, $e, null);
         }
-        if ($e instanceof LostConnectionException) {
+        if ($e instanceof LostConnectionException || $cause instanceof LostConnectionException) {
             return self::build(DriverErrorTable::TRANSIENT, $e, null);
         }
-        if ($e instanceof DeadlockException) {
+        if ($e instanceof DeadlockException || $cause instanceof DeadlockException) {
             return self::build(DriverErrorTable::DEADLOCK, $e, self::sqlState($e));
         }
 

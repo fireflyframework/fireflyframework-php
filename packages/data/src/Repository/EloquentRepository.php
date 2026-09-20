@@ -5,29 +5,42 @@ declare(strict_types=1);
 namespace Firefly\Data\Repository;
 
 use BadMethodCallException;
+use Closure;
 use Firefly\Data\Domain\AggregateTracker;
+use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
 use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Domain\RecordsDomainEvents;
+use Firefly\Kernel\Exception\Infrastructure\EmptyResultDataAccessException;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * The Eloquent-backed base for a #[Repository]. A concrete repository sets `protected string $model = X::class;`
  * and inherits the full Crud/PagingAndSorting contract over `Model::query()`. Page/Pageable/Sort are mapped to
  * `skip()`/`take()`/`orderBy()` + a count query at the edge, so callers never see Eloquent. The optional
- * TransactionalManifest is consumed only by the derived-query / #[Query] dispatch (Task 13); CRUD and paging work
- * with a null manifest. Reflection-free: everything goes through the Eloquent Builder — no runtime class introspection.
+ * TransactionalManifest is consumed by the derived-query / #[Query] dispatch; CRUD and paging work with a null
+ * manifest. Reflection-free: everything goes through the Eloquent Builder — no runtime class introspection.
  * The query-building seam (`query()`/`applySort()`) works over the model's own bound `Builder<Model>`; every result
  * that leaves the class is narrowed back to `TModel` with an `instanceof $this->model` check (`narrow()`), which is
  * how the class-string held on `$model` re-attaches the entity's own template to what the Eloquent Builder returns.
+ *
+ * EVERY PUBLIC METHOD RUNS THROUGH translating(): a driver failure leaves this class as a member of the kernel's
+ * DataAccessException family (DuplicateKeyException, BadSqlGrammarException, ...) with the QueryException as
+ * `previous` — Spring's PersistenceExceptionTranslator applied at the repository. A null $translator is the
+ * enabled default; DataAutoConfiguration injects the one built from firefly.data.exception-translation.enabled.
+ *
+ * repositoryClass() is what manifest lookups key on, not static::class: a #[Repository] that is also
+ * #[Transactional] runs as its generated `__FireflyTransactionalProxy` subclass, and the manifest knows the
+ * declared class.
  *
  * @template TModel of Model
  *
@@ -35,13 +48,20 @@ use InvalidArgumentException;
  */
 abstract class EloquentRepository implements PagingAndSortingRepository
 {
+    private const string PROXY_SUFFIX = '__FireflyTransactionalProxy';
+
     /** @var class-string<TModel> */
     protected string $model;
+
+    private readonly PersistenceExceptionTranslator $translator;
 
     public function __construct(
         protected readonly ?TransactionalManifest $manifest = null,
         protected readonly ?AggregateTracker $tracker = null,
-    ) {}
+        ?PersistenceExceptionTranslator $translator = null,
+    ) {
+        $this->translator = $translator ?? new PersistenceExceptionTranslator;
+    }
 
     /** @var array<string, ParsedQuery> */
     private static array $parsedCache = [];
@@ -64,22 +84,24 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     protected function dispatchQuery(string $method, array $args): mixed
     {
-        $queries = $this->manifest?->queriesFor(static::class) ?? [];
-        if (isset($queries[$method])) {
-            return $this->runExplicitQuery($queries[$method]['sql'], $args);
-        }
+        return $this->translating(function () use ($method, $args): mixed {
+            $queries = $this->manifest?->queriesFor($this->repositoryClass()) ?? [];
+            if (isset($queries[$method])) {
+                return $this->runExplicitQuery($queries[$method]['sql'], $args);
+            }
 
-        try {
-            $parsed = self::$parsedCache[$method] ??= DerivedQueryParser::parse($method);
-        } catch (InvalidArgumentException $e) {
-            throw new BadMethodCallException(
-                sprintf('%s::%s() is neither a #[Query] method nor a parseable derived query.', static::class, $method),
-                0,
-                $e,
-            );
-        }
+            try {
+                $parsed = self::$parsedCache[$method] ??= DerivedQueryParser::parse($method);
+            } catch (InvalidArgumentException $e) {
+                throw new BadMethodCallException(
+                    sprintf('%s::%s() is neither a #[Query] method nor a parseable derived query.', $this->repositoryClass(), $method),
+                    0,
+                    $e,
+                );
+            }
 
-        return $this->driveDerivedQuery($parsed, $args);
+            return $this->driveDerivedQuery($parsed, $args);
+        });
     }
 
     /**
@@ -304,17 +326,19 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function save(object $entity): object
     {
-        if ($entity instanceof Model) {
-            $entity->save();
-        }
+        return $this->translating(function () use ($entity): object {
+            if ($entity instanceof Model) {
+                $entity->save();
+            }
 
-        if ($entity instanceof RecordsDomainEvents
-            && $this->tracker !== null
-            && $this->connectionFor($entity)->transactionLevel() > 0) {
-            $this->tracker->track($entity);
-        }
+            if ($entity instanceof RecordsDomainEvents
+                && $this->tracker !== null
+                && $this->connectionFor($entity)->transactionLevel() > 0) {
+                $this->tracker->track($entity);
+            }
 
-        return $entity;
+            return $entity;
+        });
     }
 
     private function connectionFor(object $entity): Connection
@@ -341,9 +365,24 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findById(mixed $id): ?object
     {
-        $found = $this->query()->find($id);
+        return $this->translating(function () use ($id): ?object {
+            $found = $this->query()->find($id);
 
-        return $found instanceof $this->model ? $found : null;
+            return $found instanceof $this->model ? $found : null;
+        });
+    }
+
+    /**
+     * findById() that insists: Spring Data's `findById(id).orElseThrow()` shape. The 404 EmptyResultDataAccessException
+     * names the entity and the id, which is exactly what a controller wants to hand to problem+json.
+     *
+     * @return TModel
+     */
+    public function getById(mixed $id): object
+    {
+        return $this->findById($id) ?? throw new EmptyResultDataAccessException(
+            sprintf('No %s with id [%s].', class_basename($this->model), is_scalar($id) ? (string) $id : get_debug_type($id)),
+        );
     }
 
     /**
@@ -351,7 +390,7 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findAll(): array
     {
-        return $this->narrow($this->query()->get()->all());
+        return $this->translating(fn (): array => $this->narrow($this->query()->get()->all()));
     }
 
     /**
@@ -362,17 +401,17 @@ abstract class EloquentRepository implements PagingAndSortingRepository
     {
         $ids = is_array($ids) ? array_values($ids) : iterator_to_array($ids, false);
 
-        return $this->narrow($this->query()->whereIn($this->keyName(), $ids)->get()->all());
+        return $this->translating(fn (): array => $this->narrow($this->query()->whereIn($this->keyName(), $ids)->get()->all()));
     }
 
     public function existsById(mixed $id): bool
     {
-        return $this->query()->where($this->keyName(), '=', $id)->exists();
+        return $this->translating(fn (): bool => $this->query()->where($this->keyName(), '=', $id)->exists());
     }
 
     public function count(): int
     {
-        return $this->query()->count();
+        return $this->translating(fn (): int => $this->query()->count());
     }
 
     /**
@@ -380,17 +419,23 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function delete(object $entity): void
     {
-        $entity->delete();
+        $this->translating(function () use ($entity): void {
+            $entity->delete();
+        });
     }
 
     public function deleteById(mixed $id): void
     {
-        $this->findById($id)?->delete();
+        $this->translating(function () use ($id): void {
+            $this->findById($id)?->delete();
+        });
     }
 
     public function deleteAll(): void
     {
-        $this->query()->delete();
+        $this->translating(function (): void {
+            $this->query()->delete();
+        });
     }
 
     /**
@@ -398,15 +443,17 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findPaged(Pageable $pageable): Page
     {
-        $total = $this->query()->count();
+        return $this->translating(function () use ($pageable): Page {
+            $total = $this->query()->count();
 
-        $items = $this->applySort($this->query(), $pageable->sort)
-            ->skip($pageable->offset())
-            ->take($pageable->size)
-            ->get()
-            ->all();
+            $items = $this->applySort($this->query(), $pageable->sort)
+                ->skip($pageable->offset())
+                ->take($pageable->size)
+                ->get()
+                ->all();
 
-        return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+            return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+        });
     }
 
     /**
@@ -414,7 +461,7 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findSorted(Sort $sort): array
     {
-        return $this->narrow($this->applySort($this->query(), $sort)->get()->all());
+        return $this->translating(fn (): array => $this->narrow($this->applySort($this->query(), $sort)->get()->all()));
     }
 
     /**
@@ -427,7 +474,7 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findBySpecification(Specification $specification): array
     {
-        return $this->narrow($specification->toBuilder($this->query())->get()->all());
+        return $this->translating(fn (): array => $this->narrow($specification->toBuilder($this->query())->get()->all()));
     }
 
     /**
@@ -439,15 +486,17 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page
     {
-        $total = $specification->toBuilder($this->query())->count();
+        return $this->translating(function () use ($specification, $pageable): Page {
+            $total = $specification->toBuilder($this->query())->count();
 
-        $items = $this->applySort($specification->toBuilder($this->query()), $pageable->sort)
-            ->skip($pageable->offset())
-            ->take($pageable->size)
-            ->get()
-            ->all();
+            $items = $this->applySort($specification->toBuilder($this->query()), $pageable->sort)
+                ->skip($pageable->offset())
+                ->take($pageable->size)
+                ->get()
+                ->all();
 
-        return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+            return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
+        });
     }
 
     /**
@@ -459,7 +508,7 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function findAllIncludingDeleted(): array
     {
-        return $this->narrow($this->query()->withoutGlobalScope(SoftDeletingScope::class)->get()->all());
+        return $this->translating(fn (): array => $this->narrow($this->query()->withoutGlobalScope(SoftDeletingScope::class)->get()->all()));
     }
 
     /**
@@ -470,12 +519,64 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     public function restore(mixed $id): ?object
     {
-        $this->query()
-            ->withoutGlobalScope(SoftDeletingScope::class)
-            ->where($this->keyName(), '=', $id)
-            ->update(['deleted_at' => null]);
+        return $this->translating(function () use ($id): ?object {
+            $this->query()
+                ->withoutGlobalScope(SoftDeletingScope::class)
+                ->where($this->keyName(), '=', $id)
+                ->update(['deleted_at' => null]);
 
-        return $this->findById($id);
+            return $this->findById($id);
+        });
+    }
+
+    /**
+     * The translation guard: whatever escapes $work leaves as a member of the DataAccessException family (or
+     * unchanged, when it is not a database failure). Idempotent — a translated exception passes through — so a
+     * public method that calls another public method (deleteById -> findById) translates exactly once.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $work
+     * @return T
+     */
+    protected function translating(Closure $work): mixed
+    {
+        try {
+            return $work();
+        } catch (Throwable $e) {
+            throw $this->translator->translate($e, $this->driverName());
+        }
+    }
+
+    /**
+     * The model connection's driver, for the translator's per-driver code table. A connection that cannot even
+     * be opened has no driver to report; the translator then resolves by SQLSTATE and Laravel's typed exceptions.
+     */
+    protected function driverName(): ?string
+    {
+        try {
+            return (new $this->model)->getConnection()->getDriverName();
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The declared repository class the manifest knows — static::class with the generated proxy suffix removed.
+     *
+     * @return class-string
+     */
+    protected function repositoryClass(): string
+    {
+        $class = static::class;
+        if (str_ends_with($class, self::PROXY_SUFFIX)) {
+            /** @var class-string $declared */
+            $declared = substr($class, 0, -strlen(self::PROXY_SUFFIX));
+
+            return $declared;
+        }
+
+        return $class;
     }
 
     /**

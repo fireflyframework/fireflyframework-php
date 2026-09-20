@@ -103,6 +103,23 @@ it('honours the typed exceptions Laravel already raises, before any table lookup
         ->and($translator->translate(new DeadlockException('deadlock')))->toBeInstanceOf(DeadlockLoserDataAccessException::class);
 });
 
+// Connection::runQueryCallback() wraps EVERYTHING the callback throws — and the lazy PDO resolver runs inside
+// it — so a missing sqlite file reaches the translator as a QueryException (code 0, no errorInfo) whose
+// `previous` is the SQLiteDatabaseDoesNotExistException, never bare. Same for a LostConnectionException
+// raised while a statement is running. Without unwrapping, both fell through to the generic DataAccessException.
+it('honours the typed exceptions when Laravel has wrapped them in a QueryException', function () {
+    $translator = new PersistenceExceptionTranslator;
+    $missing = new QueryException('missing', 'insert into records (status) values (?)', ['open'], new SQLiteDatabaseDoesNotExistException('/nonexistent/records.sqlite'));
+    $lost = new QueryException('default', 'select 1', [], new LostConnectionException('server has gone away'));
+
+    $translated = $translator->translate($missing, 'sqlite');
+
+    expect($translated)->toBeInstanceOf(DataAccessResourceFailureException::class)
+        ->and($translated->getPrevious())->toBe($missing)
+        ->and($translator->translate($lost, 'mysql'))->toBeInstanceOf(TransientDataAccessResourceException::class)
+        ->and($translator->translate($lost, 'mysql')->getPrevious())->toBe($lost);
+});
+
 it('maps a connect-time sqlite failure whose code is the exception code itself', function () {
     $translated = (new PersistenceExceptionTranslator)->translate(new PDOException('SQLSTATE[HY000] [14] unable to open database file', 14), 'sqlite');
 

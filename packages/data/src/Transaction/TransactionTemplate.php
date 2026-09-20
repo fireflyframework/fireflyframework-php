@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Firefly\Data\Transaction;
 
 use Closure;
+use Firefly\Data\DataSettings;
 use Firefly\Data\Domain\DomainEventDispatcher;
+use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Transaction\Exception\TransactionNotAllowedException;
 use Firefly\Data\Transaction\Exception\TransactionRequiredException;
 use Illuminate\Database\Connection;
@@ -21,10 +23,29 @@ use Throwable;
  * statements are best-effort on a new outermost transaction (drivers vary; SQLite ignores them) — documented
  * latent. REQUIRES_NEW/NOT_SUPPORTED cannot truly suspend an active transaction on the same connection (Laravel
  * has no suspend primitive): REQUIRES_NEW degrades to a savepoint there — documented latent.
+ *
+ * EXCEPTION TRANSLATION happens here, around every propagation arm, so a #[Transactional] method — whose proxy
+ * delegates to execute() through TransactionInterceptor — throws the kernel's DataAccessException family rather
+ * than a raw QueryException, whether or not the failing statement went through a repository. The rollback rules
+ * are evaluated against the translated exception AND the original underneath it, so a `noRollbackFor:
+ * [QueryException::class]` written before translation existed still matches. A commit that itself fails (a
+ * deferred constraint, a lost connection) is rolled back if the connection still reports an open transaction,
+ * then translated and rethrown — never left open.
  */
 final class TransactionTemplate
 {
-    public function __construct(private readonly ?DomainEventDispatcher $dispatcher = null) {}
+    private readonly PersistenceExceptionTranslator $translator;
+
+    private readonly DataSettings $settings;
+
+    public function __construct(
+        private readonly ?DomainEventDispatcher $dispatcher = null,
+        ?PersistenceExceptionTranslator $translator = null,
+        ?DataSettings $settings = null,
+    ) {
+        $this->translator = $translator ?? new PersistenceExceptionTranslator;
+        $this->settings = $settings ?? new DataSettings;
+    }
 
     /**
      * @template T
@@ -38,13 +59,17 @@ final class TransactionTemplate
         $connection = DB::connection($d->connection);
         $active = $connection->transactionLevel() > 0;
 
-        return match ($d->propagation) {
-            Propagation::MANDATORY => $active ? $work() : throw new TransactionRequiredException,
-            Propagation::NEVER => $active ? throw new TransactionNotAllowedException : $work(),
-            Propagation::SUPPORTS, Propagation::NOT_SUPPORTED => $work(),
-            Propagation::REQUIRED => $active ? $work() : $this->runInTransaction($connection, $work, $d, true),
-            Propagation::REQUIRES_NEW, Propagation::NESTED => $this->runInTransaction($connection, $work, $d, ! $active),
-        };
+        try {
+            return match ($d->propagation) {
+                Propagation::MANDATORY => $active ? $work() : throw new TransactionRequiredException,
+                Propagation::NEVER => $active ? throw new TransactionNotAllowedException : $work(),
+                Propagation::SUPPORTS, Propagation::NOT_SUPPORTED => $work(),
+                Propagation::REQUIRED => $active ? $work() : $this->runInTransaction($connection, $work, $d, true),
+                Propagation::REQUIRES_NEW, Propagation::NESTED => $this->runInTransaction($connection, $work, $d, ! $active),
+            };
+        } catch (Throwable $e) {
+            throw $this->translator->translate($e, $connection->getDriverName());
+        }
     }
 
     /**
@@ -64,40 +89,65 @@ final class TransactionTemplate
         try {
             $result = $work();
         } catch (Throwable $e) {
+            $translated = $this->translator->translate($e, $connection->getDriverName());
+
             if ($outermost) {
                 // Queue after-commit events BEFORE resolving the tx, on THIS descriptor's connection: Laravel fires
                 // them on that connection's commit, discards on rollBack.
                 $this->dispatcher?->dispatchAfterCommit($d->connection);
             }
 
-            if ($this->shouldRollBack($e, $d)) {
+            if ($this->shouldRollBack($translated, $e, $d)) {
                 $connection->rollBack();
             } else {
-                $connection->commit();
+                $this->commit($connection);
             }
 
-            throw $e;
+            throw $translated;
         }
 
         if ($outermost) {
             $this->dispatcher?->dispatchAfterCommit($d->connection);
         }
 
-        $connection->commit();
+        $this->commit($connection);
 
         return $result;
     }
 
-    private function shouldRollBack(Throwable $e, TransactionalDescriptor $d): bool
+    /**
+     * Commit, and if the commit itself throws, unwind whatever is still open before letting the failure out — a
+     * transaction left open on a pooled connection outlives the request that started it.
+     */
+    private function commit(Connection $connection): void
+    {
+        try {
+            $connection->commit();
+        } catch (Throwable $e) {
+            if ($connection->transactionLevel() > 0) {
+                $connection->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    /** The firefly.data.* settings this template runs under (the default timeout is enforced from Task 10 on). */
+    public function settings(): DataSettings
+    {
+        return $this->settings;
+    }
+
+    private function shouldRollBack(Throwable $translated, Throwable $original, TransactionalDescriptor $d): bool
     {
         foreach ($d->noRollbackFor as $type) {
-            if ($e instanceof $type) {
+            if ($translated instanceof $type || $original instanceof $type) {
                 return false; // noRollbackFor wins: commit-and-rethrow
             }
         }
 
         foreach ($d->rollbackFor as $type) {
-            if ($e instanceof $type) {
+            if ($translated instanceof $type || $original instanceof $type) {
                 return true;
             }
         }

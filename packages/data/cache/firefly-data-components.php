@@ -74,6 +74,8 @@ return [
                 'lazy' => false,
                 'dependencies' => [
                     0 => 'Firefly\\Data\\Domain\\DomainEventDispatcher',
+                    1 => 'Firefly\\Data\\Exception\\PersistenceExceptionTranslator',
+                    2 => 'Firefly\\Data\\DataSettings',
                 ],
             ],
             5 => [

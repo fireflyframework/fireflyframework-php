@@ -38,6 +38,12 @@ class AccountService
         throw new RuntimeException('boom');
     }
 
+    public function insertDuplicate(): void
+    {
+        DB::table('accounts')->insert(['id' => 1, 'name' => 'first']);
+        DB::table('accounts')->insert(['id' => 1, 'name' => 'second']);
+    }
+
     #[Transactional(noRollbackFor: [IgnorableException::class])]
     public function logButKeep(): void
     {

@@ -68,9 +68,9 @@ final class DataAutoConfiguration
 
     #[Bean]
     #[ConditionalOnMissingBean(TransactionTemplate::class)]
-    public function transactionTemplate(DomainEventDispatcher $dispatcher): TransactionTemplate
+    public function transactionTemplate(DomainEventDispatcher $dispatcher, PersistenceExceptionTranslator $translator, DataSettings $settings): TransactionTemplate
     {
-        return new TransactionTemplate($dispatcher);
+        return new TransactionTemplate($dispatcher, $translator, $settings);
     }
 
     #[Bean]

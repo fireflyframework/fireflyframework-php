@@ -34,7 +34,7 @@ it('builds the transaction engine beans incl. the after-commit dispatch graph', 
 
     $tracker = $config->aggregateTracker();
     $dispatcher = $config->domainEventDispatcher($tracker, new RecordingApplicationEventPublisher);
-    $template = $config->transactionTemplate($dispatcher);
+    $template = $config->transactionTemplate($dispatcher, new PersistenceExceptionTranslator, new DataSettings);
 
     expect($tracker)->toBeInstanceOf(AggregateTracker::class)
         ->and($dispatcher)->toBeInstanceOf(DomainEventDispatcher::class)
