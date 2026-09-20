@@ -9,6 +9,7 @@ use Closure;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\Example\Example;
+use Firefly\Data\Repository\Locking\LockMode;
 use Firefly\Data\Repository\Projection\ProjectionHydrator;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
@@ -217,6 +218,11 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
         if ($parsed->top !== null) {
             $query->limit($parsed->top);
+        }
+
+        $lock = $row['lock'] ?? null;
+        if ($lock !== null && $parsed->prefix === 'find') {
+            $this->applyLock($query, LockMode::from($lock));
         }
 
         $projection = $row['projection'] ?? null;
@@ -535,6 +541,49 @@ abstract class EloquentRepository implements PagingAndSortingRepository
         return $this->findById($id) ?? throw new EmptyResultDataAccessException(
             sprintf('No %s with id [%s].', class_basename($this->model), is_scalar($id) ? (string) $id : get_debug_type($id)),
         );
+    }
+
+    /**
+     * findById() under `SELECT ... FOR UPDATE` — the programmatic twin of #[Lock(LockMode::PESSIMISTIC_WRITE)].
+     * Like the attribute it refuses to run outside a transaction: the lock is released when the transaction
+     * ends, so outside one it would guard nothing. Spring Data's findById with LockModeType.PESSIMISTIC_WRITE.
+     *
+     * @return TModel|null
+     */
+    public function findByIdForUpdate(mixed $id): ?object
+    {
+        return $this->translating(function () use ($id): ?object {
+            $query = $this->query();
+            $this->applyLock($query, LockMode::PESSIMISTIC_WRITE);
+            $found = $query->find($id);
+
+            return $found instanceof $this->model ? $found : null;
+        });
+    }
+
+    /**
+     * The transaction check and the builder call behind #[Lock] and findByIdForUpdate(): PESSIMISTIC_WRITE is
+     * lockForUpdate() (`FOR UPDATE`), PESSIMISTIC_READ is sharedLock() (`FOR SHARE` / `LOCK IN SHARE MODE`), each
+     * spelled by the connection's own grammar — sqlite has no row locks and its grammar compiles the clause to
+     * nothing, so the read simply succeeds there. The transaction is checked on the MODEL's connection, the one
+     * the statement will run on, exactly as #[Modifying] does.
+     *
+     * @param  Builder<Model>  $query
+     */
+    private function applyLock(Builder $query, LockMode $mode): void
+    {
+        if ((new $this->model)->getConnection()->transactionLevel() === 0) {
+            throw new TransactionRequiredException(sprintf(
+                '#[Lock(%s)] needs an active transaction: a row lock is released when the transaction ends, so outside one it would guard nothing.',
+                $mode->name,
+            ));
+        }
+
+        if ($mode === LockMode::PESSIMISTIC_WRITE) {
+            $query->lockForUpdate();
+        } else {
+            $query->sharedLock();
+        }
     }
 
     /**
