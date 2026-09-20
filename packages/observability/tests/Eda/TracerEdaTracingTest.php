@@ -55,8 +55,29 @@ it('starts a CONSUMER span on consume, continued from the envelope traceparent, 
         ->and($failed->ended)->toBeTrue();
 });
 
-it('starts a new root on consume when the envelope carries no traceparent', function () {
+it('nests a consume under the current span when the envelope carries no traceparent, or a malformed one', function () {
     $tracer = new RecordingTracer;
+    $tracing = new TracerEdaTracing($tracer, new W3CTraceContextPropagator);
+
+    $outer = $tracer->startSpan('outer', SpanKind::Server);
+    $tracing->traceConsume(new EventEnvelope('x', 'd'), static function (): void {});
+    $tracing->traceConsume(new EventEnvelope('x', 'd', [], ['traceparent' => 'not-a-traceparent']), static function (): void {});
+    $outer->end();
+
+    [$server, $missing, $malformed] = $tracer->recorded();
+    expect($server->name)->toBe('outer')
+        ->and($missing->name)->toBe('process d')
+        ->and($missing->parent?->spanId)->toBe($server->spanId())
+        ->and($missing->traceId())->toBe($server->traceId())
+        ->and($malformed->parent?->spanId)->toBe($server->spanId())
+        ->and($malformed->traceId())->toBe($server->traceId())
+        ->and($tracer->currentSpan())->toBeNull();
+});
+
+it('starts a new root on consume when the envelope carries no traceparent and nothing is current', function () {
+    $tracer = new RecordingTracer;
+    expect($tracer->currentSpan())->toBeNull();
+
     (new TracerEdaTracing($tracer, new W3CTraceContextPropagator))->traceConsume(new EventEnvelope('x', 'd'), static function (): void {});
 
     expect($tracer->recorded()[0]->parent)->toBeNull()->and($tracer->recorded()[0]->context()->isValid())->toBeTrue();

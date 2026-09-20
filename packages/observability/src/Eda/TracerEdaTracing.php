@@ -22,9 +22,12 @@ use Throwable;
  *
  * On consume the envelope's traceparent wins over any span that happens to be current: in-process (the
  * in-memory bus) the two agree; on a queue worker or a broker consumer there is no current span, and the
- * remote parent is the only link back to the request that published. An envelope with no traceparent (one
- * published before tracing was switched on, or by a foreign producer) starts a new root rather than hanging
- * off whatever the worker was doing.
+ * remote parent is the only link back to the request that published. An envelope with no (or a malformed)
+ * traceparent — one published before tracing was switched on, or by a foreign producer — falls back to the
+ * port's default parent: the current span when one exists (a replay triggered from inside a request stays
+ * under that request), and a new root only when nothing is current, which is what a worker or a broker
+ * consumer sees. That is the same rule TracingFilter applies to an inbound request without a traceparent,
+ * and what OpenTelemetry's own extract() does when the carrier is empty.
  *
  * Unlike TracerCqrsTracing this does not go through Tracer::trace(): the PRODUCER span's context must be
  * injected into the headers BEFORE the transport runs, and the CONSUMER span's parent comes from the envelope
