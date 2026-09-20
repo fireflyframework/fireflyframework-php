@@ -81,8 +81,9 @@ final class TransactionalScanner
 
     /**
      * Generation inputs for the ProxyClassGenerator from the #[Transactional] attributes alone — the shape the
-     * proxy tests and the capstone fixtures drive. It is a transactional-only ProxyPlan rendered back into
-     * ProxyMethods; firefly:cache and the uncached boot go through ProxyPlanner with every AdviceSource instead.
+     * proxy tests, the capstone fixtures and (until it compiles proxy-plan.php) firefly:cache's writeProxies()
+     * drive. It is a transactional-only ProxyPlan rendered back into ProxyMethods; the uncached boot goes
+     * through ProxyPlanner with every AdviceSource instead.
      *
      * @param  array<string,string>  $psr4
      * @return array<class-string, array<string, ProxyMethod>>

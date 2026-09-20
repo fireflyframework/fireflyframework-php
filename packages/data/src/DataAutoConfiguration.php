@@ -97,11 +97,21 @@ final class DataAutoConfiguration
 
     /**
      * The proxy plan — which beans get a proxy and which advice each method runs — resolved like every
-     * Category-B artifact: proxy-plan.php if firefly:cache wrote it (the classmap autoloader is registered
-     * first so the proxies it names are loadable), else an in-process scan of firefly.scan.paths through every
-     * AdviceSource bean, else — no scan paths at all — a transactional-only plan derived from whatever
-     * TransactionalManifest is bound, so a boot that compiles its manifest by hand (the capstone fixtures)
-     * still gets its #[Transactional] beans wrapped.
+     * Category-B artifact, compiled first and scanned second:
+     *
+     *   1. proxy-plan.php, when a compiler wrote one (the classmap autoloader is registered first so the
+     *      proxies it names are loadable);
+     *   2. else transactional.php, when firefly:cache wrote one: a transactional-only plan bridged from the
+     *      TransactionalManifest bean that loaded it. Today's firefly:cache emits transactional.php and the
+     *      proxies.php classmap but no proxy-plan.php, and before this bridge existed such an app fell through
+     *      to the scan below on EVERY boot — reflecting over every class under firefly.scan.paths and generating
+     *      proxies into a temp directory (a RuntimeException on a read-only filesystem) in what used to be a
+     *      zero-reflection cached boot. A cached app trusts its artifacts; the compiled proxies in that cache
+     *      were generated for exactly this transactional-only plan, so nothing else could be consulted anyway;
+     *   3. else an in-process scan of firefly.scan.paths through every AdviceSource bean (development);
+     *   4. else — no scan paths at all — a transactional-only plan derived from whatever TransactionalManifest
+     *      is bound, so a boot that compiles its manifest by hand (the capstone fixtures) still gets its
+     *      #[Transactional] beans wrapped.
      *
      * Every AdviceSource is a #[Component], collected through the Firefly container facade's getAll() (bound
      * at FlushDefinitions, before the post-processor that needs this bean is resolved at phase 700). Data's
@@ -117,6 +127,12 @@ final class DataAutoConfiguration
             ProxyMaterializer::classmap($container);
 
             return ProxyPlan::load($file);
+        }
+
+        if (AppScan::cachedFile($container, AppScan::TRANSACTIONAL) !== null) {
+            ProxyMaterializer::classmap($container);
+
+            return ProxyPlan::fromTransactionalManifest($transactional);
         }
 
         $paths = AppScan::paths($container);

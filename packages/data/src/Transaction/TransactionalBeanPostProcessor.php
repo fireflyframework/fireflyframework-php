@@ -21,8 +21,10 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  * It reads the PLAN, not the TransactionalManifest: since the interceptor chain a class may be proxied for
  * #[PreAuthorize] alone, and the plan is the one artifact that knows every advice a class runs. Each advice's
  * interceptor is resolved through the InterceptorRegistry at wrap time — the transactional one is always
- * bound; an advice whose capability is off degrades to a pass-through link. The proxy class is an app artifact
- * loaded by autoload (firefly:cache) or materialised in-process before this runs.
+ * bound (it is constructor-injected here and never goes through the registry); an advice that declared itself
+ * inert when unbound degrades to a pass-through link when its bean is absent, and any other unbound advice is
+ * a ConfigurationException. The proxy class is an app artifact loaded by autoload (firefly:cache) or
+ * materialised in-process before this runs.
  */
 #[Component]
 final class TransactionalBeanPostProcessor implements BeanPostProcessor
