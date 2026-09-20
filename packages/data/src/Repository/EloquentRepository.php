@@ -8,6 +8,7 @@ use BadMethodCallException;
 use Closure;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
+use Firefly\Data\Repository\Example\Example;
 use Firefly\Data\Repository\Query\DerivedQueryParser;
 use Firefly\Data\Repository\Query\ParsedQuery;
 use Firefly\Data\Repository\Query\Predicate;
@@ -15,6 +16,7 @@ use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Domain\RecordsDomainEvents;
 use Firefly\Kernel\Exception\Infrastructure\EmptyResultDataAccessException;
+use Firefly\Kernel\Exception\Infrastructure\IncorrectResultSizeDataAccessException;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -497,6 +499,57 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
             return new Page($this->narrow($items), $total, $pageable->page, $pageable->size);
         });
+    }
+
+    /**
+     * Query by example: the probe's set attributes under the matcher's rules. An Example IS a Specification, so
+     * this is findBySpecification() with a name Spring Data users expect.
+     *
+     * @return list<TModel>
+     */
+    public function findByExample(Example $example): array
+    {
+        return $this->findBySpecification($example);
+    }
+
+    /**
+     * At most one row: null for none, the row for one, IncorrectResultSizeDataAccessException for more (the
+     * probe was not selective enough — a programming error, like Spring's findOne(Example)). Two rows are fetched
+     * so "more than one" is known without a count query.
+     *
+     * @return TModel|null
+     */
+    public function findOneByExample(Example $example): ?object
+    {
+        return $this->translating(function () use ($example): ?object {
+            $rows = $this->narrow($example->toBuilder($this->query())->limit(2)->get()->all());
+
+            if (count($rows) > 1) {
+                throw new IncorrectResultSizeDataAccessException(
+                    sprintf('findOneByExample() on %s matched more than one row.', class_basename($this->model)),
+                );
+            }
+
+            return $rows[0] ?? null;
+        });
+    }
+
+    public function countByExample(Example $example): int
+    {
+        return $this->translating(fn (): int => $example->toBuilder($this->query())->count());
+    }
+
+    public function existsByExample(Example $example): bool
+    {
+        return $this->translating(fn (): bool => $example->toBuilder($this->query())->exists());
+    }
+
+    /**
+     * @return Page<TModel>
+     */
+    public function findByExamplePaged(Example $example, Pageable $pageable): Page
+    {
+        return $this->findBySpecificationPaged($example, $pageable);
     }
 
     /**
