@@ -16,7 +16,6 @@ use Firefly\Observability\Tracing\Tracer;
 use Illuminate\Log\Logger;
 use Illuminate\Log\LogManager;
 use Monolog\Logger as MonologLogger;
-use Throwable;
 
 /**
  * The boot-pass + default-binding half of firefly/observability (cannot ride on ObservabilityServiceProvider —
@@ -65,10 +64,14 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
      * first Log:: write — functionally equivalent (LogManager caches channels by name). The Tracer is
      * resolved lazily inside TraceContextLogProcessor on every record, because at this point in a boot
      * nothing may be bound yet and the log service's first resolution must never depend on the tracing
-     * auto-configuration having run. A channel that cannot be built (a typo in the configured list) is
-     * skipped rather than turning the first log write into a boot failure: LogManager already falls back to
-     * its emergency logger for that case, and a log line lost is better than an application that cannot
-     * start because of its logging.
+     * auto-configuration having run. There is deliberately no try/catch around channel(): LogManager::get()
+     * catches every Throwable itself and returns a fresh, uncached emergency logger, so channel() never
+     * throws — a catch here would be dead code — and a name that does not exist under logging.channels is
+     * instead refused by StructuredLogging::channels() with a ConfigurationException before anything is
+     * resolved, because the alternative is the processors and the formatter landing on that throw-away
+     * emergency logger while the channel the application actually writes to silently keeps plain text with
+     * no ids at all. A channel that IS defined but whose driver fails to build still gets Laravel's
+     * emergency logger, exactly as it would without this provider.
      */
     private function attachLogProcessors(object $log): void
     {
@@ -81,12 +84,7 @@ final class ObservabilityWiringProvider extends FireflyServiceProvider
         $structured = new StructuredLogging($config);
 
         foreach ($structured->channels() as $name) {
-            try {
-                $channel = $log->channel($name);
-            } catch (Throwable) {
-                continue;
-            }
-
+            $channel = $log->channel($name);
             if (! $channel instanceof Logger) {
                 continue;
             }
