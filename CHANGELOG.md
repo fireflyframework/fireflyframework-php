@@ -115,6 +115,17 @@ failing test first, and each one deletes a workaround downstream.
   `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
   and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
 
+- **Browser end-to-end suite (`tests/Browser`, PHPUnit testsuite `browser`).** The shipped skeleton app is served
+  to a real Chromium through `pestphp/pest-plugin-browser` (the whole suite moved from Pest 3 to Pest 4 for
+  it): the welcome page, every admin dashboard page, the data browser's list → filter → edit → create →
+  delete → relation round trip, a feature-switch toggle, and the 401/403/404/405/500 pages in both themes,
+  at phone width, with and without the trace. Excluded from the default gate; `composer test:browser` and a
+  dedicated CI job run it, with screenshots uploaded as an artifact.
+
+- **`packages/web` — the HTML error page publishes the request reference.** The production 500 now reads
+  "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
+  problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
+
 ### Fixed
 
 - **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved

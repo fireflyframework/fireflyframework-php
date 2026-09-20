@@ -46,6 +46,28 @@ bash scripts/check-no-sensitive-tracked.sh   # the pre-push guard, run directly
 `composer check` is itself the composition of four scripts (`pint-test`, `stan`, `test`, `deptrac`) — see
 `composer.json`'s `scripts` block. Any one of them failing fails the gate.
 
+## Browser tests
+
+`tests/Browser/` drives the shipped skeleton app in a real Chromium through `pestphp/pest-plugin-browser`
+(Playwright): the welcome page, every admin dashboard page, the data browser's full round trip, the feature
+switches and the framework's 4xx/5xx pages — light and dark, desktop and phone, with and without the trace.
+The plugin serves the Testbench-booted app in-process, so a scenario can still assert against the database.
+
+The suite is its own PHPUnit testsuite (`browser`), kept out of the default `unit` suite in
+`phpunit.xml.dist` — a group exclusion would not do, because the plugin starts Playwright the moment a
+file under `tests/Browser/` is loaded. So `composer test` and `composer check` never need Node. To run it:
+
+```bash
+npm ci
+npx playwright install chromium   # once
+composer test:browser             # add -- --headed to watch
+```
+
+Screenshots land in `tests/Browser/Screenshots/` (git-ignored; CI uploads them as the
+`browser-screenshots` artifact). Pass Pest options through Composer with `--`, e.g.
+`composer test:browser -- --filter=AdminDashboard`. A page that fails here is fixed in the package that owns it, with a
+DOM-level regression test beside the existing ones — the browser scenario is the proof, not the only test.
+
 ## Architecture rules
 
 Package boundaries are enforced with **Deptrac** (`deptrac.yaml`): every package is its own layer, and the
