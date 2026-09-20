@@ -30,6 +30,12 @@ use RuntimeException;
  * records at scan time — so the discovery these tests exercise is fed the same interface closure the running
  * application's catalogue carries, not a hand-picked list that happens to contain the interface discovery is
  * looking for.
+ *
+ * The helpers are PUBLIC, not protected: the test closures that call them run with `$this` bound to the
+ * per-file class Pest generates from uses(), and PHPStan types that closure's `$this` as Pest's TestCall
+ * (a class unrelated to this one), so a protected helper reads as an illegal call from outside the
+ * hierarchy. Public is also the convention FireflyTestCase::app()/responseBody() already follow for
+ * closure-facing helpers; protected stays reserved for the template hooks subclasses override.
  */
 abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
 {
@@ -94,7 +100,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      * Seed the Eloquent-backed table. The `o'brien` address is not decoration: it is the row a search for
      * `o'brien` has to find, which only happens if the term reached the driver as a BINDING.
      */
-    protected function seedRecords(): void
+    public function seedRecords(): void
     {
         $rows = [
             ['id' => 1, 'email' => 'ada@example.test', 'api_token' => 'sk_live_ada_secret', 'recovery_phrase' => 'correct horse battery', 'amount' => 50, 'active' => 1, 'meta' => '{"tier":"gold"}', 'created_at' => '2026-01-01 10:00:00'],
@@ -107,7 +113,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
         DB::table('admin_records')->insert($rows);
     }
 
-    protected function seedEntries(): void
+    public function seedEntries(): void
     {
         DB::table('admin_entries')->insert([
             ['id' => 1, 'record_id' => 1, 'note' => 'first for ada', 'amount' => 10.50],
@@ -116,7 +122,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
         ]);
     }
 
-    protected function seedWidgets(): void
+    public function seedWidgets(): void
     {
         DB::table('widgets')->insert([
             ['uuid' => 'w-1', 'name' => 'Sprocket', 'occurred_at' => '2026-02-01 09:30:00', 'status' => 'live', 'tags' => '["a","b"]', 'price' => '10.10 EUR'],
@@ -124,7 +130,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
         ]);
     }
 
-    protected function seedPairs(): void
+    public function seedPairs(): void
     {
         DB::table('pairs')->insert([
             ['left' => 'alpha', 'right' => 'one'],
@@ -132,7 +138,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
         ]);
     }
 
-    protected function seedNotes(): void
+    public function seedNotes(): void
     {
         DB::table('admin_notes')->insert([
             ['id' => 1, 'title' => 'Alpha', 'body' => 'first note', 'pinned' => 1],
@@ -146,7 +152,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      *
      * @param  array<string, mixed>  $data  the `firefly.admin.data.*` subtree, dot-free
      */
-    protected function browser(array $data = ['enabled' => true]): DataBrowser
+    public function browser(array $data = ['enabled' => true]): DataBrowser
     {
         return $this->browserOver(
             [AdminRecordRepository::class, PlainNoteRepository::class, NotARepository::class],
@@ -159,7 +165,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      *
      * @param  array<string, mixed>  $data
      */
-    protected function relatedBrowser(array $data = ['enabled' => true]): DataBrowser
+    public function relatedBrowser(array $data = ['enabled' => true]): DataBrowser
     {
         return $this->browserOver([AdminRecordRepository::class, AdminEntryRepository::class], $data);
     }
@@ -170,7 +176,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      * @param  list<class-string>  $classes
      * @param  array<string, mixed>  $data
      */
-    protected function browserOver(array $classes, array $data = ['enabled' => true]): DataBrowser
+    public function browserOver(array $classes, array $data = ['enabled' => true]): DataBrowser
     {
         $this->app()->instance(BeansCatalog::class, new BeansCatalog(array_map($this->row(...), $classes)));
 
@@ -188,7 +194,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      * @param  array<class-string, list<class-string>>  $classes  bean class => the interfaces the row claims
      * @param  array<string, mixed>  $data
      */
-    protected function browserOverStaleCatalog(array $classes, array $data = ['enabled' => true]): DataBrowser
+    public function browserOverStaleCatalog(array $classes, array $data = ['enabled' => true]): DataBrowser
     {
         $rows = [];
         foreach ($classes as $class => $interfaces) {
@@ -211,7 +217,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
     }
 
     /** A browser with NO catalogue bound at all — the deployment where the actuator is switched off. */
-    protected function browserWithoutCatalog(): DataBrowser
+    public function browserWithoutCatalog(): DataBrowser
     {
         $this->app()->forgetInstance(BeansCatalog::class);
 
@@ -248,23 +254,23 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      * followed by assertions — and so a lookup that unexpectedly returns null fails on the line that asked
      * for it, naming what it asked for, instead of on a "property on null" ten lines later.
      */
-    protected function resourceOf(DataBrowser $browser, string $slug): DataResource
+    public function resourceOf(DataBrowser $browser, string $slug): DataResource
     {
         return $browser->resource($slug) ?? throw new RuntimeException("No browsable resource [{$slug}].");
     }
 
-    protected function schemaOf(DataBrowser $browser, string $slug): DataSchema
+    public function schemaOf(DataBrowser $browser, string $slug): DataSchema
     {
         return $browser->schema($slug) ?? throw new RuntimeException("No schema for resource [{$slug}].");
     }
 
-    protected function columnOf(DataBrowser $browser, string $slug, string $column): DataColumn
+    public function columnOf(DataBrowser $browser, string $slug, string $column): DataColumn
     {
         return $this->schemaOf($browser, $slug)->column($column)
             ?? throw new RuntimeException("No column [{$column}] on resource [{$slug}].");
     }
 
-    protected function recordOf(DataBrowser $browser, string $slug, int|string $id): DataRecord
+    public function recordOf(DataBrowser $browser, string $slug, int|string $id): DataRecord
     {
         return $browser->find($slug, $id) ?? throw new RuntimeException("No record [{$id}] of resource [{$slug}].");
     }
@@ -275,7 +281,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
      *
      * @param  array<string, mixed>  $row
      */
-    protected function stringCell(array $row, string $column): string
+    public function stringCell(array $row, string $column): string
     {
         $value = $row[$column] ?? null;
 

@@ -25,10 +25,15 @@ use Illuminate\Foundation\Application;
  *
  * Not `final`: Pest's uses() generates a per-test-file class that EXTENDS this one (the ClearCommandTestCase
  * convention, which also records why an anonymous `new class ...::class` cannot be used here).
+ *
+ * The consumer and the two helpers are PUBLIC: the test closures read and call them with `$this` bound to
+ * that generated class, and PHPStan types a test closure's `$this` as Pest's TestCall — unrelated to this
+ * hierarchy — so protected members read as illegal accesses from outside. Protected stays reserved for the
+ * FireflyTestCase template hooks below, which only the harness calls.
  */
 class EdaConsumeCommandTestCase extends FireflyTestCase
 {
-    protected ScriptedEventConsumer $consumer;
+    public ScriptedEventConsumer $consumer;
 
     /** @return list<class-string> */
     protected function fireflyProviders(): array
@@ -59,7 +64,7 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
      *
      * @param  array<string, mixed>  $parameters
      */
-    protected function runConsume(array $parameters = []): int
+    public function runConsume(array $parameters = []): int
     {
         /** @var Kernel $kernel */
         $kernel = $this->app()->make(Kernel::class);
@@ -73,7 +78,7 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
      *
      * @param  array<int, mixed>  $destinations
      */
-    protected function setDestinationConfig(array $destinations): void
+    public function setDestinationConfig(array $destinations): void
     {
         /** @var Repository $config */
         $config = $this->app()->make('config');

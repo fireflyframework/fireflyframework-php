@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Installer\NewCommand;
 use Firefly\Installer\SymfonyProcessRunner;
 use Firefly\Installer\Tests\Support\Skeleton;
+use PHPUnit\Framework\Assert;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -18,13 +19,13 @@ use Symfony\Component\Process\Process;
 it('scaffolds a booting app via the real installer over local path repos', function () {
     $composer = trim((string) shell_exec('command -v composer')) ?: null;
     if ($composer === null) {
-        $this->markTestSkipped('composer binary not available.');
+        Assert::markTestSkipped('composer binary not available.');
     }
 
     $mono = dirname(__DIR__, 3); // packages/installer/tests -> repo root
     $hostCacheDir = trim((string) shell_exec($composer.' config --global cache-dir 2>/dev/null'));
     if ($hostCacheDir === '' || ! is_dir($hostCacheDir)) {
-        $this->markTestSkipped('no host Composer cache available.');
+        Assert::markTestSkipped('no host Composer cache available.');
     }
 
     $work = sys_get_temp_dir().'/firefly-new-'.bin2hex(random_bytes(6));

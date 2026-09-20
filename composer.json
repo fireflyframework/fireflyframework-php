@@ -42,7 +42,8 @@
         "laravel/octane": "^2.0",
         "laravel/pint": "^1.30",
         "orchestra/testbench": "^11.1",
-        "pestphp/pest": "^3.7",
+        "pestphp/pest": "^4.5",
+        "pestphp/pest-plugin-browser": "^4.3",
         "phpstan/phpstan": "^2.1",
         "symfony/yaml": "^7.4|^8.0",
         "symplify/monorepo-builder": "^11.2"
@@ -111,6 +112,7 @@
         "pint-test": "pint --test",
         "stan": "phpstan analyse --no-progress --memory-limit=1G",
         "test": "@php -d memory_limit=512M vendor/bin/pest",
+        "test:browser": "@php -d memory_limit=512M vendor/bin/pest --testsuite=browser",
         "deptrac": "deptrac analyse --no-progress --config-file=deptrac.yaml",
         "mono-validate": "monorepo-builder validate",
         "check": [

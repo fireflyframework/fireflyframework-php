@@ -31,6 +31,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateFactory;
+use PHPUnit\Framework\Assert;
 
 /**
  * @param  class-string  ...$dtoClasses
@@ -95,7 +96,7 @@ it('throws MISSING_PARAMETER (400) for an absent required query param', function
         resolverFor()->resolve([
             ['name' => 'page', 'kind' => 'query', 'key' => 'page', 'type' => 'int', 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MISSING_PARAMETER');
     }
@@ -108,7 +109,7 @@ it('throws TYPE_CONVERSION_ERROR (400) for an uncoercible scalar', function () {
         resolverFor()->resolve([
             ['name' => 'id', 'kind' => 'path', 'key' => 'id', 'type' => 'int', 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('TYPE_CONVERSION_ERROR');
     }
@@ -167,7 +168,7 @@ it('throws MALFORMED_BODY (400), not an uncaught JsonException, for an empty req
         resolverFor(CreateAccountRequest::class)->resolve([
             ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MALFORMED_BODY');
     }
@@ -181,7 +182,7 @@ it('throws MALFORMED_BODY (400), not an uncaught JsonException, for a syntactica
         resolverFor(CreateAccountRequest::class)->resolve([
             ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MALFORMED_BODY');
     }
@@ -195,7 +196,7 @@ it('still throws INVALID_REQUEST (400) via the is_array guard for valid-but-non-
         resolverFor(CreateAccountRequest::class)->resolve([
             ['name' => 'body', 'kind' => 'body', 'key' => '', 'type' => CreateAccountRequest::class, 'required' => true, 'default' => null, 'valid' => true, 'properties' => ['iban', 'owner']],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('INVALID_REQUEST');
     }
@@ -344,7 +345,7 @@ it('throws UNBINDABLE_BODY (400) — not a TypeError 500 — for a nested proper
             'amount' => 1,
             'beneficiary' => 'Calle Mayor 1',
         ], transferShapes());
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)
             ->and($e->errorCode())->toBe('UNBINDABLE_BODY')
@@ -359,7 +360,7 @@ it('throws UNBINDABLE_BODY (400) and names the OFFENDING ELEMENT when a list hol
             'beneficiary' => ['street' => 'A', 'postcode' => 'B'],
             'lines' => [['reference' => 'INV-1', 'cents' => 100], 'INV-2'],
         ], transferShapes());
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('UNBINDABLE_BODY')
             ->and($e->getMessage())->toContain('lines[1]');
@@ -373,7 +374,7 @@ it('throws UNBINDABLE_BODY (400) when a list-typed property is not a list at all
             'beneficiary' => ['street' => 'A', 'postcode' => 'B'],
             'lines' => 'INV-1',
         ], transferShapes());
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('UNBINDABLE_BODY')
             ->and($e->getMessage())->toContain('lines');
@@ -388,7 +389,7 @@ it('throws UNBINDABLE_BODY (400) for an INTERFACE-typed constructor parameter, w
 
     try {
         resolveBody(UnbindableRequest::class, ['name' => 'Ada', 'counter' => ['n' => 1]], $shapes);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)
             ->and($e->errorCode())->toBe('UNBINDABLE_BODY')
@@ -404,7 +405,7 @@ it('throws UNBINDABLE_BODY (400) for a scalar the constructor refuses, instead o
             'amount' => 'lots',
             'beneficiary' => ['street' => 'A', 'postcode' => 'B'],
         ], transferShapes());
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('UNBINDABLE_BODY')
             ->and($e->getMessage())->not->toContain('must be of type')
@@ -423,7 +424,7 @@ it('falls back to a 400 (never a 500) on the LEGACY flat plan that cannot descri
             [],
             ['amount', 'beneficiary', 'lines', 'reference'],
         );
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('UNBINDABLE_BODY');
     }
@@ -449,7 +450,7 @@ it('validates the nested payload BEFORE hydrating it, so a 422 still beats the 4
             'amount' => 1,
             'beneficiary' => ['street' => '', 'postcode' => ''],
         ], transferShapes(), valid: true);
-        $this->fail('Expected ValidationException');
+        Assert::fail('Expected ValidationException');
     } catch (ValidationException $e) {
         expect($e->httpStatus())->toBe(422);
     }
@@ -462,7 +463,7 @@ it('throws MISSING_PARAMETER (400) for an absent REQUIRED header instead of a co
         resolverFor()->resolve([
             ['name' => 'tenant', 'kind' => 'header', 'key' => 'X-Tenant', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MISSING_PARAMETER');
     }
@@ -485,7 +486,7 @@ it('throws TYPE_CONVERSION_ERROR (400) for a header that will not coerce', funct
         resolverFor()->resolve([
             ['name' => 'version', 'kind' => 'header', 'key' => 'X-Api-Version', 'type' => 'int', 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('TYPE_CONVERSION_ERROR');
     }
@@ -522,7 +523,7 @@ it('throws MISSING_PARAMETER (400) for an absent REQUIRED uploaded file instead 
         resolverFor()->resolve([
             ['name' => 'avatar', 'kind' => 'file', 'key' => 'avatar', 'type' => UploadedFile::class, 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->httpStatus())->toBe(400)->and($e->errorCode())->toBe('MISSING_PARAMETER');
     }
@@ -543,7 +544,7 @@ it('throws TYPE_CONVERSION_ERROR (400) when a multi-file field is bound to a sin
         resolverFor()->resolve([
             ['name' => 'avatar', 'kind' => 'file', 'key' => 'avatar', 'type' => UploadedFile::class, 'required' => true, 'default' => null, 'valid' => false, 'properties' => []],
         ], $request, new Container);
-        $this->fail('Expected InvalidRequestException');
+        Assert::fail('Expected InvalidRequestException');
     } catch (InvalidRequestException $e) {
         expect($e->errorCode())->toBe('TYPE_CONVERSION_ERROR');
     } finally {
@@ -564,7 +565,7 @@ it('refuses an ENUM-typed property with a 400 rather than letting "cannot instan
     foreach ([['value' => 'EUR'], 'EUR'] as $currency) {
         try {
             resolveBody(PricedRequest::class, ['cents' => 100, 'currency' => $currency], $shapes);
-            $this->fail('Expected InvalidRequestException');
+            Assert::fail('Expected InvalidRequestException');
         } catch (InvalidRequestException $e) {
             expect($e->httpStatus())->toBe(400)
                 ->and($e->errorCode())->toBe('UNBINDABLE_BODY')
@@ -590,7 +591,7 @@ it('answers a path variable that misses its pattern with the entity\'s own 404 b
         resolverFor()->resolve([
             ['name' => 'roomId', 'kind' => 'path', 'key' => 'roomId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => PathVariable::UUID, 'notFoundCode' => 'ROOM_NOT_FOUND', 'notFoundMessage' => 'That room does not exist, or is not yours.'],
         ], $request, new Container);
-        $this->fail('Expected ResourceNotFoundException');
+        Assert::fail('Expected ResourceNotFoundException');
     } catch (ResourceNotFoundException $e) {
         expect($e->httpStatus())->toBe(404)
             ->and($e->errorCode())->toBe('ROOM_NOT_FOUND')
@@ -626,7 +627,7 @@ it('falls back to RESOURCE_NOT_FOUND and a sentence derived from the parameter n
         resolverFor()->resolve([
             ['name' => 'planStepId', 'kind' => 'path', 'key' => 'planStepId', 'type' => 'string', 'required' => true, 'default' => null, 'valid' => false, 'properties' => [], 'pattern' => '[0-9]+'],
         ], $request, new Container);
-        $this->fail('Expected ResourceNotFoundException');
+        Assert::fail('Expected ResourceNotFoundException');
     } catch (ResourceNotFoundException $e) {
         expect($e->errorCode())->toBe('RESOURCE_NOT_FOUND')
             ->and($e->getMessage())->toBe('That plan step does not exist.');

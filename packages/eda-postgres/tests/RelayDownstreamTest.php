@@ -13,6 +13,7 @@ use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Config\Repository as RepositoryContract;
 use Illuminate\Database\SQLiteConnection;
+use PHPUnit\Framework\Assert;
 
 /**
  * THE RELAY-CAN-NEVER-WORK GATE.
@@ -80,7 +81,7 @@ it('resolves a downstream named directly by its class-string', function () {
 
 it('builds the shipped rabbitmq adapter from its own config keys when the package is installed', function () {
     if (! class_exists('Firefly\\Eda\\Rabbitmq\\RabbitMqEventPublisher')) {
-        $this->markTestSkipped('firefly/eda-rabbitmq is not installed in this environment.');
+        Assert::markTestSkipped('firefly/eda-rabbitmq is not installed in this environment.');
     }
 
     [$container, $config] = relayEnv([

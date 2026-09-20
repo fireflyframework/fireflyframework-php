@@ -36,6 +36,8 @@ Thumbs.db
 *.log
 /coverage/
 /.claude/
+# Browser-test screenshots (artifacts, regenerated every run)
+/tests/Browser/Screenshots/
 
 # Local design-review artifacts, at the repo ROOT only — book/art and docs/assets are tracked, so this
 # must never be a blanket *.png.

@@ -11,6 +11,7 @@ use Firefly\Eda\Kafka\EdaKafkaServiceProvider;
 use Firefly\Eda\Kafka\KafkaHealthIndicator;
 use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
+use PHPUnit\Framework\Assert;
 
 /**
  * Regression gate for the SP-4 "surprise /actuator/health 503" precedent (RabbitMqHealthIndicatorGatingTest /
@@ -59,7 +60,7 @@ function buildKafkaApplication(?string $provider): Application
 
 it('(A) refuses to boot under provider=kafka with a clear ext-rdkafka error when the extension is absent', function () {
     if (extension_loaded('rdkafka')) {
-        $this->markTestSkipped('rdkafka present — the fail-fast guard path is not exercised.');
+        Assert::markTestSkipped('rdkafka present — the fail-fast guard path is not exercised.');
     }
 
     $app = buildKafkaApplication('kafka');
