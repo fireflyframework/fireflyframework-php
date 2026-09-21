@@ -50,7 +50,7 @@ final readonly class TokenSettings
             self::seconds($data, 'access_token_ttl', $defaults->accessTokenTtl, $client),
             $parsed,
             self::seconds($data, 'refresh_token_ttl', $defaults->refreshTokenTtl, $client),
-            (bool) ($data['reuse_refresh_tokens'] ?? $defaults->reuseRefreshTokens),
+            self::bool($data, 'reuse_refresh_tokens', $defaults->reuseRefreshTokens, $client),
             self::seconds($data, 'authorization_code_ttl', $defaults->authorizationCodeTtl, $client),
             self::seconds($data, 'id_token_ttl', $defaults->idTokenTtl, $client),
         );
@@ -82,5 +82,28 @@ final readonly class TokenSettings
         }
 
         return $value;
+    }
+
+    /**
+     * The rule Config::bool() applies to the server-wide `refresh_token.reuse`: a real bool, or a string/int
+     * filter_var recognises (`"off"`, `"no"`, `"0"` are false), and a refusal at boot for anything else. This is
+     * the switch that turns rotation and reuse detection OFF, so a raw `(bool)` cast — which reads `"false"`
+     * and `"off"` as true — would silently pick the weaker setting for a client whose block says
+     * `env('WEBAPP_REUSE')` with `WEBAPP_REUSE=off`.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    private static function bool(array $data, string $key, bool $default, string $client): bool
+    {
+        $value = $data[$key] ?? $default;
+        if (is_bool($value)) {
+            return $value;
+        }
+        $normalized = is_string($value) || is_int($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
+        if ($normalized === null) {
+            throw new ConfigurationException("Client [{$client}]: token_settings.{$key} must be true or false.");
+        }
+
+        return $normalized;
     }
 }

@@ -6,14 +6,20 @@ namespace Firefly\Security\OAuth2\Server\Client;
 
 use DateTimeImmutable;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use JsonSerializable;
 
 /**
  * A client that may ask this server for tokens (Spring's RegisteredClient): its credentials, the methods it may
  * authenticate with, the grants it may use, the exact redirect URIs it may be sent back to, the scopes it may
  * ask for, and its own settings. Immutable; the secret is the ENCODED form (`{bcrypt}…`) the PasswordEncoder
- * verifies, and __debugInfo() masks it so a dump, a log context or an exception page never prints it.
+ * verifies — and even encoded it stays out of the places a client object tends to end up by accident. Two paths
+ * mask it: __debugInfo() covers print_r, var_dump and Symfony's VarDumper, and jsonSerialize() covers
+ * json_encode() and a Monolog log context (`Log::info('…', ['client' => $client])` — Monolog's normalizer
+ * json-encodes a plain object's public properties and never consults __debugInfo, so the interface is the only
+ * thing that keeps the secret out of the application log). Only an explicit `(array)` cast or a direct read of
+ * `$client->clientSecret` reaches the value.
  */
-final readonly class RegisteredClient
+final readonly class RegisteredClient implements JsonSerializable
 {
     /**
      * @param  list<ClientAuthenticationMethod>  $clientAuthenticationMethods
@@ -98,9 +104,12 @@ final readonly class RegisteredClient
     }
 
     /**
+     * The masked view Monolog and json_encode() see: the secret is replaced by a fixed placeholder (or null when
+     * the client has none), the enums by their wire values.
+     *
      * @return array<string,mixed>
      */
-    public function __debugInfo(): array
+    public function jsonSerialize(): array
     {
         return [
             'id' => $this->id,
@@ -112,5 +121,13 @@ final readonly class RegisteredClient
             'redirectUris' => $this->redirectUris,
             'scopes' => $this->scopes,
         ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function __debugInfo(): array
+    {
+        return $this->jsonSerialize();
     }
 }

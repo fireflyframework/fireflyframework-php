@@ -478,7 +478,10 @@ return [
                  | `client_secret` is the ENCODED secret — `{bcrypt}$2y$…` (password_hash), `{argon2id}…`, or
                  | `{noop}plain` in development only; a value with no {id} prefix is refused at boot because the
                  | encoder would never match it. `client_settings.jwk_set` is the decoded JWKS a private_key_jwt
-                 | client signs its assertions with.
+                 | client signs its assertions with. `require_pkce`, `require_authorization_consent` and
+                 | `reuse_refresh_tokens` follow the same rule as every other boolean key: true/false, or a string
+                 | env() may hand back ("on"/"off", "yes"/"no", "1"/"0"); anything else is refused at boot rather
+                 | than cast.
                 */
                 'clients' => [
                     'driver' => env('FIREFLY_OAUTH2_SERVER_CLIENTS_DRIVER', 'memory'),

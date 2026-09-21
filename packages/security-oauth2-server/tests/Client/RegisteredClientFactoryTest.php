@@ -9,6 +9,9 @@ use Firefly\Security\OAuth2\Server\Client\RegisteredClient;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientFactory;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Settings\OAuth2TokenFormat;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Level;
+use Monolog\LogRecord;
 
 /** @param array<string,mixed> $block */
 function clientFrom(array $block, ?AuthorizationServerSettings $settings = null): RegisteredClient
@@ -79,10 +82,32 @@ it('inherits consent.required from the server when the client says nothing', fun
     expect(clientFrom(['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb']], new AuthorizationServerSettings(consentRequired: false))->clientSettings->requireAuthorizationConsent)->toBeFalse();
 });
 
-it('masks the secret in a dump', function () {
-    $dump = print_r(clientFrom(['client_secret' => '{bcrypt}$2y$10$abcdefghijklmnopqrstuv', 'redirect_uris' => ['https://a.test/cb']]), true);
+it('masks the secret in a dump, in json_encode and in a Monolog log context', function () {
+    $client = clientFrom(['client_secret' => '{bcrypt}$2y$10$abcdefghijklmnopqrstuv', 'redirect_uris' => ['https://a.test/cb']]);
 
-    expect($dump)->toContain('web-app')->not->toContain('abcdefghijklmnopqrstuv');
+    $dump = print_r($client, true);
+    $json = json_encode($client, JSON_THROW_ON_ERROR);
+    // Monolog's NormalizerFormatter json-encodes any object it finds in the context; without JsonSerializable it
+    // would serialise the public properties — secret included — and never consult __debugInfo.
+    $line = (new LineFormatter)->format(new LogRecord(new DateTimeImmutable, 'app', Level::Info, 'client', ['client' => $client]));
+
+    expect($dump)->toContain('web-app')->not->toContain('abcdefghijklmnopqrstuv')
+        ->and($json)->toContain('"clientId":"web-app"')->toContain('"clientSecret":"********"')->not->toContain('abcdefghijklmnopqrstuv')
+        ->and($line)->toContain('web-app')->not->toContain('abcdefghijklmnopqrstuv')
+        ->and(json_encode(clientFrom(['client_authentication_methods' => ['none'], 'redirect_uris' => ['https://a.test/cb']]), JSON_THROW_ON_ERROR))->toContain('"clientSecret":null');
+});
+
+it('reads the three client switches with the rule Config::bool() applies, so "off" and "0" mean false', function () {
+    $client = clientFrom([
+        'client_secret' => '{noop}s',
+        'redirect_uris' => ['https://a.test/cb'],
+        'client_settings' => ['require_pkce' => 'on', 'require_authorization_consent' => '0'],
+        'token_settings' => ['reuse_refresh_tokens' => 'off'],
+    ], new AuthorizationServerSettings(reuseRefreshTokens: true));
+
+    expect($client->clientSettings->requireProofKey)->toBeTrue()
+        ->and($client->clientSettings->requireAuthorizationConsent)->toBeFalse()
+        ->and($client->tokenSettings->reuseRefreshTokens)->toBeFalse();
 });
 
 it('refuses at boot every block that could not authenticate or redirect safely, naming the client', function (array $block, string $needle) {
@@ -99,6 +124,11 @@ it('refuses at boot every block that could not authenticate or redirect safely, 
     'redirect uri with a fragment' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb#x']], 'fragment'],
     'private_key_jwt without jwk_set' => [['client_authentication_methods' => ['private_key_jwt'], 'redirect_uris' => ['https://a.test/cb']], 'jwk_set'],
     'bad format' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'token_settings' => ['access_token_format' => 'jwt']], 'access_token_format'],
+    'bad ttl' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'token_settings' => ['access_token_ttl' => '300']], 'access_token_ttl'],
+    'reuse_refresh_tokens not a bool' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'token_settings' => ['reuse_refresh_tokens' => 'nonsense']], 'token_settings.reuse_refresh_tokens'],
+    'reuse_refresh_tokens garbage, the message states the rule' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'token_settings' => ['reuse_refresh_tokens' => 'maybe']], 'must be true or false'],
+    'require_pkce not a bool' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'client_settings' => ['require_pkce' => 'nonsense']], 'client_settings.require_pkce'],
+    'require_authorization_consent not a bool' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'client_settings' => ['require_authorization_consent' => []]], 'client_settings.require_authorization_consent'],
     'scopes not a list' => [['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb'], 'scopes' => 'openid'], 'scopes'],
 ]);
 

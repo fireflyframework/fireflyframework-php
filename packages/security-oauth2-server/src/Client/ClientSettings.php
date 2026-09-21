@@ -34,8 +34,8 @@ final readonly class ClientSettings
 
         /** @var array<string,mixed>|null $jwkSet */
         return new self(
-            requireProofKey: (bool) ($data['require_pkce'] ?? false),
-            requireAuthorizationConsent: (bool) ($data['require_authorization_consent'] ?? $defaultConsent),
+            requireProofKey: self::bool($data, 'require_pkce', false, $client),
+            requireAuthorizationConsent: self::bool($data, 'require_authorization_consent', $defaultConsent, $client),
             jwkSet: $jwkSet,
         );
     }
@@ -46,5 +46,27 @@ final readonly class ClientSettings
     public function toArray(): array
     {
         return ['require_pkce' => $this->requireProofKey, 'require_authorization_consent' => $this->requireAuthorizationConsent, 'jwk_set' => $this->jwkSet];
+    }
+
+    /**
+     * The rule Config::bool() applies to a server-wide key, so a client block written as `env('WEBAPP_PKCE')`
+     * behaves like every other boolean in the framework: a real bool, or a string/int filter_var recognises
+     * (`"off"`, `"no"`, `"0"` are false), and a refusal at boot for anything else — a raw `(bool)` cast would
+     * read `"false"` and `"off"` as true.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    private static function bool(array $data, string $key, bool $default, string $client): bool
+    {
+        $value = $data[$key] ?? $default;
+        if (is_bool($value)) {
+            return $value;
+        }
+        $normalized = is_string($value) || is_int($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
+        if ($normalized === null) {
+            throw new ConfigurationException("Client [{$client}]: client_settings.{$key} must be true or false.");
+        }
+
+        return $normalized;
     }
 }
