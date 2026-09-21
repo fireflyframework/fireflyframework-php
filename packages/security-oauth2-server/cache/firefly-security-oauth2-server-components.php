@@ -122,9 +122,95 @@ return [
                     1 => 'Illuminate\\Container\\Container',
                 ],
             ],
+            7 => [
+                'method' => 'clientAuthenticator',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Client\\ClientAuthenticator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Client\\RegisteredClientRepository',
+                    1 => 'Firefly\\Security\\Password\\PasswordEncoder',
+                    2 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    3 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            8 => [
+                'method' => 'oauth2Endpoints',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoints',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    1 => 'Firefly\\Security\\OAuth2\\Server\\Web\\AuthorizationServerMetadataEndpoint',
+                    2 => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
+        ],
+    ],
+    2 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\AuthorizationServerMetadataEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+            1 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+        ],
+    ],
+    3 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
+        ],
+    ],
+    4 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2AuthorizationServerFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -82,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoints',
+            1 => 'Firefly\\Config\\Config',
+            2 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
 ];

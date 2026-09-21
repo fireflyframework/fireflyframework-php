@@ -35,6 +35,7 @@
         "firefly/observability": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/security": "*@dev",
+        "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
         "illuminate/cache": "^13.0",

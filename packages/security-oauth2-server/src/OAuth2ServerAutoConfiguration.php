@@ -16,6 +16,7 @@ use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationCons
 use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationConsentService;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
+use Firefly\Security\OAuth2\Server\Client\ClientAuthenticator;
 use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Eloquent\EloquentOAuth2AuthorizationConsentService;
@@ -28,7 +29,12 @@ use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use Firefly\Security\OAuth2\Server\Web\AuthorizationServerMetadataEndpoint;
+use Firefly\Security\OAuth2\Server\Web\JwkSetEndpoint;
+use Firefly\Security\OAuth2\Server\Web\OAuth2Endpoints;
+use Firefly\Security\Password\PasswordEncoder;
 use Illuminate\Container\Container;
+use Psr\Log\LoggerInterface;
 
 /**
  * The authorization server's bean source. Every bean is AND-gated on the master flag and on
@@ -135,6 +141,37 @@ final class OAuth2ServerAutoConfiguration
         return $settings->authorizationsDriver === 'eloquent'
             ? new EloquentOAuth2AuthorizationConsentService(new OAuth2AuthorizationConsentModelRepository(translator: self::translator($container)))
             : new InMemoryOAuth2AuthorizationConsentService;
+    }
+
+    /**
+     * Client authentication for the machine endpoints, over the security core's PasswordEncoder — the same
+     * DelegatingPasswordEncoder that verifies user passwords verifies client secrets, so `{bcrypt}…` and
+     * `{argon2id}…` secrets work without a second encoder to configure.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(ClientAuthenticator::class)]
+    public function clientAuthenticator(RegisteredClientRepository $clients, PasswordEncoder $encoder, AuthorizationServerSettings $settings, ?LoggerInterface $logger = null): ClientAuthenticator
+    {
+        return new ClientAuthenticator($clients, $encoder, $settings, $logger);
+    }
+
+    /**
+     * The address table the filter dispatches by. Every endpoint is a #[Component] built by the container; this
+     * bean only pairs each with its configured path (the two well-known paths are fixed by their specifications).
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2Endpoints::class)]
+    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet): OAuth2Endpoints
+    {
+        return new OAuth2Endpoints($settings, [
+            AuthorizationServerMetadataEndpoint::OPENID_CONFIGURATION => $metadata,
+            AuthorizationServerMetadataEndpoint::OAUTH_AUTHORIZATION_SERVER => $metadata,
+            $settings->jwkSetEndpoint => $jwkSet,
+        ]);
     }
 
     /** firefly/data's translator when its provider is booted (so `exception-translation.enabled` is honoured), the enabled default otherwise. */
