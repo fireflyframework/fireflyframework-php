@@ -155,6 +155,16 @@ it('refuses to boot when the eloquent users driver names a model class that does
     ]))->toThrow(ConfigurationException::class, 'App\\Models\\Nope');
 });
 
+it('refuses to boot when the eloquent users driver names a class that exists but is not an Eloquent model', function () {
+    // The other half of the same promise: a class that autoloads fine but is no Model (the wrong ::class in a
+    // copied line) must not boot cleanly and then be refused by the first loadUserByUsername() — that would be
+    // exactly the first-login 500 the boot-time resolution in SecurityWiringPass exists to rule out.
+    expect(fn () => bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => stdClass::class],
+    ]))->toThrow(ConfigurationException::class, 'not an Eloquent model');
+});
+
 it('binds the eloquent store for a model that exists, and the memory store by default, without touching a database', function () {
     // Neither driver constructs against a connection — the boot harness here binds no database at all —
     // which is what makes the eager resolution in SecurityWiringPass free.

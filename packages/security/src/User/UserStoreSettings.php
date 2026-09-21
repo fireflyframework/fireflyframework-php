@@ -6,6 +6,7 @@ namespace Firefly\Security\User;
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * `firefly.security.users`: which store answers loadUserByUsername(), and how.
@@ -21,8 +22,12 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  * the model has no such flag: every account is enabled, none is locked.
  *
  * fromConfig() is where the refusals live — an unknown driver, an eloquent driver naming no model, a model
- * class that does not exist — and SecurityWiringPass resolves the UserDetailsService bean at boot precisely
- * so those refusals are startup failures rather than the first login's 500.
+ * class that does not exist or is not an Eloquent model — and SecurityWiringPass resolves the UserDetailsService
+ * bean at boot precisely so those refusals are startup failures rather than the first login's 500. The
+ * Model check belongs here and not in the service's lookup: class_exists() has already autoloaded the class,
+ * so asking is_a() at boot costs nothing, and a class that exists but is no model (a repository, a DTO, the
+ * wrong ::class in a copied line) would otherwise boot cleanly and refuse on the first login attempt — the
+ * one outcome the eager resolution exists to prevent.
  */
 final readonly class UserStoreSettings
 {
@@ -59,6 +64,9 @@ final readonly class UserStoreSettings
             }
             if (! class_exists($model)) {
                 throw new ConfigurationException("Refusing to boot: firefly.security.users.model names {$model}, which does not exist.");
+            }
+            if (! is_a($model, Model::class, true)) {
+                throw new ConfigurationException("Refusing to boot: firefly.security.users.model names {$model}, which is not an Eloquent model.");
             }
         }
 

@@ -36,8 +36,12 @@ it('reads the eloquent driver with its documented defaults, and strips the reser
         ->and($settings->accounts)->toBe([]);
 });
 
-it('refuses an unknown driver and an eloquent driver without a model class', function () {
+it('refuses an unknown driver, an eloquent driver without a model class, a class that does not exist and a class that is not an Eloquent model', function () {
     expect(fn () => userStore(['driver' => 'ldap']))->toThrow(ConfigurationException::class, 'driver')
         ->and(fn () => userStore(['driver' => 'eloquent']))->toThrow(ConfigurationException::class, 'model')
-        ->and(fn () => userStore(['driver' => 'eloquent', 'model' => 'App\\Models\\Nope']))->toThrow(ConfigurationException::class, 'App\\Models\\Nope');
+        ->and(fn () => userStore(['driver' => 'eloquent', 'model' => 'App\\Models\\Nope']))->toThrow(ConfigurationException::class, 'App\\Models\\Nope')
+        // A class that exists but is no model would otherwise boot cleanly and be refused on the first login
+        // attempt — the 500 the boot-time resolution exists to prevent — so fromConfig() asks is_a() too.
+        ->and(fn () => userStore(['driver' => 'eloquent', 'model' => stdClass::class]))->toThrow(ConfigurationException::class, 'Eloquent')
+        ->and(fn () => userStore(['driver' => 'eloquent', 'model' => UserStoreSettings::class]))->toThrow(ConfigurationException::class, 'not an Eloquent model');
 });

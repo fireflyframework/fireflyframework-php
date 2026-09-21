@@ -262,7 +262,9 @@ return [
          | encoded string as above), optional `enabled`/`locked` booleans (enabled_column/locked_column —
          | empty means "no such flag"), and `authorities` — a column holding a JSON list (or an `array`
          | cast) or `relation.attribute` to pluck from a relation (`roles.name`). A model class that does
-         | not exist REFUSES TO BOOT.
+         | not exist or is not an Eloquent model REFUSES TO BOOT. A configured column (or relation) the
+         | loaded row does not carry is refused on the lookup, never read as NULL — a locked_column typo
+         | would otherwise unlock every account silently.
          |
          | Defaults: driver 'memory', model '', username_column 'email', password_column 'password',
          | enabled_column '', locked_column '', authorities 'authorities'.

@@ -97,8 +97,9 @@ final class SecurityAutoConfiguration
 
     /**
      * `firefly.security.users.driver`: `memory` (the map, unchanged) or `eloquent` (any Eloquent model, see
-     * EloquentUserDetailsService for the schema). UserStoreSettings refuses an unknown driver and a missing
-     * model class; SecurityWiringPass resolves this bean at boot so that refusal is a startup failure.
+     * EloquentUserDetailsService for the schema). UserStoreSettings refuses an unknown driver, a missing model
+     * class and a class that is not an Eloquent model; SecurityWiringPass resolves this bean at boot so that
+     * refusal is a startup failure.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]

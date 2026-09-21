@@ -65,7 +65,10 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  *
  * (4) USER STORE GUARD: the UserDetailsService bean is resolved, so UserStoreSettings::fromConfig() has run by
  * the time boot completes — an unknown `firefly.security.users.driver`, an `eloquent` driver naming no model, or
- * a model class that does not exist is a ConfigurationException at boot, never a 500 on the first login attempt.
+ * a model class that does not exist or is not an Eloquent model is a ConfigurationException at boot, never a
+ * 500 on the first login attempt. (A column name the row turns out not to carry is the one refusal that cannot
+ * be made at boot, since it needs a row; EloquentUserDetailsService refuses it on the lookup instead of reading
+ * it as NULL — see its docblock for why NULL there would switch account lockout off.)
  * For the shipped store this is a cached lookup: the EagerSingletonsPass (900) constructs every non-#[Lazy]
  * #[Bean] before this phase, and the AuthenticationManager bean takes the store as a constructor argument, so
  * it is built at boot whether or not anything here asks. The explicit resolution is the guarantee stated in one
@@ -137,9 +140,10 @@ final class SecurityWiringPass implements BootPass
 
         $container = $context->container;
 
-        // The user store's refusals (an unknown driver, a model class that does not exist) belong at boot,
-        // not on the first login attempt. Resolving the bean here is enough — and cheap: neither driver
-        // touches the database to construct, and the eager-singletons pass has usually built it already.
+        // The user store's refusals (an unknown driver, a model class that does not exist or is no Eloquent
+        // model) belong at boot, not on the first login attempt. Resolving the bean here is enough — and
+        // cheap: neither driver touches the database to construct, and the eager-singletons pass has usually
+        // built it already.
         $container->make(UserDetailsService::class);
 
         // Validated here as well as in the bean, so a meaningless mode is refused even when http is off and
