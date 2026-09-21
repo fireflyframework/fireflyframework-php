@@ -20,6 +20,11 @@ uses(TestCase::class);
  * `formatted` string is the JSON line an aggregator would ingest. Same channel/handler shape as
  * CorrelationIdLogProcessorTest (a bind() closure so LogManager wires the SAME TestHandler instance).
  *
+ * This is the EARLY path only: the providers are registered after Testbench has booted, so the boot pipeline's
+ * WiringPasses phase is already complete and LogChannelWiringPass never runs here. The boot-time guarantee —
+ * a refusal that survives Laravel swallowing the hook's, and a LogManager resolved before the provider
+ * registered — is Boot/LogChannelWiringPassTest's, over a real Application::boot().
+ *
  * @param  array<string, mixed>  $overrides  config keys set on top of the defaults (more logging.channels.*, another
  *                                           logging.default, an explicit firefly.logging.structured.channels)
  * @return array<string, mixed>
@@ -137,7 +142,9 @@ it('keeps the ids and the formatter on the default channel when channels names i
 it('refuses the first log resolution when channels names a channel logging.channels does not define', function () {
     // The alternative is silence: LogManager::channel('reall') catches its own InvalidArgumentException and
     // returns a throw-away emergency logger, so the processors and the formatter would land on an object nobody
-    // writes to while the real default channel kept plain text without a single id.
+    // writes to while the real default channel kept plain text without a single id. This is the hook's refusal,
+    // the one a caller CAN see when nothing swallows it; the one the application is guaranteed to see is the
+    // pass's, from boot (Boot/LogChannelWiringPassTest).
     config()->set('logging.channels.structured_test', ['driver' => 'monolog', 'handler' => TestHandler::class]);
     config()->set('logging.default', 'structured_test');
     config()->set('firefly.logging.structured.format', 'json');

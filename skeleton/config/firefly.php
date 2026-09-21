@@ -1047,7 +1047,7 @@ return [
              | service.{name,environment}, trace.id, span.id, labels.{correlation_id,request_id}, error.*,
              | context, extra); `logstash` is Monolog's LogstashFormatter (@timestamp, @version, host,
              | message, type, channel, level, monolog_level, fields, context). See docs/modules/logging.md
-             | for one full line of each.
+             | for one full line of each. Anything else refuses to boot.
              |
              | Default: ''.
             */
@@ -1058,8 +1058,9 @@ return [
              | channel (logging.default). A `stack` channel's handlers ARE its members' handlers, so listing
              | the stack formats every member — with `ignore_exceptions` on too, through the group handler
              | Laravel wraps them in. Every name must exist under logging.channels: one that does not refuses
-             | to boot, because Laravel would quietly hand it an emergency logger and the channel you actually
-             | write to would keep plain text without a single id.
+             | to boot (checked at boot, before anything writes a line), because Laravel would quietly hand it
+             | an emergency logger and the channel you actually write to would keep plain text without a
+             | single id.
              |
              | Default: [] (the default channel).
             */

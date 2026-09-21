@@ -36,7 +36,15 @@ use Monolog\Logger as MonologLogger;
  * defined." and hands back a throw-away emergency logger — so without this check a typo would put the id
  * processors and the formatter on an object nobody writes to while the real channel silently kept plain text
  * without a single id. The default fallback is not checked here: a `logging.default` that names nothing is
- * Laravel's own misconfiguration, and its emergency logger is loud about it on every write.
+ * Laravel's own misconfiguration, and its emergency logger is loud about it on every write (LogChannelWiring
+ * skips it, through defines(), rather than building that emergency logger at boot).
+ *
+ * WHEN THE REFUSAL HAPPENS. format() and channels() throw wherever they are called, and LogChannelWiringPass
+ * calls both from Application::boot(), before it touches the log service — THAT is what makes either a
+ * boot-time error. ObservabilityWiringProvider's afterResolving('log') hook calls them too, but a throw from
+ * a resolving callback is not something the application can be relied on to see: Container::resolve() has
+ * cached the singleton by then, and Laravel's exception handler swallows whatever the first resolution of
+ * `log` throws when that resolution is its own report() — see the pass.
  *
  * The service name is the same one tracing uses (`tracing.service-name`, else app.name) so a span and a log
  * line agree on who wrote them.
@@ -49,7 +57,10 @@ final class StructuredLogging
 
     public function __construct(private readonly Config $config) {}
 
-    /** `''` (off), `json`, `ecs` or `logstash`; anything else is a boot-time error. */
+    /**
+     * `''` (off), `json`, `ecs` or `logstash`; anything else is a ConfigurationException — a boot-time error,
+     * because LogChannelWiringPass calls this from Application::boot().
+     */
     public function format(): string
     {
         $format = $this->config->string('firefly.logging.structured.format', '');
@@ -64,7 +75,9 @@ final class StructuredLogging
     }
 
     /**
-     * The configured list, each name checked against `logging.channels`; `[logging.default]` when it is empty.
+     * The configured list, each name checked against `logging.channels` (one that is not defined there is a
+     * ConfigurationException — a boot-time error, because LogChannelWiringPass calls this from
+     * Application::boot()); `[logging.default]` when it is empty, unchecked.
      *
      * @return list<string>
      */
@@ -76,8 +89,7 @@ final class StructuredLogging
                 continue;
             }
 
-            // The exact test LogManager::resolve() fails on (`is_null($config)`) — Repository::has() would say yes to a null entry.
-            if ($this->config->get("logging.channels.{$channel}") === null) {
+            if (! $this->defines($channel)) {
                 throw new ConfigurationException(
                     "Unknown log channel '{$channel}' (firefly.logging.structured.channels); it is not defined under logging.channels.",
                 );
@@ -91,6 +103,15 @@ final class StructuredLogging
         }
 
         return [$this->config->string('logging.default', 'stack')];
+    }
+
+    /**
+     * Whether `logging.channels.<name>` is defined — the exact test LogManager::resolve() fails on
+     * (`is_null($config)`), which Repository::has() would get wrong for a null entry.
+     */
+    public function defines(string $channel): bool
+    {
+        return $this->config->get("logging.channels.{$channel}") !== null;
     }
 
     public function formatter(): ?FormatterInterface

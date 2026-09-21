@@ -37,6 +37,9 @@ use Illuminate\Foundation\Application;
  * write is outside LogManager's own try/catch). Fix: configure a real, filesystem-free default channel
  * (`errorlog`, a stock Monolog driver Laravel ships) so `driver()` resolves successfully and the emergency path is
  * never hit. This config is passed straight through to the harness's `fireflyApplication()` factory unchanged.
+ * (LogChannelWiring has since stopped building an UNDEFINED default channel — it skips it, and so does the
+ * LogChannelWiringPass that now resolves `log` at every boot — but a defined, filesystem-free channel is still
+ * what lets the bridge's own writes, and this test's boot, stay off the emergency path.)
  *
  * @param  array<string, mixed>  $observability
  */

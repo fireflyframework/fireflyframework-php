@@ -73,6 +73,14 @@ it('rejects a channel that logging.channels does not define', function () {
     expect(structuredLogging([], ['default' => 'nowhere', 'channels' => []])->channels())->toBe(['nowhere']);
 });
 
+it('tells a defined channel from an undefined or null one the way LogManager::resolve() does', function () {
+    $structured = structuredLogging([], ['default' => 'stack', 'channels' => ['stack' => ['driver' => 'stack'], 'gone' => null]]);
+
+    expect($structured->defines('stack'))->toBeTrue()
+        ->and($structured->defines('gone'))->toBeFalse()
+        ->and($structured->defines('reall'))->toBeFalse();
+});
+
 it('applies the formatter to every formattable handler in place and pushes the service-context processor', function () {
     $test = new TestHandler;
     $test->setFormatter(new LineFormatter);
