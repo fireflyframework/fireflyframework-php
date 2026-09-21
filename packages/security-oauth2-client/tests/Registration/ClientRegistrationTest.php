@@ -11,6 +11,10 @@ use Monolog\Formatter\JsonFormatter;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Level;
 use Monolog\LogRecord;
+use Symfony\Component\Process\Process;
+use Symfony\Component\VarDumper\Cloner\AbstractCloner;
+use Symfony\Component\VarDumper\Cloner\VarCloner;
+use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /** @param list<string> $scopes */
 function registration(array $scopes = ['openid', 'profile'], ClientAuthenticationMethod $method = ClientAuthenticationMethod::ClientSecretBasic, bool $pkce = true): ClientRegistration
@@ -39,14 +43,52 @@ it('knows whether it is an OpenID registration, a public client, and whether PKC
         ->and(registration(method: ClientAuthenticationMethod::None, pkce: false)->usesPkce())->toBeTrue();
 });
 
-it('never prints its client secret through a dump', function () {
-    $dump = print_r(registration(), true);
+it('never prints its client secret through print_r or var_dump', function () {
+    $printed = print_r(registration(), true);
+    ob_start();
+    var_dump(registration());
+    $varDump = (string) ob_get_clean();
     $debug = registration()->__debugInfo();
 
-    expect($dump)->not->toContain('a-very-secret-value')
+    expect($printed)->not->toContain('a-very-secret-value')
+        ->and($varDump)->not->toContain('a-very-secret-value')
+        ->and($varDump)->toContain('["clientSecret"]=>')
         ->and($debug['clientSecret'])->toBe('***')
         ->and($debug['clientId'])->toBe('app')
         ->and(registration(method: ClientAuthenticationMethod::None)->__debugInfo()['clientSecret'])->toBe('');
+});
+
+it('never prints its client secret through dd() or dump(), which read the raw properties before __debugInfo()', function () {
+    // Laravel's dd() and dump() are Symfony VarDumper's, and VarDumper's cloner takes `(array) $object` FIRST and
+    // appends __debugInfo() as virtual entries — so without the caster the raw secret printed right above the masked
+    // copy. The caster masks the property and drops the virtual copy, so the registration dumps once.
+    $dumper = new CliDumper;
+    $dumper->setColors(false);
+    $dump = (string) $dumper->dump((new VarCloner)->cloneVar(registration()), true);
+    $nested = (string) $dumper->dump((new VarCloner)->cloneVar(['registration' => registration()]), true);
+    $public = (string) $dumper->dump((new VarCloner)->cloneVar(registration(method: ClientAuthenticationMethod::None)), true);
+
+    expect(AbstractCloner::$defaultCasters[ClientRegistration::class] ?? null)->toBe([ClientRegistration::class, 'castForDumper'])
+        ->and($dump)->not->toContain('a-very-secret-value')
+        ->and($dump)->toContain('+clientSecret: "***"')
+        ->and($dump)->toContain('+clientId: "app"')
+        ->and(substr_count($dump, 'clientSecret'))->toBe(1)
+        ->and($nested)->not->toContain('a-very-secret-value')
+        ->and($nested)->toContain('+clientSecret: "***"')
+        ->and($public)->toContain('+clientSecret: ""');
+});
+
+it('registers the dd() caster from the autoloader, so it is in place before Laravel builds the cloner behind dd()', function () {
+    // Laravel's FoundationServiceProvider builds the VarCloner behind dd() in its own register(), before any package
+    // provider runs, and a cloner copies AbstractCloner::$defaultCasters when it is constructed — a caster a service
+    // provider registered would never reach it. Only a fresh process can prove the caster does not depend on a boot:
+    // in THIS process an earlier test may already have booted the package's providers.
+    $process = new Process([PHP_BINARY, dirname(__DIR__).'/Fixtures/dump-registration.php']);
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput())
+        ->and($process->getOutput())->not->toContain('a-very-secret-value')
+        ->and($process->getOutput())->toContain('+clientSecret: "***"');
 });
 
 it('never prints its client secret through json_encode or a log context', function () {

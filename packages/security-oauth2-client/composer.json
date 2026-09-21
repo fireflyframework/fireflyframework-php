@@ -38,6 +38,9 @@
         "illuminate/session": "^13.0",
         "illuminate/support": "^13.0"
     },
+    "suggest": {
+        "symfony/var-dumper": "What dd() and dump() are built on; the package registers a caster so a dumped ClientRegistration shows its client secret masked (laravel/framework already requires it)."
+    },
     "extra": {
         "laravel": {
             "providers": [
@@ -52,7 +55,10 @@
     "autoload": {
         "psr-4": {
             "Firefly\\Security\\OAuth2\\Client\\": "src/"
-        }
+        },
+        "files": [
+            "src/Registration/casters.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
