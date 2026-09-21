@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Closure;
 use Firefly\Config\Config;
 use Firefly\Security\Authentication\DaoAuthenticationProvider;
 use Firefly\Security\Authentication\ProviderManager;
@@ -26,7 +25,6 @@ use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Orchestra\Testbench\TestCase;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 uses(TestCase::class);
