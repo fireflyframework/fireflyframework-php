@@ -11,6 +11,8 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\Client\Authorized\CacheOAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\DefaultOAuth2AuthorizedClientManager;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientManager;
 use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientRepository;
 use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientService;
 use Firefly\Security\OAuth2\Client\Authorized\SessionOAuth2AuthorizedClientRepository;
@@ -113,6 +115,19 @@ final class OAuth2ClientAutoConfiguration
     public function oauth2AuthorizedClientService(Cache $cache, Container $container, OAuth2ClientSettings $settings): OAuth2AuthorizedClientService
     {
         return new CacheOAuth2AuthorizedClientService($cache, $container, $settings);
+    }
+
+    /**
+     * The manager, under the package master alone: client credentials need no inbound security and no login.
+     * The session repository is optional — it exists only with the login half — so a job-only application
+     * gets a manager that reads the cache service and nothing else.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizedClientManager::class)]
+    public function oauth2AuthorizedClientManager(ClientRegistrationRepository $registrations, OAuth2AccessTokenResponseClient $tokens, OAuth2AuthorizedClientService $service, OAuth2ClientSettings $settings, Container $container, ?OAuth2AuthorizedClientRepository $sessionClients = null): OAuth2AuthorizedClientManager
+    {
+        return new DefaultOAuth2AuthorizedClientManager($registrations, $tokens, $service, $settings, $container, $sessionClients);
     }
 
     /** Request-bound: the session, encrypted. Only a login puts anything in it, so it rides with the login half. */

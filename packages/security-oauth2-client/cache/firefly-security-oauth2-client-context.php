@@ -131,6 +131,25 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'oauth2AuthorizedClientManager',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientManager',
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
                 'method' => 'oauth2AuthorizedClientRepository',
                 'conditions' => [
                     0 => [
@@ -157,7 +176,7 @@ return [
                     ],
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'oauth2AuthorizationRequestResolver',
                 'conditions' => [
                     0 => [
@@ -184,7 +203,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'authorizationRequestRepository',
                 'conditions' => [
                     0 => [
@@ -211,7 +230,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'loginPageLinks',
                 'conditions' => [
                     0 => [
@@ -238,7 +257,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'logoutSuccessHandler',
                 'conditions' => [
                     0 => [
@@ -273,7 +292,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'userInfoClient',
                 'conditions' => [
                     0 => [
@@ -300,7 +319,7 @@ return [
                     ],
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'oauth2UserService',
                 'conditions' => [
                     0 => [
@@ -327,7 +346,7 @@ return [
                     ],
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'oidcUserService',
                 'conditions' => [
                     0 => [
@@ -354,7 +373,7 @@ return [
                     ],
                 ],
             ],
-            14 => [
+            15 => [
                 'method' => 'oauth2LoginAuthenticationProvider',
                 'conditions' => [
                     0 => [

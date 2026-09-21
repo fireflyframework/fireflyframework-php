@@ -97,6 +97,23 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'oauth2AuthorizedClientManager',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientManager',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\Token\\OAuth2AccessTokenResponseClient',
+                    2 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientService',
+                    3 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                    4 => 'Illuminate\\Contracts\\Container\\Container',
+                    5 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientRepository',
+                ],
+            ],
+            7 => [
                 'method' => 'oauth2AuthorizedClientRepository',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientRepository',
                 'name' => null,
@@ -108,7 +125,7 @@ return [
                     0 => 'Illuminate\\Contracts\\Container\\Container',
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'oauth2AuthorizationRequestResolver',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2AuthorizationRequestResolver',
                 'name' => null,
@@ -119,7 +136,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'authorizationRequestRepository',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\AuthorizationRequestRepository',
                 'name' => null,
@@ -130,7 +147,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'loginPageLinks',
                 'returns' => 'Firefly\\Security\\Web\\Login\\LoginPageLinks',
                 'name' => null,
@@ -144,7 +161,7 @@ return [
                     2 => 'Psr\\Log\\LoggerInterface',
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'logoutSuccessHandler',
                 'returns' => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
                 'name' => null,
@@ -160,7 +177,7 @@ return [
                     4 => 'Psr\\Log\\LoggerInterface',
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'userInfoClient',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 'name' => null,
@@ -173,7 +190,7 @@ return [
                     1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'oauth2UserService',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OAuth2UserService',
                 'name' => null,
@@ -185,7 +202,7 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'oidcUserService',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OidcUserService',
                 'name' => null,
@@ -197,7 +214,7 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 ],
             ],
-            14 => [
+            15 => [
                 'method' => 'oauth2LoginAuthenticationProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\Login\\OAuth2LoginAuthenticationProvider',
                 'name' => null,

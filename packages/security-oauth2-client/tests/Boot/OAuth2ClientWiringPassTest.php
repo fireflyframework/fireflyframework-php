@@ -7,6 +7,8 @@ use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Client\Authorized\CacheOAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\DefaultOAuth2AuthorizedClientManager;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientManager;
 use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientRepository;
 use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientService;
 use Firefly\Security\OAuth2\Client\Authorized\SessionOAuth2AuthorizedClientRepository;
@@ -124,4 +126,20 @@ it('fetches nothing at boot by default, and with discovery.eager resolves every 
     $dead->fake([$issuer.'/.well-known/openid-configuration' => HttpFactory::response('', 503)]);
     expect(fn () => bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'discovery' => ['eager' => true], 'registration' => $registration, 'provider' => $provider]]], [HttpFactory::class => $dead]))
         ->toThrow(ProviderDiscoveryException::class, 'sso.example.com');
+});
+
+it('binds the manager under the package master alone, and registers the Http macro unless http.macro is off', function () {
+    HttpFactory::flushMacros();
+    /** @var ApplicationContext $context */
+    $context = bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'registration' => ['github' => ['client_id' => 'x', 'client_secret' => 's']]]]])->make(ApplicationContext::class);
+
+    expect($context->get(OAuth2AuthorizedClientManager::class))->toBeInstanceOf(DefaultOAuth2AuthorizedClientManager::class)
+        ->and(HttpFactory::hasMacro('oauth2Client'))->toBeTrue();
+
+    HttpFactory::flushMacros();
+    bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'http' => ['macro' => false]]]]);
+    expect(HttpFactory::hasMacro('oauth2Client'))->toBeFalse();
+
+    bootOAuth2ClientAppWith([]);
+    expect(HttpFactory::hasMacro('oauth2Client'))->toBeTrue();
 });
