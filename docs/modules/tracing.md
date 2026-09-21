@@ -96,6 +96,13 @@ and the NoOp stays: every instrumentation site costs a few method calls and publ
   `ParentBased` so an inbound `traceparent`'s sampled flag wins.
 - **Resource**: the SDK's defaults plus `service.name` (`tracing.service-name`, else `app.name`),
   `deployment.environment.name` (`app.env`) and `tracing.resource-attributes`.
+- **Fibers**: the API's context storage is fiber-bound — one scope stack per `Fiber` — and a fiber that reads
+  its context before anything was attached in it raises `E_USER_WARNING` (`must attach initial fiber context
+  manually`), an `ErrorException` under Laravel's handler. `OpenTelemetryTracer` attaches the root context to
+  the current fiber once, before its first `startSpan()`/`currentSpan()` read there, and only when the fiber
+  has no context yet — so a request handled inside a fiber (the browser suite's in-process server, an Amp or
+  ReactPHP application server) gets a trace of its own instead of a 500, and a scope the application or the
+  FFI fiber observer (`OTEL_PHP_FIBERS_ENABLED`) already put in the fiber is nested under, never shadowed.
 
 ## Configuration (`firefly.observability.tracing.*`, kebab-case)
 

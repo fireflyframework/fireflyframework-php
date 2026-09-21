@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Observability\Tracing\OpenTelemetry;
 
+use Fiber;
 use Firefly\Observability\Tracing\Span;
 use Firefly\Observability\Tracing\SpanContext;
 use Firefly\Observability\Tracing\SpanKind;
@@ -19,6 +20,7 @@ use OpenTelemetry\API\Trace\TraceState;
 use OpenTelemetry\Context\Context;
 use OpenTelemetry\Context\ContextInterface;
 use Throwable;
+use WeakMap;
 
 /**
  * The Tracer port over the OpenTelemetry API. Built over a TracerProviderInterface rather than the SDK's
@@ -36,9 +38,13 @@ final class OpenTelemetryTracer implements Tracer
 
     private readonly TracerInterface $tracer;
 
+    /** @var WeakMap<object, true> the fibers whose OTel context this tracer has already initialised (keyed by the Fiber object; a Fiber has no generic-free type PHPStan accepts as a WeakMap key) */
+    private WeakMap $initialisedFibers;
+
     public function __construct(private readonly TracerProviderInterface $provider)
     {
         $this->tracer = $provider->getTracer(self::SCOPE);
+        $this->initialisedFibers = new WeakMap;
     }
 
     public function provider(): TracerProviderInterface
@@ -48,6 +54,8 @@ final class OpenTelemetryTracer implements Tracer
 
     public function startSpan(string $name, SpanKind $kind = SpanKind::Internal, array $attributes = [], ?SpanContext $parent = null): Span
     {
+        $this->ensureFiberContext();
+
         $builder = $this->tracer->spanBuilder($name === '' ? 'unnamed' : $name)->setSpanKind(self::kind($kind));
 
         // On the builder rather than on the started span, so a sampler that looks at attributes sees them.
@@ -66,6 +74,8 @@ final class OpenTelemetryTracer implements Tracer
 
     public function currentSpan(): ?Span
     {
+        $this->ensureFiberContext();
+
         $current = OtelSpan::getCurrent();
 
         return $current->getContext()->isValid() ? new OpenTelemetrySpan($current, null) : null;
@@ -91,6 +101,62 @@ final class OpenTelemetryTracer implements Tracer
         } finally {
             $span->end();
         }
+    }
+
+    /**
+     * Initialise the OTel context of the fiber this call runs in, once per fiber.
+     *
+     * The API's context storage is FIBER-BOUND: every fiber has its own scope stack, and a read from a fiber in
+     * which nothing was ever attached raises E_USER_WARNING ("must attach initial fiber context manually") —
+     * which Laravel's error handler turns into an ErrorException, i.e. a 500 on the first traced request a
+     * fiber-based server hands the framework (the browser test plugin's in-process AMP server, an Amp or
+     * ReactPHP application server). Every span this tracer starts, and every currentSpan() read, is such a
+     * read. The API's own remedy is the FFI fiber observer (OTEL_PHP_FIBERS_ENABLED) or attaching the
+     * initial context by hand; this is the by-hand attach, done where the framework knows it is about to read.
+     *
+     * The root context is attached, never the main fiber's current context: a request handled in a fiber
+     * must not nest under whatever span the main fiber happens to hold. It is attached at most once per
+     * fiber (the WeakMap forgets the fiber with the fiber) and ONLY when the fiber has no context yet — an
+     * application's own scope, or the FFI observer, may have initialised it first, and pushing a root over
+     * that scope would silently make the framework's span a root instead of that scope's child. The node is
+     * never detached: it is the fiber's floor, and the fiber's stack is dropped with the fiber.
+     */
+    private function ensureFiberContext(): void
+    {
+        $fiber = Fiber::getCurrent();
+        if ($fiber === null || isset($this->initialisedFibers[$fiber])) {
+            return;
+        }
+        $this->initialisedFibers[$fiber] = true;
+
+        if (self::fiberHasContext()) {
+            return;
+        }
+
+        Context::storage()->attach(Context::getRoot());
+    }
+
+    /**
+     * Whether the current fiber's context is already initialised. The storage offers no query for it — the
+     * uninitialised read IS the signal, raised as E_USER_WARNING — so the probe reads under a handler that
+     * records the warning and swallows it, instead of leaving it to Laravel's handler to throw.
+     */
+    private static function fiberHasContext(): bool
+    {
+        $initialised = true;
+        set_error_handler(static function () use (&$initialised): bool {
+            $initialised = false;
+
+            return true;
+        }, E_USER_WARNING);
+
+        try {
+            Context::storage()->scope();
+        } finally {
+            restore_error_handler();
+        }
+
+        return $initialised;
     }
 
     private function remoteParent(SpanContext $parent): ContextInterface
