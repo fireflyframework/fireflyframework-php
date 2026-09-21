@@ -1,0 +1,66 @@
+{
+    "name": "firefly/security-oauth2-client",
+    "description": "LaraFly OAuth2 client and OpenID Connect login — Spring Security's oauth2Login() and oauth2Client() on the firefly/security core: client registrations with Google/GitHub/Okta/Keycloak/Microsoft presets and OIDC discovery, authorization-code login with PKCE and a nonce, id-token validation against the provider's JWKS, userinfo mapping to OidcUser/OAuth2User principals with a GrantedAuthoritiesMapper seam, the framework login page listing every provider, RP-initiated logout, an authorized-client manager for client-credentials and refresh flows, and an Http::oauth2Client() macro. Off by default, fail-closed.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "oauth2",
+        "openid-connect",
+        "security"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/security-oauth2-client"
+    },
+    "require": {
+        "php": "^8.3",
+        "firebase/php-jwt": "^7.0",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/security": "*@dev",
+        "firefly/web": "*@dev",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/session": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientServiceProvider",
+                "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Security\\OAuth2\\Client\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Security\\OAuth2\\Client\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "sort-packages": true
+    }
+}

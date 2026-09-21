@@ -78,6 +78,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/security/src/.*
+    - name: SecurityOAuth2Client
+      collectors:
+        - type: directory
+          value: packages/security-oauth2-client/src/.*
     - name: Actuator
       collectors:
         - type: directory
@@ -308,6 +312,20 @@ deptrac:
       - Data
       - Cqrs
       - Validation
+
+    # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
+    # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and
+    # settings, extends Web's filter base, carries Container/Context attributes, reads Config, reuses Kernel
+    # exceptions and extends AutoConfigure's base. Security never depends on it (the login page and the
+    # logout filter see it only through ports Security owns). NOTHING depends on it except Testing.
+    SecurityOAuth2Client:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Security
 
     # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
     # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
