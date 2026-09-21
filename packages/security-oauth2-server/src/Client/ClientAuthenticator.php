@@ -24,6 +24,18 @@ use Throwable;
  * key from the client's `jwk_set`, `iss` = `sub` = the client id, `aud` the token endpoint or the issuer, `exp`
  * present) or `none` (a public client, `client_id` alone, only where $allowPublic — the token endpoint).
  *
+ * The Basic pair is decoded as application/x-www-form-urlencoded (RFC 6749 Appendix B, the encoding §2.3.1
+ * names): `+` is a space and `%2B` a plus, exactly what Java's URLEncoder produces and Spring Authorization
+ * Server's URLDecoder reads — so a client id `web app` arrives as `web+app` OR `web%20app` and both authenticate,
+ * and a secret that contains a literal `+` is sent as `%2B`. The scheme is matched ignoring case (RFC 7235
+ * §2.1: an authentication scheme is a case-insensitive token, and HttpBasicFilter matches it the same way), so
+ * `basic …` is a Basic credential and is challenged as one.
+ *
+ * THE BASIC HEADER IS THIS PACKAGE'S TO READ AT ITS ENDPOINTS. HttpBasicFilter (-91) answers every Basic header
+ * it cannot authenticate as a USER with its own 401 and never passes the request on, which is why the boot
+ * refuses `firefly.security.http_basic.enabled` beside the server (OAuth2ServerWiringPass, refusal 4): with it
+ * on, no client_secret_basic request would ever reach the filter at -82 that dispatches here.
+ *
  * The four parameters are read from the PARSED BODY only, never from the query string: RFC 6749 §2.3.1 says
  * they MUST NOT be in the request URI, because a URI ends up in access logs, proxies and Referer headers, and
  * Laravel's Request::input() would quietly merge the two. One of them in the query string is `invalid_request`
@@ -144,7 +156,8 @@ final class ClientAuthenticator
     /**
      * Every method the request presents, in a fixed order: Basic, a JWT assertion, a posted secret, a bare id. The
      * parameters are read with Request::post() — the parsed body and nothing else; the query string is refused by
-     * authenticate() before this is consulted, and would be ignored here in any case.
+     * authenticate() before this is consulted, and would be ignored here in any case. The Basic pair is
+     * form-decoded with urldecode() (never rawurldecode(), which would keep `+` as a plus and refuse `web+app`).
      *
      * @return list<array{0: ClientAuthenticationMethod, 1: string, 2: string|null}>
      */
@@ -153,11 +166,11 @@ final class ClientAuthenticator
         $presented = [];
 
         $header = $request->header('Authorization');
-        if (is_string($header) && str_starts_with($header, 'Basic ')) {
+        if (self::isBasic($header)) {
             $decoded = base64_decode(trim(substr($header, 6)), true);
             $parts = $decoded === false ? [] : explode(':', $decoded, 2);
             if (count($parts) === 2) {
-                $presented[] = [ClientAuthenticationMethod::ClientSecretBasic, rawurldecode($parts[0]), rawurldecode($parts[1])];
+                $presented[] = [ClientAuthenticationMethod::ClientSecretBasic, urldecode($parts[0]), urldecode($parts[1])];
             }
         }
 
@@ -191,11 +204,18 @@ final class ClientAuthenticator
         return null;
     }
 
+    /** Whether the request carries a `Basic` credential, whatever the scheme's case — the token endpoint's challenge follows it. */
     public static function usedBasic(Request $request): bool
     {
-        $header = $request->header('Authorization');
+        return self::isBasic($request->header('Authorization'));
+    }
 
-        return is_string($header) && str_starts_with($header, 'Basic ');
+    /**
+     * @phpstan-assert-if-true string $header
+     */
+    private static function isBasic(mixed $header): bool
+    {
+        return is_string($header) && strncasecmp($header, 'Basic ', 6) === 0;
     }
 
     /**

@@ -393,7 +393,9 @@ return [
              | OAuth2 authorization server (firefly/security-oauth2-server): this application issues the tokens.
              | Requires the master flag AND session security (form_login.enabled, or session.enabled with a sign-in
              | mechanism of your own) — the authorization endpoint needs a session-held user — and cannot run
-             | beside jwt.enabled (the local HMAC filter would reject every token this server issues). Every
+             | beside jwt.enabled (the local HMAC filter would reject every token this server issues) or beside
+             | http_basic.enabled (the Basic filter would answer every client_secret_basic request as a failed
+             | user login before the server saw it; the server authenticates its clients itself). Every
              | endpoint is answered by a filter ordered ahead of the CSRF and URL-rule filters, so no
              | `http.rules` entry and no `csrf.except` pattern is needed for them.
              |

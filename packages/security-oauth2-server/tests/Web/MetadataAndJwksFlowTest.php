@@ -50,6 +50,24 @@ it('serves the JWKS with the current kid first and a public cache header', funct
         ->assertJsonMissingPath('keys.0.d');
 });
 
+// With http_basic.enabled on, HttpBasicFilter (-91) would answer both requests below 401 "Bad credentials." as a
+// user login and publish a failure for username `web-app` — the boot refuses that pairing (see
+// OAuth2ServerBootRefusalTest); here the header passes the chain untouched and the server reads it.
+it('leaves a Basic header at a server endpoint to the server: client credentials, right or wrong, reach the discovery document and fire no user failure event', function () {
+    /** @var OAuth2ServerCapstoneTestCase $this */
+    $secrets = [OAuth2ServerCapstoneTestCase::WEB_APP_SECRET, 'wrong'];
+
+    foreach ($secrets as $secret) {
+        $this->withBasicAuth('web-app', $secret)->getJson('/.well-known/openid-configuration')
+            ->assertOk()
+            ->assertHeaderMissing('WWW-Authenticate')
+            ->assertJsonPath('issuer', 'http://localhost');
+        $this->flushHeaders();
+    }
+
+    expect($this->events->failures())->toBe([]);
+});
+
 it('answers a wrong method with 405, Allow, and the RFC 6749 JSON document', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
     $this->postJson('/oauth2/jwks')

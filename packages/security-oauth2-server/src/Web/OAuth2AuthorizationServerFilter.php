@@ -26,6 +26,14 @@ use Throwable;
  * its authorization-server filters before the authorization filter for the same reason). The consent POST, the
  * one browser form here, is checked against the session token by the endpoint itself.
  *
+ * Two of the filters ahead of -82 do not pass a request on: JwtAuthenticationFilter (-90) answers any bearer it
+ * cannot decode, and HttpBasicFilter (-91) answers any `Authorization: Basic` pair it cannot authenticate as a
+ * user — which is what a `client_secret_basic` credential looks like to it. Neither is exempted here by path,
+ * because neither can be: the request never arrives. Both are settled at boot instead, where
+ * OAuth2ServerWiringPass refuses `firefly.security.jwt.enabled` and `firefly.security.http_basic.enabled`
+ * beside the server, so by the time this filter runs a Basic header at one of its endpoints is the client's,
+ * and ClientAuthenticator reads it.
+ *
  * A request at none of the addresses costs one path comparison per endpoint and passes through. A wrong method
  * is 405 + Allow + the RFC 6749 document. A machine endpoint's OAuth2AuthenticationException becomes that
  * document with its status; anything else it throws is logged at ERROR — the endpoint's class, the exception's

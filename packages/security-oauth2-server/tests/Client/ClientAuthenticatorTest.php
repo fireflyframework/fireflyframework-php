@@ -40,6 +40,7 @@ function clientAuthenticator(?SigningKey $jwtClientKey = null, ?RecordingLogger 
     $clients = [
         'web app' => ['client_secret' => '{noop}web-secret', 'client_authentication_methods' => ['client_secret_basic', 'client_secret_post'], 'redirect_uris' => ['https://a.test/cb']],
         'basic-only' => ['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb']],
+        'plus' => ['client_secret' => '{noop}p+q r', 'redirect_uris' => ['https://a.test/cb']],
         'spa' => ['client_authentication_methods' => ['none'], 'authorization_grant_types' => ['authorization_code'], 'redirect_uris' => ['https://a.test/cb']],
     ];
     if ($jwtClientKey !== null) {
@@ -115,11 +116,18 @@ function tokenRequest(array $body = [], array $headers = []): Request
 }
 
 /**
+ * A `Basic` credential for the pair, encoded the way RFC 6749 §2.3.1 asks: as application/x-www-form-urlencoded
+ * (Appendix B, `+` for a space — Java's URLEncoder, Spring's client) when $formEncoded, else with RFC 3986's `%20`
+ * (PHP's rawurlencode, curl --user); both decode to the same pair. $scheme lets a test spell the scheme in
+ * another case.
+ *
  * @return array<string,string>
  */
-function basic(string $id, string $secret): array
+function basic(string $id, string $secret, bool $formEncoded = false, string $scheme = 'Basic'): array
 {
-    return ['Authorization' => 'Basic '.base64_encode(rawurlencode($id).':'.rawurlencode($secret))];
+    $encode = $formEncoded ? 'urlencode' : 'rawurlencode';
+
+    return ['Authorization' => $scheme.' '.base64_encode($encode($id).':'.$encode($secret))];
 }
 
 it('authenticates client_secret_basic with RFC 6749 §2.3.1 form-decoding, and client_secret_post', function () {
@@ -134,6 +142,30 @@ it('authenticates client_secret_basic with RFC 6749 §2.3.1 form-decoding, and c
         ->and(ClientAuthenticator::usedBasic(tokenRequest([], basic('web app', 'x'))))->toBeTrue()
         ->and(ClientAuthenticator::challengeHeaders(tokenRequest([], basic('web app', 'x'))))->toBe(['WWW-Authenticate' => 'Basic realm="oauth2"'])
         ->and(ClientAuthenticator::challengeHeaders(tokenRequest(['client_id' => 'x'])))->toBe([]);
+});
+
+it('form-decodes the Basic pair as RFC 6749 Appendix B says — `+` a space, `%2B` a plus, `%20` a space too — and matches the scheme ignoring case (RFC 7235 §2.1)', function (array $headers, string $clientId) {
+    /** @var array<string,string> $headers */
+    $authentication = clientAuthenticator()->authenticate(tokenRequest([], $headers), false);
+
+    expect($authentication->client->clientId)->toBe($clientId)
+        ->and($authentication->method)->toBe(ClientAuthenticationMethod::ClientSecretBasic)
+        ->and(ClientAuthenticator::usedBasic(tokenRequest([], $headers)))->toBeTrue()
+        ->and(ClientAuthenticator::challengeHeaders(tokenRequest([], $headers)))->toBe(['WWW-Authenticate' => 'Basic realm="oauth2"']);
+})->with([
+    'a space as %20 (rawurlencode, curl --user)' => [basic('web app', 'web-secret'), 'web app'],
+    'a space as + (urlencode, Java URLEncoder, Spring)' => [basic('web app', 'web-secret', formEncoded: true), 'web app'],
+    'a literal + in the secret as %2B, the space as +' => [basic('plus', 'p+q r', formEncoded: true), 'plus'],
+    'a literal + in the secret as %2B, the space as %20' => [basic('plus', 'p+q r'), 'plus'],
+    'the scheme in lower case' => [basic('web app', 'web-secret', formEncoded: true, scheme: 'basic'), 'web app'],
+    'the scheme in upper case' => [basic('web app', 'web-secret', scheme: 'BASIC'), 'web app'],
+]);
+
+it('reads an UNENCODED `+` in the pair as a space, the way Spring\'s URLDecoder does: a secret that holds one must be sent as %2B', function () {
+    $raw = ['Authorization' => 'Basic '.base64_encode('plus:p+q r')];
+
+    expect(ClientAuthenticator::presented(tokenRequest([], $raw)))->toBe([[ClientAuthenticationMethod::ClientSecretBasic, 'plus', 'p q r']])
+        ->and(fn () => clientAuthenticator()->authenticate(tokenRequest([], $raw), false))->toThrow(OAuth2AuthenticationException::class, 'Client authentication failed for [plus]');
 });
 
 it('refuses, as invalid_client 401, a wrong secret, an unknown client, a method the client does not allow, and no credentials at all', function (Request $request, string $needle) {
