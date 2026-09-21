@@ -56,9 +56,68 @@ return [
                     2 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
                 ],
             ],
+            3 => [
+                'method' => 'oauth2AuthorizationRequestResolver',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2AuthorizationRequestResolver',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            4 => [
+                'method' => 'authorizationRequestRepository',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\AuthorizationRequestRepository',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            5 => [
+                'method' => 'loginPageLinks',
+                'returns' => 'Firefly\\Security\\Web\\Login\\LoginPageLinks',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                    2 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
+        ],
+    ],
+    1 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2AuthorizationRequestRedirectFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -89,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
+            1 => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2AuthorizationRequestResolver',
+            2 => 'Firefly\\Security\\OAuth2\\Client\\Web\\AuthorizationRequestRepository',
+            3 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+            4 => 'Illuminate\\Container\\Container',
+            5 => 'Firefly\\Config\\Config',
         ],
     ],
 ];

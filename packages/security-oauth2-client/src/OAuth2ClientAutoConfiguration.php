@@ -15,8 +15,14 @@ use Firefly\Security\OAuth2\Client\Registration\ClientRegistrationRepository;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
 use Firefly\Security\OAuth2\Client\Registration\PropertiesClientRegistrationRepository;
+use Firefly\Security\OAuth2\Client\Web\AuthorizationRequestRepository;
+use Firefly\Security\OAuth2\Client\Web\Login\OAuth2LoginPageLinks;
+use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequestResolver;
+use Firefly\Security\OAuth2\Client\Web\SessionAuthorizationRequestRepository;
+use Firefly\Security\Web\Login\LoginPageLinks;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Container\Container;
+use Psr\Log\LoggerInterface;
 
 /**
  * The opt-in bean source of the OAuth2 client. `firefly.security.oauth2.client.enabled` is the package master:
@@ -62,5 +68,38 @@ final class OAuth2ClientAutoConfiguration
         $mapper->validate();
 
         return new PropertiesClientRegistrationRepository($mapper);
+    }
+
+    /**
+     * THE LOGIN HALF. Gated by the package master AND `login.enabled` — not by the security master, because
+     * none of these three needs a master-gated bean; the two filters, which do, carry the master condition
+     * themselves, and OAuth2ClientWiringPass refuses a login without the master flag at boot.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizationRequestResolver::class)]
+    public function oauth2AuthorizationRequestResolver(): OAuth2AuthorizationRequestResolver
+    {
+        return new OAuth2AuthorizationRequestResolver;
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(AuthorizationRequestRepository::class)]
+    public function authorizationRequestRepository(): AuthorizationRequestRepository
+    {
+        return new SessionAuthorizationRequestRepository;
+    }
+
+    /** What firefly/security's login page lists: every authorization-code registration, as a "Sign in with" button. */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(LoginPageLinks::class)]
+    public function loginPageLinks(ClientRegistrationRepository $registrations, OAuth2ClientSettings $settings, ?LoggerInterface $logger = null): LoginPageLinks
+    {
+        return new OAuth2LoginPageLinks($registrations, $settings, $logger);
     }
 }
