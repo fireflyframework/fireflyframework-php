@@ -93,6 +93,7 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
                     1 => 'Firefly\\Config\\Config',
+                    2 => 'Illuminate\\Container\\Container',
                 ],
             ],
             5 => [
@@ -105,6 +106,7 @@ return [
                 'lazy' => false,
                 'dependencies' => [
                     0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    1 => 'Illuminate\\Container\\Container',
                 ],
             ],
             6 => [
@@ -117,6 +119,7 @@ return [
                 'lazy' => false,
                 'dependencies' => [
                     0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    1 => 'Illuminate\\Container\\Container',
                 ],
             ],
         ],

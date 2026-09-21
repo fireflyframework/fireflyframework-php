@@ -319,6 +319,10 @@ deptrac:
     # Actuator endpoint the admin dashboard renders, contributes a ScheduledDescriptor to Scheduling's manifest
     # for the purge, and rate-limits the token endpoint with Resilience's RateLimiter. NOTHING depends on it
     # except Testing (the test client) and Cli (firefly:oauth2:keys).
+    # The Domain edge is INHERITED ONLY: Deptrac flattens a parent class's dependencies onto every subclass, and
+    # EloquentRepository::save() tests its entity against Domain's RecordsDomainEvents, so the three
+    # src/Eloquent/*ModelRepository subclasses carry that edge without naming a Domain type themselves. No file
+    # in this package may import Firefly\Domain\*; a store is a store, not an aggregate.
     SecurityOAuth2Server:
       - Kernel
       - Container
@@ -326,6 +330,7 @@ deptrac:
       - Context
       - AutoConfigure
       - Web
+      - Domain
       - Data
       - Security
       - Actuator
