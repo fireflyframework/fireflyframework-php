@@ -5,8 +5,9 @@
 
     <div class="head">
         <h1>HTTP traffic</h1>
-        <p>The most recent requests this application served, newest first. Bodies and headers are never
-           recorded — that is how these views leak credentials.</p>
+        <p>The most recent requests this application served, newest first, with the correlation id and — when
+           tracing is on — the trace id each one ran under. Bodies and headers are never recorded — that is how
+           these views leak credentials.</p>
     </div>
 
     <div class="panel">
@@ -22,7 +23,7 @@
         @else
             <div class="tw">
                 <table>
-                    <thead><tr><th>When</th><th>Method</th><th>Path</th><th>Status</th><th class="num">Took</th><th>Correlation</th></tr></thead>
+                    <thead><tr><th>When</th><th>Method</th><th>Path</th><th>Status</th><th class="num">Took</th><th>Correlation</th><th>Trace</th></tr></thead>
                     <tbody id="http-body">
                     @foreach ($exchanges as $exchange)
                         <tr>
@@ -32,6 +33,7 @@
                             <td class="tight"><span class="code {{ $exchange['status'] < 400 ? 'ok' : ($exchange['status'] < 500 ? 'warn' : 'err') }}">{{ $exchange['status'] ?: '—' }}</span></td>
                             <td class="num">{{ $exchange['duration'] }}</td>
                             <td class="mono dim tight">{{ $exchange['correlationId'] !== '' ? substr($exchange['correlationId'], 0, 8) : '—' }}</td>
+                            <td class="mono dim tight" title="{{ $exchange['traceId'] }}">{{ $exchange['traceId'] !== '' ? substr($exchange['traceId'], 0, 8) : '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>
