@@ -10,13 +10,15 @@ use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Jwt\JwtService;
+use Firefly\Security\Web\Argument\SecurityArgumentResolver;
 use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
 use Firefly\Security\Web\Settings\RememberMeSettings;
+use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Security\ControllerSecurityGuard;
 
 /**
- * Six boot-time actions gated for correctness, in this order:
+ * Seven boot-time actions gated for correctness, in this order:
  *
  * (0) MUTUAL-EXCLUSIVITY GUARD, unconditional (runs even when the master flag is off): local-JWT
  * (JwtAuthenticationFilter, #[Order(-90)]) and the OAuth2 resource server (OAuth2ResourceServerFilter,
@@ -62,6 +64,15 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * (5) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
  * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
  * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
+ *
+ * (6) PRINCIPAL INJECTION: registers the SecurityArgumentResolver into web's HandlerMethodArgumentResolvers, so a
+ * controller action's `Authentication`, `SecurityContext`, `UserDetails`, `#[AuthenticationPrincipal]` and
+ * `#[CurrentSecurityContext]` parameters are bound from the holder before ArgumentResolver would hand them to the
+ * container (which cannot build any of them: a 500 per request, today). The registry is a singleton
+ * WebServiceProvider bound before RouteWiringPass built the dispatcher, so add()ing into it here — after — is seen
+ * by the ArgumentResolver already constructed; it is joined, never replaced, so a resolver the application
+ * registered itself keeps its place ahead of this one. Skipped when the master flag is off, like (3)–(5): with
+ * security off there is no principal to inject, and the annotations stay inert exactly as the guard's do.
  */
 final class SecurityWiringPass implements BootPass
 {
@@ -117,5 +128,11 @@ final class SecurityWiringPass implements BootPass
         }
 
         $container->instance(ControllerSecurityGuard::class, $container->make(MethodSecurityControllerGuard::class));
+
+        // Principal injection: the resolver claims Authentication/UserDetails/#[AuthenticationPrincipal]/
+        // #[CurrentSecurityContext] parameters before ArgumentResolver would hand them to the container.
+        if ($container->bound(HandlerMethodArgumentResolvers::class)) {
+            $container->make(HandlerMethodArgumentResolvers::class)->add(new SecurityArgumentResolver);
+        }
     }
 }

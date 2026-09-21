@@ -15,6 +15,7 @@ use Firefly\Validation\Constraint\ConstraintManifestCompiler;
 use Firefly\Validation\Validator;
 use Firefly\Web\Dispatch\ArgumentResolver;
 use Firefly\Web\Dispatch\ControllerDispatcher;
+use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Dispatch\ResponseFactory;
 use Firefly\Web\Dispatch\RouteWiringPass;
 use Firefly\Web\Error\ErrorPageRenderer;
@@ -123,8 +124,15 @@ final class WebServiceProvider extends FireflyServiceProvider
             $this->app->singleton(BeanValidator::class, static fn (Application $app): BeanValidator => new BeanValidator($app->make(Validator::class), $app->make(ConstraintManifest::class)));
         }
 
+        // The resolver extension point (Spring's HandlerMethodArgumentResolver). bound()-guarded like every
+        // other port here, so an application may bind a pre-populated registry of its own; a capability's
+        // wiring pass — firefly/security's, for the principal — add()s into whichever instance is bound.
+        if (! $this->app->bound(HandlerMethodArgumentResolvers::class)) {
+            $this->app->singleton(HandlerMethodArgumentResolvers::class, static fn (): HandlerMethodArgumentResolvers => new HandlerMethodArgumentResolvers);
+        }
+
         if (! $this->app->bound(ArgumentResolver::class)) {
-            $this->app->singleton(ArgumentResolver::class, static fn (Application $app): ArgumentResolver => new ArgumentResolver($app->make(MessageConverterRegistry::class), $app->make(BeanValidator::class)));
+            $this->app->singleton(ArgumentResolver::class, static fn (Application $app): ArgumentResolver => new ArgumentResolver($app->make(MessageConverterRegistry::class), $app->make(BeanValidator::class), $app->make(HandlerMethodArgumentResolvers::class)));
         }
 
         if (! $this->app->bound(ResponseFactory::class)) {

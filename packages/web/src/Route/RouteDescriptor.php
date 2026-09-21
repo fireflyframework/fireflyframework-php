@@ -27,8 +27,12 @@ namespace Firefly\Web\Route;
  * before the handler runs, and the 404 it answers a miss with. Optional for the same reason as `dtos`: a plan
  * for an unpatterned variable, and a manifest compiled before the keys existed, stays exactly as it was.
  *
+ * `attributes` and `nullable` are optional and present only when a parameter carries attributes or allows
+ * null: the first is how a HandlerMethodArgumentResolver claims a parameter by an attribute firefly/web does
+ * not know, the second is how it may return null without a TypeError. Optional for the same reason as `dtos`.
+ *
  * @phpstan-type PropertyPlan array{class: string|null, list: bool}
- * @phpstan-type Binding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, array<string, PropertyPlan>>, pattern?: string, notFoundCode?: string, notFoundMessage?: string}
+ * @phpstan-type Binding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, array<string, PropertyPlan>>, pattern?: string, notFoundCode?: string, notFoundMessage?: string, attributes?: list<string>, nullable?: bool}
  */
 final readonly class RouteDescriptor
 {
