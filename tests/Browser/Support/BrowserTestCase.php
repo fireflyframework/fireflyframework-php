@@ -56,7 +56,6 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
             'firefly.admin.settings.writable' => true,
             'firefly.admin.datasource.wizard' => true,
             'firefly.management.enabled' => true,
-            'firefly.management.endpoint.health.db.enabled' => true,
             'firefly.openapi.enabled' => true,
             'firefly.openapi.viewer.enabled' => true,
             ...$this->securityOverrides(),
