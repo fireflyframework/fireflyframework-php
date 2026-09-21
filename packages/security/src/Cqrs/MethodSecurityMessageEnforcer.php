@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Security\Cqrs;
 
+use Firefly\Config\Config;
 use Firefly\Cqrs\Handler\HandlerKind;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
@@ -24,6 +25,13 @@ use Psr\Log\LoggerInterface;
  * handler's class name goes to the log and not to the client. The bus authorises BEFORE dispatch, so
  * #[PostAuthorize]/#[PostFilter] on a handler are enforced only when the handler is proxied (see
  * MethodSecurityScanner::scanProxyAdvice()).
+ *
+ * The master flag is read LIVE on every message rather than captured at construction, the way the proxy link
+ * and the HTTP filters read theirs: the bean exists only while `firefly.security.enabled` is on, but a test's
+ * withoutSecurity() flips the flag after boot, and DefaultCommandBus/DefaultQueryBus already hold the authorizer
+ * that holds this instance, so neither a rebind nor the config change could reach a built bus otherwise. ONLY
+ * the master flag — `firefly.security.method.enabled` is documented to leave the dispatcher and the bus enforcing
+ * their rules and to stand down the proxy link alone.
  */
 final class MethodSecurityMessageEnforcer
 {
@@ -38,6 +46,7 @@ final class MethodSecurityMessageEnforcer
         SecurityExpressionEvaluator $evaluator,
         RoleHierarchy $roleHierarchy,
         PermissionEvaluator $permissionEvaluator,
+        private readonly Config $config,
         ?LoggerInterface $logger = null,
         ?AuthenticationEventPublisher $events = null,
     ) {
@@ -52,6 +61,10 @@ final class MethodSecurityMessageEnforcer
 
     public function enforce(object $message, HandlerKind $kind): void
     {
+        if (! $this->config->bool('firefly.security.enabled', false)) {
+            return;
+        }
+
         $handler = $this->handlerByMessage[$kind->value.':'.$message::class] ?? null;
         if ($handler === null) {
             return;

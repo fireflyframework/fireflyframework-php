@@ -179,12 +179,17 @@ final class SecurityAutoConfiguration
         return new MethodSecurityInterceptor($evaluator, $config);
     }
 
+    /**
+     * The bus link the two authorizers below share. Gated by the master flag at boot like the rest of the core
+     * stack, and it reads that same flag live on every message (see the class), because the buses hold their
+     * authorizer by constructor and a flag flipped after boot has no other way to reach them.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
-    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, ?LoggerInterface $logger = null, ?AuthenticationEventPublisher $events = null): MethodSecurityMessageEnforcer
+    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, Config $config, ?LoggerInterface $logger = null, ?AuthenticationEventPublisher $events = null): MethodSecurityMessageEnforcer
     {
-        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $logger, $events);
+        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $config, $logger, $events);
     }
 
     #[Bean]

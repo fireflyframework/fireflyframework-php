@@ -2,15 +2,19 @@
 
 declare(strict_types=1);
 
+use Firefly\Cqrs\Command\CommandBus;
+use Firefly\Cqrs\Exception\CommandProcessingException;
+use Firefly\Kernel\Exception\Security\AuthenticationException;
 use Firefly\Kernel\Exception\Security\AuthorizationException;
+use Firefly\Security\Tests\Fixtures\Advice\ArchiveCommand;
 use Firefly\Security\Tests\Fixtures\Advice\ReportService;
 use Firefly\Security\Tests\Support\SecurityCapstoneTestCase;
 use Firefly\Security\Tests\Support\SecurityFlows;
 use Illuminate\Support\Facades\Route;
 
 /**
- * The test-support surface against the REAL pipeline: URL rules, the dispatcher guard and a proxied
- * #[Service] all see the acting principal, and withoutSecurity() disarms all three.
+ * The test-support surface against the REAL pipeline: URL rules, the dispatcher guard, a proxied #[Service]
+ * and the CQRS bus authorizer all see the acting principal, and withoutSecurity() disarms all four.
  */
 abstract class TestSupportCapstoneTestCase extends SecurityCapstoneTestCase
 {
@@ -79,4 +83,32 @@ it('disarms URL security, the dispatcher guard and the proxy link with withoutSe
     /** @var ReportService $service */
     $service = $this->fireflyContext()->get(ReportService::class);
     expect($service->totals())->toBe(['total' => 42]);
+});
+
+it('disarms the CQRS bus authorizer with withoutSecurity(), so a secured command dispatches', function () {
+    /** @var TestSupportCapstoneTestCase $this */
+    /** @var CommandBus $commands */
+    $commands = $this->fireflyContext()->get(CommandBus::class);
+
+    // The bus holds its authorizer by constructor and the enforcer is gated only at boot, so this is the seam a
+    // config flip after boot could NOT reach: it has to read the flags live, the way the proxy link does.
+    try {
+        $commands->send(new ArchiveCommand(1));
+        throw new LogicException('not refused');
+    } catch (CommandProcessingException $e) {
+        expect($e->getPrevious())->toBeInstanceOf(AuthenticationException::class);
+    }
+
+    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+
+    try {
+        $commands->send(new ArchiveCommand(1));
+        throw new LogicException('not refused');
+    } catch (CommandProcessingException $e) {
+        expect($e->getPrevious())->toBeInstanceOf(AuthorizationException::class);
+    }
+
+    $this->withoutSecurity();
+
+    expect($commands->send(new ArchiveCommand(1)))->toBe('archived:1');
 });

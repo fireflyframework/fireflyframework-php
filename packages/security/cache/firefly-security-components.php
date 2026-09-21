@@ -179,8 +179,9 @@ return [
                     2 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
                     3 => 'Firefly\\Security\\Access\\RoleHierarchy',
                     4 => 'Firefly\\Security\\Access\\PermissionEvaluator',
-                    5 => 'Psr\\Log\\LoggerInterface',
-                    6 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                    5 => 'Firefly\\Config\\Config',
+                    6 => 'Psr\\Log\\LoggerInterface',
+                    7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
                 ],
             ],
             10 => [

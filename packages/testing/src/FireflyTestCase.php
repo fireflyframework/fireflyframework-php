@@ -36,11 +36,12 @@ use Symfony\Component\HttpFoundation\Response;
  * NOTHING else.
  *
  * It also carries the security test support (Spring Security's test module, as methods): actingAsPrincipal()
- * signs a principal in for the rest of the test, withoutSecurity() switches the whole stack off, and a
+ * signs a principal in for the rest of the test, withoutSecurity() switches the stack off — the URL, CSRF and
+ * authentication filters, the dispatcher guard, the proxy link and the CQRS bus authorizers — and a
  * #[WithMockUser] on the test class or method is honoured by setUp(). None of it needs firefly/security to be
  * among the providers — the holder is a static over Laravel's Context facade — so a plain web test can act as
- * someone too; when the security providers ARE booted, every filter, the dispatcher guard and the proxied
- * beans see the acting principal, because it is established before any of them run.
+ * someone too; when the security providers ARE booted, every filter, the dispatcher guard, the bus authorizers
+ * and the proxied beans see the acting principal, because it is established before any of them run.
  */
 abstract class FireflyTestCase extends TestCase
 {
@@ -181,8 +182,11 @@ abstract class FireflyTestCase extends TestCase
 
     /**
      * Switch the security stack off for the rest of this test: the URL filter, the CSRF filter, every
-     * authentication filter and the proxy's method-security link read their flags live, and the dispatcher
-     * guard is rebound to the no-op default. Beans already built stay built; only their gates change.
+     * authentication filter, the proxy's method-security link and the CQRS bus authorizers (through
+     * MethodSecurityMessageEnforcer, which DefaultCommandBus/DefaultQueryBus hold by constructor) read their
+     * flags live, and the dispatcher guard is rebound to the no-op default. Beans already built stay built;
+     * only their gates change — so a controller test that dispatches a command whose handler carries a
+     * #[PreAuthorize] gets the handler's answer, not a 401.
      */
     public function withoutSecurity(): static
     {

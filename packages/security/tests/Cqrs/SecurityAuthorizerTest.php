@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Config\Config;
 use Firefly\Cqrs\Handler\HandlerDescriptor;
 use Firefly\Cqrs\Handler\HandlerKind;
 use Firefly\Cqrs\Handler\HandlerManifest;
@@ -21,16 +22,23 @@ use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Cqrs\SecurityQueryAuthorizer;
 use Firefly\Security\Tests\Fixtures\Cqrs\AdminCommand;
 use Firefly\Security\Tests\Fixtures\Cqrs\AdminCommandHandler;
+use Illuminate\Config\Repository;
 use Orchestra\Testbench\TestCase;
 
 uses(TestCase::class);
 
 afterEach(fn () => SecurityContextHolder::clearContext());
 
+/** The master flag on, as it is wherever the enforcer bean exists; a test flips it on this repository to prove the live read. */
+function busSecurityConfig(): Config
+{
+    return new Config(new Repository(['firefly' => ['security' => ['enabled' => true]]]));
+}
+
 /**
  * @param  list<SecurityMethodDescriptor>  $rules
  */
-function commandEnforcer(array $rules): MethodSecurityMessageEnforcer
+function commandEnforcer(array $rules, ?Config $config = null): MethodSecurityMessageEnforcer
 {
     $handlers = new HandlerManifest(
         [new HandlerDescriptor(AdminCommand::class, AdminCommandHandler::class, 'handle', HandlerKind::Command)],
@@ -43,6 +51,7 @@ function commandEnforcer(array $rules): MethodSecurityMessageEnforcer
         new SecurityExpressionEvaluator,
         RoleHierarchy::fromRules([]),
         new DenyAllPermissionEvaluator,
+        $config ?? busSecurityConfig(),
     );
 }
 
@@ -99,6 +108,7 @@ it('allows a message whose class has no registered handler at all', function () 
         new SecurityExpressionEvaluator,
         RoleHierarchy::fromRules([]),
         new DenyAllPermissionEvaluator,
+        busSecurityConfig(),
     );
 
     (new SecurityCommandAuthorizer($enforcer))->authorize(new AdminCommand);
@@ -135,3 +145,29 @@ it('refuses a command with the client sentence and the required authorities, not
             ->and($e->extensions())->toBe(['requiredAuthorities' => ['ROLE_ADMIN']]);
     }
 });
+
+it('reads the master flag live: off lets the secured command through, and back on refuses it again', function () {
+    // The buses hold their authorizer by constructor, so the ONLY way withoutSecurity() (or any config flip after
+    // boot) can reach a built bus is for the enforcer to consult the flag on every message, as the proxy link does.
+    $repository = new Repository(['firefly' => ['security' => ['enabled' => true]]]);
+    $authorizer = new SecurityCommandAuthorizer(commandEnforcer([
+        new SecurityMethodDescriptor(AdminCommandHandler::class, 'handle', "hasRole('ADMIN')", ['command']),
+    ], new Config($repository)));
+
+    expect(fn () => $authorizer->authorize(new AdminCommand))->toThrow(AuthenticationException::class);
+
+    $repository->set('firefly.security.enabled', false);
+    $authorizer->authorize(new AdminCommand);
+
+    $repository->set('firefly.security.enabled', true);
+    expect(fn () => $authorizer->authorize(new AdminCommand))->toThrow(AuthenticationException::class);
+});
+
+it('keeps enforcing at the bus when only firefly.security.method.enabled is off, as documented: that flag stands down the proxy link alone', function () {
+    $config = new Config(new Repository(['firefly' => ['security' => ['enabled' => true, 'method' => ['enabled' => false]]]]));
+    $authorizer = new SecurityCommandAuthorizer(commandEnforcer([
+        new SecurityMethodDescriptor(AdminCommandHandler::class, 'handle', "hasRole('ADMIN')", ['command']),
+    ], $config));
+
+    $authorizer->authorize(new AdminCommand);
+})->throws(AuthenticationException::class);
