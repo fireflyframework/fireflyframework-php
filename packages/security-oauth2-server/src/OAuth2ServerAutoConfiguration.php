@@ -11,6 +11,10 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\JwksDocumentSource;
+use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationConsentService;
+use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationService;
+use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationConsentService;
+use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
@@ -89,5 +93,27 @@ final class OAuth2ServerAutoConfiguration
         $clients = $config->has('firefly.security.oauth2.server.clients') ? $config->array('firefly.security.oauth2.server.clients') : [];
 
         return InMemoryRegisteredClientRepository::fromConfig($clients, $settings);
+    }
+
+    /**
+     * `authorizations.driver`: `memory` here — a per-process map, right for tests and one dev server; Task 5
+     * adds `eloquent`. The settings are taken so the driver switch has its argument ready when it arrives.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizationService::class)]
+    public function oauth2AuthorizationService(AuthorizationServerSettings $settings): OAuth2AuthorizationService
+    {
+        return new InMemoryOAuth2AuthorizationService;
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizationConsentService::class)]
+    public function oauth2AuthorizationConsentService(AuthorizationServerSettings $settings): OAuth2AuthorizationConsentService
+    {
+        return new InMemoryOAuth2AuthorizationConsentService;
     }
 }

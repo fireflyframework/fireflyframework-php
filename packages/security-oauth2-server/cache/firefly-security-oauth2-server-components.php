@@ -6,6 +6,24 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationPurgeTask',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
+            1 => 'Psr\\Log\\LoggerInterface',
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\OAuth2ServerAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -75,6 +93,30 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
                     1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            5 => [
+                'method' => 'oauth2AuthorizationService',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                ],
+            ],
+            6 => [
+                'method' => 'oauth2AuthorizationConsentService',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationConsentService',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
                 ],
             ],
         ],
