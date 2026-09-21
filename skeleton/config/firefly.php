@@ -431,7 +431,9 @@ return [
              | clock_skew 60, http.connect_timeout 5, http.timeout 5, http.macro true, discovery.cache_ttl 3600,
              | discovery.eager false, jwk_set.cache_ttl 3600, authorized_client.cache_ttl 86400; per
              | registration: client_authentication_method client_secret_basic when a client_secret is set and
-             | none otherwise, authorization_grant_type authorization_code, redirect_uri
+             | none otherwise (the google and github presets say client_secret_basic outright — a web OAuth app
+             | there is never public — so a registration on them without a client_secret is refused at boot),
+             | authorization_grant_type authorization_code, redirect_uri
              | '{baseUrl}/login/oauth2/code/{registrationId}', scope the preset's or [], client_name the
              | preset's or the id, pkce true; per provider: user_name_attribute 'sub'.
             */

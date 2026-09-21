@@ -6,12 +6,17 @@ use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
+use Firefly\Security\OAuth2\Client\Discovery\ProviderDiscoveryException;
 use Firefly\Security\OAuth2\Client\OAuth2ClientSettings;
+use Firefly\Security\OAuth2\Client\Registration\ClientRegistrationRepository;
+use Firefly\Security\OAuth2\Client\Registration\PropertiesClientRegistrationRepository;
 use Firefly\Security\OAuth2\Client\SecurityOAuth2ClientServiceProvider;
 use Firefly\Security\OAuth2\Client\SecurityOAuth2ClientWiringProvider;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 /**
  * Boots the REAL providers of security and of this package on a bare container (the RealProviderBootTest
@@ -22,12 +27,14 @@ use Illuminate\Foundation\Application;
  * is about which of the package's own flags is missing, not about that.
  *
  * @param  array<string,mixed>  $security  the `firefly.security.*` tree for this boot
+ * @param  array<class-string,object>  $bindings  instances bound before the providers register (a faked Http factory, say)
  */
-function bootOAuth2ClientAppWith(array $security): Application
+function bootOAuth2ClientAppWith(array $security, array $bindings = []): Application
 {
     return fireflyApplication(
         config: ['session' => ['driver' => 'array'], 'firefly' => ['cqrs' => [], 'security' => $security]],
         providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class, SecurityOAuth2ClientServiceProvider::class, SecurityOAuth2ClientWiringProvider::class],
+        bindings: $bindings,
         needs: ['cache', 'http'],
     );
 }
@@ -50,4 +57,52 @@ it('refuses to boot a login without the package master, without the security mas
         ->toThrow(ConfigurationException::class, 'firefly.security.enabled')
         ->and(fn () => bootOAuth2ClientAppWith(['enabled' => true, 'oauth2' => ['client' => ['enabled' => true, 'logout' => ['oidc_initiated' => true]]]]))
         ->toThrow(ConfigurationException::class, 'firefly.security.oauth2.client.login.enabled');
+});
+
+it('refuses at boot a registration that could never work, and a login with nothing to sign in through', function () {
+    expect(fn () => bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'registration' => ['github' => ['client_id' => 'x']]]]]))
+        ->toThrow(ConfigurationException::class, 'firefly.security.oauth2.client.registration.github.client_secret')
+        ->and(fn () => bootOAuth2ClientAppWith(['enabled' => true, 'oauth2' => ['client' => ['enabled' => true, 'login' => ['enabled' => true]]]]))
+        ->toThrow(ConfigurationException::class, 'no client registration');
+});
+
+it('binds the registration repository, resolved from the config, when the package is on', function () {
+    /** @var ApplicationContext $context */
+    $context = bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'registration' => ['github' => ['client_id' => 'x', 'client_secret' => 's']]]]])->make(ApplicationContext::class);
+
+    /** @var ClientRegistrationRepository $repository */
+    $repository = $context->get(ClientRegistrationRepository::class);
+
+    expect($repository)->toBeInstanceOf(PropertiesClientRegistrationRepository::class)
+        ->and($repository->registrationIds())->toBe(['github'])
+        ->and($context->has(OidcDiscovery::class))->toBeTrue();
+});
+
+it('fetches nothing at boot by default, and with discovery.eager resolves every issuer — a dead one failing the boot', function () {
+    $issuer = 'https://sso.example.com/realms/corp';
+    $registration = ['corp' => ['provider' => 'keycloak', 'client_id' => 'portal', 'client_secret' => 's']];
+    $provider = ['keycloak' => ['issuer_uri' => $issuer]];
+    $document = ['issuer' => $issuer, 'authorization_endpoint' => $issuer.'/auth', 'token_endpoint' => $issuer.'/token', 'jwks_uri' => $issuer.'/certs'];
+
+    // Lazy (the default): the boot validates statically and never asks the provider.
+    $lazy = (new HttpFactory)->preventStrayRequests();
+    $lazy->fake([$issuer.'/.well-known/openid-configuration' => HttpFactory::response($document)]);
+    bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'registration' => $registration, 'provider' => $provider]]], [HttpFactory::class => $lazy]);
+    $lazy->assertNothingSent();
+
+    // Eager: the document is fetched during the boot, once, and the registration comes out resolved.
+    $eager = (new HttpFactory)->preventStrayRequests();
+    $eager->fake([$issuer.'/.well-known/openid-configuration' => HttpFactory::response($document)]);
+    /** @var ApplicationContext $context */
+    $context = bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'discovery' => ['eager' => true], 'registration' => $registration, 'provider' => $provider]]], [HttpFactory::class => $eager])->make(ApplicationContext::class);
+    $eager->assertSentCount(1);
+    /** @var ClientRegistrationRepository $repository */
+    $repository = $context->get(ClientRegistrationRepository::class);
+    expect($repository->findByRegistrationId('corp')?->providerDetails->tokenUri)->toBe($issuer.'/token');
+
+    // Eager with an issuer that does not answer: the boot fails as a 503-typed discovery failure naming the host.
+    $dead = (new HttpFactory)->preventStrayRequests();
+    $dead->fake([$issuer.'/.well-known/openid-configuration' => HttpFactory::response('', 503)]);
+    expect(fn () => bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'discovery' => ['eager' => true], 'registration' => $registration, 'provider' => $provider]]], [HttpFactory::class => $dead]))
+        ->toThrow(ProviderDiscoveryException::class, 'sso.example.com');
 });

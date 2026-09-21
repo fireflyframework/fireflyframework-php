@@ -13,6 +13,15 @@ namespace Firefly\Security\OAuth2\Client\Registration;
  * per-tenant: there is no global authorization endpoint, so the preset contributes the scopes, the name and the
  * name attribute, and REQUIRES `provider.{id}.issuer_uri` — the tenant's issuer — from which discovery learns
  * the rest. `entra` is accepted as an alias of `microsoft`.
+ *
+ * THE CLIENT AUTHENTICATION METHOD IS A PRESET DEFAULT ONLY WHERE THE PROVIDER LEAVES NO CHOICE. A Google or
+ * GitHub OAuth app that signs a person into a server-side application is a confidential client — neither
+ * provider issues a web client without a secret — so those two presets say `client_secret_basic` outright, and
+ * OAuth2ClientPropertiesMapper refuses at boot a registration that names them without a `client_secret`
+ * (rather than sending an empty one). Okta, Keycloak and Entra host public clients as a matter of course (a
+ * PKCE-only client is one toggle in each console), so the per-tenant presets leave the method to the
+ * registration: `client_authentication_method` when set, else `client_secret_basic` when a secret is
+ * configured and `none` — a public client, PKCE mandatory — when none is.
  */
 enum CommonOAuth2Provider: string
 {
@@ -67,7 +76,8 @@ enum CommonOAuth2Provider: string
     }
 
     /**
-     * The `registration.{id}` defaults the preset contributes (a configured key always wins).
+     * The `registration.{id}` defaults the preset contributes (a configured key always wins). Only the two
+     * confidential-only providers name a `client_authentication_method`; see the class docblock.
      *
      * @return array<string, mixed>
      */
@@ -76,9 +86,9 @@ enum CommonOAuth2Provider: string
         return match ($this) {
             self::Google => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Google', 'client_authentication_method' => 'client_secret_basic'],
             self::GitHub => ['scope' => ['read:user'], 'client_name' => 'GitHub', 'client_authentication_method' => 'client_secret_basic'],
-            self::Okta => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Okta', 'client_authentication_method' => 'client_secret_basic'],
-            self::Keycloak => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Keycloak', 'client_authentication_method' => 'client_secret_basic'],
-            self::Microsoft => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Microsoft', 'client_authentication_method' => 'client_secret_basic'],
+            self::Okta => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Okta'],
+            self::Keycloak => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Keycloak'],
+            self::Microsoft => ['scope' => ['openid', 'profile', 'email'], 'client_name' => 'Microsoft'],
         };
     }
 }

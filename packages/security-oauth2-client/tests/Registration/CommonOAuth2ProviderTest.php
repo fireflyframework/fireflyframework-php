@@ -31,3 +31,12 @@ it('treats okta, keycloak and microsoft (alias entra) as per-tenant presets that
         ->and(CommonOAuth2Provider::Keycloak->provider())->toBe(['user_name_attribute' => 'sub'])
         ->and(CommonOAuth2Provider::Microsoft->registration()['client_name'])->toBe('Microsoft');
 });
+
+it('presets the client authentication method only for the confidential-only providers, leaving the per-tenant ones to the registration', function () {
+    // A Google or GitHub web OAuth app always has a secret; an Okta, Keycloak or Entra client may be public (PKCE only).
+    expect(CommonOAuth2Provider::Google->registration()['client_authentication_method'])->toBe('client_secret_basic')
+        ->and(CommonOAuth2Provider::GitHub->registration()['client_authentication_method'])->toBe('client_secret_basic')
+        ->and(CommonOAuth2Provider::Okta->registration())->not->toHaveKey('client_authentication_method')
+        ->and(CommonOAuth2Provider::Keycloak->registration())->not->toHaveKey('client_authentication_method')
+        ->and(CommonOAuth2Provider::Microsoft->registration())->not->toHaveKey('client_authentication_method');
+});

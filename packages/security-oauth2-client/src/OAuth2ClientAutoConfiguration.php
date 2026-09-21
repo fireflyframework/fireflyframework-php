@@ -10,6 +10,13 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
+use Firefly\Security\OAuth2\Client\Registration\ClientRegistrationRepository;
+use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
+use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
+use Firefly\Security\OAuth2\Client\Registration\PropertiesClientRegistrationRepository;
+use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Contracts\Container\Container;
 
 /**
  * The opt-in bean source of the OAuth2 client. `firefly.security.oauth2.client.enabled` is the package master:
@@ -30,5 +37,30 @@ final class OAuth2ClientAutoConfiguration
     public function oauth2ClientSettings(Config $config): OAuth2ClientSettings
     {
         return OAuth2ClientSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OidcDiscovery::class)]
+    public function oidcDiscovery(Container $container, Cache $cache, OAuth2ClientSettings $settings): OidcDiscovery
+    {
+        return new OidcDiscovery($container, $cache, $settings);
+    }
+
+    /**
+     * The registrations, from `registration.{id}`/`provider.{id}`. The mapper's static validation runs HERE,
+     * at construction — and the EagerSingletonsPass constructs every bean at boot — so a registration that could
+     * never work is a startup failure naming its key, never a 500 on the first login; OAuth2ClientWiringPass
+     * resolves the bean explicitly as well, the belt SecurityWiringPass wears for the user store.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(ClientRegistrationRepository::class)]
+    public function clientRegistrationRepository(Config $config, OidcDiscovery $discovery, OAuth2ClientSettings $settings): ClientRegistrationRepository
+    {
+        $mapper = new OAuth2ClientPropertiesMapper(OAuth2ClientProperties::fromConfig($config), $discovery, $settings);
+        $mapper->validate();
+
+        return new PropertiesClientRegistrationRepository($mapper);
     }
 }
