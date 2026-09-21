@@ -15,10 +15,14 @@ it('exposes a Validator port with a validate(data, rules): array signature', fun
         ->and((string) $reflection->getReturnType())->toBe('array');
 });
 
-it('declares #[Valid] as an inert parameter attribute (metadata only, no members)', function () {
+it('declares #[Valid] for parameters and properties, with `each` as its only member', function () {
     $attribute = new ReflectionClass(Valid::class);
     $attr = $attribute->getAttributes(Attribute::class)[0]->newInstance();
+    $parameters = $attribute->getConstructor()?->getParameters() ?? [];
 
     expect($attr->flags & Attribute::TARGET_PARAMETER)->toBe(Attribute::TARGET_PARAMETER)
-        ->and($attribute->getConstructor())->toBeNull();
+        ->and($attr->flags & Attribute::TARGET_PROPERTY)->toBe(Attribute::TARGET_PROPERTY)
+        ->and(array_map(static fn (ReflectionParameter $p): string => $p->getName(), $parameters))->toBe(['each'])
+        ->and((new Valid)->each)->toBeNull()
+        ->and((new Valid(each: Valid::class))->each)->toBe(Valid::class);
 });

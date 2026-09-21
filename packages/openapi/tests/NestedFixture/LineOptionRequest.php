@@ -9,9 +9,10 @@ use Firefly\Validation\Constraint\NotBlank;
 
 /**
  * The THIRD level of the graph: reached only through `CreateOrderRequest -> lines[] -> options[]`, so it
- * exists to prove that a component is emitted at a depth no single #[Valid] cascade reaches. ConstraintScanner
- * flattens exactly one #[Valid] level and never cascades through an `array` member at all, so every rule on
- * this class reaches the document through its OWN manifest entry or not at all.
+ * exists to prove that a component is emitted at a depth no single #[Valid] cascade reaches through a class
+ * member. The #[Valid] cascade now DOES descend through a list (`lines.*.options.*.code` is in the parent's
+ * manifest entry), but the generator never reads an element's rules from a parent's wildcard keys: every
+ * rule on this class reaches the document through its OWN manifest entry or not at all.
  */
 final class LineOptionRequest
 {

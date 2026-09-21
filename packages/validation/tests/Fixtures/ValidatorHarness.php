@@ -8,6 +8,8 @@ use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
 use Firefly\Validation\IlluminateValidator;
+use Firefly\Validation\MessageStyle;
+use Firefly\Validation\ValidationSettings;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateFactory;
@@ -32,6 +34,21 @@ final class ValidatorHarness
 
         return new BeanValidator(
             new IlluminateValidator(new IlluminateFactory(new Translator(new ArrayLoader, 'en'))),
+            ConstraintManifest::fromArray($rows),
+        );
+    }
+
+    /**
+     * The same wiring with the message style chosen — `firefly.validation.messages` as a test would set it.
+     *
+     * @param  class-string  ...$classes
+     */
+    public static function beanValidatorWith(MessageStyle $style, string ...$classes): BeanValidator
+    {
+        $rows = (new ConstraintManifestCompiler)->toArray(array_values($classes));
+
+        return new BeanValidator(
+            new IlluminateValidator(new IlluminateFactory(new Translator(new ArrayLoader, 'en')), new ValidationSettings($style)),
             ConstraintManifest::fromArray($rows),
         );
     }

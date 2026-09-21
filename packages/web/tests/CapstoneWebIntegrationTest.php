@@ -31,9 +31,12 @@ it('renders an invalid #[Valid] body as a 422 RFC-7807 payload', function () {
         ->assertJsonPath('status', 422)
         ->assertJsonPath('code', 'VALIDATION_ERROR')
         ->assertJsonPath('category', 'validation')
-        // The per-field error for `iban` is present in the RFC-7807 `errors` list (framework-native,
-        // type-clean equivalent of plucking 'field' from the errors array).
         ->assertJsonFragment(['field' => 'iban']);
+
+    // Worded by the constraint, naming it, with the rejected value — the compiled-manifest capstone path.
+    expect((array) $response->json('errors'))
+        ->toContain(['field' => 'iban', 'message' => 'must be a valid IBAN', 'constraint' => 'Iban', 'rejectedValue' => 'nope'])
+        ->toContain(['field' => 'owner', 'message' => 'must not be blank', 'constraint' => 'NotBlank', 'rejectedValue' => '']);
 });
 
 it('renders a thrown ResourceNotFoundException as 404 problem+json', function () {

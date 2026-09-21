@@ -674,6 +674,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Validation — firefly/validation
+    |--------------------------------------------------------------------------
+    |
+    | Bean Validation over Laravel's validator: #[NotBlank], #[Size], #[Email], #[Pattern], #[Valid] … are
+    | compiled into a manifest by `firefly:cache` and run before a #[RequestBody] DTO is hydrated, so an
+    | invalid body is a 422 with one entry per failed constraint. One switch.
+    |
+    */
+
+    'validation' => [
+        /*
+         | How a 422's field errors are WORDED. `constraint` (the default) publishes the constraint's own
+         | sentence, the way Spring's FieldError does — `must not be blank`, `size must be between 1 and 50`,
+         | `must match "^[A-Z0-9]…"` — with the field named once, in `field`, exactly as the client spelled it
+         | (`shipTo.street`, `lines[1].sku`) and the constraint named in `constraint` (`NotBlank`, `Size`,
+         | `Pattern`). A `message:` element on the attribute (`#[NotBlank(message: 'give us a name')]`) wins in
+         | both styles. `laravel` keeps the sentences Laravel's validator writes, humanised attribute included
+         | (`The ship to.street field is required.`), for an application whose clients already assert on
+         | them. The `validate($data, $rules)` primitive has no constraints to describe and keeps Laravel's
+         | sentences whatever this says. Anything else is refused at boot.
+         |
+         | Default: constraint.
+        */
+        'messages' => env('FIREFLY_VALIDATION_MESSAGES', 'constraint'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Admin dashboard — firefly/admin
     |--------------------------------------------------------------------------
     |

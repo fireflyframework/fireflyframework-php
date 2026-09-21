@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Web\Route;
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Validation\Constraint\ContainerElementType;
 use Firefly\Validation\Valid;
 use Firefly\Web\Attributes\Controller;
 use Firefly\Web\Attributes\ControllerAdvice;
@@ -410,7 +411,9 @@ final class RouteScanner
      * builtin) and whether the payload holds a LIST of that class.
      *
      * Compiled here because this is the one sanctioned reflection site in the package — the resolver runs on
-     * the per-request hot path and must stay reflection-free (ReflectionFreeWebTest guards it).
+     * the per-request hot path and must stay reflection-free (ReflectionFreeWebTest guards it). The element
+     * class of a list member is not read here but asked of Firefly\Validation\Constraint\ContainerElementType,
+     * so hydration, the #[Valid] cascade and the OpenAPI document share one reading of `list<X>`.
      *
      * Keyed by CLASS rather than nested inline, so depth is unbounded: a DTO that points at itself is one row,
      * and $seen stops the WALK from recursing forever without capping how deep a payload may nest.
@@ -431,7 +434,6 @@ final class RouteScanner
         }
 
         $seen[$type] = true;
-        $docTypes = $this->docblockParamTypes($constructor->getDocComment() ?: '', $reflection);
 
         $shape = [];
         $shapes = [];
@@ -441,13 +443,18 @@ final class RouteScanner
             $named = $parameterType instanceof ReflectionNamedType ? $parameterType->getName() : null;
 
             // A class-typed parameter is a nested DTO; an `array` carries no element type in PHP, so its
-            // element class can only come from the docblock.
+            // element class comes from ContainerElementType — #[Valid(each:)], a `@var` tag or the
+            // constructor's `@param` — the one answer the constraint scanner cascades into as well, so a
+            // list the validator checks element by element is a list the hydrator builds element by element.
             $nested = $named !== null && class_exists($named) ? $named : null;
             $isList = false;
 
-            if ($nested === null && $named === 'array' && isset($docTypes[$name])) {
-                $nested = $docTypes[$name];
-                $isList = true;
+            if ($nested === null && $named === 'array') {
+                $element = ContainerElementType::of($parameter);
+                if ($element !== null) {
+                    $nested = $element;
+                    $isList = true;
+                }
             }
 
             $shape[$name] = ['class' => $nested, 'list' => $isList];
@@ -458,103 +465,5 @@ final class RouteScanner
         }
 
         return [$type => $shape, ...$shapes];
-    }
-
-    /**
-     * Element classes read out of a constructor docblock: `@param list<Line> $lines`, `@param Line[] $lines`
-     * and `@param array<int, Line> $lines` all mean the same thing to the hydrator.
-     *
-     * A docblock name may be written short, so it is resolved the way PHP would resolve it: an explicitly
-     * leading-slashed or already-qualified name as-is, then the declaring class's own namespace, then the
-     * file's `use` imports. Anything that does not resolve to a real class is left out of the table entirely,
-     * which lands the value on the resolver's documented "plan cannot say" path — a clean 400 rather than a
-     * guess.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string> parameter name => element class
-     */
-    private function docblockParamTypes(string $docComment, ReflectionClass $declaring): array
-    {
-        if ($docComment === '') {
-            return [];
-        }
-
-        // Two patterns rather than one alternation: `list<X>`/`array<int, X>`/`iterable<X>` and the
-        // `X[]` spelling. Kept separate so each match has a fixed shape.
-        $types = [];
-
-        foreach ([
-            '/@param\s+(?:list|array|iterable)<(?:[^,<>]+,\s*)?([^<>]+)>\s+\$(\w+)/',
-            '/@param\s+([\w\\\\]+)\[\]\s+\$(\w+)/',
-        ] as $pattern) {
-            if (preg_match_all($pattern, $docComment, $matches, PREG_SET_ORDER) === false) {
-                continue;
-            }
-
-            foreach ($matches as $match) {
-                $resolved = $this->resolveClassName(trim($match[1]), $declaring);
-                if ($resolved !== null) {
-                    $types[$match[2]] = $resolved;
-                }
-            }
-        }
-
-        return $types;
-    }
-
-    /**
-     * @param  ReflectionClass<object>  $declaring
-     */
-    private function resolveClassName(string $name, ReflectionClass $declaring): ?string
-    {
-        $name = ltrim($name, '\\');
-        if (class_exists($name)) {
-            return $name;
-        }
-
-        $namespace = $declaring->getNamespaceName();
-        if ($namespace !== '' && class_exists($candidate = $namespace.'\\'.$name)) {
-            return $candidate;
-        }
-
-        foreach ($this->imports($declaring) as $alias => $fqcn) {
-            if ($alias === $name && class_exists($fqcn)) {
-                return $fqcn;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The file's `use` imports, alias => FQCN. Read from the source because reflection does not expose them.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string>
-     */
-    private function imports(ReflectionClass $declaring): array
-    {
-        $file = $declaring->getFileName();
-        if ($file === false || ! is_file($file)) {
-            return [];
-        }
-
-        $source = (string) file_get_contents($file);
-        if (preg_match_all('/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?\s*;/mi', $source, $matches, PREG_SET_ORDER) === false) {
-            return [];
-        }
-
-        $imports = [];
-        foreach ($matches as $match) {
-            $fqcn = $match[1];
-            $alias = $match[2] ?? '';
-            if ($alias === '') {
-                $parts = explode('\\', $fqcn);
-                $alias = end($parts);
-            }
-            $imports[$alias] = $fqcn;
-        }
-
-        return $imports;
     }
 }

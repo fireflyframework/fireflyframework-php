@@ -41,6 +41,13 @@ use UnitEnum;
  * Firefly\Validation\Rule\Compilable and declare the arguments explicitly. A cache build fails loudly on a
  * developer's machine or in CI instead of a request failing in production.
  *
+ * THE SECOND TABLE. toArray() also emits the ConstraintDescriptor rows the scanner produced, under
+ * ConstraintManifest::CONSTRAINTS as the LAST top-level key, so the class rows keep their positions and a
+ * test that indexes `$rows[Dto::class]['sku']` reads what it always read. A descriptor row is already a
+ * pure array (name, sentence, rule keys) and needs no envelope.
+ *
+ * @phpstan-import-type ManifestData from ConstraintManifest
+ *
  * @phpstan-type RuleEnvelope array{'@rule': class-string<ValidationRule>, args?: list<mixed>}
  */
 final class ConstraintManifestCompiler
@@ -49,13 +56,26 @@ final class ConstraintManifestCompiler
 
     /**
      * @param  list<class-string>  $classes
-     * @return array<class-string, array<string, list<string|RuleEnvelope>>>
+     * @return ManifestData
      */
     public function toArray(array $classes): array
     {
         $rows = [];
+        $descriptors = [];
         foreach ($classes as $class) {
             $rows[$class] = $this->serialise($this->scanner->scan($class));
+
+            $described = [];
+            foreach ($this->scanner->constraints($class) as $property => $list) {
+                $described[$property] = array_map(static fn (ConstraintDescriptor $descriptor): array => $descriptor->toArray(), $list);
+            }
+            if ($described !== []) {
+                $descriptors[$class] = $described;
+            }
+        }
+
+        if ($descriptors !== []) {
+            $rows[ConstraintManifest::CONSTRAINTS] = $descriptors;
         }
 
         return $rows;

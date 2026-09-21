@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\OpenApi\Schema;
 
+use Firefly\Validation\Constraint\ContainerElementType;
 use ReflectionClass;
 use ReflectionNamedType;
 
@@ -26,14 +27,13 @@ use ReflectionNamedType;
  * RouteScanner emitted the `dtos` key — which is a supported state, since that key is written only when a
  * body DTO actually nests and ArgumentResolver reads it with a `?? []` default. In all three the element type
  * is still sitting in the docblock, and the choice is between reading it and shipping `Array<any>` again.
- * RouteScanner's resolution is private to packages/web and reachable only through a compiled binding, so it
- * cannot be called; it is therefore MIRRORED here, rule for rule — the same two `@param` spellings, the same
- * name resolution (now factored into ClassNames, so this package holds one copy of it rather than one per
- * consumer), and the same restriction to a parameter DECLARED `array`, so a member the hydrator would leave
- * alone is never given `items` here either. Two implementations of one rule is a real cost; the alternative
- * was a generator whose output silently depended on whether a route happened to reach the class.
+ * The reading itself is not duplicated any more: RouteScanner, the constraint scanner and this fallback all
+ * ask Firefly\Validation\Constraint\ContainerElementType — `#[Valid(each:)]`, then `@var`, then `@param` —
+ * so the three cannot disagree about what a list holds. What this class keeps for itself is the restriction
+ * to a parameter DECLARED `array`, the same one RouteScanner applies, so a member the hydrator would leave
+ * alone is never given `items` here either.
  *
- * The mirror is deliberately not consulted when the table HAS a row for the class. A row is complete — the
+ * The fallback is deliberately not consulted when the table HAS a row for the class. A row is complete — the
  * scanner walked every constructor parameter to build it — so a member missing from it is a member the
  * hydrator will not treat as a list, and second-guessing that with reflection is exactly how the two paths
  * would drift into disagreeing about the same class.
@@ -84,69 +84,30 @@ final class ElementTypes
             return [];
         }
 
-        $reflection = new ReflectionClass($class);
-        $constructor = $reflection->getConstructor();
+        $constructor = (new ReflectionClass($class))->getConstructor();
 
         if ($constructor === null) {
             return [];
         }
 
-        $documented = $this->docblockParamTypes($constructor->getDocComment() ?: '', $reflection);
-
         $elements = [];
         foreach ($constructor->getParameters() as $parameter) {
             $type = $parameter->getType();
-            $name = $parameter->getName();
 
-            // Only a parameter DECLARED `array` may take an element type from a comment. A class-typed member
-            // is a nested DTO the caller already resolves from the declared type, and `iterable` is excluded
-            // because RouteScanner excludes it — a document that gave `items` to a member the hydrator does
-            // not bind as a list would describe a request the server cannot accept.
-            if ($type instanceof ReflectionNamedType && $type->getName() === 'array' && isset($documented[$name])) {
-                $elements[$name] = $documented[$name];
+            // Only a parameter DECLARED `array` may take an element type from the resolver. A class-typed
+            // member is a nested DTO the caller already resolves from the declared type, and `iterable` is
+            // excluded because RouteScanner excludes it — a document that gave `items` to a member the
+            // hydrator does not bind as a list would describe a request the server cannot accept.
+            if (! $type instanceof ReflectionNamedType || $type->getName() !== 'array') {
+                continue;
+            }
+
+            $element = ContainerElementType::of($parameter);
+            if ($element !== null) {
+                $elements[$parameter->getName()] = $element;
             }
         }
 
         return $elements;
     }
-
-    /**
-     * Element classes read out of a constructor docblock: `@param list<Line> $lines`, `@param Line[] $lines`
-     * and `@param array<int, Line> $lines` all denote the same payload shape. A name that does not resolve to
-     * a real class is dropped entirely rather than emitted as a dangling `$ref` — the same choice RouteScanner
-     * makes when it leaves such a member out of the hydration table.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string>
-     */
-    private function docblockParamTypes(string $docComment, ReflectionClass $declaring): array
-    {
-        if ($docComment === '') {
-            return [];
-        }
-
-        $types = [];
-
-        foreach ([
-            '/@param\s+(?:list|array|iterable)<(?:[^,<>]+,\s*)?([^<>]+)>\s+\$(\w+)/',
-            '/@param\s+([\w\\\\]+)\[\]\s+\$(\w+)/',
-        ] as $pattern) {
-            if (preg_match_all($pattern, $docComment, $matches, PREG_SET_ORDER) === false) {
-                continue;
-            }
-
-            foreach ($matches as $match) {
-                $resolved = ClassNames::resolve(trim($match[1]), $declaring);
-                if ($resolved !== null) {
-                    $types[$match[2]] = $resolved;
-                }
-            }
-        }
-
-        return $types;
-    }
-
-    /**
-     * @param  ReflectionClass<object>  $declaring
-     */
 }

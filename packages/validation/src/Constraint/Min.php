@@ -7,12 +7,22 @@ namespace Firefly\Validation\Constraint;
 use Attribute;
 
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Min implements Constraint
+final class Min implements Constraint, HasMessage
 {
-    public function __construct(public readonly int|float $value) {}
+    use MessageElement;
+
+    public function __construct(
+        public readonly int|float $value,
+        public readonly ?string $message = null,
+    ) {}
 
     public function toRules(): array
     {
         return ['numeric', 'gte:'.$this->value];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, "must be greater than or equal to {$this->value}", ['value' => $this->value]);
     }
 }

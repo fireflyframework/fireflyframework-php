@@ -52,7 +52,7 @@ it('describes every optional member ErrorResponse can add', function () {
 });
 
 it('mirrors FieldError::toArray() in the errors item schema', function () {
-    $field = (new FieldError('reference', 'must not be blank', 'NotBlank', 'x'))->toArray();
+    $field = (new FieldError('reference', 'must not be blank', code: 'NotBlank', rejectedValue: 'x', constraint: 'NotBlank'))->toArray();
 
     /** @var array<string, array<string, mixed>> $properties */
     $properties = ProblemSchema::schema()['properties'];
@@ -101,4 +101,14 @@ it('admits RFC 9457 extension members, which ErrorResponse now spreads into the 
     // a generated client with `additionalProperties: false` would drop the very members a caller branches on.
     expect($extensions)->toBe(['field', 'edition'])
         ->and($schema['additionalProperties'])->toBeTrue();
+});
+
+it('documents the constraint member of a field error as a string', function () {
+    /** @var array<string, array<string, mixed>> $properties */
+    $properties = ProblemSchema::schema()['properties'];
+    /** @var array<string, array<string, array<string, mixed>>> $items */
+    $items = $properties['errors']['items'];
+
+    expect($items['properties']['constraint']['type'])->toBe('string')
+        ->and($items['properties']['constraint']['description'])->toContain('NotBlank');
 });

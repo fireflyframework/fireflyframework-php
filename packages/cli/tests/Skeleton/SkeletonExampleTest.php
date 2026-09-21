@@ -219,6 +219,11 @@ it('rejects an invalid nested field as a 422 naming the dotted path the client s
 
     $fields = array_column((array) $response->json('errors'), 'field');
     expect($fields)->toContain('shipTo.country')->toContain('shipTo.postcode');
+
+    // Worded by the constraint and naming it — never `The ship to.postcode field is required.`
+    expect((array) $response->json('errors'))
+        ->toContain(['field' => 'shipTo.postcode', 'message' => 'must not be blank', 'constraint' => 'NotBlank', 'rejectedValue' => ''])
+        ->toContain(['field' => 'shipTo.country', 'message' => 'must be a valid ISO 3166-1 alpha-2 country code', 'constraint' => 'CountryCode', 'rejectedValue' => 'XX']);
 });
 
 it('rejects a missing required body field as a 422 rather than a bind failure', function (): void {
@@ -232,7 +237,55 @@ it('rejects a missing required body field as a 422 rather than a bind failure', 
     $response = $this->postJson('/orders', $body);
     $response->assertStatus(422);
 
-    expect(array_column((array) $response->json('errors'), 'field'))->toContain('lines');
+    expect((array) $response->json('errors'))->toBe([
+        ['field' => 'lines', 'message' => 'must not be empty', 'constraint' => 'NotEmpty'],
+    ]);
+});
+
+it('rejects a bad SKU on the second line as a 422 naming lines[1].sku with the constraint\'s own sentence', function (): void {
+    /** @var SkeletonExampleTestCase $this */
+    $body = SkeletonApp::orderBody([
+        'lines' => [
+            ['sku' => 'WIDGET-1', 'quantity' => 2, 'unitPrice' => 9.5],
+            ['sku' => 'bad sku!', 'quantity' => 0, 'unitPrice' => 3.25],
+        ],
+    ]);
+
+    // Before this release the cascade stopped at the list: each element was hydrated, OrderLinePayload's own
+    // constraints never ran, and this exact body was a 201 — `bad sku!` is a perfectly good PHP `string` and
+    // `0` a perfectly good `int`, so the constructor took them and the order was STORED with a SKU no
+    // #[Pattern] would ever have let through. (An element the constructor did refuse — no quantity at all —
+    // came back as a 400 UNBINDABLE_BODY naming `lines[1]`, the next case.) Now #[Valid] on `lines` cascades
+    // into every element and the answer is the 422 a client can act on — the element's path as the client
+    // wrote it, the constraint's sentence, the constraint's name.
+    $response = $this->postJson('/orders', $body);
+    $response->assertStatus(422)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'VALIDATION_ERROR');
+
+    $errors = (array) $response->json('errors');
+
+    expect($errors)->toHaveCount(2)
+        ->toContain(['field' => 'lines[1].sku', 'message' => 'must match "^[A-Z0-9][A-Z0-9-]{2,31}$"', 'constraint' => 'Pattern', 'rejectedValue' => 'bad sku!'])
+        ->toContain(['field' => 'lines[1].quantity', 'message' => 'must be greater than 0', 'constraint' => 'Positive', 'rejectedValue' => 0])
+        ->and(array_column($errors, 'field'))->not->toContain('lines.1.sku')
+        // No sentence is Laravel's `The lines.1.sku field format is invalid.` — the word never appears.
+        ->and(array_column($errors, 'message'))->each->not->toContain('field');
+});
+
+it('rejects a line with no quantity as a 422 naming the element, not as a bind failure', function (): void {
+    /** @var SkeletonExampleTestCase $this */
+    $body = SkeletonApp::orderBody(['lines' => [['sku' => 'WIDGET-1', 'unitPrice' => 9.5]]]);
+
+    // OrderLinePayload's `int $quantity` carries #[NotNull] for the reason OrderRequest already gives: a
+    // non-implicit rule is skipped for an ABSENT key, so without it the line would pass validation and fail
+    // in its own constructor as a 400.
+    $response = $this->postJson('/orders', $body);
+    $response->assertStatus(422);
+
+    expect((array) $response->json('errors'))->toBe([
+        ['field' => 'lines[0].quantity', 'message' => 'must not be null', 'constraint' => 'NotNull'],
+    ]);
 });
 
 it('answers an unknown order with an RFC-7807 problem document, not a bare 404', function (): void {

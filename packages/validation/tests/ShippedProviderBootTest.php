@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Firefly\Validation\IlluminateValidator;
+use Firefly\Validation\MessageStyle;
 use Firefly\Validation\ValidationServiceProvider;
+use Firefly\Validation\ValidationSettings;
 use Firefly\Validation\Validator;
 use Illuminate\Contracts\Validation\Factory;
 use Illuminate\Translation\ArrayLoader;
@@ -27,4 +29,25 @@ it('auto-wires the default Validator by booting the shipped provider against its
     );
 
     expect($context->get(Validator::class))->toBeInstanceOf(IlluminateValidator::class);
+});
+
+it('reads firefly.validation.messages into the settings bean the shipped provider wires', function () {
+    $context = bootFireflyApp(
+        ['firefly' => ['validation' => ['messages' => 'laravel']]],
+        [ValidationServiceProvider::class],
+        bindings: [Factory::class => new IlluminateFactory(new Translator(new ArrayLoader, 'en'))],
+    );
+
+    $settings = $context->get(ValidationSettings::class);
+    if (! $settings instanceof ValidationSettings) {
+        throw new RuntimeException('expected the ValidationSettings bean');
+    }
+
+    $validator = $context->get(Validator::class);
+    if (! $validator instanceof IlluminateValidator) {
+        throw new RuntimeException('expected the IlluminateValidator adapter');
+    }
+
+    expect($settings->messages)->toBe(MessageStyle::Laravel)
+        ->and($validator->settings())->toBe($settings);
 });
