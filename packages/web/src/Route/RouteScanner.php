@@ -225,9 +225,13 @@ final class RouteScanner
         // Both keys are emitted only when there is something to say, so a plan for an ordinary parameter
         // — and a manifest compiled before the keys existed — stays byte-identical. `attributes` lists the
         // attributes this scanner does NOT itself compile (its own six are already expressed as kind/valid),
-        // so a HandlerMethodArgumentResolver can claim a parameter by one it knows (#[AuthenticationPrincipal]);
-        // `nullable` is recorded for a service binding only — the one kind that consults it — so a resolver
-        // can hand back null honestly instead of a TypeError.
+        // so a HandlerMethodArgumentResolver can claim a parameter by one it knows (#[AuthenticationPrincipal]).
+        // `nullable` is recorded for the two bindings a resolver may answer — a service binding, and ANY
+        // binding that carries such an attribute, whatever kind the type alone planned it as — so the
+        // resolver can hand back null honestly instead of a TypeError. The second case matters for a scalar:
+        // `#[AuthenticationPrincipal] ?string $sub` (a JWT subject) plans as a `query` binding by its type,
+        // and without the key the resolver could not tell it from `string $sub` and would refuse the null
+        // with a 401. An ordinary query parameter still gets no key: nothing reads it there.
         $attributes = [];
         foreach ($parameter->getAttributes() as $attribute) {
             if (! in_array($attribute->getName(), self::OWN_PARAMETER_ATTRIBUTES, true)) {
@@ -237,7 +241,7 @@ final class RouteScanner
         if ($attributes !== []) {
             $binding['attributes'] = $attributes;
         }
-        if ($binding['kind'] === 'service' && $parameter->getType()?->allowsNull() === true) {
+        if (($attributes !== [] || $binding['kind'] === 'service') && $parameter->getType()?->allowsNull() === true) {
             $binding['nullable'] = true;
         }
 

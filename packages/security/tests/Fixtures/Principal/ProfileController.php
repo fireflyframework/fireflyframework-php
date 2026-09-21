@@ -35,4 +35,44 @@ final class ProfileController
     {
         return ['who' => $auth?->getName() ?? 'stranger'];
     }
+
+    /**
+     * The JWT `sub` case the attribute describes: a nullable SCALAR principal, which the scanner would
+     * otherwise plan as a query parameter.
+     *
+     * @return array{sub: string|null}
+     */
+    #[GetMapping('/open/sub')]
+    public function sub(#[AuthenticationPrincipal] ?string $sub): array
+    {
+        return ['sub' => $sub];
+    }
+
+    /** @return array{principal: string|null} */
+    #[GetMapping('/open/whoami')]
+    public function whoami(#[AuthenticationPrincipal] mixed $principal): array
+    {
+        return ['principal' => is_string($principal) ? $principal : ($principal instanceof UserDetails ? 'details:'.$principal->getUsername() : ($principal === null ? null : get_debug_type($principal)))];
+    }
+
+    /** @return array{authenticated: bool, name: string|null} */
+    #[GetMapping('/open/context')]
+    public function context(#[CurrentSecurityContext] SecurityContext $context): array
+    {
+        return ['authenticated' => $context->isAuthenticated(), 'name' => $context->getAuthentication()?->getName()];
+    }
+
+    /** @return array{user: string|null} */
+    #[GetMapping('/open/user')]
+    public function user(?UserDetails $user): array
+    {
+        return ['user' => $user?->getUsername()];
+    }
+
+    /** @return array{name: string} */
+    #[GetMapping('/open/required')]
+    public function required(Authentication $auth): array
+    {
+        return ['name' => $auth->getName()];
+    }
 }

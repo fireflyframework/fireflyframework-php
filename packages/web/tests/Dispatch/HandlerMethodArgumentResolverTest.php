@@ -43,7 +43,7 @@ it('lets a registered resolver claim a binding before the built-in kinds', funct
     }
 
     $routes = (new RouteScanner)->scan(['Firefly\\Web\\Tests\\Fixtures\\Resolver\\' => __DIR__.'/../Fixtures/Resolver']);
-    $route = array_values(array_filter($routes, static fn ($r): bool => $r->controllerClass === TagController::class))[0];
+    $route = array_values(array_filter($routes, static fn ($r): bool => $r->controllerClass === TagController::class && $r->methodName === 'show'))[0];
 
     /** @var ArgumentResolver $resolver */
     $resolver = $app->make(ArgumentResolver::class);

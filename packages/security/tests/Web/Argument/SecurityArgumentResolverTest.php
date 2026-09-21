@@ -84,8 +84,13 @@ it('answers null for anonymous where the parameter allows it, the anonymous cont
         ->and($resolver->resolve(binding('mixed', [AuthenticationPrincipal::class]), $request))->toBeNull()
         // An untyped parameter is `mixed` in PHP's own rules, and accepts null the same way.
         ->and($resolver->resolve(binding(null, [AuthenticationPrincipal::class]), $request))->toBeNull()
+        // A nullable SCALAR principal — `?string $sub`, the JWT case — is null too: the scanner records
+        // `nullable` for an attributed binding whatever kind its type planned, and the resolver honours it.
+        ->and($resolver->resolve(binding('string', [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
         ->and(resolvedContext($resolver, binding(SecurityContext::class), $request)?->isAuthenticated())->toBeFalse()
-        ->and(fn () => $resolver->resolve(binding(Authentication::class), $request))->toThrow(AuthenticationException::class);
+        ->and(fn () => $resolver->resolve(binding(Authentication::class), $request))->toThrow(AuthenticationException::class)
+        // ...and a scalar principal that cannot take null is the same 401, not a TypeError.
+        ->and(fn () => $resolver->resolve(binding('string', [AuthenticationPrincipal::class]), $request))->toThrow(AuthenticationException::class);
 
     // A principal that is a bare string (a JWT `sub`) is not a UserDetails: the typed parameter gets null.
     SecurityContextHolder::setContext(new SecurityContext(Authentication::authenticated('svc', 'svc', [])));

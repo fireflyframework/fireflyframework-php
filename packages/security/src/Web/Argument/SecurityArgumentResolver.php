@@ -75,9 +75,13 @@ final class SecurityArgumentResolver implements HandlerMethodArgumentResolver
     }
 
     /**
-     * A null is refused only where the parameter could not take it: the plan marks a service binding
-     * `nullable` when its type allows null, and a `mixed` or untyped parameter (the plan records no type for
-     * one, and PHP treats it as `mixed`) accepts null by its own rules, exactly as a nullable one does.
+     * A null is refused only where the parameter could not take it: the plan marks a binding `nullable` when
+     * its type allows null and it is one a resolver may answer — a service binding, or any binding carrying
+     * an attribute firefly/web does not compile itself, so `#[AuthenticationPrincipal] ?string $sub` (planned
+     * as a query binding by its type) is null for an anonymous request, not a 401. A `mixed` or untyped
+     * parameter (the plan records no type for one, and PHP treats it as `mixed`) accepts null by its own
+     * rules, exactly as a nullable one does; checked here as well as in the plan, so a manifest compiled
+     * before `nullable` covered attributed bindings answers the same way.
      *
      * @param  array<string, mixed>  $binding
      */

@@ -42,15 +42,32 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * secret rule on firefly.security.remember_me.key whenever remember_me.enabled — the key signs every long-lived
  * cookie, so a placeholder is refused at boot rather than on the first sign-in.
  *
+ * (3) PRINCIPAL INJECTION, unconditional as well: registers the SecurityArgumentResolver into web's
+ * HandlerMethodArgumentResolvers, so a controller action's `Authentication`, `SecurityContext`, `UserDetails`,
+ * `#[AuthenticationPrincipal]` and `#[CurrentSecurityContext]` parameters are bound from the holder before
+ * ArgumentResolver would fall back to its own kinds. It runs with the master flag OFF on purpose: a parameter the
+ * controller declared as the signed-in principal must never degrade to the fallback its type alone would plan —
+ * a `mixed`/scalar `#[AuthenticationPrincipal]` is a REQUIRED QUERY PARAMETER to firefly/web, so without the
+ * resolver `?principal=admin` would be bound straight into the action while the feature is off (fail-open, hidden
+ * behind a 400 for the honest caller), and a class-typed `Authentication $auth` a 500 from the container. With
+ * the resolver always present, the annotations answer what the HOLDER holds, never the flag: with nothing
+ * authenticating they are genuinely inert — `#[AuthenticationPrincipal]` and `?UserDetails` are null,
+ * `#[CurrentSecurityContext]` is the anonymous context, and a non-nullable `Authentication` is an honest 401 —
+ * and a principal a master-independent bearer filter established (jwt, oauth2.resource_server; see (1)) reaches
+ * them exactly as it would with the master flag on. The registry is a singleton WebServiceProvider bound before
+ * RouteWiringPass built the dispatcher, so add()ing into it here — after — is seen by the ArgumentResolver
+ * already constructed; it is joined, never replaced, so a resolver the application registered itself keeps its
+ * place ahead of this one. Skipped only when web is not installed at all.
+ *
  * The remaining actions run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
  * #[Bean] is registered):
  *
- * (3) ENTRY-POINT MODE GUARD: `firefly.security.http.entry_point` is validated — an unknown value, or `login`
+ * (4) ENTRY-POINT MODE GUARD: `firefly.security.http.entry_point` is validated — an unknown value, or `login`
  * without form login, is a ConfigurationException. The authenticationEntryPoint #[Bean] validates it too, but
  * that bean exists only while the HTTP surface is on; this runs whenever the master flag is, so a meaningless
  * mode is refused at boot rather than left for the day http.enabled is flipped.
  *
- * (4) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
+ * (5) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
  * security-methods.php with no proxy-plan.php beside it was written by a firefly:cache from before the proxy plan
  * existed. Such a cache lists every rule in the manifest while DataAutoConfiguration::proxyPlan() bridges a
  * transactional-only plan from transactional.php, so a #[Service] whose rules are method security alone is
@@ -61,18 +78,9 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * null while regenerating), which is what writes the missing file. Skipped when `method.enabled` is off,
  * because the proxy link is then a pass-through by the operator's own choice and the stale plan changes nothing.
  *
- * (5) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
+ * (6) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
  * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
  * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
- *
- * (6) PRINCIPAL INJECTION: registers the SecurityArgumentResolver into web's HandlerMethodArgumentResolvers, so a
- * controller action's `Authentication`, `SecurityContext`, `UserDetails`, `#[AuthenticationPrincipal]` and
- * `#[CurrentSecurityContext]` parameters are bound from the holder before ArgumentResolver would hand them to the
- * container (which cannot build any of them: a 500 per request, today). The registry is a singleton
- * WebServiceProvider bound before RouteWiringPass built the dispatcher, so add()ing into it here — after — is seen
- * by the ArgumentResolver already constructed; it is joined, never replaced, so a resolver the application
- * registered itself keeps its place ahead of this one. Skipped when the master flag is off, like (3)–(5): with
- * security off there is no principal to inject, and the annotations stay inert exactly as the guard's do.
  */
 final class SecurityWiringPass implements BootPass
 {
@@ -104,6 +112,14 @@ final class SecurityWiringPass implements BootPass
             RememberMeSettings::fromConfig($config);
         }
 
+        // Principal injection, independent of the master flag: the resolver claims Authentication/UserDetails/
+        // #[AuthenticationPrincipal]/#[CurrentSecurityContext] parameters before ArgumentResolver would fall back
+        // to a query parameter or the container. It answers what the holder holds — anonymous, so inert, unless
+        // a master-independent bearer filter has signed the request in.
+        if ($context->container->bound(HandlerMethodArgumentResolvers::class)) {
+            $context->container->make(HandlerMethodArgumentResolvers::class)->add(new SecurityArgumentResolver);
+        }
+
         if (! $config->bool('firefly.security.enabled', false)) {
             return;
         }
@@ -128,11 +144,5 @@ final class SecurityWiringPass implements BootPass
         }
 
         $container->instance(ControllerSecurityGuard::class, $container->make(MethodSecurityControllerGuard::class));
-
-        // Principal injection: the resolver claims Authentication/UserDetails/#[AuthenticationPrincipal]/
-        // #[CurrentSecurityContext] parameters before ArgumentResolver would hand them to the container.
-        if ($container->bound(HandlerMethodArgumentResolvers::class)) {
-            $container->make(HandlerMethodArgumentResolvers::class)->add(new SecurityArgumentResolver);
-        }
     }
 }
