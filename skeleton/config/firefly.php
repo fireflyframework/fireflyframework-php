@@ -338,13 +338,16 @@ return [
                 'show-details' => env('FIREFLY_HEALTH_SHOW_DETAILS', 'never'),
 
                 /*
-                 | The DB indicator is OPT-IN so a database-less app's /health does not 503. A failing
-                 | query is caught and reported DOWN, never surfaced as a 500.
+                 | The DB indicator is ON BY DEFAULT whenever `database.default` names a connection with a
+                 | driver — Spring Boot's DataSourceHealthIndicator auto-configuration. A failing query (a
+                 | missing sqlite file, a refused connection) is caught and reported DOWN, and /health
+                 | answers 503; an application with no default database gets no `db` component at all.
+                 | Set false to remove the indicator.
                  |
-                 | Default: false.
+                 | Default: true.
                 */
                 'db' => [
-                    'enabled' => env('FIREFLY_HEALTH_DB_ENABLED', false),
+                    'enabled' => env('FIREFLY_HEALTH_DB_ENABLED', true),
                 ],
 
                 /*

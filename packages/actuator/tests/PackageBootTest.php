@@ -24,11 +24,15 @@ use Illuminate\Foundation\Application;
  * test's only job is: given SOME RouteManifest/ScheduledManifest exists in the container (however it
  * got there), does actuator's OWN component wiring (MappingsEndpoint/ScheduledTasksEndpoint, added in
  * T9) resolve without crashing eager resolution?
+ *
+ * The db health indicator is switched OFF for the same reason: it is on by default now, and this bare
+ * skeleton registers no DatabaseServiceProvider, so there is no ConnectionResolverInterface for its
+ * constructor to take — a database it never meant to have (the ObservabilityCapstoneTestCase idiom).
  */
 function bootActuatorApp(): Application
 {
     return fireflyApplication(
-        config: ['firefly' => ['management' => ['enabled' => true]]],
+        config: ['firefly' => ['management' => ['enabled' => true, 'endpoint' => ['health' => ['db' => ['enabled' => false]]]]]],
         providers: [ActuatorServiceProvider::class, ActuatorWiringProvider::class],
         bindings: [
             RouteManifest::class => new RouteManifest([]),

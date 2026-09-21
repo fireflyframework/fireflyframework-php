@@ -65,7 +65,7 @@ return [
                 'args' => [
                     0 => 'firefly.management.endpoint.health.db.enabled',
                     1 => 'true',
-                    2 => false,
+                    2 => true,
                 ],
             ],
         ],

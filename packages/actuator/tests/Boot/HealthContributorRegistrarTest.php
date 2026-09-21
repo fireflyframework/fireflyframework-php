@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Actuator\Boot\HealthContributorRegistrar;
+use Firefly\Actuator\Health\ConditionalHealthIndicator;
 use Firefly\Actuator\Health\Health;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Actuator\Health\HealthIndicator;
@@ -24,6 +25,19 @@ final class FakePingHealthIndicator implements HealthIndicator
     public function health(): Health
     {
         return Health::up();
+    }
+}
+
+final class UnavailableHealthIndicator implements ConditionalHealthIndicator
+{
+    public function available(): bool
+    {
+        return false;
+    }
+
+    public function health(): Health
+    {
+        return Health::down();
     }
 }
 
@@ -68,4 +82,39 @@ it('discovers HealthIndicator beans and registers them under a derived name', fu
 it('runs at WiringPasses order 10', function () {
     $pass = new HealthContributorRegistrar;
     expect($pass->phase())->toBe(BootPhase::WiringPasses)->and($pass->order())->toBe(10);
+});
+
+it('leaves out an indicator that reports itself unavailable — no component, not DOWN', function () {
+    $container = new Container;
+    $registry = new HealthContributorRegistry;
+    $container->instance(HealthContributorRegistry::class, $registry);
+    $container->instance(FakePingHealthIndicator::class, new FakePingHealthIndicator);
+    $container->instance(UnavailableHealthIndicator::class, new UnavailableHealthIndicator);
+
+    $definitions = new BeanDefinitionRegistry;
+    foreach ([FakePingHealthIndicator::class, UnavailableHealthIndicator::class] as $class) {
+        $definitions->add(new BeanDefinition(new ComponentDescriptor(
+            class: $class,
+            stereotype: 'component',
+            name: null,
+            scope: Scope::Singleton,
+            primary: false,
+            order: 0,
+            qualifier: null,
+            interfaces: array_values(class_implements($class) ?: []),
+            beans: [],
+        )));
+    }
+
+    $config = new Config(new Repository([]));
+    (new HealthContributorRegistrar)->run(new BootContext(
+        container: $container,
+        definitions: $definitions,
+        config: $config,
+        profiles: new Profiles([]),
+        conditions: new ConditionEvaluator($config, new Profiles([])),
+        report: new ConditionEvaluationReport,
+    ));
+
+    expect(array_keys($registry->all()))->toBe(['fakeping']);
 });

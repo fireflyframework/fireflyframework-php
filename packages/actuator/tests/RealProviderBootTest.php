@@ -33,11 +33,16 @@ use Illuminate\Validation\Factory as IlluminateFactory;
  * requested via `needs: ['http']` — WebServiceProvider's FilterChainRegistrar BootPass only needs SOME real
  * Illuminate\Contracts\Http\Kernel to read middleware off of, with no Firefly-side conditional bean in play, so the
  * harness's stock construction is behaviourally identical to binding it by hand.
+ * (3) The db health indicator is switched OFF: it is on by default now, and this bare skeleton registers no
+ * DatabaseServiceProvider, so there is no ConnectionResolverInterface for its constructor to take — a database
+ * the test never meant to have, opted out in the test's own config (the ObservabilityCapstoneTestCase idiom).
  *
  * @param  array<string, mixed>  $management  the `firefly.management.*` tree for this boot
  */
 function bootRealActuator(array $management = ['enabled' => true]): Application
 {
+    $management += ['endpoint' => ['health' => ['db' => ['enabled' => false]]]];
+
     return fireflyApplication(
         config: ['firefly' => ['management' => $management], 'logging' => ['channels' => []]],
         providers: [ValidationServiceProvider::class, WebServiceProvider::class, ActuatorServiceProvider::class, ActuatorWiringProvider::class],

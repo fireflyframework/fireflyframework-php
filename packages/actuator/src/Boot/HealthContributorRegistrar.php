@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Actuator\Boot;
 
+use Firefly\Actuator\Health\ConditionalHealthIndicator;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Actuator\Health\HealthIndicator;
 use Firefly\Context\Boot\BootContext;
@@ -14,7 +15,8 @@ use Firefly\Context\Boot\BootPhase;
  * Bean-scan pass (mirrors FilterChainRegistrar): discovers #[Component] HealthIndicator beans from the
  * condition-filtered definitions, resolves each from the container, and registers it under a derived name. Runs at
  * WiringPasses (instance stage) — ordering vs the route registrar is immaterial because HealthEndpoint reads the
- * populated registry at REQUEST time, not at construction.
+ * populated registry at REQUEST time, not at construction. A ConditionalHealthIndicator whose available() is false
+ * is skipped (see that interface).
  */
 final class HealthContributorRegistrar implements BootPass
 {
@@ -40,6 +42,12 @@ final class HealthContributorRegistrar implements BootPass
             }
             /** @var HealthIndicator $indicator */
             $indicator = $context->container->make($class);
+
+            // An indicator may decline: no component rather than a DOWN for something the app never configured.
+            if ($indicator instanceof ConditionalHealthIndicator && ! $indicator->available()) {
+                continue;
+            }
+
             $registry->register(self::nameFor($class), $indicator);
         }
     }
