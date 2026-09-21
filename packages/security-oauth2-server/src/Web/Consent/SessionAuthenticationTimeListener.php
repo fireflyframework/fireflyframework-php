@@ -27,6 +27,15 @@ use Illuminate\Http\Request;
  * answered by Basic on a stateless path, a console publish) is simply not stamped: there is no session the
  * endpoint could later read.
  *
+ * THE MECHANISM DECIDES WHAT IS WRITTEN. The form and HTTP Basic are active sign-ins — a credential was
+ * presented — and stamp the instant. The remember-me cookie is not: nobody typed anything, and OpenID Connect
+ * Core §3.1.2.1 measures `max_age` from the last ACTIVE authentication, so that mechanism marks the session as
+ * remembered instead (SessionAuthenticationTime::remembered(), which keeps an active instant already there).
+ * The distinction is what makes the endpoint's re-authentication demand mean something: it clears the context
+ * and expires the cookie, but a browser that still sends the cookie to the login page is signed back in by
+ * RememberMeAuthenticationFilter (-83, ahead of the endpoint's filter at -82) before the endpoint looks again —
+ * and that sign-in must not read as the fresh one it asked for.
+ *
  * Gated like every other bean of this package: the stamp is only ever read by the authorization endpoint, so a
  * session is not touched for a server that is off.
  */
@@ -42,6 +51,12 @@ final class SessionAuthenticationTimeListener
     {
         $request = $this->currentRequest();
         if ($request === null || ! $request->hasSession()) {
+            return;
+        }
+
+        if ($event->mechanism === InteractiveAuthenticationSuccessEvent::REMEMBER_ME) {
+            SessionAuthenticationTime::remembered($request->session());
+
             return;
         }
 

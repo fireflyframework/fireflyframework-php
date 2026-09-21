@@ -224,6 +224,7 @@ return [
             8 => 'Illuminate\\Container\\Container',
             9 => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
             10 => 'Psr\\Log\\LoggerInterface',
+            11 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
         ],
     ],
     3 => [

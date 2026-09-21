@@ -36,6 +36,7 @@ use Firefly\Security\Session\SecurityContextRepository;
 use Firefly\Security\Web\Csrf\SessionCsrf;
 use Firefly\Security\Web\EntryPoint\AuthenticationEntryPoint;
 use Firefly\Security\Web\EntryPoint\LoginUrlAuthenticationEntryPoint;
+use Firefly\Security\Web\RememberMe\RememberMeServices;
 use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Web\Error\ErrorPageSettings;
 use Illuminate\Container\Container;
@@ -60,13 +61,18 @@ use Throwable;
  *      client or its public nature demands it, `plain`, a malformed challenge, a non-numeric `max_age` — a 302
  *      to the redirect URI with `error`, `error_description` and the echoed `state`.
  *   3. THE PRINCIPAL: anonymous, or `prompt=login`, or `max_age` exceeded (measured from the instant
- *      SessionAuthenticationTimeListener stamped at sign-in — a session that signed in before the listener could
- *      see it is stamped on this first look, see SessionAuthenticationTime) → `login_required` for `prompt=none`,
- *      otherwise the entry point (the bean when HttpSecurityFilter is on; a LoginUrlAuthenticationEntryPoint
- *      over the form-login settings when it is not; a plain 401 when form login is off) with the request
- *      saved — WITHOUT `prompt=login`, and with the stored context and the instant cleared, so the sign-in that
- *      follows is stamped afresh, comes back here once (`max_age` still on the request, now satisfied) and
- *      proceeds.
+ *      SessionAuthenticationTimeListener stamped at an ACTIVE sign-in — a session the remember-me cookie signed
+ *      in has none and exceeds any `max_age`; one that signed in before the listener could see it is stamped on
+ *      this first look, see SessionAuthenticationTime) → `login_required` for `prompt=none`, otherwise the entry
+ *      point (the bean when HttpSecurityFilter is on; a LoginUrlAuthenticationEntryPoint over the form-login
+ *      settings when it is not; a plain 401 when form login is off) with the request saved WITHOUT `login` among
+ *      its prompts — whether the browser was anonymous or is being asked again, since the return visit is
+ *      signed in either way and would otherwise read the prompt as a demand to sign in once more. When it IS a
+ *      signed-in browser being asked again, the stored context and the instant are cleared and the remember-me
+ *      cookie is expired on the redirect (the cookie would otherwise sign the browser straight back in on the
+ *      return trip, no credential entered — the filter at -83 runs ahead of this endpoint's), so the sign-in
+ *      that follows is a credentialed one, stamped afresh, that comes back here once (`max_age` still on the
+ *      request, now satisfied) and proceeds.
  *   4. CONSENT: when the client requires it and (`prompt=consent`, or no stored consent covers the requested
  *      scopes) → `consent_required` for `prompt=none`, otherwise the page (the framework's, or `consent.view`
  *      with the same model, falling back logged at warning like the login view) with the request pending in
@@ -97,6 +103,7 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
         private readonly Container $container,
         private readonly ?AuthenticationEntryPoint $entryPoint = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?RememberMeServices $rememberMe = null,
     ) {}
 
     public function methods(): array
@@ -141,7 +148,7 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
                 return OAuth2ErrorResponse::redirect($redirectUri, new OAuth2Error(OAuth2ErrorCodes::LOGIN_REQUIRED, 'The user is not signed in.'), $authorizationRequest->state);
             }
 
-            return $this->commenceLogin($request, $reauthenticate);
+            return $this->commenceLogin($request, $authorizationRequest, $reauthenticate);
         }
 
         $consent = $this->consents->findById($client->id, $principal->getName());
@@ -211,8 +218,9 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
     }
 
     /**
-     * `max_age` against the sign-in instant the listener stamped (OpenID Connect Core §3.1.2.1). Without a session
-     * there is nothing to measure from, so the check cannot fail — a stateless deployment cannot honour `max_age`.
+     * `max_age` against the active sign-in instant the listener stamped (OpenID Connect Core §3.1.2.1); a session
+     * the remember-me cookie signed in has no such instant and exceeds any `max_age`. Without a session there is
+     * nothing to measure from, so the check cannot fail — a stateless deployment cannot honour `max_age`.
      */
     private function maxAgeExceeded(Request $request, AuthorizationRequest $authorizationRequest): bool
     {
@@ -220,14 +228,22 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
             return false;
         }
 
-        return SessionAuthenticationTime::of($request->session()) + $authorizationRequest->maxAge < time();
+        $authenticatedAt = SessionAuthenticationTime::of($request->session());
+
+        return $authenticatedAt === null || $authenticatedAt + $authorizationRequest->maxAge < time();
     }
 
     /**
-     * Send the browser to sign in and come back. For a re-authentication the stored context is cleared first and
-     * the saved request loses `prompt=login`, so the return visit proceeds instead of asking again.
+     * Send the browser to sign in and come back. Whenever the request carries `prompt=login` the request the entry
+     * point saved is rewritten without that one prompt (`consent` and the rest stay), so the return visit — signed
+     * in by then, whether the browser was anonymous now or is being asked again — proceeds instead of reading the
+     * prompt as a demand to sign in a second time. For a re-authentication ($reauthenticate: a signed-in browser
+     * with `prompt=login` or an exceeded `max_age`) the stored context and the instant are cleared FIRST, and the
+     * remember-me cookie is expired on the redirect through the same port logout uses: left alone, the cookie
+     * would sign the browser back in on its very next request, and the fresh sign-in this endpoint asked for
+     * would never involve a credential.
      */
-    private function commenceLogin(Request $request, bool $reauthenticate): Response
+    private function commenceLogin(Request $request, AuthorizationRequest $authorizationRequest, bool $reauthenticate): Response
     {
         if ($reauthenticate && $request->hasSession()) {
             $this->contexts->clear($request);
@@ -242,13 +258,29 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
 
         $response = $entryPoint->commence($request, new AuthenticationException('Authentication is required to authorize a client.'));
 
-        if ($reauthenticate && $request->hasSession()) {
-            $query = $request->query->all();
-            unset($query['prompt']);
-            $request->session()->put(SavedRequest::KEY, $request->url().($query === [] ? '' : '?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986)));
+        if ($reauthenticate) {
+            $this->rememberMe?->logout($request, $response);
+        }
+
+        if ($authorizationRequest->prompts('login') && $request->hasSession() && $request->session()->get(SavedRequest::KEY) === $request->fullUrl()) {
+            $request->session()->put(SavedRequest::KEY, $this->withoutLoginPrompt($request, $authorizationRequest));
         }
 
         return $response;
+    }
+
+    /** The request's own URL with `login` taken out of `prompt` — the parameter dropped when it was the only value. */
+    private function withoutLoginPrompt(Request $request, AuthorizationRequest $authorizationRequest): string
+    {
+        $query = $request->query->all();
+        $prompts = array_values(array_diff($authorizationRequest->prompt, ['login']));
+        if ($prompts === []) {
+            unset($query['prompt']);
+        } else {
+            $query['prompt'] = implode(' ', $prompts);
+        }
+
+        return $request->url().($query === [] ? '' : '?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986));
     }
 
     /**
@@ -355,9 +387,10 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
     }
 
     /**
-     * The authorization with the code and the request's attributes; `auth_time` is the sign-in instant the listener
-     * stamped (the code-issue instant only for a session the listener never saw, see SessionAuthenticationTime) and
-     * `sid` the session id, both omitted for a request without a session.
+     * The authorization with the code and the request's attributes; `auth_time` is the active sign-in instant the
+     * listener stamped (the code-issue instant only for a session the listener never saw; none at all for one the
+     * remember-me cookie signed in, see SessionAuthenticationTime) and `sid` the session id, both omitted for a
+     * request without a session.
      *
      * @param  list<string>  $scopes
      * @param  array<string,mixed>  $attributes

@@ -19,9 +19,9 @@ function startedSessionStore(): Store
     return $store;
 }
 
-function interactiveSignIn(): InteractiveAuthenticationSuccessEvent
+function interactiveSignIn(string $mechanism = InteractiveAuthenticationSuccessEvent::FORM): InteractiveAuthenticationSuccessEvent
 {
-    return new InteractiveAuthenticationSuccessEvent(Authentication::authenticated('ada', 'ada', []), InteractiveAuthenticationSuccessEvent::FORM);
+    return new InteractiveAuthenticationSuccessEvent(Authentication::authenticated('ada', 'ada', []), $mechanism);
 }
 
 it('keeps the stamp once written, and stamps now only for a session that has none', function () {
@@ -40,6 +40,30 @@ it('keeps the stamp once written, and stamps now only for a session that has non
 
     SessionAuthenticationTime::forget($session);
     expect($session->get(SessionAuthenticationTime::KEY))->toBeNull();
+});
+
+it('marks a session the cookie signed in as remembered — no active instant, so of() answers null and never stamps now', function () {
+    $session = startedSessionStore();
+
+    SessionAuthenticationTime::remembered($session);
+    expect($session->get(SessionAuthenticationTime::KEY))->toBe(SessionAuthenticationTime::REMEMBERED)
+        ->and(SessionAuthenticationTime::of($session))->toBeNull()
+        ->and($session->get(SessionAuthenticationTime::KEY))->toBe(SessionAuthenticationTime::REMEMBERED);
+
+    // A credentialed sign-in after it is an active one: the instant replaces the marker.
+    SessionAuthenticationTime::stamp($session);
+    expect(SessionAuthenticationTime::of($session))->toBeInt();
+
+    // The other way round, an active instant already there is the last active authentication: the cookie keeps it.
+    $session->put(SessionAuthenticationTime::KEY, 1_700_000_000);
+    SessionAuthenticationTime::remembered($session);
+    expect(SessionAuthenticationTime::of($session))->toBe(1_700_000_000);
+
+    // forget() clears the marker like the instant, so the next look falls back to stamping now.
+    SessionAuthenticationTime::forget($session);
+    SessionAuthenticationTime::remembered($session);
+    SessionAuthenticationTime::forget($session);
+    expect(SessionAuthenticationTime::of($session))->toBeInt();
 });
 
 it('stamps the session of the request the container holds at the moment of the sign-in, never a captured one', function () {
@@ -67,6 +91,29 @@ it('stamps the session of the request the container holds at the moment of the s
     $listener->onInteractiveAuthenticationSuccess(interactiveSignIn());
     expect($second->get(SessionAuthenticationTime::KEY))->toBeInt()->toBeGreaterThanOrEqual($before)
         ->and($first->get(SessionAuthenticationTime::KEY))->toBe(1_700_000_000);
+});
+
+it('stamps the form and Basic as active sign-ins, and marks a remember-me sign-in as remembered without touching an instant already there', function () {
+    $container = new Container;
+    $container->alias('request', Request::class);
+    $listener = new SessionAuthenticationTimeListener($container);
+
+    // The cookie alone: remembered, not an instant.
+    $remembered = startedSessionStore();
+    $request = Request::create('/oauth2/authorize', 'GET');
+    $request->setLaravelSession($remembered);
+    $container->instance('request', $request);
+    $listener->onInteractiveAuthenticationSuccess(interactiveSignIn(InteractiveAuthenticationSuccessEvent::REMEMBER_ME));
+    expect($remembered->get(SessionAuthenticationTime::KEY))->toBe(SessionAuthenticationTime::REMEMBERED);
+
+    // Basic, like the form, is a credential presented now.
+    $listener->onInteractiveAuthenticationSuccess(interactiveSignIn(InteractiveAuthenticationSuccessEvent::BASIC));
+    expect($remembered->get(SessionAuthenticationTime::KEY))->toBeInt();
+
+    // A cookie sign-in in a session that already holds an active instant leaves that instant alone.
+    $remembered->put(SessionAuthenticationTime::KEY, 1_700_000_000);
+    $listener->onInteractiveAuthenticationSuccess(interactiveSignIn(InteractiveAuthenticationSuccessEvent::REMEMBER_ME));
+    expect($remembered->get(SessionAuthenticationTime::KEY))->toBe(1_700_000_000);
 });
 
 it('does nothing in a container that holds no request, or for a request without a session', function () {

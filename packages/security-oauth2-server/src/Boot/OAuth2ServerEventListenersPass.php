@@ -28,7 +28,8 @@ use Illuminate\Contracts\Events\Dispatcher;
  * freshness guard, and is silent at runtime — the same gap DomainEventBridgeWiringPass closes for firefly/cqrs
  * with a hand-built listener. Here the listener is SessionAuthenticationTimeListener, which needs
  * InteractiveAuthenticationSuccessEvent to stamp the sign-in instant `auth_time` and `max_age` are measured
- * from; without this pass a browser signed in hours ago would satisfy `max_age=60` on its first authorization
+ * from (and to tell a remember-me cookie's sign-in, which is no active authentication, from the form's);
+ * without this pass a browser signed in hours ago would satisfy `max_age=60` on its first authorization
  * request.
  *
  * WiringPasses/220, after OAuth2ServerWiringPass's refusals (210); a no-op while the server is off, so the

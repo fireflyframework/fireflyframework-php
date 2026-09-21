@@ -137,6 +137,42 @@ it('asks again for prompt=login: the stored principal and the authentication ins
     $this->getJson('/api/profile')->assertStatus(401);
 });
 
+it('signs an anonymous browser in ONCE for prompt=login: the saved request loses the prompt, and the return visit issues the code', function () {
+    /** @var OAuth2ServerCapstoneTestCase $this */
+    $oauth2 = $this->oauth2();
+
+    // 1. Anonymous with prompt=login: the login page, with the request saved WITHOUT the prompt — otherwise the
+    //    return visit, now signed in, would read prompt=login as a demand to sign in again.
+    $first = $oauth2->authorize('public-spa', OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI, 'openid', ['prompt' => 'login']);
+    $first->assertRedirect('http://localhost/login');
+    $this->followSession($first);
+    $saved = $this->sessionStore()->get(SavedRequest::KEY);
+    expect($saved)->toBeString()->toStartWith('http://localhost/oauth2/authorize?')
+        ->and($saved)->not->toContain('prompt=login')
+        ->and($saved)->toContain('state='.$oauth2->state());
+
+    // 2. One sign-in sends the browser back to the authorization request.
+    $page = $this->get('/login');
+    $signedIn = $this->post('/login', ['username' => 'ada', 'password' => 'secret', '_token' => $this->csrfTokenFrom($page)]);
+    $signedIn->assertStatus(302);
+    $back = (string) $signedIn->headers->get('Location');
+    expect($back)->toStartWith('http://localhost/oauth2/authorize?')->not->toContain('prompt=login');
+    $this->followSession($signedIn);
+
+    // 3. The return visit issues the code — not the login page a second time.
+    $redirect = $this->get($back);
+    $redirect->assertStatus(302);
+    expect((string) $redirect->headers->get('Location'))->toStartWith(OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI.'?code=')->toContain('state='.$oauth2->state());
+
+    // 4. Only `login` is taken out of the prompts: `prompt=login consent` comes back as `prompt=consent`.
+    $this->forgetSession();
+    $this->forgetCookies();
+    $both = $oauth2->authorize('web-app', OAuth2ServerCapstoneTestCase::REDIRECT_URI, 'openid', ['prompt' => 'login consent']);
+    $both->assertRedirect('http://localhost/login');
+    $this->followSession($both);
+    expect($this->sessionStore()->get(SavedRequest::KEY))->toContain('prompt=consent')->not->toContain('prompt=login');
+});
+
 it('denies when the user refuses, redirecting with access_denied and the state', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
     $this->signIn();
