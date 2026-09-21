@@ -402,8 +402,9 @@ deptrac:
       - Web
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
-    # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it
-    # only from their tests/, which Deptrac's src-only collectors never see (no cycle; dev-scoped dep).
+    # package's frozen ports, so it depends on ALL layers (and SecurityOAuth2Client, for actingAsOidcUser()).
+    # It is depended on by NONE — consumers use it only from their tests/, which Deptrac's src-only
+    # collectors never see (no cycle; dev-scoped dep).
     Testing:
       - Kernel
       - Container
@@ -421,6 +422,7 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Client
       - Actuator
       - Observability
 
