@@ -19,6 +19,8 @@ use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
+use Firefly\Security\Web\Basic\HttpBasicFilter;
+use Firefly\Security\Web\Settings\HttpBasicSettings;
 use Firefly\Testing\Double\RecordingAuthenticationEvents;
 use Illuminate\Foundation\Application;
 
@@ -86,6 +88,19 @@ it('does not bind an AuthenticationEventPublisher when security is disabled', fu
     $context = bootSecurityApp(false)->make(ApplicationContext::class);
 
     expect($context->has(AuthenticationEventPublisher::class))->toBeFalse();
+});
+
+it('boots a security-only application with the master flag on and HTTP Basic off without the web renderers', function () {
+    // No WebServiceProvider is registered here — a CQRS worker's boot. HttpBasicFilter takes the
+    // BasicAuthenticationEntryPoint, whose two web renderers need the view factory that only the web
+    // provider binds, so the filter is AND-gated on `http_basic.enabled` beside the master flag (the rule
+    // HttpSecurityFilter applies with `http.enabled`): under the master flag alone the EagerSingletonsPass
+    // would construct it at this boot and die resolving [view].
+    /** @var ApplicationContext $context */
+    $context = bootSecurityApp(true)->make(ApplicationContext::class);
+
+    expect($context->has(HttpBasicFilter::class))->toBeFalse()
+        ->and($context->has(HttpBasicSettings::class))->toBeTrue();
 });
 
 it('refuses to boot when both local-JWT and the OAuth2 resource server are enabled', function () {
