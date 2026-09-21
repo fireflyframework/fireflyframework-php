@@ -338,13 +338,16 @@ return [
                 'show-details' => env('FIREFLY_HEALTH_SHOW_DETAILS', 'never'),
 
                 /*
-                 | The DB indicator is OPT-IN so a database-less app's /health does not 503. A failing
-                 | query is caught and reported DOWN, never surfaced as a 500.
+                 | The DB indicator is ON BY DEFAULT whenever `database.default` names a connection with a
+                 | driver — Spring Boot's DataSourceHealthIndicator auto-configuration. A failing query (a
+                 | missing sqlite file, a refused connection) is caught and reported DOWN, and /health
+                 | answers 503; an application with no default database gets no `db` component at all.
+                 | Set false to remove the indicator.
                  |
-                 | Default: false.
+                 | Default: true.
                 */
                 'db' => [
-                    'enabled' => env('FIREFLY_HEALTH_DB_ENABLED', false),
+                    'enabled' => env('FIREFLY_HEALTH_DB_ENABLED', true),
                 ],
 
                 /*
@@ -1146,6 +1149,68 @@ return [
         // 'time-limiter' => [
         //     'payments' => ['timeout' => '2s'],
         // ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Data — firefly/data
+    |--------------------------------------------------------------------------
+    |
+    | The repository and transaction layer. Everything here has a safe default; the block exists so the
+    | switches are findable.
+    |
+    */
+
+    'data' => [
+
+        /*
+         | Spring's PersistenceExceptionTranslator. With it on, a driver failure leaves every repository
+         | method and every #[Transactional] method as a member of the kernel's DataAccessException family
+         | — DuplicateKeyException (409 DUPLICATE_KEY), DataIntegrityViolationException (409),
+         | CannotAcquireLockException / DeadlockLoserDataAccessException (409), QueryTimeoutException
+         | (504), DataAccessResourceFailureException (503, unreachable), TransientDataAccessResource-
+         | Exception (503, retryable), BadSqlGrammarException (500) — with the QueryException as `previous`
+         | and a fixed sentence as the message, so the statement never reaches problem+json. Rollback rules
+         | match the translated type AND the original. Off: the raw QueryException, as before.
+         |
+         | Default: true.
+        */
+        'exception-translation' => [
+            'enabled' => env('FIREFLY_DATA_EXCEPTION_TRANSLATION', true),
+        ],
+
+        'transaction' => [
+            /*
+             | Seconds a #[Transactional] unit of work may run when its attribute names no `timeout:`.
+             | On the outermost transaction the driver is told to give up on a statement past the budget
+             | (pgsql statement_timeout; mysql max_execution_time, mariadb max_statement_time — each with
+             | innodb_lock_wait_timeout, and a `mysql` connection whose server is mariadb is detected;
+             | sqlite the busy timeout) and a wall-clock deadline is checked when the method returns: an
+             | overrun is rolled back and answered 504 TRANSACTION_TIMED_OUT. 0 means no deadline.
+             |
+             | Default: 0.
+            */
+            'default-timeout' => (int) env('FIREFLY_DATA_TRANSACTION_TIMEOUT', 0),
+
+            /*
+             | Whether the driver-level statement timeout above is issued at all. false keeps only the
+             | wall-clock check — for a driver whose SET the connection user may not run.
+             |
+             | Default: true.
+            */
+            'statement-timeout' => env('FIREFLY_DATA_STATEMENT_TIMEOUT', true),
+        ],
+
+        /*
+         | #[TransactionalEventListener]: listeners that run in a phase of the transaction their event
+         | was published in (BEFORE_COMMIT, AFTER_COMMIT, AFTER_ROLLBACK, AFTER_COMPLETION). false leaves
+         | every such listener unregistered — nothing else changes, #[AsEventListener] is unaffected.
+         |
+         | Default: true.
+        */
+        'transactional-event-listeners' => [
+            'enabled' => env('FIREFLY_DATA_TRANSACTIONAL_LISTENERS', true),
+        ],
     ],
 
     /*

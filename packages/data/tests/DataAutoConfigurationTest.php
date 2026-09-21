@@ -2,15 +2,19 @@
 
 declare(strict_types=1);
 
+use Firefly\Config\Config;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Data\DataAutoConfiguration;
+use Firefly\Data\DataSettings;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
+use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 use Illuminate\Config\Repository;
@@ -31,12 +35,13 @@ it('builds the transaction engine beans incl. the after-commit dispatch graph', 
 
     $tracker = $config->aggregateTracker();
     $dispatcher = $config->domainEventDispatcher($tracker, new RecordingApplicationEventPublisher);
-    $template = $config->transactionTemplate($dispatcher);
+    $template = $config->transactionTemplate($dispatcher, new PersistenceExceptionTranslator, new DataSettings, $config->transactionSynchronizationRegistry());
 
     expect($tracker)->toBeInstanceOf(AggregateTracker::class)
         ->and($dispatcher)->toBeInstanceOf(DomainEventDispatcher::class)
         ->and($template)->toBeInstanceOf(TransactionTemplate::class)
         ->and($config->transactionInterceptor($template))->toBeInstanceOf(TransactionInterceptor::class)
+        ->and($config->transactionSynchronizationRegistry())->toBeInstanceOf(TransactionSynchronizationRegistry::class)
         ->and($config->transactionalManifest(dataConfigContainer()))->toBeInstanceOf(TransactionalManifest::class)
         ->and($config->transactionalManifest(dataConfigContainer())->all())->toBe([])
         ->and($config->proxyFactory())->toBeInstanceOf(ProxyFactory::class);
@@ -67,4 +72,15 @@ it('scans #[Transactional] in-process when firefly.scan.paths is set and nothing
 
     expect($manifest)->toBeInstanceOf(TransactionalManifest::class)
         ->and($manifest->all())->not->toBe([]);
+});
+
+it('builds the data settings and the translator from config', function () {
+    $config = new DataAutoConfiguration;
+    $settings = $config->dataSettings(new Config(new Repository(['firefly' => ['data' => ['exception-translation' => ['enabled' => false]]]])));
+
+    expect($settings)->toBeInstanceOf(DataSettings::class)
+        ->and($settings->exceptionTranslation)->toBeFalse()
+        ->and($config->persistenceExceptionTranslator($settings))->toBeInstanceOf(PersistenceExceptionTranslator::class)
+        ->and($config->persistenceExceptionTranslator($settings)->isEnabled())->toBeFalse()
+        ->and($config->persistenceExceptionTranslator(new DataSettings)->isEnabled())->toBeTrue();
 });

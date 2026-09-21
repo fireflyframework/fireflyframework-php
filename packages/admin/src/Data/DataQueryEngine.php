@@ -15,6 +15,13 @@ use Firefly\Data\Repository\PagingAndSortingRepository;
 use Firefly\Data\Repository\Sort;
 use Firefly\Data\Repository\Specification\Specification;
 use Firefly\Data\Repository\Specification\Specifications;
+use Firefly\Kernel\Exception\Infrastructure\CannotAcquireLockException;
+use Firefly\Kernel\Exception\Infrastructure\DataAccessResourceFailureException;
+use Firefly\Kernel\Exception\Infrastructure\DataIntegrityViolationException;
+use Firefly\Kernel\Exception\Infrastructure\DuplicateKeyException;
+use Firefly\Kernel\Exception\Infrastructure\QueryTimeoutException;
+use Firefly\Kernel\Exception\Infrastructure\TransactionTimedOutException;
+use Firefly\Kernel\Exception\Infrastructure\TransientDataAccessResourceException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Stringable;
@@ -557,17 +564,34 @@ final class DataQueryEngine
     }
 
     /**
-     * A failure sentence that names the exception's CLASS and withholds its message. Public because the write
-     * path in DataBrowser needs exactly the same guarantee, and two formatters is how one of them ends up
-     * calling getMessage().
+     * A reason a person can read, WITHOUT the exception message: a QueryException's message carries the SQL and
+     * its bound values, and this string is rendered on a page. Public because the write path in DataBrowser
+     * needs exactly the same guarantee, and two formatters is how one of them ends up calling getMessage().
      *
      * `Illuminate\Database\QueryException::getMessage()` embeds the failing SQL and the bound parameters. On
      * this surface those bindings are a searched term, a primary key, or — on an update — the submitted field
-     * values, so echoing the message into HTML publishes the schema and the data in one line. The class name
-     * is enough for an operator to know what kind of failure it was and to find it in the log.
+     * values, so echoing the message into HTML publishes the schema and the data in one line.
+     *
+     * A failure the data layer has already translated (see firefly/data's PersistenceExceptionTranslator) is
+     * the one case where more can be said safely — the translated type IS the sentence, and the driver's text
+     * is on `previous`, never here. Everything else keeps the withheld-message wording and names the class,
+     * which is enough for an operator to know what kind of failure it was and to find it in the log.
      */
     public function safeReason(string $what, Throwable $e): string
     {
+        $sentence = match (true) {
+            $e instanceof DuplicateKeyException => 'a row with the same unique value already exists.',
+            $e instanceof DataIntegrityViolationException => 'the database refused it because a constraint (a foreign key, a NOT NULL or a check) would be broken.',
+            $e instanceof CannotAcquireLockException => 'the row is locked by another transaction; try again in a moment.',
+            $e instanceof QueryTimeoutException, $e instanceof TransactionTimedOutException => 'the database took longer than its timeout to answer.',
+            $e instanceof DataAccessResourceFailureException, $e instanceof TransientDataAccessResourceException => 'the database could not be reached.',
+            default => null,
+        };
+
+        if ($sentence !== null) {
+            return sprintf('%s: %s', $what, $sentence);
+        }
+
         return sprintf(
             '%s (%s). The exception message is withheld because it can contain SQL and bound values; see the application log.',
             $what,

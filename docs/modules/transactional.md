@@ -43,6 +43,8 @@ class TransferService
 Default `rollbackFor = [Throwable::class]`: PHP has no checked/unchecked exception split, so by default *any*
 throwable rolls back the transaction, unless it also matches `noRollbackFor` (which always wins).
 
+`timeout` is in seconds and is enforced — see [Timeouts](#timeouts).
+
 ## The seven propagation modes
 
 `Propagation` is an unbacked enum with all seven Spring modes, including `NESTED` (which Laravel's automatic
@@ -90,6 +92,12 @@ whole transaction — see [Known-latent](#known-latent).
 3. Otherwise (matches neither list — only reachable with a narrowed `rollbackFor`), the transaction
    **commits** and the exception is rethrown.
 
+If that commit-and-rethrow's commit itself fails (a deferred constraint reported at `COMMIT`, a connection
+lost on the way), the transaction is rolled back instead and a `TransactionSystemException`
+(`TRANSACTION_SYSTEM_ERROR`, 500) escapes carrying both failures — Spring's shape: the commit failure is its
+`previous`, the method's own exception its `$applicationException`. A commit that fails after the method
+*returned* is rolled back the same way and the failure is rethrown on its own.
+
 ```php
 #[Transactional(noRollbackFor: [IgnorableException::class])]
 public function logButKeep(): void
@@ -105,6 +113,71 @@ Either way — commit or roll back — after-commit domain events queued during 
 `connection`, so a `#[Transactional(connection: 'x')]` method fires its listeners on `x`'s commit; Laravel
 discards `afterCommit` callbacks on rollback, so a listener never sees an event from a rolled-back unit of
 work. See [Domain (DDD)](domain.md#the-after-commit-event-model).
+
+## Timeouts
+
+`#[Transactional(timeout: 5)]` (seconds) is enforced on the **outermost** transaction the template starts.
+Right after `beginTransaction()` the driver is told to give up on a statement past the budget — pgsql
+`SET LOCAL statement_timeout` (transaction-scoped, nothing to restore), mysql `SET SESSION
+max_execution_time` (milliseconds, `SELECT`s only) or mariadb `SET SESSION max_statement_time` (seconds, any
+statement — mariadb has no `max_execution_time` variable, and a `mysql` connection whose server is mariadb is
+detected through the server version), each with `innodb_lock_wait_timeout`, every previous value read first
+and restored in a `finally` independently of the other, sqlite `PDO::ATTR_TIMEOUT` (the busy timeout — the
+only knob sqlite has) restored to the configured `busy_timeout` — and a wall-clock deadline is taken. When the
+method **returns** past that deadline the transaction is rolled back and `TransactionTimedOutException` (504
+`TRANSACTION_TIMED_OUT`) is thrown; a method whose own exception ended it keeps that exception. A joined
+`REQUIRED` and a `NESTED` savepoint run under the outer budget — Spring semantics.
+`firefly.data.transaction.default-timeout` applies when the attribute names none (0 = no deadline);
+`firefly.data.transaction.statement-timeout=false` keeps only the wall-clock check.
+
+## Transactional event listeners
+
+`#[TransactionalEventListener]` is the transaction-aware alternative to `#[AsEventListener]` — Spring's
+`@TransactionalEventListener`:
+
+```php
+#[Component]
+final class OrderAudit
+{
+    #[TransactionalEventListener]                                              // AFTER_COMMIT
+    public function record(OrderPlaced $event): void { /* the row is committed */ }
+
+    #[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT)]
+    public function check(OrderPlaced $event): void { /* inside the transaction; a throw aborts the commit */ }
+
+    #[TransactionalEventListener(phase: TransactionPhase::AFTER_ROLLBACK, fallbackExecution: true)]
+    public function undo(OrderPlaced $event): void { /* also runs at once when no transaction is active */ }
+}
+```
+
+The event is published immediately (a plain `#[AsEventListener]` on the same event still runs inside the
+transaction); **this** listener is queued on the current transaction and runs in its phase — `BEFORE_COMMIT`
+inside the commit (Laravel's `TransactionCommitting`, before the PDO commit, so a throw rolls back),
+`AFTER_COMMIT` after the root commit (`Connection::afterCommit()`, discarded on rollback), `AFTER_ROLLBACK`
+after a rollback (`Connection::afterRollBack()`), `AFTER_COMPLETION` after either. A listener queued inside a
+savepoint (`NESTED`, or `REQUIRES_NEW` joined on the same connection) belongs to that savepoint: when it rolls
+back and the outer transaction goes on to commit, the event's listeners see `AFTER_ROLLBACK` (and
+`AFTER_COMPLETION`) and nothing else. With no active transaction the listener is skipped unless
+`fallbackExecution: true`. The event class is inferred from the first parameter (or named with `event:`);
+`order` sorts transactional listeners among themselves. They are compiled by the same scanner into the
+manifest's `listeners` map and registered by `DataWiringProvider`'s `TransactionalEventListenerWiringPass` at
+`BootPhase::EventListeners`; `TransactionSynchronizationRegistry` is the bean that queues them, and
+`TransactionTemplate` tells it which connection is current so a `#[Transactional(connection: 'x')]` method's
+listeners bind to `x` (an event published inside a plain `DB::transaction()` binds to the default connection).
+
+Relationship with the domain-event bridge: `DomainEventDispatcher::publishAfterCommit()` defers the **event**
+— nobody hears it before commit; `#[TransactionalEventListener]` defers the **listener** — the event is heard
+now, this method later. Use the bridge for aggregates' domain events, the attribute for a listener that must
+see committed state (or a rollback) for any application event.
+
+## Exception translation
+
+`TransactionTemplate::execute()` translates whatever escapes any propagation arm into the kernel's
+`DataAccessException` family (see [Data & Repositories](data.md#exception-translation)), so a
+`#[Transactional]` method throws `DuplicateKeyException`, `BadSqlGrammarException`, … whether or not the
+failing statement went through a repository. `rollbackFor`/`noRollbackFor` are matched against the translated
+exception **and** the original underneath it, so a `noRollbackFor: [QueryException::class]` written before
+translation existed still matches. A commit that itself fails is rolled back before the failure is rethrown.
 
 ## The proxy model
 
@@ -126,10 +199,15 @@ public function transfer(int $amount): int
 
 — routing the real call through `TransactionInterceptor::run()` (which delegates to
 `TransactionTemplate::execute()`) before falling through to `parent::`. `ProxyFactory` instantiates the proxy
-**state-preservingly**: `newInstanceWithoutConstructor()` (so `#[PostConstruct]` is not re-run), then a bound
-closure copies the real bean's scope-visible state via `get_object_vars()` — not `ReflectionProperty` — onto
-the proxy, and a second bound closure sets the proxy's own private interceptor property. The proxy *is-a*
-`{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the original bean.
+**state-preservingly**: `newInstanceWithoutConstructor()` (so `#[PostConstruct]` is not re-run), then the real
+bean's initialised state is copied slot by slot, each slot written by a closure bound to the class that
+*declares* it — never `ReflectionProperty::setValue()` — and a last bound closure sets the proxy's own private
+interceptor property. Writing from the declaring class is what lets the copy reach a `private` on a parent
+(`EloquentRepository`'s translator under every `#[Repository]`) and initialise a parent's `protected readonly`
+(`EloquentRepository`'s manifest and tracker) on PHP 8.3, where a readonly property is initialisable from its
+declaring class's scope alone; two privates under one name in a parent and a child stay two slots. The proxy
+*is-a* `{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the
+original bean.
 
 **Self-invocation bypasses the proxy** — the same well-known Spring limitation. A method calling
 `$this->otherMethod()` from inside the proxied class calls straight through `parent::`, skipping the
@@ -188,20 +266,23 @@ $template->execute($work, new TransactionalDescriptor(
   the compiled `transactional.php`, so `#[Transactional]` was a **silent no-op** in any application that did
   not hand-write its own manifest configuration — which is precisely what the skeleton's
   `app/Support/CachedTransactionalConfiguration.php` existed to do, and why it has been deleted.
-- **The proxy's state-copy cannot see state private to a non-framework parent of the proxied class.**
-  `ProxyFactory`'s scoped closure copies `get_object_vars()` visible from `$declaredClass`'s own scope; state
-  declared `private` on some class *above* `$declaredClass` in its inheritance chain is invisible to it. A
-  typical service or repository holds its own fields (not a private-parent's), so this is unaffected in
-  practice.
 - **`REQUIRES_NEW`/`NOT_SUPPORTED` cannot truly suspend an active transaction on the same connection** —
   Laravel has no suspend primitive. `REQUIRES_NEW` is genuinely independent only when it targets a distinct
   configured `connection` from the caller's; on the *same* connection it degrades to a nested savepoint
   instead. `NOT_SUPPORTED` on the same connection cannot pause the ambient transaction either — the work still
   runs inside it rather than truly outside a transaction.
-- **Isolation, read-only, and timeout are driver-dependent.** The `SET TRANSACTION ISOLATION LEVEL`/`SET
-  TRANSACTION READ ONLY` statements are issued best-effort and swallowed on failure — SQLite, for instance,
-  ignores or limits both. `timeout` is currently best-effort/reserved (carried on the descriptor and the
-  manifest, not yet enforced as a hard statement timeout).
+- **Isolation and read-only are driver-dependent.** The `SET TRANSACTION ISOLATION LEVEL`/`SET TRANSACTION
+  READ ONLY` statements are issued best-effort and swallowed on failure — SQLite, for instance, ignores or
+  limits both. The driver-level statement timeout is best-effort in the same way: sqlite has only a busy
+  timeout (a merely slow statement is not interruptible, and the wall-clock check catches it on return), and
+  mysql's `max_execution_time` applies to `SELECT`s only (mariadb's `max_statement_time` interrupts any
+  statement).
+- **`#[TransactionalEventListener]` needs the connection's event dispatcher for `BEFORE_COMMIT`** (every
+  Laravel-configured connection has one; a hand-built `Connection` without `setEventDispatcher()` gets a
+  `ConfigurationException` at the first `BEFORE_COMMIT` registration). `order` sorts transactional
+  listeners among themselves, not against `#[AsEventListener]`s of the same event, which always run first. The
+  scanner reads concrete classes in `firefly.scan.paths`; a listener on a class produced only by a
+  `#[Bean]` factory is not discovered.
 - **Auditing's `created_by`/`updated_by` no-op until the M11 security-context principal is bound** — see
   [Relational Data](data-relational.md#auditing) for the full behaviour and how it turns on.
 - **Auto after-commit dispatch covers aggregates saved through a Firefly repository** (`EloquentRepository::

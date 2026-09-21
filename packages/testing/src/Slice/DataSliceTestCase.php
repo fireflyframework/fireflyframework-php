@@ -7,6 +7,7 @@ namespace Firefly\Testing\Slice;
 use Firefly\Container\Scanner\ComponentScanner;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\DataServiceProvider;
+use Firefly\Data\DataWiringProvider;
 use Firefly\Testing\Attributes\DataSlice;
 use Firefly\Testing\FireflyDatabaseTestCase;
 use Illuminate\Foundation\Application;
@@ -76,7 +77,7 @@ abstract class DataSliceTestCase extends FireflyDatabaseTestCase
 
     protected function fireflyProviders(): array
     {
-        return [DataServiceProvider::class];
+        return [DataServiceProvider::class, DataWiringProvider::class];
     }
 
     protected function configOverrides(): array

@@ -28,7 +28,31 @@ Typed subclasses fix these values. Selected examples:
 | `Security\AuthorizationException` | `ACCESS_DENIED` | 403 | Security |
 | `Infrastructure\ServiceUnavailableException` | `SERVICE_UNAVAILABLE` | 503 | Infrastructure |
 | `Infrastructure\RateLimitExceededException` | `RATE_LIMIT_EXCEEDED` | 429 | Infrastructure |
+| `Infrastructure\DataAccessException` | `DATA_ACCESS_ERROR` | 500 | Infrastructure |
+| `Infrastructure\DataIntegrityViolationException` | `DATA_INTEGRITY_VIOLATION` | 409 | Infrastructure |
+| `Infrastructure\DuplicateKeyException` | `DUPLICATE_KEY` | 409 | Infrastructure |
+| `Infrastructure\CannotAcquireLockException` | `LOCK_NOT_ACQUIRED` | 409 | Infrastructure |
+| `Infrastructure\DeadlockLoserDataAccessException` | `DEADLOCK` | 409 | Infrastructure |
+| `Infrastructure\OptimisticLockingFailureException` | `OPTIMISTIC_LOCKING_FAILURE` | 409 | Infrastructure |
+| `Infrastructure\EmptyResultDataAccessException` | `EMPTY_RESULT` | 404 | Infrastructure |
+| `Infrastructure\IncorrectResultSizeDataAccessException` | `INCORRECT_RESULT_SIZE` | 500 | Infrastructure |
+| `Infrastructure\BadSqlGrammarException` | `BAD_SQL_GRAMMAR` | 500 | Infrastructure |
+| `Infrastructure\QueryTimeoutException` | `QUERY_TIMEOUT` | 504 | Infrastructure |
+| `Infrastructure\TransactionTimedOutException` | `TRANSACTION_TIMED_OUT` | 504 | Infrastructure |
+| `Infrastructure\DataAccessResourceFailureException` | `DATASOURCE_UNAVAILABLE` | 503 | Infrastructure |
+| `Infrastructure\TransientDataAccessResourceException` | `TRANSIENT_DATA_ACCESS_FAILURE` | 503 | Infrastructure |
 | `External\ExternalServiceException` | `EXTERNAL_SERVICE_ERROR` | 502 | External |
+
+The data-access rows are what `firefly/data` throws — its exception translation for the driver failures, and
+`getById()`, `findOneByExample()`, the versioning trait and the transaction deadline for
+`EmptyResultDataAccessException`, `IncorrectResultSizeDataAccessException`, `OptimisticLockingFailureException`
+and `TransactionTimedOutException` respectively (see [Data & Repositories](data.md#exception-translation)). They
+nest — `DuplicateKeyException` under `DataIntegrityViolationException`, `DeadlockLoserDataAccessException` under
+`CannotAcquireLockException`, everything under `DataAccessException` **except** `TransactionTimedOutException`,
+which sits under `Infrastructure\TimeoutException` like every other timeout (Spring's `TransactionException`
+side, not its `DataAccessException` side) — so a handler catches at the granularity it needs: `catch
+(DataAccessException $e)` does not see a transaction that ran past its deadline; `catch (TimeoutException $e)`
+does. Their messages are fixed sentences; the driver's message, with the statement in it, stays on `previous`.
 
 ```php
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;

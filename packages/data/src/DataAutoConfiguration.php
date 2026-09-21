@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Data;
 
+use Firefly\Config\Config;
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
@@ -12,20 +13,23 @@ use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
+use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Proxy\ProxyMaterializer;
 use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Illuminate\Contracts\Container\Container;
 
 /**
- * Always-on transaction-engine wiring. #[Order(1000)] places it after user definitions; each bean backs off
- * #[ConditionalOnMissingBean] so an app that supplies its own wins. The default TransactionalManifest is EMPTY —
- * the framework has no #[Transactional] beans of its own; the app's compiled manifest (firefly:cache, M15) or a
- * test's inline manifest overrides it. The TransactionalBeanPostProcessor is a separate #[Component] (discovered
- * by RegisterBeanPostProcessorsPass via its interfaces), not a bean here.
+ * Always-on transaction-engine wiring plus the firefly.data.* settings and the exception translator.
+ * #[Order(1000)] places it after user definitions; each bean backs off #[ConditionalOnMissingBean] so an app
+ * that supplies its own wins. The default TransactionalManifest is EMPTY — the framework has no
+ * #[Transactional] beans of its own; the app's compiled manifest (firefly:cache, M15) or a test's inline
+ * manifest overrides it. The TransactionalBeanPostProcessor is a separate #[Component] (discovered by
+ * RegisterBeanPostProcessorsPass via its interfaces), not a bean here.
  */
 #[Configuration]
 #[Order(1000)]
@@ -46,10 +50,44 @@ final class DataAutoConfiguration
     }
 
     #[Bean]
-    #[ConditionalOnMissingBean(TransactionTemplate::class)]
-    public function transactionTemplate(DomainEventDispatcher $dispatcher): TransactionTemplate
+    #[ConditionalOnMissingBean(DataSettings::class)]
+    public function dataSettings(Config $config): DataSettings
     {
-        return new TransactionTemplate($dispatcher);
+        return DataSettings::fromConfig($config);
+    }
+
+    /**
+     * Spring's PersistenceExceptionTranslator. Enabled unless firefly.data.exception-translation.enabled is
+     * false; a disabled translator is still a bean, so every consumer keeps one constructor shape.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(PersistenceExceptionTranslator::class)]
+    public function persistenceExceptionTranslator(DataSettings $settings): PersistenceExceptionTranslator
+    {
+        return new PersistenceExceptionTranslator($settings->exceptionTranslation);
+    }
+
+    /**
+     * Spring's TransactionSynchronizationRegistry — the queue #[TransactionalEventListener]s are parked on. One
+     * per process; TransactionTemplate tells it which connection is current, Laravel's own after-commit /
+     * after-rollback callbacks do the rest.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(TransactionSynchronizationRegistry::class)]
+    public function transactionSynchronizationRegistry(): TransactionSynchronizationRegistry
+    {
+        return new TransactionSynchronizationRegistry;
+    }
+
+    #[Bean]
+    #[ConditionalOnMissingBean(TransactionTemplate::class)]
+    public function transactionTemplate(
+        DomainEventDispatcher $dispatcher,
+        PersistenceExceptionTranslator $translator,
+        DataSettings $settings,
+        TransactionSynchronizationRegistry $synchronizations,
+    ): TransactionTemplate {
+        return new TransactionTemplate($dispatcher, $translator, $settings, $synchronizations);
     }
 
     #[Bean]

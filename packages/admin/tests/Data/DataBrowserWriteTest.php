@@ -301,3 +301,24 @@ it('refuses a create naming a column the resource does not have, and skips the o
         ->and(DB::table('admin_records')->where('id', 999)->count())->toBe(0)
         ->and(DB::table('admin_records')->where('email', 'chosen@example.test')->value('api_token'))->toBeNull();
 });
+
+it('says in a sentence that a duplicate unique value was refused, without the SQL', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->seedRecords();
+
+    $result = $this->browser(writableData())->create('admin-record', ['email' => 'ada@example.test', 'amount' => '1']);
+
+    expect($result->outcome)->toBe(DataWriteOutcome::Failed)
+        ->and($result->reason)->toBe('The insert failed: a row with the same unique value already exists.')
+        ->and($result->reason)->not->toContain('insert into')
+        ->and(DB::table('admin_records')->count())->toBe(5);
+});
+
+it('says in a sentence that a constraint refused the write', function () {
+    /** @var DataBrowserTestCase $this */
+    // `amount` is NOT NULL with no default: an insert without it is the database saying no, not the browser.
+    $result = $this->browser(writableData())->create('admin-record', ['email' => 'nullamount@example.test']);
+
+    expect($result->outcome)->toBe(DataWriteOutcome::Failed)
+        ->and($result->reason)->toBe('The insert failed: the database refused it because a constraint (a foreign key, a NOT NULL or a check) would be broken.');
+});

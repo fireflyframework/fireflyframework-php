@@ -753,9 +753,9 @@ its own installable Composer package with its own tests and its own [module guid
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
 | Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |
 | Data & Domain | [Domain (DDD)](docs/modules/domain.md) — `Entity`, `ValueObject`, `AggregateRoot`, `DomainEvent` | `firefly/domain` |
-| Data & Domain | [Data & Repositories](docs/modules/data.md) — CRUD/paging ports, derived queries, specifications | `firefly/data` |
-| Data & Domain | [Relational Data](docs/modules/data-relational.md) — `EloquentRepository`, soft-delete, auditing, optimistic locking | `firefly/data` |
-| Data & Domain | [Transactions](docs/modules/transactional.md) — `#[Transactional]`, propagation, isolation | `firefly/data` |
+| Data & Domain | [Data & Repositories](docs/modules/data.md) — CRUD/paging ports, derived queries, query by example, `#[Modifying]`/`#[Projection]`/`#[Lock]`/`#[EntityGraph]`, slices, exception translation | `firefly/data` |
+| Data & Domain | [Relational Data](docs/modules/data-relational.md) — `EloquentRepository`, soft-delete, auditing, optimistic and pessimistic locking | `firefly/data` |
+| Data & Domain | [Transactions](docs/modules/transactional.md) — `#[Transactional]`, propagation, isolation, timeouts, `#[TransactionalEventListener]` | `firefly/data` |
 | Eventing & Messaging | [Event-Driven Architecture](docs/modules/eda.md) — `EventPublisher`, `#[EventListener]`, retry/DLQ | `firefly/eda` |
 | Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters, the same-tx outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
 | Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |

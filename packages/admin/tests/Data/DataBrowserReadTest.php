@@ -202,7 +202,10 @@ it('reports a query failure without leaking the SQL or the bindings', function (
         ->and($listing->rows)->toBe([])
         ->and($listing->total)->toBe(0)
         ->and($listing->error)->toContain('The listing query failed')
-        ->and($listing->error)->toContain('QueryException')
+        // The repository translates the driver's QueryException (firefly/data's PersistenceExceptionTranslator),
+        // so the class the reason names is the kernel's; the raw one is on `previous`, never on the page.
+        ->and($listing->error)->toContain('BadSqlGrammarException')
+        ->and($listing->error)->not->toContain('QueryException')
         // The exception message would have carried `select * from "admin_records" ...` and the bound term.
         ->and(strtolower((string) $listing->error))->not->toContain('select')
         ->and($listing->error)->not->toContain('ada@example.test')

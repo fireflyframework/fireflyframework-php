@@ -183,6 +183,7 @@ final readonly class AdminAction
             'connections' => $connections,
             'pooling' => $this->datasource->pooling(),
             'transactional' => $this->datasource->transactionalMethods(),
+            'dataLayer' => $this->datasource->dataLayer(),
             'probe' => $probe,
             'probeEnabled' => $this->datasource->probeEnabled(),
             'wizard' => $this->wizard,
