@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Data\Repository\Projection\ProjectionHydrator;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use PHPUnit\Framework\Assert;
 
 enum HydratedTier: string
 {
@@ -195,7 +196,7 @@ it('parses a DateTime the same way, refuses a blank string rather than reading i
 
     try {
         $stamps->hydrate(['level' => 1, 'seen_at' => 'not a date']);
-        $this->fail('expected a ConfigurationException');
+        Assert::fail('expected a ConfigurationException');
     } catch (ConfigurationException $e) {
         expect($e->getMessage())->toBe("Projection [HydratedStamp]: column [seen_at] holds string 'not a date', which cannot become parameter \$seenAt (DateTime).")
             ->and($e->getPrevious())->toBeInstanceOf(DateMalformedStringException::class);

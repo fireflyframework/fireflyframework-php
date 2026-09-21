@@ -8,6 +8,7 @@ use Firefly\Observability\Tracing\OpenTelemetry\TraceExporterFactory;
 use Illuminate\Config\Repository as ConfigRepository;
 use OpenTelemetry\Contrib\Otlp\SpanExporter as OtlpSpanExporter;
 use OpenTelemetry\SDK\Trace\SpanExporter\ConsoleSpanExporter;
+use PHPUnit\Framework\Assert;
 
 /** @param array<string, mixed> $tracing */
 function tracingConfig(array $tracing): Config
@@ -62,7 +63,7 @@ it('refuses a header pair without = at boot, naming the key and the pair but nev
     foreach (['x-honeycomb-team hcaik_SECRET' => "pair 1 ('x-honeycomb-team…')", '=hcaik_SECRET' => "pair 1 ('…')"] as $raw => $named) {
         try {
             TraceExporterFactory::headers($raw);
-            $this->fail('expected a ConfigurationException');
+            Assert::fail('expected a ConfigurationException');
         } catch (ConfigurationException $e) {
             expect($e->getMessage())->not->toContain('hcaik_SECRET')->toContain($named);
         }

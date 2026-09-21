@@ -12,6 +12,7 @@ use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -54,7 +55,7 @@ it('rolls back a commit that fails, leaves no transaction open, and throws the t
         $template->execute(function (): void {
             DB::table('children')->insert(['parent_id' => 999]); // accepted: the check is deferred to COMMIT
         });
-        $this->fail('expected the deferred foreign key to fail the commit');
+        Assert::fail('expected the deferred foreign key to fail the commit');
     } catch (DataIntegrityViolationException $e) {
         expect($e->getPrevious())->toBeInstanceOf(PDOException::class)
             ->and($e->getPrevious()?->getMessage())->toContain('FOREIGN KEY constraint failed')
@@ -102,7 +103,7 @@ it('carries the TRANSLATED application exception when the kept failure was a dri
             DB::table('children')->insert(['parent_id' => 999]);
             DB::table('widgets')->insert(['id' => 1, 'name' => 'dup']); // a DuplicateKeyException the rules keep
         }, new TransactionalDescriptor(noRollbackFor: [DuplicateKeyException::class]));
-        $this->fail('expected a TransactionSystemException');
+        Assert::fail('expected a TransactionSystemException');
     } catch (TransactionSystemException $e) {
         expect($e->applicationException)->toBeInstanceOf(DuplicateKeyException::class)
             ->and($e->applicationException->getPrevious())->toBeInstanceOf(QueryException::class)

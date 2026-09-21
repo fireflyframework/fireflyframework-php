@@ -211,6 +211,15 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 - **`packages/admin` — the HTTP traffic page shows the trace id**, and `firefly.observability.tracing.enabled`
   is a feature switch.
 
+### Changed
+
+- **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
+  template invariant and started requiring `view-string` for every `Factory::make()` argument; both are
+  analysis-rule changes, not framework defects, and the root lock is not committed, so a floating `^3.9`
+  would have turned CI red on the day the tool released. Adopting 3.12's rules (typing `query()` as
+  `Builder<TModel>` through the specification and entity-graph seams, and `ModelAndView::$view` as a
+  `view-string`) is a follow-up of its own.
+
 ### Fixed
 
 - **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved

@@ -9,6 +9,7 @@ use Firefly\Data\Transaction\TransactionPhase;
 use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -88,7 +89,7 @@ it('lets a BEFORE_COMMIT that throws abort the template\'s commit: rolled back, 
                 throw new LogicException('not this one');
             });
         });
-        $this->fail('expected the veto to propagate');
+        Assert::fail('expected the veto to propagate');
     } catch (LogicException $e) {
         expect($e->getMessage())->toBe('not this one');
     }
@@ -159,7 +160,7 @@ it('sweeps a BEFORE_COMMIT queued mid-drain by a callback that then vetoes, so t
                 throw new LogicException('veto after re-registering');
             });
         });
-        $this->fail('expected the veto to propagate');
+        Assert::fail('expected the veto to propagate');
     } catch (LogicException $e) {
         expect($e->getMessage())->toBe('veto after re-registering');
     }

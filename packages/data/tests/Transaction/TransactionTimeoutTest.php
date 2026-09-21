@@ -11,6 +11,7 @@ use Firefly\Kernel\Exception\Infrastructure\TransactionTimedOutException;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\PostgresConnection;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -27,7 +28,7 @@ it('rolls back and throws TransactionTimedOutException when the work overruns it
 
     try {
         $template->execute(overrunOneSecond(...), new TransactionalDescriptor(timeout: 1));
-        $this->fail('expected the transaction to time out');
+        Assert::fail('expected the transaction to time out');
     } catch (TransactionTimedOutException $e) {
         expect($e->httpStatus())->toBe(504)
             ->and($e->errorCode())->toBe('TRANSACTION_TIMED_OUT');

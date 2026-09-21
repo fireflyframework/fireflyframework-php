@@ -18,6 +18,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -45,7 +46,7 @@ it('throws DuplicateKeyException from save() on a unique violation, with the Que
 
     try {
         $repo->save(new Record(['status' => 'open', 'amount' => 2, 'email' => 'taken@x.test']));
-        $this->fail('expected a DuplicateKeyException');
+        Assert::fail('expected a DuplicateKeyException');
     } catch (DuplicateKeyException $e) {
         expect($e->getPrevious())->toBeInstanceOf(QueryException::class)
             ->and($e->getMessage())->not->toContain('taken@x.test')

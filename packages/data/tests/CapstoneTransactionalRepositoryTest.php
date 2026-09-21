@@ -12,6 +12,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Assert;
 
 uses(DataCapstoneTestCase::class);
 
@@ -48,7 +49,7 @@ it('throws DuplicateKeyException with the QueryException underneath from the PRO
 
     try {
         $repository->save(new Account(['id' => 1, 'name' => 'second']));
-        $this->fail('expected a DuplicateKeyException');
+        Assert::fail('expected a DuplicateKeyException');
     } catch (DuplicateKeyException $e) {
         expect($e->getPrevious())->toBeInstanceOf(QueryException::class)
             ->and($e->httpStatus())->toBe(409)
@@ -92,7 +93,7 @@ it('names the DECLARED class, not the proxy, when a method is neither #[Query] n
 
     try {
         $repository->__call('frobnicate', []); // what `$repository->frobnicate()` compiles to, made explicit for PHPStan
-        $this->fail('expected a BadMethodCallException');
+        Assert::fail('expected a BadMethodCallException');
     } catch (BadMethodCallException $e) {
         expect($e->getMessage())->toBe(AccountRepository::class.'::frobnicate() is neither a #[Query] method nor a parseable derived query.')
             ->and($e->getMessage())->not->toContain('__FireflyTransactionalProxy');

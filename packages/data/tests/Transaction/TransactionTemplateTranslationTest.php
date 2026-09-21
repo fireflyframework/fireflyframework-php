@@ -12,6 +12,7 @@ use Firefly\Kernel\Exception\Infrastructure\BadSqlGrammarException;
 use Firefly\Kernel\Exception\Infrastructure\DuplicateKeyException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -23,7 +24,7 @@ it('translates a raw DB failure inside a REQUIRED transaction and rolls back', f
             DB::table('widgets')->insert(['id' => 1, 'name' => 'a']);
             DB::table('widgets')->insert(['id' => 1, 'name' => 'b']);
         });
-        $this->fail('expected a DuplicateKeyException');
+        Assert::fail('expected a DuplicateKeyException');
     } catch (DuplicateKeyException $e) {
         expect($e->getPrevious())->toBeInstanceOf(QueryException::class);
     }

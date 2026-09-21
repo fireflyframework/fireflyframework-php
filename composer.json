@@ -38,7 +38,7 @@
         "firefly/lumen": "*@dev",
         "firefly/testing": "*@dev",
         "kwn/php-rdkafka-stubs": "^2.2",
-        "larastan/larastan": "^3.9",
+        "larastan/larastan": "~3.11.0",
         "laravel/octane": "^2.0",
         "laravel/pint": "^1.30",
         "open-telemetry/api": "^1.3",

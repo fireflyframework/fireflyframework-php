@@ -9,6 +9,7 @@ use Firefly\Data\Tests\Support\DatabaseTestCase;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Assert;
 
 uses(DatabaseTestCase::class);
 
@@ -55,7 +56,7 @@ it('is a kernel OptimisticLockingFailureException, so a catch on the family catc
 
     try {
         $repo->save($b);
-        $this->fail('expected the stale write to be rejected');
+        Assert::fail('expected the stale write to be rejected');
     } catch (OptimisticLockingFailureException $e) {
         expect($e)->toBeInstanceOf(OptimisticLockException::class)
             ->and($e->errorCode())->toBe('OPTIMISTIC_LOCK')
