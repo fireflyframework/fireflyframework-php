@@ -14,10 +14,27 @@ use Illuminate\Support\Arr;
  * list<FieldError> (one per (field, message) pair, carrying the rejected input value) and throws the kernel's
  * ValidationException (status 422, errorCode VALIDATION_ERROR) — the exact shape the web layer (M6) renders as
  * RFC-7807. On success it returns Illuminate's validated() subset.
+ *
+ * It is built over the ValidationSettings the `firefly.validation.*` keys were read into (the settings bean,
+ * or an application's own); the default keeps `new IlluminateValidator($factory)` meaning what it always did.
+ * The message style in those settings words the field errors of a #[Valid] DTO; validate() itself takes raw
+ * Laravel rules, has no constraints to describe, and keeps Laravel's keys and sentences whatever it says.
  */
 final class IlluminateValidator implements Validator
 {
-    public function __construct(private readonly Factory $factory) {}
+    public function __construct(
+        private readonly Factory $factory,
+        private readonly ValidationSettings $settings = new ValidationSettings,
+    ) {}
+
+    /**
+     * The settings this adapter was built over — what lets a boot test prove the configured style reached the
+     * validator the container hands out, not only that a settings bean exists beside it.
+     */
+    public function settings(): ValidationSettings
+    {
+        return $this->settings;
+    }
 
     /**
      * @param  array<string,mixed>  $data

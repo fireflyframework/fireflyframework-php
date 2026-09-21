@@ -133,9 +133,11 @@ deptrac:
     # Validation core (Validator/IlluminateValidator/Rule/*) needs only Kernel + illuminate/validation.
     # Container: ValidationAutoConfiguration's #[Configuration]/#[Bean]/#[Order] attributes.
     # Context: its #[ConditionalOnMissingBean]. AutoConfigure: the AutoConfiguration base its provider extends.
+    # Config: ValidationSettings reads firefly.validation.* through the Config port (the DataSettings idiom).
     Validation:
       - Kernel
       - Container
+      - Config
       - AutoConfigure
       - Context
 
