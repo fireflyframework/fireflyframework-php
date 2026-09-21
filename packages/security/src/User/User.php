@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Firefly\Security\User;
 
+use Firefly\Security\Core\CredentialsContainer;
 use Firefly\Security\Core\GrantedAuthority;
 
-/** The default immutable UserDetails value object. */
-final readonly class User implements UserDetails
+/**
+ * The default immutable UserDetails value object. It is also a CredentialsContainer: `password` is the ENCODED
+ * hash the DaoAuthenticationProvider verifies against, and eraseCredentials() hands back the same user with
+ * that hash blanked, which is the form the session repository stores.
+ */
+final readonly class User implements CredentialsContainer, UserDetails
 {
     /**
      * @param  list<GrantedAuthority>  $authorities
@@ -46,5 +51,11 @@ final readonly class User implements UserDetails
     public function isAccountNonLocked(): bool
     {
         return $this->accountNonLocked;
+    }
+
+    /** The same user with an empty password — username, authorities and account flags intact. */
+    public function eraseCredentials(): static
+    {
+        return new self($this->username, '', $this->authorities, $this->enabled, $this->accountNonLocked);
     }
 }

@@ -10,7 +10,9 @@ namespace Firefly\Security\Core;
  * authorities — are impossible to confuse. `name` is the stable principal id (username / JWT `sub`) the
  * AuditorAware and expression root read; `principal` is the full principal (a UserDetails or an id).
  * Credentials are erased (returned as a fresh instance) the moment authentication succeeds — this class never
- * mutates, so a leaked reference can never observe cleared-then-repopulated credentials.
+ * mutates, so a leaked reference can never observe cleared-then-repopulated credentials. eraseCredentials()
+ * goes one step further, for a store: it also asks a principal that is a CredentialsContainer (the shipped
+ * User, whose getPassword() is the encoded hash) for its credential-free copy.
  */
 final class Authentication
 {
@@ -77,9 +79,18 @@ final class Authentication
         return $this->attributes;
     }
 
+    /**
+     * A copy with the credentials gone — and the principal's own credential gone with them when the principal
+     * is a CredentialsContainer (Spring's AbstractAuthenticationToken erases its principal the same way). This
+     * is the form SessionSecurityContextRepository writes. The authentication manager does NOT call it on
+     * success: the token a filter receives still carries the principal's encoded password, which the
+     * remember-me cookie signature reads, so only a store ever needs this copy.
+     */
     public function eraseCredentials(): self
     {
-        return new self($this->name, $this->principal, null, $this->authorities, $this->authenticated, $this->attributes);
+        $principal = $this->principal instanceof CredentialsContainer ? $this->principal->eraseCredentials() : $this->principal;
+
+        return new self($this->name, $principal, null, $this->authorities, $this->authenticated, $this->attributes);
     }
 
     /**

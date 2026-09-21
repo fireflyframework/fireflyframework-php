@@ -32,17 +32,41 @@ it('saves, loads and clears a context, and survives the serialisation a file ses
 
     $repository->save($context, $request);
 
+    $stored = serialize($request->session()->get(SessionSecurityContextRepository::KEY));
     /** @var SecurityContext $loaded */
-    $loaded = unserialize(serialize($request->session()->get(SessionSecurityContextRepository::KEY)));
+    $loaded = unserialize($stored);
+    /** @var User $principal */
+    $principal = $loaded->getAuthentication()?->getPrincipal();
 
-    expect($repository->load($request))->toBe($context)
+    // What the session holds is the credential-free copy, not the token that was handed in: the principal is
+    // the same user with its encoded password blanked, and the bytes a file driver writes never carry the hash.
+    expect($repository->load($request))->not->toBe($context)
+        ->and($repository->load($request)?->isAuthenticated())->toBeTrue()
         ->and($loaded->getAuthentication()?->getName())->toBe('ada')
-        ->and($loaded->getAuthentication()?->getPrincipal())->toEqual($user)
-        ->and($loaded->getAuthentication()?->authorityStrings())->toBe(['ROLE_USER']);
+        ->and($principal)->toEqual(new User('ada', '', [new SimpleGrantedAuthority('ROLE_USER')]))
+        ->and($principal->getPassword())->toBe('')
+        ->and($loaded->getAuthentication()?->authorityStrings())->toBe(['ROLE_USER'])
+        ->and($stored)->not->toContain('{noop}x')
+        ->and($user->getPassword())->toBe('{noop}x')
+        ->and($context->getAuthentication()?->getPrincipal())->toBe($user);
 
     $repository->clear($request);
 
     expect($repository->load($request))->toBeNull();
+});
+
+it('stores a principal that is not a CredentialsContainer as it is', function () {
+    $repository = new SessionSecurityContextRepository;
+    $request = requestWithSession();
+    $context = new SecurityContext(Authentication::authenticated('svc-1', 'svc-1', [new SimpleGrantedAuthority('SCOPE_orders:read')], ['iss' => 'issuer']));
+
+    $repository->save($context, $request);
+
+    $loaded = $repository->load($request);
+
+    expect($loaded?->getAuthentication()?->getPrincipal())->toBe('svc-1')
+        ->and($loaded?->getAuthentication()?->getAttributes())->toBe(['iss' => 'issuer'])
+        ->and($loaded?->getAuthentication()?->authorityStrings())->toBe(['SCOPE_orders:read']);
 });
 
 it('ignores a request without a session and an anonymous stored context', function () {

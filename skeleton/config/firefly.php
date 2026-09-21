@@ -147,11 +147,14 @@ return [
          | http_basic.session below. What the session carries is a context saved through the
          | SecurityContextRepository: the interactive mechanisms (form login, http_basic.session, remember-me)
          | save at the moment of success, and so can your own code (a controller that calls
-         | SessionSecurityContextRepository::save()). A bearer principal (jwt, oauth2.resource_server) is
-         | re-verified on every request by design and NEVER stored — and while either bearer filter is on, a
-         | context a controller merely sets on SecurityContextHolder is not stored either, because that filter
-         | clears the holder on its way out before the persistence filter can save it. A session driver is
-         | required.
+         | SessionSecurityContextRepository::save()). Nothing stored carries a credential: a principal that
+         | implements CredentialsContainer (the shipped User) is written without its encoded password. A bearer
+         | principal (jwt, oauth2.resource_server) is re-verified on every request by design and NEVER stored.
+         | A context a controller merely sets on SecurityContextHolder is saved on the way out only when no
+         | filter cleared the holder first: while `jwt` is on it never is (that filter clears the holder
+         | unconditionally on exit); under `oauth2.resource_server`, which clears only a bearer context it
+         | established itself, it is saved whenever the request presented no bearer. Saving through the
+         | repository behaves the same whichever is on. A session driver is required.
          |
          | `fixation_protection` regenerates the session id on every interactive sign-in.
          |

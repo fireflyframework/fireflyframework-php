@@ -16,10 +16,11 @@ use Illuminate\Support\Facades\Route;
  * Session security AND the local-JWT filter on together — the composition the reference config invites — so
  * what the session does and does not carry is pinned rather than implied. A bearer principal is re-verified on
  * every request and never stored; a context an interactive mechanism stored through the repository is loaded
- * when no bearer is sent; and a context a controller sets programmatically is NOT saved once an inner
- * authentication filter (jwt, oauth2.resource_server) is on, because that filter clears the holder in its own
- * `finally` before the persistence filter's exit sees it. Sign someone in through the repository, not the
- * holder, when that is what you want.
+ * when no bearer is sent; and a context a controller sets programmatically is NOT saved while the local-JWT
+ * filter is on, because that filter clears the holder UNCONDITIONALLY in its own `finally` before the
+ * persistence filter's exit sees it — the resource-server filter does not (it clears only a bearer context it
+ * established itself; SessionWithOAuth2FlowTest pins that side). Sign someone in through the repository, not
+ * the holder, when that is what you want under either.
  */
 abstract class SessionWithJwtCapstoneTestCase extends SecurityCapstoneTestCase
 {
@@ -89,13 +90,14 @@ it('loads a context an interactive mechanism stored when no bearer is sent, and 
         ->assertJson(['name' => 'grace']);
 });
 
-it('does not save a context a controller set on the holder while an inner authentication filter is on', function () {
+it('does not save a context a controller set on the holder while the local-JWT filter is on', function () {
     /** @var SessionWithJwtCapstoneTestCase $this */
     $promoted = $this->get('/open/promote');
     $promoted->assertOk();
 
-    // The JWT filter's `finally` cleared the holder before the persistence filter's exit could see root, so
-    // nothing reached the session — the limitation the reference config and the filter docblock state.
+    // The JWT filter's `finally` cleared the holder — no bearer was even presented — before the persistence
+    // filter's exit could see root, so nothing reached the session: the limitation the reference config and
+    // the filter docblock state for this filter, and this filter only.
     $this->forgetSession();
     $this->followSession($promoted)->getJson('/whoami')->assertStatus(401);
 });

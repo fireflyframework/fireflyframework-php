@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Security\Authentication\AuthenticationManager;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
@@ -11,6 +12,7 @@ use Firefly\Security\Session\SessionSecurityBootstrap;
 use Firefly\Security\Session\SessionSecurityContextRepository;
 use Firefly\Security\Tests\Support\SecurityCapstoneTestCase;
 use Firefly\Security\Tests\Support\SecurityFlows;
+use Firefly\Security\User\User;
 use Firefly\Security\Web\HttpSecurityFilter;
 use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -20,7 +22,10 @@ use Illuminate\Routing\CompiledRouteCollection;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Routing\Router;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Session security on by its own key — no form login yet — so the persistence filter and the bootstrap are
@@ -44,6 +49,31 @@ abstract class SessionOnlyCapstoneTestCase extends SecurityCapstoneTestCase
 
             return ['stored' => true];
         });
+
+        // What a login filter does: the real AuthenticationManager (DaoAuthenticationProvider over the memory
+        // users), whose token carries the full User — encoded password included — saved through the repository.
+        Route::post('/open/sign-in-dao', function (Request $request, AuthenticationManager $manager): array {
+            $authentication = $manager->authenticate(Authentication::unauthenticated('ada', 'ada', 'secret'));
+            (new SessionSecurityContextRepository)->save(new SecurityContext($authentication), $request);
+
+            return ['password' => $authentication->getPrincipal() instanceof User ? $authentication->getPrincipal()->getPassword() : ''];
+        });
+    }
+
+    /**
+     * The bytes the file driver wrote for the session a response set, as the next process will read them.
+     *
+     * @param  TestResponse<Response>  $response
+     */
+    protected function sessionFileFor(TestResponse $response): string
+    {
+        $id = (string) $response->getCookie($this->sessionCookieName())?->getValue();
+        $file = $this->sessionDir().'/'.$id;
+        if ($id === '' || ! is_file($file)) {
+            throw new RuntimeException('No session file was written for the response.');
+        }
+
+        return (string) file_get_contents($file);
     }
 }
 
@@ -160,6 +190,38 @@ it('authenticates the next request from the session alone, and only while the co
     $this->forgetSession();
     $this->forgetCookies();
     $this->getJson('/whoami')->assertStatus(401);
+});
+
+it('writes a signed-in user to the session without the encoded password, and the next request is still that user', function () {
+    /** @var SessionOnlyCapstoneTestCase $this */
+    $stored = $this->postJson('/open/sign-in-dao');
+    $stored->assertOk();
+
+    // The token the provider returned carried the bcrypt hash; the bytes the file driver wrote do not.
+    /** @var string $hash */
+    $hash = $stored->json('password');
+    expect($hash)->toStartWith('{bcrypt}$2y$');
+
+    $bytes = $this->sessionFileFor($stored);
+    /** @var array<string,mixed> $attributes */
+    $attributes = unserialize($bytes);
+    // The store expands the dotted key into nested arrays, as it does for any attribute.
+    /** @var SecurityContext $context */
+    $context = Arr::get($attributes, SessionSecurityContextRepository::KEY);
+    /** @var User $principal */
+    $principal = $context->getAuthentication()?->getPrincipal();
+
+    expect($bytes)->not->toContain('$2y$')
+        ->and($bytes)->not->toContain($hash)
+        ->and($principal)->toBeInstanceOf(User::class)
+        ->and($principal->getUsername())->toBe('ada')
+        ->and($principal->getPassword())->toBe('');
+
+    // And the copy is a principal like any other on the next request.
+    $this->forgetSession();
+    $this->followSession($stored)->getJson('/whoami')
+        ->assertOk()
+        ->assertJson(['name' => 'ada', 'authorities' => ['ROLE_USER'], 'authenticated' => true]);
 });
 
 it('saves a context a controller established programmatically', function () {

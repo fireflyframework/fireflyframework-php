@@ -14,6 +14,15 @@ use Illuminate\Http\Request;
  * Redis session driver does to every attribute. A request that has no session — the driver is unset, or the
  * middleware did not run — reads null and writes nothing, so the filters degrade to stateless rather than
  * throwing on `$request->session()`.
+ *
+ * NO CREDENTIAL IS WRITTEN. save() stores Authentication::eraseCredentials() of what it is given, never the
+ * token itself: the credentials slot is already null on an authenticated token, and a principal that is a
+ * CredentialsContainer — the shipped User, whose getPassword() is the encoded hash the DaoAuthenticationProvider
+ * verified against — is replaced by its credential-free copy, so the hash never reaches
+ * storage/framework/sessions, the sessions table, Redis, or a debug page that dumps the session. The context
+ * handed in is left untouched (it is the token the remember-me services sign their cookie with), and load()
+ * hands back the stored copy, whose principal reports an empty password. An application UserDetails that
+ * wants the same guarantee implements CredentialsContainer; one that does not is stored as it is.
  */
 final class SessionSecurityContextRepository implements SecurityContextRepository
 {
@@ -33,9 +42,16 @@ final class SessionSecurityContextRepository implements SecurityContextRepositor
 
     public function save(SecurityContext $context, Request $request): void
     {
-        if ($request->hasSession()) {
-            $request->session()->put(self::KEY, $context);
+        if (! $request->hasSession()) {
+            return;
         }
+
+        $authentication = $context->getAuthentication();
+
+        $request->session()->put(
+            self::KEY,
+            $authentication === null ? $context : new SecurityContext($authentication->eraseCredentials()),
+        );
     }
 
     public function clear(Request $request): void
