@@ -32,3 +32,19 @@ it('includes optionals when present', function () {
         'rejectedValue' => -1,
     ]);
 });
+
+it('carries the constraint that failed and serialises it after code', function () {
+    $fe = new FieldError('lines[1].sku', 'must match "^[A-Z0-9]+$"', rejectedValue: 'bad sku!', constraint: 'Pattern');
+
+    expect($fe->constraint)->toBe('Pattern')
+        ->and($fe->toArray())->toBe([
+            'field' => 'lines[1].sku',
+            'message' => 'must match "^[A-Z0-9]+$"',
+            'constraint' => 'Pattern',
+            'rejectedValue' => 'bad sku!',
+        ]);
+});
+
+it('omits the constraint when nothing declared one', function () {
+    expect((new FieldError('name', 'is required'))->toArray())->not->toHaveKey('constraint');
+});

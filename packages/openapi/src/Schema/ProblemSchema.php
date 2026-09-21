@@ -25,8 +25,10 @@ use Firefly\Kernel\Error\ErrorSeverity;
  * new case added in packages/kernel appears in the spec on the next generation with no edit here — the same
  * reason RouteManifest, not a hand-kept list, is the source of the paths.
  *
- * FieldError::toArray() is mirrored by the nested `errors` item schema: `field`/`message` always, `code` and
- * `rejectedValue` only when non-null (hence not required). `rejectedValue` is deliberately untyped — it is
+ * FieldError::toArray() is mirrored by the nested `errors` item schema: `field`/`message` always, `code`,
+ * `constraint` and `rejectedValue` only when non-null (hence not required). `constraint` is the attribute
+ * that failed (`NotBlank`, `Size`, …) — what Spring's FieldError calls `code` — so a client can branch on the
+ * rule while `message` stays a sentence for a person. `rejectedValue` is deliberately untyped — it is
  * literally whatever the client sent.
  *
  * `additionalProperties` is TRUE, stated rather than left to the JSON Schema default, because ErrorResponse
@@ -78,6 +80,7 @@ final class ProblemSchema
                             'field' => ['type' => 'string'],
                             'message' => ['type' => 'string'],
                             'code' => ['type' => 'string'],
+                            'constraint' => ['type' => 'string', 'description' => 'The declared constraint that failed, by its attribute name (NotBlank, Size, Email, Pattern, …); absent for an error nothing declared.'],
                             'rejectedValue' => ['description' => 'The value that was rejected, as received.'],
                         ],
                     ],
