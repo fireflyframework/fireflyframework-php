@@ -19,6 +19,10 @@ use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
+use Firefly\Security\Tests\Fixtures\Users\Account;
+use Firefly\Security\User\EloquentUserDetailsService;
+use Firefly\Security\User\InMemoryUserDetailsService;
+use Firefly\Security\User\UserDetailsService;
 use Firefly\Security\Web\Basic\HttpBasicFilter;
 use Firefly\Security\Web\Settings\HttpBasicSettings;
 use Firefly\Testing\Double\RecordingAuthenticationEvents;
@@ -138,6 +142,45 @@ it('refuses to boot on a weak JWT secret even when the master flag is off', func
             'secret' => 'changeme',
         ],
     ]))->toThrow(WeakSigningSecretException::class);
+});
+
+it('refuses to boot when the eloquent users driver names a model class that does not exist', function () {
+    // The user store's refusals live in UserStoreSettings::fromConfig(), which the userDetailsService #[Bean]
+    // runs. The bean is built at boot — by the EagerSingletonsPass, by the AuthenticationManager that takes
+    // it, and explicitly by SecurityWiringPass under the master flag — so a typo in config is a boot failure
+    // naming the class, never a 500 on the first login attempt.
+    expect(fn () => bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => 'App\\Models\\Nope'],
+    ]))->toThrow(ConfigurationException::class, 'App\\Models\\Nope');
+});
+
+it('binds the eloquent store for a model that exists, and the memory store by default, without touching a database', function () {
+    // Neither driver constructs against a connection — the boot harness here binds no database at all —
+    // which is what makes the eager resolution in SecurityWiringPass free.
+    /** @var ApplicationContext $eloquent */
+    $eloquent = bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => Account::class],
+    ])->make(ApplicationContext::class);
+
+    /** @var ApplicationContext $memory */
+    $memory = bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['ada' => ['password' => '{noop}secret', 'authorities' => ['ROLE_USER']]],
+    ])->make(ApplicationContext::class);
+
+    expect($eloquent->get(UserDetailsService::class))->toBeInstanceOf(EloquentUserDetailsService::class)
+        ->and($memory->get(UserDetailsService::class))->toBeInstanceOf(InMemoryUserDetailsService::class);
+});
+
+it('leaves a misconfigured user store alone while the master flag is off, since the bean it would refuse in is never registered', function () {
+    // The negative control for the guard's gate: the store is master-gated (nothing authenticates without
+    // the master flag), so its settings are not read either, exactly as the memory map is not.
+    expect(bootSecurityAppWith([
+        'enabled' => false,
+        'users' => ['driver' => 'eloquent', 'model' => 'App\\Models\\Nope'],
+    ]))->toBeInstanceOf(Application::class);
 });
 
 /*

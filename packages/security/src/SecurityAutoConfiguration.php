@@ -47,8 +47,10 @@ use Firefly\Security\Password\PasswordEncoder;
 use Firefly\Security\Session\SecurityContextRepository;
 use Firefly\Security\Session\SessionSecurityContextRepository;
 use Firefly\Security\Session\SessionSecuritySettings;
+use Firefly\Security\User\EloquentUserDetailsService;
 use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
+use Firefly\Security\User\UserStoreSettings;
 use Firefly\Security\Web\Csrf\SessionCsrf;
 use Firefly\Security\Web\EntryPoint\AuthenticationEntryPoint;
 use Firefly\Security\Web\EntryPoint\BasicAuthenticationEntryPoint;
@@ -93,15 +95,21 @@ final class SecurityAutoConfiguration
         ]);
     }
 
+    /**
+     * `firefly.security.users.driver`: `memory` (the map, unchanged) or `eloquent` (any Eloquent model, see
+     * EloquentUserDetailsService for the schema). UserStoreSettings refuses an unknown driver and a missing
+     * model class; SecurityWiringPass resolves this bean at boot so that refusal is a startup failure.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(UserDetailsService::class)]
     public function userDetailsService(Config $config): UserDetailsService
     {
-        /** @var array<string,array{password:string,authorities?:list<string>,enabled?:bool,locked?:bool}> $users */
-        $users = $config->has('firefly.security.users') ? $config->array('firefly.security.users') : [];
+        $settings = UserStoreSettings::fromConfig($config);
 
-        return InMemoryUserDetailsService::fromConfig($users);
+        return $settings->driver === 'eloquent'
+            ? new EloquentUserDetailsService($settings)
+            : InMemoryUserDetailsService::fromConfig($settings->accounts);
     }
 
     #[Bean]

@@ -251,13 +251,31 @@ return [
         ],
 
         /*
-         | The shipped in-memory user store, keyed by username. `password` is the ENCODED string —
-         | typically `{id}`-prefixed for the DelegatingPasswordEncoder, e.g. `{bcrypt}$2y$...`.
-         | `authorities` defaults to [], `enabled` to true, `locked` to false.
+         | The user store. `driver` is `memory` (default: this map, keyed by username — the shape below) or
+         | `eloquent` (any Eloquent model; the reserved keys configure it and are never read as usernames).
          |
-         | Default: [] (no users; every login fails with a 401).
+         | Memory: `password` is the ENCODED string — typically `{id}`-prefixed for the
+         | DelegatingPasswordEncoder, e.g. `{bcrypt}$2y$...`. `authorities` defaults to [], `enabled` to
+         | true, `locked` to false. With no users every login fails with a 401.
+         |
+         | Eloquent: the expected schema is `email` (username_column), `password` (password_column, the
+         | encoded string as above), optional `enabled`/`locked` booleans (enabled_column/locked_column —
+         | empty means "no such flag"), and `authorities` — a column holding a JSON list (or an `array`
+         | cast) or `relation.attribute` to pluck from a relation (`roles.name`). A model class that does
+         | not exist REFUSES TO BOOT.
+         |
+         | Defaults: driver 'memory', model '', username_column 'email', password_column 'password',
+         | enabled_column '', locked_column '', authorities 'authorities'.
         */
         'users' => [
+            // 'driver' => 'eloquent',
+            // 'model' => App\Models\User::class,
+            // 'username_column' => 'email',
+            // 'password_column' => 'password',
+            // 'enabled_column' => '',
+            // 'locked_column' => '',
+            // 'authorities' => 'authorities',
+
             // 'alice' => [
             //     'password' => '{bcrypt}$2y$12$...',
             //     'authorities' => ['ROLE_ADMIN'],

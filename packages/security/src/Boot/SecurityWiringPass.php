@@ -10,6 +10,7 @@ use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Jwt\JwtService;
+use Firefly\Security\User\UserDetailsService;
 use Firefly\Security\Web\Argument\SecurityArgumentResolver;
 use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
@@ -18,7 +19,7 @@ use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Security\ControllerSecurityGuard;
 
 /**
- * Seven boot-time actions gated for correctness, in this order:
+ * Eight boot-time actions gated for correctness, in this order:
  *
  * (0) MUTUAL-EXCLUSIVITY GUARD, unconditional (runs even when the master flag is off): local-JWT
  * (JwtAuthenticationFilter, #[Order(-90)]) and the OAuth2 resource server (OAuth2ResourceServerFilter,
@@ -62,12 +63,22 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * The remaining actions run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
  * #[Bean] is registered):
  *
- * (4) ENTRY-POINT MODE GUARD: `firefly.security.http.entry_point` is validated — an unknown value, or `login`
+ * (4) USER STORE GUARD: the UserDetailsService bean is resolved, so UserStoreSettings::fromConfig() has run by
+ * the time boot completes — an unknown `firefly.security.users.driver`, an `eloquent` driver naming no model, or
+ * a model class that does not exist is a ConfigurationException at boot, never a 500 on the first login attempt.
+ * For the shipped store this is a cached lookup: the EagerSingletonsPass (900) constructs every non-#[Lazy]
+ * #[Bean] before this phase, and the AuthenticationManager bean takes the store as a constructor argument, so
+ * it is built at boot whether or not anything here asks. The explicit resolution is the guarantee stated in one
+ * place — the same belt the JwtService guard in (1) wears — and it survives an application that binds its own
+ * store #[Lazy]. Cheap by construction: neither driver touches the database to build (the memory store reads its
+ * map, the Eloquent one holds its settings until a lookup).
+ *
+ * (5) ENTRY-POINT MODE GUARD: `firefly.security.http.entry_point` is validated — an unknown value, or `login`
  * without form login, is a ConfigurationException. The authenticationEntryPoint #[Bean] validates it too, but
  * that bean exists only while the HTTP surface is on; this runs whenever the master flag is, so a meaningless
  * mode is refused at boot rather than left for the day http.enabled is flipped.
  *
- * (5) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
+ * (6) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
  * security-methods.php with no proxy-plan.php beside it was written by a firefly:cache from before the proxy plan
  * existed. Such a cache lists every rule in the manifest while DataAutoConfiguration::proxyPlan() bridges a
  * transactional-only plan from transactional.php, so a #[Service] whose rules are method security alone is
@@ -78,7 +89,7 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * null while regenerating), which is what writes the missing file. Skipped when `method.enabled` is off,
  * because the proxy link is then a pass-through by the operator's own choice and the stale plan changes nothing.
  *
- * (6) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
+ * (7) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
  * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
  * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
  */
@@ -125,6 +136,11 @@ final class SecurityWiringPass implements BootPass
         }
 
         $container = $context->container;
+
+        // The user store's refusals (an unknown driver, a model class that does not exist) belong at boot,
+        // not on the first login attempt. Resolving the bean here is enough — and cheap: neither driver
+        // touches the database to construct, and the eager-singletons pass has usually built it already.
+        $container->make(UserDetailsService::class);
 
         // Validated here as well as in the bean, so a meaningless mode is refused even when http is off and
         // the bean is never built: an unknown value, or `login` without form login (a redirect to a page that
