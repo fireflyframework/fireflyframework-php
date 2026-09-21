@@ -426,6 +426,17 @@ return [
                 ],
             ],
             20 => [
+                'method' => 'sessionCsrf',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+                        ],
+                    ],
+                ],
+            ],
+            21 => [
                 'method' => 'jwtService',
                 'conditions' => [
                     0 => [
@@ -444,7 +455,7 @@ return [
                     ],
                 ],
             ],
-            21 => [
+            22 => [
                 'method' => 'httpSecurity',
                 'conditions' => [
                     0 => [
@@ -463,7 +474,7 @@ return [
                     ],
                 ],
             ],
-            22 => [
+            23 => [
                 'method' => 'jwksProvider',
                 'conditions' => [
                     0 => [

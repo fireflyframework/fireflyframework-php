@@ -360,7 +360,11 @@ return [
 
         /*
          | CSRF protection for state-changing requests. `except` holds Str::is() patterns skipped by the
-         | filter — a JSON API authenticated by bearer token usually belongs here.
+         | filter — a JSON API authenticated by bearer token usually belongs here. With session security on
+         | (session.enabled, or any mechanism that implies it) the filter verifies Laravel's session token,
+         | read exactly as Laravel's own middleware reads it: the `_token` field, the `X-CSRF-TOKEN` header,
+         | or the encrypted `XSRF-TOKEN` cookie echoed in `X-XSRF-TOKEN` the way a SPA client (Axios) sends
+         | it. Without a session it is the stateless double-submit cookie check.
          |
          | Defaults: enabled false, except [].
         */

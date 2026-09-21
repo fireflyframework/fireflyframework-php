@@ -49,6 +49,7 @@ use Firefly\Security\Session\SessionSecurityContextRepository;
 use Firefly\Security\Session\SessionSecuritySettings;
 use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
+use Firefly\Security\Web\Csrf\SessionCsrf;
 use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Security\Web\Settings\HttpBasicSettings;
 use Firefly\Security\Web\Settings\LogoutSettings;
@@ -260,6 +261,22 @@ final class SecurityAutoConfiguration
     public function rememberMeSettings(Config $config): RememberMeSettings
     {
         return RememberMeSettings::fromConfig($config);
+    }
+
+    /**
+     * The session-token CSRF check CsrfFilter makes on a session-backed request and the interactive
+     * mechanisms (login, logout) make before anything else. DELIBERATELY NOT GATED BY A PROPERTY: its
+     * consumers are, and their gates do not nest — CsrfFilter needs it under `csrf.enabled` alone (no master
+     * flag), the login and logout filters under the master flag — so the bean is simply there, costs nothing
+     * (it holds the container and resolves the Encrypter on the first X-XSRF-TOKEN it decrypts, so an empty
+     * APP_KEY at `key:generate` time is not a boot failure), and yields to an application override like every
+     * other bean here.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(SessionCsrf::class)]
+    public function sessionCsrf(Container $container): SessionCsrf
+    {
+        return new SessionCsrf($container);
     }
 
     #[Bean]

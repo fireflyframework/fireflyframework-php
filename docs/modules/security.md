@@ -147,7 +147,10 @@ quote are rejected outright (expression injection).
 
 ## Web hardening
 
-- `CsrfFilter` — stateless double-submit cookie (safe-method + path exemptions, constant-time compare).
+- `CsrfFilter` (`-80`) — Laravel's session token whenever the request has a started session (session security
+  on), read through `SessionCsrf` from the same three sources Laravel's own `PreventRequestForgery` reads:
+  `_token`, `X-CSRF-TOKEN`, or `X-XSRF-TOKEN` carrying the encrypted `XSRF-TOKEN` cookie a Laravel SPA client
+  echoes back; the stateless double-submit cookie otherwise (safe-method + path exemptions, constant-time compare).
 - `SecurityHeadersFilter` — HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and a conservative CSP.
 
 ## Configuration (`firefly.security.*`, snake_case)
@@ -208,7 +211,7 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | `firefly.security.oauth2.resource_server.authorities_claim` | `roles` | Claim carrying the authority list (distinct from the local-JWT default). |
 | `firefly.security.http.enabled` | `false` | Enables the deny-by-default `HttpSecurityFilter`. **Requires the master flag** (see above). |
 | `firefly.security.http.rules` | `[]` | Ordered `{pattern, access}` URL rules — see [the access vocabulary](#the-config-access-vocabulary-is-fixed-and-fail-closed). With the filter on, an empty list denies **everything** — deny-by-default is the point. |
-| `firefly.security.csrf.enabled` | `false` | Enables the double-submit CSRF filter. Independent of the master flag. |
+| `firefly.security.csrf.enabled` | `false` | Enables `CsrfFilter` (`-80`). Independent of the master flag. Without a session it is the stateless double-submit check: the `XSRF-TOKEN` cookie echoed in `X-XSRF-TOKEN` (or `_token`). With a started session (`session.enabled`, or any mechanism that implies it) it verifies Laravel's session token instead, accepting exactly what Laravel's `PreventRequestForgery` accepts, in the same order: the `_token` field, the `X-CSRF-TOKEN` header, or the `X-XSRF-TOKEN` header carrying the **encrypted** `XSRF-TOKEN` cookie as the browser holds it and Axios sends it (decrypted through the application `Encrypter`; one that does not decrypt is a mismatch). The double-submit cookie value is ignored on that path. Any mismatch is a `403`. |
 | `firefly.security.csrf.except` | `[]` | Path globs exempt from CSRF. |
 | `firefly.security.headers.enabled` | `false` | Enables the security-headers filter. Independent of the master flag. |
 | `firefly.security.headers.hsts` | `max-age=31536000; includeSubDomains` | `Strict-Transport-Security`. |
@@ -225,7 +228,7 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | Authorization | Gates/Policies, `authorize()` | deny-by-default URL rules + `#[PreAuthorize]`/`#[Secured]` at the bus + dispatch |
 | JWT | a package + manual middleware | `JwtService` (mandatory `exp`, weak-secret refusal) + opt-in filters |
 | Method rules | `$this->authorize()` in controllers | attribute-discovered, compiled manifest, no-eval expression engine |
-| CSRF / headers | `VerifyCsrfToken` + a headers package | double-submit `CsrfFilter` + `SecurityHeadersFilter`, config-driven |
+| CSRF / headers | `VerifyCsrfToken` + a headers package | session-token or double-submit `CsrfFilter` + `SecurityHeadersFilter`, config-driven |
 
 ## Known-latent
 

@@ -302,6 +302,18 @@ return [
                 ],
             ],
             20 => [
+                'method' => 'sessionCsrf',
+                'returns' => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            21 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -313,7 +325,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            21 => [
+            22 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -325,7 +337,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            22 => [
+            23 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,
@@ -379,6 +391,7 @@ return [
         'lazy' => false,
         'dependencies' => [
             0 => 'Firefly\\Config\\Config',
+            1 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
         ],
     ],
     5 => [
