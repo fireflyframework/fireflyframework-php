@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Route;
  * users — ada (ROLE_ADMIN) and bob (ROLE_USER), bcrypt-encoded behind the DelegatingPasswordEncoder's
  * `{bcrypt}` prefix. The rules let the login and logout paths through and demand ROLE_ADMIN everywhere else,
  * so bob is the authenticated-but-refused principal every 403 scenario needs and ada is the one who gets in.
- * The wave-E `?as=user` stand-in (FixturePrincipalFilter) this fixture used to lean on is gone.
+ * The wave-E `?as=user` stand-in middleware this fixture used to lean on is gone: BrowserTestCase no longer
+ * prepends anything to the kernel, and a browser is a principal only once it has signed in.
  *
  * THE ENTRY POINT IS `problem` HERE, AND `auto` IN SignedInBrowserTestCase. With form login on, `auto` sends
  * a browser to the login page and there is no 401 page to photograph; `problem` keeps the 401 page for an
