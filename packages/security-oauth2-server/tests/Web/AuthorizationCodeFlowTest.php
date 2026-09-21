@@ -119,7 +119,8 @@ it('asks again for prompt=login: the stored principal and the authentication ins
     $this->signIn();
     $session = $this->sessionStore();
 
-    // A first, plain authorization stamps the session's authentication instant.
+    // The sign-in stamped the session's authentication instant (SessionAuthenticationTimeListener); a plain authorization keeps it.
+    expect($session->get(SessionAuthenticationTime::KEY))->toBeInt();
     $this->oauth2()->authorize('public-spa', OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI, 'openid')->assertStatus(302);
     expect($session->get(SessionAuthenticationTime::KEY))->toBeInt();
 

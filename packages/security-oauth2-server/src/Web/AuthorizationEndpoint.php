@@ -59,11 +59,14 @@ use Throwable;
  *      the client did not register (no scope asks for every registered one), PKCE missing when the server, the
  *      client or its public nature demands it, `plain`, a malformed challenge, a non-numeric `max_age` — a 302
  *      to the redirect URI with `error`, `error_description` and the echoed `state`.
- *   3. THE PRINCIPAL: anonymous, or `prompt=login`, or `max_age` exceeded → `login_required` for `prompt=none`,
+ *   3. THE PRINCIPAL: anonymous, or `prompt=login`, or `max_age` exceeded (measured from the instant
+ *      SessionAuthenticationTimeListener stamped at sign-in — a session that signed in before the listener could
+ *      see it is stamped on this first look, see SessionAuthenticationTime) → `login_required` for `prompt=none`,
  *      otherwise the entry point (the bean when HttpSecurityFilter is on; a LoginUrlAuthenticationEntryPoint
  *      over the form-login settings when it is not; a plain 401 when form login is off) with the request
- *      saved — WITHOUT `prompt=login`, and with the stored context cleared, so the sign-in that follows comes
- *      back here once and proceeds.
+ *      saved — WITHOUT `prompt=login`, and with the stored context and the instant cleared, so the sign-in that
+ *      follows is stamped afresh, comes back here once (`max_age` still on the request, now satisfied) and
+ *      proceeds.
  *   4. CONSENT: when the client requires it and (`prompt=consent`, or no stored consent covers the requested
  *      scopes) → `consent_required` for `prompt=none`, otherwise the page (the framework's, or `consent.view`
  *      with the same model, falling back logged at warning like the login view) with the request pending in
@@ -207,6 +210,10 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
         return $scopes;
     }
 
+    /**
+     * `max_age` against the sign-in instant the listener stamped (OpenID Connect Core §3.1.2.1). Without a session
+     * there is nothing to measure from, so the check cannot fail — a stateless deployment cannot honour `max_age`.
+     */
     private function maxAgeExceeded(Request $request, AuthorizationRequest $authorizationRequest): bool
     {
         if ($authorizationRequest->maxAge === null || ! $request->hasSession()) {
@@ -348,6 +355,10 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
     }
 
     /**
+     * The authorization with the code and the request's attributes; `auth_time` is the sign-in instant the listener
+     * stamped (the code-issue instant only for a session the listener never saw, see SessionAuthenticationTime) and
+     * `sid` the session id, both omitted for a request without a session.
+     *
      * @param  list<string>  $scopes
      * @param  array<string,mixed>  $attributes
      */

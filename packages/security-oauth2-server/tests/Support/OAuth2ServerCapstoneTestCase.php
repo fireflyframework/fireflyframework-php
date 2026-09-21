@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Security\OAuth2\Server\Tests\Support;
 
 use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Event\DispatcherEventPublisher;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Data\DataServiceProvider;
@@ -162,9 +163,14 @@ abstract class OAuth2ServerCapstoneTestCase extends FireflyDatabaseTestCase
         ];
     }
 
+    /**
+     * The security events are recorded AND forwarded to the dispatcher: the server's own SessionAuthenticationTimeListener
+     * hears InteractiveAuthenticationSuccessEvent through the real port, so a sign-in through /login stamps the
+     * session exactly as it does in an application, and a flow can still read `$this->events->failures()`.
+     */
     protected function defineFireflyEnvironment(Application $app): void
     {
-        $this->events = new RecordingAuthenticationEvents;
+        $this->events = new RecordingAuthenticationEvents(new DispatcherEventPublisher($app));
         $app->instance(ApplicationEventPublisher::class, $this->events);
     }
 

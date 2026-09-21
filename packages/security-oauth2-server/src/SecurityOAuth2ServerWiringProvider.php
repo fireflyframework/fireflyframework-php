@@ -7,15 +7,18 @@ namespace Firefly\Security\OAuth2\Server;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Security\OAuth2\Server\Boot\OAuth2AuthorizationPurgeSchedulePass;
+use Firefly\Security\OAuth2\Server\Boot\OAuth2ServerEventListenersPass;
 use Firefly\Security\OAuth2\Server\Boot\OAuth2ServerWiringPass;
 
 /**
  * The boot-pass half of firefly/security-oauth2-server (cannot ride on SecurityOAuth2ServerServiceProvider —
  * AutoConfiguration's final register() records candidacy only). Contributes OAuth2ServerWiringPass (order 210,
- * after SecurityWiringPass's 200: the server's refusals assume the core's guards already ran) and
- * OAuth2AuthorizationPurgeSchedulePass (InfrastructureStart, 10: the purge descriptor joins the ScheduledManifest
- * before the eager singletons capture it), and boot() loads and publishes the migration of the `eloquent`
- * drivers. Both this and SecurityOAuth2ServerServiceProvider are in extra.laravel.providers.
+ * after SecurityWiringPass's 200: the server's refusals assume the core's guards already ran),
+ * OAuth2ServerEventListenersPass (220: the package's #[AsEventListener] methods, which the phase-800 sweep cannot
+ * see in a package manifest) and OAuth2AuthorizationPurgeSchedulePass (InfrastructureStart, 10: the purge
+ * descriptor joins the ScheduledManifest before the eager singletons capture it), and boot() loads and publishes
+ * the migration of the `eloquent` drivers. Both this and SecurityOAuth2ServerServiceProvider are in
+ * extra.laravel.providers.
  */
 final class SecurityOAuth2ServerWiringProvider extends FireflyServiceProvider
 {
@@ -24,7 +27,7 @@ final class SecurityOAuth2ServerWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new OAuth2ServerWiringPass, new OAuth2AuthorizationPurgeSchedulePass];
+        return [new OAuth2ServerWiringPass, new OAuth2ServerEventListenersPass, new OAuth2AuthorizationPurgeSchedulePass];
     }
 
     /**

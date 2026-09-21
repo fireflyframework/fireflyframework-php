@@ -438,6 +438,40 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Consent\\SessionAuthenticationTimeListener',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+            0 => [
+                'method' => 'onInteractiveAuthenticationSuccess',
+                'event' => 'Firefly\\Security\\Event\\InteractiveAuthenticationSuccessEvent',
+                'order' => 0,
+            ],
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\AuthorizationCodeGrant',
         'postConstruct' => [
         ],
@@ -466,7 +500,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\ClientCredentialsGrant',
         'postConstruct' => [
         ],
@@ -495,7 +529,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
         'postConstruct' => [
         ],
@@ -524,7 +558,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2AuthorizationServerFilter',
         'postConstruct' => [
         ],
@@ -553,7 +587,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    8 => [
+    9 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
         'postConstruct' => [
         ],

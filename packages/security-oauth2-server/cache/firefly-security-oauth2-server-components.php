@@ -246,6 +246,23 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Consent\\SessionAuthenticationTimeListener',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Container\\Container',
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\AuthorizationCodeGrant',
         'stereotype' => 'component',
         'name' => null,
@@ -267,7 +284,7 @@ return [
             4 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\ClientCredentialsGrant',
         'stereotype' => 'component',
         'name' => null,
@@ -285,7 +302,7 @@ return [
             0 => 'Firefly\\Security\\OAuth2\\Server\\Token\\OAuth2TokenGenerator',
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -303,7 +320,7 @@ return [
             0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2AuthorizationServerFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -323,7 +340,7 @@ return [
             2 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
-    8 => [
+    9 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
         'stereotype' => 'component',
         'name' => null,

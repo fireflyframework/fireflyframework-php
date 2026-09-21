@@ -381,7 +381,10 @@ authorizers and the proxy link read live and rebinds the dispatcher guard to the
 built change their gates without a rebuild; `#[WithMockUser]` is Spring's, honoured in `setUp()`, the method-level
 one beating the class-level one. `Firefly\Testing\Double\RecordingAuthenticationEvents` is an
 `ApplicationEventPublisher` that answers `successes()`, `interactive()`, `failures()`, `logouts()` and `denials()` —
-bind it before boot from `defineFireflyEnvironment()`. The package's own suites are the reference:
+bind it before boot from `defineFireflyEnvironment()`. Bound that way it replaces the port, so a listener registered
+against the dispatcher hears nothing; a suite whose pipeline needs one to fire hands the framework's publisher in —
+`new RecordingAuthenticationEvents(new DispatcherEventPublisher($app))` — and every event is recorded, then published
+for real. The package's own suites are the reference:
 `packages/security/tests/Support/SecurityCapstoneTestCase.php` boots the real providers under Testbench with a file
 session driver, and every flow (login page, wrong password, right password → saved request, logout, remember-me
 after the session is gone, Basic on an API path, entry-point negotiation, PostAuthorize on a service, principal
