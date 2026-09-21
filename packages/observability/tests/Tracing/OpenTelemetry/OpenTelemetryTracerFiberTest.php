@@ -114,3 +114,49 @@ it('does not shadow a scope the fiber already holds: the framework span nests un
         ->and(OtelSpan::getCurrent()->getContext()->isValid())->toBeFalse()
         ->and(Context::getCurrent())->toBe(Context::getRoot());
 });
+
+it('lays the floor once a foreign scope the fiber held is gone, so later reads in that fiber are a root span and null, without a warning', function () {
+    [$tracer, $exporter] = fiberTracer();
+    $provider = $tracer->provider();
+
+    $ids = insideFiberWithWarningsFatal(static function () use ($tracer, $provider): array {
+        // A scope the application put in the fiber for PART of its life — a long-lived worker or keep-alive
+        // fiber, or an instrumentation hook that wraps a single call. The framework's first read finds it and
+        // nests under it; its detach empties the fiber's stack, so a read after it is the uninitialised read
+        // again unless the tracer lays its floor then.
+        $foreign = $provider->getTracer('app')->spanBuilder('app.work')->setParent(false)->startSpan();
+        $scope = Context::getRoot()->withContextValue($foreign)->activate();
+
+        $nested = $tracer->startSpan('nested');
+        $nested->end();
+
+        $scope->detach();
+        $foreign->end();
+
+        $after = $tracer->startSpan('after-detach');
+        $current = $tracer->currentSpan()?->spanId();
+        $after->end();
+
+        return [
+            'foreign' => $foreign->getContext()->getSpanId(),
+            'nested' => $nested->spanId(),
+            'after' => $after->spanId(),
+            'currentWhileAfter' => $current,
+            'currentAtEnd' => $tracer->currentSpan()?->spanId(),
+        ];
+    });
+
+    /** @var list<ImmutableSpan> $spans */
+    $spans = $exporter->getSpans();
+    $byName = [];
+    foreach ($spans as $span) {
+        $byName[$span->getName()] = $span;
+    }
+
+    expect($byName['nested']->getParentSpanId())->toBe($ids['foreign'])
+        ->and($byName['after-detach']->getParentSpanId())->toBe('0000000000000000')
+        ->and($byName['after-detach']->getTraceId())->not->toBe($byName['nested']->getTraceId())
+        ->and($ids['currentWhileAfter'])->toBe($ids['after'])
+        ->and($ids['currentAtEnd'])->toBeNull()
+        ->and($tracer->currentSpan())->toBeNull();
+});

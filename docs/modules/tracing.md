@@ -97,12 +97,14 @@ and the NoOp stays: every instrumentation site costs a few method calls and publ
 - **Resource**: the SDK's defaults plus `service.name` (`tracing.service-name`, else `app.name`),
   `deployment.environment.name` (`app.env`) and `tracing.resource-attributes`.
 - **Fibers**: the API's context storage is fiber-bound — one scope stack per `Fiber` — and a fiber that reads
-  its context before anything was attached in it raises `E_USER_WARNING` (`must attach initial fiber context
-  manually`), an `ErrorException` under Laravel's handler. `OpenTelemetryTracer` attaches the root context to
-  the current fiber once, before its first `startSpan()`/`currentSpan()` read there, and only when the fiber
-  has no context yet — so a request handled inside a fiber (the browser suite's in-process server, an Amp or
-  ReactPHP application server) gets a trace of its own instead of a 500, and a scope the application or the
-  FFI fiber observer (`OTEL_PHP_FIBERS_ENABLED`) already put in the fiber is nested under, never shadowed.
+  its context while that stack is empty raises `E_USER_WARNING` (`must attach initial fiber context
+  manually`), an `ErrorException` under Laravel's handler. Before every `startSpan()`/`currentSpan()` read,
+  `OpenTelemetryTracer` checks the current fiber and, when its stack is empty, attaches the root context as
+  the fiber's floor — laid once per fiber and never detached — so a request handled inside a fiber (the
+  browser suite's in-process server, an Amp or ReactPHP application server) gets a trace of its own instead
+  of a 500. A scope the application or the FFI fiber observer (`OTEL_PHP_FIBERS_ENABLED`) already put in the
+  fiber is nested under, never shadowed, and the fiber is checked again on later reads: when that scope is
+  detached (a hook that wrapped one call, a worker fiber between two units of work) the floor is laid then.
 
 ## Configuration (`firefly.observability.tracing.*`, kebab-case)
 
