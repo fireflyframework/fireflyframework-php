@@ -762,7 +762,9 @@ its own installable Composer package with its own tests and its own [module guid
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Operations | [Actuator](docs/modules/actuator.md) — health, info, env, beans, conditions, mappings | `firefly/actuator` |
-| Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics, `/actuator/prometheus` | `firefly/observability` |
+| Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics with histogram buckets, `/actuator/prometheus`, HTTP exchanges | `firefly/observability` |
+| Operations | [Tracing](docs/modules/tracing.md) — `Tracer` port, OpenTelemetry adapter, W3C `traceparent` over HTTP/CQRS/EDA | `firefly/observability` |
+| Operations | [Logging](docs/modules/logging.md) — trace-aware log correlation, JSON/ECS/Logstash lines | `firefly/observability` |
 | Operations | [Admin Dashboard](docs/modules/admin.md) — the browser dashboard over the actuator, read in-process | `firefly/admin` |
 | Operations | [Bean Graph](docs/modules/bean-graph.md) — the dashboard's drawn dependency graph, with cycle reporting | `firefly/admin` |
 | Operations | [Data Browser](docs/modules/data-browser.md) — the dashboard's database browser over `CrudRepository` beans, off by default | `firefly/admin` |

@@ -115,6 +115,38 @@ failing test first, and each one deletes a workaround downstream.
   `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
   and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
 
+- **`packages/observability` — distributed tracing (wave F).** The `Tracer` port grew into a Spring/OTel-shaped
+  API (`startSpan(name, kind, attributes, parent): Span`, `currentSpan()`, `Span::{setAttribute, addEvent,
+  setStatus, recordException, updateName, deactivate, end}`, `SpanContext`, `SpanKind`, `SpanStatus`) with
+  `NoOpTracer` still the default and `trace()` kept. `OpenTelemetryAutoConfiguration` binds an OpenTelemetry
+  tracer when `open-telemetry/sdk` is installed and `firefly.observability.tracing.enabled` is on (default
+  off): `none`, `console` or `otlp` exporters (http/protobuf, http/json, grpc), `always_on`/`always_off`/`ratio`
+  samplers, `service.name` and resource attributes, a bound `SpanExporterInterface` bean winning over config. A
+  first-party `W3CTraceContextPropagator` carries `traceparent`/`tracestate`: `TracingFilter` starts a SERVER
+  span per request (named by the route template, ids in Laravel `Context` and on the
+  `/actuator/httpexchanges` row as `traceId`), `HttpClientTracingMiddleware` gives every Laravel `Http` call a
+  CLIENT span and the header, and two new seams shaped like `CqrsMetrics` — `Firefly\Cqrs\Tracing\CqrsTracing`
+  (INTERNAL spans per command/query) and `Firefly\Eda\Tracing\EdaTracing` (PRODUCER/CONSUMER spans,
+  `traceparent` in the envelope headers, on the in-memory bus, the queue bus and every broker's consumer
+  sink) — are filled by observability and no-ops otherwise. `firefly/testing`'s `RecordingTracer` implements
+  the whole port in memory (`recorded()`, `find()`, `ofKind()`). New docs: `docs/modules/tracing.md`.
+
+- **`packages/observability` — log correlation and structured logging.** `TraceContextLogProcessor` stamps
+  `trace_id`, `span_id`, `correlation_id` and `request_id` on every record of the configured channels;
+  `firefly.logging.structured.format` (`json` | `ecs` | `logstash`, default `''`) applies Monolog's
+  `JsonFormatter`, a first-party ECS 8 `EcsFormatter`, or Monolog's `LogstashFormatter` to those channels'
+  existing handlers — never replacing one — with `service.name`/environment on every line. An unknown format,
+  or a listed channel `logging.channels` does not define, refuses the boot from `LogChannelWiringPass`. New
+  docs: `docs/modules/logging.md`.
+
+- **`packages/observability` — histogram buckets.** `firefly.observability.metrics.distribution.buckets` and
+  `distribution.per-meter.<name>` give timers cumulative `_bucket{le}` lines (`# TYPE … histogram`, plus the
+  same `_count`/`_sum`) in `SimpleMeterRegistry` and `CacheMeterRegistry` alike; without buckets a timer stays
+  the `summary` it was. Default off.
+
+- **`packages/admin` — the HTTP traffic page shows the trace id**, and `firefly.observability.tracing.enabled`
+  is a feature switch.
+
 ### Fixed
 
 - **`packages/actuator` — `/actuator/env`, `/actuator/configprops` and the admin's environment page mask a
@@ -126,6 +158,11 @@ failing test first, and each one deletes a workaround downstream.
   `firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block — showing as
   `******`, and a `headers` column counting as sensitive in the data browser; the singular `header`
   (`page_header`, `header_image`) is deliberately not matched.
+
+- **`packages/admin` — the HTTP traffic page rendered an empty path and `—` for every row.** `AdminAction`
+  read `path` and a numeric `timestamp` off the `/actuator/httpexchanges` row, which carries `uri` and an
+  ISO-8601 timestamp. Found while adding the trace column; covered by `AdminHttpTrafficTest` over the real
+  observability stack.
 
 ## [26.09.2] - 2026-09-09
 
