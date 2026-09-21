@@ -16,11 +16,15 @@ use ReflectionClass;
  *
  * WHY IT IS ITS OWN CLASS. This resolution existed twice before it existed here: once in packages/web's
  * RouteScanner, where it compiles the hydration table ArgumentResolver binds against, and once mirrored into
- * ElementTypes so the generator could answer the same question for a class no route reaches. That mirror is
- * deliberate and documented — RouteScanner's copy is private to another package and cannot be called — but a
- * THIRD copy, for the return-type parser, would have been one too many: three implementations of one rule
- * drift, and the drift shows up as a document describing a shape the server would refuse to build. The
- * mirror is now factored out so the generator has one copy of it rather than one per consumer.
+ * ElementTypes so the generator could answer the same question for a class no route reaches. A THIRD copy,
+ * for the return-type parser, would have been one too many: three implementations of one rule drift, and the
+ * drift shows up as a document describing a shape the server would refuse to build. Since then the element
+ * type of a LIST member has moved out of both of those sites into
+ * Firefly\Validation\Constraint\ContainerElementType, which RouteScanner, the constraint scanner and
+ * ElementTypes all ask; what remains here is the generator's own reading of a name written in a docblock
+ * TYPE EXPRESSION (DocType's `@return`), which also has to resolve an interface, an enum and an aliased
+ * nested name — a wider question than "which class is each element of this list", and the reason the two
+ * are not one method.
  *
  * The `imports()` read is memoised per file because a DTO graph asks about the same file once per member,
  * and re-reading and re-scanning a source file per member turned a twelve-member payload into twelve

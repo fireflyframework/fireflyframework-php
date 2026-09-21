@@ -66,3 +66,12 @@ it('still validates the nested payload before it ever reaches hydration', functi
     ])->assertStatus(422)
         ->assertJsonPath('code', 'VALIDATION_ERROR');
 });
+
+it('hydrates a list declared by #[Valid(each:)] alone, element by element', function () {
+    /** @var UncachedBootTestCase $this */
+    $this->postJson('/batches', [
+        'lines' => [['reference' => 'INV-1', 'cents' => 100], ['reference' => 'INV-2', 'cents' => 250]],
+    ])
+        ->assertStatus(201)
+        ->assertExactJson(['references' => ['INV-1', 'INV-2']]);
+});
