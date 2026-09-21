@@ -424,6 +424,8 @@ return [
                  | with `php artisan firefly:oauth2:keys` (RSA 2048 by default, `--algorithm=ES256` for P-256).
                  | `key_id` defaults to the RFC 7638 thumbprint of the public key. `previous_keys` lists keys that
                  | still VERIFY (they stay in the JWKS) after a rotation: [{key: <pem or path>, key_id: <kid>}].
+                 | Every published key needs its own kid (a verifier keeps one key per id), so an explicit
+                 | `key_id` must change with the key on a rotation: the boot refuses two keys under one kid.
                  | Required once `enabled` is true.
                 */
                 'jwt' => [

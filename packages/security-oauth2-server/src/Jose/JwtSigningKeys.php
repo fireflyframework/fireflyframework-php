@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Security\OAuth2\Server\Jose;
 
-use Firebase\JWT\JWK;
+use Firebase\JWT\JWK as JwkSet;
 use Firebase\JWT\Key;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
@@ -16,7 +16,11 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  *
  * `signing_key` and every previous `key` are PEM text when they start with `-----BEGIN`, otherwise a file path
  * read once. An empty signing key is refused with the command that generates one — the server cannot issue a
- * single token without it, so the first request is not the place to find out.
+ * single token without it, so the first request is not the place to find out. So is a kid two published keys
+ * share: a verifier keeps ONE key per kid (php-jwt's JWK::parseKeySet, the last one listed — on a resource
+ * server and in verificationKeys() alike), so the current key would be unreachable under its own id and every
+ * token signed from then on would fail at its first use — which is why an explicit `jwt.key_id` has to change
+ * with the key on a rotation (or be dropped, so the thumbprint takes over).
  */
 final class JwtSigningKeys
 {
@@ -32,6 +36,53 @@ final class JwtSigningKeys
     ) {
         if (! $current->canSign) {
             throw new ConfigurationException('firefly.security.oauth2.server.jwt.signing_key must be a private key: the one configured only verifies.');
+        }
+
+        self::assertDistinctKids($current, $previous);
+    }
+
+    /**
+     * Every published key under its own kid, refused at boot otherwise. The likely mistake is a rotation that kept
+     * an explicit `jwt.key_id` while the old key moved to `previous_keys` under the id tokens in flight carry: two
+     * DIFFERENT keys, one kid, and the verification map holds the old one. The other is the same key listed twice
+     * (a public half in `previous_keys` beside its private half in `signing_key`), which thumbprint kids collide
+     * on by design; the two are told apart by the RFC 7638 thumbprint, so the sentence names the actual cure.
+     *
+     * @param  list<SigningKey>  $previous
+     */
+    private static function assertDistinctKids(SigningKey $current, array $previous): void
+    {
+        /** @var array<string,array{string,SigningKey}> $published kid => [where it was configured, the key] */
+        $published = [$current->kid => ['jwt.signing_key', $current]];
+
+        foreach ($previous as $index => $key) {
+            $entry = "jwt.previous_keys[{$index}]";
+            $holder = $published[$key->kid] ?? null;
+            if ($holder === null) {
+                $published[$key->kid] = [$entry, $key];
+
+                continue;
+            }
+
+            [$where, $other] = $holder;
+            if (Jwk::thumbprint($key->jwk) === Jwk::thumbprint($other->jwk)) {
+                throw new ConfigurationException(sprintf(
+                    'firefly.security.oauth2.server.%s is the same key as %s (kid `%s`): a key is rotated out by moving it to '
+                    .'jwt.previous_keys once a NEW key has taken its place in jwt.signing_key, not by listing it twice. Remove the entry.',
+                    $entry,
+                    $where,
+                    $key->kid,
+                ));
+            }
+
+            throw new ConfigurationException(sprintf(
+                'firefly.security.oauth2.server.%s and %s are different keys published under the same kid `%s`: a verifier keeps '
+                .'one key per kid, so the tokens one of them signed would never verify. Give every published key its own kid — '
+                .'change jwt.key_id (or leave it empty for the RFC 7638 thumbprint) or the entry\'s key_id.',
+                $entry,
+                $where,
+                $key->kid,
+            ));
         }
     }
 
@@ -106,7 +157,7 @@ final class JwtSigningKeys
     {
         if ($this->verification === null) {
             /** @var array<string,Key> $parsed */
-            $parsed = JWK::parseKeySet($this->jwks());
+            $parsed = JwkSet::parseKeySet($this->jwks());
             $this->verification = $parsed;
         }
 

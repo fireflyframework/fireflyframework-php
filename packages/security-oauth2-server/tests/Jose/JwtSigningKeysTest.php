@@ -69,3 +69,23 @@ it('refuses an empty signing key with the command to run, a path that does not e
         ->and(fn () => JwtSigningKeys::fromSettings(new AuthorizationServerSettings(signingKey: '/nowhere/private.pem')))->toThrow(ConfigurationException::class, '/nowhere/private.pem')
         ->and(fn () => JwtSigningKeys::fromSettings(new AuthorizationServerSettings(signingKey: $publicPem)))->toThrow(ConfigurationException::class, 'private key');
 });
+
+it('refuses two published keys under one kid: a rotation that kept jwt.key_id, the same key listed twice, or two previous entries sharing an id', function () {
+    // EC keys: generated in milliseconds, and the rule is the same for every algorithm.
+    $current = KeyPairGenerator::generate('ES256');
+    $details = openssl_pkey_get_details(openssl_pkey_get_private($current) ?: throw new RuntimeException('no key'));
+    $currentPublic = is_array($details) && is_string($details['key'] ?? null) ? $details['key'] : '';
+
+    expect(fn () => JwtSigningKeys::fromSettings(new AuthorizationServerSettings(
+        signingKey: $current, keyId: 'main', algorithm: 'ES256',
+        previousKeys: [['key' => KeyPairGenerator::generate('ES256'), 'key_id' => 'main']],
+    )))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.jwt.previous_keys[0] and jwt.signing_key are different keys published under the same kid `main`')
+        ->and(fn () => JwtSigningKeys::fromSettings(new AuthorizationServerSettings(
+            signingKey: $current, algorithm: 'ES256',
+            previousKeys: [['key' => $currentPublic, 'key_id' => '']],
+        )))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.jwt.previous_keys[0] is the same key as jwt.signing_key')
+        ->and(fn () => JwtSigningKeys::fromSettings(new AuthorizationServerSettings(
+            signingKey: $current, algorithm: 'ES256',
+            previousKeys: [['key' => KeyPairGenerator::generate('ES256'), 'key_id' => 'old'], ['key' => KeyPairGenerator::generate('ES256'), 'key_id' => 'old']],
+        )))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.jwt.previous_keys[1] and jwt.previous_keys[0] are different keys published under the same kid `old`');
+});

@@ -7,6 +7,7 @@ use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Server\Boot\OAuth2ServerWiringPass;
+use Firefly\Security\OAuth2\Server\Jose\KeyPairGenerator;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerServiceProvider;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerWiringProvider;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
@@ -94,3 +95,16 @@ it('accepts the server over form login, over session.enabled, over remember-me a
     'remember-me' => [['remember_me' => ['enabled' => true]]],
     'basic with session' => [['http_basic' => ['enabled' => true, 'session' => true]]],
 ]);
+
+it('refuses two published keys under one kid at boot — the rotation that kept jwt.key_id — rather than on the first token, through the real boot', function () {
+    expect(fn () => bootOAuth2ServerAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true, 'jwt' => [
+            'algorithm' => 'ES256',
+            'signing_key' => KeyPairGenerator::generate('ES256'),
+            'key_id' => 'main',
+            'previous_keys' => [['key' => KeyPairGenerator::generate('ES256'), 'key_id' => 'main']],
+        ]]],
+    ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.jwt.previous_keys[0] and jwt.signing_key are different keys published under the same kid `main`');
+});
