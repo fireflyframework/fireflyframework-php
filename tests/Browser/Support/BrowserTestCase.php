@@ -10,7 +10,6 @@ use Firefly\Cli\Tests\Support\SkeletonApp;
 use Firefly\Cli\Tests\Support\SkeletonExampleTestCase;
 use Firefly\Config\Config;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
-use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -26,7 +25,9 @@ use RuntimeException;
  * `app.debug` in the framework (`firefly.web.error-page.trace`, `firefly.admin.enabled`), and the plugin
  * forces `app.debug=false` while it handles each browser request — so relying on the default would render
  * the production page in a suite that means to test the debug one. Subclasses flip `trace()` and add
- * `securityOverrides()`; both are read before boot, which is why they are hooks and not per-test calls.
+ * `securityOverrides()`; both are read before boot, which is why they are hooks and not per-test calls. A
+ * browser authenticates the way a person does — SecuredBrowserTestCase puts the framework's own form login
+ * and two memory users in front of the app; the `?as=user` stand-in wave E shipped is gone.
  */
 abstract class BrowserTestCase extends SkeletonExampleTestCase
 {
@@ -55,7 +56,6 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
             'firefly.admin.settings.writable' => true,
             'firefly.admin.datasource.wizard' => true,
             'firefly.management.enabled' => true,
-            'firefly.management.endpoint.health.db.enabled' => true,
             'firefly.openapi.enabled' => true,
             'firefly.openapi.viewer.enabled' => true,
             ...$this->securityOverrides(),
@@ -95,7 +95,6 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
         View::prependLocation(dirname(SkeletonApp::path()).'/resources/views');
 
         $this->defineFixtureRoutes();
-        $this->prependFixturePrincipalFilter();
         $this->relocateSettingsOverrides();
     }
 
@@ -110,12 +109,6 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
         Route::get('/browser-fixture/boom', static function (): never {
             throw new LogicException('The fixture failed on purpose.', 0, new RuntimeException('the inner cause'));
         });
-    }
-
-    private function prependFixturePrincipalFilter(): void
-    {
-        // Larastan narrows the contract to Testbench's foundation Kernel, which has prependMiddleware().
-        $this->app()->make(HttpKernelContract::class)->prependMiddleware(FixturePrincipalFilter::class);
     }
 
     /**
