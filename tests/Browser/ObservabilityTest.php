@@ -45,3 +45,30 @@ it('serves the exchanges as JSON with a traceId on each row', function (): void 
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'observability-httpexchanges-json');
 });
+
+it('exposes the HTTP server timer as a histogram once buckets are configured', function (): void {
+    /** @var TracedBrowserTestCase $this */
+    visit('/greetings/Ada')->assertSourceHas('Hello, Ada!');
+
+    visit('/actuator/prometheus')
+        ->assertSourceHas('# TYPE http_server_requests_seconds histogram')
+        ->assertSourceHas('http_server_requests_seconds_bucket{')
+        ->assertSourceHas('le="+Inf"}')
+        ->assertSourceHas('http_server_requests_seconds_count{')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'observability-prometheus');
+});
+
+it('lists the tracing switch as on among the observability switches', function (): void {
+    /** @var TracedBrowserTestCase $this */
+    $row = 'tr:has(input[name="key"][value="firefly.observability.tracing.enabled"])';
+
+    visit('/firefly/settings')
+        ->assertSee('Feature switches')
+        ->assertSee('Observability')
+        ->assertSee('firefly.observability.tracing.enabled')
+        ->assertSeeIn($row.' span.bool', 'on')
+        ->assertSeeIn($row.' button', 'Turn off')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'observability-settings');
+});
