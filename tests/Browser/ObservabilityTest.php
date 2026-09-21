@@ -72,3 +72,31 @@ it('lists the tracing switch as on among the observability switches', function (
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'observability-settings');
 });
+
+it('writes an ECS document for a line logged inside a traced request, naming the trace the exchange row does', function (): void {
+    /** @var TracedBrowserTestCase $this */
+    visit('/browser-fixture/log')
+        ->assertSee('One line was written to the application log.')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'observability-log-fixture');
+
+    $line = $this->lastFixtureLogLine();
+    $traceId = $this->fixtureTraceId();
+
+    // Pest's toHaveKey() tries the literal key first (`ecs.version`, `log.level` are literal ECS keys) and dot
+    // notation second (`service.name`, `trace.id` are nested) — Arr::has()/Arr::get() semantics.
+    expect($line)->toHaveKey('ecs.version', '8.11.0')
+        ->toHaveKey('log.level', 'info')
+        ->toHaveKey('message', TracedBrowserTestCase::LOG_MESSAGE)
+        ->toHaveKey('service.name', 'LaraFly')
+        ->toHaveKey('service.environment', 'local')
+        ->toHaveKey('context.fixture', 'observability')
+        ->toHaveKey('trace.id', $traceId)
+        ->toHaveKey('span.id')
+        ->toHaveKey('labels.correlation_id')
+        ->toHaveKey('labels.request_id');
+
+    // The same trace, seen from the dashboard and from the actuator.
+    visit('/firefly/http')->assertSee('/browser-fixture/log')->assertSourceHas('title="'.$traceId.'"')->assertNoJavaScriptErrors();
+    visit('/actuator/httpexchanges')->assertSourceHas('"traceId":"'.$traceId.'"')->assertNoJavaScriptErrors();
+});
