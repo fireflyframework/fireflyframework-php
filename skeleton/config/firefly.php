@@ -173,7 +173,9 @@ return [
          | ip — never the password. Turning this on turns `session` and `logout` on with it.
          |
          | `view` receives `$login` (a LoginPageModel: action, usernameParameter, passwordParameter,
-         | csrfToken, error, loggedOut, rememberMeParameter, title).
+         | csrfToken, error, loggedOut, rememberMeParameter, title). A `view` that does not exist or throws
+         | while rendering falls back to the framework page AND IS LOGGED at warning naming the view: a typo
+         | here would otherwise replace your page with the framework's, with a 200 and not a word anywhere.
          |
          | The framework's page is mounted at `login_page` ONLY when no GET route of yours already answers
          | that path: a #[GetMapping('/login')] or a routes-file route there (with or without a domain) is

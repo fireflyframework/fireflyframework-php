@@ -16,6 +16,7 @@ use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Router;
+use Psr\Log\LoggerInterface;
 
 /**
  * Mounts GET {login_page} on the Router when form login is on (the ActuatorRouteRegistrar precedent: a route
@@ -41,9 +42,12 @@ use Illuminate\Routing\Router;
  * skeleton, and pinned by ApplicationLoginPageTest.
  *
  * The action is built per request from the container, not resolved as a bean: its settings are master-gated
- * beans that exist exactly when this route does, and the view factory is optional — resolved the way the
- * error-page renderer resolves it, because a fresh Application aliases the contract before any provider
- * binds the service, so bound() alone answers true in a bare container and the make() throws.
+ * beans that exist exactly when this route does, and the view factory and the logger are optional — resolved
+ * the way the error-page renderer resolves the view factory, because a fresh Application aliases both
+ * contracts before any provider binds the service, so bound() alone answers true in a bare container and the
+ * make() throws. The logger is what makes a `view` that does not render VISIBLE (LoginPageAction warns on
+ * every fallback, naming the view); without one the page still falls back, silently, as it must in a bare
+ * container.
  */
 final class LoginRouteRegistrar implements BootPass
 {
@@ -82,7 +86,13 @@ final class LoginRouteRegistrar implements BootPass
             /** @var ErrorPageSettings $pages */
             $pages = $container->make(ErrorPageSettings::class);
 
-            return (new LoginPageAction($formLogin, $rememberMe, $pages, self::views($container)))($request);
+            return (new LoginPageAction(
+                $formLogin,
+                $rememberMe,
+                $pages,
+                self::optional($container, ViewFactory::class),
+                self::optional($container, LoggerInterface::class),
+            ))($request);
         })->name('firefly.security.login');
     }
 
@@ -102,19 +112,27 @@ final class LoginRouteRegistrar implements BootPass
         return false;
     }
 
-    private static function views(Container $container): ?ViewFactory
+    /**
+     * A service the page can do without: null when the container has no binding for it, and null when the
+     * binding is an alias nothing ever filled in (the bare-container case above) rather than an exception.
+     *
+     * @template T of object
+     *
+     * @param  class-string<T>  $abstract
+     * @return T|null
+     */
+    private static function optional(Container $container, string $abstract): ?object
     {
-        if (! $container->bound(ViewFactory::class)) {
+        if (! $container->bound($abstract)) {
             return null;
         }
 
         try {
-            /** @var ViewFactory $views */
-            $views = $container->make(ViewFactory::class);
-
-            return $views;
+            $service = $container->make($abstract);
         } catch (BindingResolutionException) {
             return null;
         }
+
+        return $service instanceof $abstract ? $service : null;
     }
 }

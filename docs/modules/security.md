@@ -182,7 +182,7 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | `firefly.security.form_login.default_success_url` | `/` | Where a login goes when no request was saved. |
 | `firefly.security.form_login.always_use_default_success_url` | `false` | Ignore the saved request. |
 | `firefly.security.form_login.failure_url` | `/login?error` | Where a failed login is redirected. |
-| `firefly.security.form_login.view` | `''` | A Blade view rendered instead of the framework page; receives `$login` (`LoginPageModel`). |
+| `firefly.security.form_login.view` | `''` | A Blade view rendered instead of the framework page; receives `$login` (`LoginPageModel`: `title`, `action`, `usernameParameter`, `passwordParameter`, `csrfToken`, `error`, `loggedOut`, `rememberMeParameter`). A view that does not exist or that throws while rendering falls back to the framework page — a person who cannot sign in cannot fix the view — and the fallback is **logged at warning naming the view**, since a 200 with the framework form is otherwise indistinguishable from an unconfigured application. |
 | `firefly.security.http_basic.enabled` | `false` | HTTP Basic (`HttpBasicFilter`, `-91`). |
 | `firefly.security.http_basic.realm` | `LaraFly` | The `WWW-Authenticate` realm. |
 | `firefly.security.http_basic.session` | `false` | Store a successful Basic authentication in the session (implies `session`). |
