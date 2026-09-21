@@ -6,6 +6,7 @@ namespace Firefly\Admin\Data;
 
 use Firefly\Actuator\Introspection\SensitiveValueMasker;
 use Firefly\Config\Config;
+use Firefly\Data\DataSettings;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Connection;
@@ -17,7 +18,7 @@ use Throwable;
 /**
  * What the application's data layer is actually configured as, and what it is actually doing.
  *
- * FOUR QUESTIONS AN OPERATOR ASKS AT 3AM, and none of them was answerable from this dashboard before.
+ * FIVE QUESTIONS AN OPERATOR ASKS AT 3AM, and none of them was answerable from this dashboard before.
  *
  *   WHICH DATABASE AM I TALKING TO? A connection's driver, host, port and database name — the first thing
  *   anyone checks when the data looks wrong, and the thing most likely to differ from what you assumed.
@@ -36,6 +37,9 @@ use Throwable;
  *   compiled artifact nobody could read without opening bootstrap/cache; the point of a dashboard is that
  *   you do not have to.
  *
+ *   WHAT DOES A FAILURE LOOK LIKE FROM OUTSIDE? Whether driver errors are translated into the typed
+ *   DataAccessException family, and what the default transaction timeout is — see dataLayer().
+ *
  * EVERY CONFIG VALUE GOES THROUGH SensitiveValueMasker — the same masker the actuator's env endpoint uses,
  * so `password` is `******` here for the same reason and by the same rule. A page that dumped a connection
  * array verbatim would put the database password on a URL the dashboard's own gate is the only guard for.
@@ -50,6 +54,7 @@ final class DatasourceReport
         private readonly ?TransactionalManifest $manifest,
         private readonly array $database,
         private readonly bool $probeEnabled = true,
+        private readonly ?DataSettings $settings = null,
     ) {}
 
     public static function forContainer(Container $container): self
@@ -68,12 +73,18 @@ final class DatasourceReport
         } catch (Throwable) {
         }
 
+        // bound(), not a try/catch around make(): DataSettings has an all-default constructor, so the container
+        // would happily build one for an application that never booted firefly/data — and the page would then
+        // describe a data layer that does not exist. Only the DataAutoConfiguration bean counts.
+        $settings = $container->bound(DataSettings::class) ? $container->make(DataSettings::class) : null;
+        $settings = $settings instanceof DataSettings ? $settings : null;
+
         $config = $container->make(Config::class);
 
         /** @var array<string, mixed> $database */
         $database = $config->array('database', []);
 
-        return new self($resolver, $manifest, $database, $config->bool('firefly.admin.datasource.probe', true));
+        return new self($resolver, $manifest, $database, $config->bool('firefly.admin.datasource.probe', true), $settings);
     }
 
     /** Whether opening a connection to ask what it is, is permitted at all. */
@@ -228,6 +239,29 @@ final class DatasourceReport
         }
 
         return $rows;
+    }
+
+    /**
+     * The firefly.data.* settings the data layer runs under — the fifth question, added with wave D: IS THE
+     * TRANSLATED-EXCEPTION TABLE ON, and what is the default transaction timeout? Both change what a failing
+     * request looks like from outside (a 409 DUPLICATE_KEY versus a 500 with a statement in it; a 504 after N
+     * seconds versus a request that runs until something else gives up), and neither is visible anywhere but
+     * config. Null when firefly/data is not part of this application.
+     *
+     * @return array{exceptionTranslation: bool, defaultTimeout: int, statementTimeout: bool, transactionalEventListeners: bool}|null
+     */
+    public function dataLayer(): ?array
+    {
+        if ($this->settings === null) {
+            return null;
+        }
+
+        return [
+            'exceptionTranslation' => $this->settings->exceptionTranslation,
+            'defaultTimeout' => $this->settings->defaultTimeout,
+            'statementTimeout' => $this->settings->statementTimeout,
+            'transactionalEventListeners' => $this->settings->transactionalEventListeners,
+        ];
     }
 
     /**

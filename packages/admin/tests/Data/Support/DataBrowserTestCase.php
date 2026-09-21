@@ -39,7 +39,7 @@ abstract class DataBrowserTestCase extends FireflyDatabaseTestCase
 
         Schema::create('admin_records', function (Blueprint $table): void {
             $table->increments('id');
-            $table->string('email');
+            $table->string('email')->unique();
             $table->string('api_token')->nullable();
             $table->string('recovery_phrase')->nullable();
             $table->integer('amount');
