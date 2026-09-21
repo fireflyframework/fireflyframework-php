@@ -4,7 +4,7 @@
 [`CrudRepository`/`PagingAndSortingRepository`](data.md#the-ports-crudrepository-pagingandsortingrepository)
 contract over `Model::query()`, so an application repository is usually just a `$model` assignment plus its
 own derived-query/`#[Query]` methods. This page covers the Eloquent-specific building blocks layered on top:
-soft-delete helpers, auditing, and optimistic locking.
+soft-delete helpers, auditing, optimistic locking, and the pessimistic `findByIdForUpdate()`.
 
 ## `EloquentRepository`
 
@@ -27,6 +27,16 @@ $this->model` check, so callers never see a bare `Model` — only the concrete e
 declared over. This class is reflection-free (everything goes through the Eloquent `Builder`, no runtime
 class introspection); see [Data & Repositories](data.md) for the derived-query and `#[Query]` dispatch it also
 hosts.
+
+Two reads insist where their siblings return null: `getById($id)` throws `EmptyResultDataAccessException`
+(404) for a missing row, and `findByIdForUpdate($id)` reads under `SELECT … FOR UPDATE` and throws
+`TransactionRequiredException` outside a transaction. `findSlice(Pageable)` is the count-free page.
+
+Every method runs through the package's exception translation (see [Data & Repositories](data.md#exception-translation)):
+a unique violation from `save()` is a `DuplicateKeyException`, a `#[Query]` against a missing table a
+`BadSqlGrammarException`, a connection that cannot be opened a `DataAccessResourceFailureException` — each with
+the `QueryException` as `previous`. `firefly.data.exception-translation.enabled=false` restores the raw
+exceptions.
 
 ## Soft delete
 
@@ -98,7 +108,8 @@ final class VersionedRecord extends Model
 The trait overrides Eloquent's internal `performUpdate()`: every update bumps `version` by one and adds
 `WHERE version = <the version the row was loaded with>` to the `UPDATE`. If that `WHERE` matches zero rows —
 because someone else's write already moved the version — the row changed underneath the caller, and
-`OptimisticLockException` is thrown instead of silently applying (or silently losing) the write:
+`OptimisticLockException` — a kernel `OptimisticLockingFailureException` (409 `OPTIMISTIC_LOCK`) — is thrown
+instead of silently applying (or silently losing) the write:
 
 ```php
 $a = $repo->findById($id);

@@ -11,7 +11,25 @@ RouteMatched listener validating ids, a replacement JWKS provider, thirty-five h
 whole Kafka consumer command, and a shell script whose body was one line. Each fix was reproduced by a
 failing test first, and each one deletes a workaround downstream.
 
+Alongside them, `firefly/data` reaches Spring Data parity: a driver failure now leaves a repository or a
+`#[Transactional]` method as a typed member of the kernel's `DataAccessException` family with a fixed sentence
+and never the statement, query by example is a `Specification`, `#[Modifying]`/`#[Projection]`/`#[Lock]`/
+`#[EntityGraph]` and `Slice` are compiled into the manifest by the one scanner the package already had,
+`#[Transactional(timeout:)]` is enforced rather than carried, `#[TransactionalEventListener]` runs in four
+phases, and the actuator's `db` health indicator is on whenever a database is configured — every behaviour
+behind a documented `firefly.data.*` key and tested through the real Testbench pipeline.
+
 ### BREAKING
+
+- **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
+  `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
+  names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new
+  `ConditionalHealthIndicator::available()` hook, which `HealthContributorRegistrar` honours). A failing or
+  missing database is reported DOWN and `/actuator/health` answers **503**; an application with no default
+  database gets no `db` component at all. **Migration:** `FIREFLY_HEALTH_DB_ENABLED=false` (or
+  `firefly.management.endpoint.health.db.enabled => false`) removes the indicator. An application whose
+  `config/firefly.php` was generated before this release still has the old `false` written out and keeps the
+  old behaviour until it edits that line.
 
 - **`packages/web` — problem+json no longer discloses an unhandled throwable's message when `app.debug` is
   on.** The JSON renderer shared the HTML page's `firefly.web.error-page.trace` gate, which follows
@@ -62,6 +80,37 @@ failing test first, and each one deletes a workaround downstream.
   well-keyed body expects `SerializationException`.
 
 ### Added
+
+- **`packages/kernel` — the `DataAccessException` family.** `DataIntegrityViolationException` (409),
+  `DuplicateKeyException` (409, under it), `CannotAcquireLockException` (409), `DeadlockLoserDataAccessException`
+  (409, under it), `QueryTimeoutException` (504), `TransientDataAccessResourceException` (503),
+  `DataAccessResourceFailureException` (503), `BadSqlGrammarException` (500), `EmptyResultDataAccessException`
+  (404), `IncorrectResultSizeDataAccessException` (500), `OptimisticLockingFailureException` (409) and
+  `TransactionTimedOutException` (504). `DataAccessException`'s constructor gains trailing `httpStatus`/`severity`
+  parameters; `Firefly\Data\Repository\Locking\OptimisticLockException` is now an `OptimisticLockingFailureException`
+  and keeps its name and code.
+
+- **`packages/data` — Spring Data parity.** `PersistenceExceptionTranslator` behind
+  `firefly.data.exception-translation.enabled` (default on), applied in every `EloquentRepository` method, in
+  `TransactionTemplate` and therefore in every `#[Transactional]` method, with the driver/SQLSTATE tables in one
+  file (`DriverErrorTable`, one test per row) and fixed-sentence messages; query by example (`Example`,
+  `ExampleMatcher`, `StringMatcher`, `GenericPropertyMatcher`, `findByExample`/`findOneByExample`/
+  `countByExample`/`existsByExample`/`findByExamplePaged`); `#[Modifying]` (statements, affected-row count,
+  transaction required unless said otherwise, refused on a SELECT at scan time); `#[Projection(Dto::class)]`
+  (constructor hydration with lossless typed coercion, reflection-free at runtime); `#[Lock(LockMode::PESSIMISTIC_WRITE|
+  PESSIMISTIC_READ)]` and `findByIdForUpdate()` (transaction required); `#[EntityGraph]` with named graphs on
+  every read; `Slice` and `PagingAndSortingRepository::findSlice()`, derived queries paging by a trailing
+  `Pageable`; `getById()`; `#[Transactional(timeout:)]` enforced with a per-driver statement timeout
+  (`StatementTimeoutApplier` — pgsql `statement_timeout`, mysql `max_execution_time`, mariadb
+  `max_statement_time`, sqlite's busy timeout) and a wall-clock deadline, `firefly.data.transaction.default-timeout`
+  and `.statement-timeout`; `#[TransactionalEventListener]` in `BEFORE_COMMIT`/`AFTER_COMMIT`/`AFTER_ROLLBACK`/
+  `AFTER_COMPLETION` over a `TransactionSynchronizationRegistry` that follows savepoints, registered by the new
+  `DataWiringProvider` (`firefly.data.transactional-event-listeners.enabled`). The compiled `transactional.php`
+  gains `repositories` and `listeners` maps; older files still load.
+
+- **`packages/admin` — the datasource page shows the data layer** (exception translation, default transaction
+  timeout, statement timeout, transactional listeners) and the data browser's write failures read as sentences
+  for a duplicate key, a broken constraint, a lock, a timeout or an unreachable database — never the SQL.
 
 - **`packages/kernel` — RFC 9457 extension members and a per-exception title on `FireflyException`.**
   `withExtensions([...])`/`extensions()` and `withTitle('…')`/`title()` (also constructor arguments), spread

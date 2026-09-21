@@ -76,7 +76,7 @@ endpoint that is reachable at all only once explicitly exposed.
 - `firefly.management.endpoint.{id}.enabled` (per-endpoint)
 - `firefly.management.endpoint.health.show-details` (default `never`; only the literal `always` shows component details — see Known-latent for `when-authorized`)
 - `firefly.management.endpoint.health.group.{name}.include`
-- `firefly.management.endpoint.health.db.enabled` (default `false`) — opt-in `Db` health indicator
+- `firefly.management.endpoint.health.db.enabled` (default **`true`**) — the `db` health indicator, registered whenever `database.default` names a connection with a driver (Spring Boot's `DataSourceHealthIndicator` auto-configuration); a failing or missing database reports DOWN and `/actuator/health` answers 503; an application with no default database gets no `db` component at all. `false` removes the indicator. An indicator can decline registration itself by implementing `ConditionalHealthIndicator::available()`.
 - `firefly.management.info.app.*`, `firefly.management.info.build.path`
 - `firefly.management.info.runtime.enabled` (default `true`, `#[ConditionalOnProperty(matchIfMissing: true)]`) — the `runtime` fragment of `/actuator/info` (PHP version/SAPI/OPcache, Laravel version, LaraFly version, current+peak memory). Setting it `false` removes the contributor bean entirely.
 
