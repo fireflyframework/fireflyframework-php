@@ -158,6 +158,7 @@ final class HttpExchangeFilter extends OncePerRequestFilter
                 round((microtime(true) - $start) * 1000, 3),
                 $this->correlationId($request),
                 $this->includeHeaders ? HeaderMasker::mask($request->headers->all()) : [],
+                $this->traceId($request),
             ));
         } catch (Throwable) {
             // Intentionally swallowed — see the docblock. The row is lost; the response is not.
@@ -206,6 +207,18 @@ final class HttpExchangeFilter extends OncePerRequestFilter
     private function correlationId(Request $request): ?string
     {
         $value = $request->headers->get(CorrelationIdFilter::HEADER);
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * The trace id TracingFilter published on the request. Read off Request::$attributes rather than Context
+     * for the same reason correlationId() reads the header: this filter is tested against a bare Request, and
+     * TracingFilter (order -110, outside this one) writes both carriers before the chain reaches here.
+     */
+    private function traceId(Request $request): ?string
+    {
+        $value = $request->attributes->get(TracingFilter::CONTEXT_TRACE_ID);
 
         return is_string($value) && $value !== '' ? $value : null;
     }

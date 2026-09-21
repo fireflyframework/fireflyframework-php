@@ -323,8 +323,9 @@ deptrac:
 
     # Observability is a top-of-stack capability: a pure-PHP MeterRegistry + Prometheus exposition whose metrics
     # endpoints implement Actuator's ActuatorEndpoint contract (=> Actuator), instruments HTTP via a Web filter
-    # (=> Web), backs Cqrs's CqrsMetrics seam (=> Cqrs), and gauges Resilience circuit breakers (=> Resilience). It
-    # reads Config, carries Container/Context attributes, extends AutoConfigure's base. NOTHING depends on it.
+    # (=> Web), backs Cqrs's CqrsMetrics/CqrsTracing seams (=> Cqrs) and Eda's EdaTracing seam (=> Eda), and
+    # gauges Resilience circuit breakers (=> Resilience). It reads Config, carries Container/Context attributes,
+    # extends AutoConfigure's base. NOTHING depends on it.
     Observability:
       - Kernel
       - Container
@@ -334,6 +335,7 @@ deptrac:
       - Web
       - Actuator
       - Cqrs
+      - Eda
       - Resilience
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface

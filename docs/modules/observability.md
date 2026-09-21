@@ -4,8 +4,9 @@
 pure-PHP `MeterRegistry` (no `ext-prometheus`, no OpenTelemetry library), a Prometheus 0.0.4 text exposition and a
 Micrometer-JSON `/metrics` endpoint (both mounted on `firefly/actuator`), HTTP auto-instrumentation, the real
 `CqrsMetrics` recorder that drops into the M10 seam, a circuit-breaker gauge, process metrics, correlation-id log
-enrichment, and a `Tracer` port (`NoOpTracer` shipped; the OpenTelemetry adapter lands at SP-7). Gated on one config
-flag, secure-by-default-on, zero boot reflection.
+enrichment, distributed [tracing](tracing.md) (a Spring/OTel-shaped `Tracer` port, an OpenTelemetry adapter, W3C
+`traceparent` over HTTP, CQRS and EDA), trace-aware [structured logging](logging.md), and histogram buckets on
+timers. Gated on one config flag, secure-by-default-on, zero boot reflection.
 
 ## Metrics model
 
@@ -16,7 +17,9 @@ flag, secure-by-default-on, zero boot reflection.
   `setGauge()`), so callers never need the full registry.
 - `SimpleMeterRegistry` — the shipped in-memory implementation of **both** ports, and the default. `Counter`
   (monotonic), `Gauge` (pull-based, backed by a `callable(): float` supplier — sampled at *read* time, not write
-  time), `Timer` (count + total-seconds, exposed as a Prometheus summary — **no** histogram buckets/percentiles yet).
+  time), `Timer` (count + total-seconds, exposed as a Prometheus summary — or as a **histogram** with cumulative
+  `_bucket{le}` lines when its name has buckets in `firefly.observability.metrics.distribution.*`, see
+  [Histograms](#histograms)).
 - `CacheMeterRegistry` — the cross-process implementation of both ports, bound instead when
   `firefly.observability.metrics.store` names a cache store. See [Surviving the request](#surviving-the-request)
   below.
@@ -60,6 +63,30 @@ The documented boundary: the factory methods (`counter()`/`timer()`/`gauge()`) s
 meters, and mutating one of those directly stays process-local. Everything the framework itself records goes
 through the `MetricsRecorder` methods, which are the durable path.
 
+## Histograms
+
+`DistributionStatisticConfig` (Micrometer's name) reads `firefly.observability.metrics.distribution.buckets`
+(upper bounds in seconds, applied to every timer) and `distribution.per-meter.<name>` (a list for one meter
+name; an empty list turns that meter back into a summary). Both registries ask it for the buckets when a
+timer is **created** — bounds are keyed by meter name, never by tag set, because a Prometheus family has one
+layout — and `CacheMeterRegistry` increments one `<id>:le:<bound>` counter per bucket a sample falls into, so
+a cross-process scrape rebuilds the histogram exactly. `PrometheusTextFormat` then emits:
+
+```
+# TYPE http_server_requests_seconds histogram
+http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="0.05"} 12
+http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="0.5"} 40
+http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="+Inf"} 41
+http_server_requests_seconds_count{method="GET",uri="/orders/{id}"} 41
+http_server_requests_seconds_sum{method="GET",uri="/orders/{id}"} 9.87
+```
+
+`_count` and `_sum` are the same two lines the summary has, so `rate(x_sum[5m]) / rate(x_count[5m])` keeps
+working the day buckets are switched on; `histogram_quantile()` becomes possible. Off by default: turning a
+family's `# TYPE` from `summary` to `histogram` on upgrade would change a running scrape without being asked.
+The Prometheus client default list — `[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]` — is the one
+to start from.
+
 ## Exposition
 
 - `/actuator/prometheus` (`PrometheusEndpoint`) — pure-PHP Prometheus text-exposition format 0.0.4. Names/labels are
@@ -87,11 +114,11 @@ through the `MetricsRecorder` methods, which are the durable path.
   a fresh scrape always reflects the breaker's *current* state, not a snapshot from boot time). It only touches
   `firefly/resilience` when that package is actually installed (a soft `bound()` guard at runtime, even though the
   Deptrac edge exists).
-- `CorrelationIdLogProcessor` — pushed onto the default log channel's real Monolog logger (unwrapped via
-  `Illuminate\Log\Logger::getLogger()`, the same idiom Laravel's own `ContextLogProcessor` uses — `LogManager`'s
-  `pushProcessor` only exists via `__call()` magic, which `method_exists()` cannot see). Every log record gets the
-  request's correlation id (Laravel `Context`) in `extra`, tying logs to the same id CQRS's `CorrelationContext`
-  stamps on commands/queries/events.
+- `CorrelationIdLogProcessor` + `TraceContextLogProcessor` — pushed onto each configured log channel's real Monolog
+  logger (see [Logging](logging.md)): every record gets `correlation_id`, `request_id` and, with tracing on,
+  `trace_id`/`span_id` in `extra`.
+- `TracingFilter` — a `#[Component]` `WebFilter` at `#[Order(-110)]`, the outermost discovered filter, starting a
+  SERVER span per request when tracing is on (see [Tracing](tracing.md)).
 
 ## The CqrsMetrics drop-in (the M10 seam)
 
@@ -128,10 +155,8 @@ flip the one flag, and the `MeterRegistry` bean, the CqrsMetrics winner, and eve
 
 ## Tracing
 
-`Tracer { trace(string $name, callable $callback): mixed }` — a minimal span port. M12 ships only `NoOpTracer`
-(runs the callback with no span); instrumentation is written against the interface today so an OpenTelemetry-backed
-adapter can drop in at SP-7 with zero call-site changes — the same "port now, adapter later" shape as the CqrsMetrics
-seam above.
+Moved to its own page: [Tracing](tracing.md) — the port, W3C propagation over HTTP/CQRS/EDA, the OpenTelemetry
+adapter, and every `firefly.observability.tracing.*` key.
 
 ## HTTP exchanges and the process endpoint
 
@@ -144,7 +169,8 @@ request counter the same recorder already keeps. Neither is in the secure-by-def
 Recording is done by `HttpExchangeFilter` — a `#[Component]` `WebFilter` discovered by web's
 `FilterChainRegistrar`, `#[Order(-100)]`, `#[Lazy]`, gated on its **own**
 `firefly.observability.httpexchanges.enabled` rather than on the metrics flag. Each row carries
-`timestamp`/`method`/`uri`/`status`/`durationMs`/`correlationId`; `uri` is the **route template** where a route
+`timestamp`/`method`/`uri`/`status`/`durationMs`/`correlationId` and, when tracing is on, `traceId` (the SERVER
+span's W3C trace id; omitted otherwise); `uri` is the **route template** where a route
 matched, and otherwise the raw path with the query string dropped, capped at 256 characters. **No request or
 response body is ever retained, and there is no flag to enable one.** Headers are off by default; switching
 `include-headers` on adds a `requestHeaders` object whose credential-bearing entries (`authorization`, `cookie`,
@@ -167,6 +193,10 @@ rather than answered with a `400`.
 | `firefly.observability.metrics.enabled` | `true` | Master gate. Binds `MeterRegistry`/`MetricsRecorder`/`PrometheusTextFormat`/the real `CqrsMetrics`, and survives on the endpoints + `MetricsFilter`. Disabled → `NoOpMetricsRecorder`, the M10 `NoOpCqrsMetrics` stays bound, no `MeterRegistry`, `/prometheus`+`/metrics` unmounted. |
 | `firefly.observability.metrics.store` | `''` | Names a **cache store**. Empty (or no `cache` binding) → the in-process `SimpleMeterRegistry`; a store name → `CacheMeterRegistry` over `cache()->store($name)`, keyed under `firefly:metrics:`. |
 | `firefly.observability.metrics.ttl` | `0` | Expiry in seconds for each cache-backed meter. `0` or less means no expiry. Only consulted when `store` is set. |
+| `firefly.observability.metrics.distribution.buckets` | `[]` | Histogram upper bounds in seconds for every timer. Empty = summaries. |
+| `firefly.observability.metrics.distribution.per-meter` | `[]` | `meter name => list` overrides; an empty list makes that meter a summary. |
+| `firefly.observability.tracing.*` | see [Tracing](tracing.md) | The tracing master gate, exporter, sampler, OTLP and per-instrumentation switches. |
+| `firefly.logging.structured.*` | see [Logging](logging.md) | The structured log format and the channels it applies to. |
 | `firefly.observability.httpexchanges.enabled` | `true` | Gates `HttpExchangeFilter` — i.e. whether anything is recorded. Compared as the literal string `true` by `#[ConditionalOnProperty]`, so `1`/`on`/`yes` count as OFF. The endpoints stay mounted either way and report `"recording": false`. Independent of the metrics gate. |
 | `firefly.observability.httpexchanges.capacity` | `100` | Ring size, clamped to `[1, 10000]`. |
 | `firefly.observability.httpexchanges.store` | `''` | Names a **cache store**. Empty (or no `cache` binding) → the process-local `InMemoryHttpExchangeRecorder`; a store name → `CacheHttpExchangeRecorder` over `cache()->store($name)`, keyed under `firefly:httpexchanges:`, which is what makes the buffer non-empty under PHP-FPM. |
@@ -183,14 +213,14 @@ rather than answered with a `400`.
 | HTTP timing | manual middleware | `MetricsFilter`, auto-discovered, templated-URI tags |
 | CQRS metrics | n/a (no first-party CQRS) | `MeterRegistryCqrsMetrics` — a config-only bean-precedence swap over the M10 `NoOpCqrsMetrics` |
 | Correlation | `Context` alone | `CorrelationIdLogProcessor` ties every log line to the same id CQRS stamps |
-| Tracing | none first-party | `Tracer` port + `NoOpTracer`; OTel adapter deferred to SP-7 |
+| Tracing | none first-party | `Tracer` port, OpenTelemetry adapter, W3C `traceparent` over HTTP/CQRS/EDA — see [Tracing](tracing.md) |
+| Structured logs | a formatter per channel by hand | `firefly.logging.structured.format` = json/ecs/logstash — see [Logging](logging.md) |
 
 ## Known-latent
 
-- **OTLP push / an OpenTelemetry `Tracer` adapter** — SP-7. Today's `NoOpTracer` is a real, callable port with zero
-  span overhead; nothing downstream needs to change when the adapter lands.
-- **Histogram buckets / percentiles** — `Timer` only exposes as a Prometheus *summary* (`_count`/`_sum`); no
-  `histogram_quantile`-friendly buckets yet.
+- **Percentiles / client-side quantiles** — timers offer fixed buckets (what Prometheus aggregates across
+  processes); there is no sliding-window percentile summary.
+- **OTLP metrics push** — spans export over OTLP; metrics are pull-only (`/actuator/prometheus`).
 - **Multiprocess aggregation is opt-in, and partial.** `firefly.observability.metrics.store` gives counters,
   timers and set-gauges cross-process totals through the cache (see [Surviving the
   request](#surviving-the-request)); without it, `SimpleMeterRegistry` exposes only the calling process's own

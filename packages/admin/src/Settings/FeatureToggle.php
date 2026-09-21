@@ -43,6 +43,8 @@ final readonly class FeatureToggle
 
             new self('firefly.observability.metrics.enabled', 'Metrics', 'Observability',
                 'The MeterRegistry, the HTTP metrics filter, and the metrics and prometheus endpoints.', true),
+            new self('firefly.observability.tracing.enabled', 'Tracing', 'Observability',
+                'A span per request, continued from an inbound traceparent and carried to outbound HTTP calls, commands, queries and events. Needs open-telemetry/sdk installed to do anything.'),
             new self('firefly.management.enabled', 'Actuator', 'Observability',
                 'The whole management surface. Off means every actuator endpoint 404s.', true),
 

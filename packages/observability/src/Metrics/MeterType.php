@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Observability\Metrics;
 
-/** The three meter kinds. Timer exposes as a Prometheus summary (count + sum); percentiles are deferred to SP-7. */
+/** The three meter kinds. A Timer exposes as a Prometheus summary (count + sum), or as a histogram when its name has distribution buckets configured. */
 enum MeterType: string
 {
     case Counter = 'counter';

@@ -801,7 +801,8 @@ return [
     |
     | The Micrometer analogue. `metrics.enabled` gates the MeterRegistry, the HTTP MetricsFilter, the
     | CQRS metrics recorder and both /actuator/metrics and /actuator/prometheus, with the same key on
-    | each so they can never disagree.
+    | each so they can never disagree. `tracing.enabled` is the second gate: distributed tracing over
+    | OpenTelemetry, off by default.
     |
     */
 
@@ -833,6 +834,25 @@ return [
              | Default: 0 (no expiry).
             */
             'ttl' => (int) env('FIREFLY_METRICS_TTL', 0),
+
+            /*
+             | Histogram buckets for timers — Micrometer's distribution statistics, Prometheus's `histogram`
+             | type. `buckets` is a list of upper bounds in SECONDS applied to every timer; `per-meter` maps a
+             | meter name to its own list (an empty list turns that one meter back into a summary). A timer
+             | with buckets scrapes as `<name>_bucket{le="…"}` + `_count` + `_sum` (what histogram_quantile()
+             | needs); without, as the `_count` + `_sum` summary it always was.
+             |
+             | Off by default because switching a family's `# TYPE` from summary to histogram on upgrade would
+             | change a running scrape without being asked. The Prometheus client default list is the one to
+             | start from; the cache-backed registry carries the buckets too.
+             |
+             | Defaults: buckets [], per-meter [].
+            */
+            'distribution' => [
+                // 'buckets' => [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+                // 'per-meter' => ['http_server_requests_seconds' => [0.05, 0.1, 0.25, 0.5, 1, 2.5]],
+                'buckets' => [],
+            ],
         ],
 
         /*
@@ -906,6 +926,166 @@ return [
              | Default: the value of management.endpoints.web.base-path, plus that path with `/*`.
             */
             // 'exclude' => ['actuator', 'actuator/*', 'firefly', 'firefly/*'],
+        ],
+
+        /*
+         | Distributed tracing — the Spring Boot `management.tracing` analogue over OpenTelemetry. Off by
+         | default, and inert without the SDK: `composer require open-telemetry/sdk` (plus
+         | open-telemetry/exporter-otlp for `exporter => otlp`) makes OpenTelemetryAutoConfiguration bind the
+         | real Tracer ahead of the NoOp. With it on, every request gets a SERVER span continued from an inbound
+         | W3C traceparent, outbound Laravel Http calls get CLIENT spans and carry traceparent, commands and
+         | queries get INTERNAL spans, and events carry traceparent in their envelope headers with
+         | PRODUCER/CONSUMER spans. The trace and span ids reach Laravel Context (firefly.trace_id /
+         | firefly.span_id), every log line (see `logging.structured`), and /actuator/httpexchanges.
+        */
+        'tracing' => [
+
+            /*
+             | The master gate. Compared as a string by #[ConditionalOnProperty], so use a boolean.
+             |
+             | Default: false.
+            */
+            'enabled' => env('FIREFLY_TRACING_ENABLED', false),
+
+            /*
+             | Where finished spans go: `none` (recorded for ids and propagation, exported nowhere),
+             | `console` (one JSON document per span on stdout) or `otlp` (see `otlp` below). An application
+             | that binds its own OpenTelemetry\SDK\Trace\SpanExporterInterface bean overrides this.
+             |
+             | Default: 'none'.
+            */
+            'exporter' => env('FIREFLY_TRACING_EXPORTER', 'none'),
+
+            /*
+             | The `service.name` resource attribute a backend groups spans by. Empty falls back to app.name;
+             | `logging.structured` uses the same name for `service.name` in log lines.
+             |
+             | Default: '' (app.name).
+            */
+            'service-name' => env('FIREFLY_TRACING_SERVICE_NAME', ''),
+
+            /*
+             | Extra resource attributes (scalar values only) stamped on every span beside service.name and
+             | deployment.environment.name (app.env).
+             |
+             | Default: [].
+            */
+            // 'resource-attributes' => ['deployment.region' => 'eu-west-1', 'service.version' => '26.09.3'],
+
+            /*
+             | How new traces are sampled. An inbound traceparent's sampled flag always wins (ParentBased), so
+             | this only decides for traces that START here. `ratio` keeps the given share of traces.
+             |
+             | Defaults: type 'always_on', ratio 1.0.
+            */
+            'sampler' => [
+                'type' => env('FIREFLY_TRACING_SAMPLER', 'always_on'),
+                'ratio' => (float) env('FIREFLY_TRACING_SAMPLER_RATIO', 1.0),
+            ],
+
+            /*
+             | The OTLP exporter. `endpoint` is the collector's base URL (`/v1/traces` is appended for the
+             | http protocols, exactly as OTEL_EXPORTER_OTLP_ENDPOINT would be); `protocol` is http/protobuf
+             | (the default every collector accepts), http/json, or grpc (needs open-telemetry/transport-grpc
+             | and ext-grpc); `headers` is `name=value,name2=value2` — the OTEL_EXPORTER_OTLP_HEADERS shape,
+             | parsed by the SDK's own parser and percent-decoded the same way, so a vendor's documented
+             | `Authorization=Basic%20<b64>` works verbatim and a pair without `=` refuses to boot — or a map,
+             | whose values are taken as written. Spans are batched and flushed when the request terminates.
+             |
+             | Defaults: endpoint 'http://localhost:4318', protocol 'http/protobuf', headers ''.
+            */
+            'otlp' => [
+                'endpoint' => env('FIREFLY_TRACING_OTLP_ENDPOINT', 'http://localhost:4318'),
+                'protocol' => env('FIREFLY_TRACING_OTLP_PROTOCOL', 'http/protobuf'),
+                'headers' => env('FIREFLY_TRACING_OTLP_HEADERS', ''),
+            ],
+
+            /*
+             | The SERVER span per request (TracingFilter). `exclude` is a glob list of paths that get no span;
+             | like httpexchanges.exclude it defaults to the management base path so a polling dashboard does
+             | not produce a trace every five seconds, and setting it REPLACES that default.
+             |
+             | Defaults: enabled true; exclude = management.endpoints.web.base-path plus that path with `/*`.
+            */
+            'http-server' => [
+                'enabled' => true,
+                // 'exclude' => ['actuator', 'actuator/*', 'firefly', 'firefly/*'],
+            ],
+
+            /*
+             | CLIENT spans and traceparent on every Laravel Http client request (a Guzzle middleware
+             | installed on the Http factory at boot).
+             |
+             | Default: true.
+            */
+            'http-client' => [
+                'enabled' => true,
+            ],
+
+            /*
+             | INTERNAL spans around every command and query the buses dispatch, named by the message class.
+             |
+             | Default: true.
+            */
+            'cqrs' => [
+                'enabled' => true,
+            ],
+
+            /*
+             | PRODUCER spans on publish (traceparent stamped into the envelope headers) and CONSUMER spans on
+             | delivery, in-memory, queue and every broker consumer alike.
+             |
+             | Default: true.
+            */
+            'eda' => [
+                'enabled' => true,
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Logging — firefly/observability
+    |--------------------------------------------------------------------------
+    |
+    | What a log LINE looks like, on top of Laravel's own logging.php (which still decides where lines go).
+    | Spring Boot's `logging.structured.format`, for Monolog channels: the formatter is set on the listed
+    | channels' EXISTING handlers, never replacing them. Every line — structured or not — already carries
+    | the correlation id, the request id and, with tracing on, the trace and span ids in Monolog `extra`.
+    |
+    */
+
+    'logging' => [
+        'structured' => [
+
+            /*
+             | '' keeps Laravel's plain-text lines. `json` is Monolog's JsonFormatter
+             | ({"message","context","level","level_name","channel","datetime","extra":{"trace_id",
+             | "span_id","correlation_id","request_id","service_name","service_environment"}}); `ecs` is
+             | Elastic Common Schema 8 (@timestamp, log.level, message, ecs.version, log.logger,
+             | service.{name,environment}, trace.id, span.id, labels.{correlation_id,request_id}, error.*,
+             | context, extra); `logstash` is Monolog's LogstashFormatter (@timestamp, @version, host,
+             | message, type, channel, level, monolog_level, fields, context). See docs/modules/logging.md
+             | for one full line of each. Anything else refuses to boot.
+             |
+             | Default: ''.
+            */
+            'format' => env('FIREFLY_LOG_FORMAT', ''),
+
+            /*
+             | The channels whose handlers get the formatter (and the id processors). Empty means the default
+             | channel (logging.default). A `stack` channel's handlers ARE its members' handlers, so listing
+             | the stack formats every member — with `ignore_exceptions` on too, through the group handler
+             | Laravel wraps them in — and listing a member as well, in either order, changes nothing (each
+             | processor goes on once, the formatter is simply set again). Every name must exist under
+             | logging.channels: one that does not refuses
+             | to boot (checked at boot, before anything writes a line), because Laravel would quietly hand it
+             | an emergency logger and the channel you actually write to would keep plain text without a
+             | single id.
+             |
+             | Default: [] (the default channel).
+            */
+            // 'channels' => ['stack', 'stderr'],
         ],
     ],
 

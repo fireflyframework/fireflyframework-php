@@ -330,7 +330,9 @@ masks `/env` and `/configprops`, reused rather than mirrored — a second copy o
 list rots.
 
 A model's own **`$hidden` is treated as a second sensitivity source.** The name rule catches `password`,
-`api_token` and their relatives but cannot know that this application considers `recovery_phrase` a secret. A
+`api_token`, `authorization`, a `headers` column (a webhook or request-log table's header bag is precisely where a
+captured `Authorization` ends up; the singular `page_header` is left alone) and their relatives, but cannot know that
+this application considers `recovery_phrase` a secret. A
 model that already hid a field from its JSON representation has stated that intent in the only place it could,
 so the browser honours it rather than publishing in HTML what the model refuses to publish in JSON.
 

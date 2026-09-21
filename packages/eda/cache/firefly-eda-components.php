@@ -27,6 +27,7 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Illuminate\\Container\\Container',
+                    2 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             1 => [
@@ -44,6 +45,17 @@ return [
             2 => [
                 'method' => 'deadLetterStore',
                 'returns' => 'Firefly\\Eda\\DeadLetter\\DeadLetterStore',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            3 => [
+                'method' => 'edaTracing',
+                'returns' => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 'name' => null,
                 'scope' => 'Singleton',
                 'primary' => false,

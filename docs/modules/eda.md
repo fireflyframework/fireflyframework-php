@@ -191,6 +191,15 @@ serializer on its default path (in-memory delivers the envelope object directly 
 adapter rides Laravel's own job serialization) — the seam exists for a future broker adapter that puts raw
 bytes on a real wire.
 
+## Tracing seam
+
+`Firefly\Eda\Tracing\EdaTracing` wraps an envelope's two boundary crossings — `tracePublish()` owns the headers
+(so a `traceparent` can be stamped on the way out) and `traceConsume()` wraps one delivery. `InMemoryEventBus`,
+`QueueEventBus` (publish, and `deliver()` on the worker) and `SubscriberRegistrySink` (every broker consumer)
+call it; `NoOpEdaTracing` is the default and `firefly/observability` swaps in PRODUCER/CONSUMER spans — see
+[Tracing](tracing.md). The broker packages' own `publish()` methods do not call it yet (a documented
+known-latent there).
+
 ## Config keys
 
 | Key | Type | Default | Meaning |

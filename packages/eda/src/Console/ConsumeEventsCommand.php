@@ -13,6 +13,7 @@ use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\Consumer\SubscriberRegistrySink;
 use Firefly\Eda\Consumer\TopicSubscriptionResolver;
 use Firefly\Eda\Listener\EventListenerManifest;
+use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Console\Command;
 use Psr\Log\LoggerInterface;
@@ -75,7 +76,7 @@ final class ConsumeEventsCommand extends Command
         /** @var EnvelopeSink $sink */
         $sink = $this->laravel->bound(EnvelopeSink::class)
             ? $this->laravel->make(EnvelopeSink::class)
-            : new SubscriberRegistrySink($registry);
+            : new SubscriberRegistrySink($registry, $this->laravel->bound(EdaTracing::class) ? $this->laravel->make(EdaTracing::class) : null);
 
         $logger = $this->laravel->bound(LoggerInterface::class) ? $this->laravel->make(LoggerInterface::class) : null;
 

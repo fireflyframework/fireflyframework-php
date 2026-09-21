@@ -132,7 +132,7 @@ Laravel's `Event::fake()`/`Bus::fake()` (which don't see Firefly's own ports):
 | `Firefly\Messaging\MessageBrokerPort` | `RecordingMessageBroker` | `$published` — a list of `{topic, value, key, headers}`; `publishedTo(string $topic)` filters |
 | `Firefly\Scheduling\Lock\DistributedLock` | `RecordingDistributedLock` | `$acquired`/`$released`; constructor `(bool $available = true)`; `setAvailable(bool $available)` toggles whether `tryAcquire()` grants the lock |
 | `Firefly\Actuator\Health\HealthIndicator` | `FakeHealthIndicator` | Defaults `Status::Up`; constructor takes a `Health`, `setHealth(Health $health)` reprograms it for DOWN/OUT_OF_SERVICE scenarios |
-| `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | `$spans` — every traced span name, in call order; faithfully invokes and returns the traced callback (like `NoOpTracer`, but observable) |
+| `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | The whole port in memory with real W3C-shaped ids: `recorded()` (list of `RecordedSpan` — `name`, `kind`, `attributes`, `events`, `status`, `exception`, `parent`, `ended`), `find(name)`, `ofKind(kind)`, `reset()`; `$spans` — every span name, in start order |
 
 ```php
 <?php

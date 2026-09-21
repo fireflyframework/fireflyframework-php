@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Observability\Metrics\DistributionStatisticConfig;
 use Firefly\Observability\Metrics\MeterType;
 use Firefly\Observability\Metrics\SimpleMeterRegistry;
 
@@ -75,4 +76,14 @@ it('still allows idempotent same-name-same-type registration after the type guar
 
     expect($a)->toBe($b)->and($a->count())->toBe(3.0)
         ->and($registry->meters())->toHaveCount(1);
+});
+
+it('gives a timer the buckets its name is configured with', function () {
+    $registry = new SimpleMeterRegistry(new DistributionStatisticConfig([0.5, 1.0], ['cqrs_commands_seconds' => []]));
+
+    $registry->record('http_server_requests_seconds', ['uri' => '/x'], 0.2);
+    $registry->record('cqrs_commands_seconds', ['type' => 'A'], 0.2);
+
+    expect($registry->timer('http_server_requests_seconds', ['uri' => '/x'])->bucketCounts())->toBe([['le' => 0.5, 'count' => 1], ['le' => 1.0, 'count' => 1]])
+        ->and($registry->timer('cqrs_commands_seconds', ['type' => 'A'])->hasBuckets())->toBeFalse();
 });

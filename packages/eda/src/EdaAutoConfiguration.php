@@ -15,6 +15,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\DeadLetter\DeadLetterStore;
 use Firefly\Eda\DeadLetter\InMemoryDeadLetterStore;
 use Firefly\Eda\Exception\SerializationException;
+use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Illuminate\Container\Container;
 
 /**
@@ -31,16 +33,16 @@ final class EdaAutoConfiguration
 {
     #[Bean]
     #[ConditionalOnMissingBean(EventPublisher::class)]
-    public function eventPublisher(Config $config, Container $container): EventPublisher
+    public function eventPublisher(Config $config, Container $container, ?EdaTracing $tracing = null): EventPublisher
     {
         if ($config->string('firefly.eda.provider', 'memory') === 'queue') {
             $connection = $config->has('firefly.eda.queue.connection') ? $config->string('firefly.eda.queue.connection') : null;
             $queue = $config->has('firefly.eda.queue.name') ? $config->string('firefly.eda.queue.name') : null;
 
-            return new QueueEventBus(new SubscriberRegistry, $container, $connection, $queue);
+            return new QueueEventBus(new SubscriberRegistry, $container, $connection, $queue, $tracing);
         }
 
-        return new InMemoryEventBus(new SubscriberRegistry);
+        return new InMemoryEventBus(new SubscriberRegistry, $tracing);
     }
 
     #[Bean]
@@ -62,5 +64,17 @@ final class EdaAutoConfiguration
     public function deadLetterStore(): DeadLetterStore
     {
         return new InMemoryDeadLetterStore;
+    }
+
+    /**
+     * The tracing seam's default. Optional on eventPublisher() (with a null default) so the unit test's direct
+     * two-argument call still compiles; in a booted container Laravel's Container::call() injects this bean —
+     * or firefly/observability's TracerEdaTracing, which registers first by #[Order] and makes this one back off.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(EdaTracing::class)]
+    public function edaTracing(): EdaTracing
+    {
+        return new NoOpEdaTracing;
     }
 }

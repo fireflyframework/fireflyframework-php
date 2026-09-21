@@ -15,6 +15,8 @@ use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Exception\SerializationException;
 use Firefly\Eda\JsonSerializer;
 use Firefly\Eda\Serializer;
+use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 
@@ -52,4 +54,13 @@ it('provides a JSON serializer by default and rejects unsupported formats', func
 
     expect(fn () => $auto->serializer(edaConfig(['serialization_format' => 'avro'])))
         ->toThrow(SerializationException::class);
+});
+
+it('binds a NoOp EdaTracing behind #[ConditionalOnMissingBean], the seam observability swaps', function () {
+    $auto = new EdaAutoConfiguration;
+    $class = new ReflectionClass(EdaAutoConfiguration::class);
+
+    expect($auto->edaTracing())->toBeInstanceOf(NoOpEdaTracing::class)
+        ->and($class->getMethod('edaTracing')->getAttributes(ConditionalOnMissingBean::class)[0]->newInstance()->type)->toBe(EdaTracing::class)
+        ->and($auto->eventPublisher(edaConfig([]), new Container, $auto->edaTracing()))->toBeInstanceOf(InMemoryEventBus::class);
 });

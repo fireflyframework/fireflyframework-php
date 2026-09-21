@@ -126,6 +126,38 @@ failing test first, and each one deletes a workaround downstream.
   "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
   problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
 
+- **`packages/observability` — distributed tracing (wave F).** The `Tracer` port grew into a Spring/OTel-shaped
+  API (`startSpan(name, kind, attributes, parent): Span`, `currentSpan()`, `Span::{setAttribute, addEvent,
+  setStatus, recordException, updateName, deactivate, end}`, `SpanContext`, `SpanKind`, `SpanStatus`) with
+  `NoOpTracer` still the default and `trace()` kept. `OpenTelemetryAutoConfiguration` binds an OpenTelemetry
+  tracer when `open-telemetry/sdk` is installed and `firefly.observability.tracing.enabled` is on (default
+  off): `none`, `console` or `otlp` exporters (http/protobuf, http/json, grpc), `always_on`/`always_off`/`ratio`
+  samplers, `service.name` and resource attributes, a bound `SpanExporterInterface` bean winning over config. A
+  first-party `W3CTraceContextPropagator` carries `traceparent`/`tracestate`: `TracingFilter` starts a SERVER
+  span per request (named by the route template, ids in Laravel `Context` and on the
+  `/actuator/httpexchanges` row as `traceId`), `HttpClientTracingMiddleware` gives every Laravel `Http` call a
+  CLIENT span and the header, and two new seams shaped like `CqrsMetrics` — `Firefly\Cqrs\Tracing\CqrsTracing`
+  (INTERNAL spans per command/query) and `Firefly\Eda\Tracing\EdaTracing` (PRODUCER/CONSUMER spans,
+  `traceparent` in the envelope headers, on the in-memory bus, the queue bus and every broker's consumer
+  sink) — are filled by observability and no-ops otherwise. `firefly/testing`'s `RecordingTracer` implements
+  the whole port in memory (`recorded()`, `find()`, `ofKind()`). New docs: `docs/modules/tracing.md`.
+
+- **`packages/observability` — log correlation and structured logging.** `TraceContextLogProcessor` stamps
+  `trace_id`, `span_id`, `correlation_id` and `request_id` on every record of the configured channels;
+  `firefly.logging.structured.format` (`json` | `ecs` | `logstash`, default `''`) applies Monolog's
+  `JsonFormatter`, a first-party ECS 8 `EcsFormatter`, or Monolog's `LogstashFormatter` to those channels'
+  existing handlers — never replacing one — with `service.name`/environment on every line. An unknown format,
+  or a listed channel `logging.channels` does not define, refuses the boot from `LogChannelWiringPass`. New
+  docs: `docs/modules/logging.md`.
+
+- **`packages/observability` — histogram buckets.** `firefly.observability.metrics.distribution.buckets` and
+  `distribution.per-meter.<name>` give timers cumulative `_bucket{le}` lines (`# TYPE … histogram`, plus the
+  same `_count`/`_sum`) in `SimpleMeterRegistry` and `CacheMeterRegistry` alike; without buckets a timer stays
+  the `summary` it was. Default off.
+
+- **`packages/admin` — the HTTP traffic page shows the trace id**, and `firefly.observability.tracing.enabled`
+  is a feature switch.
+
 ### Fixed
 
 - **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved
@@ -143,6 +175,21 @@ failing test first, and each one deletes a workaround downstream.
   the rest `optional`, and `DataBrowser::create()` omits a blank in any non-required column from the insert so
   the `DEFAULT`, the `NULL` or the model's clock fills it. A blank in a genuinely required column is still
   refused; an update treats a blank as an edit, as before.
+
+- **`packages/actuator` — `/actuator/env`, `/actuator/configprops` and the admin's environment page mask a
+  `headers` or `authorization` key.** `SensitiveValueMasker`'s rule grows from
+  `password|secret|token|key|credential|passwd` to include `authorization` and the plural `headers`: the
+  framework had just introduced `firefly.observability.tracing.otlp.headers`, documented as the place for a
+  vendor's auth header, and rendered it in clear because `headers` matched none of the six words. The bag's
+  key decides, not its leaves (a map's `x-honeycomb-team` matches nothing on its own). The accepted cost is
+  `firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block — showing as
+  `******`, and a `headers` column counting as sensitive in the data browser; the singular `header`
+  (`page_header`, `header_image`) is deliberately not matched.
+
+- **`packages/admin` — the HTTP traffic page rendered an empty path and `—` for every row.** `AdminAction`
+  read `path` and a numeric `timestamp` off the `/actuator/httpexchanges` row, which carries `uri` and an
+  ISO-8601 timestamp. Found while adding the trace column; covered by `AdminHttpTrafficTest` over the real
+  observability stack.
 
 ## [26.09.2] - 2026-09-09
 

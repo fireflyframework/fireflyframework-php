@@ -14,7 +14,8 @@ use Firefly\Observability\Metrics\Timer;
  * A pure-PHP Prometheus text-exposition (format version 0.0.4) — no ext-prometheus, no OTel. Groups meters into
  * families (sanitised name + type), emits one `# HELP`/`# TYPE` per family, then the samples. Label values and HELP
  * text are escaped per the 0.0.4 spec; names are sanitised to [a-zA-Z_:][a-zA-Z0-9_:]*. Timers expose as summaries
- * (`_count` + `_sum`); histogram buckets/percentiles are deferred to SP-7.
+ * (`_count` + `_sum`), or as histograms (`_bucket{le}` + `_count` + `_sum`) when their name has distribution
+ * buckets configured.
  */
 final class PrometheusTextFormat
 {
@@ -38,7 +39,7 @@ final class PrometheusTextFormat
         foreach ($families as $family) {
             $name = $family['name'];
             $lines[] = '# HELP '.$name.' '.$this->escapeHelp($name.' ('.$family['type']->value.')');
-            $lines[] = '# TYPE '.$name.' '.$this->promType($family['type']);
+            $lines[] = '# TYPE '.$name.' '.$this->promType($family['type'], $family['meters'][0]);
             foreach ($family['meters'] as $meter) {
                 foreach ($this->samples($name, $meter) as $sample) {
                     $lines[] = $sample;
@@ -59,12 +60,43 @@ final class PrometheusTextFormat
         return match (true) {
             $meter instanceof Counter => [$name.$labels.' '.$this->value($meter->count())],
             $meter instanceof Gauge => [$name.$labels.' '.$this->value($meter->value())],
-            $meter instanceof Timer => [
-                $name.'_count'.$labels.' '.$this->value((float) $meter->count()),
-                $name.'_sum'.$labels.' '.$this->value($meter->totalTimeSeconds()),
-            ],
+            $meter instanceof Timer => $meter->hasBuckets()
+                ? $this->histogram($name, $meter, $labels)
+                : [
+                    $name.'_count'.$labels.' '.$this->value((float) $meter->count()),
+                    $name.'_sum'.$labels.' '.$this->value($meter->totalTimeSeconds()),
+                ],
             default => [],
         };
+    }
+
+    /**
+     * The histogram family: cumulative `_bucket` samples with `le` as the LAST label (the order every
+     * Prometheus client emits, and what a human scanning a scrape expects), the implicit `+Inf` bucket equal
+     * to the count, then `_count` and `_sum` — the same two lines the summary has, so a dashboard built on
+     * `rate(x_sum[5m]) / rate(x_count[5m])` keeps working the day buckets are switched on.
+     *
+     * @return list<string>
+     */
+    private function histogram(string $name, Timer $timer, string $labels): array
+    {
+        $lines = [];
+        foreach ($timer->bucketCounts() as $bucket) {
+            $lines[] = $name.'_bucket'.$this->labelsWithLe($labels, $this->value($bucket['le'])).' '.$this->value((float) $bucket['count']);
+        }
+        $lines[] = $name.'_bucket'.$this->labelsWithLe($labels, '+Inf').' '.$this->value((float) $timer->count());
+        $lines[] = $name.'_count'.$labels.' '.$this->value((float) $timer->count());
+        $lines[] = $name.'_sum'.$labels.' '.$this->value($timer->totalTimeSeconds());
+
+        return $lines;
+    }
+
+    /** Appends `le="<bound>"` to an already-rendered label block (`{a="b"}` or ``). */
+    private function labelsWithLe(string $labels, string $le): string
+    {
+        $le = 'le="'.$le.'"';
+
+        return $labels === '' ? '{'.$le.'}' : substr($labels, 0, -1).','.$le.'}';
     }
 
     /**
@@ -103,12 +135,12 @@ final class PrometheusTextFormat
         return rtrim(rtrim(number_format($value, 10, '.', ''), '0'), '.');
     }
 
-    private function promType(MeterType $type): string
+    private function promType(MeterType $type, Meter $first): string
     {
         return match ($type) {
             MeterType::Counter => 'counter',
             MeterType::Gauge => 'gauge',
-            MeterType::Timer => 'summary',
+            MeterType::Timer => $first instanceof Timer && $first->hasBuckets() ? 'histogram' : 'summary',
         };
     }
 

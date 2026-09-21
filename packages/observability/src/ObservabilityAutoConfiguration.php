@@ -11,12 +11,17 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
+use Firefly\Cqrs\Tracing\CqrsTracing;
+use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
+use Firefly\Observability\Cqrs\TracerCqrsTracing;
+use Firefly\Observability\Eda\TracerEdaTracing;
 use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\InMemoryHttpExchangeRecorder;
 use Firefly\Observability\Metrics\CacheMeterRegistry;
+use Firefly\Observability\Metrics\DistributionStatisticConfig;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\NoOpMetricsRecorder;
@@ -24,6 +29,7 @@ use Firefly\Observability\Metrics\SimpleMeterRegistry;
 use Firefly\Observability\Prometheus\PrometheusTextFormat;
 use Firefly\Observability\Tracing\NoOpTracer;
 use Firefly\Observability\Tracing\Tracer;
+use Firefly\Observability\Tracing\W3CTraceContextPropagator;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Factory;
 
@@ -54,22 +60,27 @@ final class ObservabilityAutoConfiguration
      * Opt-in rather than default: a metrics registry that silently begins writing to whatever cache an
      * application happens to have configured is a surprise, and on the `array` driver it would be no better
      * than memory anyway.
+     *
+     * Both registries take the DistributionStatisticConfig read from `metrics.distribution.*`, so a timer's
+     * histogram buckets are the same whichever store backs it.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
     public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
+        $distribution = DistributionStatisticConfig::fromConfig($config);
+
         $store = $config->string('firefly.observability.metrics.store', '');
         if ($store === '' || ! $container->bound('cache')) {
-            return new SimpleMeterRegistry;
+            return new SimpleMeterRegistry($distribution);
         }
 
         /** @var Factory $factory */
         $factory = $container->make('cache');
         $ttl = $config->int('firefly.observability.metrics.ttl', 0);
 
-        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null);
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null, $distribution);
     }
 
     #[Bean]
@@ -161,5 +172,30 @@ final class ObservabilityAutoConfiguration
     public function cqrsMetrics(MetricsRecorder $recorder): CqrsMetrics
     {
         return new MeterRegistryCqrsMetrics($recorder);
+    }
+
+    /**
+     * The CqrsTracing drop-in, by the same #[Order(500)] precedence cqrsMetrics() relies on: registered before
+     * CqrsAutoConfiguration's #[Order(1000)] NoOp evaluates its #[ConditionalOnMissingBean]. Gated on the
+     * tracing master switch and the cqrs instrumentation switch rather than on the Tracer bean, for the
+     * order-safety reason every gate in this class shares.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(CqrsTracing::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.cqrs.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function cqrsTracing(Tracer $tracer): CqrsTracing
+    {
+        return new TracerCqrsTracing($tracer);
+    }
+
+    /** The EdaTracing drop-in — the same precedence over EdaAutoConfiguration's #[Order(1000)] NoOp as cqrsTracing() above. */
+    #[Bean]
+    #[ConditionalOnMissingBean(EdaTracing::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.eda.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function edaTracing(Tracer $tracer): EdaTracing
+    {
+        return new TracerEdaTracing($tracer, new W3CTraceContextPropagator);
     }
 }

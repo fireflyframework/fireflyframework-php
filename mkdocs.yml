@@ -60,6 +60,8 @@ nav:
       - Operations:
           - Actuator: modules/actuator.md
           - Observability: modules/observability.md
+          - Tracing: modules/tracing.md
+          - Logging: modules/logging.md
           - Admin Dashboard: modules/admin.md
           - Bean Graph: modules/bean-graph.md
           - Data Browser: modules/data-browser.md
