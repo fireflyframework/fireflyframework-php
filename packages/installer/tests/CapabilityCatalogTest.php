@@ -77,6 +77,16 @@ it('resolves an implied port before its adapter', function () {
     expect($ids)->toBe(['scheduling', 'scheduling-postgres']);
 });
 
+it('pulls the security core in with the OAuth2 client, and offers the client as a capability rather than an adapter', function () {
+    $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['security-oauth2-client']));
+
+    // A login with no principal model to sign into is not a shape worth generating; and it binds the app to no
+    // broker or engine, so unlike an adapter it belongs in --full.
+    expect($ids)->toBe(['security', 'security-oauth2-client'])
+        ->and(CapabilityCatalog::all()['security-oauth2-client']->adapter)->toBeFalse()
+        ->and(CapabilityCatalog::all()['security-oauth2-client']->package)->toBe('firefly/security-oauth2-client');
+});
+
 it('deduplicates a capability requested twice, directly and transitively', function () {
     $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['eda', 'eda-kafka', 'eda']));
 

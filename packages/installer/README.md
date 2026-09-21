@@ -36,7 +36,9 @@ package's own defaults for you to keep in sync.
 Adapters (`eda-kafka`, `eda-rabbitmq`, `eda-postgres`, `scheduling-postgres`) pull their port in with them
 and are deliberately **excluded from `--full`**: which broker or engine an application talks to is not
 something an archetype can guess, and guessing would install a broker client — or demand a PHP extension —
-the machine may not have.
+the machine may not have. `security-oauth2-client` pulls `security` in the same way — a login with no
+principal model to sign into is not a shape worth generating — but it is a capability, not an adapter, so
+`--full` includes it.
 
 With no flags on an interactive terminal, `firefly new` asks for the shape and the capabilities. Under
 `--no-interaction` it asks nothing and generates `--web` with no capabilities.

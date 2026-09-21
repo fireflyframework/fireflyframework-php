@@ -19,7 +19,8 @@ final readonly class Capability
      * @param  string  $package  the Composer package that implements it
      * @param  string  $summary  one line, shown in the interactive picker
      * @param  bool  $dev  true when the package belongs in require-dev, not require (the test kit)
-     * @param  list<string>  $requires  capability ids this one implies — an adapter always implies its port
+     * @param  list<string>  $requires  capability ids this one implies — an adapter always implies its port, and
+     *                                  security-oauth2-client implies the security core it logs into
      * @param  bool  $adapter  true when the package binds the app to one specific piece of infrastructure
      */
     public function __construct(
