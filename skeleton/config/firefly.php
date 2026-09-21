@@ -834,6 +834,25 @@ return [
              | Default: 0 (no expiry).
             */
             'ttl' => (int) env('FIREFLY_METRICS_TTL', 0),
+
+            /*
+             | Histogram buckets for timers — Micrometer's distribution statistics, Prometheus's `histogram`
+             | type. `buckets` is a list of upper bounds in SECONDS applied to every timer; `per-meter` maps a
+             | meter name to its own list (an empty list turns that one meter back into a summary). A timer
+             | with buckets scrapes as `<name>_bucket{le="…"}` + `_count` + `_sum` (what histogram_quantile()
+             | needs); without, as the `_count` + `_sum` summary it always was.
+             |
+             | Off by default because switching a family's `# TYPE` from summary to histogram on upgrade would
+             | change a running scrape without being asked. The Prometheus client default list is the one to
+             | start from; the cache-backed registry carries the buckets too.
+             |
+             | Defaults: buckets [], per-meter [].
+            */
+            'distribution' => [
+                // 'buckets' => [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+                // 'per-meter' => ['http_server_requests_seconds' => [0.05, 0.1, 0.25, 0.5, 1, 2.5]],
+                'buckets' => [],
+            ],
         ],
 
         /*

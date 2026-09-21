@@ -21,6 +21,7 @@ use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\InMemoryHttpExchangeRecorder;
 use Firefly\Observability\Metrics\CacheMeterRegistry;
+use Firefly\Observability\Metrics\DistributionStatisticConfig;
 use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\NoOpMetricsRecorder;
@@ -59,22 +60,27 @@ final class ObservabilityAutoConfiguration
      * Opt-in rather than default: a metrics registry that silently begins writing to whatever cache an
      * application happens to have configured is a surprise, and on the `array` driver it would be no better
      * than memory anyway.
+     *
+     * Both registries take the DistributionStatisticConfig read from `metrics.distribution.*`, so a timer's
+     * histogram buckets are the same whichever store backs it.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
     public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
+        $distribution = DistributionStatisticConfig::fromConfig($config);
+
         $store = $config->string('firefly.observability.metrics.store', '');
         if ($store === '' || ! $container->bound('cache')) {
-            return new SimpleMeterRegistry;
+            return new SimpleMeterRegistry($distribution);
         }
 
         /** @var Factory $factory */
         $factory = $container->make('cache');
         $ttl = $config->int('firefly.observability.metrics.ttl', 0);
 
-        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null);
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null, $distribution);
     }
 
     #[Bean]

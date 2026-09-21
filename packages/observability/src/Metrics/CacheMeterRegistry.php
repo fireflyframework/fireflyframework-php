@@ -23,6 +23,9 @@ use Illuminate\Contracts\Cache\Repository as Cache;
  *   - setGauge() is a plain put(): a gauge is a snapshot, so last-writer-wins is the correct semantic.
  *   - meters() rehydrates Counter/Timer/Gauge objects from an index of every meter identity ever written, so
  *     the exposition and the /metrics endpoint read the cross-process totals.
+ *   - record() also increments one `<id>:le:<bound>` counter per bucket the sample falls into, and the bucket
+ *     list is kept in the index entry so meters() can rebuild the histogram. Changing the configured bounds
+ *     starts fresh bucket counters under the new keys; the old ones expire with the ttl.
  *
  * The factory methods (counter()/timer()/gauge()) still hand back the in-process meters, and mutating one of
  * those directly stays process-local — that is the documented boundary. Everything the framework itself
@@ -46,8 +49,9 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
         private readonly Cache $cache,
         private readonly string $prefix = 'firefly:metrics:',
         private readonly ?int $ttlSeconds = null,
+        private readonly DistributionStatisticConfig $distribution = new DistributionStatisticConfig,
     ) {
-        $this->local = new SimpleMeterRegistry;
+        $this->local = new SimpleMeterRegistry($distribution);
     }
 
     /** @param array<string, string> $tags */
@@ -87,9 +91,16 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
         $this->local->record($name, $tags, $seconds);
 
         $id = $this->identity(MeterType::Timer, $name, $tags);
-        $this->remember($id, MeterType::Timer, $name, $tags);
+        $buckets = $this->distribution->bucketsFor($name);
+        $this->remember($id, MeterType::Timer, $name, $tags, $buckets);
         $this->add($id.':count', 1);
         $this->add($id.':micros', (int) round($seconds * self::MICROS));
+
+        foreach ($buckets as $bound) {
+            if ($seconds <= $bound) {
+                $this->add($id.':le:'.self::bound($bound), 1);
+            }
+        }
     }
 
     /** @param array<string, string> $tags */
@@ -127,7 +138,7 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
         return $meters;
     }
 
-    /** @param array{type: string, name: string, tags: array<string,string>} $entry */
+    /** @param array{type: string, name: string, tags: array<string,string>, buckets?: list<float>} $entry */
     private function rebuildCounter(string $id, array $entry): Counter
     {
         $counter = new Counter($entry['name'], $entry['tags']);
@@ -136,27 +147,26 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
         return $counter;
     }
 
-    /** @param array{type: string, name: string, tags: array<string,string>} $entry */
+    /** @param array{type: string, name: string, tags: array<string,string>, buckets?: list<float>} $entry */
     private function rebuildTimer(string $id, array $entry): Timer
     {
-        $timer = new Timer($entry['name'], $entry['tags']);
-        $count = $this->readInt($id.':count');
-        $total = $this->readInt($id.':micros') / self::MICROS;
-
-        // Timer accumulates per-sample; replay the total as one sample per recorded call so both count()
-        // and totalTimeSeconds() come back right. The per-sample values are not retained by design — this
-        // registry stores aggregates, not a histogram.
-        if ($count > 0) {
-            $each = $total / $count;
-            for ($i = 0; $i < $count; $i++) {
-                $timer->record($each);
-            }
+        $buckets = $entry['buckets'] ?? [];
+        $counts = [];
+        foreach ($buckets as $bound) {
+            $counts[] = $this->readInt($id.':le:'.self::bound($bound));
         }
 
-        return $timer;
+        return Timer::fromAggregates(
+            $entry['name'],
+            $entry['tags'],
+            $buckets,
+            $this->readInt($id.':count'),
+            $this->readInt($id.':micros') / self::MICROS,
+            $counts,
+        );
     }
 
-    /** @param array{type: string, name: string, tags: array<string,string>} $entry */
+    /** @param array{type: string, name: string, tags: array<string,string>, buckets?: list<float>} $entry */
     private function rebuildGauge(string $id, array $entry): Gauge
     {
         $value = $this->cache->get($this->prefix.$id.':value');
@@ -168,7 +178,7 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
      * The identities of every meter written so far. Kept as one small array so meters() needs a single read
      * rather than a key scan, which not every cache driver supports.
      *
-     * @return array<string, array{type: string, name: string, tags: array<string,string>}>
+     * @return array<string, array{type: string, name: string, tags: array<string,string>, buckets?: list<float>}>
      */
     private function index(): array
     {
@@ -178,20 +188,23 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
             return [];
         }
 
-        /** @var array<string, array{type: string, name: string, tags: array<string,string>}> $index */
+        /** @var array<string, array{type: string, name: string, tags: array<string,string>, buckets?: list<float>}> $index */
         return $index;
     }
 
-    /** @param array<string, string> $tags */
-    private function remember(string $id, MeterType $type, string $name, array $tags): void
+    /**
+     * @param  array<string, string>  $tags
+     * @param  list<float>  $buckets
+     */
+    private function remember(string $id, MeterType $type, string $name, array $tags, array $buckets = []): void
     {
         $index = $this->index();
-        if (isset($index[$id])) {
+        if (isset($index[$id]) && ($index[$id]['buckets'] ?? []) === $buckets) {
             return;
         }
 
         ksort($tags);
-        $index[$id] = ['type' => $type->value, 'name' => $name, 'tags' => $tags];
+        $index[$id] = ['type' => $type->value, 'name' => $name, 'tags' => $tags, 'buckets' => $buckets];
         $this->put(self::INDEX, $index);
     }
 
@@ -218,6 +231,12 @@ final class CacheMeterRegistry implements MeterRegistry, MetricsRecorder
         }
 
         $this->cache->put($full, $value, $this->ttlSeconds);
+    }
+
+    /** A bucket bound as a stable cache-key fragment: `0.005`, `1`, `2.5` — never locale-dependent, never `1.0`. */
+    private static function bound(float $bound): string
+    {
+        return rtrim(rtrim(number_format($bound, 6, '.', ''), '0'), '.');
     }
 
     private function readInt(string $key): int

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Observability\Metrics\SimpleMeterRegistry;
+use Firefly\Observability\Metrics\Timer;
 use Firefly\Observability\Prometheus\PrometheusTextFormat;
 
 it('emits HELP/TYPE and a labelled counter sample', function () {
@@ -94,4 +95,32 @@ it('renders fractional values with a period regardless of LC_NUMERIC (locale reg
             setlocale(LC_ALL, $priorLocale);
         }
     }
+});
+
+it('emits a bucketed timer as a histogram with cumulative _bucket lines, +Inf, _count and _sum', function () {
+    $timer = new Timer('http_server_requests_seconds', ['method' => 'GET', 'uri' => '/x'], [0.005, 0.1, 1.0]);
+    $timer->record(0.001);
+    $timer->record(0.05);
+    $timer->record(2.0);
+
+    $text = (new PrometheusTextFormat)->render([$timer]);
+
+    expect($text)->toBe(implode("\n", [
+        '# HELP http_server_requests_seconds http_server_requests_seconds (timer)',
+        '# TYPE http_server_requests_seconds histogram',
+        'http_server_requests_seconds_bucket{method="GET",uri="/x",le="0.005"} 1',
+        'http_server_requests_seconds_bucket{method="GET",uri="/x",le="0.1"} 2',
+        'http_server_requests_seconds_bucket{method="GET",uri="/x",le="1"} 2',
+        'http_server_requests_seconds_bucket{method="GET",uri="/x",le="+Inf"} 3',
+        'http_server_requests_seconds_count{method="GET",uri="/x"} 3',
+        'http_server_requests_seconds_sum{method="GET",uri="/x"} 2.051',
+    ])."\n");
+});
+
+it('keeps an unbucketed timer a summary, so nothing changes for a scrape that never asked for buckets', function () {
+    $timer = new Timer('cqrs_commands_seconds', ['type' => 'A']);
+    $timer->record(0.5);
+
+    expect((new PrometheusTextFormat)->render([$timer]))->toContain('# TYPE cqrs_commands_seconds summary')
+        ->not->toContain('_bucket');
 });

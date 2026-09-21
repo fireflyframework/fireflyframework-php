@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Observability\Metrics\CacheMeterRegistry;
 use Firefly\Observability\Metrics\Counter;
+use Firefly\Observability\Metrics\DistributionStatisticConfig;
 use Firefly\Observability\Metrics\Gauge;
 use Firefly\Observability\Metrics\Timer;
 use Illuminate\Cache\ArrayStore;
@@ -110,4 +111,21 @@ it('still hands back live in-process meters from the factory methods', function 
 
     expect($registry->counter('local', []))->toBe($counter)
         ->and($counter->count())->toBe(2.0);
+});
+
+it('accumulates histogram buckets across instances and rebuilds them with the timer', function () {
+    $store = sharedStore();
+    $distribution = new DistributionStatisticConfig([0.1, 1.0]);
+
+    (new CacheMeterRegistry($store, 'firefly:metrics:', null, $distribution))->record('http_server_requests_seconds', ['uri' => '/x'], 0.05);
+    (new CacheMeterRegistry($store, 'firefly:metrics:', null, $distribution))->record('http_server_requests_seconds', ['uri' => '/x'], 0.5);
+    (new CacheMeterRegistry($store, 'firefly:metrics:', null, $distribution))->record('http_server_requests_seconds', ['uri' => '/x'], 5.0);
+
+    $meters = (new CacheMeterRegistry($store, 'firefly:metrics:', null, $distribution))->meters();
+    expect($meters)->toHaveCount(1)->and($meters[0])->toBeInstanceOf(Timer::class);
+    assert($meters[0] instanceof Timer);
+
+    expect($meters[0]->count())->toBe(3)
+        ->and($meters[0]->totalTimeSeconds())->toEqualWithDelta(5.55, 1e-9)
+        ->and($meters[0]->bucketCounts())->toBe([['le' => 0.1, 'count' => 1], ['le' => 1.0, 'count' => 2]]);
 });
