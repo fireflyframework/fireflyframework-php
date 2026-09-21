@@ -78,6 +78,25 @@ it('refuses an unknown algorithm, format or driver, naming the key', function (a
     'endpoint without slash' => [['token_endpoint' => 'oauth2/token'], 'firefly.security.oauth2.server.token_endpoint'],
     'duplicate endpoints' => [['token_endpoint' => '/oauth2/authorize'], 'distinct'],
     'cron' => [['authorizations' => ['purge' => ['cron' => '']]], 'firefly.security.oauth2.server.authorizations.purge.cron'],
+    'max_tokens' => [['rate_limit' => ['max_tokens' => 0]], 'firefly.security.oauth2.server.rate_limit.max_tokens'],
+    'refill_rate that is not a number' => [['rate_limit' => ['refill_rate' => 'fast']], 'firefly.security.oauth2.server.rate_limit.refill_rate'],
+    'refill_rate that is empty' => [['rate_limit' => ['refill_rate' => '']], 'firefly.security.oauth2.server.rate_limit.refill_rate'],
+    'refill_rate with a locale comma' => [['rate_limit' => ['refill_rate' => '1,5']], 'firefly.security.oauth2.server.rate_limit.refill_rate'],
+    'refill_rate of zero' => [['rate_limit' => ['refill_rate' => 0]], 'firefly.security.oauth2.server.rate_limit.refill_rate'],
+    'refill_rate below zero' => [['rate_limit' => ['refill_rate' => '-3']], 'firefly.security.oauth2.server.rate_limit.refill_rate'],
+]);
+
+it('refuses a refill rate that is not positive on a hand-built instance too', function () {
+    expect(fn () => new AuthorizationServerSettings(rateLimitRefillRate: 0.0))
+        ->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.refill_rate');
+});
+
+it('reads a numeric refill rate however the environment spelled it', function (mixed $configured, float $expected) {
+    expect(serverSettings(['rate_limit' => ['refill_rate' => $configured]])->rateLimitRefillRate)->toBe($expected);
+})->with([
+    'float' => [0.5, 0.5],
+    'int' => [2, 2.0],
+    'string from .env' => ['0.25', 0.25],
 ]);
 
 it('accepts ES256, reference tokens, the eloquent drivers, a consent view and the registration endpoint', function () {

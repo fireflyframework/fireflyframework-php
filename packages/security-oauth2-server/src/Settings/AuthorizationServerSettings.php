@@ -75,6 +75,7 @@ final readonly class AuthorizationServerSettings
         self::assertPositive($this->authorizationCodeTtl, self::PREFIX.'.authorization_code.ttl');
         self::assertPositive($this->idTokenTtl, self::PREFIX.'.id_token.ttl');
         self::assertPositive($this->rateLimitMaxTokens, self::PREFIX.'.rate_limit.max_tokens');
+        self::assertPositiveRate($this->rateLimitRefillRate, self::PREFIX.'.rate_limit.refill_rate');
         if ($this->purgeCron === '') {
             throw new ConfigurationException(self::PREFIX.'.authorizations.purge.cron must be a cron expression.');
         }
@@ -88,6 +89,8 @@ final readonly class AuthorizationServerSettings
 
         /** @var mixed $previous */
         $previous = $config->get('firefly.security.oauth2.server.jwt.previous_keys', []);
+        /** @var mixed $refillRate */
+        $refillRate = $config->get('firefly.security.oauth2.server.rate_limit.refill_rate', 1.0);
 
         return new self(
             enabled: $config->bool('firefly.security.oauth2.server.enabled', false),
@@ -120,7 +123,7 @@ final readonly class AuthorizationServerSettings
             purgeCron: $config->string('firefly.security.oauth2.server.authorizations.purge.cron', '*/15 * * * *'),
             rateLimitEnabled: $config->bool('firefly.security.oauth2.server.rate_limit.enabled', false),
             rateLimitMaxTokens: $config->int('firefly.security.oauth2.server.rate_limit.max_tokens', 60),
-            rateLimitRefillRate: (float) $config->string('firefly.security.oauth2.server.rate_limit.refill_rate', '1.0'),
+            rateLimitRefillRate: self::rate($refillRate, self::PREFIX.'.rate_limit.refill_rate'),
         );
     }
 
@@ -204,6 +207,32 @@ final readonly class AuthorizationServerSettings
     {
         if ($value < 1) {
             throw new ConfigurationException("{$key} must be a positive number of seconds; got {$value}.");
+        }
+    }
+
+    /**
+     * A refill rate is the one float setting here, and the Config port has no float accessor — so the raw value is
+     * read and gated on is_numeric, the way TraceSamplerFactory reads its sampling ratio. A `(float)` cast of
+     * whatever string() returned is the trap this avoids: `'fast'` and `''` cast to 0.0 — a bucket that never
+     * refills, so the token endpoint would answer 429 forever after the first burst — and the locale-style `'1,5'`
+     * truncates to 1.0 without a word said. Numeric strings are welcome because .env values arrive as strings.
+     */
+    private static function rate(mixed $raw, string $key): float
+    {
+        if (! is_numeric($raw)) {
+            $shown = is_string($raw) ? $raw : get_debug_type($raw);
+
+            throw new ConfigurationException("{$key} must be a positive number of tokens per second; got `{$shown}`.");
+        }
+
+        return (float) $raw;
+    }
+
+    /** The sign half of the refill-rate check, on the constructor so a hand-built instance is validated too. */
+    private static function assertPositiveRate(float $value, string $key): void
+    {
+        if (! is_finite($value) || $value <= 0.0) {
+            throw new ConfigurationException("{$key} must be a positive number of tokens per second; got {$value}.");
         }
     }
 

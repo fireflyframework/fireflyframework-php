@@ -47,6 +47,14 @@ it('refuses the server without the master flag, through the real boot', function
         ->toThrow(ConfigurationException::class, 'firefly.security.enabled');
 });
 
+it('refuses a settings typo at boot rather than on the first token request, through the real boot', function () {
+    expect(fn () => bootOAuth2ServerAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true, 'rate_limit' => ['refill_rate' => 'fast']]],
+    ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.refill_rate');
+});
+
 it('says nothing while the server is off, whatever else is set', function () {
     OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig(['enabled' => false, 'jwt' => ['enabled' => true]]));
 
