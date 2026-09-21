@@ -111,25 +111,64 @@ work. See [Domain (DDD)](domain.md#the-after-commit-event-model).
 A `#[Transactional]` bean is not called directly — `TransactionalBeanPostProcessor` (a `#[Component]`
 discovered by its `BeanPostProcessor` interface and installed by `RegisterBeanPostProcessorsPass` at **phase
 700**) swaps it, on the second BPP pass (after `#[PostConstruct]` has already run on the real bean), for an
-instance of a generated `final class {Target}__FireflyTransactionalProxy extends {Target}`. That class
-overrides every transactional method with:
+instance of a generated `final class {Target}__FireflyTransactionalProxy extends {Target}`. Since the interceptor
+chain landed, the same proxy carries **every advice** a class runs, not only transactions: each override builds a
+`MethodInvocation` over the ORDERED interceptors compiled for that method and the descriptors baked for it, and
+`proceed()` walks the chain outermost-first before reaching `parent::`:
 
 ```php
 public function transfer(int $amount): int
 {
-    return $this->__fireflyTxInterceptor->run(
-        fn () => parent::transfer($amount),
-        self::__fireflyTxDescriptor('transfer'),
-    );
+    return (new \Firefly\Data\Proxy\MethodInvocation(
+        $this,
+        \App\AccountService::class,
+        'transfer',
+        [$amount],
+        [$this->__fireflySecurityInterceptor, $this->__fireflyTxInterceptor],
+        [
+            \Firefly\Security\Access\Method\SecurityMethodDescriptor::class => self::__fireflySecurityDescriptor('transfer'),
+            \Firefly\Data\Transaction\TransactionalDescriptor::class => self::__fireflyTxDescriptor('transfer'),
+        ],
+        fn (array $__fireflyArgs) => parent::transfer(...$__fireflyArgs),
+    ))->proceed();
 }
 ```
 
-— routing the real call through `TransactionInterceptor::run()` (which delegates to
-`TransactionTemplate::execute()`) before falling through to `parent::`. `ProxyFactory` instantiates the proxy
-**state-preservingly**: `newInstanceWithoutConstructor()` (so `#[PostConstruct]` is not re-run), then a bound
-closure copies the real bean's scope-visible state via `get_object_vars()` — not `ReflectionProperty` — onto
-the proxy, and a second bound closure sets the proxy's own private interceptor property. The proxy *is-a*
-`{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the original bean.
+The pieces, all in `Firefly\Data\Proxy`:
+
+- `MethodInterceptor` — the AOP Alliance port: `invoke(MethodInvocation): mixed`. `TransactionInterceptor`
+  implements it (its `invoke()` reads the `TransactionalDescriptor` off the invocation and calls the unchanged
+  `run()`, which delegates to `TransactionTemplate::execute()`); firefly/security's `MethodSecurityInterceptor` is
+  the other shipped link.
+- `MethodInvocation` — single-use: `proceed()`, `getArguments()`/`setArguments()` (a `#[PreFilter]` narrows what
+  the method receives), `descriptor(class)` (each link reads its own baked descriptor), `getThis()`,
+  `getDeclaredClass()`, `getMethod()`.
+- `Advice` — a KIND of advice: id (`tx`, `security`), interceptor bean class, descriptor class, and **order** —
+  lower runs outer. The transactional advice is 1000 and security's is 100, so a refusal never opens a transaction.
+  An advice whose interceptor is switched off by design (security's, under the master flag) says so with
+  `inertWhenUnbound`; every other advice whose interceptor has vanished fails loud at wrap time.
+- `AdviceSource` — the port a package implements to contribute: `scan()` (its own sanctioned scanner, at cache time),
+  `render()` (the PHP literal baked into the proxy) and `advice()`. `TransactionalAdviceSource` is Data's;
+  `MethodSecurityAdviceSource` is Security's. Both are `#[Component]`s, so the uncached boot collects them through
+  `Container::getAll()`.
+- `ProxyPlan` — the merged manifest (`proxy-plan.php`, written by `firefly:cache`): per class, the proxy class, the
+  advice kinds and, per method, the ordered `(advice, descriptor row)` pairs. `ProxyPlanner` builds it from the
+  sources and renders the generator's inputs; `InterceptorRegistry` resolves each advice's interceptor bean at wrap
+  time, degrading to a `PassThroughInterceptor` when that capability is switched off.
+
+The plan is resolved like every manifest: the compiled `proxy-plan.php`; else — a cache from before that file
+existed, holding `transactional.php` and its proxies but no plan — a transactional-only plan bridged from the
+`TransactionalManifest` that loaded it (a cached app trusts its artifacts and never falls back to the scan; an
+advice such a plan knows nothing about is a reason to recompile, which is why firefly/security refuses to boot over
+its compiled rules beside a plan-less cache); else an in-process scan of `firefly.scan.paths` through every
+`AdviceSource`; else — no scan paths but a bound `TransactionalManifest` — a transactional-only plan derived from
+it. `ProxyFactory` instantiates the proxy **state-preservingly**: `newInstanceWithoutConstructor()` (so
+`#[PostConstruct]` is not re-run), then a bound closure copies the real bean's scope-visible state via
+`get_object_vars()` — not `ReflectionProperty` — onto the proxy, and a second bound closure sets one private
+interceptor property per advice the generated `__fireflyAdvice()` table names. The proxy *is-a* `{Target}`, so
+container calls and `#[PreDestroy]` resolve against it exactly as they would the original bean. A `final` target
+is refused at scan time (`UnsupportedTransactionalMethodException::finalClass()`), where the manifest row is
+still in view.
 
 **Self-invocation bypasses the proxy** — the same well-known Spring limitation. A method calling
 `$this->otherMethod()` from inside the proxied class calls straight through `parent::`, skipping the
@@ -179,8 +218,8 @@ $template->execute($work, new TransactionalDescriptor(
 - **The manifest and its proxies must stay one matched unit — and they now are, on both boot paths.**
   `DataAutoConfiguration::transactionalManifest()` resolves the compiled `transactional.php` if
   `firefly:cache` wrote one (registering the `proxies.php` classmap autoloader first, so `firefly/cli` is not
-  required at runtime), otherwise scans `firefly.scan.paths` and materialises each
-  `{Target}__FireflyTransactionalProxy` per process through `ProxyMaterializer` — a private `0700` directory
+  required at runtime), otherwise the `ProxyPlan` bean scans `firefly.scan.paths` through every
+  `AdviceSource` and materialises each planned proxy per process through `ProxyMaterializer` — a private `0700` directory
   written with `O_EXCL`, dev-time cost only. Proxies are made loadable **before** the manifest is handed out,
   because `TransactionalBeanPostProcessor` throws a `ConfigurationException` when the manifest promises a
   proxy class it cannot find; a half-emitted cache therefore fails at boot rather than quietly running

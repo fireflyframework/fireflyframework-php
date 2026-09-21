@@ -1,9 +1,13 @@
 # Security
 
-`firefly/security` is LaraFly's first-party security core — a Spring-Security-6-shaped principal model, authentication,
-and deny-by-default authorization that **lights up** the seams shipped in earlier milestones (the CQRS
-`Command`/`QueryAuthorizer`, the M8 `AuditorAware`, the M6 web filter chain) and adds a dispatch-time controller
-guard. Secure-by-default, fail-closed, opt-in, zero boot reflection.
+`firefly/security` is LaraFly's first-party security core — a Spring-Security-6-shaped principal model persisted in
+the session, authentication (form login with a shipped sign-in page, HTTP Basic, remember-me, logout, JWT and OAuth2
+bearer, a negotiating entry point, memory or Eloquent users), and deny-by-default authorization (URL rules, and
+method rules at the CQRS bus, the controller dispatcher and on any stereotyped bean through the proxy chain shared
+with `#[Transactional]`) that **lights up** the seams shipped in earlier milestones (the CQRS
+`Command`/`QueryAuthorizer`, the M8 `AuditorAware`, the M6 web filter chain, the M8 transaction proxy). Every
+mechanism publishes Spring's event family and every key defaults to off. Secure-by-default, fail-closed, opt-in,
+zero boot reflection.
 
 ## Principal model
 
@@ -18,16 +22,25 @@ guard. Secure-by-default, fail-closed, opt-in, zero boot reflection.
 
 ## Authentication
 
-- Ports: `UserDetails` / `UserDetailsService` (default `InMemoryUserDetailsService::fromConfig`), `PasswordEncoder`
-  (`BcryptPasswordEncoder`, `Argon2idPasswordEncoder`, `DelegatingPasswordEncoder` with `{id}` prefixes — constant-time).
+- Ports: `UserDetails` / `UserDetailsService`, `PasswordEncoder` (`BcryptPasswordEncoder`, `Argon2idPasswordEncoder`,
+  `DelegatingPasswordEncoder` with `{id}` prefixes — constant-time).
+- User stores (`firefly.security.users.driver`): **`memory`** (the `InMemoryUserDetailsService` map, unchanged) and
+  **`eloquent`** (`EloquentUserDetailsService` over any Eloquent model — `email`/`password`/`enabled`/`locked`/
+  `authorities`, every column configurable, `authorities` a JSON list or `relation.attribute`; a model class that
+  does not exist or is not an Eloquent model refuses to boot, and a configured column the loaded row does not carry
+  is refused on the lookup rather than read as `NULL`). Both map a row to the immutable `User` value object, never
+  to the model.
 - `AuthenticationProvider` / `ProviderManager` (first-supports-wins) / `DaoAuthenticationProvider` (maps bad-credentials/
-  disabled/locked to 401 subtypes; timing- and content-safe against username enumeration).
-- `JwtService` — HMAC encode/decode with a **mandatory `exp`** claim and a **weak-secret boot refusal**.
-- `JwtAuthenticationFilter` (Bearer, local JWT) and `OAuth2ResourceServerFilter` (JWKS via the `JwksProvider` port,
-  scopes → `SCOPE_*`) — both opt-in, both establish and clear the `SecurityContext` per request. The resource-server
-  filter additionally validates `iss`/`aud` when configured (see the config table) — protection against a
-  confused-deputy/token-redirection attack (RFC 9700), where a JWKS-signed token minted by the same issuer for a
-  *different* audience would otherwise be accepted.
+  disabled/locked to 401 subtypes; timing- and content-safe against username enumeration). **Every interactive
+  mechanism below authenticates through it**, so the equalisation is inherited whole.
+- `JwtService` — HMAC encode/decode with a **mandatory `exp`** claim and a **weak-secret boot refusal**; the same rule
+  (`JwtService::assertStrongSecret()`) guards the remember-me key.
+- Bearer: `JwtAuthenticationFilter` (`-90`, local JWT) and `OAuth2ResourceServerFilter` (`-85`, JWKS via the
+  `JwksProvider` port, scopes → `SCOPE_*`; validates `iss`/`aud` when configured — protection against a
+  confused-deputy/token-redirection attack, RFC 9700, where a JWKS-signed token minted by the same issuer for a
+  *different* audience would otherwise be accepted). Both opt-in, both establish and clear the `SecurityContext`
+  per request. Neither replaces a principal an outer filter — the session persistence filter, a test's acting
+  principal — already established.
 
 **JWT/OAuth2 are mutually exclusive.** Enabling both `firefly.security.jwt.enabled` and
 `firefly.security.oauth2.resource_server.enabled` is refused at **boot** (`ConfigurationException`, fail-closed): the
@@ -36,14 +49,93 @@ local HMAC secret, before the resource-server filter (`#[Order(-85)]`) — which
 JWKS — ever gets a chance to run. Pick exactly one bearer mechanism, matching Spring's one-resource-server-mechanism
 model.
 
+### Sessions
+
+Firefly filters are **global** kernel middleware; Laravel starts the session in the `web` route group, later. When
+session security is on (`firefly.security.session.enabled`, or implied by form login, remember-me or
+`http_basic.session`), `SessionSecurityBootstrap` — a boot pass at `WiringPasses` order 90, after every route
+registrar and before the filter chain — pushes `EncryptCookies`, `AddQueuedCookiesToResponse` and `StartSession`
+onto the **global** stack ahead of the filter chain, removes them from the `web` group and excludes them
+(`Route::withoutMiddleware`) on the matched route from a `RouteMatched` listener, at dispatch time: a second
+`EncryptCookies` pass decrypts already-decrypted cookies, nulls them, and `StartSession` then mints a fresh
+session — the login would be lost on any route that carried the group. Excluding on the matched instance rather
+than on the boot-time collection is what makes it hold under `route:cache` (a compiled collection builds a fresh
+`Route` on every match) and bakes nothing into the cache. A session driver is required; boot refuses without one.
+
+`SecurityContextPersistenceFilter` (`-94`) loads the `SecurityContext` from the `SecurityContextRepository` (the
+session, under one key) into `SecurityContextHolder` at request start — unless something outside already
+established one — and on exit saves a context that changed during the request and **always clears the holder**.
+The mechanisms save themselves at the moment of success, because the inner filters clear the holder in their own
+`finally` before the persistence filter's exit runs. What is stored never carries a credential: a
+`CredentialsContainer` principal (the shipped `User`) is written without its encoded password. Every interactive
+sign-in regenerates the session id (`session.fixation_protection`).
+
+### Form login
+
+`firefly.security.form_login.enabled` mounts `GET /login` (the framework's own server-rendered page, in the error
+page's design — or your Blade `view`, which receives `$login`, a `LoginPageModel`; a `GET` route of your own at that
+path is left in place) and `FormLoginFilter` (`-92`) handles `POST /login` before routing, as Spring's
+`UsernamePasswordAuthenticationFilter` does: the session CSRF token first (`SessionCsrf`, independent of
+`CsrfFilter` — a login CSRF is an attack), then `AuthenticationManager`, then — on success — a regenerated session
+id, the context stored, `AuthenticationSuccessEvent` + `InteractiveAuthenticationSuccessEvent(form)`, the
+remember-me cookie when asked, and a redirect to the request the entry point saved (`SavedRequest`) or
+`default_success_url`. A failure publishes `AuthenticationFailure*Event` (username and source ip, never the
+password) and redirects to `failure_url` (`/login?error`, the page's error state). The login page is always
+permitted by `HttpSecurityFilter`, or the redirect would loop.
+
+### HTTP Basic
+
+`firefly.security.http_basic.enabled`: `HttpBasicFilter` (`-91`) authenticates a present `Authorization: Basic`
+header on **every** request — stateless — unless `http_basic.session` stores a success in the session like a form
+login. A wrong password, an unknown user and a header that does not parse all get the
+`BasicAuthenticationEntryPoint`'s 401 with `WWW-Authenticate: Basic realm="…", charset="UTF-8"` (the Basic entry
+point, whatever `http.entry_point` says — a request that presented Basic credentials has chosen its mechanism); no
+header is the anonymous path.
+
+### Remember-me
+
+`firefly.security.remember_me.enabled`: `TokenBasedRememberMeServices` (Spring's) signs a cookie
+`username:expiry:HMAC-SHA256(username:expiry:password-hash, key)` when the form's `parameter` is ticked (or
+`always_remember`), and `RememberMeAuthenticationFilter` (`-83`) re-authenticates a request whose session holds no
+principal — as an interactive sign-in (new session id, context stored, `InteractiveAuthenticationSuccessEvent(remember-me)`),
+so the cookie is consulted once per session, not once per request. The password hash in the signature means a
+password change invalidates every cookie; a disabled or locked account is refused even on a genuine cookie; the key
+is held to the JWT secret rule and refused at boot when weak. Logout expires the cookie.
+
+### Logout
+
+`firefly.security.logout.*` (on with form login): `LogoutFilter` (`-93`) handles `POST /logout` — POST only,
+CSRF-checked; a `GET` falls through to whatever route is there — expiring the remember-me cookie and every
+`delete_cookies` name, invalidating the session (or only removing the context), publishing `LogoutSuccessEvent`,
+and redirecting to `logout_success_url` (`/login?logout`).
+
+### Events
+
+Every mechanism reports through `AuthenticationEventPublisher` over the context `ApplicationEventPublisher`, so an
+`#[AsEventListener]` method receives them and `Event::fake()` sees them: `AuthenticationSuccessEvent`,
+`InteractiveAuthenticationSuccessEvent` (`form`|`basic`|`remember-me`), `AuthenticationFailureBadCredentialsEvent`
+(an unknown user is reported as this on purpose), `AuthenticationFailureLockedEvent`,
+`AuthenticationFailureDisabledEvent`, `LogoutSuccessEvent`, `AuthorizationDeniedEvent` (a URL rule or a method rule
+refusing an **authenticated** principal — `subject` is `GET /admin/users` or `App\Reports::totals`).
+
 ## Authorization
 
 - **URL (deny-by-default):** the `HttpSecurity` DSL builds an ordered rule list; `HttpSecurityFilter` evaluates
   first-match-wins and denies anything unmatched — 401 when anonymous, 403 when authenticated.
-- **Method:** `#[PreAuthorize('…')]`, `#[Secured('…')]`, `#[RolesAllowed('…')]`. A single `MethodSecurityScanner`
-  compiles them into a `var_export` manifest (the sole reflection site). Enforced at the CQRS bus (real
-  `Command`/`QueryAuthorizer`), the controller dispatcher (`ControllerSecurityGuard`), and imperatively
-  (`AuthorizationChecker`). Method security is **additive, not a second deny-by-default gate** — see
+- **Method — everywhere:** `#[PreAuthorize('…')]`, `#[PostAuthorize('…')]` (evaluated after the call with
+  `#returnObject` bound — `hasPermission(#returnObject, 'READ')`), `#[Secured('…')]`, `#[RolesAllowed('…')]`,
+  `#[PreFilter('…', filterTarget: 'ids')]` and `#[PostFilter('…')]` (over iterables, `#filterObject` bound to each
+  element; arrays keep keys, Enumerables are filtered in kind, a non-iterable is refused). A single
+  `MethodSecurityScanner` compiles them into a `var_export` manifest (the sole reflection site). Enforced at the CQRS
+  bus (pre rules), the controller dispatcher (`ControllerSecurityGuard::check()` before, `afterInvocation()` after)
+  and — with `firefly.security.method.enabled`, default on — on **any stereotyped bean** (`#[Service]`,
+  `#[Component]`, `#[Repository]`) through the proxy chain shared with `#[Transactional]`:
+  `MethodSecurityAdviceSource` contributes the rules to the proxy plan, `MethodSecurityInterceptor` runs at advice
+  order 100, ahead of the transactional link at 1000, so a refusal never opens a transaction (see
+  [transactional.md](transactional.md#the-proxy-model)). Controllers and pre-only CQRS handlers are left to their
+  seams; a `final` bean that needs a proxy is refused at scan time. All three sites share `MethodSecurityEvaluator`:
+  a refusal is a 401 when anonymous and a 403 worded by `MethodSecurityRefusal` when authenticated. Imperatively,
+  `AuthorizationChecker`. Method security is **additive, not a second deny-by-default gate** — see
   [Method security fails open on an empty manifest](#method-security-fails-open-on-an-empty-manifest). The
   scanner rejects, at compile (cache) time, any `#[Secured]`/`#[RolesAllowed]`
   role/authority value containing a single quote — even one that would otherwise compile into *grammar-valid*
@@ -145,30 +237,76 @@ config access spec, and a rule written that way locks the path down instead of o
 deliberate: an unrecognised spec must fail closed. Interpolated role/authority values containing a single
 quote are rejected outright (expression injection).
 
-## Web hardening
+## Web
+
+### The entry point
+
+`HttpSecurityFilter` (`-70`) keeps deny-by-default. An **unauthenticated** denial is handed to the
+`AuthenticationEntryPoint` chosen by `firefly.security.http.entry_point`: `auto` sends a browser (the request names
+`text/html`, is not an XMLHttpRequest and is not under `firefly.web.error-page.json-paths` — the error page's own
+negotiation, `ErrorPageRenderer::prefersHtml()`, independent of `firefly.web.error-page.enabled`) to the login page
+with the request saved when form login is on, answers `401` + `WWW-Authenticate: Basic` when HTTP Basic is on, and
+otherwise throws the 401 for firefly/web to render as before (problem+json, or the HTML 401 page); `login`,
+`challenge` and `problem` force one. An **authenticated** denial stays the 403 page/problem and publishes
+`AuthorizationDeniedEvent`.
+
+### Principal injection
+
+A controller action can take `Authentication $auth` (401 when anonymous) or `?Authentication $auth` (null),
+`?UserDetails $user` (the principal when it is one, else null — a JWT's principal is its `sub` string),
+`#[AuthenticationPrincipal] mixed $principal` (`?string $sub` for that JWT case) and
+`#[CurrentSecurityContext] SecurityContext $context` (the anonymous context when nobody is signed in). An
+attributed principal is handed over only when it *is* what the parameter declares and is null otherwise, so the
+same action can serve a form login's `User` and a bearer's `sub` without a `TypeError`; a null for a non-nullable
+parameter is a 401. `SecurityArgumentResolver` is registered into firefly/web's `HandlerMethodArgumentResolvers` —
+the port any package can add a resolver to — whether or not the master flag is on, so the annotations are inert
+(null, anonymous, an honest 401) rather than misread as query parameters while security is off.
+
+### Hardening
 
 - `CsrfFilter` (`-80`) — Laravel's session token whenever the request has a started session (session security
   on), read through `SessionCsrf` from the same three sources Laravel's own `PreventRequestForgery` reads:
   `_token`, `X-CSRF-TOKEN`, or `X-XSRF-TOKEN` carrying the encrypted `XSRF-TOKEN` cookie a Laravel SPA client
   echoes back; the stateless double-submit cookie otherwise (safe-method + path exemptions, constant-time compare).
-- `SecurityHeadersFilter` — HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and a conservative CSP.
+- `SecurityHeadersFilter` (`-95`) — HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and a conservative CSP.
+
+### Filter order
+
+| Order | Filter |
+|---|---|
+| -95 | `SecurityHeadersFilter` |
+| -94 | `SecurityContextPersistenceFilter` |
+| -93 | `LogoutFilter` |
+| -92 | `FormLoginFilter` |
+| -91 | `HttpBasicFilter` |
+| -90 | `JwtAuthenticationFilter` |
+| -85 | `OAuth2ResourceServerFilter` |
+| -83 | `RememberMeAuthenticationFilter` |
+| -80 | `CsrfFilter` |
+| -70 | `HttpSecurityFilter` |
+
+Every filter clears `SecurityContextHolder` on exit in a `finally`, so nothing bleeds into the next request under
+Octane; the persistence filter is the outermost and the last to clear.
 
 ## Configuration (`firefly.security.*`, snake_case)
 
 `firefly.security.enabled` is the **master flag**. It gates the core security stack: the password encoder, user
 store, role hierarchy, permission evaluator, expression evaluator, authentication manager, `AuthorizationChecker`,
-the real CQRS `Command`/`QueryAuthorizer`, and the real `AuditorAware`. Among the per-surface flags below, **only
-`firefly.security.http.enabled` additionally requires the master flag** — `HttpSecurityFilter`'s constructor consumes
-three master-gated beans (`SecurityExpressionEvaluator`, `RoleHierarchy`, `PermissionEvaluator`), so the URL-rule
-filter cannot construct at all unless both flags are on. `jwt`, `oauth2.resource_server`, `csrf`, and `headers` are
-**independent** of the master flag — each is a `Config`-only (or single-extra-bean) filter gated solely by its own
-flag, so it can be turned on without enabling the broader security stack. (Turning on `jwt`/`oauth2` alone
+the real CQRS `Command`/`QueryAuthorizer`, the event publisher, and the real `AuditorAware`. Among the per-surface
+flags below, **`firefly.security.http.enabled` additionally requires the master flag** — `HttpSecurityFilter`'s
+constructor consumes three master-gated beans (`SecurityExpressionEvaluator`, `RoleHierarchy`, `PermissionEvaluator`),
+so the URL-rule filter cannot construct at all unless both flags are on. `jwt`, `oauth2.resource_server`, `csrf`, and
+`headers` are **independent** of the master flag — each is a `Config`-only (or single-extra-bean) filter gated solely
+by its own flag, so it can be turned on without enabling the broader security stack. (Turning on `jwt`/`oauth2` alone
 authenticates a principal but enforces no authorization unless `http`/master or the CQRS/method-security seams are
-also enabled — pair it with `http.enabled` + master, or with method security, to actually gate anything.)
+also enabled — pair it with `http.enabled` + master, or with method security, to actually gate anything.) Every
+mechanism added by the Spring-parity wave — `session`, `form_login`, `http_basic`, `logout`, `remember_me`, the
+entry point, `method.enabled` and the `users` driver — is gated by the master flag as well as its own key, because
+each depends on master-gated beans.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `firefly.security.enabled` | `false` | Master flag — enables the core stack (password encoder, user store, role hierarchy, permission evaluator, expression evaluator, authentication manager, `AuthorizationChecker`, CQRS authorizers, `AuditorAware`). Required by the `http` surface flag below (its filter depends on master-gated beans); `jwt`/`oauth2.resource_server`/`csrf`/`headers` do not require it. |
+| `firefly.security.enabled` | `false` | Master flag — enables the core stack (password encoder, user store, role hierarchy, permission evaluator, expression evaluator, authentication manager, `AuthorizationChecker`, CQRS authorizers, the event publisher, `AuditorAware`). Required by `http`, `method.enabled`, `session`, `form_login`, `http_basic`, `logout`, `remember_me`, the entry point and the `users` driver (each consumes master-gated beans); `jwt`/`oauth2.resource_server`/`csrf`/`headers` do not require it. |
 | `firefly.security.method.strict` | `false` | Refuse to boot when no compiled method-security manifest exists, instead of falling back to the in-process scan. See [above](#method-security-fails-open-on-an-empty-manifest). Independent of the master flag — the manifest binding is registered whether or not security is enabled. |
 | `firefly.security.method.enabled` | `true` | With the master flag on, enforces method-security attributes on **any** stereotyped bean through the proxy chain (security advice before the transactional one), on both boot paths: `firefly:cache` compiles the plan into `proxy-plan.php` and a proxy per planned class, and the uncached boot scans the same advice sources. A cache written before `proxy-plan.php` existed (`security-methods.php` with no plan beside it) is **refused at boot** — recompile — because such a cache lists every rule and enforces none of the bean-level ones. Off keeps the dispatcher and bus enforcing theirs; the proxy link becomes a pass-through, and the stale-cache refusal stands down with it. Read live. |
 | `firefly.security.users` | _(unset)_ | The user store. With no `driver` (or `driver: memory`) the block is the `InMemoryUserDetailsService` map (`{username: {password, authorities, enabled, locked}}`; `password` is the **encoded** string, typically `{id}`-prefixed; `authorities` defaults to `[]`, `enabled` to `true`, `locked` to `false`). The reserved keys below are never read as usernames. |
@@ -226,23 +364,51 @@ also enabled — pair it with `http.enabled` + master, or with method security, 
 | `firefly.security.headers.referrer_policy` | `no-referrer` | `Referrer-Policy`. |
 | `firefly.security.headers.csp` | `default-src 'self'` | `Content-Security-Policy`. |
 
+## Testing
+
+`firefly/testing` adds three things to `FireflyTestCase`:
+
+```php
+$this->actingAsPrincipal('ada', ['ROLE_USER', 'orders:read']);   // direct calls AND every HTTP request
+$this->withoutSecurity();                                         // filters, dispatcher guard, bus authorizers and proxy link off
+
+#[WithMockUser(name: 'admin', roles: ['ADMIN'], authorities: ['orders:write'])]   // on a class or a method
+```
+
+`actingAsPrincipal()` sets the holder now and prepends `ActingPrincipalMiddleware` to the kernel, so URL rules, the
+dispatcher guard and proxied beans all see the principal; `withoutSecurity()` flips the flags every filter, the bus
+authorizers and the proxy link read live and rebinds the dispatcher guard to the no-op default, so beans already
+built change their gates without a rebuild; `#[WithMockUser]` is Spring's, honoured in `setUp()`, the method-level
+one beating the class-level one. `Firefly\Testing\Double\RecordingAuthenticationEvents` is an
+`ApplicationEventPublisher` that answers `successes()`, `interactive()`, `failures()`, `logouts()` and `denials()` —
+bind it before boot from `defineFireflyEnvironment()`. The package's own suites are the reference:
+`packages/security/tests/Support/SecurityCapstoneTestCase.php` boots the real providers under Testbench with a file
+session driver, and every flow (login page, wrong password, right password → saved request, logout, remember-me
+after the session is gone, Basic on an API path, entry-point negotiation, PostAuthorize on a service, principal
+injection, the Eloquent driver) runs through the real HTTP pipeline.
+
 ## Laravel comparison
 
 | Concern | Plain Laravel | LaraFly (`firefly/security`) |
 |---|---|---|
-| Principal | `Auth::user()` (Eloquent `Authenticatable`) | first-party immutable `Authentication`/`SecurityContext` |
-| Authorization | Gates/Policies, `authorize()` | deny-by-default URL rules + `#[PreAuthorize]`/`#[Secured]` at the bus + dispatch |
+| Principal | `Auth::user()` (Eloquent `Authenticatable`) | first-party immutable `Authentication`/`SecurityContext`, session-persisted, injected into actions |
+| Sign-in | `Auth::attempt()`, Breeze/Fortify scaffolding | form login with a shipped page, HTTP Basic, remember-me, logout — all configuration |
+| Authorization | Gates/Policies, `authorize()` | deny-by-default URL rules + `#[PreAuthorize]`/`#[PostAuthorize]`/filters on any bean, the bus and the dispatcher |
+| Users | the `users` table | `memory` or `eloquent` driver behind one `UserDetailsService` port |
 | JWT | a package + manual middleware | `JwtService` (mandatory `exp`, weak-secret refusal) + opt-in filters |
-| Method rules | `$this->authorize()` in controllers | attribute-discovered, compiled manifest, no-eval expression engine |
+| Method rules | `$this->authorize()` in controllers | attribute-discovered, compiled manifest, no-eval expression engine, one proxy chain with `#[Transactional]` |
 | CSRF / headers | `VerifyCsrfToken` + a headers package | session-token or double-submit `CsrfFilter` + `SecurityHeadersFilter`, config-driven |
+| Testing | `actingAs($user)` | `actingAsPrincipal()`, `withoutSecurity()`, `#[WithMockUser]`, recording event doubles |
 
 ## Known-latent
 
-The OAuth2 authorization-server, OAuth2 client/login, and real IdP adapters (Keycloak/Cognito/Entra/internal-db, MFA)
-are deferred to their own future SP-cycle packages (matching the Java 20-repo topology). Generalising `#[PreAuthorize]`
-to **any** bean method (a second interceptor composed into the M8 transaction proxy) is a flagged P0 spike, not in
-M11 — method security here is enforced only at the CQRS bus, the controller dispatcher, and the imperative
-`AuthorizationChecker`. The `SecurityMethodManifest` needs no hand-wiring: it is resolved from the
-`firefly:cache` artifact, else an in-process scan, else empty (with `firefly.security.method.strict` available
-to refuse the last case). Under Octane the `SecurityContextHolder` is per-request state cleared by every auth
-filter on exit.
+The OAuth2 authorization server, OAuth2 client/login, real IdP adapters and MFA are the next waves. A `#[PreFilter]` on
+a controller action cannot be applied by the dispatcher (it cannot rewrite the arguments it resolved), so the scan
+refuses it outright rather than evaluate and discard — put it on the service the action calls; likewise a
+`#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no stereotype is refused, because no proxy and no
+dispatch seam would ever enforce it. The CQRS bus enforces pre rules only, so `#[PostAuthorize]`/`#[PostFilter]` on a
+handler are enforced only when the handler is proxied (non-final). `SessionSecurityBootstrap` excludes the session
+middleware from the matched route as it is dispatched, so a route registered after boot is covered too; what it
+cannot see is a middleware *alias* or group of the application's own that re-adds one of the three classes under
+another name. The `SecurityMethodManifest` needs no hand-wiring: it is resolved from the `firefly:cache` artifact,
+else an in-process scan, else empty (with `firefly.security.method.strict` available to refuse the last case).

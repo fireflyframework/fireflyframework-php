@@ -92,14 +92,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | OFF by default, and opt-in surface by surface. `enabled` is the master flag: it gates the principal
-    | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers and the
-    | programmatic AuthorizationChecker.
+    | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers, the
+    | programmatic AuthorizationChecker, the event publisher, method security on beans, and every
+    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point).
     |
-    | Each surface below has its own flag. Only `http` ALSO requires the master flag — its filter's
-    | constructor needs three master-gated beans, so enabling it alone would bind a filter whose
-    | dependencies do not exist. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are independent of
-    | the master flag and can be turned on by themselves. Note that authenticating (jwt/oauth2) without
-    | `http` or method security enforces no authorization at all — it only establishes a principal.
+    | Each surface below has its own flag. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are
+    | independent of the master flag and can be turned on by themselves; everything else ALSO requires it,
+    | because its filters and beans consume master-gated beans. Note that authenticating (jwt/oauth2)
+    | without `http` or method security enforces no authorization at all — it only establishes a principal.
     |
     */
 
