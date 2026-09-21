@@ -69,6 +69,7 @@ it('refuses a document whose issuer differs, one without the two endpoints, one 
     Http::assertSentCount(5);
 
     // The message names the HOST, never the URI: a tenant hint or a key in the issuer's query stays out of it.
+    // A fetch that failed is TRANSIENT — a retry may well succeed — and carries its cause.
     $caught = null;
     try {
         discovery($cache)->metadata('https://d.example.com/tenant?secret=1');
@@ -78,5 +79,18 @@ it('refuses a document whose issuer differs, one without the two endpoints, one 
     expect($caught)->toBeInstanceOf(ProviderDiscoveryException::class)
         ->and($caught?->getMessage())->toContain('d.example.com')->not->toContain('secret=1')
         ->and($caught?->httpStatus())->toBe(503)
-        ->and($caught?->errorCode())->toBe('OIDC_DISCOVERY_UNAVAILABLE');
+        ->and($caught?->errorCode())->toBe('OIDC_DISCOVERY_UNAVAILABLE')
+        ->and($caught?->transient)->toBeTrue()
+        ->and($caught?->getPrevious())->not->toBeNull();
+
+    // A document that was fetched but cannot be used is NOT transient: no retry changes what the provider publishes.
+    $invalid = null;
+    try {
+        discovery($cache)->metadata('https://a.example.com');
+    } catch (ProviderDiscoveryException $e) {
+        $invalid = $e;
+    }
+    expect($invalid?->transient)->toBeFalse()
+        ->and($invalid?->httpStatus())->toBe(503)
+        ->and($invalid?->errorCode())->toBe('OIDC_DISCOVERY_UNAVAILABLE');
 });

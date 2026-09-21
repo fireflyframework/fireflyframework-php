@@ -44,7 +44,9 @@ use RuntimeException;
  * a refresh token is rotated; userinfo needs an access token it issued. Tokens are RS256 JWTs signed with a key
  * pair generated once per process (`signWithUnknownKey()` signs with a second pair under the SAME kid, which is
  * exactly a rotated-key or forged token); the clock is Laravel's Date::now(), so `$this->travel()` expires them.
- * Every hop is recorded in the public arrays, and the knobs make each failure mode reproducible.
+ * Every hop is recorded in the public arrays, and the knobs make each failure mode reproducible — discovery
+ * included, both ways it fails: `takeDiscoveryDown()` (a 503, the provider is unreachable) and
+ * `overrideDiscoveryDocument()` (a 200 whose document the client must refuse, the provider is misconfigured).
  */
 final class FakeAuthorizationServer
 {
@@ -89,6 +91,9 @@ final class FakeAuthorizationServer
     private bool $publicClient = false;
 
     private bool $discoveryDown = false;
+
+    /** @var array<string, mixed> */
+    private array $discoveryDocumentOverrides = [];
 
     /** @var array<string, array{sub: string, scope: list<string>, nonce: ?string, redirect_uri: string, code_challenge: ?string}> */
     private array $codes = [];
@@ -251,6 +256,21 @@ final class FakeAuthorizationServer
         return $this;
     }
 
+    /**
+     * Members written over the discovery document from now on (a foreign `issuer`, no `authorization_endpoint`);
+     * a null REMOVES the member, and an empty array restores the real document. The other way discovery goes
+     * wrong: takeDiscoveryDown() is the provider being unreachable, this is the provider answering 200 with a
+     * document the client must refuse — what a wrong `issuer_uri` looks like from the application's side.
+     *
+     * @param  array<string, mixed>  $members
+     */
+    public function overrideDiscoveryDocument(array $members): self
+    {
+        $this->discoveryDocumentOverrides = $members;
+
+        return $this;
+    }
+
     // ------------------------------------------------------------- helpers
 
     /**
@@ -305,7 +325,7 @@ final class FakeAuthorizationServer
             $document['userinfo_endpoint'] = $base.'/userinfo';
         }
 
-        return $document;
+        return array_filter(array_replace($document, $this->discoveryDocumentOverrides), static fn (mixed $value): bool => $value !== null);
     }
 
     /**

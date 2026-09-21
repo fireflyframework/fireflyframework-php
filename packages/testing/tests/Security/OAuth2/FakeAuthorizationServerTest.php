@@ -244,4 +244,15 @@ it('turns every knob: a refused authorization, a refused exchange, a foreign sig
     $this->idp->takeDiscoveryDown();
     expect(Http::get(FakeIdpTestCase::ISSUER.'/.well-known/openid-configuration')->status())->toBe(503)
         ->and($this->idp->discoveryRequests)->toBe(2);
+
+    // A document that is served but wrong — the misconfigured-provider case, as distinct from the outage above.
+    $this->idp->takeDiscoveryDown(false)->overrideDiscoveryDocument(['issuer' => 'http://localhost/another-idp', 'authorization_endpoint' => null]);
+    $wrong = Http::get(FakeIdpTestCase::ISSUER.'/.well-known/openid-configuration');
+    expect($wrong->status())->toBe(200)
+        ->and($wrong->json())->toMatchArray(['issuer' => 'http://localhost/another-idp', 'token_endpoint' => 'http://localhost/fake-idp/token'])
+        ->and($wrong->json())->not->toHaveKey('authorization_endpoint')
+        ->and($this->idp->discoveryRequests)->toBe(3);
+
+    $this->idp->overrideDiscoveryDocument([]);
+    expect(Http::get(FakeIdpTestCase::ISSUER.'/.well-known/openid-configuration')->json())->toMatchArray(['issuer' => 'http://localhost/fake-idp', 'authorization_endpoint' => 'http://localhost/fake-idp/authorize']);
 });

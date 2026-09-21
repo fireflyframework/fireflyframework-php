@@ -16,25 +16,44 @@ use Throwable;
  * is down; the full URI is not, because a tenant hint or a key can live in its query. The cause rides along as
  * `previous` for the log. Raised at boot (with `discovery.eager`) it fails the boot; raised on first use it is
  * the 503 the request gets.
+ *
+ * TWO KINDS, ONE TYPE. `at()` is the fetch failing — a refused connection, a timeout, a 5xx: the provider is
+ * down at that moment, and the next attempt may well succeed, so `$transient` is true. `invalid()` is a document
+ * that arrived and cannot be used — a foreign `issuer`, no `authorization_endpoint`, a body that is not JSON:
+ * nothing about retrying changes what the provider publishes or what `issuer_uri` says, so `$transient` is
+ * false. Both are the same 503 on the wire (the request cannot be served either way, and neither is the
+ * caller's fault), and `OidcDiscovery` caches neither; the flag is for the code paths that DEGRADE instead of
+ * failing — the login page omitting a provider — so they can tell an outage worth a warning from a
+ * misconfiguration that deserves an error and will not clear on its own.
  */
 final class ProviderDiscoveryException extends ServiceUnavailableException
 {
     public const string CODE = 'OIDC_DISCOVERY_UNAVAILABLE';
 
+    public function __construct(
+        string $message,
+        public readonly bool $transient = true,
+        ?Throwable $previous = null,
+    ) {
+        parent::__construct($message, self::CODE, $previous);
+    }
+
+    /** The fetch failed: transient, with the cause. */
     public static function at(string $issuerUri, Throwable $cause): self
     {
         return new self(
             sprintf('The OpenID Connect discovery document of %s could not be fetched, so the provider cannot be used right now. Try again in a moment.', self::host($issuerUri)),
-            self::CODE,
-            $cause,
+            transient: true,
+            previous: $cause,
         );
     }
 
+    /** The document arrived and is unusable: not transient, and no retry will make it so. */
     public static function invalid(string $issuerUri, string $reason): self
     {
         return new self(
             sprintf('The OpenID Connect discovery document of %s cannot be used: %s', self::host($issuerUri), $reason),
-            self::CODE,
+            transient: false,
         );
     }
 

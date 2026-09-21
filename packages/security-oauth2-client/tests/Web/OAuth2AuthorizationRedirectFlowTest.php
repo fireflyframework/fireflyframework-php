@@ -2,24 +2,40 @@
 
 declare(strict_types=1);
 
+use Firefly\Security\OAuth2\Client\Discovery\ProviderDiscoveryException;
 use Firefly\Security\OAuth2\Client\Tests\Support\OAuth2ClientCapstoneTestCase;
 use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequest;
+use Firefly\Security\Tests\Support\RecordingLogger;
 use Firefly\Security\Tests\Support\SecurityFlows;
 use Firefly\Testing\Security\OAuth2\FakeAuthorizationServer;
+use Illuminate\Foundation\Application;
+use Psr\Log\LoggerInterface;
 
 /**
  * The first half of the login, through the real pipeline: the entry point sends an anonymous browser to the
  * login page (with only OAuth2 login on), the page lists the provider, the redirect filter answers the start
  * URL with a 302 that carries state, nonce and a PKCE challenge, and the session holds the request they came
- * from. A second registration with the client_credentials grant is present to prove it is NOT a login.
+ * from. A second registration with the client_credentials grant is present to prove it is NOT a login. The
+ * logger is a RecordingLogger bound before boot — what OAuth2ClientAutoConfiguration hands the login-page
+ * links — so the line the page writes when it omits a provider is asserted on, not assumed.
  */
 abstract class RedirectCapstoneTestCase extends OAuth2ClientCapstoneTestCase
 {
+    public RecordingLogger $logger;
+
     protected function clientOverrides(): array
     {
         return [
             'firefly.security.oauth2.client.registration.svc' => FakeAuthorizationServer::registrationConfig(['authorization_grant_type' => 'client_credentials', 'scope' => ['orders:read'], 'client_name' => 'Service']),
         ];
+    }
+
+    protected function defineFireflyEnvironment(Application $app): void
+    {
+        parent::defineFireflyEnvironment($app);
+
+        $this->logger = new RecordingLogger;
+        $app->instance(LoggerInterface::class, $this->logger);
     }
 }
 
@@ -96,4 +112,63 @@ it('answers a 503 naming the provider when discovery is down, and recovers witho
 
     $this->idp->takeDiscoveryDown(false);
     $this->get('/oauth2/authorization/fake')->assertRedirect();
+});
+
+it('still renders the login page while the provider is down, leaving it out with a warning that names it, and lists it again once discovery recovers', function () {
+    /** @var RedirectCapstoneTestCase $this */
+    $this->idp->takeDiscoveryDown();
+
+    // The page is where every OTHER way in lives, so one provider's outage costs its button, not the page.
+    $this->get('/login')->assertOk()
+        ->assertDontSee('Sign in with Fake IdP')
+        ->assertDontSee('/oauth2/authorization/fake');
+
+    $leftOut = $this->logger->mentioning('[fake]');
+    $exception = $leftOut[0]['context']['exception'] ?? null;
+    expect($leftOut)->toHaveCount(1)
+        ->and($leftOut[0]['level'])->toBe('warning')
+        ->and($leftOut[0]['message'])->toContain('left out')->toContain('localhost')->not->toContain('fake-idp/.well-known')
+        ->and($leftOut[0]['context']['registration'] ?? null)->toBe('fake')
+        ->and($exception)->toBeInstanceOf(ProviderDiscoveryException::class)
+        ->and($exception instanceof ProviderDiscoveryException && $exception->transient)->toBeTrue();
+
+    // Every registration is resolved to learn its grant, so `svc` (client_credentials, never a login) on the
+    // same down provider is reported too, at the same level — two lines for two registrations, nothing else.
+    expect($this->logger->mentioning('[svc]'))->toHaveCount(1)
+        ->and(array_column($this->logger->records, 'level'))->toBe(['warning', 'warning']);
+
+    // Back up: no restart, no cache to clear — a failed discovery was never cached — and nothing more is logged.
+    $this->idp->takeDiscoveryDown(false);
+    $this->get('/login')->assertOk()->assertSee('Sign in with Fake IdP');
+    expect($this->logger->records)->toHaveCount(2);
+});
+
+it('leaves out a provider whose discovery document is unusable — a misconfiguration, not an outage — with an ERROR rather than a warning, and lists it again once the document is right', function () {
+    /** @var RedirectCapstoneTestCase $this */
+    $this->idp->overrideDiscoveryDocument(['issuer' => 'http://localhost/another-idp']);
+
+    $this->get('/login')->assertOk()->assertDontSee('Sign in with Fake IdP');
+
+    $leftOut = $this->logger->mentioning('[fake]');
+    $exception = $leftOut[0]['context']['exception'] ?? null;
+    expect($leftOut)->toHaveCount(1)
+        ->and($leftOut[0]['level'])->toBe('error')
+        ->and($leftOut[0]['message'])->toContain('left out')->toContain('misconfiguration')->toContain('issuer differs')
+        ->and($leftOut[0]['context']['registration'] ?? null)->toBe('fake')
+        ->and($exception instanceof ProviderDiscoveryException && ! $exception->transient)->toBeTrue()
+        ->and(array_column($this->logger->records, 'level'))->toBe(['error', 'error']);
+
+    // A document that names no authorization_endpoint is the same permanent kind of wrong.
+    $this->idp->overrideDiscoveryDocument(['authorization_endpoint' => null]);
+    $this->get('/login')->assertOk()->assertDontSee('Sign in with Fake IdP');
+    expect($this->logger->mentioning('[fake]'))->toHaveCount(2)
+        ->and($this->logger->mentioning('[fake]')[1]['level'])->toBe('error')
+        ->and($this->logger->mentioning('[fake]')[1]['message'])->toContain('authorization_endpoint');
+
+    // ...and the start URL itself, asked directly, is the same 503 the outage gives: the redirect filter does not degrade.
+    $this->getJson('/oauth2/authorization/fake')->assertStatus(503)->assertJson(['code' => 'OIDC_DISCOVERY_UNAVAILABLE']);
+
+    $this->idp->overrideDiscoveryDocument([]);
+    $this->get('/login')->assertOk()->assertSee('Sign in with Fake IdP');
+    expect($this->logger->mentioning('[fake]'))->toHaveCount(2);
 });
