@@ -142,9 +142,16 @@ return [
          | Session-persisted SecurityContext. Firefly filters are GLOBAL middleware and Laravel starts the
          | session in the `web` route group, later — so when this is on the framework pushes EncryptCookies,
          | AddQueuedCookiesToResponse and StartSession onto the global stack ahead of the security filters
-         | (and strips them from routes, where a second EncryptCookies pass would null every cookie). It is
-         | switched on implicitly by form_login, remember_me and http_basic.session below; set it yourself to
-         | persist a principal another mechanism (JWT, a controller) established. A session driver is required.
+         | (and excludes them on every route as it is matched — cached or not — where a second EncryptCookies
+         | pass would null every cookie). It is switched on implicitly by form_login, remember_me and
+         | http_basic.session below. What the session carries is a context saved through the
+         | SecurityContextRepository: the interactive mechanisms (form login, http_basic.session, remember-me)
+         | save at the moment of success, and so can your own code (a controller that calls
+         | SessionSecurityContextRepository::save()). A bearer principal (jwt, oauth2.resource_server) is
+         | re-verified on every request by design and NEVER stored — and while either bearer filter is on, a
+         | context a controller merely sets on SecurityContextHolder is not stored either, because that filter
+         | clears the holder on its way out before the persistence filter can save it. A session driver is
+         | required.
          |
          | `fixation_protection` regenerates the session id on every interactive sign-in.
          |

@@ -21,11 +21,17 @@ use Illuminate\Http\Request;
  *
  * TWO DELIBERATE ASYMMETRIES. It does NOT load when the holder already carries an authenticated context —
  * a test's acting principal, or an outer middleware, established one on purpose. And on exit it saves only a
- * context that CHANGED during the request (a controller that signed someone in programmatically); it never
- * deletes the stored one, because the inner authentication filters clear the holder in their own `finally`
- * before this exit runs, and an empty holder at that point means "the request is over", not "sign out". The
- * mechanisms that authenticate interactively (form, basic-with-session, remember-me) save to the repository
- * themselves at the moment of success, and logout clears it explicitly.
+ * context that CHANGED during the request and is STILL on the holder when the exit runs; it never deletes the
+ * stored one, because the inner authentication filters (jwt at -90, oauth2.resource_server at -85) clear the
+ * holder in their own `finally` before this exit runs, and an empty holder at that point means "the request is
+ * over", not "sign out". That same clearing is why the exit save is narrower than it looks: a bearer
+ * principal is never stored — re-verified per request, by design — and once either bearer filter is on, a
+ * context a controller merely set on the holder is gone by the time this filter could save it, so the save
+ * branch only ever fires when no inner filter cleared the holder first (a controller sign-in with neither
+ * bearer filter enabled). The mechanisms that authenticate interactively (form, basic-with-session,
+ * remember-me) do not rely on it: they save to the repository themselves at the moment of success, which is
+ * also what application code should do to sign someone in programmatically (SecurityContextRepository::save()),
+ * and logout clears it explicitly.
  *
  * The `finally` clear is the load-bearing Octane guarantee: whatever happened, nothing bleeds into the next
  * request on the same worker.
