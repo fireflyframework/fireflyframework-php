@@ -64,7 +64,7 @@ it('triggers only on a pushed v* tag', function () {
     expect($tags)->toContain('v*');
 });
 
-it('the split matrix covers exactly the 28 publishable units, each mapped to fireflyframework/firefly-<dir>', function () {
+it('the split matrix covers exactly the 29 publishable units, each mapped to fireflyframework/firefly-<dir>', function () {
     $root = dirname(__DIR__);
     $yaml = releaseWorkflowYaml();
 
@@ -86,7 +86,7 @@ it('the split matrix covers exactly the 28 publishable units, each mapped to fir
     $expectedLocals[] = 'skeleton';
     sort($expectedLocals);
 
-    expect($expectedLocals)->toHaveCount(28);
+    expect($expectedLocals)->toHaveCount(29);
 
     /** @var list<string> $actualLocals */
     $actualLocals = [];

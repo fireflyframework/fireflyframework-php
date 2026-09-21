@@ -2,7 +2,8 @@
 
 `firefly/security` is LaraFly's first-party security core — a Spring-Security-6-shaped principal model persisted in
 the session, authentication (form login with a shipped sign-in page, HTTP Basic, remember-me, logout, JWT and OAuth2
-bearer, a negotiating entry point, memory or Eloquent users), and deny-by-default authorization (URL rules, and
+bearer, a negotiating entry point, memory or Eloquent users), OAuth2/OpenID Connect login and client through
+[`firefly/security-oauth2-client`](security-oauth2-client.md), and deny-by-default authorization (URL rules, and
 method rules at the CQRS bus, the controller dispatcher and on any stereotyped bean through the proxy chain shared
 with `#[Transactional]`) that **lights up** the seams shipped in earlier milestones (the CQRS
 `Command`/`QueryAuthorizer`, the M8 `AuditorAware`, the M6 web filter chain, the M8 transaction proxy). Every
@@ -83,6 +84,11 @@ remember-me cookie when asked, and a redirect to the request the entry point sav
 password) and redirects to `failure_url` (`/login?error`, the page's error state). The login page is always
 permitted by `HttpSecurityFilter`, or the redirect would loop.
 
+The page also lists every link a bound `LoginPageLinks` port answers, as "Sign in with {label}" buttons after the
+form (or alone, with no form, when only `firefly.security.oauth2.client.login.enabled` is on — that key implies the
+page, the session middleware and logout exactly as `form_login.enabled` does; it is the one `oauth2.client.*` fact
+the core reads). `LoginPageModel` carries `form` and `links` for a custom view.
+
 ### HTTP Basic
 
 `firefly.security.http_basic.enabled`: `HttpBasicFilter` (`-91`) authenticates a present `Authorization: Basic`
@@ -108,6 +114,10 @@ is held to the JWT secret rule and refused at boot when weak. Logout expires the
 CSRF-checked; a `GET` falls through to whatever route is there — expiring the remember-me cookie and every
 `delete_cookies` name, invalidating the session (or only removing the context), publishing `LogoutSuccessEvent`,
 and redirecting to `logout_success_url` (`/login?logout`).
+
+A bound `LogoutSuccessHandler` (Spring's) is asked for the response **before** the session is invalidated — so it
+can still read what the session holds — and null hands back to the `logout_success_url` redirect;
+firefly/security-oauth2-client's RP-initiated logout is the first implementation.
 
 ### Events
 
@@ -142,9 +152,11 @@ refusing an **authenticated** principal — `subject` is `GET /admin/users` or `
   expression text (e.g. a value that splices in `or permitAll()`) — so a malicious or malformed attribute value can
   never widen access silently; it fails the `firefly:cache`-equivalent scan step loudly instead.
 - **Expressions** run through a hand-rolled **whitelist tokenizer + recursive-descent parser — never `eval`**:
-  `hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasPermission`, `isAuthenticated`, `permitAll`,
-  `denyAll`, plus `#param` references. `RoleHierarchy` expands implied roles; `PermissionEvaluator` (deny-all default)
-  backs `hasPermission`.
+  `hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`,
+  `isAuthenticated`, `permitAll`, `denyAll`, plus `#param` references. `RoleHierarchy` expands implied roles;
+  `PermissionEvaluator` (deny-all default) backs `hasPermission`. `hasScope`/`hasAnyScope` test the `SCOPE_x`
+  authorities a bearer token or an OAuth2 login granted, normalising a bare scope to `SCOPE_` as `hasRole`
+  normalises `ROLE_`.
 
   `RoleHierarchy` rules are **single-arrow only** — one implication per entry, e.g. `"ROLE_ADMIN > ROLE_USER"`. A
   chained `"ROLE_ADMIN > ROLE_STAFF > ROLE_USER"` in a single entry is **not** supported; express a multi-level
@@ -219,8 +231,8 @@ around `evaluate()`/`parse()` in a `finally`, so a throwing inner evaluator cann
 
 ### The config access vocabulary is fixed, and fail-closed
 
-The fluent `HttpSecurity` DSL (`permitAll()`, `denyAll()`, `authenticated()`, `hasRole()`, `hasAuthority()`)
-compiles to the same expression grammar method security uses. The **config** spelling in
+The fluent `HttpSecurity` DSL (`permitAll()`, `denyAll()`, `authenticated()`, `hasRole()`, `hasAuthority()`,
+`hasScope()`) compiles to the same expression grammar method security uses. The **config** spelling in
 `firefly.security.http.rules` does not accept that grammar — `HttpSecurity::fromConfig()` maps a fixed set of
 tokens:
 
@@ -231,6 +243,7 @@ tokens:
 | `authenticated` | `isAuthenticated()` |
 | `hasRole:<ROLE>` | `hasRole('<ROLE>')` |
 | `hasAuthority:<AUTHORITY>` | `hasAuthority('<AUTHORITY>')` |
+| `hasScope:<scope>` | `hasScope('<scope>')` |
 
 **Anything else compiles to `denyAll()`.** So `hasRole('ADMIN')` — the expression spelling — is not a valid
 config access spec, and a rule written that way locks the path down instead of opening it. That direction is
@@ -260,7 +273,9 @@ attributed principal is handed over only when it *is* what the parameter declare
 same action can serve a form login's `User` and a bearer's `sub` without a `TypeError`; a null for a non-nullable
 parameter is a 401. `SecurityArgumentResolver` is registered into firefly/web's `HandlerMethodArgumentResolvers` —
 the port any package can add a resolver to — whether or not the master flag is on, so the annotations are inert
-(null, anonymous, an honest 401) rather than misread as query parameters while security is off.
+(null, anonymous, an honest 401) rather than misread as query parameters while security is off. An interface type
+works the same way: `#[AuthenticationPrincipal] OidcUser $user` receives the OIDC principal of an OAuth2 login and
+is a 401 for any other.
 
 ### Hardening
 
@@ -280,6 +295,8 @@ the port any package can add a resolver to — whether or not the master flag is
 | -92 | `FormLoginFilter` |
 | -91 | `HttpBasicFilter` |
 | -90 | `JwtAuthenticationFilter` |
+| -89 | `OAuth2AuthorizationRequestRedirectFilter` (firefly/security-oauth2-client) |
+| -88 | `OAuth2LoginAuthenticationFilter` (firefly/security-oauth2-client) |
 | -85 | `OAuth2ResourceServerFilter` |
 | -83 | `RememberMeAuthenticationFilter` |
 | -80 | `CsrfFilter` |
@@ -316,7 +333,7 @@ each depends on master-gated beans.
 | `firefly.security.users.enabled_column` / `locked_column` | `''` / `''` | Boolean columns; empty means every account is enabled / none is locked. |
 | `firefly.security.users.authorities` | `authorities` | A column holding a JSON list (or an `array` cast), or `relation.attribute` (`roles.name`: the attribute plucked from every related model, or from the one model of a `belongsTo`). Entries that are not non-empty strings are dropped; a relation the model does not define is refused like an absent column. `''` means the model carries no authorities: every account authenticates with none (`[]`, as the memory driver's optional `authorities` does). Laravel's stock `users` table has no such column, so `App\Models\User` needs `authorities: ''` — or a column/relation added — because the default names a column the driver refuses on the lookup. |
 | `firefly.security.role_hierarchy` | `[]` | Single-arrow implication rules, e.g. `["ROLE_ADMIN > ROLE_USER"]` (one implication per entry — not chainable in one string). |
-| `firefly.security.session.enabled` | `false` | Carry the `SecurityContext` in the Laravel session (`SecurityContextPersistenceFilter`, `-94`; `SessionSecurityBootstrap` runs Laravel's cookie/session middleware globally ahead of the filters and excludes it on each route as it is matched, so `route:cache` needs nothing). Implied by `form_login`, `remember_me` and `http_basic.session`. What is carried is a context saved through `SecurityContextRepository` — by the interactive mechanisms at the moment of success, or by application code — and never a credential: a principal that implements `CredentialsContainer` (the shipped `User`) is stored without its encoded password. A bearer principal (`jwt`, `oauth2.resource_server`) is re-verified per request and never stored. A context a controller merely sets on the holder is saved on exit only when no filter cleared the holder first: never while `jwt` is on (that filter clears the holder unconditionally on exit); under `oauth2.resource_server`, which clears only a bearer context it established itself, whenever the request presented no bearer. Requires a session driver (boot refuses otherwise). |
+| `firefly.security.session.enabled` | `false` | Carry the `SecurityContext` in the Laravel session (`SecurityContextPersistenceFilter`, `-94`; `SessionSecurityBootstrap` runs Laravel's cookie/session middleware globally ahead of the filters and excludes it on each route as it is matched, so `route:cache` needs nothing). Implied by `form_login`, `remember_me`, `http_basic.session` and `oauth2.client.login.enabled`. What is carried is a context saved through `SecurityContextRepository` — by the interactive mechanisms at the moment of success, or by application code — and never a credential: a principal that implements `CredentialsContainer` (the shipped `User`) is stored without its encoded password. A bearer principal (`jwt`, `oauth2.resource_server`) is re-verified per request and never stored. A context a controller merely sets on the holder is saved on exit only when no filter cleared the holder first: never while `jwt` is on (that filter clears the holder unconditionally on exit); under `oauth2.resource_server`, which clears only a bearer context it established itself, whenever the request presented no bearer. Requires a session driver (boot refuses otherwise). |
 | `firefly.security.session.fixation_protection` | `true` | Regenerate the session id on every interactive sign-in. |
 | `firefly.security.form_login.enabled` | `false` | Form login (`FormLoginFilter`, `-92`, plus the login page route). Implies `session` and `logout`. |
 | `firefly.security.form_login.login_page` | `/login` | The page a browser is redirected to; always permitted by `HttpSecurityFilter`. The framework mounts its own page there (`firefly.security.login`) **only when no `GET` route of yours already answers that path** — a `#[GetMapping('/login')]`, a routes-file route, with or without a domain. A page the application registers is left in place and the framework page is not mounted (Spring's rule: a custom login page belongs to the application), and the rest of the mechanism is unchanged: the entry point redirects there, the URL rules let it through, and `FormLoginFilter` answers the `POST` to `login_processing_url` before routing — your form only has to post the session token as `_token`. To customise the framework page without owning the route, use `view`. The framework page's `<form action>` is root-relative (the request's base path plus the path of `login_processing_url`), so it posts to the origin the browser fetched the page from even behind a TLS-terminating proxy the application does not trust. |
@@ -329,7 +346,7 @@ each depends on master-gated beans.
 | `firefly.security.http_basic.enabled` | `false` | HTTP Basic (`HttpBasicFilter`, `-91`). |
 | `firefly.security.http_basic.realm` | `LaraFly` | The `WWW-Authenticate` realm. |
 | `firefly.security.http_basic.session` | `false` | Store a successful Basic authentication in the session (implies `session`). |
-| `firefly.security.logout.enabled` | follows `form_login.enabled` | `LogoutFilter` (`-93`), POST only, CSRF-checked. |
+| `firefly.security.logout.enabled` | follows `form_login.enabled` or `oauth2.client.login.enabled` | `LogoutFilter` (`-93`), POST only, CSRF-checked. |
 | `firefly.security.logout.logout_url` / `logout_success_url` | `/logout` / `/login?logout` | The POST address and the redirect after it. |
 | `firefly.security.logout.invalidate_session` / `clear_authentication` | `true` / `true` | Invalidate the whole session, or only remove the context. |
 | `firefly.security.logout.delete_cookies` | `[]` | Extra cookie names expired on logout (the remember-me cookie always is). |
@@ -354,7 +371,7 @@ each depends on master-gated beans.
 | `firefly.security.oauth2.resource_server.authorities_claim` | `roles` | Claim carrying the authority list (distinct from the local-JWT default). |
 | `firefly.security.http.enabled` | `false` | Enables the deny-by-default `HttpSecurityFilter`. **Requires the master flag** (see above). |
 | `firefly.security.http.rules` | `[]` | Ordered `{pattern, access}` URL rules — see [the access vocabulary](#the-config-access-vocabulary-is-fixed-and-fail-closed). With the filter on, an empty list denies **everything** — deny-by-default is the point. |
-| `firefly.security.http.entry_point` | `auto` | What an anonymous request to a protected URL gets: `auto` negotiates (browser + form login → login redirect with the request saved; else HTTP Basic on → `401` + `WWW-Authenticate`; else the 401 problem/page), `login`/`challenge`/`problem` force one. `login` without form login is refused at boot. A **browser** is a request that names `text/html` (or `application/xhtml+xml`), is not an `XMLHttpRequest` and is not under `firefly.web.error-page.json-paths` — the error page's own negotiation (`ErrorPageRenderer::prefersHtml`), and independent of `firefly.web.error-page.enabled`: that flag decides how a 401 is drawn, never whether a person is sent to sign in. |
+| `firefly.security.http.entry_point` | `auto` | What an anonymous request to a protected URL gets: `auto` negotiates (browser + a login page (form or OAuth2 login) → login redirect with the request saved; else HTTP Basic on → `401` + `WWW-Authenticate`; else the 401 problem/page), `login`/`challenge`/`problem` force one. `login` without form login or OAuth2 login is refused at boot. A **browser** is a request that names `text/html` (or `application/xhtml+xml`), is not an `XMLHttpRequest` and is not under `firefly.web.error-page.json-paths` — the error page's own negotiation (`ErrorPageRenderer::prefersHtml`), and independent of `firefly.web.error-page.enabled`: that flag decides how a 401 is drawn, never whether a person is sent to sign in. |
 | `firefly.security.csrf.enabled` | `false` | Enables `CsrfFilter` (`-80`). Independent of the master flag. Without a session it is the stateless double-submit check: the `XSRF-TOKEN` cookie echoed in `X-XSRF-TOKEN` (or `_token`). With a started session (`session.enabled`, or any mechanism that implies it) it verifies Laravel's session token instead, accepting exactly what Laravel's `PreventRequestForgery` accepts, in the same order: the `_token` field, the `X-CSRF-TOKEN` header, or the `X-XSRF-TOKEN` header carrying the **encrypted** `XSRF-TOKEN` cookie as the browser holds it and Axios sends it (decrypted through the application `Encrypter`; one that does not decrypt is a mismatch). The double-submit cookie value is ignored on that path. Any mismatch is a `403`. |
 | `firefly.security.csrf.except` | `[]` | Path globs exempt from CSRF. |
 | `firefly.security.headers.enabled` | `false` | Enables the security-headers filter. Independent of the master flag. |
@@ -379,7 +396,9 @@ $this->withoutSecurity();                                         // filters, di
 dispatcher guard and proxied beans all see the principal; `withoutSecurity()` flips the flags every filter, the bus
 authorizers and the proxy link read live and rebinds the dispatcher guard to the no-op default, so beans already
 built change their gates without a rebuild; `#[WithMockUser]` is Spring's, honoured in `setUp()`, the method-level
-one beating the class-level one. `Firefly\Testing\Double\RecordingAuthenticationEvents` is an
+one beating the class-level one. `actingAsOidcUser()` signs an OpenID Connect user in (see
+[OAuth2 Client](security-oauth2-client.md#testing)), and `actingAsAuthentication()` is the seam beneath both.
+`Firefly\Testing\Double\RecordingAuthenticationEvents` is an
 `ApplicationEventPublisher` that answers `successes()`, `interactive()`, `failures()`, `logouts()` and `denials()` —
 bind it before boot from `defineFireflyEnvironment()`. The package's own suites are the reference:
 `packages/security/tests/Support/SecurityCapstoneTestCase.php` boots the real providers under Testbench with a file
@@ -402,7 +421,8 @@ injection, the Eloquent driver) runs through the real HTTP pipeline.
 
 ## Known-latent
 
-The OAuth2 authorization server, OAuth2 client/login, real IdP adapters and MFA are the next waves. A `#[PreFilter]` on
+OAuth2 client / OpenID Connect login is [`firefly/security-oauth2-client`](security-oauth2-client.md); the
+authorization server, real IdP adapters beyond its presets, and MFA are the next waves. A `#[PreFilter]` on
 a controller action cannot be applied by the dispatcher (it cannot rewrite the arguments it resolved), so the scan
 refuses it outright rather than evaluate and discard — put it on the service the action calls; likewise a
 `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no stereotype is refused, because no proxy and no

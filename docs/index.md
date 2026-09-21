@@ -25,7 +25,8 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 - **Event-driven, with real brokers** — an in-memory default plus RabbitMQ, Postgres LISTEN/NOTIFY, and Kafka
   adapters behind one `EventPublisher` port.
 - **Secure by default** — a Spring-Security-6-shaped principal model, deny-by-default `HttpSecurity` URL DSL,
-  and method security (`#[PreAuthorize]`) enforced with no proxy magic.
+  and method security (`#[PreAuthorize]`) enforced with no proxy magic, and OpenID Connect login with
+  `firefly/security-oauth2-client`.
 - **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
   metrics core, both secured by the same config as everything else, plus a server-rendered
   [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md), and an
@@ -69,7 +70,7 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | **Data & Domain** | [Domain (DDD)](modules/domain.md) · [Data & Repositories](modules/data.md) · [Relational Data](modules/data-relational.md) · [Transactions](modules/transactional.md) |
 | **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
-| **Security** | [Security](modules/security.md) |
+| **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) |
 | **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) |
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |

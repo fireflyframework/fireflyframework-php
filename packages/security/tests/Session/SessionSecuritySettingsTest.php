@@ -17,6 +17,7 @@ it('is off by default and on when any session-backed mechanism is on', function 
         ->and(sessionSettings(['session' => ['enabled' => true]])->enabled())->toBeTrue()
         ->and(sessionSettings(['form_login' => ['enabled' => true]])->enabled())->toBeTrue()
         ->and(sessionSettings(['remember_me' => ['enabled' => true]])->enabled())->toBeTrue()
+        ->and(sessionSettings(['oauth2' => ['client' => ['login' => ['enabled' => true]]]])->enabled())->toBeTrue()
         ->and(sessionSettings(['http_basic' => ['enabled' => true]])->enabled())->toBeFalse()
         ->and(sessionSettings(['http_basic' => ['enabled' => true, 'session' => true]])->enabled())->toBeTrue()
         ->and(sessionSettings([])->fixationProtection())->toBeTrue()

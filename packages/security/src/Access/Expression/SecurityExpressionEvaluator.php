@@ -99,12 +99,13 @@ final class SecurityExpressionEvaluator
 
     /**
      * The authorities an expression ASKS FOR, read off its tokens without evaluating anything: every string
-     * literal that is a direct argument of hasRole()/hasAnyRole()/hasAuthority()/hasAnyAuthority(), with roles
-     * normalised to `ROLE_` exactly as SecurityExpressionRoot::hasRole() normalises them at evaluation. A
-     * refusal reports this list as `requiredAuthorities` so a client can say "you need ROLE_ADMIN" without
-     * ever seeing the expression or the class it guards. hasPermission() and the nullary functions name no
-     * authority and contribute nothing; a malformed expression contributes nothing rather than throwing,
-     * because this runs inside the refusal path and a refusal must never turn into a 500.
+     * literal that is a direct argument of hasRole()/hasAnyRole()/hasAuthority()/hasAnyAuthority()/hasScope()/
+     * hasAnyScope(), with roles normalised to `ROLE_` and scopes to `SCOPE_` exactly as
+     * SecurityExpressionRoot::hasRole() and hasScope() normalise them at evaluation. A refusal reports this
+     * list as `requiredAuthorities` so a client can say "you need ROLE_ADMIN" without ever seeing the
+     * expression or the class it guards. hasPermission() and the nullary functions name no authority and
+     * contribute nothing; a malformed expression contributes nothing rather than throwing, because this runs
+     * inside the refusal path and a refusal must never turn into a 500.
      *
      * @return list<string>
      */
@@ -121,21 +122,25 @@ final class SecurityExpressionEvaluator
 
         for ($i = 0; $i < $count; $i++) {
             $token = $tokens[$i];
-            if ($token['type'] !== 'ident' || ! in_array($token['value'], ['hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority'], true)) {
+            if ($token['type'] !== 'ident' || ! in_array($token['value'], ['hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority', 'hasScope', 'hasAnyScope'], true)) {
                 continue;
             }
             if (($tokens[$i + 1]['type'] ?? '') !== '(') {
                 continue;
             }
 
-            $role = $token['value'] === 'hasRole' || $token['value'] === 'hasAnyRole';
+            $prefix = match ($token['value']) {
+                'hasRole', 'hasAnyRole' => 'ROLE_',
+                'hasScope', 'hasAnyScope' => 'SCOPE_',
+                default => '',
+            };
             for ($j = $i + 2; $j < $count && $tokens[$j]['type'] !== ')'; $j++) {
                 if ($tokens[$j]['type'] !== 'string') {
                     continue;
                 }
                 $value = $tokens[$j]['value'];
-                if ($role && ! str_starts_with($value, 'ROLE_')) {
-                    $value = 'ROLE_'.$value;
+                if ($prefix !== '' && ! str_starts_with($value, $prefix)) {
+                    $value = $prefix.$value;
                 }
                 if (! in_array($value, $authorities, true)) {
                     $authorities[] = $value;
@@ -344,7 +349,7 @@ final class SecurityExpressionEvaluator
         $root = $this->root;
         if ($root === null) {
             return match ($name) {
-                'hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority', 'hasPermission',
+                'hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority', 'hasScope', 'hasAnyScope', 'hasPermission',
                 'isAuthenticated', 'permitAll', 'denyAll' => true,
                 default => throw new ExpressionParseException("Unknown function '{$name}'."),
             };
@@ -355,6 +360,8 @@ final class SecurityExpressionEvaluator
             'hasAnyRole' => $root->hasAnyRole(...$this->strings($args, $name)),
             'hasAuthority' => $root->hasAuthority($this->str($args, 0, $name)),
             'hasAnyAuthority' => $root->hasAnyAuthority(...$this->strings($args, $name)),
+            'hasScope' => $root->hasScope($this->str($args, 0, $name)),
+            'hasAnyScope' => $root->hasAnyScope(...$this->strings($args, $name)),
             'hasPermission' => $root->hasPermission($args[0] ?? null, $this->str($args, 1, $name)),
             'isAuthenticated' => $root->isAuthenticated(),
             'permitAll' => $root->permitAll(),

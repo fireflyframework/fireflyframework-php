@@ -49,3 +49,10 @@ it('rejects a quote-injection authority value via fromConfig()', function () {
         ['pattern' => 'api/*', 'access' => "hasAuthority:A') or permitAll() or hasAuthority('B"],
     ]);
 })->throws(ConfigurationException::class);
+
+it('accepts hasScope in the builder and the hasScope: access spec', function () {
+    $rules = HttpSecurity::fromConfig([['pattern' => 'api/orders', 'access' => 'hasScope:orders:read']])->build();
+
+    expect($rules[0]->expression)->toBe("hasScope('orders:read')")
+        ->and(HttpSecurity::create()->requestMatcher('api/*')->hasScope('profile')->build()[0]->expression)->toBe("hasScope('profile')");
+});

@@ -94,7 +94,8 @@ return [
     | OFF by default, and opt-in surface by surface. `enabled` is the master flag: it gates the principal
     | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers, the
     | programmatic AuthorizationChecker, the event publisher, method security on beans, and every
-    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point).
+    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point, and
+    | OAuth2 login — oauth2.client.login.enabled, in the block below).
     |
     | Each surface below has its own flag. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are
     | independent of the master flag and can be turned on by themselves; everything else ALSO requires it,
@@ -144,7 +145,8 @@ return [
          | AddQueuedCookiesToResponse and StartSession onto the global stack ahead of the security filters
          | (and excludes them on every route as it is matched — cached or not — where a second EncryptCookies
          | pass would null every cookie). It is switched on implicitly by form_login, remember_me and
-         | http_basic.session below. What the session carries is a context saved through the
+         | http_basic.session below, and by oauth2.client.login.enabled (OAuth2 login signs into the same
+         | session). What the session carries is a context saved through the
          | SecurityContextRepository: the interactive mechanisms (form login, http_basic.session, remember-me)
          | save at the moment of success, and so can your own code (a controller that calls
          | SessionSecurityContextRepository::save()). Nothing stored carries a credential: a principal that
@@ -219,8 +221,9 @@ return [
          | out is a link an attacker can plant) invalidates the session, expires the remember-me cookie and any
          | cookie named in `delete_cookies`, publishes LogoutSuccessEvent and redirects to `logout_success_url`.
          |
-         | Defaults: enabled follows form_login.enabled, logout_url '/logout', logout_success_url
-         | '/login?logout', invalidate_session true, delete_cookies [], clear_authentication true.
+         | Defaults: enabled follows form_login.enabled or oauth2.client.login.enabled, logout_url '/logout',
+         | logout_success_url '/login?logout', invalidate_session true, delete_cookies [],
+         | clear_authentication true.
         */
         'logout' => [
             // 'enabled' => true,
@@ -318,10 +321,10 @@ return [
             /*
              | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
              | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
-             | page with the request saved when form_login is on; otherwise a 401 with
+             | page with the request saved when form_login or oauth2.client.login is on; otherwise a 401 with
              | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
-             | `login`, `challenge` and `problem` force one of the three (`login` without form_login is refused
-             | at boot). An AUTHENTICATED but under-privileged request is always the 403.
+             | `login`, `challenge` and `problem` force one of the three (`login` without form_login or OAuth2
+             | login is refused at boot). An AUTHENTICATED but under-privileged request is always the 403.
              |
              | The browser test does NOT depend on firefly.web.error-page.enabled: switching the framework's
              | error page off changes how a 401 is drawn, not whether a person is sent to sign in.
@@ -355,8 +358,8 @@ return [
         ],
 
         /*
-         | OAuth2 resource server: validates bearer tokens against a remote JWKS. `jwks_uri` is required
-         | once `enabled` is true. An empty `issuer`/`audience` skips that claim check.
+         | OAuth2. resource_server validates bearer tokens against a remote JWKS (`jwks_uri` is required
+         | once `enabled` is true). An empty `issuer`/`audience` skips that claim check.
          |
          | Defaults: enabled false, issuer '', audience '', authorities_claim 'roles', cache_ttl 3600.
         */
@@ -387,6 +390,128 @@ return [
                 // same as PHP's execution limit, which turns a slow issuer into a fatal error. Default: 5.
                 'jwks_connect_timeout' => 5,
                 'jwks_timeout' => 5,
+            ],
+
+            /*
+             | OAuth2 client and OpenID Connect login — firefly/security-oauth2-client (Spring Security's
+             | oauth2Login() + oauth2Client()). `enabled` is the package master: registrations, discovery, the
+             | token client, the OAuth2AuthorizedClientManager and the Http::oauth2Client() macro. It does NOT
+             | need firefly.security.enabled (a job calling an API with client credentials has no inbound
+             | security); `login.enabled` DOES, and is refused at boot without it.
+             |
+             | Registrations and providers are spelled exactly as Spring Boot spells them. A registration whose
+             | `provider` (or, when absent, whose own id) names a preset — google, github, okta, keycloak,
+             | microsoft (alias entra) — inherits the preset's endpoints, scopes and client_name, and any
+             | `provider.{id}` key you set overlays it. Okta, Keycloak and Microsoft are per-tenant and need
+             | `provider.{id}.issuer_uri`. Any provider with an `issuer_uri` has every endpoint it does not
+             | spell out discovered from {issuer}/.well-known/openid-configuration (fetched through Laravel's
+             | Http client with the two timeouts below, cached for discovery.cache_ttl, refused when the
+             | document's issuer differs); a provider without one must spell out authorization_uri and
+             | token_uri, plus jwk_set_uri for an `openid` registration and user_info_uri for any other, or the
+             | boot is refused naming the key. Discovery is fetched on first use, so firefly:cache and console
+             | boots never need the provider; discovery.eager resolves every registration at boot instead.
+             |
+             | Login: GET {login.authorization_endpoint_base_uri}/{id} builds the authorization request (state,
+             | a nonce for `openid`, a PKCE S256 challenge when `pkce` — default true, ALWAYS for a public
+             | client), keeps it in the session and redirects; GET {login.redirection_endpoint_base_uri}/{id}
+             | checks the state (single-use, constant-time), exchanges the code, validates the id token against
+             | the provider's JWKS (iss, aud, azp, exp, iat, nonce, sub, with clock_skew seconds of leeway),
+             | loads userinfo, maps the claims to an OidcUser/OAuth2User principal (name from
+             | user_name_attribute; authorities OIDC_USER/OAUTH2_USER + SCOPE_x, then your
+             | GrantedAuthoritiesMapper bean), signs it into the session (id regenerated), publishes the
+             | authentication events and redirects to the saved request or default_success_url; a failure
+             | publishes the failure event and redirects to failure_url. The login page lists every
+             | authorization_code registration as "Sign in with {client_name}". Tokens are kept in the
+             | session ENCRYPTED with the application key; the principal carries claims, never a token.
+             |
+             | Logout: logout.oidc_initiated sends the browser to the provider's end_session_endpoint with
+             | id_token_hint, client_id and post_logout_redirect_uri ({baseUrl} expands to the app's root).
+             |
+             | Defaults: enabled false, login.enabled false, login.authorization_endpoint_base_uri
+             | '/oauth2/authorization', login.redirection_endpoint_base_uri '/login/oauth2/code',
+             | login.default_success_url '/', login.always_use_default_success_url false, login.failure_url
+             | '/login?error', logout.oidc_initiated false, logout.post_logout_redirect_uri '{baseUrl}/login?logout',
+             | clock_skew 60, http.connect_timeout 5, http.timeout 5, http.macro true, discovery.cache_ttl 3600,
+             | discovery.eager false, jwk_set.cache_ttl 3600, authorized_client.cache_ttl 86400; per
+             | registration: client_authentication_method client_secret_basic when a client_secret is set and
+             | none otherwise (the google and github presets say client_secret_basic outright — a web OAuth app
+             | there is never public — so a registration on them without a client_secret is refused at boot),
+             | authorization_grant_type authorization_code, redirect_uri
+             | '{baseUrl}/login/oauth2/code/{registrationId}', scope the preset's or [], client_name the
+             | preset's or the id, pkce true; per provider: user_name_attribute 'sub'.
+            */
+            'client' => [
+                'enabled' => env('FIREFLY_OAUTH2_CLIENT_ENABLED', false),
+
+                'login' => [
+                    'enabled' => env('FIREFLY_OAUTH2_LOGIN_ENABLED', false),
+                    // 'authorization_endpoint_base_uri' => '/oauth2/authorization',
+                    // 'redirection_endpoint_base_uri' => '/login/oauth2/code',
+                    // 'default_success_url' => '/',
+                    // 'always_use_default_success_url' => false,
+                    // 'failure_url' => '/login?error',
+                ],
+
+                'logout' => [
+                    'oidc_initiated' => env('FIREFLY_OAUTH2_OIDC_LOGOUT', false),
+                    // 'post_logout_redirect_uri' => '{baseUrl}/login?logout',
+                ],
+
+                // Seconds of leeway on exp/iat of an id token, and the margin before an access token's expiry
+                // at which the manager refreshes it. Default: 60.
+                'clock_skew' => 60,
+
+                // Outbound calls (discovery, token endpoint, JWKS, userinfo): the same bounded timeouts the
+                // resource server's JWKS fetch uses, and whether Http::oauth2Client('{id}') is registered.
+                'http' => [
+                    'connect_timeout' => 5,
+                    'timeout' => 5,
+                    'macro' => true,
+                ],
+
+                'discovery' => [
+                    'cache_ttl' => 3600,
+                    'eager' => env('FIREFLY_OAUTH2_DISCOVERY_EAGER', false),
+                ],
+
+                'jwk_set' => [
+                    'cache_ttl' => 3600,
+                ],
+
+                // How long a user-bound client that holds a refresh token stays in the cache service.
+                'authorized_client' => [
+                    'cache_ttl' => 86400,
+                ],
+
+                'registration' => [
+                    // 'google' => [
+                    //     'client_id' => env('GOOGLE_CLIENT_ID'),
+                    //     'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+                    // ],
+                    // 'corp' => [
+                    //     'provider' => 'keycloak',
+                    //     'client_id' => 'portal',
+                    //     'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
+                    //     'client_authentication_method' => 'client_secret_basic', // client_secret_basic | client_secret_post | none
+                    //     'authorization_grant_type' => 'authorization_code',      // authorization_code | client_credentials
+                    //     'redirect_uri' => '{baseUrl}/login/oauth2/code/{registrationId}',
+                    //     'scope' => ['openid', 'profile', 'email'],
+                    //     'client_name' => 'Corporate SSO',
+                    //     'pkce' => true,
+                    // ],
+                ],
+
+                'provider' => [
+                    // 'keycloak' => [
+                    //     'issuer_uri' => 'https://sso.example.com/realms/corp',
+                    //     'authorization_uri' => null,
+                    //     'token_uri' => null,
+                    //     'jwk_set_uri' => null,
+                    //     'user_info_uri' => null,
+                    //     'user_name_attribute' => 'sub',
+                    //     'end_session_uri' => null,
+                    // ],
+                ],
             ],
         ],
 

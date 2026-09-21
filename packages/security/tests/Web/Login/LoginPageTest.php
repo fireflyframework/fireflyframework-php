@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Security\Web\Login\LoginPage;
+use Firefly\Security\Web\Login\LoginPageLink;
 use Firefly\Security\Web\Login\LoginPageModel;
 
 function loginModel(bool $error = false, bool $loggedOut = false, ?string $rememberMe = null): LoginPageModel
@@ -41,4 +42,30 @@ it('shows the error state, the signed-out notice and the remember-me checkbox wh
     expect(LoginPage::render(loginModel(error: true)))->toContain('role="alert"')->toContain('Those credentials did not work.')
         ->and(LoginPage::render(loginModel(loggedOut: true)))->toContain('You have signed out.')
         ->and(LoginPage::render(loginModel(rememberMe: 'remember-me')))->toContain('type="checkbox" name="remember-me"');
+});
+
+it('lists every login-page link as a "Sign in with" button after the form, and draws no form for a links-only page', function () {
+    $links = [new LoginPageLink('google', 'Google', '/oauth2/authorization/google'), new LoginPageLink('corp', 'Corp <SSO>', '/oauth2/authorization/corp')];
+
+    $both = LoginPage::render(new LoginPageModel('Ledger', '/login', 'username', 'password', 'tok', false, false, null, true, $links));
+    $linksOnly = LoginPage::render(new LoginPageModel('Ledger', '/login', 'username', 'password', 'tok', false, false, null, false, $links));
+
+    expect($both)->toContain('<form class="panel form"')
+        ->toContain('<a class="btn provider" href="/oauth2/authorization/google" data-provider="google">Sign in with Google</a>')
+        ->toContain('Sign in with Corp &lt;SSO&gt;')
+        ->toContain('<p class="divider"><span>or</span></p>')
+        ->and(strpos($both, 'class="panel form"'))->toBeLessThan((int) strpos($both, 'class="panel providers"'))
+        ->and($linksOnly)->not->toContain('<form')
+        ->not->toContain('class="divider"')
+        ->toContain('Sign in with Google')
+        ->and(LoginPage::render(loginModel()))->not->toContain('providers');
+});
+
+it('words the error notice for a provider when the page has no password form', function () {
+    $providers = LoginPage::render(new LoginPageModel('Ledger', '/login', 'username', 'password', 'tok', true, false, null, false, [new LoginPageLink('okta', 'Okta', '/oauth2/authorization/okta')]));
+    $form = LoginPage::render(loginModel(error: true));
+
+    expect($providers)->toContain('role="alert">Signing in with the provider did not work. Try again, or choose another way in.</p>')
+        ->not->toContain('Check the username and the password')
+        ->and($form)->toContain('Those credentials did not work. Check the username and the password, then try again.');
 });

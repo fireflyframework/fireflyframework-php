@@ -118,7 +118,7 @@ final class SessionSecurityBootstrap implements BootPass
         $driver = $config->get('session.driver');
         if (! is_string($driver) || $driver === '') {
             throw new ConfigurationException(
-                'Session-backed security (form login, remember-me, http_basic.session or firefly.security.session.enabled) '
+                'Session-backed security (form login, OAuth2 login, remember-me, http_basic.session or firefly.security.session.enabled) '
                 .'needs a session driver: set SESSION_DRIVER (session.driver), or turn those mechanisms off.'
             );
         }

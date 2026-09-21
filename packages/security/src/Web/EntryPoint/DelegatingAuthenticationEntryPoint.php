@@ -19,9 +19,10 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   auto      — a BROWSER (the request names text/html, is not an XMLHttpRequest and is not under a
  *               `firefly.web.error-page.json-paths` path — the same negotiation the error page uses) is sent
- *               to the login page when form login is on; otherwise, when HTTP Basic is on, a 401 challenge;
- *               otherwise the 401 problem/page exactly as before.
- *   login     — always the login page (refused at boot without form login).
+ *               to the login page when form login or OAuth2 login is on (`FormLoginSettings::$pageEnabled`);
+ *               otherwise, when HTTP Basic is on, a 401 challenge; otherwise the 401 problem/page exactly as
+ *               before.
+ *   login     — always the login page (refused at boot when neither login is on).
  *   challenge — always the Basic challenge.
  *   problem   — always the exception, rendered by firefly/web.
  *
@@ -58,8 +59,8 @@ final class DelegatingAuthenticationEntryPoint implements AuthenticationEntryPoi
         if (! in_array($mode, [self::AUTO, self::LOGIN, self::CHALLENGE, self::PROBLEM], true)) {
             throw new ConfigurationException("firefly.security.http.entry_point must be one of auto, login, challenge or problem; got `{$mode}`.");
         }
-        if ($mode === self::LOGIN && ! $config->bool('firefly.security.form_login.enabled', false)) {
-            throw new ConfigurationException('firefly.security.http.entry_point is `login` but firefly.security.form_login.enabled is off: there is no login page to send anyone to.');
+        if ($mode === self::LOGIN && ! $config->bool('firefly.security.form_login.enabled', false) && ! $config->bool('firefly.security.oauth2.client.login.enabled', false)) {
+            throw new ConfigurationException('firefly.security.http.entry_point is `login` but neither firefly.security.form_login.enabled nor firefly.security.oauth2.client.login.enabled is on: there is no login page to send anyone to.');
         }
 
         return $mode;
@@ -77,7 +78,7 @@ final class DelegatingAuthenticationEntryPoint implements AuthenticationEntryPoi
 
     private function negotiate(Request $request): AuthenticationEntryPoint
     {
-        if ($this->formLogin->enabled && $this->pages->prefersHtml($request)) {
+        if ($this->formLogin->pageEnabled && $this->pages->prefersHtml($request)) {
             return $this->login;
         }
         if ($this->basic->enabled) {

@@ -541,6 +541,7 @@ return [
             4 => 'Illuminate\\Container\\Container',
             5 => 'Firefly\\Config\\Config',
             6 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+            7 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
         ],
     ],
     10 => [

@@ -116,3 +116,29 @@ it('falls back to the problem when nothing interactive is on, and validates the 
         ->and(fn () => DelegatingAuthenticationEntryPoint::modeFrom(new Config(new Repository(['firefly' => ['security' => ['http' => ['entry_point' => 'login']]]]))))->toThrow(ConfigurationException::class, 'entry_point')
         ->and(DelegatingAuthenticationEntryPoint::modeFrom(new Config(new Repository(['firefly' => ['security' => ['form_login' => ['enabled' => true], 'http' => ['entry_point' => 'login']]]]))))->toBe('login');
 });
+
+it('accepts the login mode for OAuth2 login alone, and negotiates a browser to the page for it', function () {
+    $config = new Config(new Repository(['firefly' => ['security' => ['oauth2' => ['client' => ['login' => ['enabled' => true]]], 'http' => ['entry_point' => 'login']]]]));
+
+    expect(DelegatingAuthenticationEntryPoint::modeFrom($config))->toBe('login');
+
+    $form = new FormLoginSettings(enabled: false, pageEnabled: true);
+    $http = new HttpBasicSettings;
+    $pages = new ErrorPageRenderer(new ErrorPageSettings);
+    $entryPoint = new DelegatingAuthenticationEntryPoint(
+        DelegatingAuthenticationEntryPoint::AUTO,
+        $form,
+        $http,
+        $pages,
+        new LoginUrlAuthenticationEntryPoint($form),
+        new BasicAuthenticationEntryPoint($http, $pages, new ProblemDetailsRenderer(new ErrorPageSettings)),
+        new ProblemAuthenticationEntryPoint,
+    );
+    $request = entryPointBrowserRequest('http://localhost/admin');
+
+    $response = $entryPoint->commence($request, new AuthenticationException('Authentication is required.'));
+
+    expect($response->getStatusCode())->toBe(302)
+        ->and($response->headers->get('Location'))->toBe('http://localhost/login')
+        ->and(SavedRequest::consume($request->session()))->toBe('http://localhost/admin');
+});

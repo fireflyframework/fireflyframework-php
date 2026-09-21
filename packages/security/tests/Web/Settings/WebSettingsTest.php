@@ -64,3 +64,17 @@ it('refuses a weak remember-me key the way JwtService refuses a weak secret, and
         ->and(fn () => RememberMeSettings::fromConfig(securityConfig(['remember_me' => ['enabled' => true, 'key' => str_repeat('k', 31)]])))->toThrow(WeakSigningSecretException::class)
         ->and(RememberMeSettings::fromConfig(securityConfig(['remember_me' => ['key' => 'changeme']]))->enabled)->toBeFalse();
 });
+
+it('mounts the login page for OAuth2 login alone, and turns logout on with it', function () {
+    $oauth2Only = FormLoginSettings::fromConfig(securityConfig(['oauth2' => ['client' => ['login' => ['enabled' => true]]]]));
+    $form = FormLoginSettings::fromConfig(securityConfig(['form_login' => ['enabled' => true]]));
+
+    expect($oauth2Only->enabled)->toBeFalse()
+        ->and($oauth2Only->pageEnabled)->toBeTrue()
+        ->and($oauth2Only->isLoginPage(Request::create('/login', 'GET')))->toBeTrue()
+        ->and($oauth2Only->isLoginProcessing(Request::create('/login', 'POST')))->toBeFalse()
+        ->and($form->pageEnabled)->toBeTrue()
+        ->and((new FormLoginSettings(enabled: true))->pageEnabled)->toBeTrue()
+        ->and((new FormLoginSettings)->pageEnabled)->toBeFalse()
+        ->and(LogoutSettings::fromConfig(securityConfig(['oauth2' => ['client' => ['login' => ['enabled' => true]]]]))->enabled)->toBeTrue();
+});

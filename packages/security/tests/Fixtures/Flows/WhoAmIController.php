@@ -12,7 +12,7 @@ use Firefly\Web\Attributes\RestController;
 #[RestController]
 final class WhoAmIController
 {
-    /** @return array{name: string, authorities: list<string>, authenticated: bool} */
+    /** @return array{name: string, authorities: list<string>, authenticated: bool, csrf: string} */
     #[GetMapping('/whoami')]
     public function whoami(): array
     {
@@ -22,6 +22,7 @@ final class WhoAmIController
             'name' => $authentication?->getName() ?? 'anonymous',
             'authorities' => $authentication?->authorityStrings() ?? [],
             'authenticated' => SecurityContextHolder::getContext()->isAuthenticated(),
+            'csrf' => request()->hasSession() ? request()->session()->token() : '',
         ];
     }
 }

@@ -146,6 +146,16 @@ expect($publisher->published)->toHaveCount(1)
     ->and($publisher->published[0]['eventType'])->toBe('AccountOpened');
 ```
 
+## Security test support
+
+`FireflyTestCase` carries Spring Security's test module as methods: `actingAsPrincipal()` (a principal for direct calls
+and every HTTP request), `actingAsOidcUser()` (a real `OidcUser` with claims, scopes, extra authorities and a registration
+id — no provider involved), `actingAsAuthentication()` (any `Authentication`, the seam beneath both), `withoutSecurity()`,
+and `#[WithMockUser]`; `RecordingAuthenticationEvents` records the security event family. See
+[Security → Testing](security.md#testing) and [OAuth2 Client → Testing](security-oauth2-client.md#testing), where
+`Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` — an OpenID Connect provider in one class, real front-channel
+routes and a faked back channel — is described.
+
 ## Pest expectations
 
 Registered once, at monorepo boot, by `Firefly\Testing\Pest\FireflyExpectations::register()` — called from the

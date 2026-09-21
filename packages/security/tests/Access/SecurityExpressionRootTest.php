@@ -41,3 +41,11 @@ it('resolves #param arguments and defers hasPermission to the evaluator (deny de
     expect($r->arg('id'))->toBe(42)
         ->and($r->hasPermission(42, 'READ'))->toBeFalse(); // DenyAll default
 });
+
+it('resolves hasScope and hasAnyScope against SCOPE_ authorities, normalising the prefix', function () {
+    expect(root(['SCOPE_orders:read'])->hasScope('orders:read'))->toBeTrue()
+        ->and(root(['SCOPE_orders:read'])->hasScope('SCOPE_orders:read'))->toBeTrue()
+        ->and(root(['SCOPE_orders:read'])->hasScope('orders:write'))->toBeFalse()
+        ->and(root(['SCOPE_profile'])->hasAnyScope('email', 'profile'))->toBeTrue()
+        ->and(root(['ROLE_ADMIN'])->hasAnyScope('email'))->toBeFalse();
+});

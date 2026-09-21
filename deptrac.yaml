@@ -78,6 +78,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/security/src/.*
+    - name: SecurityOAuth2Client
+      collectors:
+        - type: directory
+          value: packages/security-oauth2-client/src/.*
     - name: Actuator
       collectors:
         - type: directory
@@ -309,6 +313,20 @@ deptrac:
       - Cqrs
       - Validation
 
+    # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
+    # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and
+    # settings, extends Web's filter base, carries Container/Context attributes, reads Config, reuses Kernel
+    # exceptions and extends AutoConfigure's base. Security never depends on it (the login page and the
+    # logout filter see it only through ports Security owns). NOTHING depends on it except Testing.
+    SecurityOAuth2Client:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Security
+
     # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
     # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
     # boot/condition attributes, extends AutoConfigure's base, mounts on Web (RouteManifest/ProblemDetailsRenderer/
@@ -384,8 +402,9 @@ deptrac:
       - Web
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
-    # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it
-    # only from their tests/, which Deptrac's src-only collectors never see (no cycle; dev-scoped dep).
+    # package's frozen ports, so it depends on ALL layers (and SecurityOAuth2Client, for actingAsOidcUser()).
+    # It is depended on by NONE — consumers use it only from their tests/, which Deptrac's src-only
+    # collectors never see (no cycle; dev-scoped dep).
     Testing:
       - Kernel
       - Container
@@ -403,6 +422,7 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Client
       - Actuator
       - Observability
 

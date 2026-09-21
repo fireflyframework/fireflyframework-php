@@ -19,10 +19,10 @@ use Illuminate\Routing\Router;
 use Psr\Log\LoggerInterface;
 
 /**
- * Mounts GET {login_page} on the Router when form login is on (the ActuatorRouteRegistrar precedent: a route
- * whose path is configuration cannot be an attribute route). Only the PAGE is a route — the POST is handled
- * by FormLoginFilter before routing, as Spring does, so it needs no rule, no CSRF group and no controller.
- * Order 70: after the attribute routes (RouteWiringPass), before SessionSecurityBootstrap (90) installs the
+ * Mounts GET {login_page} on the Router when form login OR OAuth2 login is on (`FormLoginSettings::$pageEnabled`
+ * — the ActuatorRouteRegistrar precedent: a route whose path is configuration cannot be an attribute route).
+ * Only the PAGE is a route — the POST is handled by FormLoginFilter before routing, as Spring does, so it
+ * needs no rule, no CSRF group and no controller. Order 70: after the attribute routes (RouteWiringPass), before SessionSecurityBootstrap (90) installs the
  * session middleware whose RouteMatched listener strips it from this route too, and before the filter chain
  * (100). HttpSecurityFilter permits the page by path whatever the URL rules say, so `*` → authenticated does
  * not lock a visitor out of the one page that lets them in.
@@ -47,7 +47,8 @@ use Psr\Log\LoggerInterface;
  * contracts before any provider binds the service, so bound() alone answers true in a bare container and the
  * make() throws. The logger is what makes a `view` that does not render VISIBLE (LoginPageAction warns on
  * every fallback, naming the view); without one the page still falls back, silently, as it must in a bare
- * container.
+ * container. The LoginPageLinks port is optional in the same way: bound by firefly/security-oauth2-client
+ * (or the application) when there are providers to list, absent otherwise, and the page draws nothing for it.
  */
 final class LoginRouteRegistrar implements BootPass
 {
@@ -64,12 +65,12 @@ final class LoginRouteRegistrar implements BootPass
     public function run(BootContext $context): void
     {
         $config = $context->config;
-        if (! $config->bool('firefly.security.enabled', false) || ! $config->bool('firefly.security.form_login.enabled', false)) {
+        $settings = FormLoginSettings::fromConfig($config);
+        if (! $config->bool('firefly.security.enabled', false) || ! $settings->pageEnabled) {
             return;
         }
 
         $container = $context->container;
-        $settings = FormLoginSettings::fromConfig($config);
 
         /** @var Router $router */
         $router = $container->make('router');
@@ -92,6 +93,7 @@ final class LoginRouteRegistrar implements BootPass
                 $pages,
                 self::optional($container, ViewFactory::class),
                 self::optional($container, LoggerInterface::class),
+                self::optional($container, LoginPageLinks::class),
             ))($request);
         })->name('firefly.security.login');
     }
