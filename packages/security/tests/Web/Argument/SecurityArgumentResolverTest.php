@@ -98,3 +98,39 @@ it('answers null for anonymous where the parameter allows it, the anonymous cont
     expect($resolver->resolve(binding(UserDetails::class, nullable: true), $request))->toBeNull()
         ->and($resolver->resolve(binding('mixed', [AuthenticationPrincipal::class]), $request))->toBe('svc');
 });
+
+it('hands an attributed principal over only when it is what the parameter declares, and null otherwise', function () {
+    $resolver = new SecurityArgumentResolver;
+    $request = Request::create('/x', 'GET');
+
+    // A JWT's bare `sub` string against `#[AuthenticationPrincipal] ?UserDetails $user` — the declaration the
+    // attribute's own docblock recommends — is null, never the string a `?UserDetails` parameter refuses with a
+    // TypeError (a 500 from the dispatcher); against the non-nullable form it is the documented 401. The same
+    // string fits `?string`, `string` and `mixed` and is handed over unchanged.
+    SecurityContextHolder::setContext(new SecurityContext(Authentication::authenticated('svc', 'svc', [])));
+
+    expect($resolver->resolve(binding(UserDetails::class, [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding(User::class, [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding('int', [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding('object', [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding('string', [AuthenticationPrincipal::class], nullable: true), $request))->toBe('svc')
+        ->and($resolver->resolve(binding('string', [AuthenticationPrincipal::class]), $request))->toBe('svc')
+        ->and($resolver->resolve(binding('mixed', [AuthenticationPrincipal::class]), $request))->toBe('svc')
+        ->and(fn () => $resolver->resolve(binding(UserDetails::class, [AuthenticationPrincipal::class]), $request))->toThrow(AuthenticationException::class)
+        ->and(fn () => $resolver->resolve(binding('int', [AuthenticationPrincipal::class]), $request))->toThrow(AuthenticationException::class);
+
+    // The mirror: a form login's User against `#[AuthenticationPrincipal] ?string $sub` is null (a 401 when the
+    // parameter cannot take null), while every declaration the User fits — UserDetails, User itself, object,
+    // mixed — receives it; a class it is not an instance of is null like any other mismatch.
+    $user = new User('ada', '{noop}x', [new SimpleGrantedAuthority('ROLE_USER')]);
+    SecurityContextHolder::setContext(new SecurityContext(Authentication::authenticated('ada', $user, $user->getAuthorities())));
+
+    expect($resolver->resolve(binding('string', [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding(stdClass::class, [AuthenticationPrincipal::class], nullable: true), $request))->toBeNull()
+        ->and($resolver->resolve(binding(UserDetails::class, [AuthenticationPrincipal::class]), $request))->toBe($user)
+        ->and($resolver->resolve(binding(User::class, [AuthenticationPrincipal::class]), $request))->toBe($user)
+        ->and($resolver->resolve(binding('object', [AuthenticationPrincipal::class]), $request))->toBe($user)
+        ->and($resolver->resolve(binding('mixed', [AuthenticationPrincipal::class]), $request))->toBe($user)
+        ->and(fn () => $resolver->resolve(binding('string', [AuthenticationPrincipal::class]), $request))->toThrow(AuthenticationException::class)
+        ->and(fn () => $resolver->resolve(binding(stdClass::class, [AuthenticationPrincipal::class]), $request))->toThrow(AuthenticationException::class);
+});

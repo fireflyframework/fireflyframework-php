@@ -48,6 +48,19 @@ final class ProfileController
         return ['sub' => $sub];
     }
 
+    /**
+     * The declaration the attribute recommends for a UserDetails principal, and one this suite feeds BOTH
+     * kinds: a form login's User, which it receives, and a JWT's bare `sub` string, which is not a UserDetails
+     * and must be the null the declaration allowed for — never a TypeError from the dispatcher.
+     *
+     * @return array{user: string|null}
+     */
+    #[GetMapping('/open/principal-user')]
+    public function principalUser(#[AuthenticationPrincipal] ?UserDetails $user): array
+    {
+        return ['user' => $user?->getUsername()];
+    }
+
     /** @return array{principal: string|null} */
     #[GetMapping('/open/whoami')]
     public function whoami(#[AuthenticationPrincipal] mixed $principal): array

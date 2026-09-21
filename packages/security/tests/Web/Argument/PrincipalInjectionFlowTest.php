@@ -72,6 +72,29 @@ it('hands a JWT subject to a nullable scalar principal, and null to it when nobo
     $this->withHeader('Authorization', $this->bearerFor('svc-42'))->getJson('/open/whoami')->assertOk()->assertJson(['principal' => 'svc-42']);
 });
 
+it('hands an attributed principal over only when it fits the parameter, whichever mechanism signed the request in', function () {
+    /** @var PrincipalCapstoneTestCase $this */
+    // A JWT's principal is its `sub` string, not a UserDetails: `#[AuthenticationPrincipal] ?UserDetails` is the
+    // null it allowed for, not the string a `?UserDetails` parameter would refuse with a TypeError (a 500).
+    $this->withHeader('Authorization', $this->bearerFor('svc-42'))->getJson('/open/principal-user')->assertOk()->assertJson(['user' => null]);
+
+    // A form login's principal is the User: the same parameter receives it, and the `?string $sub` that took
+    // the JWT subject is null for it — the mirror image of the case above, through the same session. The
+    // bearer header is dropped first: withHeader() persists for the whole test, and a request carrying both
+    // would be the JWT filter's, not the session's.
+    $this->flushHeaders();
+    $page = $this->get('/login');
+    $this->forgetSession();
+    $login = $this->followSession($page)->post('/login', ['username' => 'ada', 'password' => 'secret', '_token' => $this->csrfTokenFrom($page)]);
+
+    $this->forgetSession();
+    $this->followSession($login)->getJson('/open/principal-user')->assertOk()->assertJson(['user' => 'ada']);
+    $this->forgetSession();
+    $this->followSession($login)->getJson('/open/sub')->assertOk()->assertJson(['sub' => null]);
+    $this->forgetSession();
+    $this->followSession($login)->getJson('/open/whoami')->assertOk()->assertJson(['principal' => 'details:ada']);
+});
+
 it('never reads a principal from the query string, whoever asks', function () {
     /** @var PrincipalCapstoneTestCase $this */
     $this->getJson('/open/whoami?principal=admin')->assertOk()->assertJson(['principal' => null]);
