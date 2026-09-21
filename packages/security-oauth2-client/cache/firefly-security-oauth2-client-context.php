@@ -74,6 +74,44 @@ return [
                 ],
             ],
             3 => [
+                'method' => 'oauth2AccessTokenResponseClient',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Token\\OAuth2AccessTokenResponseClient',
+                        ],
+                    ],
+                ],
+            ],
+            4 => [
+                'method' => 'oidcIdTokenDecoderFactory',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Oidc\\OidcIdTokenDecoderFactory',
+                        ],
+                    ],
+                ],
+            ],
+            5 => [
                 'method' => 'oauth2AuthorizationRequestResolver',
                 'conditions' => [
                     0 => [
@@ -100,7 +138,7 @@ return [
                     ],
                 ],
             ],
-            4 => [
+            6 => [
                 'method' => 'authorizationRequestRepository',
                 'conditions' => [
                     0 => [
@@ -127,7 +165,7 @@ return [
                     ],
                 ],
             ],
-            5 => [
+            7 => [
                 'method' => 'loginPageLinks',
                 'conditions' => [
                     0 => [
@@ -150,6 +188,114 @@ return [
                         'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
                         'args' => [
                             0 => 'Firefly\\Security\\Web\\Login\\LoginPageLinks',
+                        ],
+                    ],
+                ],
+            ],
+            8 => [
+                'method' => 'userInfoClient',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
+                'method' => 'oauth2UserService',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\User\\OAuth2UserService',
+                        ],
+                    ],
+                ],
+            ],
+            10 => [
+                'method' => 'oidcUserService',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\User\\OidcUserService',
+                        ],
+                    ],
+                ],
+            ],
+            11 => [
+                'method' => 'oauth2LoginAuthenticationProvider',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Web\\Login\\OAuth2LoginAuthenticationProvider',
                         ],
                     ],
                 ],

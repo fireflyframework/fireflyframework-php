@@ -57,6 +57,32 @@ return [
                 ],
             ],
             3 => [
+                'method' => 'oauth2AccessTokenResponseClient',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Token\\OAuth2AccessTokenResponseClient',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                ],
+            ],
+            4 => [
+                'method' => 'oidcIdTokenDecoderFactory',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Oidc\\OidcIdTokenDecoderFactory',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Cache\\Repository',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                ],
+            ],
+            5 => [
                 'method' => 'oauth2AuthorizationRequestResolver',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2AuthorizationRequestResolver',
                 'name' => null,
@@ -67,7 +93,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            4 => [
+            6 => [
                 'method' => 'authorizationRequestRepository',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\AuthorizationRequestRepository',
                 'name' => null,
@@ -78,7 +104,7 @@ return [
                 'dependencies' => [
                 ],
             ],
-            5 => [
+            7 => [
                 'method' => 'loginPageLinks',
                 'returns' => 'Firefly\\Security\\Web\\Login\\LoginPageLinks',
                 'name' => null,
@@ -90,6 +116,59 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
                     1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
                     2 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            8 => [
+                'method' => 'userInfoClient',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                ],
+            ],
+            9 => [
+                'method' => 'oauth2UserService',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OAuth2UserService',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
+                ],
+            ],
+            10 => [
+                'method' => 'oidcUserService',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OidcUserService',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
+                ],
+            ],
+            11 => [
+                'method' => 'oauth2LoginAuthenticationProvider',
+                'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\Login\\OAuth2LoginAuthenticationProvider',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\Token\\OAuth2AccessTokenResponseClient',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\Oidc\\OidcIdTokenDecoderFactory',
+                    2 => 'Firefly\\Security\\OAuth2\\Client\\User\\OidcUserService',
+                    3 => 'Firefly\\Security\\OAuth2\\Client\\User\\OAuth2UserService',
+                    4 => 'Firefly\\Security\\OAuth2\\Client\\User\\GrantedAuthoritiesMapper',
                 ],
             ],
         ],

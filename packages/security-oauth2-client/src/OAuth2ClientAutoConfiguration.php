@@ -11,11 +11,21 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
+use Firefly\Security\OAuth2\Client\Oidc\OidcIdTokenDecoderFactory;
 use Firefly\Security\OAuth2\Client\Registration\ClientRegistrationRepository;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
 use Firefly\Security\OAuth2\Client\Registration\PropertiesClientRegistrationRepository;
+use Firefly\Security\OAuth2\Client\Token\DefaultOAuth2AccessTokenResponseClient;
+use Firefly\Security\OAuth2\Client\Token\OAuth2AccessTokenResponseClient;
+use Firefly\Security\OAuth2\Client\User\DefaultOAuth2UserService;
+use Firefly\Security\OAuth2\Client\User\DefaultOidcUserService;
+use Firefly\Security\OAuth2\Client\User\GrantedAuthoritiesMapper;
+use Firefly\Security\OAuth2\Client\User\OAuth2UserService;
+use Firefly\Security\OAuth2\Client\User\OidcUserService;
+use Firefly\Security\OAuth2\Client\User\UserInfoClient;
 use Firefly\Security\OAuth2\Client\Web\AuthorizationRequestRepository;
+use Firefly\Security\OAuth2\Client\Web\Login\OAuth2LoginAuthenticationProvider;
 use Firefly\Security\OAuth2\Client\Web\Login\OAuth2LoginPageLinks;
 use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequestResolver;
 use Firefly\Security\OAuth2\Client\Web\SessionAuthorizationRequestRepository;
@@ -71,6 +81,26 @@ final class OAuth2ClientAutoConfiguration
     }
 
     /**
+     * The token endpoint client and the id-token decoders, under the package master alone: the login uses
+     * them, and so does the authorized-client manager a job drives without any inbound security.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AccessTokenResponseClient::class)]
+    public function oauth2AccessTokenResponseClient(Container $container, OAuth2ClientSettings $settings): OAuth2AccessTokenResponseClient
+    {
+        return new DefaultOAuth2AccessTokenResponseClient($container, $settings);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OidcIdTokenDecoderFactory::class)]
+    public function oidcIdTokenDecoderFactory(Cache $cache, OAuth2ClientSettings $settings): OidcIdTokenDecoderFactory
+    {
+        return new OidcIdTokenDecoderFactory($cache, $settings);
+    }
+
+    /**
      * THE LOGIN HALF. Gated by the package master AND `login.enabled` — not by the security master, because
      * none of these three needs a master-gated bean; the two filters, which do, carry the master condition
      * themselves, and OAuth2ClientWiringPass refuses a login without the master flag at boot.
@@ -101,5 +131,45 @@ final class OAuth2ClientAutoConfiguration
     public function loginPageLinks(ClientRegistrationRepository $registrations, OAuth2ClientSettings $settings, ?LoggerInterface $logger = null): LoginPageLinks
     {
         return new OAuth2LoginPageLinks($registrations, $settings, $logger);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(UserInfoClient::class)]
+    public function userInfoClient(Container $container, OAuth2ClientSettings $settings): UserInfoClient
+    {
+        return new UserInfoClient($container, $settings);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2UserService::class)]
+    public function oauth2UserService(UserInfoClient $userInfo): OAuth2UserService
+    {
+        return new DefaultOAuth2UserService($userInfo);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OidcUserService::class)]
+    public function oidcUserService(UserInfoClient $userInfo): OidcUserService
+    {
+        return new DefaultOidcUserService($userInfo);
+    }
+
+    /**
+     * The GrantedAuthoritiesMapper is optional and has no default: an application binds one as a #[Bean] to
+     * turn `groups`/`roles` claims into ROLE_*; without one the granted authorities are used as they are.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2LoginAuthenticationProvider::class)]
+    public function oauth2LoginAuthenticationProvider(OAuth2AccessTokenResponseClient $tokens, OidcIdTokenDecoderFactory $decoders, OidcUserService $oidcUsers, OAuth2UserService $oauth2Users, ?GrantedAuthoritiesMapper $authoritiesMapper = null): OAuth2LoginAuthenticationProvider
+    {
+        return new OAuth2LoginAuthenticationProvider($tokens, $decoders, $oidcUsers, $oauth2Users, $authoritiesMapper);
     }
 }
