@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Tests\Browser\Support\SecuredBrowserTestCase;
 use Firefly\Tests\Browser\Support\SignedInBrowserTestCase;
 
 pest()->extend(SignedInBrowserTestCase::class);
@@ -36,4 +37,31 @@ it('renders the login page in dark mode and at phone width', function (): void {
     /** @var SignedInBrowserTestCase $this */
     visit('/orders')->inDarkMode()->assertPathIs('/login')->assertSee('Sign in')->assertNoJavaScriptErrors()->screenshot(filename: 'login-dark');
     visit('/orders')->on()->mobile()->assertPathIs('/login')->assertSee('Sign in')->assertNoJavaScriptErrors()->screenshot(filename: 'login-mobile');
+});
+
+it('shows the error state for a wrong password, then honours the saved request on the right one', function (): void {
+    /** @var SignedInBrowserTestCase $this */
+    $page = visit('/orders');
+
+    $page->assertPathIs('/login')
+        ->fill('username', SecuredBrowserTestCase::ADMIN)
+        ->fill('password', 'not-the-password')
+        ->click(SecuredBrowserTestCase::SIGN_IN_BUTTON)
+        ->assertPathIs('/login')
+        ->assertQueryStringHas('error')
+        ->assertSee('Those credentials did not work.')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'login-error');
+
+    // The saved request survives the refused attempt (a failure never consumes it), and the fixation-protected
+    // sign-in keeps the session's attributes — so the right password lands on /orders, not on the default URL.
+    $page->fill('username', SecuredBrowserTestCase::ADMIN)
+        ->fill('password', SecuredBrowserTestCase::ADMIN_PASSWORD)
+        ->click(SecuredBrowserTestCase::SIGN_IN_BUTTON)
+        ->assertPathIs('/orders')
+        ->assertSourceHas('"items"')
+        ->assertSourceHas('"total"')
+        ->assertDontSee('Sign in')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'login-saved-request');
 });
