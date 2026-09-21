@@ -81,14 +81,17 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### Added
 
-- **`packages/kernel` — the `DataAccessException` family.** `DataIntegrityViolationException` (409),
-  `DuplicateKeyException` (409, under it), `CannotAcquireLockException` (409), `DeadlockLoserDataAccessException`
-  (409, under it), `QueryTimeoutException` (504), `TransientDataAccessResourceException` (503),
-  `DataAccessResourceFailureException` (503), `BadSqlGrammarException` (500), `EmptyResultDataAccessException`
-  (404), `IncorrectResultSizeDataAccessException` (500), `OptimisticLockingFailureException` (409) and
-  `TransactionTimedOutException` (504). `DataAccessException`'s constructor gains trailing `httpStatus`/`severity`
-  parameters; `Firefly\Data\Repository\Locking\OptimisticLockException` is now an `OptimisticLockingFailureException`
-  and keeps its name and code.
+- **`packages/kernel` — the `DataAccessException` family, and a transaction timeout.**
+  `DataIntegrityViolationException` (409), `DuplicateKeyException` (409, under it), `CannotAcquireLockException`
+  (409), `DeadlockLoserDataAccessException` (409, under it), `QueryTimeoutException` (504),
+  `TransientDataAccessResourceException` (503), `DataAccessResourceFailureException` (503),
+  `BadSqlGrammarException` (500), `EmptyResultDataAccessException` (404), `IncorrectResultSizeDataAccessException`
+  (500) and `OptimisticLockingFailureException` (409), every one under `DataAccessException`. Beside the family,
+  not in it, `TransactionTimedOutException` (504) extends `Infrastructure\TimeoutException` like every other
+  timeout — Spring's `TransactionException` side — so `catch (DataAccessException $e)` does not see it and
+  `catch (TimeoutException $e)` does. `DataAccessException`'s constructor gains trailing `httpStatus`/`severity`
+  parameters; `Firefly\Data\Repository\Locking\OptimisticLockException` is now an
+  `OptimisticLockingFailureException` and keeps its name and code.
 
 - **`packages/data` — Spring Data parity.** `PersistenceExceptionTranslator` behind
   `firefly.data.exception-translation.enabled` (default on), applied in every `EloquentRepository` method, in
@@ -102,8 +105,9 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   every read; `Slice` and `PagingAndSortingRepository::findSlice()`, derived queries paging by a trailing
   `Pageable`; `getById()`; `#[Transactional(timeout:)]` enforced with a per-driver statement timeout
   (`StatementTimeoutApplier` — pgsql `statement_timeout`, mysql `max_execution_time`, mariadb
-  `max_statement_time`, sqlite's busy timeout) and a wall-clock deadline, `firefly.data.transaction.default-timeout`
-  and `.statement-timeout`; `#[TransactionalEventListener]` in `BEFORE_COMMIT`/`AFTER_COMMIT`/`AFTER_ROLLBACK`/
+  `max_statement_time`, sqlite's busy timeout) and a wall-clock deadline that rolls back and throws the kernel's
+  `TransactionTimedOutException` (a `TimeoutException`, 504), `firefly.data.transaction.default-timeout` and
+  `.statement-timeout`; `#[TransactionalEventListener]` in `BEFORE_COMMIT`/`AFTER_COMMIT`/`AFTER_ROLLBACK`/
   `AFTER_COMPLETION` over a `TransactionSynchronizationRegistry` that follows savepoints, registered by the new
   `DataWiringProvider` (`firefly.data.transactional-event-listeners.enabled`). The compiled `transactional.php`
   gains `repositories` and `listeners` maps; older files still load.

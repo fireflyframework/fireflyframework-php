@@ -111,6 +111,12 @@ it('lets ValidationException carry field errors', function () {
  * `DuplicateKeyException` when it wants to say "that name is taken", `DataIntegrityViolationException` when any
  * constraint failure reads the same to it, `DataAccessException` when the database is simply not its problem.
  * Spring's PersistenceExceptionTranslator hands out exactly this tree; the data package's translator does too.
+ *
+ * TransactionTimedOutException is the one deliberate outsider: it is a TimeoutException like every other
+ * timeout (Spring's TransactionException side, not its DataAccessException side), so the docs promise that
+ * `catch (DataAccessException $e)` does NOT see a transaction that ran past its deadline. The negative
+ * assertion pins that promise — a well-meaning re-parenting would otherwise change what handlers catch
+ * without failing a single test.
  */
 it('nests the data-access family the way Spring does', function () {
     expect(new DuplicateKeyException)->toBeInstanceOf(DataIntegrityViolationException::class)
@@ -118,6 +124,7 @@ it('nests the data-access family the way Spring does', function () {
         ->and(new DeadlockLoserDataAccessException)->toBeInstanceOf(CannotAcquireLockException::class)
         ->and(new OptimisticLockingFailureException)->toBeInstanceOf(DataAccessException::class)
         ->and(new TransactionTimedOutException)->toBeInstanceOf(TimeoutException::class)
+        ->not->toBeInstanceOf(DataAccessException::class)
         ->and((new DuplicateKeyException)->getMessage())->toBe('A row with the same unique key already exists.')
         ->and((new DataAccessException('x', 'X', null, 418))->httpStatus())->toBe(418);
 });
