@@ -60,3 +60,12 @@ it('lists every login-page link as a "Sign in with" button after the form, and d
         ->toContain('Sign in with Google')
         ->and(LoginPage::render(loginModel()))->not->toContain('providers');
 });
+
+it('words the error notice for a provider when the page has no password form', function () {
+    $providers = LoginPage::render(new LoginPageModel('Ledger', '/login', 'username', 'password', 'tok', true, false, null, false, [new LoginPageLink('okta', 'Okta', '/oauth2/authorization/okta')]));
+    $form = LoginPage::render(loginModel(error: true));
+
+    expect($providers)->toContain('role="alert">Signing in with the provider did not work. Try again, or choose another way in.</p>')
+        ->not->toContain('Check the username and the password')
+        ->and($form)->toContain('Those credentials did not work. Check the username and the password, then try again.');
+});

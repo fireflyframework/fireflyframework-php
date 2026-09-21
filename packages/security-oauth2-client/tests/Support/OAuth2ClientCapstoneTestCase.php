@@ -144,4 +144,22 @@ abstract class OAuth2ClientCapstoneTestCase extends SecurityCapstoneTestCase
 
         return $strings;
     }
+
+    /**
+     * The content of every session file the suite has written — what a person with read access to
+     * storage/framework/sessions could read.
+     *
+     * @return list<string>
+     */
+    public function sessionFiles(): array
+    {
+        $contents = [];
+        foreach (glob($this->sessionDir().'/*') ?: [] as $file) {
+            if (is_file($file)) {
+                $contents[] = (string) file_get_contents($file);
+            }
+        }
+
+        return $contents;
+    }
 }

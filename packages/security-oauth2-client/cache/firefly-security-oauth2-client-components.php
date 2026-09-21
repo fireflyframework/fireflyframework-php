@@ -225,4 +225,32 @@ return [
             5 => 'Firefly\\Config\\Config',
         ],
     ],
+    2 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Client\\Web\\OAuth2LoginAuthenticationFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -88,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
+            1 => 'Firefly\\Security\\OAuth2\\Client\\Web\\AuthorizationRequestRepository',
+            2 => 'Firefly\\Security\\OAuth2\\Client\\Web\\Login\\OAuth2LoginAuthenticationProvider',
+            3 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientRepository',
+            4 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientService',
+            5 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            6 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            8 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+            9 => 'Illuminate\\Container\\Container',
+            10 => 'Firefly\\Config\\Config',
+        ],
+    ],
 ];

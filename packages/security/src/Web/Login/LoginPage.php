@@ -27,7 +27,11 @@ final class LoginPage
 
         $notice = '';
         if ($login->error) {
-            $notice = '<p class="notice down" role="alert">Those credentials did not work. Check the username and the password, then try again.</p>';
+            // The same sentence for a wrong password and an unknown user (see above); a page with no password
+            // form can only have failed at a provider, and says so.
+            $notice = $login->form
+                ? '<p class="notice down" role="alert">Those credentials did not work. Check the username and the password, then try again.</p>'
+                : '<p class="notice down" role="alert">Signing in with the provider did not work. Try again, or choose another way in.</p>';
         } elseif ($login->loggedOut) {
             $notice = '<p class="notice idle">You have signed out.</p>';
         }
