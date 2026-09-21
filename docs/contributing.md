@@ -49,9 +49,30 @@ bash scripts/check-no-sensitive-tracked.sh   # the pre-push guard, run directly
 ## Browser tests
 
 `tests/Browser/` drives the shipped skeleton app in a real Chromium through `pestphp/pest-plugin-browser`
-(Playwright): the welcome page, every admin dashboard page, the data browser's full round trip, the feature
-switches and the framework's 4xx/5xx pages — light and dark, desktop and phone, with and without the trace.
-The plugin serves the Testbench-booted app in-process, so a scenario can still assert against the database.
+(Playwright). The plugin serves the Testbench-booted app in-process, so a scenario can still assert against
+the database and the application log. One file per surface:
+
+| File | What it proves |
+|---|---|
+| `WelcomeAndApiTest.php` | the welcome page, a JSON controller, Swagger UI |
+| `AdminDashboardTest.php` | every dashboard page, the theme toggle, dark mode, phone width |
+| `AdminDataBrowserTest.php` | list → filter → record → edit → create → delete → relation |
+| `AdminSettingsTest.php` | a feature-switch round trip |
+| `ValidationErrorsTest.php` | a 422 from the skeleton's `POST /orders`, worded by the constraint that failed |
+| `ErrorPagesDebugTest.php`, `ErrorPagesProductionTest.php` | 404/405/500 with and without the trace; `api/*` stays JSON |
+| `ErrorPagesSecuredTest.php` | the 401 page for an anonymous browser; the 403 page for bob after a real sign-in |
+| `LoginFlowTest.php` | the framework's form login: the redirect with the saved request, `?error`, the saved request honoured, `POST /logout`, bob's 403, the 401 problem document on an API path |
+| `ObservabilityTest.php` | trace ids on the HTTP traffic page and in `/actuator/httpexchanges`, the HTTP server timer as a Prometheus histogram, the tracing switch, an ECS log document carrying the request's trace id |
+| `DataSurfacesTest.php` | the `db` health indicator on by default, the datasource page's data-layer panel, a duplicate key refused with a sentence through the data browser |
+
+The fixtures under `tests/Browser/Support/` boot the skeleton with a created app's provider set.
+`SecuredBrowserTestCase` puts the framework's own form login and two memory users (`ada`/`ROLE_ADMIN`,
+`bob`/`ROLE_USER`) in front of it and `SignedInBrowserTestCase` flips the entry point to the login redirect;
+`tests/BrowserSignInFixtureTest.php` drives that fixture through Laravel's test client inside the default gate,
+so the sign-in every browser flow stands on is proved without Node. Two facts of the in-process server shape
+the fixtures: every `visit()` is a new browser context (a fresh cookie jar — one page object per flow), and
+the process is long-lived (the session `Store` is forgotten after every request; the tracer initialises each
+fiber's OpenTelemetry context).
 
 The suite is its own PHPUnit testsuite (`browser`), kept out of the default `unit` suite in
 `phpunit.xml.dist` — a group exclusion would not do, because the plugin starts Playwright the moment a

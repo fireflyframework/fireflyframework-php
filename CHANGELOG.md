@@ -230,6 +230,19 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
   problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
 
+- **Cross-wave browser scenarios (`tests/Browser/LoginFlowTest.php`, `ObservabilityTest.php`,
+  `DataSurfacesTest.php`).** The framework's real form login replaces the harness's `?as=user` stand-in
+  (`tests/Browser/Support/FixturePrincipalFilter.php` is deleted): a browser refused at `/orders` is sent to the
+  framework's login page, a wrong password is answered on it, the right one comes back to the saved request,
+  `POST /logout` lands on the signed-out notice and leaves the browser anonymous, bob gets the 403 page at his
+  saved request, and an API path keeps its 401 problem document. The observability wave is proved in Chromium —
+  trace ids on the admin HTTP traffic page and in `/actuator/httpexchanges`, the HTTP server timer as a
+  Prometheus histogram, the tracing switch on the settings page — plus the ECS log document a traced request
+  writes, read back in-process and matched to the exchange row's trace id. The data wave: the `db` indicator UP
+  with no key set, the datasource page's data-layer panel, and a duplicate key refused with the data browser's
+  sentence rather than a 500. `tests/BrowserSignInFixtureTest.php` drives the sign-in fixture through Laravel's
+  test client inside the default gate. No new configuration keys.
+
 - **`packages/observability` — distributed tracing (wave F).** The `Tracer` port grew into a Spring/OTel-shaped
   API (`startSpan(name, kind, attributes, parent): Span`, `currentSpan()`, `Span::{setAttribute, addEvent,
   setStatus, recordException, updateName, deactivate, end}`, `SpanContext`, `SpanKind`, `SpanStatus`) with
@@ -307,6 +320,18 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   path and the new `constraint` member are the same in both styles.
 
 ### Fixed
+
+- **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
+  API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context
+  manually`) when a fiber reads its context before anything was attached in it; Laravel's handler turned that
+  into an `ErrorException` on the SERVER span's first read, so the first traced request under any fiber-based
+  server — the browser suite's in-process AMP server, an Amp or ReactPHP application server — failed.
+  `OpenTelemetryTracer` now attaches the root context to the current fiber once, before its first read there,
+  and only when the fiber has no context yet (an application's own scope, or the FFI fiber observer, is nested
+  under rather than shadowed); it memoises only the fibers whose floor it laid itself, so a fiber whose foreign
+  scope is later detached gets its floor on the next read instead of the warning. Pinned by four unit cases
+  inside a real `Fiber` under a warnings-are-fatal handler and by a capstone that handles `/demo/{id}` inside a
+  fiber through the real kernel. Found by the browser suite's observability scenarios.
 
 - **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved
   the `session` binding — the `SessionManager`, never a `Store` — so its "is the session started" guard was
