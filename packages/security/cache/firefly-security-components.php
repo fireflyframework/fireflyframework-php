@@ -302,6 +302,20 @@ return [
                 ],
             ],
             20 => [
+                'method' => 'rememberMeServices',
+                'returns' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Web\\Settings\\RememberMeSettings',
+                    1 => 'Firefly\\Security\\User\\UserDetailsService',
+                    2 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            21 => [
                 'method' => 'authenticationEntryPoint',
                 'returns' => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
                 'name' => null,
@@ -317,7 +331,7 @@ return [
                     4 => 'Firefly\\Web\\Exception\\ProblemDetailsRenderer',
                 ],
             ],
-            21 => [
+            22 => [
                 'method' => 'sessionCsrf',
                 'returns' => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
                 'name' => null,
@@ -329,7 +343,7 @@ return [
                     0 => 'Illuminate\\Container\\Container',
                 ],
             ],
-            22 => [
+            23 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -341,7 +355,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            23 => [
+            24 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -353,7 +367,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            24 => [
+            25 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,
@@ -481,6 +495,52 @@ return [
         ],
     ],
     8 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -93,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+            1 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            3 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+            4 => 'Illuminate\\Container\\Container',
+            5 => 'Firefly\\Config\\Config',
+            6 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    9 => [
+        'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -83,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            1 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            3 => 'Firefly\\Config\\Config',
+            4 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    10 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,

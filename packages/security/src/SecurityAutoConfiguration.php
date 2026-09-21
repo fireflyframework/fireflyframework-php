@@ -55,6 +55,8 @@ use Firefly\Security\Web\EntryPoint\BasicAuthenticationEntryPoint;
 use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
 use Firefly\Security\Web\EntryPoint\LoginUrlAuthenticationEntryPoint;
 use Firefly\Security\Web\EntryPoint\ProblemAuthenticationEntryPoint;
+use Firefly\Security\Web\RememberMe\RememberMeServices;
+use Firefly\Security\Web\RememberMe\TokenBasedRememberMeServices;
 use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Security\Web\Settings\HttpBasicSettings;
 use Firefly\Security\Web\Settings\LogoutSettings;
@@ -268,6 +270,23 @@ final class SecurityAutoConfiguration
     public function rememberMeSettings(Config $config): RememberMeSettings
     {
         return RememberMeSettings::fromConfig($config);
+    }
+
+    /**
+     * The remember-me port, bound ONLY while `firefly.security.remember_me.enabled` (under the master flag):
+     * the three filters that take it — form login sets the cookie, the remember-me filter re-authenticates
+     * from it, logout expires it — accept null and are inert without it, so turning the key on is what turns
+     * the whole mechanism on. The shipped implementation is the signed, stateless token; an application
+     * that wants a persistent-token store (Spring's PersistentTokenBasedRememberMeServices) binds its own
+     * RememberMeServices and this bean steps aside.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.remember_me.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(RememberMeServices::class)]
+    public function rememberMeServices(RememberMeSettings $settings, UserDetailsService $users, ?LoggerInterface $logger = null): RememberMeServices
+    {
+        return new TokenBasedRememberMeServices($settings, $users, $logger);
     }
 
     /**
