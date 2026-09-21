@@ -455,6 +455,32 @@ return [
         ],
     ],
     7 => [
+        'class' => 'Firefly\\Security\\Web\\Login\\FormLoginFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -92,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+            1 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            2 => 'Firefly\\Security\\Authentication\\AuthenticationManager',
+            3 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            4 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            5 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+            6 => 'Illuminate\\Container\\Container',
+            7 => 'Firefly\\Config\\Config',
+            8 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    8 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,
