@@ -7,6 +7,10 @@ use Firefly\Security\OAuth2\Client\Registration\ClientAuthenticationMethod;
 use Firefly\Security\OAuth2\Client\Registration\ClientRegistration;
 use Firefly\Security\OAuth2\Client\Registration\ProviderDetails;
 use Firefly\Security\OAuth2\Client\Registration\RedirectUriTemplate;
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Level;
+use Monolog\LogRecord;
 
 /** @param list<string> $scopes */
 function registration(array $scopes = ['openid', 'profile'], ClientAuthenticationMethod $method = ClientAuthenticationMethod::ClientSecretBasic, bool $pkce = true): ClientRegistration
@@ -43,6 +47,47 @@ it('never prints its client secret through a dump', function () {
         ->and($debug['clientSecret'])->toBe('***')
         ->and($debug['clientId'])->toBe('app')
         ->and(registration(method: ClientAuthenticationMethod::None)->__debugInfo()['clientSecret'])->toBe('');
+});
+
+it('never prints its client secret through json_encode or a log context', function () {
+    // json_encode and Monolog's normalizer (Laravel's default log path for an object in a context array) both
+    // read jsonSerialize() rather than __debugInfo(), so the mask has to cover that door as well.
+    $json = json_encode(registration(), JSON_THROW_ON_ERROR);
+    $record = new LogRecord(new DateTimeImmutable, 'app', Level::Warning, 'token exchange failed', ['registration' => registration()]);
+
+    expect($json)->not->toContain('a-very-secret-value')
+        ->and($json)->toContain('"clientSecret":"***"')
+        ->and($json)->toContain('"clientId":"app"')
+        ->and(registration()->jsonSerialize()['clientSecret'])->toBe('***')
+        ->and(registration(method: ClientAuthenticationMethod::None)->jsonSerialize()['clientSecret'])->toBe('')
+        ->and((new LineFormatter)->format($record))->not->toContain('a-very-secret-value')
+        ->and((new LineFormatter)->format($record))->toContain('"clientSecret":"***"')
+        ->and((new JsonFormatter)->format($record))->not->toContain('a-very-secret-value');
+});
+
+it('masks the client secret in a stack trace that captured the constructor arguments', function () {
+    // A development php.ini keeps the arguments of every frame in an exception's trace, and a registration is
+    // built from raw config — a TypeError on a mistyped key is a realistic way for the constructor call to end
+    // up in a trace. #[\SensitiveParameter] replaces the secret with a SensitiveParameterValue in that frame.
+    $previous = ini_set('zend.exception_ignore_args', '0');
+
+    try {
+        // @phpstan-ignore argument.type, new.resultUnused (the wrong type is the point: it makes the constructor frame appear in a trace; nothing is ever constructed)
+        new ClientRegistration('okta', 'app', 'a-very-secret-value', ClientAuthenticationMethod::ClientSecretBasic, AuthorizationGrantType::AuthorizationCode, '{baseUrl}/cb', 'not-an-array', 'Okta', new ProviderDetails('https://idp.example.com/authorize', 'https://idp.example.com/token'));
+
+        throw new LogicException('a mistyped scopes argument must be rejected, or this test proves nothing');
+    } catch (TypeError $e) {
+        $trace = $e->getTraceAsString();
+
+        // getTraceAsString() truncates a string argument to 15 characters, so the negative check must look for
+        // a prefix that would survive the truncation: 'a-very-secret-v...' is what an unmasked frame prints.
+        expect($trace)->toContain("ClientRegistration->__construct('okta', 'app', Object(SensitiveParameterValue)")
+            ->and($trace)->not->toContain('a-very-secret');
+    } finally {
+        if ($previous !== false) {
+            ini_set('zend.exception_ignore_args', $previous);
+        }
+    }
 });
 
 it('expands Spring\'s redirect-uri template from the application\'s base URL', function () {
