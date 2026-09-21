@@ -75,3 +75,31 @@ it('hydrates a list declared by #[Valid(each:)] alone, element by element', func
         ->assertStatus(201)
         ->assertExactJson(['references' => ['INV-1', 'INV-2']]);
 });
+
+it('validates every element of a list, naming the element the way the client wrote it', function () {
+    /** @var UncachedBootTestCase $this */
+    $response = $this->postJson('/transfers', [
+        'amount' => 250,
+        'beneficiary' => ['street' => 'Calle Mayor 1', 'postcode' => '28013'],
+        'lines' => [['reference' => 'INV-1', 'cents' => 100], ['reference' => '', 'cents' => 100]],
+    ]);
+
+    // A 422 from the cascade, never a 400 from the element's constructor — and the path is `lines[1].reference`,
+    // Spring's spelling, not Laravel's `lines.1.reference`.
+    $response->assertStatus(422)->assertJsonPath('code', 'VALIDATION_ERROR');
+
+    expect((array) $response->json('errors'))->toBe([
+        ['field' => 'lines[1].reference', 'message' => 'must not be blank', 'constraint' => 'NotBlank', 'rejectedValue' => ''],
+    ]);
+});
+
+it('validates a list declared by #[Valid(each:)] alone the same way', function () {
+    /** @var UncachedBootTestCase $this */
+    $response = $this->postJson('/batches', ['lines' => [['reference' => 'INV-1', 'cents' => 100], ['cents' => 100]]]);
+
+    $response->assertStatus(422)->assertJsonPath('code', 'VALIDATION_ERROR');
+
+    expect((array) $response->json('errors'))->toBe([
+        ['field' => 'lines[1].reference', 'message' => 'must not be blank', 'constraint' => 'NotBlank'],
+    ]);
+});

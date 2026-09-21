@@ -49,8 +49,9 @@ it('gives a list of DTOs an items $ref and emits the element as its own componen
 it('emits a component for a DTO reachable only two lists deep', function () {
     $document = FixtureDocument::generatorFor('NestedFixture')->generate();
 
-    // CreateOrderRequest -> lines[] -> options[] -> LineOptionRequest: a depth no #[Valid] cascade reaches,
-    // since ConstraintScanner flattens exactly one level and never through an `array` member at all.
+    // CreateOrderRequest -> lines[] -> options[] -> LineOptionRequest: a depth the generator reaches through
+    // `items`, never through the parent's manifest entry — the #[Valid] cascade does descend into list
+    // elements now (`lines.*.options.*.code`), but the generator reads an element's rules from ITS entry only.
     expect(FixtureDocument::resolve($document, '#/components/schemas/OrderLineRequest/properties/options/items'))
         ->toBe(['$ref' => '#/components/schemas/LineOptionRequest'])
         ->and(FixtureDocument::resolve($document, '#/components/schemas/LineOptionRequest/properties/code'))
@@ -288,4 +289,29 @@ it('keeps a properties map a map even when a member is named after a JSON Schema
             FixtureDocument::generatorFor('KeywordFixture')->generate(),
             '#/components/schemas/KeywordRequest/required',
         ))->toBe(['reference']);
+});
+
+it('keeps the wildcard keys the #[Valid] list cascade compiles out of every component', function () {
+    // The manifest the generator reads now carries `lines.*.sku` for CreateOrderRequest — the cascade is real —
+    // and a member literally named `*.sku` must never appear: the element's constraints come from ITS entry.
+    expect(FixtureDocument::constraints('NestedFixture')->rulesFor(CreateOrderRequest::class))->toHaveKey('lines.*.sku');
+
+    $document = FixtureDocument::generatorFor('NestedFixture')->generate();
+    /** @var array<string, array<string, mixed>> $schemas */
+    $schemas = FixtureDocument::resolve($document, '#/components/schemas') ?? [];
+
+    foreach ($schemas as $schema) {
+        /** @var array<string, mixed> $properties */
+        $properties = $schema['properties'] ?? [];
+        foreach (array_keys($properties) as $property) {
+            expect((string) $property)->not->toContain('*');
+        }
+    }
+
+    expect(array_keys(FixtureDocument::resolve($document, '#/components/schemas/CreateOrderRequest/properties') ?? []))
+        ->toBe(['reference', 'customerEmail', 'totalMinor', 'lines', 'channels', 'catalogue'])
+        ->and(FixtureDocument::resolve($document, '#/components/schemas/CreateOrderRequest/properties/lines/items'))
+        ->toBe(['$ref' => '#/components/schemas/OrderLineRequest'])
+        ->and(FixtureDocument::resolve($document, '#/components/schemas/OrderLineRequest/required'))
+        ->toBe(['sku', 'quantity', 'fulfilment']);
 });

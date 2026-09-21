@@ -8,7 +8,8 @@ use Firefly\Validation\Valid;
 
 /**
  * The root of the nested-body fixture graph: a scalar, a #[Valid] nested DTO (itself holding another DTO),
- * a list of DTOs, and an optional scalar. Exactly the shape that used to reach
+ * a #[Valid] list of DTOs (cascaded element by element from the `@param list<TransferLine>` tag), and an
+ * optional scalar. Exactly the shape that used to reach
  * `new MoneyTransferRequest(...)` with a raw array in $beneficiary and die with a TypeError.
  */
 final class MoneyTransferRequest
@@ -20,6 +21,7 @@ final class MoneyTransferRequest
         public readonly int $amount,
         #[Valid]
         public readonly AddressPayload $beneficiary,
+        #[Valid]
         public readonly array $lines = [],
         public readonly ?string $reference = null,
     ) {}

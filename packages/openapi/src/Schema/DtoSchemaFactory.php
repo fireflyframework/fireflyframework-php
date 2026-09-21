@@ -60,9 +60,12 @@ use ReflectionClass;
  * by class and therefore answers for every level of the graph, not just the body DTO at the top.
  *
  * RULES FOR A LIST ELEMENT COME FROM THE ELEMENT'S OWN MANIFEST ENTRY, never from the parent's dotted keys.
- * ConstraintScanner cascades a #[Valid] only through a CLASS-typed member (classTypeOf() returns null for an
- * `array`), so a parent's dotted keys can never describe a list element in the first place — and unflattening
- * a Laravel-style `lines.*.sku` into an element schema would invent a member literally named `*.sku`.
+ * ConstraintScanner cascades a #[Valid] list into its elements under Laravel's wildcard key (`lines.*.sku`),
+ * so a parent's entry DOES carry those keys — that is what validates each element — but unflattening them
+ * into an element schema would invent a member literally named `*.sku`. partition() files them under the
+ * `lines` member, and property() consults a member's nested keys only for a CLASS-typed member with no
+ * manifest entry of its own; an `array` member never reads them, and an element class always has its own
+ * entry because the compiler compiled its class too.
  */
 final class DtoSchemaFactory
 {

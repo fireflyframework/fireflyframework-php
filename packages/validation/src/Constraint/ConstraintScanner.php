@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Validation\Constraint;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Validation\Rule\NullAware;
 use Firefly\Validation\Valid;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -29,6 +30,15 @@ use ReflectionType;
  * `parent.parent.label`. For MoneyTransferRequest{ #[Valid] AddressPayload $beneficiary } it yields
  * `beneficiary.postcode` (etc.). Production loads the compiled ConstraintManifest instead (require+map);
  * this class runs only at cache time or, in tests, inline via ConstraintManifestCompiler.
+ *
+ * LISTS. A #[Valid] member typed `array`/`iterable` cascades into its ELEMENTS: the element class comes from
+ * ContainerElementType (#[Valid(each:)], a `@var list<X>` tag, or the constructor's `@param list<X> $name`
+ * — the same tag RouteScanner hydrates from, so a list the validator checks element by element is one the
+ * hydrator builds element by element), and its rules and descriptors are compiled under Laravel's wildcard
+ * key `lines.*.sku`, guarded by the same ancestor set (`Tree { #[Valid] list<Tree> $children }` expands one
+ * level). A list whose element class cannot be told is REFUSED here, at cache time, with a
+ * ConfigurationException naming the member and the three ways to say it — a #[Valid] that silently did
+ * nothing is how a bad SKU used to reach the element's constructor and come back as a 400 rather than a 422.
  *
  * TWO TABLES FROM ONE WALK. scan() is the rule list Laravel runs, exactly as it always was. constraints()
  * is the same walk's OTHER output: per property path, the ConstraintDescriptors that contributed those
@@ -138,13 +148,48 @@ final class ConstraintScanner
         }
 
         $nestedClass = $this->classTypeOf($type);
-        if ($nestedClass !== null && ! in_array($nestedClass, $ancestors, true)) {
-            $this->cascade($this->walk($nestedClass, [...$ancestors, $class]), $name.'.', $scanned);
+        if ($nestedClass !== null) {
+            if (! in_array($nestedClass, $ancestors, true)) {
+                $this->cascade($this->walk($nestedClass, [...$ancestors, $class]), $name.'.', $scanned);
+            }
+
+            return;
+        }
+
+        if (! $this->isContainer($type)) {
+            return;
+        }
+
+        $element = ContainerElementType::of($member);
+        if ($element === null) {
+            throw new ConfigurationException(sprintf(
+                '#[Valid] on %s::$%s cannot cascade: the element class of the list could not be determined. State it '
+                .'with #[Valid(each: Element::class)], a `@var list<Element>` docblock on the member, or `@param '
+                .'list<Element> $%s` on the constructor. The element must be a class — a list of scalars is '
+                .'constrained on the property itself — and a nested list (list<list<Element>>) is not supported.',
+                $class,
+                $name,
+                $name,
+            ));
+        }
+
+        if (! in_array($element, $ancestors, true)) {
+            $this->cascade($this->walk($element, [...$ancestors, $class]), $name.'.*.', $scanned);
         }
     }
 
     /**
-     * Copies a nested walk's two tables under a key prefix — `beneficiary.` for a nested object.
+     * An `array` or `iterable` declared type — the only shapes a #[Valid] list can wear. A union
+     * (`array|Countable`) or an untyped member is not a container the scanner will guess at.
+     */
+    private function isContainer(?ReflectionType $type): bool
+    {
+        return $type instanceof ReflectionNamedType && in_array($type->getName(), ['array', 'iterable'], true);
+    }
+
+    /**
+     * Copies a nested walk's two tables under a key prefix — `beneficiary.` for a nested object, `lines.*.` for
+     * every element of a list (Illuminate expands the wildcard per element and reports `lines.0.sku`).
      *
      * @param  Scanned  $nested
      * @param  Scanned  $scanned

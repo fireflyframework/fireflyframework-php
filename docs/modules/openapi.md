@@ -476,11 +476,12 @@ resolves against the `type: array` sitting beside it and becomes `minItems`/`max
 `minLength`/`maxLength`.
 
 !!! note "Rules for a list element come from the element's own manifest entry"
-    Never from the parent's dotted `#[Valid]` keys. `ConstraintScanner` cascades a `#[Valid]` only through a
-    **class-typed** member, so a parent's dotted keys can never describe a list element in the first place — and
-    unflattening a Laravel-style `lines.*.sku` into an element schema would invent a member literally named
-    `*.sku`. The element is constrained because the compiler compiled *its* class too, not because its parent
-    mentioned it.
+    Never from the parent's dotted `#[Valid]` keys. Since the `#[Valid]` cascade descends into list elements,
+    a parent's entry does carry Laravel-style wildcard keys (`lines.*.sku`) — that is what validates each
+    element — but unflattening them into an element schema would invent a member literally named `*.sku`.
+    The generator partitions a parent's dotted keys by first segment and consults them only as a fallback for
+    a class with no manifest entry of its own; an element class always has one, because the compiler compiled
+    *its* class too. `NestedSchemaTest` pins that no component ever documents a `*` member.
 
 !!! warning "There is a second, reflective path — and it is only ever a fallback"
     Three reachable shapes carry no compiled table: a DTO named by `#[ApiResponse(type:)]` (a response has no
