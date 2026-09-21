@@ -11,6 +11,8 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\JwksDocumentSource;
+use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
+use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
@@ -70,5 +72,22 @@ final class OAuth2ServerAutoConfiguration
     public function oauth2JwksDocumentSource(JwtSigningKeys $keys): JwksDocumentSource
     {
         return new AuthorizationServerJwksDocumentSource($keys);
+    }
+
+    /**
+     * `clients.driver`: `memory` builds the config map (every block validated here, and OAuth2ServerWiringPass
+     * resolves this bean at boot so a refusal is a startup failure); Task 5 adds `eloquent`. The map key is read
+     * spelled out in full, never through PREFIX, so tests/ConfigReferenceTest.php can see it.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(RegisteredClientRepository::class)]
+    public function registeredClientRepository(AuthorizationServerSettings $settings, Config $config): RegisteredClientRepository
+    {
+        /** @var array<string,mixed> $clients */
+        $clients = $config->has('firefly.security.oauth2.server.clients') ? $config->array('firefly.security.oauth2.server.clients') : [];
+
+        return InMemoryRegisteredClientRepository::fromConfig($clients, $settings);
     }
 }

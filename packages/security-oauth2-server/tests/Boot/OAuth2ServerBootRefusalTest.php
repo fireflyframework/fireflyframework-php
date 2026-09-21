@@ -108,3 +108,15 @@ it('refuses two published keys under one kid at boot — the rotation that kept 
         ]]],
     ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.jwt.previous_keys[0] and jwt.signing_key are different keys published under the same kid `main`');
 });
+
+it('refuses a client block that could never authenticate at boot, naming the client, rather than on the first token request, through the real boot', function () {
+    expect(fn () => bootOAuth2ServerAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => [
+            'enabled' => true,
+            'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')],
+            'clients' => ['driver' => 'memory', 'web-app' => ['client_secret' => 'plain', 'redirect_uris' => ['https://app.test/cb']]],
+        ]],
+    ]))->toThrow(ConfigurationException::class, 'Client [web-app]: client_secret must be an encoded value with an {id} prefix');
+});

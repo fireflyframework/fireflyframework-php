@@ -9,6 +9,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\Session\SessionSecuritySettings;
@@ -56,6 +57,7 @@ final class OAuth2ServerWiringPass implements BootPass
 
         $context->container->make(AuthorizationServerSettings::class);
         $context->container->make(JwtSigningKeys::class);
+        $context->container->make(RegisteredClientRepository::class);
     }
 
     /**
