@@ -211,6 +211,31 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 - **`packages/admin` — the HTTP traffic page shows the trace id**, and `firefly.observability.tracing.enabled`
   is a feature switch.
 
+- **`packages/validation` — `#[Valid]` cascades into list elements.** `#[Valid] array $lines` is validated
+  element by element with the element class's compiled constraints, keyed the way the client wrote them
+  (`lines[0].sku`, `lines[2].quantity`). The element class comes from `#[Valid(each: X::class)]` (new), a
+  `@var list<X>` docblock on the member, or the constructor's `@param list<X> $lines` — read by ONE resolver
+  (`ContainerElementType`) that `RouteScanner` and the OpenAPI generator's fallback now share, so a list the
+  validator checks is a list the hydrator builds. A `#[Valid]` list whose element class cannot be told (no
+  docblock, `list<string>`, `list<list<X>>`) is a `ConfigurationException` at `firefly:cache` time, not a
+  silent skip. The skeleton's `OrderRequest` uses it; a bad SKU on the second line is a 422 naming
+  `lines[1].sku`, where it was a 400 `UNBINDABLE_BODY`.
+
+- **`packages/validation` — Bean Validation's `message` element, and `constraint` on every field error.**
+  Every constraint attribute takes `message:` (`#[Size(min: 1, max: 50, message: 'between {min} and {max}
+  lines')]`, placeholders filled; `#[Rules('min:3', message: '…')]` as a named argument) and implements
+  `HasMessage`. `FieldError` gains `constraint` — the attribute that failed (`NotBlank`, `Size`, `Pattern`),
+  Spring's `FieldError` code — serialised after `code`, documented in the OpenAPI problem schema. The
+  compiled manifest carries a `ConstraintDescriptor` table under a reserved `@constraints` key;
+  `IlluminateValidator` is a `SmartValidator` (Spring's name) that receives it; a custom `Validator` an
+  application bound stays on the plain path. **`firefly.validation.messages`** (`constraint` | `laravel`,
+  default `constraint`) is read into a `ValidationSettings` bean.
+
+- **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
+  page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
+  document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"
+  [Pattern]`.
+
 ### Changed
 
 - **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
@@ -219,6 +244,16 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   would have turned CI red on the day the tool released. Adopting 3.12's rules (typing `query()` as
   `Builder<TModel>` through the specification and entity-graph seams, and `ModelAndView::$view` as a
   `view-string`) is a follow-up of its own.
+
+- **`packages/validation` — a field error's `message` is the constraint's sentence, not Laravel's humanised
+  attribute.** `{"field":"shipTo.street","message":"The ship to.street field is required."}` is now
+  `{"field":"shipTo.street","message":"must not be blank","constraint":"NotBlank","rejectedValue":""}`, the
+  way Spring's `FieldError` reads: `must not be blank`, `size must be between 1 and 50`, `must be a
+  well-formed email address`, `must match "^[A-Z0-9]…"`, `must be greater than 0` (the full table is in
+  `docs/modules/validation.md`). One violation is reported per constraint. The `validate($data, $rules)`
+  primitive is unchanged. **Migration:** a client or test that asserts on the old sentences sets
+  `firefly.validation.messages: laravel` (`FIREFLY_VALIDATION_MESSAGES=laravel`) and keeps them — the field
+  path and the new `constraint` member are the same in both styles.
 
 ### Fixed
 

@@ -136,7 +136,7 @@ Adding `#[Valid]` to a `#[RequestBody]` parameter gates the DTO on the Bean-Vali
 against the DTO class's compiled rules, and only on success is the DTO constructed (from the raw body,
 not the validator's `validated()` subset, so an unconstrained property is never silently dropped). A
 failure throws the kernel's `ValidationException` — HTTP 422, rendered as `application/problem+json`
-with one `FieldError` per failed field.
+with one `FieldError` per violated constraint.
 
 Constraints are per-property attributes on the DTO's constructor-promoted parameters (or plain typed
 properties): `#[NotBlank]`, `#[NotEmpty]`, `#[NotNull]`, `#[AssertTrue]`/`#[AssertFalse]`, `#[Size]`,
@@ -144,9 +144,12 @@ properties): `#[NotBlank]`, `#[NotEmpty]`, `#[NotNull]`, `#[AssertTrue]`/`#[Asse
 wrappers (`#[Iban]`, `#[Bic]`, `#[Swift]`, `#[Isin]`, `#[Cusip]`, `#[RoutingNumber]`, `#[Luhn]`,
 `#[CurrencyCode]`, `#[CountryCode]`, `#[LanguageTag]`, `#[UuidValue]`, `#[Phone]`, `#[PostalCode]`,
 `#[Percentage]`, `#[Money]`, `#[DecimalScale]`) and a `#[Rules]` escape hatch for any raw Illuminate rule
-string or `ValidationRule` object. `#[Valid]` on a nested DTO property cascades one object level deep
-(dot-prefixed nested keys), with a cycle guard against self-referential DTOs. See
-[Validation](validation.md) for the full constraint catalogue and the underlying `Rule` objects.
+string or `ValidationRule` object. `#[Valid]` on a nested DTO property cascades into it (dot-prefixed keys,
+`shipTo.postcode`) and on an `array` property into every **element** (`lines[1].sku`) — the element class read
+from `@param list<X>` / `@var list<X>` or `#[Valid(each: X::class)]`, the same source the hydrator builds
+from — with a cycle guard against self-referential DTOs. Each field error is worded by the constraint
+(`must not be blank`) and names it (`"constraint": "NotBlank"`). See [Validation](validation.md) for the full
+constraint catalogue, the sentences, and the underlying `Rule` objects.
 
 ```php
 final class CreateAccountRequest
@@ -213,9 +216,9 @@ generation, and Laravel's own route-caching machinery all apply to LaraFly route
       providers register. This is exactly the ordering Laravel itself guarantees (`LoadConfiguration`
       runs before `RegisterProviders`), so a config file is the correct place for this key — but a
       programmatic override made after providers have registered is too late to affect the scan.
-    - **Deep/array `#[Valid]` cascade is bounded.** Nested-DTO validation cascades exactly one object
-      level per `#[Valid]` property; it does not recurse into arrays/collections of DTOs, and a
-      self-referential `#[Valid]` chain expands only that one level (guarded against infinite descent).
+    - **Nested lists are not cascaded.** `#[Valid]` descends through nested DTOs and into the elements of a
+      list, but not into a list of lists (`list<list<X>>`); the scanner refuses such a member at cache time
+      rather than validating half of it.
     - **XML content negotiation is deferred** to the `MessageConverter` seam described above (SP-6);
       only JSON ships in M6.
 

@@ -95,17 +95,36 @@ The generated OpenAPI problem schema declares `additionalProperties: true` for t
 
 ## Field-level validation errors
 
-`ValidationException` additionally carries `Firefly\Kernel\Error\FieldError` instances:
+`ValidationException` additionally carries `Firefly\Kernel\Error\FieldError` instances — the shape of Spring's
+`FieldError`: the field path exactly as the client sent it (`shipTo.postcode`, `lines[1].sku`), a `message`
+that describes the constraint, an optional application `code`, the `constraint` that failed by its attribute
+name, and the `rejectedValue`:
 
 ```php
 use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Business\ValidationException;
 
 throw new ValidationException('Validation failed', [
-    new FieldError('email', 'is required'),
+    new FieldError('email', 'must not be blank', constraint: 'NotBlank', rejectedValue: ''),
     new FieldError('age', 'must be >= 0', 'min', -1),
 ]);
 ```
+
+Rendered inside the problem document's `errors` array as `field`, `message`, then `code`, `constraint` and
+`rejectedValue` when present:
+
+```json
+"errors": [
+  { "field": "email", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": "" },
+  { "field": "age", "message": "must be >= 0", "code": "min", "rejectedValue": -1 }
+]
+```
+
+`firefly/validation`'s `#[Valid]` produces these for every declared constraint — the constraint's own sentence
+(`must not be blank`, `size must be between 1 and 50`, `must match "^[A-Z0-9]…"`) rather than Laravel's
+humanised attribute (`The ship to.street field is required.`), unless `firefly.validation.messages` is
+`laravel`; see [Validation § Field errors](validation.md#field-errors-shaped-like-springs). The HTML error
+page renders the status, code and detail of a 422 and no field list.
 
 ## The RFC-7807 response
 
