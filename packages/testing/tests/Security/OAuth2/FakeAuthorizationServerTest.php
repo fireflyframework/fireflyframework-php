@@ -150,6 +150,36 @@ it('authenticates the client by Basic header or form body, refuses a wrong secre
     expect(Http::asForm()->post(FakeIdpTestCase::ISSUER.'/token', ['grant_type' => 'client_credentials', 'client_id' => FakeAuthorizationServer::CLIENT_ID])->status())->toBe(200);
 });
 
+it('refuses a token request that is not a form POST with 400 invalid_request, whatever the client credentials, and still records it', function () {
+    /** @var FakeIdpTestCase $this */
+    $auth = fn () => Http::withBasicAuth(FakeAuthorizationServer::CLIENT_ID, FakeAuthorizationServer::CLIENT_SECRET);
+    $json = $auth()->post(FakeIdpTestCase::ISSUER.'/token', ['grant_type' => 'authorization_code', 'code' => $this->codeFor(), 'redirect_uri' => 'http://localhost/cb', 'code_verifier' => FakeIdpTestCase::VERIFIER]);
+    $get = $auth()->get(FakeIdpTestCase::ISSUER.'/token', ['grant_type' => 'client_credentials']);
+
+    // Http::post()'s default JSON body and a GET carrying the parameters in the query string are both what a
+    // real provider refuses (RFC 6749 §4.1.3); the hop is recorded with what the client tried.
+    expect($json->status())->toBe(400)
+        ->and($json->json('error'))->toBe('invalid_request')
+        ->and($json->json('id_token'))->toBeNull()
+        ->and($get->status())->toBe(400)
+        ->and($get->json('error'))->toBe('invalid_request')
+        ->and($get->json('access_token'))->toBeNull()
+        ->and(array_column($this->idp->tokenRequests, 'grant_type'))->toBe(['authorization_code', 'client_credentials'])
+        ->and($this->idp->lastTokenRequest()['authorization'])->toStartWith('Basic ');
+
+    // The shape is refused before any knob: a refusal a test configured does not mask a broken client.
+    $this->idp->refuseToken('invalid_grant', 'the fake said no');
+    expect($auth()->post(FakeIdpTestCase::ISSUER.'/token', ['grant_type' => 'client_credentials'])->json('error'))->toBe('invalid_request');
+    $this->idp->refuseToken('', '');
+
+    // A form body whose Content-Type carries a charset is still a form body, and its parameters are read.
+    $charset = $auth()->withBody(http_build_query(['grant_type' => 'client_credentials', 'scope' => 'orders:read']), 'application/x-www-form-urlencoded; charset=UTF-8')
+        ->post(FakeIdpTestCase::ISSUER.'/token');
+    expect($charset->status())->toBe(200)
+        ->and($charset->json('scope'))->toBe('orders:read')
+        ->and($this->idp->lastTokenRequest()['form'])->toBe(['grant_type' => 'client_credentials', 'scope' => 'orders:read']);
+});
+
 it('answers userinfo for a token it issued and 401 for anything else', function () {
     /** @var FakeIdpTestCase $this */
     $tokens = $this->exchange($this->codeFor());

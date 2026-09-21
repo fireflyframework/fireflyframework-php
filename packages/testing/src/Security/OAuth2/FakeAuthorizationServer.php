@@ -37,6 +37,9 @@ use RuntimeException;
  *
  * WHAT IT ENFORCES, so a test proves the framework did the right thing: a code is single-use, bound to the
  * exact redirect_uri it was issued for, and PKCE-checked (S256) when a challenge was sent; the token endpoint
+ * takes only a POST with an application/x-www-form-urlencoded body (RFC 6749 §4.1.3) — Http::post()'s default
+ * JSON body and a GET carrying the parameters in the query string both get 400 invalid_request, since a real
+ * provider would refuse them too and that is the most plausible mistake a token client makes; the token endpoint
  * authenticates the client by Basic header, by form body, or as a public client only when acceptPublicClient();
  * a refresh token is rotated; userinfo needs an access token it issued. Tokens are RS256 JWTs signed with a key
  * pair generated once per process (`signWithUnknownKey()` signs with a second pair under the SAME kid, which is
@@ -99,7 +102,12 @@ final class FakeAuthorizationServer
     /** @var list<array<string, string>> */
     public array $authorizationRequests = [];
 
-    /** @var list<array{grant_type: string, form: array<string, string>, authorization: ?string}> */
+    /**
+     * Every token request, refused or not: `form` is the parameters as the client carried them, so a request
+     * refused for its shape (a JSON body, a query string) still shows what the client tried.
+     *
+     * @var list<array{grant_type: string, form: array<string, string>, authorization: ?string}>
+     */
     public array $tokenRequests = [];
 
     /** @var list<string> the bearer values presented to userinfo */
@@ -440,11 +448,18 @@ final class FakeAuthorizationServer
 
     private function token(ClientRequest $request): PromiseInterface
     {
-        $form = self::strings($request->data());
+        $formPost = self::isFormPost($request);
+        $form = $formPost ? self::formBody($request) : self::strings($request->data());
         $authorization = self::firstHeader($request, 'Authorization');
         $grant = $form['grant_type'] ?? '';
         $this->tokenRequests[] = ['grant_type' => $grant, 'form' => $form, 'authorization' => $authorization];
 
+        // The shape first, before any knob: ClientRequest::data() reads a JSON body or, on a GET, the query
+        // string just as happily as a form body, and a token client that sends either is broken however the
+        // fake was configured — a real provider answers 400 to both.
+        if (! $formPost) {
+            return $this->error(400, 'invalid_request', 'The token request must be a POST with an application/x-www-form-urlencoded body (RFC 6749 §4.1.3).');
+        }
         if ($this->tokenRefusal !== null) {
             return $this->error(400, $this->tokenRefusal[0], $this->tokenRefusal[1]);
         }
@@ -617,6 +632,34 @@ final class FakeAuthorizationServer
         $first = $values[0] ?? null;
 
         return is_string($first) ? $first : null;
+    }
+
+    /**
+     * A POST whose Content-Type media type is application/x-www-form-urlencoded — read off the wire headers,
+     * not ClientRequest::isForm(), which wants the header verbatim and would refuse a `; charset=UTF-8` suffix
+     * that any real provider accepts.
+     */
+    private static function isFormPost(ClientRequest $request): bool
+    {
+        if ($request->method() !== 'POST') {
+            return false;
+        }
+        $mediaType = strtok(self::firstHeader($request, 'Content-Type') ?? '', ';');
+
+        return $mediaType !== false && strtolower(trim($mediaType)) === 'application/x-www-form-urlencoded';
+    }
+
+    /**
+     * The form parameters off the wire body — not ClientRequest::data(), which parses the body only under the
+     * verbatim header and otherwise falls back to what PendingRequest remembered, nothing for a raw withBody().
+     *
+     * @return array<string, string>
+     */
+    private static function formBody(ClientRequest $request): array
+    {
+        parse_str($request->body(), $parameters);
+
+        return self::strings($parameters);
     }
 
     /**
