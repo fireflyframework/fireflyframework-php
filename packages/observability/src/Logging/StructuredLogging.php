@@ -30,7 +30,10 @@ use Monolog\Logger as MonologLogger;
  * WHICH CHANNELS. `firefly.logging.structured.channels` lists channel names; empty (the default) means the
  * default channel (`logging.default`). A stack channel's Monolog logger holds its MEMBERS' handler instances
  * (Illuminate\Log\LogManager::createStackDriver collects them), so applying to `stack` formats the members
- * too — and listing a member as well is harmless (setFormatter is idempotent). Every listed name must exist
+ * too — and listing a member as well, before or after its stack, is harmless: apply() is idempotent, setting
+ * the formatter again and pushing ServiceContextLogProcessor only where none is (createStackDriver also copies
+ * the members' PROCESSORS into the stack, so a stack built after a listed member already carries that
+ * member's — see LogChannelWiring for why that rules out a per-channel mark). Every listed name must exist
  * under `logging.channels`, and channels() refuses one that does not, the way format() refuses a format it
  * does not know: LogManager::channel() never throws for an unknown name — it catches its own "Log [x] is not
  * defined." and hands back a throw-away emergency logger — so without this check a typo would put the id
@@ -125,6 +128,12 @@ final class StructuredLogging
         };
     }
 
+    /**
+     * Sets the configured formatter on every handler of $monolog that can take one and puts the service-context
+     * processor on it; a no-op when no format is configured. Idempotent: the formatter is set again (a fresh
+     * instance, same output), the processor only when the logger does not carry one yet — a logger reached twice
+     * (the early hook and the boot pass, or a stack that inherited a listed member's processors) ends with one.
+     */
     public function apply(MonologLogger $monolog): void
     {
         $formatter = $this->formatter();
@@ -132,13 +141,32 @@ final class StructuredLogging
             return;
         }
 
-        $monolog->pushProcessor(new ServiceContextLogProcessor($this->serviceName(), $this->environment()));
+        if (! self::hasProcessor($monolog, ServiceContextLogProcessor::class)) {
+            $monolog->pushProcessor(new ServiceContextLogProcessor($this->serviceName(), $this->environment()));
+        }
 
         foreach ($monolog->getHandlers() as $handler) {
             if ($handler instanceof FormattableHandlerInterface || $handler instanceof GroupHandler) {
                 $handler->setFormatter($formatter);
             }
         }
+    }
+
+    /**
+     * Whether $monolog carries a processor of $class — the per-processor state the wiring's idempotence rests on
+     * (the framework pushes each of its processors nowhere else, so one instance on a logger means "done").
+     *
+     * @param  class-string  $class
+     */
+    public static function hasProcessor(MonologLogger $monolog, string $class): bool
+    {
+        foreach ($monolog->getProcessors() as $processor) {
+            if ($processor instanceof $class) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function serviceName(): string

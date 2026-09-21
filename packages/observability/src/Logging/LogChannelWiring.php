@@ -16,8 +16,18 @@ use Monolog\Logger as MonologLogger;
  * structured formatter (StructuredLogging::apply()) on that channel's handlers. The ONE routine behind both of
  * the places that reach a LogManager — LogChannelWiringPass at boot, which is the guarantee, and
  * ObservabilityWiringProvider's afterResolving('log') hook, which is the early path for a line written before
- * the wiring passes run — so the two can never drift, and idempotent per channel (see alreadyWired()) so their
- * meeting on the same LogManager, which is the ordinary boot, stacks nothing twice.
+ * the wiring passes run — so the two can never drift, and idempotent so their meeting on the same LogManager,
+ * which is the ordinary boot, stacks nothing twice.
+ *
+ * IDEMPOTENT PER CONCERN, NOT PER CHANNEL. Each processor is pushed only where its class is not on the logger
+ * yet (StructuredLogging::hasProcessor()), and the formatter is set every time (setFormatter is idempotent).
+ * A single "this channel is done" mark would be wrong, because LogManager::createStackDriver copies each
+ * MEMBER's processors into the stack's Monolog logger: list a member before its stack
+ * (`channels: [single, stack]`) and the stack, built after `single` was wired, already carries single's
+ * CorrelationIdLogProcessor — a channel-level mark would take that for done, skip the formatter, and leave the
+ * stack's OTHER members on LineFormatter: one plain-text line among the JSON, from the channel the application
+ * writes to. Per concern, both orders end the same way — every member's handler formatted, exactly one of each
+ * processor on each listed channel — which is what makes listing a member as well as its stack harmless.
  *
  * Deliberately NOT the naive `method_exists($log, 'pushProcessor') && $log->pushProcessor(...)`: a LogManager
  * does NOT literally declare `pushProcessor` — it only forwards unknown calls to `$this->driver()` via
@@ -52,7 +62,10 @@ final class LogChannelWiring
 
     /**
      * Validates the two keys first (an unknown format or channel throws a ConfigurationException before anything
-     * is built), then wires each configured channel of $log that is not wired yet.
+     * is built), then wires each configured channel of $log: every processor it does not carry yet, and the
+     * formatter. The state that makes this idempotent lives on the Monolog logger itself (which processors it
+     * carries) rather than in a flag on this object, because the early hook and the boot pass hold different
+     * instances of this class and both have to see it.
      */
     public function attach(LogManager $log): void
     {
@@ -69,40 +82,28 @@ final class LogChannelWiring
             }
 
             $monolog = $channel->getLogger();
-            if (! $monolog instanceof MonologLogger || self::alreadyWired($monolog)) {
+            if (! $monolog instanceof MonologLogger) {
                 continue;
             }
 
-            $monolog->pushProcessor(new CorrelationIdLogProcessor);
-            $monolog->pushProcessor(new TraceContextLogProcessor(function (): ?Tracer {
-                if (! $this->container->bound(Tracer::class)) {
-                    return null;
-                }
+            if (! StructuredLogging::hasProcessor($monolog, CorrelationIdLogProcessor::class)) {
+                $monolog->pushProcessor(new CorrelationIdLogProcessor);
+            }
 
-                /** @var Tracer $tracer */
-                $tracer = $this->container->make(Tracer::class);
+            if (! StructuredLogging::hasProcessor($monolog, TraceContextLogProcessor::class)) {
+                $monolog->pushProcessor(new TraceContextLogProcessor(function (): ?Tracer {
+                    if (! $this->container->bound(Tracer::class)) {
+                        return null;
+                    }
 
-                return $tracer;
-            }));
+                    /** @var Tracer $tracer */
+                    $tracer = $this->container->make(Tracer::class);
+
+                    return $tracer;
+                }));
+            }
 
             $this->structured->apply($monolog);
         }
-    }
-
-    /**
-     * Whether attach() has been here: the CorrelationIdLogProcessor is the first thing it pushes and the framework
-     * pushes one nowhere else, so its presence on a channel's Monolog logger is the mark. State on the logger
-     * itself rather than a flag on this object, because the early hook and the boot pass hold different
-     * instances of this class and the mark has to be visible to both.
-     */
-    private static function alreadyWired(MonologLogger $monolog): bool
-    {
-        foreach ($monolog->getProcessors() as $processor) {
-            if ($processor instanceof CorrelationIdLogProcessor) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

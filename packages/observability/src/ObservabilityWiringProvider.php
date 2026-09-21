@@ -34,8 +34,9 @@ use Illuminate\Log\LogManager;
  * The hook is NOT what the refusal rests on — Container::resolve() caches the singleton before it fires
  * resolving callbacks, and Laravel's exception handler swallows anything the first resolution of `log` throws
  * (see the pass's docblock) — and it does not fire at all for a `log` resolved before this register() ran.
- * Both go through LogChannelWiring::attach(), which is idempotent per channel, so the ordinary boot — the
- * pass's own make('log') fires the hook, then the pass finds the channels already wired — stacks nothing twice.
+ * Both go through LogChannelWiring::attach(), which is idempotent per processor (each pushed only where its
+ * class is not on the logger yet) and re-sets the formatter freely, so the ordinary boot — the pass's own
+ * make('log') fires the hook, then the pass goes over the same channels — stacks nothing twice.
  */
 final class ObservabilityWiringProvider extends FireflyServiceProvider
 {

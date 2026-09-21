@@ -1057,7 +1057,9 @@ return [
              | The channels whose handlers get the formatter (and the id processors). Empty means the default
              | channel (logging.default). A `stack` channel's handlers ARE its members' handlers, so listing
              | the stack formats every member — with `ignore_exceptions` on too, through the group handler
-             | Laravel wraps them in. Every name must exist under logging.channels: one that does not refuses
+             | Laravel wraps them in — and listing a member as well, in either order, changes nothing (each
+             | processor goes on once, the formatter is simply set again). Every name must exist under
+             | logging.channels: one that does not refuses
              | to boot (checked at boot, before anything writes a line), because Laravel would quietly hand it
              | an emergency logger and the channel you actually write to would keep plain text without a
              | single id.

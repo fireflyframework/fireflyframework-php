@@ -39,7 +39,8 @@ use Illuminate\Log\LogManager;
  * only Config and the `log` singleton LogServiceProvider bound at register time. Under the FPM baseline that is
  * one LogManager and its configured channels built per request, the same lazy Monolog handlers LogManager
  * would build at the first write; under Octane, once per worker. Idempotent through LogChannelWiring: in the
- * ordinary boot its own make('log') fires the hook first, and the pass then finds every channel already wired.
+ * ordinary boot its own make('log') fires the hook first, and the pass then finds every processor already on
+ * each channel and has only the (idempotent) formatter to set again.
  */
 final class LogChannelWiringPass implements BootPass
 {

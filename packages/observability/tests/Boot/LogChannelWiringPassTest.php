@@ -22,6 +22,11 @@ use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger as MonologLogger;
 
+/** Two members of one stack, told apart by class so each can be bound to its own instance (see bareLogApplication()). */
+final class SingleMemberHandler extends TestHandler {}
+
+final class StderrMemberHandler extends TestHandler {}
+
 /**
  * The boot-time guarantee behind `firefly.logging.structured.*`, exercised through the REAL provider stack and a
  * real Application::boot() (the shape of fireflyApplication(), unrolled so a test can act BETWEEN register() and
@@ -64,12 +69,12 @@ function registerObservability(Application $app): void
     $app->register(new ObservabilityWiringProvider($app));
 }
 
-/** The real Monolog logger behind the default channel of $app's LogManager. */
-function wiringTestMonolog(Application $app): MonologLogger
+/** The real Monolog logger behind a channel of $app's LogManager — the default one unless named. */
+function wiringTestMonolog(Application $app, string $name = 'wiring_test'): MonologLogger
 {
     /** @var LogManager $log */
     $log = $app->make('log');
-    $channel = $log->channel('wiring_test');
+    $channel = $log->channel($name);
     expect($channel)->toBeInstanceOf(Logger::class);
 
     /** @var Logger $channel */
@@ -183,6 +188,49 @@ it('attaches once when the early hook and the pass both reach the same LogManage
         ->and(countProcessors($monolog, TraceContextLogProcessor::class))->toBe(1)
         ->and(countProcessors($monolog, ServiceContextLogProcessor::class))->toBe(1)
         ->and($handler->getFormatter())->toBeInstanceOf(JsonFormatter::class);
+});
+
+it('formats every member of a stack whichever order the stack and a member are listed in', function () {
+    // LogManager::createStackDriver copies each MEMBER's processors into the stack's Monolog logger. So with
+    // ['single', 'stack'], `single` is wired first and the stack built afterwards already carries single's
+    // CorrelationIdLogProcessor — a channel-level "already wired" mark would take that for done, skip the
+    // formatter, and leave `stderr` on LineFormatter: one plain-text line among the JSON, from the very channel
+    // the application writes to. The guard is per concern instead — each processor by its own presence, the
+    // formatter always (setFormatter is idempotent) — so both orders end the same way: every member's handler
+    // formatted, exactly one of each processor on each listed channel.
+    foreach ([['single', 'stack'], ['stack', 'single']] as $listed) {
+        $single = new SingleMemberHandler;
+        $stderr = new StderrMemberHandler;
+        $app = new Application;
+        $app->instance('config', new ConfigRepository([
+            'app' => ['name' => 'ledger', 'env' => 'testing'],
+            'logging' => [
+                'default' => 'stack',
+                'channels' => [
+                    'stack' => ['driver' => 'stack', 'channels' => ['single', 'stderr'], 'name' => 'stack'],
+                    'single' => ['driver' => 'monolog', 'handler' => SingleMemberHandler::class, 'name' => 'single'],
+                    'stderr' => ['driver' => 'monolog', 'handler' => StderrMemberHandler::class, 'name' => 'stderr'],
+                ],
+            ],
+            'firefly' => ['logging' => ['structured' => ['format' => 'json', 'channels' => $listed]]],
+        ]));
+        $app->bind(SingleMemberHandler::class, static fn (): SingleMemberHandler => $single);
+        $app->bind(StderrMemberHandler::class, static fn (): StderrMemberHandler => $stderr);
+        registerObservability($app);
+
+        $app->boot();
+
+        $order = implode(',', $listed);
+        expect($single->getFormatter())->toBeInstanceOf(JsonFormatter::class, "single's handler with channels [{$order}]")
+            ->and($stderr->getFormatter())->toBeInstanceOf(JsonFormatter::class, "stderr's handler with channels [{$order}]");
+
+        foreach (['single', 'stack'] as $name) {
+            $monolog = wiringTestMonolog($app, $name);
+            expect(countProcessors($monolog, CorrelationIdLogProcessor::class))->toBe(1, "{$name} with channels [{$order}]")
+                ->and(countProcessors($monolog, TraceContextLogProcessor::class))->toBe(1, "{$name} with channels [{$order}]")
+                ->and(countProcessors($monolog, ServiceContextLogProcessor::class))->toBe(1, "{$name} with channels [{$order}]");
+        }
+    }
 });
 
 it('leaves a default channel that logging.channels does not define to Laravel instead of building its emergency logger at boot', function () {

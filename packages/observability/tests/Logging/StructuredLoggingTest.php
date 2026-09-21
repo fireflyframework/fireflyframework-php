@@ -100,6 +100,31 @@ it('applies the formatter to every formattable handler in place and pushes the s
     expect($untouched->getFormatter())->toBeInstanceOf(LineFormatter::class)->and($plain->getProcessors())->toBe([]);
 });
 
+it('applies once to a logger it reaches twice: one service-context processor, the formatter simply set again', function () {
+    // LogChannelWiring reaches a logger twice in the ordinary boot (the early hook, then the pass), and a stack
+    // built after a listed member inherits that member's processors (LogManager::createStackDriver copies them)
+    // — so apply() must be safe to repeat: the processor only where none is, the formatter every time.
+    $test = new TestHandler;
+    $test->setFormatter(new LineFormatter);
+    $monolog = new MonologLogger('stack', [$test]);
+    $structured = structuredLogging(['format' => 'json']);
+
+    $structured->apply($monolog);
+    $structured->apply($monolog);
+
+    expect(array_filter($monolog->getProcessors(), static fn (callable $p): bool => $p instanceof ServiceContextLogProcessor))->toHaveCount(1)
+        ->and($test->getFormatter())->toBeInstanceOf(JsonFormatter::class)
+        ->and(StructuredLogging::hasProcessor($monolog, ServiceContextLogProcessor::class))->toBeTrue()
+        ->and(StructuredLogging::hasProcessor(new MonologLogger('bare'), ServiceContextLogProcessor::class))->toBeFalse();
+
+    // A handler added to that logger later (a stack member wired after the stack) is formatted by the next pass.
+    $late = new TestHandler;
+    $late->setFormatter(new LineFormatter);
+    $monolog->pushHandler($late);
+    $structured->apply($monolog);
+    expect($late->getFormatter())->toBeInstanceOf(JsonFormatter::class);
+});
+
 it('reaches the members of a group handler, which Laravel wraps an ignore_exceptions stack in, without replacing it', function () {
     // Monolog's GroupHandler family declares setFormatter() (forwarding to its formattable members) but does NOT
     // implement FormattableHandlerInterface, and LogManager::createStackDriver wraps a stack's members in a
