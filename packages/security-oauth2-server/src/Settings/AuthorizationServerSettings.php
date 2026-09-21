@@ -20,6 +20,11 @@ use Illuminate\Http\Request;
  * PATHS are matched against `Request::path()` through FormLoginSettings::path() — leading slash, no query, no
  * trailing slash — so a front-controller prefix or a query string never breaks the match, and they are published
  * as `endpointUrl($path)`, the issuer followed by the path, exactly as Spring builds them.
+ *
+ * EVERY READ BELOW SPELLS ITS KEY OUT IN FULL rather than concatenating PREFIX, on purpose: tests/ConfigReferenceTest.php
+ * discovers the keys the framework reads by finding the literal `'firefly.…'` string inside each Config-port call, so a
+ * read written as `"{$p}.enabled"` is a key that guard can no longer see — and the reference in skeleton/config/firefly.php
+ * would rot without anything saying so. PREFIX is for the refusal sentences only.
  */
 final readonly class AuthorizationServerSettings
 {
@@ -78,45 +83,44 @@ final readonly class AuthorizationServerSettings
 
     public static function fromConfig(Config $config): self
     {
-        $p = self::PREFIX;
-        $view = $config->string("{$p}.consent.view", '');
-        $format = $config->string("{$p}.access_token.format", OAuth2TokenFormat::SelfContained->value);
+        $view = $config->string('firefly.security.oauth2.server.consent.view', '');
+        $format = $config->string('firefly.security.oauth2.server.access_token.format', OAuth2TokenFormat::SelfContained->value);
 
         /** @var mixed $previous */
-        $previous = $config->get("{$p}.jwt.previous_keys", []);
+        $previous = $config->get('firefly.security.oauth2.server.jwt.previous_keys', []);
 
         return new self(
-            enabled: $config->bool("{$p}.enabled", false),
-            issuer: $config->string("{$p}.issuer", $config->string('app.url', 'http://localhost')),
-            authorizationEndpoint: $config->string("{$p}.authorization_endpoint", '/oauth2/authorize'),
-            tokenEndpoint: $config->string("{$p}.token_endpoint", '/oauth2/token'),
-            jwkSetEndpoint: $config->string("{$p}.jwk_set_endpoint", '/oauth2/jwks'),
-            tokenIntrospectionEndpoint: $config->string("{$p}.token_introspection_endpoint", '/oauth2/introspect'),
-            tokenRevocationEndpoint: $config->string("{$p}.token_revocation_endpoint", '/oauth2/revoke'),
-            oidcUserInfoEndpoint: $config->string("{$p}.oidc_user_info_endpoint", '/userinfo'),
-            oidcLogoutEndpoint: $config->string("{$p}.oidc_logout_endpoint", '/connect/logout'),
-            oidcClientRegistrationEndpoint: $config->string("{$p}.oidc_client_registration_endpoint", ''),
-            signingKey: $config->string("{$p}.jwt.signing_key", ''),
-            keyId: $config->string("{$p}.jwt.key_id", ''),
-            algorithm: $config->string("{$p}.jwt.algorithm", 'RS256'),
+            enabled: $config->bool('firefly.security.oauth2.server.enabled', false),
+            issuer: $config->string('firefly.security.oauth2.server.issuer', $config->string('app.url', 'http://localhost')),
+            authorizationEndpoint: $config->string('firefly.security.oauth2.server.authorization_endpoint', '/oauth2/authorize'),
+            tokenEndpoint: $config->string('firefly.security.oauth2.server.token_endpoint', '/oauth2/token'),
+            jwkSetEndpoint: $config->string('firefly.security.oauth2.server.jwk_set_endpoint', '/oauth2/jwks'),
+            tokenIntrospectionEndpoint: $config->string('firefly.security.oauth2.server.token_introspection_endpoint', '/oauth2/introspect'),
+            tokenRevocationEndpoint: $config->string('firefly.security.oauth2.server.token_revocation_endpoint', '/oauth2/revoke'),
+            oidcUserInfoEndpoint: $config->string('firefly.security.oauth2.server.oidc_user_info_endpoint', '/userinfo'),
+            oidcLogoutEndpoint: $config->string('firefly.security.oauth2.server.oidc_logout_endpoint', '/connect/logout'),
+            oidcClientRegistrationEndpoint: $config->string('firefly.security.oauth2.server.oidc_client_registration_endpoint', ''),
+            signingKey: $config->string('firefly.security.oauth2.server.jwt.signing_key', ''),
+            keyId: $config->string('firefly.security.oauth2.server.jwt.key_id', ''),
+            algorithm: $config->string('firefly.security.oauth2.server.jwt.algorithm', 'RS256'),
             previousKeys: self::previousKeys($previous),
-            accessTokenFormat: OAuth2TokenFormat::tryFrom($format) ?? throw new ConfigurationException("{$p}.access_token.format must be self_contained or reference; got `{$format}`."),
-            accessTokenTtl: $config->int("{$p}.access_token.ttl", 300),
-            refreshTokenTtl: $config->int("{$p}.refresh_token.ttl", 3600),
-            reuseRefreshTokens: $config->bool("{$p}.refresh_token.reuse", false),
-            authorizationCodeTtl: $config->int("{$p}.authorization_code.ttl", 300),
-            idTokenTtl: $config->int("{$p}.id_token.ttl", 1800),
-            requirePkce: $config->bool("{$p}.require_pkce", true),
-            requireProofKeyForPublicClients: $config->bool("{$p}.require_proof_key_for_public_clients", true),
-            consentRequired: $config->bool("{$p}.consent.required", true),
+            accessTokenFormat: OAuth2TokenFormat::tryFrom($format) ?? throw new ConfigurationException(self::PREFIX.".access_token.format must be self_contained or reference; got `{$format}`."),
+            accessTokenTtl: $config->int('firefly.security.oauth2.server.access_token.ttl', 300),
+            refreshTokenTtl: $config->int('firefly.security.oauth2.server.refresh_token.ttl', 3600),
+            reuseRefreshTokens: $config->bool('firefly.security.oauth2.server.refresh_token.reuse', false),
+            authorizationCodeTtl: $config->int('firefly.security.oauth2.server.authorization_code.ttl', 300),
+            idTokenTtl: $config->int('firefly.security.oauth2.server.id_token.ttl', 1800),
+            requirePkce: $config->bool('firefly.security.oauth2.server.require_pkce', true),
+            requireProofKeyForPublicClients: $config->bool('firefly.security.oauth2.server.require_proof_key_for_public_clients', true),
+            consentRequired: $config->bool('firefly.security.oauth2.server.consent.required', true),
             consentView: $view === '' ? null : $view,
-            clientsDriver: $config->string("{$p}.clients.driver", 'memory'),
-            authorizationsDriver: $config->string("{$p}.authorizations.driver", 'memory'),
-            purgeEnabled: $config->bool("{$p}.authorizations.purge.enabled", false),
-            purgeCron: $config->string("{$p}.authorizations.purge.cron", '*/15 * * * *'),
-            rateLimitEnabled: $config->bool("{$p}.rate_limit.enabled", false),
-            rateLimitMaxTokens: $config->int("{$p}.rate_limit.max_tokens", 60),
-            rateLimitRefillRate: (float) $config->string("{$p}.rate_limit.refill_rate", '1.0'),
+            clientsDriver: $config->string('firefly.security.oauth2.server.clients.driver', 'memory'),
+            authorizationsDriver: $config->string('firefly.security.oauth2.server.authorizations.driver', 'memory'),
+            purgeEnabled: $config->bool('firefly.security.oauth2.server.authorizations.purge.enabled', false),
+            purgeCron: $config->string('firefly.security.oauth2.server.authorizations.purge.cron', '*/15 * * * *'),
+            rateLimitEnabled: $config->bool('firefly.security.oauth2.server.rate_limit.enabled', false),
+            rateLimitMaxTokens: $config->int('firefly.security.oauth2.server.rate_limit.max_tokens', 60),
+            rateLimitRefillRate: (float) $config->string('firefly.security.oauth2.server.rate_limit.refill_rate', '1.0'),
         );
     }
 

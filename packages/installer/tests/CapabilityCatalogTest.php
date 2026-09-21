@@ -77,6 +77,12 @@ it('resolves an implied port before its adapter', function () {
     expect($ids)->toBe(['scheduling', 'scheduling-postgres']);
 });
 
+it('resolves the security core before the authorization server that is built on it', function () {
+    $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['security-oauth2-server']));
+
+    expect($ids)->toBe(['security', 'security-oauth2-server']);
+});
+
 it('deduplicates a capability requested twice, directly and transitively', function () {
     $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['eda', 'eda-kafka', 'eda']));
 

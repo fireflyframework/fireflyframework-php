@@ -46,7 +46,7 @@ final class OAuth2ServerWiringPass implements BootPass
 
     public function run(BootContext $context): void
     {
-        if (! $context->config->bool(AuthorizationServerSettings::PREFIX.'.enabled', false)) {
+        if (! $context->config->bool('firefly.security.oauth2.server.enabled', false)) {
             return;
         }
 
@@ -61,20 +61,20 @@ final class OAuth2ServerWiringPass implements BootPass
      */
     public static function assertRunnable(Config $config): void
     {
-        if (! $config->bool(AuthorizationServerSettings::PREFIX.'.enabled', false)) {
+        if (! $config->bool('firefly.security.oauth2.server.enabled', false)) {
             return;
         }
 
         if (! $config->bool('firefly.security.enabled', false)) {
             throw new ConfigurationException(
-                AuthorizationServerSettings::PREFIX.'.enabled is on but firefly.security.enabled is off: the authorization server '
+                'firefly.security.oauth2.server.enabled is on but firefly.security.enabled is off: the authorization server '
                 .'needs the password encoder, the session CSRF check and the login redirect the master flag gates. Turn firefly.security.enabled on.'
             );
         }
 
         if (! (new SessionSecuritySettings($config))->enabled()) {
             throw new ConfigurationException(
-                AuthorizationServerSettings::PREFIX.'.enabled is on but nothing carries a principal between requests: the authorization '
+                'firefly.security.oauth2.server.enabled is on but nothing carries a principal between requests: the authorization '
                 .'endpoint needs a session-held user. Turn on firefly.security.form_login.enabled (the framework login page), or '
                 .'firefly.security.session.enabled with a sign-in mechanism of your own.'
             );
@@ -82,7 +82,7 @@ final class OAuth2ServerWiringPass implements BootPass
 
         if ($config->bool('firefly.security.jwt.enabled', false)) {
             throw new ConfigurationException(
-                AuthorizationServerSettings::PREFIX.'.enabled and firefly.security.jwt.enabled are both on: the local HMAC filter (-90) '
+                'firefly.security.oauth2.server.enabled and firefly.security.jwt.enabled are both on: the local HMAC filter (-90) '
                 .'rejects every RS256/ES256 token this server issues before the server could examine it. Turn jwt.enabled off; '
                 .'verify the server\'s own tokens with firefly.security.oauth2.resource_server (jwks_source: local).'
             );
