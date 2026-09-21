@@ -24,6 +24,13 @@ use Symfony\Component\HttpFoundation\Response;
  *   login     — always the login page (refused at boot without form login).
  *   challenge — always the Basic challenge.
  *   problem   — always the exception, rendered by firefly/web.
+ *
+ * THE BROWSER TEST IS `ErrorPageRenderer::prefersHtml()`, NOT `handles()`. The two differ by exactly one
+ * thing: `handles()` is also false when `firefly.web.error-page.enabled` is off. That flag is a branding
+ * choice — "fall back to Laravel's own error page" — and it decides what a 401 LOOKS like, never whether a
+ * person is asked to sign in. Asking `handles()` here made that flag silently disable form login for every
+ * browser, with nothing in the security docs to say so; the decision must not depend on how a failure is
+ * drawn.
  */
 final class DelegatingAuthenticationEntryPoint implements AuthenticationEntryPoint
 {
@@ -70,7 +77,7 @@ final class DelegatingAuthenticationEntryPoint implements AuthenticationEntryPoi
 
     private function negotiate(Request $request): AuthenticationEntryPoint
     {
-        if ($this->formLogin->enabled && $this->pages->handles($request)) {
+        if ($this->formLogin->enabled && $this->pages->prefersHtml($request)) {
             return $this->login;
         }
         if ($this->basic->enabled) {

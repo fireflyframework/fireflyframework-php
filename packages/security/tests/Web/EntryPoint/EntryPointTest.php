@@ -35,12 +35,13 @@ function entryPointApiRequest(string $uri): Request
     return Request::create($uri, 'GET', server: ['HTTP_ACCEPT' => 'application/json']);
 }
 
-function delegatingEntryPoint(string $mode, bool $formLogin, bool $basic): DelegatingAuthenticationEntryPoint
+function delegatingEntryPoint(string $mode, bool $formLogin, bool $basic, ?ErrorPageSettings $errorPage = null): DelegatingAuthenticationEntryPoint
 {
+    $errorPage ??= new ErrorPageSettings;
     $form = new FormLoginSettings(enabled: $formLogin);
     $http = new HttpBasicSettings(enabled: $basic, realm: 'Ledger');
-    $pages = new ErrorPageRenderer(new ErrorPageSettings);
-    $problems = new ProblemDetailsRenderer(new ErrorPageSettings);
+    $pages = new ErrorPageRenderer($errorPage);
+    $problems = new ProblemDetailsRenderer($errorPage);
 
     return new DelegatingAuthenticationEntryPoint(
         $mode,
@@ -70,6 +71,23 @@ it('does not save a POST, and never redirects a JSON client', function () {
     expect(SavedRequest::consume($post->session()))->toBeNull()
         ->and(fn () => delegatingEntryPoint('auto', formLogin: true, basic: false)->commence(entryPointApiRequest('http://localhost/api/reports'), new AuthenticationException('Authentication is required.')))
         ->toThrow(AuthenticationException::class);
+});
+
+it('still sends a browser to the login page when the HTML error page is switched off', function () {
+    // `firefly.web.error-page.enabled=false` is a branding choice ("fall back to Laravel's own error page");
+    // it decides what a 401 LOOKS like, never whether a person is asked to sign in. The browser test is the
+    // error page's negotiation minus its own feature flag, so form login stays usable with the page off.
+    $off = new ErrorPageSettings(enabled: false);
+    $exception = new AuthenticationException('Authentication is required.');
+
+    $response = delegatingEntryPoint('auto', formLogin: true, basic: false, errorPage: $off)->commence(entryPointBrowserRequest('http://localhost/reports'), $exception);
+
+    expect($response->getStatusCode())->toBe(302)
+        ->and($response->headers->get('Location'))->toBe('http://localhost/login')
+        // A JSON client is still never redirected, and an api/* URL is still a machine surface whatever the
+        // Accept header says: json-paths describes what the URL IS, which does not change with the page off.
+        ->and(fn () => delegatingEntryPoint('auto', formLogin: true, basic: false, errorPage: $off)->commence(entryPointApiRequest('http://localhost/api/reports'), $exception))->toThrow(AuthenticationException::class)
+        ->and(fn () => delegatingEntryPoint('auto', formLogin: true, basic: false, errorPage: $off)->commence(entryPointBrowserRequest('http://localhost/api/reports'), $exception))->toThrow(AuthenticationException::class);
 });
 
 it('challenges with WWW-Authenticate when basic is on and the client is not a browser, as a problem document', function () {

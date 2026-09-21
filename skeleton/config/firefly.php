@@ -290,6 +290,9 @@ return [
              | `login`, `challenge` and `problem` force one of the three (`login` without form_login is refused
              | at boot). An AUTHENTICATED but under-privileged request is always the 403.
              |
+             | The browser test does NOT depend on firefly.web.error-page.enabled: switching the framework's
+             | error page off changes how a 401 is drawn, not whether a person is sent to sign in.
+             |
              | Default: 'auto'.
             */
             'entry_point' => env('FIREFLY_SECURITY_ENTRY_POINT', 'auto'),
