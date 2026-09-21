@@ -38,6 +38,9 @@ use Throwable;
  * The token is the session's own: the filter verifies it through SessionCsrf, which is why a page rendered
  * without a session (a bare boot, a test that skipped the session middleware) carries an empty token and the
  * POST it produces is refused.
+ *
+ * The links come from the `LoginPageLinks` port when one is bound (firefly/security-oauth2-client's
+ * registrations); with form login off and only links on, the page is drawn without the form.
  */
 final class LoginPageAction
 {
@@ -47,6 +50,7 @@ final class LoginPageAction
         private readonly ErrorPageSettings $pages,
         private readonly ?ViewFactory $views = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?LoginPageLinks $links = null,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -60,6 +64,8 @@ final class LoginPageAction
             error: $request->query->has('error'),
             loggedOut: $request->query->has('logout'),
             rememberMeParameter: $this->rememberMe->enabled ? $this->rememberMe->parameter : null,
+            form: $this->settings->enabled,
+            links: $this->links?->links($request) ?? [],
         );
 
         return new Response($this->body($login), 200, ['Content-Type' => 'text/html; charset=UTF-8']);

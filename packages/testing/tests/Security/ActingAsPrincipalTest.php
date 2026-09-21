@@ -48,3 +48,10 @@ it('defaults the principal to the name', function () {
     expect(SecurityContextHolder::getAuthentication()?->getPrincipal())->toBe('svc')
         ->and(SecurityContextHolder::getAuthentication()?->getAuthorities())->toBe([]);
 });
+
+it('carries token attributes on the acting principal', function () {
+    /** @var FireflyTestCase $this */
+    $this->actingAsPrincipal('ada', ['ROLE_USER'], null, ['oauth2.registration_id' => 'okta']);
+
+    expect(SecurityContextHolder::getAuthentication()?->getAttributes())->toBe(['oauth2.registration_id' => 'okta']);
+});

@@ -55,8 +55,12 @@ it('signs in against a stock users table with no authorities column, and the pri
     $login = $this->followSession($page)->post('/login', ['username' => 'ada@example.com', 'password' => 'secret', '_token' => $this->csrfTokenFrom($page)]);
     $login->assertRedirect('/');
 
+    // The `csrf` member is the session's own token — the one the login page renders for the same cookie.
     $this->forgetSession();
-    $this->followSession($login)->getJson('/whoami')->assertOk()->assertExactJson(['name' => 'ada@example.com', 'authorities' => [], 'authenticated' => true]);
+    $token = $this->csrfTokenFrom($this->followSession($login)->get('/login'));
+
+    $this->forgetSession();
+    $this->followSession($login)->getJson('/whoami')->assertOk()->assertExactJson(['name' => 'ada@example.com', 'authorities' => [], 'authenticated' => true, 'csrf' => $token]);
 
     expect($this->events->failures())->toBe([]);
 });

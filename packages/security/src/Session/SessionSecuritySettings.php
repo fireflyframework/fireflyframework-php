@@ -8,9 +8,11 @@ use Firefly\Config\Config;
 
 /**
  * Whether the SecurityContext is carried by the Laravel session: on when `firefly.security.session.enabled`
- * says so, and IMPLIED by any mechanism that cannot work without it — form login, remember-me, and HTTP Basic
- * with `http_basic.session`. Read live from the Config port on every call, because the persistence filter
- * and the boot bootstrap both ask, and a test's withoutSecurity() flips the flags after boot.
+ * says so, and IMPLIED by any mechanism that cannot work without it — form login, OAuth2 login
+ * (`firefly.security.oauth2.client.login.enabled`, whose authorization request and signed-in principal both
+ * live in the session), remember-me, and HTTP Basic with `http_basic.session`. Read live from the Config port
+ * on every call, because the persistence filter and the boot bootstrap both ask, and a test's
+ * withoutSecurity() flips the flags after boot.
  */
 final class SessionSecuritySettings
 {
@@ -21,6 +23,7 @@ final class SessionSecuritySettings
         return $this->config->bool('firefly.security.session.enabled', false)
             || $this->config->bool('firefly.security.form_login.enabled', false)
             || $this->config->bool('firefly.security.remember_me.enabled', false)
+            || $this->config->bool('firefly.security.oauth2.client.login.enabled', false)
             || ($this->config->bool('firefly.security.http_basic.enabled', false) && $this->config->bool('firefly.security.http_basic.session', false));
     }
 

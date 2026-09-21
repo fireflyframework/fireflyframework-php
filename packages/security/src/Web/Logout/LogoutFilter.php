@@ -31,6 +31,9 @@ use Symfony\Component\HttpFoundation\Cookie;
  * the chain, and no route, ever sees a logout POST. In order:
  *
  *   1. the session CSRF token (SessionCsrf, the same check the login filter makes; a 403 on a mismatch),
+ *   1b. the bound LogoutSuccessHandler, if any, is asked for the response — before anything below, so it can
+ *      still read the session (an OIDC id token for the provider's end-session endpoint) — and null means
+ *      the default redirect of step 5,
  *   2. the remember-me cookie — when the port is bound — and every `delete_cookies` name are expired on the
  *      response: an empty value, an expiry in the past, on the root path,
  *   3. the session is invalidated (Store::invalidate(): every attribute flushed and a NEW id, the old file
@@ -39,8 +42,8 @@ use Symfony\Component\HttpFoundation\Cookie;
  *      a shopping cart, a locale — survives,
  *   4. the holder is cleared, the event fires with the principal that was signed in (null for a logout POST
  *      from an anonymous session, which is still answered: signing out of nothing is not an error),
- *   5. the browser goes to `logout_success_url` (`/login?logout`, which the login page turns into the
- *      signed-out notice).
+ *   5. the browser goes where the handler of 1b said, or to `logout_success_url` (`/login?logout`, which
+ *      the login page turns into the signed-out notice).
  *
  * THE REDIRECT GOES THROUGH LARAVEL'S UrlGenerator, resolved from the container ON USE, for the reasons the
  * form-login filter gives: `to()` is what the application's own redirects build and what a test's
@@ -61,6 +64,7 @@ final class LogoutFilter extends OncePerRequestFilter
         private readonly Container $container,
         private readonly Config $config,
         private readonly ?RememberMeServices $rememberMe = null,
+        private readonly ?LogoutSuccessHandler $successHandler = null,
     ) {}
 
     public function shouldNotFilter(Request $request): bool
@@ -82,9 +86,14 @@ final class LogoutFilter extends OncePerRequestFilter
 
         $authentication = SecurityContextHolder::getAuthentication();
 
-        /** @var UrlGenerator $urls */
-        $urls = $this->container->make(UrlGenerator::class);
-        $response = new RedirectResponse($urls->to($this->settings->logoutSuccessUrl));
+        // The success handler is asked FIRST, while the session is still alive: an RP-initiated logout needs the
+        // id token the session holds, and null hands back to the configured redirect.
+        $response = $this->successHandler?->onLogoutSuccess($request, $authentication);
+        if ($response === null) {
+            /** @var UrlGenerator $urls */
+            $urls = $this->container->make(UrlGenerator::class);
+            $response = new RedirectResponse($urls->to($this->settings->logoutSuccessUrl));
+        }
 
         $this->rememberMe?->logout($request, $response);
         foreach ($this->settings->deleteCookies as $name) {

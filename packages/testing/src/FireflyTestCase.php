@@ -149,14 +149,20 @@ abstract class FireflyTestCase extends TestCase
      * alone, and the framework filters that clear the holder in their own `finally` run inside it, so the
      * principal is back on the holder when the request returns.
      *
+     * $attributes are the token's attributes (the registration id an OAuth2 login records, a tenant a filter
+     * adds) — what a handler reads through Authentication::getAttributes() and what an RP-initiated logout
+     * keys on.
+     *
      * @param  list<string>  $authorities
+     * @param  array<string, mixed>  $attributes
      */
-    public function actingAsPrincipal(string $name, array $authorities = [], mixed $principal = null): static
+    public function actingAsPrincipal(string $name, array $authorities = [], mixed $principal = null, array $attributes = []): static
     {
         $authentication = Authentication::authenticated(
             $name,
             $principal ?? $name,
             array_map(static fn (string $authority): SimpleGrantedAuthority => new SimpleGrantedAuthority($authority), $authorities),
+            $attributes,
         );
 
         SecurityContextHolder::setContext(new SecurityContext($authentication));

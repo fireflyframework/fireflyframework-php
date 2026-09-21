@@ -8,9 +8,9 @@ use Firefly\Config\Config;
 use Illuminate\Http\Request;
 
 /**
- * `firefly.security.logout.*`. `enabled` follows `form_login.enabled` when unset — a form login without a way
- * out is not a feature — and the logout URL accepts POST only, because a GET that signs someone out is a
- * link an attacker can make a victim click.
+ * `firefly.security.logout.*`. `enabled` follows `form_login.enabled` or `oauth2.client.login.enabled` when
+ * unset — an interactive login without a way out is not a feature — and the logout URL accepts POST only,
+ * because a GET that signs someone out is a link an attacker can make a victim click.
  */
 final readonly class LogoutSettings
 {
@@ -36,7 +36,7 @@ final readonly class LogoutSettings
         }
 
         return new self(
-            enabled: $config->bool('firefly.security.logout.enabled', $config->bool('firefly.security.form_login.enabled', false)),
+            enabled: $config->bool('firefly.security.logout.enabled', $config->bool('firefly.security.form_login.enabled', false) || $config->bool('firefly.security.oauth2.client.login.enabled', false)),
             logoutUrl: $config->string('firefly.security.logout.logout_url', '/logout'),
             logoutSuccessUrl: $config->string('firefly.security.logout.logout_success_url', '/login?logout'),
             invalidateSession: $config->bool('firefly.security.logout.invalidate_session', true),

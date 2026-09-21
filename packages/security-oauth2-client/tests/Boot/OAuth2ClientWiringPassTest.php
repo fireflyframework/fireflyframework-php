@@ -15,16 +15,20 @@ use Illuminate\Foundation\Application;
 
 /**
  * Boots the REAL providers of security and of this package on a bare container (the RealProviderBootTest
- * idiom): what the gates bind, and what a contradictory configuration is refused with.
+ * idiom): what the gates bind, and what a contradictory configuration is refused with. A session driver and
+ * the HTTP kernel are seeded because OAuth2 login implies the session exactly as form login does
+ * (SessionSecuritySettings): SessionSecurityBootstrap, which runs BEFORE this package's pass, refuses a
+ * session-backed boot without a driver and pushes the session middleware onto the kernel — and this suite
+ * is about which of the package's own flags is missing, not about that.
  *
  * @param  array<string,mixed>  $security  the `firefly.security.*` tree for this boot
  */
 function bootOAuth2ClientAppWith(array $security): Application
 {
     return fireflyApplication(
-        config: ['firefly' => ['cqrs' => [], 'security' => $security]],
+        config: ['session' => ['driver' => 'array'], 'firefly' => ['cqrs' => [], 'security' => $security]],
         providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class, SecurityOAuth2ClientServiceProvider::class, SecurityOAuth2ClientWiringProvider::class],
-        needs: ['cache'],
+        needs: ['cache', 'http'],
     );
 }
 

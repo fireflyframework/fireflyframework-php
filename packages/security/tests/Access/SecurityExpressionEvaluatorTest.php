@@ -86,3 +86,12 @@ it('lists the authorities an expression names, roles normalised to ROLE_', funct
         ->and($evaluator->authorities("hasPermission(#id, 'READ') and isAuthenticated()"))->toBe([])
         ->and($evaluator->authorities('not an expression ('))->toBe([]);
 });
+
+it('whitelists hasScope and hasAnyScope, and reports the scopes an expression asks for', function () use ($evaluator) {
+    expect($evaluator->evaluate("hasScope('orders:read')", evalRoot(['SCOPE_orders:read'])))->toBeTrue()
+        ->and($evaluator->evaluate("hasAnyScope('a','orders:read') and isAuthenticated()", evalRoot(['SCOPE_orders:read'])))->toBeTrue()
+        ->and($evaluator->evaluate("hasScope('orders:read')", evalRoot(['orders:read'])))->toBeFalse()
+        ->and($evaluator->authorities("hasScope('orders:read') or hasAnyScope('SCOPE_profile', 'email')"))->toBe(['SCOPE_orders:read', 'SCOPE_profile', 'SCOPE_email']);
+
+    $evaluator->parse("hasScope('x')");
+});

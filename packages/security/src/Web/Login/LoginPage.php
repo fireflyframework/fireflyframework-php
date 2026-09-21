@@ -14,6 +14,10 @@ namespace Firefly\Security\Web\Login;
  * The error state is deliberately the same sentence for a wrong password and an unknown user — the provider
  * makes them indistinguishable on the wire, and the page must not undo that. `autocomplete` values are the
  * ones password managers key on.
+ *
+ * The model's `links` (what a LoginPageLinks port answered — the OAuth2 registrations, usually) are drawn
+ * after the form as "Sign in with {label}" buttons, the order Spring's generated page keeps; with `form` off
+ * the page is the providers alone, which is what an application with only OAuth2 login gets.
  */
 final class LoginPage
 {
@@ -32,23 +36,41 @@ final class LoginPage
             ? ''
             : '<label class="check"><input type="checkbox" name="'.self::e($login->rememberMeParameter).'" value="1"> Keep me signed in</label>';
 
+        $form = '';
+        if ($login->form) {
+            $form = '<form class="panel form" method="post" action="'.self::e($login->action).'" autocomplete="on">'
+                .'<input type="hidden" name="_token" value="'.self::e($login->csrfToken).'">'
+                .'<label for="ff-username">Username</label>'
+                .'<input id="ff-username" name="'.self::e($login->usernameParameter).'" type="text" autocomplete="username" required autofocus>'
+                .'<label for="ff-password">Password</label>'
+                .'<input id="ff-password" name="'.self::e($login->passwordParameter).'" type="password" autocomplete="current-password" required>'
+                .$remember
+                .'<button type="submit" class="btn">Sign in</button>'
+                .'</form>';
+        }
+
+        // The providers come AFTER the form, as Spring's generated page orders them; a page with both gets an
+        // "or" between the two, a page with only one gets no divider at all.
+        $providers = '';
+        if ($login->links !== []) {
+            $items = '';
+            foreach ($login->links as $link) {
+                $items .= '<a class="btn provider" href="'.self::e($link->url).'" data-provider="'.self::e($link->id).'">Sign in with '.self::e($link->label).'</a>';
+            }
+            $providers = ($login->form ? '<p class="divider"><span>or</span></p>' : '')
+                .'<nav class="panel providers" aria-label="Sign in with a provider">'.$items.'</nav>';
+        }
+
         return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
             .'<title>'.$title.'</title>'
             .self::favicon()
-            .'<style>'.self::css().'</style></head><body>'
+            .'<style>'.self::css().($providers === '' ? '' : "\n".self::providersCss()).'</style></head><body>'
             .'<main class="sheet">'
             .'<header class="head"><span class="mark"><span class="dot"></span>'.self::e($login->title).'</span><h1>Sign in</h1></header>'
             .$notice
-            .'<form class="panel form" method="post" action="'.self::e($login->action).'" autocomplete="on">'
-            .'<input type="hidden" name="_token" value="'.self::e($login->csrfToken).'">'
-            .'<label for="ff-username">Username</label>'
-            .'<input id="ff-username" name="'.self::e($login->usernameParameter).'" type="text" autocomplete="username" required autofocus>'
-            .'<label for="ff-password">Password</label>'
-            .'<input id="ff-password" name="'.self::e($login->passwordParameter).'" type="password" autocomplete="current-password" required>'
-            .$remember
-            .'<button type="submit" class="btn">Sign in</button>'
-            .'</form>'
+            .$form
+            .$providers
             .'</main></body></html>';
     }
 
@@ -106,6 +128,22 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-
 @media (max-width:560px){
   .sheet{padding:40px 14px 48px}
 }
+CSS;
+    }
+
+    /**
+     * The rules the provider buttons and the "or" divider need — appended only when the page has links, so a
+     * page without them is the page it always was, byte for byte, and nothing about form login changes when
+     * OAuth2 login is off.
+     */
+    private static function providersCss(): string
+    {
+        return <<<'CSS'
+.providers{display:flex;flex-direction:column;gap:8px;padding:16px 20px}
+.btn.provider{display:block;text-align:center;text-decoration:none;margin-top:0;color:var(--ink);background:var(--panel-2);border:1px solid var(--line-2)}
+.btn.provider:hover{background:var(--panel);border-color:var(--brand)}
+.divider{display:flex;align-items:center;gap:12px;margin:0;color:var(--ink-3);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.divider::before,.divider::after{content:"";flex:1;border-top:1px solid var(--line)}
 CSS;
     }
 }
