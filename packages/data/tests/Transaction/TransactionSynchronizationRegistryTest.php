@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Firefly\Data\Tests\Support\DatabaseTestCase;
+use Firefly\Data\Transaction\Propagation;
+use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionPhase;
 use Firefly\Data\Transaction\TransactionSynchronizationRegistry;
 use Firefly\Data\Transaction\TransactionTemplate;
@@ -171,4 +173,103 @@ it('sweeps a BEFORE_COMMIT queued mid-drain by a callback that then vetoes, so t
     });
 
     expect($log)->toBe(['outer']);
+});
+
+it('discards a BEFORE_COMMIT queued in a NESTED savepoint that rolls back, so its event sees AFTER_ROLLBACK only while the outer commit still drains its own', function () {
+    $registry = new TransactionSynchronizationRegistry;
+    $template = new TransactionTemplate(null, null, null, $registry);
+    $log = [];
+
+    $template->execute(function () use ($template, $registry, &$log): void {
+        DB::table('widgets')->insert(['name' => 'outer']);
+        $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+            $log[] = 'before-commit(outer):'.DB::connection()->transactionLevel();
+        });
+
+        try {
+            $template->execute(function () use ($registry, &$log): void {
+                DB::table('widgets')->insert(['name' => 'inner']);
+                $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+                    $log[] = 'before-commit(inner) sees inner rows='.DB::table('widgets')->where('name', 'inner')->count();
+                });
+                $registry->register(TransactionPhase::AFTER_COMMIT, function () use (&$log): void {
+                    $log[] = 'after-commit(inner)';
+                });
+                $registry->register(TransactionPhase::AFTER_ROLLBACK, function () use (&$log): void {
+                    $log[] = 'after-rollback(inner):'.DB::connection()->transactionLevel();
+                });
+
+                throw new RuntimeException('inner fail');
+            }, new TransactionalDescriptor(propagation: Propagation::NESTED));
+        } catch (RuntimeException) {
+            $log[] = 'caught';
+        }
+    });
+
+    // Laravel unwinds to level 1 before firing the savepoint's rollback callbacks; the inner BEFORE_COMMIT went
+    // with the savepoint exactly as the inner AFTER_COMMIT did, while the outer's own BEFORE_COMMIT still runs.
+    expect($log)->toBe(['after-rollback(inner):1', 'caught', 'before-commit(outer):1'])
+        ->and(DB::table('widgets')->pluck('name')->all())->toBe(['outer']);
+
+    // Nothing from the savepoint lies in wait for the next transaction on the connection either.
+    $template->execute(function (): void {
+        DB::table('widgets')->insert(['name' => 'unrelated']);
+    });
+    expect($log)->toBe(['after-rollback(inner):1', 'caught', 'before-commit(outer):1']);
+});
+
+it('keeps a BEFORE_COMMIT queued in a RELEASED savepoint when a sibling savepoint rolls back, as Laravel keeps its after-commit', function () {
+    $registry = new TransactionSynchronizationRegistry;
+    $log = [];
+
+    DB::beginTransaction();
+
+    DB::beginTransaction(); // savepoint A, released below
+    $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+        $log[] = 'before-commit(A)';
+    });
+    $registry->register(TransactionPhase::AFTER_COMMIT, function () use (&$log): void {
+        $log[] = 'after-commit(A)';
+    });
+    DB::commit();
+
+    DB::beginTransaction(); // savepoint B, rolled back
+    $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+        $log[] = 'before-commit(B)';
+    });
+    $registry->register(TransactionPhase::AFTER_COMMIT, function () use (&$log): void {
+        $log[] = 'after-commit(B)';
+    });
+    DB::rollBack();
+
+    expect($log)->toBe([]);
+
+    DB::commit();
+
+    expect($log)->toBe(['before-commit(A)', 'after-commit(A)']);
+});
+
+it('discards a BEFORE_COMMIT queued in a released savepoint when the savepoint ENCLOSING it rolls back, as Laravel discards its after-commit', function () {
+    $registry = new TransactionSynchronizationRegistry;
+    $log = [];
+
+    DB::beginTransaction();
+    $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+        $log[] = 'before-commit(root)';
+    });
+
+    DB::beginTransaction(); // level 2, rolled back below
+    DB::beginTransaction(); // level 3, released into level 2
+    $registry->register(TransactionPhase::BEFORE_COMMIT, function () use (&$log): void {
+        $log[] = 'before-commit(3)';
+    });
+    $registry->register(TransactionPhase::AFTER_COMMIT, function () use (&$log): void {
+        $log[] = 'after-commit(3)';
+    });
+    DB::commit();
+    DB::rollBack();
+
+    DB::commit();
+
+    expect($log)->toBe(['before-commit(root)']);
 });

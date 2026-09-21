@@ -105,3 +105,32 @@ it('runs the BEFORE_COMMIT of an event published BY a BEFORE_COMMIT listener ins
         'fallback-after-commit:t2:1:0',
     ]);
 });
+
+it('gives an event published inside a NESTED savepoint that rolls back AFTER_ROLLBACK only, while the outer commit still drains its own BEFORE_COMMIT', function () {
+    /** @var ListenersCapstoneTestCase $this */
+    $service = noteService($this->app());
+
+    $service->saveWithNestedFailure('outer', 'inner');
+
+    // The inner AFTER_* run as Laravel unwinds to level 1 (rows for `inner` already 0); the inner BEFORE_COMMIT
+    // and AFTER_COMMIT went with the savepoint, so the outer commit drains only the BEFORE_COMMIT queued at level 1.
+    expect(DB::table('notes')->pluck('title')->all())->toBe(['outer'])
+        ->and(NoteAudit::$log)->toBe([
+            'after-completion:inner:0:1',
+            'after-rollback:inner:0:1',
+            'before-commit:outer:1:1',
+            'after-commit:outer:1:0',
+            'after-completion:outer:1:0',
+            'fallback-after-commit:outer:1:0',
+        ]);
+
+    // Nothing from the savepoint lies in wait for the next transaction on the connection.
+    NoteAudit::reset();
+    $service->save('t2');
+    expect(NoteAudit::$log)->toBe([
+        'before-commit:t2:1:1',
+        'after-commit:t2:1:0',
+        'after-completion:t2:1:0',
+        'fallback-after-commit:t2:1:0',
+    ]);
+});
