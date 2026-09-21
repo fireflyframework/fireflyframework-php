@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Security\OAuth2\Server\Client;
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Server\Jose\ClientJwkSet;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 
 /**
@@ -12,8 +13,9 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * only fail on a live request: an unknown method or grant, a confidential method with no secret, a secret the
  * DelegatingPasswordEncoder could never match (no `{id}` prefix — it answers false, silently, for every attempt),
  * `none` beside a secret, an authorization_code client with no redirect URI, a redirect URI that is not absolute
- * or carries a fragment (RFC 6749 §3.1.2), a private_key_jwt client with no JWK set. Spring's defaults: the map
- * key is the client id and the name, `client_secret_basic`, `authorization_code` + `refresh_token`.
+ * or carries a fragment (RFC 6749 §3.1.2), a private_key_jwt client with no JWK set or with one php-jwt could not
+ * verify an assertion against (ClientJwkSet). Spring's defaults: the map key is the client id and the name,
+ * `client_secret_basic`, `authorization_code` + `refresh_token`.
  *
  * The rules that span more than one field live in assertConsistent(), which every store runs against the client
  * it is about to hand out — this factory after building from a config block, the `eloquent` driver after mapping
@@ -53,8 +55,10 @@ final class RegisteredClientFactory
      * secret; a secret carries the `{id}` prefix the DelegatingPasswordEncoder dispatches on (a plain one answers
      * false, silently, for every attempt); `none` is public and carries no secret; the authorization_code grant
      * needs at least one redirect URI; every redirect and post-logout URI is absolute and fragment-free (RFC 6749
-     * §3.1.2); private_key_jwt needs the client's JWK set. Each refusal names the client by its id. Returns the
-     * client so a builder can hand it straight out.
+     * §3.1.2); private_key_jwt needs the client's JWK set, and one every key of which php-jwt can verify with —
+     * ClientJwkSet's rules, so a key without `alg` or a second key without `kid` refuses here and not, as php-jwt
+     * would have it, on the first token request. Each refusal names the client by its id. Returns the client so
+     * a builder can hand it straight out.
      */
     public static function assertConsistent(RegisteredClient $client): RegisteredClient
     {
@@ -81,8 +85,11 @@ final class RegisteredClientFactory
         foreach ($client->postLogoutRedirectUris as $uri) {
             self::assertRedirectUri($uri, $id);
         }
-        if (in_array(ClientAuthenticationMethod::PrivateKeyJwt, $methods, true) && $client->clientSettings->jwkSet === null) {
-            throw new ConfigurationException("Client [{$id}]: private_key_jwt needs client_settings.jwk_set (the client's public JWKS).");
+        if (in_array(ClientAuthenticationMethod::PrivateKeyJwt, $methods, true)) {
+            if ($client->clientSettings->jwkSet === null) {
+                throw new ConfigurationException("Client [{$id}]: private_key_jwt needs client_settings.jwk_set (the client's public JWKS).");
+            }
+            ClientJwkSet::assertValid($client->clientSettings->jwkSet, $id);
         }
 
         return $client;

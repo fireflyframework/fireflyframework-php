@@ -9,7 +9,9 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
 /**
  * A client's own switches (Spring's ClientSettings): whether it must use PKCE even when the server does not
  * demand it of everyone, whether the user is asked for consent (defaulting to `consent.required`), and the JWK
- * set a `private_key_jwt` client signs its assertions with.
+ * set a `private_key_jwt` client signs its assertions with — held here as the decoded document it was given
+ * (so a row round-trips unchanged) and held to ClientJwkSet's rules by RegisteredClientFactory::assertConsistent()
+ * for every client that lists the method.
  */
 final readonly class ClientSettings
 {

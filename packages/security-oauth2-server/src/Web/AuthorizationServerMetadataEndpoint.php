@@ -8,6 +8,7 @@ use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\ClientAuthenticationMethod;
+use Firefly\Security\OAuth2\Server\Jose\ClientJwkSet;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Illuminate\Http\JsonResponse;
@@ -18,8 +19,9 @@ use Symfony\Component\HttpFoundation\Response;
  * The discovery documents — OpenID Connect Discovery 1.0 at /.well-known/openid-configuration and RFC 8414 at
  * /.well-known/oauth-authorization-server — as one document: the OIDC one is a superset and RFC 8414 allows
  * extra members, so a client that reads either learns every endpoint URL (issuer + path), the grants, the
- * client-authentication methods, `S256` as the only challenge method and the signing algorithm. The two paths
- * are fixed by their specifications; `registration_endpoint` appears only when the endpoint is configured.
+ * client-authentication methods, the algorithms a private_key_jwt assertion may be signed with, `S256` as the
+ * only challenge method and the signing algorithm. The two paths are fixed by their specifications;
+ * `registration_endpoint` appears only when the endpoint is configured.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -63,6 +65,7 @@ final class AuthorizationServerMetadataEndpoint implements OAuth2Endpoint
             'authorization_endpoint' => $s->endpointUrl($s->authorizationEndpoint),
             'token_endpoint' => $s->endpointUrl($s->tokenEndpoint),
             'token_endpoint_auth_methods_supported' => array_map(static fn (ClientAuthenticationMethod $m): string => $m->value, ClientAuthenticationMethod::cases()),
+            'token_endpoint_auth_signing_alg_values_supported' => ClientJwkSet::ALGORITHMS,
             'jwks_uri' => $s->endpointUrl($s->jwkSetEndpoint),
             'userinfo_endpoint' => $s->endpointUrl($s->oidcUserInfoEndpoint),
             'end_session_endpoint' => $s->endpointUrl($s->oidcLogoutEndpoint),

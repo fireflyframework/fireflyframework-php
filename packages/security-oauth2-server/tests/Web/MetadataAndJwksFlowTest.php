@@ -27,6 +27,7 @@ it('boots the filter and publishes the OIDC discovery and RFC 8414 documents ahe
         'grant_types_supported' => ['authorization_code', 'client_credentials', 'refresh_token'],
         'code_challenge_methods_supported' => ['S256'],
         'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'private_key_jwt', 'none'],
+        'token_endpoint_auth_signing_alg_values_supported' => ['RS256', 'RS384', 'RS512', 'ES256', 'ES384'],
         'introspection_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'private_key_jwt'],
         'subject_types_supported' => ['public'],
         'id_token_signing_alg_values_supported' => ['RS256'],

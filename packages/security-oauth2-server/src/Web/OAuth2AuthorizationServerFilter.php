@@ -28,10 +28,15 @@ use Throwable;
  *
  * A request at none of the addresses costs one path comparison per endpoint and passes through. A wrong method
  * is 405 + Allow + the RFC 6749 document. A machine endpoint's OAuth2AuthenticationException becomes that
- * document with its status; anything else it throws is logged (the class name, never a secret or a token) and
- * answered `500 server_error` — a browser opening a token URL never sees an HTML page here. Browser endpoints
- * render their own refusals and let a genuine failure reach firefly/web's error page like any other page.
- * Both gates are re-read live, so a test's withoutSecurity() disarms this filter too.
+ * document with its status; anything else it throws is logged at ERROR — the endpoint's class, the exception's
+ * class and the file:line it was thrown from, and NOT its message or the exception object: a QueryException's
+ * message interpolates the bound values into the statement, and on these endpoints the bound values are codes,
+ * token hashes and assertions, so the message is the one thing that must never reach the log. The exception is
+ * answered here, never rethrown, so firefly/web's handler does not see it either; an endpoint that wants the
+ * detail reported catches and reports it itself. The client gets `500 server_error` — a browser opening a token
+ * URL never sees an HTML page here. Browser endpoints render their own refusals and let a genuine failure reach
+ * firefly/web's error page like any other page. Both gates are re-read live, so a test's withoutSecurity()
+ * disarms this filter too.
  */
 #[Component]
 #[Order(-82)]
@@ -78,7 +83,7 @@ final class OAuth2AuthorizationServerFilter extends OncePerRequestFilter
         } catch (OAuth2AuthenticationException $e) {
             return OAuth2ErrorResponse::fromException($e);
         } catch (Throwable $e) {
-            $this->logger?->error('OAuth2 endpoint '.$endpoint::class.' failed: '.$e::class.' — '.$e->getMessage(), ['exception' => $e]);
+            $this->logger?->error('OAuth2 endpoint '.$endpoint::class.' failed: '.$e::class.' at '.$e->getFile().':'.$e->getLine());
 
             return OAuth2ErrorResponse::json(new OAuth2Error(OAuth2ErrorCodes::SERVER_ERROR, 'The authorization server could not process the request.'), 500);
         }

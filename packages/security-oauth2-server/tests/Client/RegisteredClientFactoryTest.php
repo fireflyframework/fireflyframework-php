@@ -7,6 +7,9 @@ use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\ClientAuthenticationMethod;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClient;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientFactory;
+use Firefly\Security\OAuth2\Server\Jose\ClientJwkSet;
+use Firefly\Security\OAuth2\Server\Jose\KeyPairGenerator;
+use Firefly\Security\OAuth2\Server\Jose\SigningKey;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Settings\OAuth2TokenFormat;
 use Monolog\Formatter\LineFormatter;
@@ -137,4 +140,54 @@ it('accepts a client-credentials-only client without redirect URIs', function ()
 
     expect($client->redirectUris)->toBe([])
         ->and($client->supportsGrant(AuthorizationGrantType::ClientCredentials))->toBeTrue();
+});
+
+/**
+ * A private_key_jwt client whose `jwk_set` holds the given keys.
+ *
+ * @param  list<mixed>  $keys
+ */
+function jwtClientWith(array $keys): RegisteredClient
+{
+    return clientFrom(['client_authentication_methods' => ['private_key_jwt'], 'authorization_grant_types' => ['client_credentials'], 'client_settings' => ['jwk_set' => ['keys' => $keys]]]);
+}
+
+it('refuses at boot, naming the client and the key, a jwk_set php-jwt could only refuse on the first token request', function (array $keys, string $needle) {
+    /** @var list<mixed> $keys */
+    expect(fn () => jwtClientWith($keys))->toThrow(ConfigurationException::class, $needle)
+        ->and(fn () => jwtClientWith($keys))->toThrow(ConfigurationException::class, 'Client [web-app]');
+})->with([
+    'no keys at all' => [[], 'at least one key'],
+    'a key that is not a map' => [['-----BEGIN PUBLIC KEY-----'], 'keys[0] must be a JWK'],
+    'a symmetric key' => [[['kty' => 'oct', 'kid' => 'k', 'k' => 'c2VjcmV0']], 'kty must be RSA or EC'],
+    'an HMAC alg on an RSA key' => [[['kty' => 'RSA', 'kid' => 'k', 'alg' => 'HS256', 'n' => 'AQ', 'e' => 'AQAB']], 'alg must be one of RS256, RS384, RS512, ES256, ES384'],
+    'an EC key without alg on a curve with no default' => [[['kty' => 'EC', 'kid' => 'k', 'crv' => 'secp256k1', 'x' => 'AQ', 'y' => 'AQ']], 'none is named, and none follows from kty EC on the curve `secp256k1`'],
+    'a second key without kid' => [[['kty' => 'RSA', 'kid' => 'a', 'n' => 'AQ', 'e' => 'AQAB'], ['kty' => 'RSA', 'n' => 'AQ', 'e' => 'AQAB']], 'keys[1]: kid is required when the set holds more than one key'],
+    'an empty kid' => [[['kty' => 'RSA', 'kid' => '', 'n' => 'AQ', 'e' => 'AQAB']], 'kid must be a non-empty string'],
+    'two keys under one kid' => [[['kty' => 'RSA', 'kid' => 'a', 'n' => 'AQ', 'e' => 'AQAB'], ['kty' => 'RSA', 'kid' => 'a', 'n' => 'AQ', 'e' => 'AQAB']], 'keys[1]: kid [a] is already used by keys[0]'],
+    'an RSA key without its modulus' => [[['kty' => 'RSA', 'kid' => 'k', 'e' => 'AQAB']], 'keys[0] could not be loaded: RSA keys must contain values for both "n" and "e"'],
+    'an EC key without its coordinates' => [[['kty' => 'EC', 'kid' => 'k', 'crv' => 'P-256']], 'keys[0] could not be loaded: x and y not set'],
+]);
+
+it('accepts a jwk_set whose keys omit the OPTIONAL alg, and a single key without kid, and holds the document as it was given', function () {
+    $rsa = SigningKey::fromPem(KeyPairGenerator::generate('RS256'), 'RS256', 'rsa')->jwk;
+    $ec = SigningKey::fromPem(KeyPairGenerator::generate('ES256'), 'ES256', 'ec')->jwk;
+    unset($rsa['alg'], $ec['alg']);
+    $single = $rsa;
+    unset($single['kid']);
+
+    expect(jwtClientWith([$rsa, $ec])->clientSettings->jwkSet)->toBe(['keys' => [$rsa, $ec]])
+        ->and(jwtClientWith([$single])->clientSettings->jwkSet)->toBe(['keys' => [$single]])
+        ->and(ClientJwkSet::defaultAlgorithm($rsa))->toBe('RS256')
+        ->and(ClientJwkSet::defaultAlgorithm($ec))->toBe('ES256')
+        ->and(ClientJwkSet::defaultAlgorithm(['kty' => 'EC', 'crv' => 'P-384']))->toBe('ES384')
+        ->and(ClientJwkSet::defaultAlgorithm(['kty' => 'oct']))->toBeNull()
+        ->and(array_keys(ClientJwkSet::parse(['keys' => [$rsa, $ec]])))->toBe(['rsa', 'ec'])
+        ->and(array_keys(ClientJwkSet::parse(['keys' => [$single]])))->toBe([0]); // its position, as php-jwt keys a kid-less entry
+});
+
+it('does not hold a client that cannot use private_key_jwt to the jwk_set rules: the set is carried, never read', function () {
+    $client = clientFrom(['client_authentication_methods' => ['none'], 'redirect_uris' => ['https://a.test/cb'], 'client_settings' => ['jwk_set' => ['keys' => [['kty' => 'oct', 'k' => 'c2VjcmV0']]]]]);
+
+    expect($client->clientSettings->jwkSet)->toBe(['keys' => [['kty' => 'oct', 'k' => 'c2VjcmV0']]]);
 });
