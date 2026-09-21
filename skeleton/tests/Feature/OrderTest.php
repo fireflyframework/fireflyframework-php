@@ -267,6 +267,22 @@ final class OrderTest extends TestCase
         $this->assertContains('lines', array_column((array) $response->json('errors'), 'field'));
     }
 
+    public function test_it_rejects_a_bad_line_with_a_422_naming_the_element_and_the_constraint(): void
+    {
+        $body = $this->body();
+        $body['lines'][1]['sku'] = 'bad sku!';
+
+        $response = $this->postJson('/orders', $body);
+
+        // #[Valid] on `lines` cascades into every element, so the second line's SKU is reported under
+        // `lines[1].sku` with the Pattern constraint's own sentence — a 422, never a 400 from the constructor.
+        $response->assertStatus(422)->assertJsonPath('code', 'VALIDATION_ERROR');
+        $this->assertContains(
+            ['field' => 'lines[1].sku', 'message' => 'must match "^[A-Z0-9][A-Z0-9-]{2,31}$"', 'constraint' => 'Pattern', 'rejectedValue' => 'bad sku!'],
+            (array) $response->json('errors'),
+        );
+    }
+
     public function test_an_unknown_order_is_an_rfc_7807_problem_document(): void
     {
         // OrderService throws ResourceNotFoundException; firefly/web renders the whole FireflyException
