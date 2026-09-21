@@ -65,3 +65,58 @@ it('shows the error state for a wrong password, then honours the saved request o
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'login-saved-request');
 });
+
+it('signs out through POST /logout, lands on the signed-out notice, and is anonymous again', function (): void {
+    /** @var SignedInBrowserTestCase $this */
+    $page = visit('/orders');
+
+    $page->fill('username', SecuredBrowserTestCase::ADMIN)
+        ->fill('password', SecuredBrowserTestCase::ADMIN_PASSWORD)
+        ->click(SecuredBrowserTestCase::SIGN_IN_BUTTON)
+        ->assertPathIs('/orders');
+
+    // No framework page renders a logout control (the login page is the only framework page, and /orders is
+    // JSON), and LogoutFilter takes POST with the session token only — so the fixture form is submitted.
+    $page->navigate(SecuredBrowserTestCase::SIGN_OUT_PATH)
+        ->assertSee('Sign-out fixture')
+        ->click('#sign-out')
+        ->assertPathIs('/login')
+        ->assertQueryStringHas('logout')
+        ->assertSee('You have signed out.')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'logout');
+
+    // The session was invalidated, not merely emptied: the cookie the browser still holds names nothing.
+    $page->navigate('/orders')
+        ->assertPathIs('/login')
+        ->assertDontSee('You have signed out.')
+        ->assertNoJavaScriptErrors();
+});
+
+it('signs bob in and answers his saved request with the 403 page', function (): void {
+    /** @var SignedInBrowserTestCase $this */
+    visit('/orders')
+        ->assertPathIs('/login')
+        ->fill('username', SecuredBrowserTestCase::USER)
+        ->fill('password', SecuredBrowserTestCase::USER_PASSWORD)
+        ->click(SecuredBrowserTestCase::SIGN_IN_BUTTON)
+        ->assertPathIs('/orders')
+        ->assertSee('403')
+        ->assertSee('ACCESS_DENIED')
+        ->assertSee('Access is denied.')
+        ->assertDontSee('Sign in')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'login-user-403');
+});
+
+it('still answers an API path with the 401 problem document, never a redirect', function (): void {
+    /** @var SignedInBrowserTestCase $this */
+    visit('/api/browser-fixture/missing')
+        ->assertPathIs('/api/browser-fixture/missing')
+        ->assertSourceHas('"status":401')
+        ->assertSourceHas('"code":"AUTHENTICATION_FAILED"')
+        ->assertSourceMissing('<h1')
+        ->assertSourceMissing('Sign in')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'login-api-401-json');
+});
