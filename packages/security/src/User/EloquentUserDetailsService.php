@@ -22,7 +22,8 @@ use Illuminate\Database\Eloquent\Model;
  *   password    the ENCODED password, `{id}`-prefixed for the delegating encoder (`{bcrypt}$2y$…`)
  *   enabled     boolean, optional (enabled_column; empty means every account is enabled)
  *   locked      boolean, optional (locked_column; empty means no account is locked)
- *   authorities a JSON list of strings — `["ROLE_USER", "orders:read"]` — or a relation (`roles.name`)
+ *   authorities a JSON list of strings — `["ROLE_USER", "orders:read"]` — or a relation (`roles.name`);
+ *               optional (authorities; empty means the model carries none and every account gets [])
  *
  * A CONFIGURED NAME THE ROW DOES NOT CARRY IS REFUSED, NOT READ AS NULL. Model::getAttribute() answers null
  * for a column the row has no attribute for (Laravel's default; preventAccessingMissingAttributes() is
@@ -35,6 +36,14 @@ use Illuminate\Database\Eloquent\Model;
  * when the row has no such attribute; the first segment of `relation.attribute` is checked the same way,
  * as an attribute or a Model::isRelation(). Text of the wrong type gets the same treatment in text(): a
  * column of the wrong shape is a configuration mistake, not a user to refuse.
+ *
+ * THE THREE OPTIONAL COLUMNS OPT OUT WITH THE EMPTY STRING, NOT BY BEING ABSENT. `enabled_column`,
+ * `locked_column` and `authorities` set to `''` mean "the model has no such column": every account is
+ * enabled, none is locked, none holds an authority — the same `[]` the memory driver's optional
+ * `authorities` defaults to. That is how the driver reads Laravel's stock `users` table (`id`, `name`,
+ * `email`, `password`, no authorities column) without a schema change: `authorities => ''`. The refusal
+ * above applies to a NAME that is configured and missing, never to the deliberate opt-out; the two are
+ * distinguishable because a typo is never the empty string.
  *
  * Construction never touches the database, so SecurityWiringPass can resolve the bean at boot for its
  * settings' refusals without a connection being configured yet; the Model check on the class is
@@ -111,13 +120,19 @@ final class EloquentUserDetailsService implements UserDetailsService
      * belongsTo role, contributes its one attribute). Anything that is not a non-empty string is dropped
      * rather than turned into an authority nobody configured. A relation the model does not define, or a
      * column the row does not carry, is refused for the reason the class docblock gives: `[]` for every user
-     * would be the silent loss of every role.
+     * would be the silent loss of every role. The empty setting is the documented opt-out — the model has no
+     * authorities at all, as a stock `users` table has none — and answers `[]` before any column is asked
+     * for, the same escape enabled_column and locked_column have.
      *
      * @return list<GrantedAuthority>
      */
     private function authorities(Model $row): array
     {
         $source = $this->settings->authorities;
+
+        if ($source === '') {
+            return [];
+        }
 
         if (str_contains($source, '.')) {
             [$relation, $attribute] = explode('.', $source, 2);

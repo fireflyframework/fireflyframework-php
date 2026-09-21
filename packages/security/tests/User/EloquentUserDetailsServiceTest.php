@@ -7,6 +7,7 @@ use Firefly\Security\Authentication\Exception\UsernameNotFoundException;
 use Firefly\Security\Tests\Fixtures\Users\Account;
 use Firefly\Security\Tests\Fixtures\Users\RawAccount;
 use Firefly\Security\Tests\Fixtures\Users\Role;
+use Firefly\Security\Tests\Fixtures\Users\StockUser;
 use Firefly\Security\User\EloquentUserDetailsService;
 use Firefly\Security\User\User;
 use Firefly\Security\User\UserDetails;
@@ -73,6 +74,33 @@ it('treats an empty enabled/locked column as always enabled and never locked', f
     $off = eloquentUsers(enabled: '', locked: '')->loadUserByUsername('off@example.com');
 
     expect($off->isEnabled())->toBeTrue()->and($off->isAccountNonLocked())->toBeTrue();
+});
+
+it('reads Laravel\'s stock users table with `authorities => \'\'` — no authorities column, every account authenticates with none', function () {
+    // The table `php artisan make:model` and the default migration give an application: id, name, email,
+    // password. No authorities, no enabled, no locked. With the three optional columns opted out the driver
+    // maps it as-is — the promise that it works over ANY Eloquent model, App\Models\User included.
+    Schema::create('users', function (Blueprint $table): void {
+        $table->increments('id');
+        $table->string('name');
+        $table->string('email')->unique();
+        $table->string('password');
+    });
+    DB::table('users')->insert(['name' => 'Ada', 'email' => 'ada@stock.example.com', 'password' => '{noop}secret']);
+
+    $user = eloquentUsers(enabled: '', locked: '', authorities: '', model: StockUser::class)->loadUserByUsername('ada@stock.example.com');
+
+    expect($user->getUsername())->toBe('ada@stock.example.com')
+        ->and($user->getPassword())->toBe('{noop}secret')
+        ->and($user->getAuthorities())->toBe([])
+        ->and($user->isEnabled())->toBeTrue()
+        ->and($user->isAccountNonLocked())->toBeTrue();
+
+    // The empty string is the opt-out; the DEFAULT still names an `authorities` column, and over this table
+    // that is a configured name the row does not carry — refused naming the column, not read as []. The
+    // difference between "no authorities" and "a typo" is that a typo is never the empty string.
+    expect(fn () => eloquentUsers(enabled: '', locked: '', model: StockUser::class)->loadUserByUsername('ada@stock.example.com'))
+        ->toThrow(ConfigurationException::class, 'firefly.security.users.authorities names `authorities`');
 });
 
 it('throws UsernameNotFoundException for an unknown username', function () {

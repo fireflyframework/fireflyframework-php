@@ -260,11 +260,14 @@ return [
          |
          | Eloquent: the expected schema is `email` (username_column), `password` (password_column, the
          | encoded string as above), optional `enabled`/`locked` booleans (enabled_column/locked_column —
-         | empty means "no such flag"), and `authorities` — a column holding a JSON list (or an `array`
-         | cast) or `relation.attribute` to pluck from a relation (`roles.name`). A model class that does
-         | not exist or is not an Eloquent model REFUSES TO BOOT. A configured column (or relation) the
-         | loaded row does not carry is refused on the lookup, never read as NULL — a locked_column typo
-         | would otherwise unlock every account silently.
+         | empty means "no such flag"), and optional `authorities` — a column holding a JSON list (or an
+         | `array` cast) or `relation.attribute` to pluck from a relation (`roles.name`); empty means "the
+         | model carries no authorities" and every account authenticates with none. A model class that
+         | does not exist or is not an Eloquent model REFUSES TO BOOT. A configured column (or relation)
+         | the loaded row does not carry is refused on the lookup, never read as NULL — a locked_column
+         | typo would otherwise unlock every account silently. Laravel's stock `users` table (id, name,
+         | email, password) therefore needs `'authorities' => ''`, or a column/relation added to it: the
+         | default names an `authorities` column that table does not have.
          |
          | Defaults: driver 'memory', model '', username_column 'email', password_column 'password',
          | enabled_column '', locked_column '', authorities 'authorities'.
@@ -276,7 +279,7 @@ return [
             // 'password_column' => 'password',
             // 'enabled_column' => '',
             // 'locked_column' => '',
-            // 'authorities' => 'authorities',
+            // 'authorities' => '', // the stock users table has no authorities column; name one (or `roles.name`) once it does
 
             // 'alice' => [
             //     'password' => '{bcrypt}$2y$12$...',

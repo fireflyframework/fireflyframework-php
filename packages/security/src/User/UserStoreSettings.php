@@ -19,7 +19,12 @@ use Illuminate\Database\Eloquent\Model;
  *
  * `authorities` is either a column holding a JSON list (or an `array` cast) or `relation.attribute` — a
  * relation to pluck the attribute from, for a roles table. An empty `enabled_column`/`locked_column` means
- * the model has no such flag: every account is enabled, none is locked.
+ * the model has no such flag: every account is enabled, none is locked. An empty `authorities` means the
+ * model carries no authorities: every account authenticates with none (`[]`, the memory driver's default
+ * for the same optional key). That last one is what Laravel's stock `users` table needs — `id`, `name`,
+ * `email`, `password`, no authorities column — because the default `authorities` names a column the driver
+ * refuses on the lookup when the row does not carry it. The empty string is the only opt-out: a name that
+ * is configured and missing is a typo, and is refused rather than read as NULL.
  *
  * fromConfig() is where the refusals live — an unknown driver, an eloquent driver naming no model, a model
  * class that does not exist or is not an Eloquent model — and SecurityWiringPass resolves the UserDetailsService
