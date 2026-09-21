@@ -426,6 +426,33 @@ return [
                 ],
             ],
             20 => [
+                'method' => 'authenticationEntryPoint',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.http.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+                        ],
+                    ],
+                ],
+            ],
+            21 => [
                 'method' => 'sessionCsrf',
                 'conditions' => [
                     0 => [
@@ -436,7 +463,7 @@ return [
                     ],
                 ],
             ],
-            21 => [
+            22 => [
                 'method' => 'jwtService',
                 'conditions' => [
                     0 => [
@@ -455,7 +482,7 @@ return [
                     ],
                 ],
             ],
-            22 => [
+            23 => [
                 'method' => 'httpSecurity',
                 'conditions' => [
                     0 => [
@@ -474,7 +501,7 @@ return [
                     ],
                 ],
             ],
-            23 => [
+            24 => [
                 'method' => 'jwksProvider',
                 'conditions' => [
                     0 => [

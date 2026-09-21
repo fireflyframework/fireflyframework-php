@@ -10,12 +10,13 @@ use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Jwt\JwtService;
+use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
 use Firefly\Security\Web\MethodSecurityControllerGuard;
 use Firefly\Security\Web\Settings\RememberMeSettings;
 use Firefly\Web\Security\ControllerSecurityGuard;
 
 /**
- * Five boot-time actions gated for correctness, in this order:
+ * Six boot-time actions gated for correctness, in this order:
  *
  * (0) MUTUAL-EXCLUSIVITY GUARD, unconditional (runs even when the master flag is off): local-JWT
  * (JwtAuthenticationFilter, #[Order(-90)]) and the OAuth2 resource server (OAuth2ResourceServerFilter,
@@ -42,7 +43,12 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * The remaining actions run only `when firefly.security.enabled` (WiringPasses, after FlushDefinitions so every
  * #[Bean] is registered):
  *
- * (3) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
+ * (3) ENTRY-POINT MODE GUARD: `firefly.security.http.entry_point` is validated — an unknown value, or `login`
+ * without form login, is a ConfigurationException. The authenticationEntryPoint #[Bean] validates it too, but
+ * that bean exists only while the HTTP surface is on; this runs whenever the master flag is, so a meaningless
+ * mode is refused at boot rather than left for the day http.enabled is flipped.
+ *
+ * (4) STALE-CACHE GUARD, under the master flag and `firefly.security.method.enabled`: a compiled
  * security-methods.php with no proxy-plan.php beside it was written by a firefly:cache from before the proxy plan
  * existed. Such a cache lists every rule in the manifest while DataAutoConfiguration::proxyPlan() bridges a
  * transactional-only plan from transactional.php, so a #[Service] whose rules are method security alone is
@@ -53,7 +59,7 @@ use Firefly\Web\Security\ControllerSecurityGuard;
  * null while regenerating), which is what writes the missing file. Skipped when `method.enabled` is off,
  * because the proxy link is then a pass-through by the operator's own choice and the stale plan changes nothing.
  *
- * (4) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
+ * (5) OVERRIDE web's no-op ControllerSecurityGuard with the real MethodSecurityControllerGuard via a container
  * instance() bind — unconditional and boot-order-independent, since the ControllerDispatcher resolves the guard
  * fresh per request. Skipped entirely when disabled, leaving the secure default (web's AllowAll guard) untouched.
  */
@@ -92,6 +98,11 @@ final class SecurityWiringPass implements BootPass
         }
 
         $container = $context->container;
+
+        // Validated here as well as in the bean, so a meaningless mode is refused even when http is off and
+        // the bean is never built: an unknown value, or `login` without form login (a redirect to a page that
+        // does not exist is a loop, not a policy).
+        DelegatingAuthenticationEntryPoint::modeFrom($config);
 
         if ($config->bool('firefly.security.method.enabled', true)
             && ($methods = AppScan::cachedFile($container, AppScan::SECURITY_METHODS)) !== null

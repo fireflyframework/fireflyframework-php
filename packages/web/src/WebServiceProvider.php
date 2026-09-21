@@ -29,6 +29,7 @@ use Firefly\Web\Route\RouteScanner;
 use Firefly\Web\Security\AllowAllControllerSecurityGuard;
 use Firefly\Web\Security\ControllerSecurityGuard;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory as ViewFactory;
@@ -80,8 +81,18 @@ final class WebServiceProvider extends FireflyServiceProvider
 
                 // The view factory is optional: an application may have none bound, and the built-in page
                 // needs none. It is resolved lazily so a broken view layer cannot break the renderer that
-                // exists to explain broken things.
-                $views = $app->bound(ViewFactory::class) ? $app->make(ViewFactory::class) : null;
+                // exists to explain broken things. bound() alone is not the test: a fresh Application
+                // aliases the contract to `view` before any provider registers that service, so it answers
+                // true in a bare container (a test harness, a boot that resolves this renderer eagerly) and
+                // the make() throws. A factory that cannot be made is the same as none bound.
+                $views = null;
+                if ($app->bound(ViewFactory::class)) {
+                    try {
+                        $views = $app->make(ViewFactory::class);
+                    } catch (BindingResolutionException) {
+                        // No view layer: the built-in page renders without one.
+                    }
+                }
 
                 return new ErrorPageRenderer($app->make(ErrorPageSettings::class), $base, $views);
             });

@@ -302,6 +302,22 @@ return [
                 ],
             ],
             20 => [
+                'method' => 'authenticationEntryPoint',
+                'returns' => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+                    2 => 'Firefly\\Security\\Web\\Settings\\HttpBasicSettings',
+                    3 => 'Firefly\\Web\\Error\\ErrorPageRenderer',
+                    4 => 'Firefly\\Web\\Exception\\ProblemDetailsRenderer',
+                ],
+            ],
+            21 => [
                 'method' => 'sessionCsrf',
                 'returns' => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
                 'name' => null,
@@ -313,7 +329,7 @@ return [
                     0 => 'Illuminate\\Container\\Container',
                 ],
             ],
-            21 => [
+            22 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -325,7 +341,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            22 => [
+            23 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -337,7 +353,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            23 => [
+            24 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,
@@ -414,6 +430,9 @@ return [
             2 => 'Firefly\\Security\\Access\\RoleHierarchy',
             3 => 'Firefly\\Security\\Access\\PermissionEvaluator',
             4 => 'Firefly\\Config\\Config',
+            5 => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+            6 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+            7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
         ],
     ],
     6 => [

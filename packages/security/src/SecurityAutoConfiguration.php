@@ -50,10 +50,17 @@ use Firefly\Security\Session\SessionSecuritySettings;
 use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
 use Firefly\Security\Web\Csrf\SessionCsrf;
+use Firefly\Security\Web\EntryPoint\AuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\BasicAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\LoginUrlAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\ProblemAuthenticationEntryPoint;
 use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Security\Web\Settings\HttpBasicSettings;
 use Firefly\Security\Web\Settings\LogoutSettings;
 use Firefly\Security\Web\Settings\RememberMeSettings;
+use Firefly\Web\Error\ErrorPageRenderer;
+use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Psr\Log\LoggerInterface;
@@ -261,6 +268,32 @@ final class SecurityAutoConfiguration
     public function rememberMeSettings(Config $config): RememberMeSettings
     {
         return RememberMeSettings::fromConfig($config);
+    }
+
+    /**
+     * WHAT AN ANONYMOUS REQUEST TO A PROTECTED URL GETS: see DelegatingAuthenticationEntryPoint. Both web
+     * renderers are bound by WebServiceProvider behind bound() guards, so an application's own binding of
+     * either is what this entry point renders with. AND-gated exactly like its one consumer, HttpSecurityFilter:
+     * the master flag for the settings beans it takes, the HTTP surface flag because an entry point answers a
+     * URL refusal and there is none without URL rules — a security-only boot (no web provider registered)
+     * therefore never resolves the web renderers it would have to auto-wire. The mode is still validated at
+     * boot whenever the master flag is on: SecurityWiringPass runs modeFrom() whether or not this bean exists.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.http.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(AuthenticationEntryPoint::class)]
+    public function authenticationEntryPoint(Config $config, FormLoginSettings $formLogin, HttpBasicSettings $basic, ErrorPageRenderer $pages, ProblemDetailsRenderer $problems): AuthenticationEntryPoint
+    {
+        return new DelegatingAuthenticationEntryPoint(
+            DelegatingAuthenticationEntryPoint::modeFrom($config),
+            $formLogin,
+            $basic,
+            $pages,
+            new LoginUrlAuthenticationEntryPoint($formLogin),
+            new BasicAuthenticationEntryPoint($basic, $pages, $problems),
+            new ProblemAuthenticationEntryPoint,
+        );
     }
 
     /**

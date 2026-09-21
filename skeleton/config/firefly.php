@@ -282,6 +282,17 @@ return [
         */
         'http' => [
             'enabled' => env('FIREFLY_SECURITY_HTTP_ENABLED', false),
+            /*
+             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
+             | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
+             | page with the request saved when form_login is on; otherwise a 401 with
+             | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
+             | `login`, `challenge` and `problem` force one of the three (`login` without form_login is refused
+             | at boot). An AUTHENTICATED but under-privileged request is always the 403.
+             |
+             | Default: 'auto'.
+            */
+            'entry_point' => env('FIREFLY_SECURITY_ENTRY_POINT', 'auto'),
             'rules' => [
                 // ['pattern' => 'actuator/health', 'access' => 'permitAll'],
                 // ['pattern' => 'actuator/*',      'access' => 'hasRole:ACTUATOR'],
