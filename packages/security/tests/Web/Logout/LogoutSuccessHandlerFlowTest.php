@@ -10,7 +10,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Testing\TestResponse;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**

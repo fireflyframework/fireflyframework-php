@@ -94,7 +94,8 @@ return [
     | OFF by default, and opt-in surface by surface. `enabled` is the master flag: it gates the principal
     | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers, the
     | programmatic AuthorizationChecker, the event publisher, method security on beans, and every
-    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point).
+    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point, and
+    | OAuth2 login — oauth2.client.login.enabled, in the block below).
     |
     | Each surface below has its own flag. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are
     | independent of the master flag and can be turned on by themselves; everything else ALSO requires it,
@@ -144,7 +145,8 @@ return [
          | AddQueuedCookiesToResponse and StartSession onto the global stack ahead of the security filters
          | (and excludes them on every route as it is matched — cached or not — where a second EncryptCookies
          | pass would null every cookie). It is switched on implicitly by form_login, remember_me and
-         | http_basic.session below. What the session carries is a context saved through the
+         | http_basic.session below, and by oauth2.client.login.enabled (OAuth2 login signs into the same
+         | session). What the session carries is a context saved through the
          | SecurityContextRepository: the interactive mechanisms (form login, http_basic.session, remember-me)
          | save at the moment of success, and so can your own code (a controller that calls
          | SessionSecurityContextRepository::save()). Nothing stored carries a credential: a principal that
@@ -219,8 +221,9 @@ return [
          | out is a link an attacker can plant) invalidates the session, expires the remember-me cookie and any
          | cookie named in `delete_cookies`, publishes LogoutSuccessEvent and redirects to `logout_success_url`.
          |
-         | Defaults: enabled follows form_login.enabled, logout_url '/logout', logout_success_url
-         | '/login?logout', invalidate_session true, delete_cookies [], clear_authentication true.
+         | Defaults: enabled follows form_login.enabled or oauth2.client.login.enabled, logout_url '/logout',
+         | logout_success_url '/login?logout', invalidate_session true, delete_cookies [],
+         | clear_authentication true.
         */
         'logout' => [
             // 'enabled' => true,
@@ -318,10 +321,10 @@ return [
             /*
              | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
              | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
-             | page with the request saved when form_login is on; otherwise a 401 with
+             | page with the request saved when form_login or oauth2.client.login is on; otherwise a 401 with
              | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
-             | `login`, `challenge` and `problem` force one of the three (`login` without form_login is refused
-             | at boot). An AUTHENTICATED but under-privileged request is always the 403.
+             | `login`, `challenge` and `problem` force one of the three (`login` without form_login or OAuth2
+             | login is refused at boot). An AUTHENTICATED but under-privileged request is always the 403.
              |
              | The browser test does NOT depend on firefly.web.error-page.enabled: switching the framework's
              | error page off changes how a 401 is drawn, not whether a person is sent to sign in.

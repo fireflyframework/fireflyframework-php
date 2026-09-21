@@ -108,6 +108,46 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### Added
 
+- **`packages/security-oauth2-client` — a new package: Spring Security's `oauth2Login()` and `oauth2Client()` (wave B).**
+  Client registrations in Spring Boot's shape (`firefly.security.oauth2.client.registration.{id}` / `provider.{id}`)
+  with **presets** for `google`, `github`, `okta`, `keycloak` and `microsoft`/`entra` and **OIDC discovery** for any
+  `issuer_uri` (bounded, validated against the issuer, cached, lazy — `discovery.eager` resolves at boot; a dead
+  issuer is a `503 OIDC_DISCOVERY_UNAVAILABLE`), every static refusal at boot naming the key; **authorization-code
+  login** (`OAuth2AuthorizationRequestRedirectFilter` `-89`, `OAuth2LoginAuthenticationFilter` `-88`) with
+  single-use constant-time `state`, a nonce for `openid`, **PKCE S256** on by default and mandatory for a public
+  client, an exact `redirect_uri` check, the code exchanged over Laravel's Http client with `client_secret_basic`/
+  `client_secret_post`/`none`, the **id token verified** against the provider's JWKS through `RemoteJwksProvider`
+  and validated per OIDC Core §3.1.3.7 (`iss`, `aud`, `azp`, `exp`, `iat`, `sub`, `nonce`), userinfo loaded and
+  merged, and an **`OidcUser`/`OAuth2User` principal** (claims, `OIDC_USER`/`OAUTH2_USER` + `SCOPE_x`, a
+  **`GrantedAuthoritiesMapper`** bean seam) signed into the session-persisted `SecurityContext` with the session id
+  regenerated and the event family published (`InteractiveAuthenticationSuccessEvent::OAUTH2_LOGIN`); the
+  framework's **login page lists every provider** as "Sign in with …"; **RP-initiated logout**
+  (`logout.oidc_initiated`) on the new `LogoutSuccessHandler` port; **`OAuth2AuthorizedClientManager`** for client
+  credentials and refresh over an encrypted session repository and an encrypted cache service, and
+  **`Http::oauth2Client('{id}')`**. Tokens are stored encrypted with the application key, the principal in the session
+  carries claims and never a token, and no exception or log line carries a secret, a code, a verifier or a token.
+  Every key lives under `firefly.security.oauth2.client.*` and defaults to off; the package is required by
+  `firefly/firefly`, documented in `docs/modules/security-oauth2-client.md` and the config reference, and gated by a
+  Testbench capstone suite plus a Chromium round trip (`tests/Browser/OAuth2LoginTest.php`).
+
+- **`packages/security` — four seams for a second login mechanism.** `LoginPageLinks`/`LoginPageLink` (the login
+  page draws "Sign in with …" buttons after the form, or alone when `form` is off; `LoginPageModel` gains `form` and
+  `links`), `LogoutSuccessHandler` (asked by `LogoutFilter` before the session is invalidated; null means the
+  default redirect), `hasScope()`/`hasAnyScope()` in `SecurityExpressionRoot`, the evaluator's whitelist and
+  `authorities()`, and `hasScope:<scope>` in the URL vocabulary, and `FormLoginSettings::$pageEnabled` —
+  `firefly.security.oauth2.client.login.enabled` implies the login page, the session middleware and logout exactly
+  as `form_login.enabled` does (the entry point's `login` mode accepts it too). The page's `?error` notice names the
+  provider when there is no password form. `InteractiveAuthenticationSuccessEvent::OAUTH2_LOGIN`.
+
+- **`packages/testing` — `FakeAuthorizationServer`, `actingAsOidcUser()`, `actingAsAuthentication()`.**
+  `Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` is an OpenID Connect provider in one class: real
+  front-channel routes (`/authorize` with an optional consent page, `/end-session`) mounted on the application and
+  a faked back channel (`/.well-known/openid-configuration`, `/token`, `/jwks`, `/userinfo`) answering the real
+  calls the framework makes — RS256 tokens from a per-process key pair, single-use PKCE-checked codes, Basic/post/
+  none client authentication, rotating refresh tokens, every hop recorded, and knobs for every failure mode.
+  `actingAsOidcUser()` signs a real `OidcUser` in without a provider; `actingAsPrincipal()` takes the token's
+  `attributes` and delegates to the new `actingAsAuthentication()` seam.
+
 - **`packages/kernel` — the `DataAccessException` family, and a transaction timeout.**
   `DataIntegrityViolationException` (409), `DuplicateKeyException` (409, under it), `CannotAcquireLockException`
   (409), `DeadlockLoserDataAccessException` (409, under it), `QueryTimeoutException` (504),
