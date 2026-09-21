@@ -14,6 +14,11 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * `none` beside a secret, an authorization_code client with no redirect URI, a redirect URI that is not absolute
  * or carries a fragment (RFC 6749 §3.1.2), a private_key_jwt client with no JWK set. Spring's defaults: the map
  * key is the client id and the name, `client_secret_basic`, `authorization_code` + `refresh_token`.
+ *
+ * The rules that span more than one field live in assertConsistent(), which every store runs against the client
+ * it is about to hand out — this factory after building from a config block, the `eloquent` driver after mapping
+ * a row — so a client is held to ONE rule set whichever way it arrived, as Spring's RegisteredClient.Builder
+ * validates on every build, a JDBC read included.
  */
 final class RegisteredClientFactory
 {
@@ -23,53 +28,64 @@ final class RegisteredClientFactory
     public static function fromConfig(string $key, array $block, AuthorizationServerSettings $settings): RegisteredClient
     {
         $clientId = is_string($block['client_id'] ?? null) && $block['client_id'] !== '' ? $block['client_id'] : $key;
-        $methods = self::methods($block['client_authentication_methods'] ?? ['client_secret_basic'], $key);
-        $grants = self::grants($block['authorization_grant_types'] ?? ['authorization_code', 'refresh_token'], $key);
-        $redirectUris = self::strings($block['redirect_uris'] ?? [], 'redirect_uris', $key);
         $secret = $block['client_secret'] ?? null;
-        $secret = is_string($secret) && $secret !== '' ? $secret : null;
 
-        $confidential = array_filter($methods, static fn (ClientAuthenticationMethod $m): bool => $m->isConfidential() && $m !== ClientAuthenticationMethod::PrivateKeyJwt);
-        if ($confidential !== [] && $secret === null) {
-            throw new ConfigurationException("Client [{$key}]: client_secret is required for client_secret_basic/client_secret_post (the ENCODED secret, e.g. {bcrypt}…).");
-        }
-        if ($secret !== null && ! preg_match('/^\{[a-z0-9]+\}/', $secret)) {
-            throw new ConfigurationException("Client [{$key}]: client_secret must be an encoded value with an {id} prefix ({bcrypt}…, {argon2id}…, or {noop}… in development); a plain secret would never match.");
-        }
-        if (in_array(ClientAuthenticationMethod::None, $methods, true) && $secret !== null) {
-            throw new ConfigurationException("Client [{$key}]: a client that authenticates with `none` is public and must not carry a client_secret.");
-        }
-        if (in_array(AuthorizationGrantType::AuthorizationCode, $grants, true) && $redirectUris === []) {
-            throw new ConfigurationException("Client [{$key}]: redirect_uris is required for the authorization_code grant.");
-        }
-        foreach ($redirectUris as $uri) {
-            self::assertRedirectUri($uri, $key);
-        }
-        $postLogout = self::strings($block['post_logout_redirect_uris'] ?? [], 'post_logout_redirect_uris', $key);
-        foreach ($postLogout as $uri) {
-            self::assertRedirectUri($uri, $key);
-        }
-
-        $clientSettings = ClientSettings::fromArray(self::map($block['client_settings'] ?? [], 'client_settings', $key), $settings->consentRequired, $key);
-        if (in_array(ClientAuthenticationMethod::PrivateKeyJwt, $methods, true) && $clientSettings->jwkSet === null) {
-            throw new ConfigurationException("Client [{$key}]: private_key_jwt needs client_settings.jwk_set (the client's public JWKS).");
-        }
-
-        return new RegisteredClient(
+        return self::assertConsistent(new RegisteredClient(
             id: $key,
             clientId: $clientId,
             clientIdIssuedAt: null,
-            clientSecret: $secret,
+            clientSecret: is_string($secret) && $secret !== '' ? $secret : null,
             clientSecretExpiresAt: null,
             clientName: is_string($block['client_name'] ?? null) && $block['client_name'] !== '' ? $block['client_name'] : $clientId,
-            clientAuthenticationMethods: $methods,
-            authorizationGrantTypes: $grants,
-            redirectUris: $redirectUris,
-            postLogoutRedirectUris: $postLogout,
+            clientAuthenticationMethods: self::methods($block['client_authentication_methods'] ?? ['client_secret_basic'], $key),
+            authorizationGrantTypes: self::grants($block['authorization_grant_types'] ?? ['authorization_code', 'refresh_token'], $key),
+            redirectUris: self::strings($block['redirect_uris'] ?? [], 'redirect_uris', $key),
+            postLogoutRedirectUris: self::strings($block['post_logout_redirect_uris'] ?? [], 'post_logout_redirect_uris', $key),
             scopes: self::strings($block['scopes'] ?? [], 'scopes', $key),
-            clientSettings: $clientSettings,
+            clientSettings: ClientSettings::fromArray(self::map($block['client_settings'] ?? [], 'client_settings', $key), $settings->consentRequired, $key),
             tokenSettings: TokenSettings::fromArray(self::map($block['token_settings'] ?? [], 'token_settings', $key), $settings, $key),
-        );
+        ));
+    }
+
+    /**
+     * The rules that hold BETWEEN a client's fields, checked on the built object so a config block and a database
+     * row meet exactly the same ones: a confidential method (client_secret_basic/client_secret_post) needs a
+     * secret; a secret carries the `{id}` prefix the DelegatingPasswordEncoder dispatches on (a plain one answers
+     * false, silently, for every attempt); `none` is public and carries no secret; the authorization_code grant
+     * needs at least one redirect URI; every redirect and post-logout URI is absolute and fragment-free (RFC 6749
+     * §3.1.2); private_key_jwt needs the client's JWK set. Each refusal names the client by its id. Returns the
+     * client so a builder can hand it straight out.
+     */
+    public static function assertConsistent(RegisteredClient $client): RegisteredClient
+    {
+        $id = $client->id;
+        $methods = $client->clientAuthenticationMethods;
+        $secret = $client->clientSecret;
+
+        $confidential = array_filter($methods, static fn (ClientAuthenticationMethod $m): bool => $m->isConfidential() && $m !== ClientAuthenticationMethod::PrivateKeyJwt);
+        if ($confidential !== [] && $secret === null) {
+            throw new ConfigurationException("Client [{$id}]: client_secret is required for client_secret_basic/client_secret_post (the ENCODED secret, e.g. {bcrypt}…).");
+        }
+        if ($secret !== null && ! preg_match('/^\{[a-z0-9]+\}/', $secret)) {
+            throw new ConfigurationException("Client [{$id}]: client_secret must be an encoded value with an {id} prefix ({bcrypt}…, {argon2id}…, or {noop}… in development); a plain secret would never match.");
+        }
+        if (in_array(ClientAuthenticationMethod::None, $methods, true) && $secret !== null) {
+            throw new ConfigurationException("Client [{$id}]: a client that authenticates with `none` is public and must not carry a client_secret.");
+        }
+        if (in_array(AuthorizationGrantType::AuthorizationCode, $client->authorizationGrantTypes, true) && $client->redirectUris === []) {
+            throw new ConfigurationException("Client [{$id}]: redirect_uris is required for the authorization_code grant.");
+        }
+        foreach ($client->redirectUris as $uri) {
+            self::assertRedirectUri($uri, $id);
+        }
+        foreach ($client->postLogoutRedirectUris as $uri) {
+            self::assertRedirectUri($uri, $id);
+        }
+        if (in_array(ClientAuthenticationMethod::PrivateKeyJwt, $methods, true) && $client->clientSettings->jwkSet === null) {
+            throw new ConfigurationException("Client [{$id}]: private_key_jwt needs client_settings.jwk_set (the client's public JWKS).");
+        }
+
+        return $client;
     }
 
     /** RFC 6749 §3.1.2: absolute, and no fragment. */

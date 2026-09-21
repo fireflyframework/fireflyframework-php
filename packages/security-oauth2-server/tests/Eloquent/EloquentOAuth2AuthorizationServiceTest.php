@@ -82,3 +82,57 @@ it('finds by a typed token, by any token and through the refresh family, counts 
     $service->remove($live);
     expect($service->findById($live->id))->toBeNull();
 });
+
+/**
+ * The SQL the given work ran, in order.
+ *
+ * @return list<string>
+ */
+function oauth2StatementsRun(callable $work): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    try {
+        $work();
+
+        return array_values(array_map(static fn (array $entry): string => strtolower((string) $entry['query']), DB::getQueryLog()));
+    } finally {
+        DB::disableQueryLog();
+    }
+}
+
+it('answers a current token from its indexed hash column alone, and reads the family only when that misses', function () {
+    $now = new DateTimeImmutable('2026-09-21 10:00:00');
+    $service = new EloquentOAuth2AuthorizationService(new OAuth2AuthorizationModelRepository);
+    $service->save(eloquentAuthorization($now)->withSupersededRefreshToken(TokenHash::of('refresh-0')));
+
+    // A live refresh token, a live access token without a hint, a live code: one equality each, no LIKE anywhere.
+    $current = oauth2StatementsRun(function () use ($service): void {
+        expect($service->findByToken('refresh-1', OAuth2TokenType::RefreshToken))->not->toBeNull()
+            ->and($service->findByToken('access-code-1'))->not->toBeNull()
+            ->and($service->findByToken('code-1', OAuth2TokenType::AuthorizationCode))->not->toBeNull();
+    });
+    expect($current)->toHaveCount(3)
+        ->each->not->toContain('like');
+    expect($current[0])->toContain('"refresh_token_hash" = ?')->not->toContain('"access_token_hash"')
+        ->and($current[1])->toContain('"authorization_code_hash" = ?')->toContain('"access_token_hash" = ?')->toContain('"refresh_token_hash" = ?')->toContain('"id_token_hash" = ?');
+
+    // A superseded refresh token misses the column and is found in the family by a second statement.
+    $replayed = oauth2StatementsRun(function () use ($service): void {
+        expect($service->findByToken('refresh-0', OAuth2TokenType::RefreshToken))->not->toBeNull()
+            ->and($service->findByToken('refresh-0'))->not->toBeNull();
+    });
+    expect($replayed)->toHaveCount(4)
+        ->and($replayed[0])->not->toContain('like')
+        ->and($replayed[1])->toContain('"refresh_token_family" like ?')->not->toContain('_hash')
+        ->and($replayed[2])->not->toContain('like')
+        ->and($replayed[3])->toContain('"refresh_token_family" like ?');
+
+    // A typed lookup for a code, access or id token never reads the family, hit or miss.
+    $typedMiss = oauth2StatementsRun(function () use ($service): void {
+        expect($service->findByToken('nope', OAuth2TokenType::AuthorizationCode))->toBeNull()
+            ->and($service->findByToken('refresh-0', OAuth2TokenType::AccessToken))->toBeNull();
+    });
+    expect($typedMiss)->toHaveCount(2)
+        ->each->not->toContain('like');
+});

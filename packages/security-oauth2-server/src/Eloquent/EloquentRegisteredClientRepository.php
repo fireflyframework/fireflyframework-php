@@ -13,8 +13,11 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 
 /**
  * The `eloquent` client driver: RegisteredClient ↔ oauth2_registered_clients, through the framework's own
- * EloquentRepository. A row is validated on the way OUT through the same factory rules a config block meets, so
- * a hand-edited row with an unknown grant is refused where it is read, naming the client.
+ * EloquentRepository. A row is validated on the way OUT through the same rules a config block meets — the
+ * per-field parsers (methods, grants, the two settings maps) and then RegisteredClientFactory::assertConsistent()
+ * for the rules that span fields — so a hand-edited or migrated row with an unknown grant, a plain-text secret or
+ * a relative redirect URI is refused where it is read, naming the client, exactly as the config map would be
+ * refused at boot. The refusal reaches every read path: findById(), findByClientId() and all().
  */
 final class EloquentRegisteredClientRepository implements RegisteredClientRepository
 {
@@ -55,7 +58,7 @@ final class EloquentRegisteredClientRepository implements RegisteredClientReposi
         $id = self::text($row, 'id');
         $secret = self::text($row, 'client_secret');
 
-        return new RegisteredClient(
+        return RegisteredClientFactory::assertConsistent(new RegisteredClient(
             id: $id,
             clientId: self::text($row, 'client_id'),
             clientIdIssuedAt: OAuth2ServerSchema::parseInstant($row->getAttribute('client_id_issued_at')),
@@ -69,7 +72,7 @@ final class EloquentRegisteredClientRepository implements RegisteredClientReposi
             scopes: self::list(self::text($row, 'scopes')),
             clientSettings: ClientSettings::fromArray(self::json(self::text($row, 'client_settings')), $settings->consentRequired, $id),
             tokenSettings: TokenSettings::fromArray(self::json(self::text($row, 'token_settings')), $settings, $id),
-        );
+        ));
     }
 
     /**
