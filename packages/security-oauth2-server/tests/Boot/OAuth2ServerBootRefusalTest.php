@@ -178,3 +178,15 @@ it('refuses a client block that could never authenticate at boot, naming the cli
         ]],
     ]))->toThrow(ConfigurationException::class, 'Client [web-app]: client_secret must be an encoded value with an {id} prefix');
 });
+
+it('refuses the rate limiter without a firefly/resilience store at boot, naming the key and the store, rather than on the first token request, through the real boot', function () {
+    expect(fn () => bootOAuth2ServerAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => [
+            'enabled' => true,
+            'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')],
+            'rate_limit' => ['enabled' => true],
+        ]],
+    ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.enabled is on but no Firefly\Resilience\Store\ResilienceStore is bound');
+});

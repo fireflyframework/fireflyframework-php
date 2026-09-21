@@ -11,6 +11,8 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Resilience\Store\ResilienceStore;
 use Firefly\Security\OAuth2\JwksDocumentSource;
 use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationConsentService;
 use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationService;
@@ -29,9 +31,15 @@ use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use Firefly\Security\OAuth2\Server\Token\OAuth2TokenCustomizer;
+use Firefly\Security\OAuth2\Server\Token\OAuth2TokenGenerator;
+use Firefly\Security\OAuth2\Server\Token\TokenEndpointRateLimiter;
 use Firefly\Security\OAuth2\Server\Web\AuthorizationServerMetadataEndpoint;
+use Firefly\Security\OAuth2\Server\Web\Grant\ClientCredentialsGrant;
+use Firefly\Security\OAuth2\Server\Web\Grant\TokenGrants;
 use Firefly\Security\OAuth2\Server\Web\JwkSetEndpoint;
 use Firefly\Security\OAuth2\Server\Web\OAuth2Endpoints;
+use Firefly\Security\OAuth2\Server\Web\TokenEndpoint;
 use Firefly\Security\Password\PasswordEncoder;
 use Illuminate\Container\Container;
 use Psr\Log\LoggerInterface;
@@ -157,6 +165,46 @@ final class OAuth2ServerAutoConfiguration
         return new ClientAuthenticator($clients, $encoder, $settings, $logger);
     }
 
+    /** The customizer is the application's optional port: absent, the shipped claims are what is signed. */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2TokenGenerator::class)]
+    public function oauth2TokenGenerator(JwtGenerator $jwt, AuthorizationServerSettings $settings, ?OAuth2TokenCustomizer $customizer = null): OAuth2TokenGenerator
+    {
+        return new OAuth2TokenGenerator($jwt, $settings, $customizer);
+    }
+
+    /**
+     * Bound ONLY while `rate_limit.enabled`: the token endpoint takes it as an optional dependency and is inert
+     * without it. It needs firefly/resilience's store; with the package absent the boot refuses naming it.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.rate_limit.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(TokenEndpointRateLimiter::class)]
+    public function tokenEndpointRateLimiter(AuthorizationServerSettings $settings, Container $container): TokenEndpointRateLimiter
+    {
+        if (! $container->bound(ResilienceStore::class)) {
+            throw new ConfigurationException(AuthorizationServerSettings::PREFIX.'.rate_limit.enabled is on but no '.ResilienceStore::class.' is bound: install and boot firefly/resilience, or turn the rate limit off.');
+        }
+
+        /** @var ResilienceStore $store */
+        $store = $container->make(ResilienceStore::class);
+
+        return new TokenEndpointRateLimiter($store, $settings->rateLimitMaxTokens, $settings->rateLimitRefillRate);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(TokenGrants::class)]
+    public function tokenGrants(ClientCredentialsGrant $clientCredentials): TokenGrants
+    {
+        return new TokenGrants([$clientCredentials]);
+    }
+
     /**
      * The address table the filter dispatches by. Every endpoint is a #[Component] built by the container; this
      * bean only pairs each with its configured path (the two well-known paths are fixed by their specifications).
@@ -165,12 +213,13 @@ final class OAuth2ServerAutoConfiguration
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(OAuth2Endpoints::class)]
-    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet): OAuth2Endpoints
+    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet, TokenEndpoint $token): OAuth2Endpoints
     {
         return new OAuth2Endpoints($settings, [
             AuthorizationServerMetadataEndpoint::OPENID_CONFIGURATION => $metadata,
             AuthorizationServerMetadataEndpoint::OAUTH_AUTHORIZATION_SERVER => $metadata,
             $settings->jwkSetEndpoint => $jwkSet,
+            $settings->tokenEndpoint => $token,
         ]);
     }
 

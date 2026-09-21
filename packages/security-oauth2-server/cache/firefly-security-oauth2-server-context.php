@@ -262,6 +262,95 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'oauth2TokenGenerator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Token\\OAuth2TokenGenerator',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
+                'method' => 'tokenEndpointRateLimiter',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.rate_limit.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    3 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Token\\TokenEndpointRateLimiter',
+                        ],
+                    ],
+                ],
+            ],
+            10 => [
+                'method' => 'tokenGrants',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\TokenGrants',
+                        ],
+                    ],
+                ],
+            ],
+            11 => [
                 'method' => 'oauth2Endpoints',
                 'conditions' => [
                     0 => [
@@ -320,7 +409,7 @@ return [
         ],
     ],
     3 => [
-        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\ClientCredentialsGrant',
         'postConstruct' => [
         ],
         'preDestroy' => [
@@ -349,7 +438,65 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2AuthorizationServerFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    6 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
         'postConstruct' => [
         ],
         'preDestroy' => [

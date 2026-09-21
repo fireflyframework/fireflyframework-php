@@ -12,6 +12,7 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use Firefly\Security\OAuth2\Server\Token\TokenEndpointRateLimiter;
 use Firefly\Security\Session\SessionSecuritySettings;
 
 /**
@@ -45,6 +46,9 @@ use Firefly\Security\Session\SessionSecuritySettings;
  *      block with no redirect URI is a startup failure (each bean refuses in its own constructor), not a 500 on
  *      the first request that needs it. JwtSigningKeys is resolved right after the settings, so an empty or
  *      unloadable signing key refuses the boot with the command that generates one.
+ *  (6) THE RATE LIMITER, resolved when `rate_limit.enabled` so a missing firefly/resilience store refuses at
+ *      boot (the bean names the store and the key), not on the first token request — which would otherwise be a
+ *      500 for every client until someone read the log.
  */
 final class OAuth2ServerWiringPass implements BootPass
 {
@@ -60,15 +64,19 @@ final class OAuth2ServerWiringPass implements BootPass
 
     public function run(BootContext $context): void
     {
-        if (! $context->config->bool('firefly.security.oauth2.server.enabled', false)) {
+        $config = $context->config;
+        if (! $config->bool('firefly.security.oauth2.server.enabled', false)) {
             return;
         }
 
-        self::assertRunnable($context->config);
+        self::assertRunnable($config);
 
         $context->container->make(AuthorizationServerSettings::class);
         $context->container->make(JwtSigningKeys::class);
         $context->container->make(RegisteredClientRepository::class);
+        if ($config->bool('firefly.security.oauth2.server.rate_limit.enabled', false)) {
+            $context->container->make(TokenEndpointRateLimiter::class);
+        }
     }
 
     /**

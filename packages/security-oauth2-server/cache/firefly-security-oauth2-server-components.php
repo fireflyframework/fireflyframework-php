@@ -138,6 +138,45 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'oauth2TokenGenerator',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Token\\OAuth2TokenGenerator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+                    1 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    2 => 'Firefly\\Security\\OAuth2\\Server\\Token\\OAuth2TokenCustomizer',
+                ],
+            ],
+            9 => [
+                'method' => 'tokenEndpointRateLimiter',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Token\\TokenEndpointRateLimiter',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            10 => [
+                'method' => 'tokenGrants',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\TokenGrants',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\ClientCredentialsGrant',
+                ],
+            ],
+            11 => [
                 'method' => 'oauth2Endpoints',
                 'returns' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoints',
                 'name' => null,
@@ -149,6 +188,7 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
                     1 => 'Firefly\\Security\\OAuth2\\Server\\Web\\AuthorizationServerMetadataEndpoint',
                     2 => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
+                    3 => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
                 ],
             ],
         ],
@@ -176,6 +216,24 @@ return [
         ],
     ],
     3 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\ClientCredentialsGrant',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\TokenGrant',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Token\\OAuth2TokenGenerator',
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\JwkSetEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -193,7 +251,7 @@ return [
             0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
         ],
     ],
-    4 => [
+    5 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2AuthorizationServerFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -211,6 +269,28 @@ return [
             0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoints',
             1 => 'Firefly\\Config\\Config',
             2 => 'Psr\\Log\\LoggerInterface',
+        ],
+    ],
+    6 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Client\\ClientAuthenticator',
+            1 => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\TokenGrants',
+            2 => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
+            3 => 'Firefly\\Security\\OAuth2\\Server\\Token\\TokenEndpointRateLimiter',
+            4 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
 ];
