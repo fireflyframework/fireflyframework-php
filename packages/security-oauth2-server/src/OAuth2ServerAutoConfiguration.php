@@ -34,7 +34,9 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Token\OAuth2TokenCustomizer;
 use Firefly\Security\OAuth2\Server\Token\OAuth2TokenGenerator;
 use Firefly\Security\OAuth2\Server\Token\TokenEndpointRateLimiter;
+use Firefly\Security\OAuth2\Server\Web\AuthorizationEndpoint;
 use Firefly\Security\OAuth2\Server\Web\AuthorizationServerMetadataEndpoint;
+use Firefly\Security\OAuth2\Server\Web\Grant\AuthorizationCodeGrant;
 use Firefly\Security\OAuth2\Server\Web\Grant\ClientCredentialsGrant;
 use Firefly\Security\OAuth2\Server\Web\Grant\TokenGrants;
 use Firefly\Security\OAuth2\Server\Web\JwkSetEndpoint;
@@ -200,9 +202,9 @@ final class OAuth2ServerAutoConfiguration
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(TokenGrants::class)]
-    public function tokenGrants(ClientCredentialsGrant $clientCredentials): TokenGrants
+    public function tokenGrants(ClientCredentialsGrant $clientCredentials, AuthorizationCodeGrant $authorizationCode): TokenGrants
     {
-        return new TokenGrants([$clientCredentials]);
+        return new TokenGrants([$clientCredentials, $authorizationCode]);
     }
 
     /**
@@ -213,13 +215,14 @@ final class OAuth2ServerAutoConfiguration
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(OAuth2Endpoints::class)]
-    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet, TokenEndpoint $token): OAuth2Endpoints
+    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet, TokenEndpoint $token, AuthorizationEndpoint $authorization): OAuth2Endpoints
     {
         return new OAuth2Endpoints($settings, [
             AuthorizationServerMetadataEndpoint::OPENID_CONFIGURATION => $metadata,
             AuthorizationServerMetadataEndpoint::OAUTH_AUTHORIZATION_SERVER => $metadata,
             $settings->jwkSetEndpoint => $jwkSet,
             $settings->tokenEndpoint => $token,
+            $settings->authorizationEndpoint => $authorization,
         ]);
     }
 

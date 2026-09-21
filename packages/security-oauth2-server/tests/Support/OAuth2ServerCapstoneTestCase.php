@@ -22,6 +22,7 @@ use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Session\SessionManager;
+use Illuminate\Session\Store;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -191,6 +192,20 @@ abstract class OAuth2ServerCapstoneTestCase extends FireflyDatabaseTestCase
         /** @var SessionManager $manager */
         $manager = $this->app()->make('session');
         $manager->forgetDrivers();
+    }
+
+    /**
+     * The session store the last request ran with — its id, its attributes (the saved request, the pending consent,
+     * the authentication instant) and its token — for a flow that asserts what the endpoint left in the session.
+     */
+    public function sessionStore(): Store
+    {
+        /** @var SessionManager $manager */
+        $manager = $this->app()->make('session');
+        /** @var Store $store */
+        $store = $manager->driver();
+
+        return $store;
     }
 
     public function oauth2(): OAuth2ServerTestClient
