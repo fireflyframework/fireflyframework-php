@@ -80,7 +80,7 @@ abstract class SessionWithOAuth2CapstoneTestCase extends SecurityCapstoneTestCas
         });
     }
 
-    protected function bearerFor(string $subject): string
+    public function bearerFor(string $subject): string
     {
         return 'Bearer '.JWT::encode(['sub' => $subject, 'scope' => 'orders:read', 'exp' => time() + 3600], self::SECRET, 'HS256', self::KID);
     }

@@ -16,6 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Composed by SecurityCapstoneTestCase, so every suite built on it has these; a Pest file may also name it in
  * uses() beside its capstone class, which is legal and changes nothing.
+ *
+ * The helpers are PUBLIC, not protected: Pest 4 types `$this` inside an it() closure as the TestCall, so a
+ * protected call is `method.protected` to PHPStan — the same convention FireflyTestCase::app() follows.
  */
 trait SecurityFlows
 {
@@ -27,7 +30,7 @@ trait SecurityFlows
      *
      * @param  TestResponse<Response>  $response
      */
-    protected function followSession(TestResponse $response): static
+    public function followSession(TestResponse $response): static
     {
         $cookie = $response->getCookie($this->sessionCookieName());
         if ($cookie === null) {
@@ -37,7 +40,7 @@ trait SecurityFlows
         return $this->withCredentials()->withCookie($this->sessionCookieName(), (string) $cookie->getValue());
     }
 
-    protected function sessionCookieName(): string
+    public function sessionCookieName(): string
     {
         /** @var string $name */
         $name = $this->app()->make('config')->get('session.cookie');
@@ -49,7 +52,7 @@ trait SecurityFlows
      * Drop every cookie the client would send: withCookie() persists for the whole test, so "a request without
      * the session cookie" has to be asked for explicitly.
      */
-    protected function forgetCookies(): static
+    public function forgetCookies(): static
     {
         $this->defaultCookies = [];
         $this->unencryptedCookies = [];
@@ -60,7 +63,7 @@ trait SecurityFlows
     /**
      * @param  TestResponse<Response>  $response
      */
-    protected function csrfTokenFrom(TestResponse $response): string
+    public function csrfTokenFrom(TestResponse $response): string
     {
         if (preg_match('/name="_token" value="([^"]+)"/', (string) $response->getContent(), $match) !== 1) {
             throw new RuntimeException('The page carries no _token field.');

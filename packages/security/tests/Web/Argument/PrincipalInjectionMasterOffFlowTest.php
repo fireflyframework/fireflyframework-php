@@ -36,7 +36,7 @@ abstract class PrincipalMasterOffCapstoneTestCase extends SecurityCapstoneTestCa
         ];
     }
 
-    protected function bearerFor(string $subject): string
+    public function bearerFor(string $subject): string
     {
         /** @var JwtService $jwt */
         $jwt = $this->app()->make(JwtService::class);

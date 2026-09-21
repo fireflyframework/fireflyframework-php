@@ -51,7 +51,7 @@ abstract class SessionWithJwtCapstoneTestCase extends SecurityCapstoneTestCase
         });
     }
 
-    protected function bearerFor(string $subject): string
+    public function bearerFor(string $subject): string
     {
         /** @var JwtService $jwt */
         $jwt = $this->app()->make(JwtService::class);

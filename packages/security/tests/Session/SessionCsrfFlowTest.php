@@ -41,7 +41,7 @@ abstract class SessionCsrfCapstoneTestCase extends SecurityCapstoneTestCase
     /**
      * @param  TestResponse<Response>  $response
      */
-    protected function xsrfCookieAsTheBrowserHoldsIt(TestResponse $response): string
+    public function xsrfCookieAsTheBrowserHoldsIt(TestResponse $response): string
     {
         $cookie = $response->getCookie('XSRF-TOKEN', false);
         if ($cookie === null) {

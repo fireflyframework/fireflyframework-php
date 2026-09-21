@@ -27,7 +27,7 @@ abstract class LogoutCapstoneTestCase extends SecurityCapstoneTestCase
      *
      * @return TestResponse<Response>
      */
-    protected function signInAsAda(): TestResponse
+    public function signInAsAda(): TestResponse
     {
         $page = $this->get('/login');
         $this->forgetSession();

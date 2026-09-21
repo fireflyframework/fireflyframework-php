@@ -117,7 +117,7 @@ abstract class SecurityCapstoneTestCase extends FireflyDatabaseTestCase
      * FILE holds for the cookie it carries. Without this, Laravel's session Store singleton keeps the last
      * request's attributes in memory and a flow test could pass without ever persisting anything.
      */
-    protected function forgetSession(): void
+    public function forgetSession(): void
     {
         /** @var SessionManager $manager */
         $manager = $this->app()->make('session');

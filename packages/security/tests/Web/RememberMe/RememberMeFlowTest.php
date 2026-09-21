@@ -31,7 +31,7 @@ abstract class RememberMeCapstoneTestCase extends SecurityCapstoneTestCase
      *
      * @param  TestResponse<Response>  $response
      */
-    protected function destroySessionOf(TestResponse $response): void
+    public function destroySessionOf(TestResponse $response): void
     {
         $id = (string) $response->getCookie($this->sessionCookieName())?->getValue();
         /** @var SessionManager $manager */

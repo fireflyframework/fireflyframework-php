@@ -65,7 +65,7 @@ abstract class SessionOnlyCapstoneTestCase extends SecurityCapstoneTestCase
      *
      * @param  TestResponse<Response>  $response
      */
-    protected function sessionFileFor(TestResponse $response): string
+    public function sessionFileFor(TestResponse $response): string
     {
         $id = (string) $response->getCookie($this->sessionCookieName())?->getValue();
         $file = $this->sessionDir().'/'.$id;
