@@ -78,6 +78,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/security/src/.*
+    - name: SecurityOAuth2Server
+      collectors:
+        - type: directory
+          value: packages/security-oauth2-server/src/.*
     - name: Actuator
       collectors:
         - type: directory
@@ -309,6 +313,25 @@ deptrac:
       - Cqrs
       - Validation
 
+    # SecurityOAuth2Server is the authorization server on top of Security (the session-held principal, the entry
+    # point, SessionCsrf, PasswordEncoder, JwksDocumentSource, the event publisher) and Web (WebFilter, the
+    # error model); it stores clients and authorizations through Data's EloquentRepository, publishes an
+    # Actuator endpoint the admin dashboard renders, contributes a ScheduledDescriptor to Scheduling's manifest
+    # for the purge, and rate-limits the token endpoint with Resilience's RateLimiter. NOTHING depends on it
+    # except Testing (the test client) and Cli (firefly:oauth2:keys).
+    SecurityOAuth2Server:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Data
+      - Security
+      - Actuator
+      - Scheduling
+      - Resilience
+
     # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
     # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
     # boot/condition attributes, extends AutoConfigure's base, mounts on Web (RouteManifest/ProblemDetailsRenderer/
@@ -403,6 +426,7 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Server
       - Actuator
       - Observability
 
@@ -427,6 +451,7 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Server
       - Actuator
       - Observability
 

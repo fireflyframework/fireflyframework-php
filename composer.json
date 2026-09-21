@@ -22,6 +22,7 @@
         "firefly/scheduling": "*@dev",
         "firefly/scheduling-postgres": "*@dev",
         "firefly/security": "*@dev",
+        "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
         "swagger-api/swagger-ui": "^5.17"
@@ -76,6 +77,7 @@
             "Firefly\\Scheduling\\Postgres\\Tests\\": "packages/scheduling-postgres/tests/",
             "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
             "Firefly\\Security\\Tests\\": "packages/security/tests/",
+            "Firefly\\Security\\OAuth2\\Server\\Tests\\": "packages/security-oauth2-server/tests/",
             "Firefly\\Testing\\Tests\\": "packages/testing/tests/",
             "Firefly\\Tests\\": "tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",

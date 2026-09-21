@@ -388,6 +388,133 @@ return [
                 'jwks_connect_timeout' => 5,
                 'jwks_timeout' => 5,
             ],
+
+            /*
+             | OAuth2 authorization server (firefly/security-oauth2-server): this application issues the tokens.
+             | Requires the master flag AND session security (form_login.enabled, or session.enabled with a sign-in
+             | mechanism of your own) — the authorization endpoint needs a session-held user — and cannot run
+             | beside jwt.enabled (the local HMAC filter would reject every token this server issues). Every
+             | endpoint is answered by a filter ordered ahead of the CSRF and URL-rule filters, so no
+             | `http.rules` entry and no `csrf.except` pattern is needed for them.
+             |
+             | Defaults: enabled false, issuer app.url, the endpoint paths below, RS256 self-contained access
+             | tokens (300 s), refresh tokens rotated (3600 s), codes 300 s, id tokens 1800 s, PKCE required,
+             | consent required, memory drivers, no purge, no rate limit.
+            */
+            'server' => [
+                'enabled' => env('FIREFLY_OAUTH2_SERVER_ENABLED', false),
+
+                // The `iss` claim and the base of every published URL. Default: app.url.
+                // 'issuer' => env('APP_URL'),
+
+                // The endpoint paths (Spring Authorization Server's defaults). `oidc_client_registration_endpoint`
+                // is OFF while empty; `/connect/register` turns RFC 7591 dynamic registration on (a bearer with
+                // scope `client.create` may register clients).
+                // 'authorization_endpoint' => '/oauth2/authorize',
+                // 'token_endpoint' => '/oauth2/token',
+                // 'jwk_set_endpoint' => '/oauth2/jwks',
+                // 'token_introspection_endpoint' => '/oauth2/introspect',
+                // 'token_revocation_endpoint' => '/oauth2/revoke',
+                // 'oidc_user_info_endpoint' => '/userinfo',
+                // 'oidc_logout_endpoint' => '/connect/logout',
+                // 'oidc_client_registration_endpoint' => '',
+
+                /*
+                 | The signing key: a PEM string (inline, starting with -----BEGIN) or a path to one. Generate it
+                 | with `php artisan firefly:oauth2:keys` (RSA 2048 by default, `--algorithm=ES256` for P-256).
+                 | `key_id` defaults to the RFC 7638 thumbprint of the public key. `previous_keys` lists keys that
+                 | still VERIFY (they stay in the JWKS) after a rotation: [{key: <pem or path>, key_id: <kid>}].
+                 | Required once `enabled` is true.
+                */
+                'jwt' => [
+                    'signing_key' => env('FIREFLY_OAUTH2_SERVER_SIGNING_KEY', ''),
+                    // 'key_id' => '',
+                    // 'algorithm' => 'RS256',
+                    // 'previous_keys' => [],
+                ],
+
+                // `self_contained` (a JWT: iss, sub, aud=client_id, exp, iat, nbf, jti, scope, client_id) or
+                // `reference` (opaque; resolved only through introspection/userinfo). ttl in seconds.
+                'access_token' => [
+                    // 'format' => 'self_contained',
+                    // 'ttl' => 300,
+                ],
+
+                // With `reuse` false (the default) every refresh rotates the token; presenting a superseded one
+                // revokes the whole authorization (reuse detection).
+                'refresh_token' => [
+                    // 'ttl' => 3600,
+                    // 'reuse' => false,
+                ],
+
+                'authorization_code' => [
+                    // 'ttl' => 300,
+                ],
+
+                'id_token' => [
+                    // 'ttl' => 1800,
+                ],
+
+                // PKCE (S256 only; `plain` is refused). `require_pkce` demands it of every authorization_code
+                // request (OAuth 2.1); `require_proof_key_for_public_clients` demands it of public clients
+                // (client_authentication_methods: [none]) even when the first is off.
+                // 'require_pkce' => true,
+                // 'require_proof_key_for_public_clients' => true,
+
+                // Whether a client needs the user's consent by default (a client's
+                // client_settings.require_authorization_consent overrides it), and a Blade view that replaces the
+                // framework's consent page; it receives `$consent` (ConsentPageModel) and falls back, logged at
+                // warning, when it does not exist or throws.
+                'consent' => [
+                    // 'required' => true,
+                    // 'view' => '',
+                ],
+
+                /*
+                 | Registered clients. `driver` is `memory` (this map) or `eloquent` (the oauth2_registered_clients
+                 | table; publish the migration with `php artisan vendor:publish --tag=firefly-oauth2-server-migrations`).
+                 | `client_secret` is the ENCODED secret — `{bcrypt}$2y$…` (password_hash), `{argon2id}…`, or
+                 | `{noop}plain` in development only; a value with no {id} prefix is refused at boot because the
+                 | encoder would never match it. `client_settings.jwk_set` is the decoded JWKS a private_key_jwt
+                 | client signs its assertions with.
+                */
+                'clients' => [
+                    'driver' => env('FIREFLY_OAUTH2_SERVER_CLIENTS_DRIVER', 'memory'),
+                    // 'web-app' => [
+                    //     'client_id' => 'web-app',
+                    //     'client_secret' => '{bcrypt}$2y$10$…',
+                    //     'client_name' => 'The web application',
+                    //     'client_authentication_methods' => ['client_secret_basic'],
+                    //     'authorization_grant_types' => ['authorization_code', 'refresh_token'],
+                    //     'redirect_uris' => ['https://app.example.com/login/oauth2/code/web-app'],
+                    //     'post_logout_redirect_uris' => ['https://app.example.com/'],
+                    //     'scopes' => ['openid', 'profile', 'email'],
+                    //     'client_settings' => ['require_pkce' => true, 'require_authorization_consent' => true],
+                    //     'token_settings' => ['access_token_ttl' => 300, 'refresh_token_ttl' => 3600, 'reuse_refresh_tokens' => false, 'access_token_format' => 'self_contained', 'authorization_code_ttl' => 300, 'id_token_ttl' => 1800],
+                    // ],
+                ],
+
+                // Where codes, tokens (by SHA-256 hash, never by value) and consents live: `memory` (one process,
+                // fine for tests and a single dev server) or `eloquent` (oauth2_authorizations +
+                // oauth2_authorization_consents). The purge is a scheduled task under the DistributedLock, listed
+                // by `firefly:schedule` and /actuator/scheduledtasks like any #[Scheduled] method.
+                'authorizations' => [
+                    'driver' => env('FIREFLY_OAUTH2_SERVER_AUTHORIZATIONS_DRIVER', 'memory'),
+                    'purge' => [
+                        // 'enabled' => false,
+                        // 'cron' => '*/15 * * * *',
+                    ],
+                ],
+
+                // A token bucket per client id (else per IP) at the token endpoint, over firefly/resilience's
+                // store: `max_tokens` burst, `refill_rate` tokens per second. A refused request is
+                // 429 temporarily_unavailable with Retry-After.
+                'rate_limit' => [
+                    // 'enabled' => false,
+                    // 'max_tokens' => 60,
+                    // 'refill_rate' => 1.0,
+                ],
+            ],
         ],
 
         /*
