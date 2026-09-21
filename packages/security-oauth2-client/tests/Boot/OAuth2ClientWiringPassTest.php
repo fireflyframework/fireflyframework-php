@@ -6,6 +6,10 @@ use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Client\Authorized\CacheOAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientRepository;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\SessionOAuth2AuthorizedClientRepository;
 use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
 use Firefly\Security\OAuth2\Client\Discovery\ProviderDiscoveryException;
 use Firefly\Security\OAuth2\Client\OAuth2ClientSettings;
@@ -76,6 +80,21 @@ it('binds the registration repository, resolved from the config, when the packag
     expect($repository)->toBeInstanceOf(PropertiesClientRegistrationRepository::class)
         ->and($repository->registrationIds())->toBe(['github'])
         ->and($context->has(OidcDiscovery::class))->toBeTrue();
+});
+
+it('binds the cache-backed authorized-client service under the package master alone, and the session repository only with a login', function () {
+    $github = ['github' => ['client_id' => 'x', 'client_secret' => 's']];
+    /** @var ApplicationContext $client */
+    $client = bootOAuth2ClientAppWith(['oauth2' => ['client' => ['enabled' => true, 'registration' => $github]]])->make(ApplicationContext::class);
+    /** @var ApplicationContext $login */
+    $login = bootOAuth2ClientAppWith(['enabled' => true, 'oauth2' => ['client' => ['enabled' => true, 'login' => ['enabled' => true], 'registration' => $github]]])->make(ApplicationContext::class);
+
+    // The service is request-free — a job with client credentials needs it and no inbound security — while the
+    // repository is only ever filled by a login, so it rides with the login half.
+    expect($client->get(OAuth2AuthorizedClientService::class))->toBeInstanceOf(CacheOAuth2AuthorizedClientService::class)
+        ->and($client->has(OAuth2AuthorizedClientRepository::class))->toBeFalse()
+        ->and($login->get(OAuth2AuthorizedClientService::class))->toBeInstanceOf(CacheOAuth2AuthorizedClientService::class)
+        ->and($login->get(OAuth2AuthorizedClientRepository::class))->toBeInstanceOf(SessionOAuth2AuthorizedClientRepository::class);
 });
 
 it('fetches nothing at boot by default, and with discovery.eager resolves every issuer — a dead one failing the boot', function () {

@@ -112,6 +112,52 @@ return [
                 ],
             ],
             5 => [
+                'method' => 'oauth2AuthorizedClientService',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientService',
+                        ],
+                    ],
+                ],
+            ],
+            6 => [
+                'method' => 'oauth2AuthorizedClientRepository',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientRepository',
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
                 'method' => 'oauth2AuthorizationRequestResolver',
                 'conditions' => [
                     0 => [
@@ -138,7 +184,7 @@ return [
                     ],
                 ],
             ],
-            6 => [
+            8 => [
                 'method' => 'authorizationRequestRepository',
                 'conditions' => [
                     0 => [
@@ -165,7 +211,7 @@ return [
                     ],
                 ],
             ],
-            7 => [
+            9 => [
                 'method' => 'loginPageLinks',
                 'conditions' => [
                     0 => [
@@ -192,7 +238,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            10 => [
                 'method' => 'userInfoClient',
                 'conditions' => [
                     0 => [
@@ -219,7 +265,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            11 => [
                 'method' => 'oauth2UserService',
                 'conditions' => [
                     0 => [
@@ -246,7 +292,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            12 => [
                 'method' => 'oidcUserService',
                 'conditions' => [
                     0 => [
@@ -273,7 +319,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            13 => [
                 'method' => 'oauth2LoginAuthenticationProvider',
                 'conditions' => [
                     0 => [

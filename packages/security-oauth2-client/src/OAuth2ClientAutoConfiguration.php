@@ -10,6 +10,10 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Security\OAuth2\Client\Authorized\CacheOAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientRepository;
+use Firefly\Security\OAuth2\Client\Authorized\OAuth2AuthorizedClientService;
+use Firefly\Security\OAuth2\Client\Authorized\SessionOAuth2AuthorizedClientRepository;
 use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
 use Firefly\Security\OAuth2\Client\Oidc\OidcIdTokenDecoderFactory;
 use Firefly\Security\OAuth2\Client\Registration\ClientRegistrationRepository;
@@ -98,6 +102,25 @@ final class OAuth2ClientAutoConfiguration
     public function oidcIdTokenDecoderFactory(Cache $cache, OAuth2ClientSettings $settings): OidcIdTokenDecoderFactory
     {
         return new OidcIdTokenDecoderFactory($cache, $settings);
+    }
+
+    /** Request-free, so a job can call an API as a person who signed in earlier or as the application itself. */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizedClientService::class)]
+    public function oauth2AuthorizedClientService(Cache $cache, Container $container, OAuth2ClientSettings $settings): OAuth2AuthorizedClientService
+    {
+        return new CacheOAuth2AuthorizedClientService($cache, $container, $settings);
+    }
+
+    /** Request-bound: the session, encrypted. Only a login puts anything in it, so it rides with the login half. */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OAuth2AuthorizedClientRepository::class)]
+    public function oauth2AuthorizedClientRepository(Container $container): OAuth2AuthorizedClientRepository
+    {
+        return new SessionOAuth2AuthorizedClientRepository($container);
     }
 
     /**
