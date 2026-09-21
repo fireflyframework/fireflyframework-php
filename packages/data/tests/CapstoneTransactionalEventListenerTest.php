@@ -77,3 +77,31 @@ it('aborts the commit when a BEFORE_COMMIT listener throws: rolled back, AFTER_R
             'after-rollback:veto:0:0',
         ]);
 });
+
+it('runs the BEFORE_COMMIT of an event published BY a BEFORE_COMMIT listener inside the same commit, never the next one', function () {
+    /** @var ListenersCapstoneTestCase $this */
+    $service = noteService($this->app());
+
+    $service->save('chain');
+
+    // NoteIndexed is published while the BEFORE_COMMIT queue drains (level still 1): its BEFORE_COMMIT joins THIS
+    // commit, its AFTER_COMMIT joins this transaction's after-commit list behind the ones queued during save().
+    expect(NoteAudit::$log)->toBe([
+        'before-commit:chain:1:1',
+        'before-commit-indexed:chain:1:1',
+        'after-commit:chain:1:0',
+        'after-completion:chain:1:0',
+        'fallback-after-commit:chain:1:0',
+        'after-commit-indexed:chain:1:0',
+    ]);
+
+    // Nothing from the chain lies in wait for an unrelated transaction on the same connection.
+    NoteAudit::reset();
+    $service->save('t2');
+    expect(NoteAudit::$log)->toBe([
+        'before-commit:t2:1:1',
+        'after-commit:t2:1:0',
+        'after-completion:t2:1:0',
+        'fallback-after-commit:t2:1:0',
+    ]);
+});

@@ -7,6 +7,7 @@ namespace Firefly\Data\Transaction;
 use Closure;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Database\Connection;
+use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionCommitting;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,16 @@ use Illuminate\Support\Facades\DB;
  * connection's own dispatcher: Laravel fires that event at level 1, before the PDO commit, so a callback that
  * throws aborts the commit and TransactionTemplate rolls back. A TransactionRolledBack that reaches level 0
  * discards the queue.
+ *
+ * The drain is RE-ENTRANT: because TransactionCommitting fires while the level is still 1, a BEFORE_COMMIT
+ * callback that publishes an event with its own BEFORE_COMMIT listener finds the transaction active and
+ * registers again mid-drain. Those late registrations belong to THIS commit — the queue is taken and run
+ * until it stays empty, so they fire before the PDO commit (and can veto it) rather than lying in wait for
+ * whatever transaction happens to commit next on that connection. (Spring's beforeCommit loop walks a snapshot
+ * and simply never calls a synchronization registered during it; running them is the more useful reading of
+ * "the current transaction", and, as with any listener that re-publishes its own event, a chain that never
+ * stops registering is the caller's bug.) A TransactionCommitted that reaches level 0 sweeps the queue as
+ * well, so nothing can ever outlive the transaction it was queued in.
  *
  * Which transaction is "current"? The one TransactionTemplate is running: it calls enter($connectionName) when
  * it opens an OUTERMOST transaction and leave() when that resolves, so a #[Transactional(connection: 'x')]
@@ -40,7 +51,7 @@ final class TransactionSynchronizationRegistry
     /** @var array<string, list<Closure(): void>> connection name => queued BEFORE_COMMIT callbacks */
     private array $beforeCommit = [];
 
-    /** @var array<string, true> connections whose dispatcher already carries the two listeners */
+    /** @var array<string, true> connections whose dispatcher already carries the three listeners */
     private array $subscribed = [];
 
     public function enter(string $connection): void
@@ -109,6 +120,11 @@ final class TransactionSynchronizationRegistry
                 $this->runBeforeCommit($name);
             }
         });
+        $dispatcher->listen(TransactionCommitted::class, function (TransactionCommitted $event) use ($name): void {
+            if ($event->connectionName === $name && $event->connection->transactionLevel() === 0) {
+                $this->beforeCommit[$name] = [];
+            }
+        });
         $dispatcher->listen(TransactionRolledBack::class, function (TransactionRolledBack $event) use ($name): void {
             if ($event->connectionName === $name && $event->connection->transactionLevel() === 0) {
                 $this->beforeCommit[$name] = [];
@@ -118,14 +134,20 @@ final class TransactionSynchronizationRegistry
         $this->subscribed[$name] = true;
     }
 
-    /** Take the queue, clear it, run it — so a callback that throws cannot leave stale callbacks behind. */
+    /**
+     * Take the queue, clear it, run it — and go again while a callback has queued more, because the level is
+     * still 1 here and a listener that publishes is a registration in disguise (see the class docblock). Taking
+     * the batch BEFORE running it means a callback that throws cannot leave its batch behind; whatever it
+     * queued before throwing is swept by the rollback TransactionTemplate performs on a failed commit.
+     */
     private function runBeforeCommit(string $name): void
     {
-        $callbacks = $this->beforeCommit[$name] ?? [];
-        $this->beforeCommit[$name] = [];
+        while (($callbacks = $this->beforeCommit[$name] ?? []) !== []) {
+            $this->beforeCommit[$name] = [];
 
-        foreach ($callbacks as $callback) {
-            $callback();
+            foreach ($callbacks as $callback) {
+                $callback();
+            }
         }
     }
 

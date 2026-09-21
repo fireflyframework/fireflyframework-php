@@ -48,9 +48,10 @@ use Throwable;
  *
  * SYNCHRONIZATIONS: the TransactionSynchronizationRegistry learns which connection the outermost transaction
  * runs on (enter/leave, always paired in the finally) so a #[TransactionalEventListener] queued while this
- * template runs binds to THIS transaction; the BEFORE_COMMIT drain happens inside Connection::commit()
- * (Laravel's TransactionCommitting event), which is why commit() below rolls back when the commit itself
- * throws.
+ * template runs binds to THIS transaction — including one queued DURING the BEFORE_COMMIT drain by a listener
+ * that publishes, which the registry folds into the same commit. That drain happens inside
+ * Connection::commit() (Laravel's TransactionCommitting event), which is why commit() below rolls back when
+ * the commit itself throws.
  */
 final class TransactionTemplate
 {
