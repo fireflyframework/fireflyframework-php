@@ -55,6 +55,14 @@ it('refuses a settings typo at boot rather than on the first token request, thro
     ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.refill_rate');
 });
 
+it('refuses the server without a signing key at boot, naming the command that generates one, through the real boot', function () {
+    expect(fn () => bootOAuth2ServerAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true]],
+    ]))->toThrow(ConfigurationException::class, 'firefly:oauth2:keys');
+});
+
 it('says nothing while the server is off, whatever else is set', function () {
     OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig(['enabled' => false, 'jwt' => ['enabled' => true]]));
 

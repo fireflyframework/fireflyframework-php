@@ -10,6 +10,10 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Security\OAuth2\JwksDocumentSource;
+use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
+use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
+use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 
 /**
@@ -30,5 +34,41 @@ final class OAuth2ServerAutoConfiguration
     public function authorizationServerSettings(Config $config): AuthorizationServerSettings
     {
         return AuthorizationServerSettings::fromConfig($config);
+    }
+
+    /**
+     * The keys, loaded once: an empty or unloadable `jwt.signing_key` refuses here, and OAuth2ServerWiringPass
+     * resolves this bean at boot so the refusal is a startup failure.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(JwtSigningKeys::class)]
+    public function jwtSigningKeys(AuthorizationServerSettings $settings): JwtSigningKeys
+    {
+        return JwtSigningKeys::fromSettings($settings);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(JwtGenerator::class)]
+    public function jwtGenerator(JwtSigningKeys $keys): JwtGenerator
+    {
+        return new JwtGenerator($keys);
+    }
+
+    /**
+     * THE BRIDGE TO THE RESOURCE-SERVER FILTER: the security core asks the container for a JwksDocumentSource
+     * when it builds its JwksProvider, and this bean is what makes `jwks_source: local` work in the same
+     * application. An application that binds its own source keeps it (missing-bean), and then publishes that.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(JwksDocumentSource::class)]
+    public function oauth2JwksDocumentSource(JwtSigningKeys $keys): JwksDocumentSource
+    {
+        return new AuthorizationServerJwksDocumentSource($keys);
     }
 }

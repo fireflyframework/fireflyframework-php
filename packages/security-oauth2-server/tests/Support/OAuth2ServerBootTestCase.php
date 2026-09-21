@@ -6,6 +6,7 @@ namespace Firefly\Security\OAuth2\Server\Tests\Support;
 
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
+use Firefly\Security\OAuth2\Server\Jose\KeyPairGenerator;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerServiceProvider;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerWiringProvider;
 use Firefly\Security\SecurityServiceProvider;
@@ -23,6 +24,14 @@ use Firefly\Web\WebServiceProvider;
  */
 class OAuth2ServerBootTestCase extends FireflyTestCase
 {
+    private static ?string $signingKey = null;
+
+    /** One RSA key per process: generating a 2048-bit key per test would cost seconds for nothing. */
+    public static function signingKey(): string
+    {
+        return self::$signingKey ??= KeyPairGenerator::generate('RS256');
+    }
+
     protected function fireflyProviders(): array
     {
         return [
@@ -52,6 +61,7 @@ class OAuth2ServerBootTestCase extends FireflyTestCase
             'firefly.security.enabled' => true,
             'firefly.security.session.enabled' => true,
             'firefly.security.oauth2.server.enabled' => true,
+            'firefly.security.oauth2.server.jwt.signing_key' => self::signingKey(),
             ...$this->serverOverrides(),
         ];
     }

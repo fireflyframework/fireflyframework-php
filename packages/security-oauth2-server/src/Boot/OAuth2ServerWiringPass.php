@@ -9,6 +9,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\Session\SessionSecuritySettings;
 
@@ -30,7 +31,8 @@ use Firefly\Security\Session\SessionSecuritySettings;
  *      SecurityWiringPass refuses for jwt + oauth2.resource_server. Refused.
  *  (4) THE SETTINGS, KEYS AND CLIENTS are resolved now, so a bad algorithm, a missing signing key or a client
  *      block with no redirect URI is a startup failure (each bean refuses in its own constructor), not a 500 on
- *      the first request that needs it.
+ *      the first request that needs it. JwtSigningKeys is resolved right after the settings, so an empty or
+ *      unloadable signing key refuses the boot with the command that generates one.
  */
 final class OAuth2ServerWiringPass implements BootPass
 {
@@ -53,6 +55,7 @@ final class OAuth2ServerWiringPass implements BootPass
         self::assertRunnable($context->config);
 
         $context->container->make(AuthorizationServerSettings::class);
+        $context->container->make(JwtSigningKeys::class);
     }
 
     /**

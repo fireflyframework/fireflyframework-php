@@ -28,6 +28,42 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
+            1 => [
+                'method' => 'jwtSigningKeys',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+                ],
+            ],
+            2 => [
+                'method' => 'jwtGenerator',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
+                ],
+            ],
+            3 => [
+                'method' => 'oauth2JwksDocumentSource',
+                'returns' => 'Firefly\\Security\\OAuth2\\JwksDocumentSource',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

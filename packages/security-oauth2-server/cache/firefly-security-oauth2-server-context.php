@@ -43,6 +43,87 @@ return [
                     ],
                 ],
             ],
+            1 => [
+                'method' => 'jwtSigningKeys',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtSigningKeys',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'jwtGenerator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+                        ],
+                    ],
+                ],
+            ],
+            3 => [
+                'method' => 'oauth2JwksDocumentSource',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\JwksDocumentSource',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];
