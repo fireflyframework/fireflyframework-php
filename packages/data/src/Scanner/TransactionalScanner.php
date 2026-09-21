@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Firefly\Data\Scanner;
 
 use Firefly\Data\Proxy\ProxyMethod;
+use Firefly\Data\Proxy\ProxyPlanner;
+use Firefly\Data\Proxy\ProxySignature;
 use Firefly\Data\Proxy\UnsupportedTransactionalMethodException;
 use Firefly\Data\Repository\Attributes\EntityGraph;
 use Firefly\Data\Repository\Attributes\Lock;
@@ -125,53 +127,48 @@ final class TransactionalScanner
     }
 
     /**
-     * Generation inputs for the ProxyClassGenerator (reflection-free downstream): each transactional method's
-     * effective descriptor plus its rendered signature (param source, call args, return type). This is the ONLY
-     * place signatures are reflected, keeping ProxyClassGenerator free of the reflection substrings.
-     *
-     * Known-latent: by-reference parameters (`&$out`) are NOT supported on #[Transactional] methods — the proxy's
-     * arrow-closure captures them by value, silently dropping the writeback. Such a method throws
-     * UnsupportedTransactionalMethodException here (fail-loud at scan time); wrap the value in an object/DTO.
+     * Generation inputs for the ProxyClassGenerator from the #[Transactional] attributes alone — the shape the
+     * proxy tests, the capstone fixtures and (until it compiles proxy-plan.php) firefly:cache's writeProxies()
+     * drive. It is a transactional-only ProxyPlan rendered back into ProxyMethods; the uncached boot goes
+     * through ProxyPlanner with every AdviceSource instead.
      *
      * @param  array<string,string>  $psr4
      * @return array<class-string, array<string, ProxyMethod>>
      */
     public function scanProxyMethods(array $psr4): array
     {
-        /** @var array<class-string, array<string, ProxyMethod>> $result */
-        $result = [];
+        $planner = ProxyPlanner::transactionalOnly();
 
-        foreach ($this->classes($psr4) as $class) {
-            $reflection = new ReflectionClass($class);
-            $classAttr = $this->firstTransactional($reflection->getAttributes(Transactional::class));
+        return $planner->proxyMethods($planner->plan($psr4));
+    }
 
-            $methods = [];
-            foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-                if (! $this->proxyable($method)) {
-                    continue;
-                }
-
-                $effective = $this->firstTransactional($method->getAttributes(Transactional::class)) ?? $classAttr;
-                if ($effective === null) {
-                    continue;
-                }
-
-                [$paramSource, $argSource] = $this->renderParameters($method, $class);
-                $methods[$method->getName()] = new ProxyMethod(
-                    name: $method->getName(),
-                    paramSource: $paramSource,
-                    argSource: $argSource,
-                    returnType: $this->renderReturnType($method),
-                    descriptor: TransactionalDescriptor::fromAttribute($effective),
-                );
-            }
-
-            if ($methods !== []) {
-                $result[$class] = $methods;
-            }
+    /**
+     * The rendered signatures of the named public methods of one class — the ONLY place signatures are
+     * reflected, keeping ProxyClassGenerator and ProxyPlanner free of the reflection substrings.
+     *
+     * Two things fail loud here rather than inside a generated class: a `final` target (the proxy must extend
+     * it, and PHP would fatal at require time with no hint of which manifest row caused it) and a by-reference
+     * parameter (`&$out`: the terminal closure spreads a copied list, so the writeback would be silently lost).
+     *
+     * @param  class-string  $class
+     * @param  list<string>  $methods
+     * @return array<string, ProxySignature>
+     */
+    public function signatures(string $class, array $methods): array
+    {
+        $reflection = new ReflectionClass($class);
+        if ($reflection->isFinal()) {
+            throw UnsupportedTransactionalMethodException::finalClass($class);
         }
 
-        return $result;
+        $signatures = [];
+        foreach ($methods as $name) {
+            $method = $reflection->getMethod($name);
+            [$paramSource, $argSource] = $this->renderParameters($method, $class);
+            $signatures[$name] = new ProxySignature($paramSource, $argSource, $this->renderReturnType($method));
+        }
+
+        return $signatures;
     }
 
     /**

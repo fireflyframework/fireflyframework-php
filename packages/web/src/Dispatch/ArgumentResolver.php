@@ -11,6 +11,7 @@ use Firefly\Web\Exception\InvalidRequestException;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Http\UploadedFile;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile as IlluminateUploadedFile;
 
@@ -84,13 +85,14 @@ use Illuminate\Http\UploadedFile as IlluminateUploadedFile;
  *
  * @phpstan-type PropertyPlan array{class: string|null, list: bool}
  * @phpstan-type DtoShape array<string, PropertyPlan>
- * @phpstan-type BodyBinding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, DtoShape>, pattern?: string, notFoundCode?: string, notFoundMessage?: string}
+ * @phpstan-type BodyBinding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, DtoShape>, pattern?: string, notFoundCode?: string, notFoundMessage?: string, attributes?: list<string>, nullable?: bool}
  */
 final class ArgumentResolver
 {
     public function __construct(
         private readonly MessageConverterRegistry $converters,
         private readonly BeanValidator $beanValidator,
+        private readonly ?HandlerMethodArgumentResolvers $resolvers = null,
     ) {}
 
     /**
@@ -117,15 +119,41 @@ final class ArgumentResolver
      */
     private function resolveOne(array $binding, Request $request, Container $container): mixed
     {
+        // A registered resolver is asked first: a parameter it understands (a principal, a tenant) is not a
+        // container service even when it is class-typed.
+        $custom = $this->resolvers?->resolverFor($binding);
+        if ($custom !== null) {
+            return $custom->resolve($binding, $request);
+        }
+
         return match ($binding['kind']) {
             'path' => $this->coerce($this->pathValue($binding, $request), $binding),
             'query' => $this->coerce($this->queryValue($binding, $request), $binding),
             'header' => $this->coerce($this->headerValue($binding, $request), $binding),
             'file' => $this->fileValue($binding, $request),
             'body' => $this->bodyValue($binding, $request),
-            'service' => $container->make($binding['type'] ?? ''),
+            'service' => $this->serviceValue($binding, $container),
             default => throw new InvalidRequestException("Unknown binding kind {$binding['kind']}."),
         };
+    }
+
+    /**
+     * A nullable service the container cannot build is null, as PHP's own autowiring rules would give it;
+     * a required one still fails loud, because a missing collaborator is a wiring error, not a request error.
+     *
+     * @param  BodyBinding  $binding
+     */
+    private function serviceValue(array $binding, Container $container): mixed
+    {
+        try {
+            return $container->make($binding['type'] ?? '');
+        } catch (BindingResolutionException $e) {
+            if ($binding['nullable'] ?? false) {
+                return null;
+            }
+
+            throw $e;
+        }
     }
 
     /**

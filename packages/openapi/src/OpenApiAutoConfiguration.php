@@ -16,6 +16,7 @@ use Firefly\OpenApi\Schema\ConstraintSchemaMapper;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
 use Firefly\OpenApi\Web\ViewerPage;
 use Firefly\Validation\Constraint\ConstraintManifest;
+use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Route\RouteManifest;
 
 /**
@@ -64,11 +65,19 @@ final class OpenApiAutoConfiguration
         return new DtoSchemaFactory($constraints, $mapper);
     }
 
+    /**
+     * The resolver registry is the singleton WebServiceProvider binds and every capability's wiring pass
+     * add()s into (firefly/security registers its SecurityArgumentResolver there at WiringPasses), so the
+     * factory sees the same resolvers the dispatcher consults — and a document generated on demand, after
+     * boot, leaves out exactly the parameters those resolvers answer. Injected rather than resolved for the
+     * reason RouteManifest is: firefly/web is a hard dependency and its register() has always completed before
+     * anything here is built.
+     */
     #[Bean]
     #[ConditionalOnMissingBean(OperationFactory::class)]
-    public function operationFactory(DtoSchemaFactory $schemas): OperationFactory
+    public function operationFactory(DtoSchemaFactory $schemas, HandlerMethodArgumentResolvers $resolvers): OperationFactory
     {
-        return new OperationFactory($schemas);
+        return new OperationFactory($schemas, resolvers: $resolvers);
     }
 
     /**

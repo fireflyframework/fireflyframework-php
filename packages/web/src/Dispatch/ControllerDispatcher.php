@@ -49,6 +49,10 @@ final class ControllerDispatcher
                 // an object for the dynamic method call (mirrors RegisterEventListenersPass's /** @var object */).
                 /** @var object $controller */
                 $result = $controller->{$descriptor->methodName}(...$args);
+
+                // The result-side half of method security: #[PostAuthorize] may refuse it and #[PostFilter]
+                // may narrow it. Same guard instance, same try/catch → RFC-7807 path as the pre-check above.
+                $result = $guard->afterInvocation($descriptor->controllerClass, $descriptor->methodName, $args, $result);
             } catch (Throwable $e) {
                 $handler = $this->handlers->resolve($e, $descriptor->controllerClass);
                 if ($handler === null) {

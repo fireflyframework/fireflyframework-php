@@ -115,6 +115,32 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'proxyPlan',
+                'returns' => 'Firefly\\Data\\Proxy\\ProxyPlan',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                    1 => 'Firefly\\Data\\Transaction\\TransactionalManifest',
+                    2 => 'Firefly\\Container\\Container',
+                ],
+            ],
+            9 => [
+                'method' => 'interceptorRegistry',
+                'returns' => 'Firefly\\Data\\Proxy\\InterceptorRegistry',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                ],
+            ],
+            10 => [
                 'method' => 'proxyFactory',
                 'returns' => 'Firefly\\Data\\Proxy\\ProxyFactory',
                 'name' => null,
@@ -131,6 +157,23 @@ return [
         ],
     ],
     1 => [
+        'class' => 'Firefly\\Data\\Proxy\\TransactionalAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    2 => [
         'class' => 'Firefly\\Data\\Transaction\\TransactionalBeanPostProcessor',
         'stereotype' => 'component',
         'name' => null,
@@ -145,9 +188,10 @@ return [
         ],
         'lazy' => false,
         'dependencies' => [
-            0 => 'Firefly\\Data\\Transaction\\TransactionalManifest',
+            0 => 'Firefly\\Data\\Proxy\\ProxyPlan',
             1 => 'Firefly\\Data\\Proxy\\ProxyFactory',
             2 => 'Firefly\\Data\\Transaction\\TransactionInterceptor',
+            3 => 'Firefly\\Data\\Proxy\\InterceptorRegistry',
         ],
     ],
 ];

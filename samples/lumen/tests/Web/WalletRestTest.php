@@ -78,17 +78,46 @@ it('returns 422 problem+json when the deposit amount is not positive', function 
         ->assertJsonFragment(['field' => 'amount_minor']);
 })->group('lumen');
 
-it('denies an unauthenticated withdraw as 403 problem+json (the endpoint IS secured)', function () {
+it('denies an unauthenticated withdraw as 401 problem+json (the endpoint IS secured)', function () {
     /** @var LumenTestCase $this */
     // WithdrawHandler carries #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
     // SecurityCommandAuthorizer at the bus. LumenTestCase's HTTP security filters (jwt/http/csrf) are OFF, so a
-    // plain HTTP POST carries NO principal -> SecurityContextHolder::getContext() is anonymous -> the bus denies
-    // the command -> AuthorizationException, wrapped as CommandProcessingException (which copies the cause's
-    // errorCode/httpStatus/category, so the wire says ACCESS_DENIED rather than the bus's own generic code)
-    // -> problem-details renders 403. This is a genuine teaching point, not a workaround: the endpoint really
-    // is guarded, and a client can tell WHY it was refused.
+    // plain HTTP POST carries NO principal -> SecurityContextHolder::getContext() is anonymous -> the bus refuses
+    // the command with "authenticate first": MethodSecurityEvaluator answers an ANONYMOUS caller with an
+    // AuthenticationException (401 AUTHENTICATION_FAILED), the same answer the controller guard and the proxy
+    // interceptor give, and reserves the 403 for a principal that IS signed in but lacks the role (next test).
+    // The bus wraps it as CommandProcessingException, which copies the cause's errorCode/httpStatus/category, so
+    // the wire says AUTHENTICATION_FAILED rather than the bus's own generic code -> problem-details renders 401.
+    // This is a genuine teaching point, not a workaround: the endpoint really is guarded, and a client can tell
+    // WHY it was refused — and whether signing in would help.
     /** @var string $id */
     $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(401)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 401)
+        ->assertJsonPath('code', 'AUTHENTICATION_FAILED')
+        ->assertJsonPath('category', 'security');
+
+    // Proof the refusal happened BEFORE the handler touched the balance.
+    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
+})->group('lumen');
+
+it('denies an authenticated withdraw without the owner role as 403 problem+json', function () {
+    /** @var LumenTestCase $this */
+    // The other half of the contract: a principal that IS authenticated but carries NEITHER ROLE_ADMIN NOR
+    // ROLE_WALLET_OWNER is refused by the same #[PreAuthorize] with an AuthorizationException (403 ACCESS_DENIED)
+    // — signing in again would not help, the principal simply may not withdraw. The context is seeded before the
+    // HTTP call exactly the way the authorised test below does it (see its note on why the holder survives
+    // into the in-process dispatch).
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('mallory', 'mallory', [new SimpleGrantedAuthority('ROLE_USER')])
+    ));
+
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3b', 'currency' => 'EUR'])->json('wallet_id');
     $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
 
     $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
@@ -110,7 +139,7 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
     // stay inert (their own #[ConditionalOnProperty] sub-gates never fire) and never clearContext() around a
     // request. Setting the context here, BEFORE the HTTP call, therefore DOES survive into the in-process HTTP
     // dispatch and is what SecurityCommandAuthorizer reads when WithdrawHandler's #[PreAuthorize] runs at the bus
-    // (verified empirically: without this, the withdraw below would 403 exactly like the test above).
+    // (verified empirically: without this, the withdraw below would 401 exactly like the anonymous test above).
     SecurityContextHolder::setContext(new SecurityContext(
         Authentication::authenticated('owner-4', 'owner-4', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
     ));

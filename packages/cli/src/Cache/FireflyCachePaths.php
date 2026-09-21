@@ -35,6 +35,8 @@ final class FireflyCachePaths
 
     public const string PROXY_MAP = 'proxies.php';
 
+    public const string PROXY_PLAN = 'proxy-plan.php';
+
     public const string PROXY_DIR = 'proxies';
 
     public static function dir(Application $app): string

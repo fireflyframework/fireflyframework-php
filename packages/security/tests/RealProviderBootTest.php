@@ -3,17 +3,29 @@
 declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\Context\Event\ApplicationEventPublisher;
+use Firefly\Context\Scan\AppScan;
 use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Cqrs\Security\AllowAllAuthorizer;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Data\Repository\Auditing\AuditorAware;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\Access\Method\SecurityMethodManifestCompiler;
+use Firefly\Security\Core\Authentication;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
+use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\WeakSigningSecretException;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
+use Firefly\Security\Tests\Fixtures\Users\Account;
+use Firefly\Security\User\EloquentUserDetailsService;
+use Firefly\Security\User\InMemoryUserDetailsService;
+use Firefly\Security\User\UserDetailsService;
+use Firefly\Security\Web\Basic\HttpBasicFilter;
+use Firefly\Security\Web\Settings\HttpBasicSettings;
+use Firefly\Testing\Double\RecordingAuthenticationEvents;
 use Illuminate\Foundation\Application;
 
 /**
@@ -51,6 +63,50 @@ it('leaves the AllowAll authorizer in place when security is disabled', function
     expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(AllowAllAuthorizer::class);
 });
 
+it('binds an AuthenticationEventPublisher over whatever ApplicationEventPublisher was bound before boot', function () {
+    // The recording double is bound with instance() BEFORE the providers register, which is exactly how a
+    // Testbench suite hands it in: FireflyServiceProvider's own DispatcherEventPublisher binding is
+    // bound()-guarded, so the instance wins and the security bean wraps it.
+    $events = new RecordingAuthenticationEvents;
+
+    /** @var ApplicationContext $context */
+    $context = fireflyApplication(
+        config: ['firefly' => ['cqrs' => [], 'security' => ['enabled' => true]]],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class],
+        bindings: [ApplicationEventPublisher::class => $events],
+        needs: ['cache'],
+    )->make(ApplicationContext::class);
+
+    $publisher = $context->get(AuthenticationEventPublisher::class);
+    if (! $publisher instanceof AuthenticationEventPublisher) {
+        throw new RuntimeException('Expected an AuthenticationEventPublisher instance.');
+    }
+    $publisher->publishAuthenticationSuccess(Authentication::authenticated('ada', 'ada', []));
+
+    expect($events->successes())->toHaveCount(1)
+        ->and($events->successes()[0]->authentication->getName())->toBe('ada');
+});
+
+it('does not bind an AuthenticationEventPublisher when security is disabled', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityApp(false)->make(ApplicationContext::class);
+
+    expect($context->has(AuthenticationEventPublisher::class))->toBeFalse();
+});
+
+it('boots a security-only application with the master flag on and HTTP Basic off without the web renderers', function () {
+    // No WebServiceProvider is registered here — a CQRS worker's boot. HttpBasicFilter takes the
+    // BasicAuthenticationEntryPoint, whose two web renderers need the view factory that only the web
+    // provider binds, so the filter is AND-gated on `http_basic.enabled` beside the master flag (the rule
+    // HttpSecurityFilter applies with `http.enabled`): under the master flag alone the EagerSingletonsPass
+    // would construct it at this boot and die resolving [view].
+    /** @var ApplicationContext $context */
+    $context = bootSecurityApp(true)->make(ApplicationContext::class);
+
+    expect($context->has(HttpBasicFilter::class))->toBeFalse()
+        ->and($context->has(HttpBasicSettings::class))->toBeTrue();
+});
+
 it('refuses to boot when both local-JWT and the OAuth2 resource server are enabled', function () {
     // Master flag deliberately OFF: jwt.enabled/oauth2.resource_server.enabled are surface flags, not
     // master-gated (see SecurityAutoConfiguration), so the conflict must be caught even without
@@ -86,4 +142,110 @@ it('refuses to boot on a weak JWT secret even when the master flag is off', func
             'secret' => 'changeme',
         ],
     ]))->toThrow(WeakSigningSecretException::class);
+});
+
+it('refuses to boot when the eloquent users driver names a model class that does not exist', function () {
+    // The user store's refusals live in UserStoreSettings::fromConfig(), which the userDetailsService #[Bean]
+    // runs. The bean is built at boot — by the EagerSingletonsPass, by the AuthenticationManager that takes
+    // it, and explicitly by SecurityWiringPass under the master flag — so a typo in config is a boot failure
+    // naming the class, never a 500 on the first login attempt.
+    expect(fn () => bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => 'App\\Models\\Nope'],
+    ]))->toThrow(ConfigurationException::class, 'App\\Models\\Nope');
+});
+
+it('refuses to boot when the eloquent users driver names a class that exists but is not an Eloquent model', function () {
+    // The other half of the same promise: a class that autoloads fine but is no Model (the wrong ::class in a
+    // copied line) must not boot cleanly and then be refused by the first loadUserByUsername() — that would be
+    // exactly the first-login 500 the boot-time resolution in SecurityWiringPass exists to rule out.
+    expect(fn () => bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => stdClass::class],
+    ]))->toThrow(ConfigurationException::class, 'not an Eloquent model');
+});
+
+it('binds the eloquent store for a model that exists, and the memory store by default, without touching a database', function () {
+    // Neither driver constructs against a connection — the boot harness here binds no database at all —
+    // which is what makes the eager resolution in SecurityWiringPass free.
+    /** @var ApplicationContext $eloquent */
+    $eloquent = bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['driver' => 'eloquent', 'model' => Account::class],
+    ])->make(ApplicationContext::class);
+
+    /** @var ApplicationContext $memory */
+    $memory = bootSecurityAppWith([
+        'enabled' => true,
+        'users' => ['ada' => ['password' => '{noop}secret', 'authorities' => ['ROLE_USER']]],
+    ])->make(ApplicationContext::class);
+
+    expect($eloquent->get(UserDetailsService::class))->toBeInstanceOf(EloquentUserDetailsService::class)
+        ->and($memory->get(UserDetailsService::class))->toBeInstanceOf(InMemoryUserDetailsService::class);
+});
+
+it('leaves a misconfigured user store alone while the master flag is off, since the bean it would refuse in is never registered', function () {
+    // The negative control for the guard's gate: the store is master-gated (nothing authenticates without
+    // the master flag), so its settings are not read either, exactly as the memory map is not.
+    expect(bootSecurityAppWith([
+        'enabled' => false,
+        'users' => ['driver' => 'eloquent', 'model' => 'App\\Models\\Nope'],
+    ]))->toBeInstanceOf(Application::class);
+});
+
+/*
+ | A cache compiled before firefly:cache wrote proxy-plan.php lists every rule in security-methods.php while the
+ | proxy plan bridged from transactional.php knows nothing about method security: a #[Service] whose rules are
+ | method security alone is handed out bare, its rows compiled and enforced by nothing. `method.strict` cannot
+ | see it — the manifest it checks for is present — so SecurityWiringPass refuses the boot itself, naming the
+ | remedy. The guard is two file probes, so a hand-written manifest with no plan beside it is the whole fixture.
+ */
+
+/** A cache directory holding security-methods.php and nothing else — what an older firefly:cache left behind. */
+function staleSecurityCache(): string
+{
+    $dir = sys_get_temp_dir().'/firefly-security-stale-cache-'.bin2hex(random_bytes(6));
+    mkdir($dir, 0o700, true);
+    (new SecurityMethodManifestCompiler)->write([], $dir.'/'.AppScan::SECURITY_METHODS);
+
+    return $dir;
+}
+
+/**
+ * @param  array<string,mixed>  $security
+ */
+function bootSecurityAppOverCache(string $dir, array $security): Application
+{
+    return fireflyApplication(
+        config: ['firefly' => ['cqrs' => [], 'cache' => ['path' => $dir], 'security' => $security]],
+        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class],
+        needs: ['cache'],
+    );
+}
+
+it('refuses to boot over a compiled method-security manifest that has no proxy plan beside it', function () {
+    $dir = staleSecurityCache();
+
+    try {
+        bootSecurityAppOverCache($dir, ['enabled' => true]);
+        throw new LogicException('not refused');
+    } catch (ConfigurationException $e) {
+        expect($e->getMessage())->toContain($dir.'/'.AppScan::SECURITY_METHODS)
+            ->and($e->getMessage())->toContain(AppScan::PROXY_PLAN)
+            ->and($e->getMessage())->toContain('firefly:cache');
+    }
+});
+
+it('lets the same stale cache boot when method security on beans is switched off, since the proxy link is then a pass-through by choice', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityAppOverCache(staleSecurityCache(), ['enabled' => true, 'method' => ['enabled' => false]])->make(ApplicationContext::class);
+
+    expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(SecurityCommandAuthorizer::class);
+});
+
+it('lets the same stale cache boot when the master flag is off, since nothing enforces then', function () {
+    /** @var ApplicationContext $context */
+    $context = bootSecurityAppOverCache(staleSecurityCache(), ['enabled' => false])->make(ApplicationContext::class);
+
+    expect($context->get(CommandAuthorizer::class))->toBeInstanceOf(AllowAllAuthorizer::class);
 });

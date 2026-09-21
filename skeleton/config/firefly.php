@@ -92,14 +92,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | OFF by default, and opt-in surface by surface. `enabled` is the master flag: it gates the principal
-    | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers and the
-    | programmatic AuthorizationChecker.
+    | model, the role hierarchy, the user store, the authentication manager, the CQRS authorizers, the
+    | programmatic AuthorizationChecker, the event publisher, method security on beans, and every
+    | interactive mechanism (session, form_login, http_basic, logout, remember_me, the entry point).
     |
-    | Each surface below has its own flag. Only `http` ALSO requires the master flag — its filter's
-    | constructor needs three master-gated beans, so enabling it alone would bind a filter whose
-    | dependencies do not exist. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are independent of
-    | the master flag and can be turned on by themselves. Note that authenticating (jwt/oauth2) without
-    | `http` or method security enforces no authorization at all — it only establishes a principal.
+    | Each surface below has its own flag. `jwt`, `oauth2.resource_server`, `csrf` and `headers` are
+    | independent of the master flag and can be turned on by themselves; everything else ALSO requires it,
+    | because its filters and beans consume master-gated beans. Note that authenticating (jwt/oauth2)
+    | without `http` or method security enforces no authorization at all — it only establishes a principal.
     |
     */
 
@@ -109,7 +109,7 @@ return [
         'enabled' => env('FIREFLY_SECURITY_ENABLED', false),
 
         /*
-         | Method security (#[PreAuthorize], #[PostAuthorize], #[Secured], #[RolesAllowed]).
+         | Method security (#[PreAuthorize], #[PostAuthorize], #[Secured], #[RolesAllowed], #[PreFilter], #[PostFilter]).
          |
          | Enforcement treats "no rule recorded for this method" as ALLOW, so an EMPTY method-security
          | manifest silently disables every annotation in the application — it fails OPEN. Boot resolves
@@ -120,17 +120,167 @@ return [
          | Default: false.
         */
         'method' => [
+            /*
+             | Method security on every stereotyped bean. With the master flag on, #[PreAuthorize],
+             | #[PostAuthorize], #[Secured], #[RolesAllowed], #[PreFilter] and #[PostFilter] are enforced on
+             | any #[Service]/#[Component]/#[Repository] method through the same proxy #[Transactional] uses
+             | (security runs before the transaction), on both boot paths: `firefly:cache` compiles the plan
+             | into proxy-plan.php plus a proxy per planned class, and the uncached boot scans the same advice
+             | sources. A cache from before proxy-plan.php existed — security-methods.php with no plan beside
+             | it — is refused at boot; run `php artisan firefly:cache` again. Turning this off keeps the
+             | controller dispatcher and the CQRS bus enforcing their rules, makes the proxy link a
+             | pass-through, and stands the stale-cache refusal down with it. Read live.
+             |
+             | Default: true.
+            */
+            'enabled' => env('FIREFLY_SECURITY_METHOD_ENABLED', true),
+
             'strict' => env('FIREFLY_SECURITY_METHOD_STRICT', false),
         ],
 
         /*
-         | The shipped in-memory user store, keyed by username. `password` is the ENCODED string —
-         | typically `{id}`-prefixed for the DelegatingPasswordEncoder, e.g. `{bcrypt}$2y$...`.
-         | `authorities` defaults to [], `enabled` to true, `locked` to false.
+         | Session-persisted SecurityContext. Firefly filters are GLOBAL middleware and Laravel starts the
+         | session in the `web` route group, later — so when this is on the framework pushes EncryptCookies,
+         | AddQueuedCookiesToResponse and StartSession onto the global stack ahead of the security filters
+         | (and excludes them on every route as it is matched — cached or not — where a second EncryptCookies
+         | pass would null every cookie). It is switched on implicitly by form_login, remember_me and
+         | http_basic.session below. What the session carries is a context saved through the
+         | SecurityContextRepository: the interactive mechanisms (form login, http_basic.session, remember-me)
+         | save at the moment of success, and so can your own code (a controller that calls
+         | SessionSecurityContextRepository::save()). Nothing stored carries a credential: a principal that
+         | implements CredentialsContainer (the shipped User) is written without its encoded password. A bearer
+         | principal (jwt, oauth2.resource_server) is re-verified on every request by design and NEVER stored.
+         | A context a controller merely sets on SecurityContextHolder is saved on the way out only when no
+         | filter cleared the holder first: while `jwt` is on it never is (that filter clears the holder
+         | unconditionally on exit); under `oauth2.resource_server`, which clears only a bearer context it
+         | established itself, it is saved whenever the request presented no bearer. Saving through the
+         | repository behaves the same whichever is on. A session driver is required.
          |
-         | Default: [] (no users; every login fails with a 401).
+         | `fixation_protection` regenerates the session id on every interactive sign-in.
+         |
+         | Defaults: enabled false, fixation_protection true.
+        */
+        'session' => [
+            'enabled' => env('FIREFLY_SECURITY_SESSION_ENABLED', false),
+            // 'fixation_protection' => true,
+        ],
+
+        /*
+         | Form login: the framework's own server-rendered sign-in page (or your Blade `view`), a POST to
+         | `login_processing_url` verified against the session CSRF token, the AuthenticationManager, and a
+         | redirect to the page the person was refused at (or `default_success_url`). Failure redirects to
+         | `failure_url` and publishes an AuthenticationFailure* event carrying the username and the source
+         | ip — never the password. Turning this on turns `session` and `logout` on with it.
+         |
+         | `view` receives `$login` (a LoginPageModel: action, usernameParameter, passwordParameter,
+         | csrfToken, error, loggedOut, rememberMeParameter, title). A `view` that does not exist or throws
+         | while rendering falls back to the framework page AND IS LOGGED at warning naming the view: a typo
+         | here would otherwise replace your page with the framework's, with a 200 and not a word anywhere.
+         |
+         | The framework's page is mounted at `login_page` ONLY when no GET route of yours already answers
+         | that path: a #[GetMapping('/login')] or a routes-file route there (with or without a domain) is
+         | left in place and the framework page is not mounted, as Spring does for a custom login page. The
+         | redirect, the URL-rule exemption and the POST handling work the same for your page — its form
+         | only has to post the session token as `_token` to `login_processing_url`. The framework page's
+         | form action is root-relative (base path + the path of `login_processing_url`), so it posts to
+         | the origin the browser fetched the page from, TLS-terminating proxy or not.
+         |
+         | Defaults: enabled false, login_page '/login', login_processing_url '/login', username_parameter
+         | 'username', password_parameter 'password', default_success_url '/',
+         | always_use_default_success_url false, failure_url '/login?error', view '' (the framework page).
+        */
+        'form_login' => [
+            'enabled' => env('FIREFLY_SECURITY_FORM_LOGIN_ENABLED', false),
+            // 'login_page' => '/login',
+            // 'login_processing_url' => '/login',
+            // 'username_parameter' => 'username',
+            // 'password_parameter' => 'password',
+            // 'default_success_url' => '/',
+            // 'always_use_default_success_url' => false,
+            // 'failure_url' => '/login?error',
+            // 'view' => 'auth.login',
+        ],
+
+        /*
+         | HTTP Basic: the `Authorization: Basic` header is authenticated on every request (stateless) unless
+         | `session` is true, in which case a browser's first success is stored in the session. The entry
+         | point answers a 401 with `WWW-Authenticate: Basic realm="…"` to non-browser clients.
+         |
+         | Defaults: enabled false, realm 'LaraFly', session false.
+        */
+        'http_basic' => [
+            'enabled' => env('FIREFLY_SECURITY_HTTP_BASIC_ENABLED', false),
+            // 'realm' => 'LaraFly',
+            // 'session' => false,
+        ],
+
+        /*
+         | Logout: a POST to `logout_url` (verified against the session CSRF token — a GET that signs someone
+         | out is a link an attacker can plant) invalidates the session, expires the remember-me cookie and any
+         | cookie named in `delete_cookies`, publishes LogoutSuccessEvent and redirects to `logout_success_url`.
+         |
+         | Defaults: enabled follows form_login.enabled, logout_url '/logout', logout_success_url
+         | '/login?logout', invalidate_session true, delete_cookies [], clear_authentication true.
+        */
+        'logout' => [
+            // 'enabled' => true,
+            // 'logout_url' => '/logout',
+            // 'logout_success_url' => '/login?logout',
+            // 'invalidate_session' => true,
+            // 'delete_cookies' => [],
+            // 'clear_authentication' => true,
+        ],
+
+        /*
+         | Remember-me: a signed cookie (`username:expiry:HMAC-SHA256(username:expiry:password-hash:key)`,
+         | Spring's TokenBasedRememberMeServices) set when the login form's `parameter` is checked (or always,
+         | with `always_remember`), that re-authenticates a request whose session holds no principal. A
+         | password change invalidates it, because the hash is part of the signature. `key` is required once
+         | enabled and is held to the JWT secret rule: a placeholder or fewer than 32 bytes REFUSES TO BOOT.
+         |
+         | Defaults: enabled false, parameter 'remember-me', cookie_name 'remember-me',
+         | token_validity_seconds 1209600 (14 days), always_remember false.
+        */
+        'remember_me' => [
+            'enabled' => env('FIREFLY_SECURITY_REMEMBER_ME_ENABLED', false),
+            'key' => env('FIREFLY_SECURITY_REMEMBER_ME_KEY', ''),
+            // 'parameter' => 'remember-me',
+            // 'cookie_name' => 'remember-me',
+            // 'token_validity_seconds' => 1209600,
+            // 'always_remember' => false,
+        ],
+
+        /*
+         | The user store. `driver` is `memory` (default: this map, keyed by username — the shape below) or
+         | `eloquent` (any Eloquent model; the reserved keys configure it and are never read as usernames).
+         |
+         | Memory: `password` is the ENCODED string — typically `{id}`-prefixed for the
+         | DelegatingPasswordEncoder, e.g. `{bcrypt}$2y$...`. `authorities` defaults to [], `enabled` to
+         | true, `locked` to false. With no users every login fails with a 401.
+         |
+         | Eloquent: the expected schema is `email` (username_column), `password` (password_column, the
+         | encoded string as above), optional `enabled`/`locked` booleans (enabled_column/locked_column —
+         | empty means "no such flag"), and optional `authorities` — a column holding a JSON list (or an
+         | `array` cast) or `relation.attribute` to pluck from a relation (`roles.name`); empty means "the
+         | model carries no authorities" and every account authenticates with none. A model class that
+         | does not exist or is not an Eloquent model REFUSES TO BOOT. A configured column (or relation)
+         | the loaded row does not carry is refused on the lookup, never read as NULL — a locked_column
+         | typo would otherwise unlock every account silently. Laravel's stock `users` table (id, name,
+         | email, password) therefore needs `'authorities' => ''`, or a column/relation added to it: the
+         | default names an `authorities` column that table does not have.
+         |
+         | Defaults: driver 'memory', model '', username_column 'email', password_column 'password',
+         | enabled_column '', locked_column '', authorities 'authorities'.
         */
         'users' => [
+            // 'driver' => 'eloquent',
+            // 'model' => App\Models\User::class,
+            // 'username_column' => 'email',
+            // 'password_column' => 'password',
+            // 'enabled_column' => '',
+            // 'locked_column' => '',
+            // 'authorities' => '', // the stock users table has no authorities column; name one (or `roles.name`) once it does
+
             // 'alice' => [
             //     'password' => '{bcrypt}$2y$12$...',
             //     'authorities' => ['ROLE_ADMIN'],
@@ -165,6 +315,20 @@ return [
         */
         'http' => [
             'enabled' => env('FIREFLY_SECURITY_HTTP_ENABLED', false),
+            /*
+             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
+             | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
+             | page with the request saved when form_login is on; otherwise a 401 with
+             | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
+             | `login`, `challenge` and `problem` force one of the three (`login` without form_login is refused
+             | at boot). An AUTHENTICATED but under-privileged request is always the 403.
+             |
+             | The browser test does NOT depend on firefly.web.error-page.enabled: switching the framework's
+             | error page off changes how a 401 is drawn, not whether a person is sent to sign in.
+             |
+             | Default: 'auto'.
+            */
+            'entry_point' => env('FIREFLY_SECURITY_ENTRY_POINT', 'auto'),
             'rules' => [
                 // ['pattern' => 'actuator/health', 'access' => 'permitAll'],
                 // ['pattern' => 'actuator/*',      'access' => 'hasRole:ACTUATOR'],
@@ -243,7 +407,11 @@ return [
 
         /*
          | CSRF protection for state-changing requests. `except` holds Str::is() patterns skipped by the
-         | filter — a JSON API authenticated by bearer token usually belongs here.
+         | filter — a JSON API authenticated by bearer token usually belongs here. With session security on
+         | (session.enabled, or any mechanism that implies it) the filter verifies Laravel's session token,
+         | read exactly as Laravel's own middleware reads it: the `_token` field, the `X-CSRF-TOKEN` header,
+         | or the encrypted `XSRF-TOKEN` cookie echoed in `X-XSRF-TOKEN` the way a SPA client (Axios) sends
+         | it. Without a session it is the stateless double-submit cookie check.
          |
          | Defaults: enabled false, except [].
         */

@@ -35,6 +35,13 @@ use ReflectionParameter;
 final class RouteScanner
 {
     /**
+     * The six parameter attributes this scanner compiles itself — each is already expressed in the plan as a
+     * kind or the `valid` flag, so binding() leaves them out of the `attributes` list it records for the
+     * HandlerMethodArgumentResolvers that know attributes firefly/web does not.
+     */
+    private const array OWN_PARAMETER_ATTRIBUTES = [PathVariable::class, RequestBody::class, RequestHeader::class, UploadedFile::class, QueryParam::class, Valid::class];
+
+    /**
      * @param  array<string,string>  $psr4  namespace-prefix => absolute directory
      * @return list<RouteDescriptor>
      */
@@ -213,6 +220,39 @@ final class RouteScanner
      */
     private function binding(ReflectionParameter $parameter): array
     {
+        $binding = $this->bindingPlan($parameter);
+
+        // Both keys are emitted only when there is something to say, so a plan for an ordinary parameter
+        // — and a manifest compiled before the keys existed — stays byte-identical. `attributes` lists the
+        // attributes this scanner does NOT itself compile (its own six are already expressed as kind/valid),
+        // so a HandlerMethodArgumentResolver can claim a parameter by one it knows (#[AuthenticationPrincipal]).
+        // `nullable` is recorded for the two bindings a resolver may answer — a service binding, and ANY
+        // binding that carries such an attribute, whatever kind the type alone planned it as — so the
+        // resolver can hand back null honestly instead of a TypeError. The second case matters for a scalar:
+        // `#[AuthenticationPrincipal] ?string $sub` (a JWT subject) plans as a `query` binding by its type,
+        // and without the key the resolver could not tell it from `string $sub` and would refuse the null
+        // with a 401. An ordinary query parameter still gets no key: nothing reads it there.
+        $attributes = [];
+        foreach ($parameter->getAttributes() as $attribute) {
+            if (! in_array($attribute->getName(), self::OWN_PARAMETER_ATTRIBUTES, true)) {
+                $attributes[] = $attribute->getName();
+            }
+        }
+        if ($attributes !== []) {
+            $binding['attributes'] = $attributes;
+        }
+        if (($attributes !== [] || $binding['kind'] === 'service') && $parameter->getType()?->allowsNull() === true) {
+            $binding['nullable'] = true;
+        }
+
+        return $binding;
+    }
+
+    /**
+     * @return Binding
+     */
+    private function bindingPlan(ReflectionParameter $parameter): array
+    {
         $name = $parameter->getName();
         $type = $this->typeName($parameter);
         $valid = $parameter->getAttributes(Valid::class) !== [];
@@ -246,8 +286,10 @@ final class RouteScanner
             return $this->plan($name, 'query', $query->name ?? $name, $type, $query->required, $query->default, $valid);
         }
 
-        // No binding attribute: a class type is a container service; a scalar defaults to a query param.
-        if ($type !== null && class_exists($type)) {
+        // No binding attribute: a class or interface type is a container service; a scalar defaults to a
+        // query param. An interface is a service for the same reason a class is — it is what the container,
+        // or a HandlerMethodArgumentResolver, would be asked for — and a query parameter could never hold it.
+        if ($type !== null && (class_exists($type) || interface_exists($type))) {
             return $this->plan($name, 'service', $type, $type, ! $parameter->isOptional(), $default, $valid);
         }
 

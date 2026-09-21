@@ -66,9 +66,10 @@ final class WalletController
     /**
      * Debits `amount_minor` from the wallet. Guarded upstream at the bus: WithdrawHandler carries
      * #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-     * SecurityCommandAuthorizer BEFORE the handler runs. Without an authorized principal in the
-     * SecurityContextHolder, the bus denies the command and the AuthorizationException it wraps renders
-     * as a 403 problem-details response — this endpoint is secured, not broken.
+     * SecurityCommandAuthorizer BEFORE the handler runs. With no principal in the SecurityContextHolder
+     * the bus refuses the command with an AuthenticationException that renders as a 401 problem-details
+     * response (authenticate first); with a principal that is signed in but carries neither role it is an
+     * AuthorizationException rendered as 403 — this endpoint is secured, not broken.
      *
      * @return array{wallet_id: string, balance_minor: int}
      */

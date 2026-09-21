@@ -62,6 +62,7 @@ return [
                 'lazy' => false,
                 'dependencies' => [
                     0 => 'Firefly\\OpenApi\\Schema\\DtoSchemaFactory',
+                    1 => 'Firefly\\Web\\Dispatch\\HandlerMethodArgumentResolvers',
                 ],
             ],
             4 => [

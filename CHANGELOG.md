@@ -63,6 +63,33 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   failure — 5xx, refused, timed out, not JSON — where it used to let the HTTP client's `RequestException`
   escape. **Migration:** a test asserting `RequestException` asserts `JwksUnavailableException`.
 
+- **`packages/security` — a method-security refusal for an ANONYMOUS caller at the CQRS bus is a `401`, not a
+  `403`.** `MethodSecurityMessageEnforcer` used to answer `ACCESS_DENIED` whether or not anyone was signed in; it now
+  shares `MethodSecurityEvaluator` with the dispatcher guard and the proxy interceptor, and all three say
+  `AUTHENTICATION_FAILED` for nobody and `ACCESS_DENIED` for somebody. **Migration:** a test asserting a 403 for an
+  anonymous command asserts a 401.
+
+- **`packages/security` — a `final` bean carrying method-security rules that no dispatch seam enforces refuses
+  `firefly:cache` (and the uncached boot).** A `#[Service]`/`#[Component]`/`#[Repository]` with `#[PreAuthorize]` and
+  the like is now proxied so the rule is actually enforced; the proxy must extend the class. Before this wave those
+  rules were silently unenforced. **Migration:** remove `final`, or move the rule onto the controller or handler.
+  The same scan refuses a `#[PreFilter]` on a `#[RestController]`/`#[Controller]` action (the dispatcher cannot
+  rewrite the arguments it resolved) and a `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no
+  `#[Component]`-family stereotype (nothing would enforce it). **Migration:** move the filter onto the service the
+  action calls; add a stereotype to the class.
+
+- **`packages/web` — `ControllerSecurityGuard` gains `afterInvocation()`.** An implementation outside this repo adds
+  the method (return `$result` to keep the old behaviour). `ArgumentResolver`'s constructor takes an optional third
+  `HandlerMethodArgumentResolvers`. `RouteScanner` records two optional binding keys (`attributes`, `nullable`) and
+  compiles an interface-typed parameter as a `service` binding rather than a query parameter.
+
+- **`packages/data` — the proxy engine is a `MethodInterceptor` chain.** `TransactionalBeanPostProcessor` is constructed
+  from a `ProxyPlan` and an `InterceptorRegistry`; `ProxyMethod` takes a list of `BoundAdvice` instead of a
+  `TransactionalDescriptor`; `ProxyMaterializer::materialize()` takes a planner and a plan; `TransactionInterceptor`
+  implements `MethodInterceptor`. Every proxy member name, `ProxyFactory::wrap()`'s first four parameters and the
+  compiled `transactional.php` are unchanged; `firefly:cache` additionally writes `proxy-plan.php`. **Migration:** run
+  `php artisan firefly:cache` once.
+
 - **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
   `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
   poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
@@ -115,6 +142,30 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 - **`packages/admin` — the datasource page shows the data layer** (exception translation, default transaction
   timeout, statement timeout, transactional listeners) and the data browser's write failures read as sentences
   for a duplicate key, a broken constraint, a lock, a timeout or an unreachable database — never the SQL.
+
+- **`packages/security` — Spring Security 6 parity for everything that is not OAuth2 client/server (wave A).**
+  A session-persisted `SecurityContext` (`SecurityContextPersistenceFilter`, `SessionSecurityBootstrap` pushing
+  Laravel's cookie/session middleware globally ahead of the filter chain, fixation protection), **form login** with the
+  framework's own sign-in page (`firefly.security.form_login.*`, CSRF-checked against the session token, redirect to
+  the saved request), **HTTP Basic** (`http_basic.*`, RFC 7617 challenge), **logout** (`logout.*`, POST only),
+  **remember-me** (`remember_me.*`, Spring's signed-token cookie, key held to the JWT secret rule), a negotiating
+  **`AuthenticationEntryPoint`** (`http.entry_point`: `auto`|`login`|`challenge`|`problem`), **`#[PostAuthorize]`**,
+  **`#[PreFilter]`/`#[PostFilter]`**, **method security on any stereotyped bean** (`method.enabled`) through the shared
+  proxy chain with security ahead of transactions, **principal injection** (`Authentication`, `?UserDetails`,
+  `#[AuthenticationPrincipal]`, `#[CurrentSecurityContext]`), an **Eloquent `UserDetailsService`**
+  (`users.driver = eloquent`), and the **event family** (`AuthenticationSuccessEvent`,
+  `InteractiveAuthenticationSuccessEvent`, `AuthenticationFailureBadCredentials/Locked/DisabledEvent`,
+  `LogoutSuccessEvent`, `AuthorizationDeniedEvent`) published through the context port. Every key defaults to off.
+
+- **`packages/data` — `MethodInterceptor`, `MethodInvocation`, `Advice`, `AdviceSource`, `ProxyPlan`,
+  `ProxyPlanner`, `InterceptorRegistry`.** The transactional proxy generalised into an ordered interceptor chain any
+  package can contribute to; `firefly:cache` compiles `proxy-plan.php`.
+
+- **`packages/web` — `HandlerMethodArgumentResolver`/`HandlerMethodArgumentResolvers`.** The extension point a package
+  registers a controller-argument resolver into, consulted before the built-in binding kinds.
+
+- **`packages/testing` — `actingAsPrincipal()`, `withoutSecurity()`, `#[WithMockUser]`,
+  `RecordingAuthenticationEvents`.**
 
 - **`packages/kernel` — RFC 9457 extension members and a per-exception title on `FireflyException`.**
   `withExtensions([...])`/`extensions()` and `withTitle('…')`/`title()` (also constructor arguments), spread

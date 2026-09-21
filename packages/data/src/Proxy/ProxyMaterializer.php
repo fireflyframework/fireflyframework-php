@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Firefly\Data\Proxy;
 
 use Firefly\Context\Scan\AppScan;
-use Firefly\Data\Scanner\TransactionalScanner;
 use Illuminate\Contracts\Container\Container;
 
 /**
@@ -18,9 +17,11 @@ use Illuminate\Contracts\Container\Container;
  *     FireflyCacheServiceProvider registers an autoloader for it — but firefly/cli is optional, so we
  *     register the same classmap here. Registering twice is harmless: the second autoloader never fires
  *     because the first already declared the class.
- *   - UNCACHED: nothing has been generated at all. We rescan and materialise each proxy through
- *     ProxyClassGenerator::load(), which writes into a private per-process 0700 directory with O_EXCL and
- *     requires it. Dev-time cost only; a cached app never reaches this branch.
+ *   - UNCACHED: nothing has been generated at all. We rescan through every AdviceSource and materialise each
+ *     proxy the plan names through ProxyClassGenerator::load(), which writes into a private per-process 0700
+ *     directory with O_EXCL and requires it. Dev-time cost only: a cached app — one holding proxy-plan.php, or
+ *     the transactional.php + proxies.php a firefly:cache from before that file existed emitted, from which
+ *     DataAutoConfiguration::proxyPlan() bridges a transactional-only plan — never reaches this branch.
  *
  * Before this existed, DataAutoConfiguration bound an unconditional empty TransactionalManifest and nothing
  * ever loaded the compiled transactional.php, so hasProxyFor() was always false and #[Transactional] was a
@@ -56,14 +57,12 @@ final class ProxyMaterializer
     }
 
     /**
-     * Generate + require every proxy the PSR-4 roots imply. Used only when no compiled classmap exists.
-     *
-     * @param  array<string,string>  $psr4
+     * Generate + require every proxy the plan names. Used only when no compiled classmap exists.
      */
-    public static function materialize(array $psr4): void
+    public static function materialize(ProxyPlanner $planner, ProxyPlan $plan): void
     {
         $generator = new ProxyClassGenerator;
-        foreach ((new TransactionalScanner)->scanProxyMethods($psr4) as $targetClass => $methods) {
+        foreach ($planner->proxyMethods($plan) as $targetClass => $methods) {
             $generator->load($targetClass, $methods);
         }
     }

@@ -43,14 +43,36 @@ final class ErrorPageRenderer
     /** Whether this request should be answered with the HTML page rather than with problem+json. */
     public function handles(Request $request): bool
     {
-        if (! $this->settings->enabled || $request->ajax() || $request->wantsJson()) {
+        return $this->settings->enabled && $this->prefersHtml($request);
+    }
+
+    /**
+     * Whether the caller is a PERSON AT A BROWSER — the negotiation above, and nothing about this page.
+     *
+     * TWO QUESTIONS, NOT ONE. `handles()` answers "should the framework's page be rendered for this
+     * request", and that is rightly false when `firefly.web.error-page.enabled` is off. But "who is asking"
+     * is a question other features need answered independently of how a failure is drawn: the security
+     * entry point decides whether to send an anonymous request to the LOGIN PAGE, and a browser does not
+     * stop being a browser because the application chose Laravel's stock error page over this one. For one
+     * release the entry point asked `handles()`, and a documented, legitimate branding choice silently
+     * turned every form-login redirect into a 401 — nothing in the security docs mentioned the error page
+     * at all, because there was never meant to be a coupling. This method is the browser test on its own,
+     * with the feature flag left to `handles()`.
+     *
+     * `json-paths` DOES take part, flag or no flag, because it says what the URL IS rather than what the
+     * page does: an `api/*` URL is a machine surface for a login redirect exactly as it is for a 404, and a
+     * copied browser header must not turn an API call into a `302 /login`.
+     */
+    public function prefersHtml(Request $request): bool
+    {
+        if ($request->ajax() || $request->wantsJson()) {
             return false;
         }
 
         // A path the application declares as an API answers with a problem document whatever the caller
         // asked for. This is checked BEFORE the Accept header, not after, because it is the stronger
         // statement: the header says who is asking, the path says what the URL IS.
-        if ($this->forcesJson($request)) {
+        if ($this->settings->isJsonPath($request->path())) {
             return false;
         }
 

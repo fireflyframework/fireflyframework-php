@@ -13,6 +13,7 @@ use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\ResponseSchemaFactory;
 use Firefly\OpenApi\Schema\SchemaRegistry;
 use Firefly\OpenApi\Schema\TypeSchema;
+use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Route\RouteDescriptor;
 use ReflectionClass;
 use ReflectionMethod;
@@ -30,6 +31,17 @@ use ReflectionNamedType;
  * the document. Deriving the parameter list from the method signature independently would have to re-decide
  * every one of those cases and could disagree with the dispatcher; reading the plan cannot.
  *
+ * The kind is read AFTER the registry, for the same reason. ArgumentResolver asks the registered
+ * HandlerMethodArgumentResolvers before it looks at the kind, and a binding one of them claims — a
+ * `#[AuthenticationPrincipal]` principal, a `?UserDetails $user` — is answered from the holder, never from the
+ * request, whatever kind its type alone planned it as. `#[AuthenticationPrincipal] ?string $sub` plans as
+ * `query`; a document that read only the kind published it as a REQUIRED `?sub=` and documented a 400 for
+ * omitting it, the exact opposite of what the server does (the query string is never read there). So this
+ * factory asks the same registry the dispatcher asks, and skips what it claims: the document and the runtime
+ * agree by construction, for every resolver any package registers, with nothing in this package naming
+ * security. The registry is optional on the constructor, as it is on ArgumentResolver's — a generator built
+ * without one publishes the plan as it stands.
+ *
  * The PROSE comes from ApiDocs, which merges #[ApiOperation]/#[ApiResponse]/#[ApiParameter] over the method's
  * docblock over a derivation from the method name — in that order, decided there and not re-decided here. The
  * summary this factory writes used to be `ucfirst()` of the humanised method name and the description used to
@@ -44,6 +56,7 @@ final class OperationFactory
     public function __construct(
         private readonly DtoSchemaFactory $schemas,
         private readonly ResponseSchemaFactory $responses = new ResponseSchemaFactory,
+        private readonly ?HandlerMethodArgumentResolvers $resolvers = null,
     ) {}
 
     /**
@@ -66,6 +79,12 @@ final class OperationFactory
         $rejectable = false;
 
         foreach ($route->bindings as $binding) {
+            // Claimed by a resolver: bound from somewhere other than the request, so neither a parameter nor
+            // a reason for a 400 — the same first question ArgumentResolver::resolveOne() asks.
+            if ($this->resolvers?->resolverFor($binding) !== null) {
+                continue;
+            }
+
             $validated = $validated || $binding['valid'];
 
             switch ($binding['kind']) {

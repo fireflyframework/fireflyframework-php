@@ -11,6 +11,7 @@ use Firefly\Web\Tests\Fixtures\Security\RecordingSecurityGuard;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Build a minimal app with the REAL WebServiceProvider registered (mirrors WebServiceProviderBindingsTest), so
@@ -55,4 +56,18 @@ it('a denying guard stops the controller and surfaces a 403', function () {
 
     expect(fn () => $closure(Request::create('/guarded', 'GET')))->toThrow(AuthorizationException::class)
         ->and($controller->ran)->toBeFalse();
+});
+
+it('hands the handler result to the guard after the call and returns what the guard answers', function () {
+    $app = guardTestApp();
+    $guard = new RecordingSecurityGuard(replaceResultWith: ['filtered' => true]);
+    $app->instance(ControllerSecurityGuard::class, $guard);
+    $app->instance(GuardedController::class, new GuardedController);
+
+    $closure = $app->make(ControllerDispatcher::class)->actionFor(descriptorFor('index'));
+    $response = $closure(Request::create('/guarded', 'GET'));
+
+    expect($guard->afterCalls)->toBe([['class' => GuardedController::class, 'method' => 'index', 'args' => []]])
+        ->and($response)->toBeInstanceOf(Response::class)
+        ->and($response instanceof Response ? (string) $response->getContent() : null)->toBe('{"filtered":true}');
 });

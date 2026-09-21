@@ -105,6 +105,28 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'proxyPlan',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Proxy\\ProxyPlan',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
+                'method' => 'interceptorRegistry',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Data\\Proxy\\InterceptorRegistry',
+                        ],
+                    ],
+                ],
+            ],
+            10 => [
                 'method' => 'proxyFactory',
                 'conditions' => [
                     0 => [

@@ -8,4 +8,9 @@ namespace Firefly\Web\Security;
 final class AllowAllControllerSecurityGuard implements ControllerSecurityGuard
 {
     public function check(string $controllerClass, string $method, array $args): void {}
+
+    public function afterInvocation(string $controllerClass, string $method, array $args, mixed $result): mixed
+    {
+        return $result;
+    }
 }

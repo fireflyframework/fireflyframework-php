@@ -10,6 +10,7 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Security\CommandAuthorizer;
 use Firefly\Cqrs\Security\QueryAuthorizer;
@@ -19,6 +20,8 @@ use Firefly\Security\Access\AuthorizationChecker;
 use Firefly\Security\Access\DenyAllPermissionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\HttpSecurity;
+use Firefly\Security\Access\Method\MethodSecurityEvaluator;
+use Firefly\Security\Access\Method\MethodSecurityInterceptor;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
@@ -29,6 +32,7 @@ use Firefly\Security\Cqrs\MethodSecurityMessageEnforcer;
 use Firefly\Security\Cqrs\SecurityCommandAuthorizer;
 use Firefly\Security\Cqrs\SecurityQueryAuthorizer;
 use Firefly\Security\Data\SecurityContextAuditorAware;
+use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\Jwt\JwtService;
 use Firefly\Security\OAuth2\JwksDocumentSource;
 use Firefly\Security\OAuth2\JwksProvider;
@@ -40,8 +44,27 @@ use Firefly\Security\Password\BcryptPasswordEncoder;
 use Firefly\Security\Password\DelegatingPasswordEncoder;
 use Firefly\Security\Password\NoOpPasswordEncoder;
 use Firefly\Security\Password\PasswordEncoder;
+use Firefly\Security\Session\SecurityContextRepository;
+use Firefly\Security\Session\SessionSecurityContextRepository;
+use Firefly\Security\Session\SessionSecuritySettings;
+use Firefly\Security\User\EloquentUserDetailsService;
 use Firefly\Security\User\InMemoryUserDetailsService;
 use Firefly\Security\User\UserDetailsService;
+use Firefly\Security\User\UserStoreSettings;
+use Firefly\Security\Web\Csrf\SessionCsrf;
+use Firefly\Security\Web\EntryPoint\AuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\BasicAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\DelegatingAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\LoginUrlAuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\ProblemAuthenticationEntryPoint;
+use Firefly\Security\Web\RememberMe\RememberMeServices;
+use Firefly\Security\Web\RememberMe\TokenBasedRememberMeServices;
+use Firefly\Security\Web\Settings\FormLoginSettings;
+use Firefly\Security\Web\Settings\HttpBasicSettings;
+use Firefly\Security\Web\Settings\LogoutSettings;
+use Firefly\Security\Web\Settings\RememberMeSettings;
+use Firefly\Web\Error\ErrorPageRenderer;
+use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Psr\Log\LoggerInterface;
@@ -72,15 +95,22 @@ final class SecurityAutoConfiguration
         ]);
     }
 
+    /**
+     * `firefly.security.users.driver`: `memory` (the map, unchanged) or `eloquent` (any Eloquent model, see
+     * EloquentUserDetailsService for the schema). UserStoreSettings refuses an unknown driver, a missing model
+     * class and a class that is not an Eloquent model; SecurityWiringPass resolves this bean at boot so that
+     * refusal is a startup failure.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(UserDetailsService::class)]
     public function userDetailsService(Config $config): UserDetailsService
     {
-        /** @var array<string,array{password:string,authorities?:list<string>,enabled?:bool,locked?:bool}> $users */
-        $users = $config->has('firefly.security.users') ? $config->array('firefly.security.users') : [];
+        $settings = UserStoreSettings::fromConfig($config);
 
-        return InMemoryUserDetailsService::fromConfig($users);
+        return $settings->driver === 'eloquent'
+            ? new EloquentUserDetailsService($settings)
+            : InMemoryUserDetailsService::fromConfig($settings->accounts);
     }
 
     #[Bean]
@@ -128,10 +158,38 @@ final class SecurityAutoConfiguration
 
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
-    #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
-    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, ?LoggerInterface $logger = null): MethodSecurityMessageEnforcer
+    #[ConditionalOnMissingBean(MethodSecurityEvaluator::class)]
+    public function methodSecurityEvaluator(SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, AuthenticationEventPublisher $events, ?LoggerInterface $logger = null): MethodSecurityEvaluator
     {
-        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $logger);
+        return new MethodSecurityEvaluator($evaluator, $roles, $permissions, $events, $logger);
+    }
+
+    /**
+     * The proxy link for #[PreAuthorize]/#[PostAuthorize]/#[Secured]/#[RolesAllowed]/#[PreFilter]/#[PostFilter]
+     * on any stereotyped bean. Gated by the master flag AND `firefly.security.method.enabled` (default true):
+     * with either off the bean is absent and every planned proxy runs a pass-through in its place — the same
+     * "annotations are inert until security is on" rule the controller guard has always had.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.method.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnMissingBean(MethodSecurityInterceptor::class)]
+    public function methodSecurityInterceptor(MethodSecurityEvaluator $evaluator, Config $config): MethodSecurityInterceptor
+    {
+        return new MethodSecurityInterceptor($evaluator, $config);
+    }
+
+    /**
+     * The bus link the two authorizers below share. Gated by the master flag at boot like the rest of the core
+     * stack, and it reads that same flag live on every message (see the class), because the buses hold their
+     * authorizer by constructor and a flag flipped after boot has no other way to reach them.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(MethodSecurityMessageEnforcer::class)]
+    public function methodSecurityMessageEnforcer(HandlerManifest $handlers, SecurityMethodManifest $methods, SecurityExpressionEvaluator $evaluator, RoleHierarchy $roles, PermissionEvaluator $permissions, Config $config, ?LoggerInterface $logger = null, ?AuthenticationEventPublisher $events = null): MethodSecurityMessageEnforcer
+    {
+        return new MethodSecurityMessageEnforcer($handlers, $methods, $evaluator, $roles, $permissions, $config, $logger, $events);
     }
 
     #[Bean]
@@ -156,6 +214,135 @@ final class SecurityAutoConfiguration
     public function auditorAware(): AuditorAware
     {
         return new SecurityContextAuditorAware;
+    }
+
+    /**
+     * The one publisher every mechanism reports through. It wraps whatever ApplicationEventPublisher is bound
+     * — the DispatcherEventPublisher in an application, a recording double in a test — so security events are
+     * ordinary application events: #[AsEventListener] methods receive them and Event::fake() intercepts them.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(AuthenticationEventPublisher::class)]
+    public function authenticationEventPublisher(ApplicationEventPublisher $events): AuthenticationEventPublisher
+    {
+        return new AuthenticationEventPublisher($events);
+    }
+
+    /**
+     * The session half: whether the SecurityContext is carried between requests (read live), and where it is
+     * kept. The repository is the Laravel session unless the application binds its own.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(SessionSecuritySettings::class)]
+    public function sessionSecuritySettings(Config $config): SessionSecuritySettings
+    {
+        return new SessionSecuritySettings($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(SecurityContextRepository::class)]
+    public function securityContextRepository(): SecurityContextRepository
+    {
+        return new SessionSecurityContextRepository;
+    }
+
+    /**
+     * The settings every web mechanism reads, each a value object built once from its `firefly.security.*`
+     * block. Master-gated like the filters that consume them; RememberMeSettings::fromConfig() refuses a weak
+     * key when remember-me is on, the same rule the JWT secret is held to.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(FormLoginSettings::class)]
+    public function formLoginSettings(Config $config): FormLoginSettings
+    {
+        return FormLoginSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(HttpBasicSettings::class)]
+    public function httpBasicSettings(Config $config): HttpBasicSettings
+    {
+        return HttpBasicSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(LogoutSettings::class)]
+    public function logoutSettings(Config $config): LogoutSettings
+    {
+        return LogoutSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(RememberMeSettings::class)]
+    public function rememberMeSettings(Config $config): RememberMeSettings
+    {
+        return RememberMeSettings::fromConfig($config);
+    }
+
+    /**
+     * The remember-me port, bound ONLY while `firefly.security.remember_me.enabled` (under the master flag):
+     * the three filters that take it — form login sets the cookie, the remember-me filter re-authenticates
+     * from it, logout expires it — accept null and are inert without it, so turning the key on is what turns
+     * the whole mechanism on. The shipped implementation is the signed, stateless token; an application
+     * that wants a persistent-token store (Spring's PersistentTokenBasedRememberMeServices) binds its own
+     * RememberMeServices and this bean steps aside.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.remember_me.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(RememberMeServices::class)]
+    public function rememberMeServices(RememberMeSettings $settings, UserDetailsService $users, ?LoggerInterface $logger = null): RememberMeServices
+    {
+        return new TokenBasedRememberMeServices($settings, $users, $logger);
+    }
+
+    /**
+     * WHAT AN ANONYMOUS REQUEST TO A PROTECTED URL GETS: see DelegatingAuthenticationEntryPoint. Both web
+     * renderers are bound by WebServiceProvider behind bound() guards, so an application's own binding of
+     * either is what this entry point renders with. AND-gated exactly like its one consumer, HttpSecurityFilter:
+     * the master flag for the settings beans it takes, the HTTP surface flag because an entry point answers a
+     * URL refusal and there is none without URL rules — a security-only boot (no web provider registered)
+     * therefore never resolves the web renderers it would have to auto-wire. The mode is still validated at
+     * boot whenever the master flag is on: SecurityWiringPass runs modeFrom() whether or not this bean exists.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.http.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(AuthenticationEntryPoint::class)]
+    public function authenticationEntryPoint(Config $config, FormLoginSettings $formLogin, HttpBasicSettings $basic, ErrorPageRenderer $pages, ProblemDetailsRenderer $problems): AuthenticationEntryPoint
+    {
+        return new DelegatingAuthenticationEntryPoint(
+            DelegatingAuthenticationEntryPoint::modeFrom($config),
+            $formLogin,
+            $basic,
+            $pages,
+            new LoginUrlAuthenticationEntryPoint($formLogin),
+            new BasicAuthenticationEntryPoint($basic, $pages, $problems),
+            new ProblemAuthenticationEntryPoint,
+        );
+    }
+
+    /**
+     * The session-token CSRF check CsrfFilter makes on a session-backed request and the interactive
+     * mechanisms (login, logout) make before anything else. DELIBERATELY NOT GATED BY A PROPERTY: its
+     * consumers are, and their gates do not nest — CsrfFilter needs it under `csrf.enabled` alone (no master
+     * flag), the login and logout filters under the master flag — so the bean is simply there, costs nothing
+     * (it holds the container and resolves the Encrypter on the first X-XSRF-TOKEN it decrypts, so an empty
+     * APP_KEY at `key:generate` time is not a boot failure), and yields to an application override like every
+     * other bean here.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(SessionCsrf::class)]
+    public function sessionCsrf(Container $container): SessionCsrf
+    {
+        return new SessionCsrf($container);
     }
 
     #[Bean]

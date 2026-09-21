@@ -58,6 +58,24 @@ it('is switched off by configuration, and then never claims a request', function
     expect($renderer->handles($request('text/html')))->toBeFalse();
 });
 
+it('still knows a browser from an API client when the page is switched off', function () use ($request) {
+    // `handles()` answers "render this page?"; `prefersHtml()` answers "is a person at a browser asking?".
+    // The second is what the security entry point needs to decide on a login redirect, and that decision
+    // must not change with a flag whose documented meaning is "use Laravel's stock error page instead".
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: false, jsonPaths: ['api/*']));
+    $browserAccept = ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml'];
+
+    expect($renderer->prefersHtml($request('text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')))->toBeTrue()
+        ->and($renderer->prefersHtml($request('*/*')))->toBeFalse()
+        ->and($renderer->prefersHtml($request('application/json')))->toBeFalse()
+        ->and($renderer->prefersHtml($request('text/html', ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])))->toBeFalse()
+        // json-paths says what the URL IS, not what the page does, so it still applies with the page off.
+        ->and($renderer->prefersHtml(Request::create('/api/orders/9', 'GET', server: $browserAccept)))->toBeFalse()
+        ->and($renderer->prefersHtml(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeTrue()
+        // And the page itself still declines everything: the flag gates rendering, not recognition.
+        ->and($renderer->handles(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeFalse();
+});
+
 it('gathers nothing to leak when the trace is off', function () use ($report) {
     $error = $report(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), new ErrorPageSettings(trace: false));
 

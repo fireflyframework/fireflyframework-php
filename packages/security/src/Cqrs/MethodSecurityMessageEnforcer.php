@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace Firefly\Security\Cqrs;
 
+use Firefly\Config\Config;
 use Firefly\Cqrs\Handler\HandlerKind;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
-use Firefly\Security\Access\Expression\SecurityExpressionRoot;
-use Firefly\Security\Access\Method\MethodSecurityRefusal;
+use Firefly\Security\Access\Method\MethodSecurityEvaluator;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
-use Firefly\Security\Core\Authentication;
-use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Event\AuthenticationEventPublisher;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -21,25 +20,37 @@ use Psr\Log\LoggerInterface;
  * HandlerManifest, look up its method-security rule in the SecurityMethodManifest, and evaluate it against the
  * current SecurityContext with the message bound to the handler's single #param. A message with no handler, or a
  * handler with no rule, is allowed — method security is additive, not a second deny-by-default gate (that is the
- * HttpSecurityFilter's job). A failing rule throws the kernel AuthorizationException (403), worded by
- * MethodSecurityRefusal so the handler's class name goes to the log and not to the client.
+ * HttpSecurityFilter's job). A failing rule throws through MethodSecurityEvaluator — a 401 for an anonymous
+ * caller (it used to be a 403 here alone), a 403 worded by MethodSecurityRefusal for an authenticated one, so the
+ * handler's class name goes to the log and not to the client. The bus authorises BEFORE dispatch, so
+ * #[PostAuthorize]/#[PostFilter] on a handler are enforced only when the handler is proxied (see
+ * MethodSecurityScanner::scanProxyAdvice()).
+ *
+ * The master flag is read LIVE on every message rather than captured at construction, the way the proxy link
+ * and the HTTP filters read theirs: the bean exists only while `firefly.security.enabled` is on, but a test's
+ * withoutSecurity() flips the flag after boot, and DefaultCommandBus/DefaultQueryBus already hold the authorizer
+ * that holds this instance, so neither a rebind nor the config change could reach a built bus otherwise. ONLY
+ * the master flag — `firefly.security.method.enabled` is documented to leave the dispatcher and the bus enforcing
+ * their rules and to stand down the proxy link alone.
  */
 final class MethodSecurityMessageEnforcer
 {
     /** @var array<string,array{class:string,method:string}> messageClass => handler */
     private array $handlerByMessage = [];
 
-    private readonly MethodSecurityRefusal $refusal;
+    private readonly MethodSecurityEvaluator $evaluator;
 
     public function __construct(
         HandlerManifest $handlers,
         private readonly SecurityMethodManifest $methods,
-        private readonly SecurityExpressionEvaluator $evaluator,
-        private readonly RoleHierarchy $roleHierarchy,
-        private readonly PermissionEvaluator $permissionEvaluator,
+        SecurityExpressionEvaluator $evaluator,
+        RoleHierarchy $roleHierarchy,
+        PermissionEvaluator $permissionEvaluator,
+        private readonly Config $config,
         ?LoggerInterface $logger = null,
+        ?AuthenticationEventPublisher $events = null,
     ) {
-        $this->refusal = new MethodSecurityRefusal($evaluator, $logger);
+        $this->evaluator = new MethodSecurityEvaluator($evaluator, $roleHierarchy, $permissionEvaluator, $events, $logger);
         foreach ($handlers->handlers() as $descriptor) {
             $this->handlerByMessage[$descriptor->kind->value.':'.$descriptor->messageClass] = [
                 'class' => $descriptor->handlerClass,
@@ -50,6 +61,10 @@ final class MethodSecurityMessageEnforcer
 
     public function enforce(object $message, HandlerKind $kind): void
     {
+        if (! $this->config->bool('firefly.security.enabled', false)) {
+            return;
+        }
+
         $handler = $this->handlerByMessage[$kind->value.':'.$message::class] ?? null;
         if ($handler === null) {
             return;
@@ -60,12 +75,6 @@ final class MethodSecurityMessageEnforcer
             return;
         }
 
-        $args = isset($rule->params[0]) ? [$rule->params[0] => $message] : [];
-        $authentication = SecurityContextHolder::getAuthentication() ?? Authentication::unauthenticated('anonymous', 'anonymous', null);
-        $root = new SecurityExpressionRoot($authentication, $this->roleHierarchy, $this->permissionEvaluator, $args);
-
-        if (! $this->evaluator->evaluate($rule->expression, $root)) {
-            throw $this->refusal->refuse($rule, $authentication);
-        }
+        $this->evaluator->before($rule, isset($rule->params[0]) ? [$rule->params[0] => $message] : []);
     }
 }

@@ -75,7 +75,7 @@ it('agrees with firefly/cli on every compiled artifact basename', function () {
         AppScan::COMPONENT, AppScan::CONTEXT, AppScan::CONFIG_PROPERTIES, AppScan::ROUTES,
         AppScan::EXCEPTION_HANDLERS, AppScan::CONSTRAINTS, AppScan::HANDLERS, AppScan::EVENT_LISTENERS,
         AppScan::MESSAGE_LISTENERS, AppScan::SCHEDULED, AppScan::SECURITY_METHODS, AppScan::TRANSACTIONAL,
-        AppScan::PROXY_MAP,
+        AppScan::PROXY_MAP, AppScan::PROXY_PLAN,
     ] as $basename) {
         expect($source)->toContain("'{$basename}'");
     }

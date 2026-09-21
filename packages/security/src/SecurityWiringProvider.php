@@ -12,13 +12,17 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Boot\SecurityWiringPass;
 use Firefly\Security\Scanner\MethodSecurityScanner;
+use Firefly\Security\Session\SessionSecurityBootstrap;
+use Firefly\Security\Web\Login\LoginRouteRegistrar;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 
 /**
  * The boot-pass half of firefly/security (cannot ride on SecurityServiceProvider — AutoConfiguration's final
  * register() records candidacy only). Resolves the SecurityMethodManifest behind a bound() guard and contributes
- * the SecurityWiringPass. Both this and SecurityServiceProvider are in extra.laravel.providers.
+ * the LoginRouteRegistrar (order 70, the login page route), the SessionSecurityBootstrap (order 90, the global
+ * session middleware) and the SecurityWiringPass (order 200).
+ * Both this and SecurityServiceProvider are in extra.laravel.providers.
  *
  * FAIL-OPEN FIX. This binding used to be an unconditional `new SecurityMethodManifest([])`. Because
  * MethodSecurityMessageEnforcer::enforce() and MethodSecurityControllerGuard treat "no rule for this method" as
@@ -90,6 +94,6 @@ final class SecurityWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new SecurityWiringPass];
+        return [new SessionSecurityBootstrap, new LoginRouteRegistrar, new SecurityWiringPass];
     }
 }
