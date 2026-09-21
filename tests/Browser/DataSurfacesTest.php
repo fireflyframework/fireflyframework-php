@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Tests\Browser\Support\DataSurfacesBrowserTestCase;
+use Illuminate\Support\Facades\DB;
 
 pest()->extend(DataSurfacesBrowserTestCase::class);
 
@@ -35,4 +36,30 @@ it('shows the data layer\'s settings on the datasource page', function (): void 
         ->assertSee('Connections')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'data-datasource');
+});
+
+it('refuses a duplicate unique value through the data browser with the translated sentence, not a 500', function (): void {
+    /** @var DataSurfacesBrowserTestCase $this */
+    visit('/firefly/data')
+        ->assertSee('Browser Subscriber')
+        ->assertSee('Order Entity')
+        ->assertNoJavaScriptErrors();
+
+    visit('/firefly/data?resource=browser-subscriber&new=1')
+        ->assertSee('New browser subscriber')
+        ->fill('[name="f[email]"]', DataSurfacesBrowserTestCase::EXISTING_EMAIL)
+        ->fill('[name="f[name]"]', 'Ada, again')
+        ->press('Create record')
+        // Back on the create form, with the outcome flashed — the DuplicateKeyException's sentence, never the
+        // driver's message with the statement and the bound values in it.
+        ->assertQueryStringHas('new', '1')
+        ->assertSee('The insert failed: a row with the same unique value already exists.')
+        ->assertDontSee('500')
+        ->assertDontSee('INTERNAL_ERROR')
+        ->assertDontSee('insert into')
+        ->assertDontSee('UNIQUE constraint failed')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'data-duplicate');
+
+    expect(DB::table('browser_subscribers')->count())->toBe(1);
 });
