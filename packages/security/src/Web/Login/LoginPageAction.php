@@ -18,10 +18,22 @@ use Throwable;
  * configured Blade view or the framework page. An override that throws falls back to the built-in page for the
  * same reason the error page does: a person who cannot sign in cannot fix the view.
  *
- * The form posts to the ABSOLUTE processing URL (Request::getUriForPath), so a page served under a base path
- * or behind a proxy submits where FormLoginFilter listens, and the token is the session's own: the filter
- * verifies it through SessionCsrf, which is why a page rendered without a session (a bare boot, a test that
- * skipped the session middleware) carries an empty token and the POST it produces is refused.
+ * THE FORM'S ACTION IS ROOT-RELATIVE — the request's base URL (the front-controller prefix Symfony worked out,
+ * `/index.php` or `/app/public` when the application is not served from a rewritten document root) followed
+ * by the PATH of `login_processing_url` — exactly what Spring's DefaultLoginPageGeneratingFilter writes
+ * (`contextPath + loginProcessingUrl`). It is deliberately not Request::getUriForPath(): that is absolute, and
+ * its scheme is the one PHP saw. Behind a TLS-terminating proxy the skeleton does not trust, PHP sees http, so
+ * the page the browser fetched over https would carry `action="http://host/login"`; the browser would post
+ * to http, the proxy would answer its usual 301 to https, and a 301 turns the POST into a GET /login — the
+ * sign-in silently never happens. URL::forceScheme('https'), the usual Laravel remedy, cannot reach a URL the
+ * request object builds. A root-relative action is same-origin with the page BY CONSTRUCTION — scheme, host
+ * and port are whatever the browser used for the page — and keeps the base path, so it lands where
+ * FormLoginFilter listens (the filter compares the path only, so the query part of a configured processing
+ * URL is not part of the address either).
+ *
+ * The token is the session's own: the filter verifies it through SessionCsrf, which is why a page rendered
+ * without a session (a bare boot, a test that skipped the session middleware) carries an empty token and the
+ * POST it produces is refused.
  */
 final class LoginPageAction
 {
@@ -36,7 +48,7 @@ final class LoginPageAction
     {
         $login = new LoginPageModel(
             title: $this->pages->title,
-            action: $request->getUriForPath($this->settings->loginProcessingUrl),
+            action: $request->getBaseUrl().FormLoginSettings::path($this->settings->loginProcessingUrl),
             usernameParameter: $this->settings->usernameParameter,
             passwordParameter: $this->settings->passwordParameter,
             csrfToken: $request->hasSession() ? $request->session()->token() : '',

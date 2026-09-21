@@ -175,6 +175,14 @@ return [
          | `view` receives `$login` (a LoginPageModel: action, usernameParameter, passwordParameter,
          | csrfToken, error, loggedOut, rememberMeParameter, title).
          |
+         | The framework's page is mounted at `login_page` ONLY when no GET route of yours already answers
+         | that path: a #[GetMapping('/login')] or a routes-file route there (with or without a domain) is
+         | left in place and the framework page is not mounted, as Spring does for a custom login page. The
+         | redirect, the URL-rule exemption and the POST handling work the same for your page — its form
+         | only has to post the session token as `_token` to `login_processing_url`. The framework page's
+         | form action is root-relative (base path + the path of `login_processing_url`), so it posts to
+         | the origin the browser fetched the page from, TLS-terminating proxy or not.
+         |
          | Defaults: enabled false, login_page '/login', login_processing_url '/login', username_parameter
          | 'username', password_parameter 'password', default_success_url '/',
          | always_use_default_success_url false, failure_url '/login?error', view '' (the framework page).

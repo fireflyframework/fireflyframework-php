@@ -24,7 +24,7 @@ abstract class FormLoginCapstoneTestCase extends SecurityCapstoneTestCase
 
 uses(FormLoginCapstoneTestCase::class, SecurityFlows::class);
 
-it('renders the login page to anyone, with the session token, and marks the error and logout states', function () {
+it('renders the login page to anyone, with the session token, a root-relative action, and marks the error and logout states', function () {
     /** @var FormLoginCapstoneTestCase $this */
     $page = $this->get('/login');
 
@@ -32,6 +32,9 @@ it('renders the login page to anyone, with the session token, and marks the erro
         ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
         ->assertSee('Sign in')
         ->assertSee('name="_token"', escape: false)
+        // Same-origin with the page by construction: never the scheme and host PHP happened to see.
+        ->assertSee('action="/login"', escape: false)
+        ->assertDontSee('action="http', escape: false)
         ->assertDontSee('Those credentials did not work.');
 
     expect(strlen($this->csrfTokenFrom($page)))->toBe(40);
