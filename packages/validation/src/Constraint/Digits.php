@@ -7,11 +7,14 @@ namespace Firefly\Validation\Constraint;
 use Attribute;
 
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Digits implements Constraint
+final class Digits implements Constraint, HasMessage
 {
+    use MessageElement;
+
     public function __construct(
         public readonly int $integer,
         public readonly int $fraction = 0,
+        public readonly ?string $message = null,
     ) {}
 
     public function toRules(): array
@@ -24,5 +27,14 @@ final class Digits implements Constraint
             : '';
 
         return ['numeric', 'regex:/^-?\d{1,'.$this->integer.'}'.$fraction.'$/D'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve(
+            $this->message,
+            "numeric value out of bounds (<{$this->integer} digits>.<{$this->fraction} digits> expected)",
+            ['integer' => $this->integer, 'fraction' => $this->fraction],
+        );
     }
 }
