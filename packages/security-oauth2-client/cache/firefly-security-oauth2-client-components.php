@@ -145,6 +145,22 @@ return [
                 ],
             ],
             10 => [
+                'method' => 'logoutSuccessHandler',
+                'returns' => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\OAuth2\\Client\\Registration\\ClientRegistrationRepository',
+                    1 => 'Firefly\\Security\\OAuth2\\Client\\Authorized\\OAuth2AuthorizedClientRepository',
+                    2 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
+                    3 => 'Illuminate\\Contracts\\Container\\Container',
+                    4 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            11 => [
                 'method' => 'userInfoClient',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 'name' => null,
@@ -157,7 +173,7 @@ return [
                     1 => 'Firefly\\Security\\OAuth2\\Client\\OAuth2ClientSettings',
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'oauth2UserService',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OAuth2UserService',
                 'name' => null,
@@ -169,7 +185,7 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'oidcUserService',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\User\\OidcUserService',
                 'name' => null,
@@ -181,7 +197,7 @@ return [
                     0 => 'Firefly\\Security\\OAuth2\\Client\\User\\UserInfoClient',
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'oauth2LoginAuthenticationProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\Client\\Web\\Login\\OAuth2LoginAuthenticationProvider',
                 'name' => null,

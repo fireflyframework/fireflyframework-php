@@ -31,9 +31,11 @@ use Firefly\Security\OAuth2\Client\User\UserInfoClient;
 use Firefly\Security\OAuth2\Client\Web\AuthorizationRequestRepository;
 use Firefly\Security\OAuth2\Client\Web\Login\OAuth2LoginAuthenticationProvider;
 use Firefly\Security\OAuth2\Client\Web\Login\OAuth2LoginPageLinks;
+use Firefly\Security\OAuth2\Client\Web\Logout\OidcClientInitiatedLogoutSuccessHandler;
 use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequestResolver;
 use Firefly\Security\OAuth2\Client\Web\SessionAuthorizationRequestRepository;
 use Firefly\Security\Web\Login\LoginPageLinks;
+use Firefly\Security\Web\Logout\LogoutSuccessHandler;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Container\Container;
 use Psr\Log\LoggerInterface;
@@ -154,6 +156,21 @@ final class OAuth2ClientAutoConfiguration
     public function loginPageLinks(ClientRegistrationRepository $registrations, OAuth2ClientSettings $settings, ?LoggerInterface $logger = null): LoginPageLinks
     {
         return new OAuth2LoginPageLinks($registrations, $settings, $logger);
+    }
+
+    /**
+     * RP-initiated logout, on firefly/security's LogoutSuccessHandler port — the LogoutFilter asks it before the
+     * session is invalidated, which is what lets it read the id token. Triple-gated: the package master, the
+     * login (OAuth2ClientWiringPass refuses `logout.oidc_initiated` without it) and the key itself.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.login.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.client.logout.oidc_initiated', havingValue: 'true')]
+    #[ConditionalOnMissingBean(LogoutSuccessHandler::class)]
+    public function logoutSuccessHandler(ClientRegistrationRepository $registrations, OAuth2AuthorizedClientRepository $authorizedClients, OAuth2ClientSettings $settings, Container $container, ?LoggerInterface $logger = null): LogoutSuccessHandler
+    {
+        return new OidcClientInitiatedLogoutSuccessHandler($registrations, $authorizedClients, $settings, $container, $logger);
     }
 
     #[Bean]

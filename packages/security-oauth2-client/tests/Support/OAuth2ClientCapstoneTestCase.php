@@ -10,6 +10,7 @@ use Firefly\Security\Tests\Support\SecurityCapstoneTestCase;
 use Firefly\Testing\Security\OAuth2\FakeAuthorizationServer;
 use Illuminate\Foundation\Application;
 use Illuminate\Testing\TestResponse;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -161,5 +162,20 @@ abstract class OAuth2ClientCapstoneTestCase extends SecurityCapstoneTestCase
         }
 
         return $contents;
+    }
+
+    /**
+     * The session's CSRF token as /whoami reports it for the cookie the response carries — what a logout POST
+     * from that session has to send. Read from the JSON rather than a `_token` field because, with form login
+     * off, the login page draws no form to carry one.
+     *
+     * @param  TestResponse<Response>  $session
+     */
+    public function csrfTokenOf(TestResponse $session): string
+    {
+        $this->forgetSession();
+        $token = $this->followSession($session)->getJson('/whoami')->json('csrf');
+
+        return is_string($token) && $token !== '' ? $token : throw new RuntimeException('/whoami reported no csrf token.');
     }
 }

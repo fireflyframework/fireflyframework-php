@@ -239,6 +239,41 @@ return [
                 ],
             ],
             10 => [
+                'method' => 'logoutSuccessHandler',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.login.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.client.logout.oidc_initiated',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    3 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
+                        ],
+                    ],
+                ],
+            ],
+            11 => [
                 'method' => 'userInfoClient',
                 'conditions' => [
                     0 => [
@@ -265,7 +300,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'oauth2UserService',
                 'conditions' => [
                     0 => [
@@ -292,7 +327,7 @@ return [
                     ],
                 ],
             ],
-            12 => [
+            13 => [
                 'method' => 'oidcUserService',
                 'conditions' => [
                     0 => [
@@ -319,7 +354,7 @@ return [
                     ],
                 ],
             ],
-            13 => [
+            14 => [
                 'method' => 'oauth2LoginAuthenticationProvider',
                 'conditions' => [
                     0 => [
