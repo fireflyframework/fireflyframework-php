@@ -22,7 +22,8 @@ theme:
     repo: fontawesome/brands/github
   # The two schemes are the banner's own two halves: slate #0f172a/#1e293b behind an amber #fbbf24 spark.
   # `custom` is Material's documented hook for a palette that is not one of its named colours — the actual
-  # values live in docs/assets/stylesheets/larafly.css, read straight out of docs/assets/larafly-banner.svg.
+  # values live in docs/assets/stylesheets/larafly.css, read out of docs/assets/larafly-banner.svg apart from
+  # the three that file marks as chosen, each with the reason the banner had nothing to give.
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

@@ -37,10 +37,12 @@ actually renders the header logo at. The favicon's are a shade stronger (`0.6`) 
 with the slate tile behind them rather than with a page.
 
 Both are self-contained on the same terms as the banner and the diagrams: no `<script>`, no `<image>`, no
-`@font-face`, no external reference of any kind. `tests/BannerAssetTest.php` guards all three brand assets —
-that each file exists, that it parses as XML, that it contains none of those three things, and that
-`mkdocs.yml` still names it, because the way an asset like this rots is that a theme key is renamed and the
-file is orphaned without anything going red.
+`@font-face`, no external reference of any kind. `tests/BannerAssetTest.php` holds all three brand assets to
+exactly that: each file exists, parses as XML, contains none of those three things, and carries no URL other
+than the SVG namespace itself. It also checks that whatever consumes each asset still names it — `mkdocs.yml`
+for the logo and the favicon, `README.md` and `docs/index.md` for the banner, which `mkdocs.yml` never refers
+to at all. That second half is the one that earns its keep over time, because the way an asset like this rots
+is that a theme key is renamed and the file is orphaned without anything going red.
 
 ## Stylesheet
 
@@ -49,13 +51,21 @@ palette behind Material's `primary: custom` / `accent: custom` hooks, the `.lf-c
 use, the frame that keeps a white-panelled diagram from glaring on the dark scheme, and the density of the
 wide configuration tables.
 
-Its palette is read out of `larafly-banner.svg` and nothing else — the slate background gradient
-(`#0f172a` → `#1e293b`), the spark's three ambers (`#fde68a`, `#fbbf24`, `#f59e0b`) and the slate greys the
-wordmark and tagline sit in. Two values are *derived* rather than read, and the file says so where they are
-defined: the banner's amber is `hsl(38, 92%, 50%)`, which carries 2.2:1 against white and cannot be a link in
-a paragraph, so link text uses that same hue and saturation at the lightness where it clears WCAG AA —
-`#a26907` (4.6:1) resting and `#845606` (6.3:1) on hover. On the slate scheme the readable direction is the
-other one, and links are the spark colour itself, `#fbbf24` (9.6:1).
+Its palette is read out of `larafly-banner.svg`: the slate background gradient (`#0f172a` → `#1e293b`), the
+spark's three ambers (`#fde68a`, `#fbbf24`, `#f59e0b`) and the greys the wordmark, tagline and credit line sit
+in (`#f8fafc`, `#e2e8f0`, `#94a3b8`, `#64748b`). Three values are *chosen* rather than read, and the file
+marks each one where it is defined.
+
+Two of the three are the link inks. `--lf-amber-deep` `#f59e0b` — the outer stop of the banner's spark
+gradient — is `hsl(38, 92%, 50%)` and carries 2.15:1 against white, which cannot be a link in a paragraph, so
+link text is that same hue and saturation at the lightness where it clears WCAG AA: `#a26907` (4.6:1) resting
+and `#845606` (6.3:1) on hover. The banner itself is never asked to clear that bar — its amber sits on slate,
+and the one it actually paints opaque is the lighter `#fbbf24`, `hsl(43, 96%, 56%)`. On the slate scheme the
+readable direction is the other one, and links are that spark colour itself (9.6:1 on Material's slate page).
+
+The third is `#0b1220`, one step under the banner's darkest slate, for the single thing Material paints with
+`--md-primary-fg-color--dark`: the repository block the navigation drawer puts directly under its title,
+which is `--md-primary-fg-color` and would otherwise be the same colour.
 
 # Diagrams
 
