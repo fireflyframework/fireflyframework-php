@@ -112,6 +112,11 @@ it('masks the client secret in a stack trace that captured the constructor argum
     // built from raw config — a TypeError on a mistyped key is a realistic way for the constructor call to end
     // up in a trace. #[\SensitiveParameter] replaces the secret with a SensitiveParameterValue in that frame.
     $previous = ini_set('zend.exception_ignore_args', '0');
+    // getTraceAsString() renders a string argument through zend.exception_string_param_max_len, and a
+    // production php.ini (shivammathur/setup-php's, which CI runs on) sets it to 0 — every string argument
+    // then prints as '...'. The masking this test is about is unaffected, but the rendering is, so the
+    // setting is pinned here beside the one above rather than assumed.
+    $previousLength = ini_set('zend.exception_string_param_max_len', '15');
 
     try {
         // @phpstan-ignore argument.type, new.resultUnused (the wrong type is the point: it makes the constructor frame appear in a trace; nothing is ever constructed)
@@ -121,13 +126,18 @@ it('masks the client secret in a stack trace that captured the constructor argum
     } catch (TypeError $e) {
         $trace = $e->getTraceAsString();
 
-        // getTraceAsString() truncates a string argument to 15 characters, so the negative check must look for
-        // a prefix that would survive the truncation: 'a-very-secret-v...' is what an unmasked frame prints.
-        expect($trace)->toContain("ClientRegistration->__construct('okta', 'app', Object(SensitiveParameterValue)")
+        // The property, not its rendering: the constructor frame is in the trace, the secret reaches it as a
+        // SensitiveParameterValue, and no prefix of the secret survives anywhere in it (getTraceAsString()
+        // truncates a string argument, so the negative check looks for a prefix that would survive that).
+        expect($trace)->toContain('ClientRegistration->__construct(')
+            ->and($trace)->toContain('Object(SensitiveParameterValue)')
             ->and($trace)->not->toContain('a-very-secret');
     } finally {
         if ($previous !== false) {
             ini_set('zend.exception_ignore_args', $previous);
+        }
+        if ($previousLength !== false) {
+            ini_set('zend.exception_string_param_max_len', $previousLength);
         }
     }
 });
