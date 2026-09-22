@@ -12,6 +12,51 @@ or be adjusted once the real brand asset is in hand. Like the diagrams below, th
 (no external fonts/images/scripts, generic `font-family`) and theme-neutral (its own background, not reliant
 on the surrounding page).
 
+## Logo and favicon
+
+`larafly-logo.svg` (48×48, `theme.logo`) and `larafly-favicon.svg` (32×32, `theme.favicon`) are the banner's
+firefly glyph — `<g id="glyph">`, `larafly-banner.svg:35-59` — **redrawn at their own scale, not cropped out
+of it**. A crop would have dragged the banner's `viewBox`, its three gradients and its wordmark along with it;
+each of these two carries only the gradients it actually uses — one spark for the logo, the spark plus the
+tile for the favicon — under its own id prefix (`lfl-`, `lff-`) so that two inlined SVGs on one page cannot
+collide. The glyph's geometry is the banner's, scaled: the spark disc, the two wings, the dark body, the
+amber tail segment and the three-dot spark trail, in the same proportions.
+
+Where the two differ, they differ because the surface they are drawn on differs:
+
+- **The logo has no background.** Material draws it inside the header, on `--md-primary-fg-color` — the
+  banner's own slate — so a ground of its own would show as a tile floating on the header. Its dark body still
+  reads because it sits on the opaque centre of the spark disc rather than on the header itself.
+- **The favicon carries the slate tile** (`#0f172a → #1e293b`, the banner's background gradient, `rx="7"`),
+  because a browser tab has no background of its own: the same transparent glyph would sit on whatever colour
+  the browser happens to use and lose the dark body entirely on a dark tab strip.
+
+The logo's wings keep the banner's own `opacity="0.55"` and sit at a slightly wider spread than the banner's;
+that spread is what keeps them reading as *two wings* rather than one pale cap at 24px, the size Material
+actually renders the header logo at. The favicon's are a shade stronger (`0.6`) because they are competing
+with the slate tile behind them rather than with a page.
+
+Both are self-contained on the same terms as the banner and the diagrams: no `<script>`, no `<image>`, no
+`@font-face`, no external reference of any kind. `tests/BannerAssetTest.php` guards all three brand assets —
+that each file exists, that it parses as XML, that it contains none of those three things, and that
+`mkdocs.yml` still names it, because the way an asset like this rots is that a theme key is renamed and the
+file is orphaned without anything going red.
+
+## Stylesheet
+
+`stylesheets/larafly.css` is loaded through `extra_css` and holds only what `mkdocs.yml` cannot express: the
+palette behind Material's `primary: custom` / `accent: custom` hooks, the `.lf-cards` grid the landing pages
+use, the frame that keeps a white-panelled diagram from glaring on the dark scheme, and the density of the
+wide configuration tables.
+
+Its palette is read out of `larafly-banner.svg` and nothing else — the slate background gradient
+(`#0f172a` → `#1e293b`), the spark's three ambers (`#fde68a`, `#fbbf24`, `#f59e0b`) and the slate greys the
+wordmark and tagline sit in. Two values are *derived* rather than read, and the file says so where they are
+defined: the banner's amber is `hsl(38, 92%, 50%)`, which carries 2.2:1 against white and cannot be a link in
+a paragraph, so link text uses that same hue and saturation at the lightness where it clears WCAG AA —
+`#a26907` (4.6:1) resting and `#845606` (6.3:1) on hover. On the slate scheme the readable direction is the
+other one, and links are the spark colour itself, `#fbbf24` (9.6:1).
+
 # Diagrams
 
 The SVGs under `diagrams/` are **hand-authored, static** architecture diagrams — plain `<rect>`/`<line>`/`<text>`

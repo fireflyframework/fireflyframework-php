@@ -1,5 +1,12 @@
 site_name: LaraFly — Firefly Framework for PHP
 site_description: Spring Boot's cohesion, native to Laravel.
+# The canonical home of the source, as every packages/*/composer.json already declares it under
+# `support.source` / `homepage`, and as the README's CI badge links to. `edit_uri` points at the default
+# branch the same files name (`tree/main/...`), which is what makes `content.action.edit` a real link
+# rather than a decorative pencil.
+repo_url: https://github.com/fireflyframework/fireflyframework-php
+repo_name: fireflyframework/fireflyframework-php
+edit_uri: edit/main/docs/
 # Internal design docs (specs/plans) live under docs/superpowers/ and must never
 # be built into the published site. They are also git-ignored from the repo.
 exclude_docs: |
@@ -8,15 +15,66 @@ exclude_docs: |
   README.md
 theme:
   name: material
+  language: en
+  logo: assets/larafly-logo.svg
+  favicon: assets/larafly-favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  # The two schemes are the banner's own two halves: slate #0f172a/#1e293b behind an amber #fbbf24 spark.
+  # `custom` is Material's documented hook for a palette that is not one of its named colours — the actual
+  # values live in docs/assets/stylesheets/larafly.css, read straight out of docs/assets/larafly-banner.svg.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
+    - navigation.tabs
     - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+extra_css:
+  - assets/stylesheets/larafly.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/fireflyframework/fireflyframework-php
+      name: LaraFly on GitHub
+
 markdown_extensions:
   - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.inlinehilite
   - pymdownx.superfences
-  - pymdownx.highlight
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - toc:
       permalink: true
+      toc_depth: 3
+
 nav:
   - Home: index.md
   - Installation: installation.md
