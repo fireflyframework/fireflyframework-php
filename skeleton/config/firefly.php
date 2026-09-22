@@ -513,6 +513,155 @@ return [
                     // ],
                 ],
             ],
+
+            /*
+             | OAuth2 authorization server (firefly/security-oauth2-server): this application issues the tokens.
+             | Requires the master flag AND session security (form_login.enabled, or session.enabled with a sign-in
+             | mechanism of your own) — the authorization endpoint needs a session-held user — and cannot run
+             | beside jwt.enabled (the local HMAC filter would reject every token this server issues) or beside
+             | http_basic.enabled (the Basic filter would answer every client_secret_basic request as a failed
+             | user login before the server saw it; the server authenticates its clients itself). Every
+             | endpoint is answered by a filter ordered ahead of the CSRF and URL-rule filters, so no
+             | `http.rules` entry and no `csrf.except` pattern is needed for them.
+             |
+             | Defaults: enabled false, issuer app.url, the endpoint paths below, RS256 self-contained access
+             | tokens (300 s), refresh tokens rotated (3600 s), codes 300 s, id tokens 1800 s, PKCE required,
+             | consent required, memory drivers, no purge, no rate limit.
+            */
+            'server' => [
+                'enabled' => env('FIREFLY_OAUTH2_SERVER_ENABLED', false),
+
+                // The `iss` claim and the base of every published URL. Default: app.url.
+                // 'issuer' => env('APP_URL'),
+
+                // The endpoint paths (Spring Authorization Server's defaults). `oidc_client_registration_endpoint`
+                // is OFF while empty; `/connect/register` turns RFC 7591 dynamic registration on. A bearer with
+                // scope `client.create` registers ONE client: the registration invalidates that access token, so
+                // each further client needs a new initial access token, and a body asking for `client.create`
+                // itself is refused (it would be a self-renewing registration credential no secret rotation
+                // could reach). Registration REQUIRES A STORE THAT OUTLIVES THE REQUEST: set `clients.driver` to
+                // `eloquent` below, or bind a durable RegisteredClientRepository of your own. The `memory` driver
+                // is this config map rebuilt in every process, so a registered client would not survive the
+                // request that created it; the boot refuses THAT store — the one it resolves, not the driver
+                // name — rather than hand out dead credentials.
+                // 'authorization_endpoint' => '/oauth2/authorize',
+                // 'token_endpoint' => '/oauth2/token',
+                // 'jwk_set_endpoint' => '/oauth2/jwks',
+                // 'token_introspection_endpoint' => '/oauth2/introspect',
+                // 'token_revocation_endpoint' => '/oauth2/revoke',
+                // 'oidc_user_info_endpoint' => '/userinfo',
+                // 'oidc_logout_endpoint' => '/connect/logout',
+                // 'oidc_client_registration_endpoint' => '',
+
+                /*
+                 | The signing key: a PEM string (inline, starting with -----BEGIN) or a path to one. Generate it
+                 | with `php artisan firefly:oauth2:keys` (RSA 2048 by default, `--algorithm=ES256` for P-256).
+                 | `key_id` defaults to the RFC 7638 thumbprint of the public key. `previous_keys` lists keys that
+                 | still VERIFY (they stay in the JWKS) after a rotation: [{key: <pem or path>, key_id: <kid>}].
+                 | Every published key needs its own kid (a verifier keeps one key per id), so an explicit
+                 | `key_id` must change with the key on a rotation: the boot refuses two keys under one kid.
+                 | Required once `enabled` is true.
+                */
+                'jwt' => [
+                    'signing_key' => env('FIREFLY_OAUTH2_SERVER_SIGNING_KEY', ''),
+                    // 'key_id' => '',
+                    // 'algorithm' => 'RS256',
+                    // 'previous_keys' => [],
+                ],
+
+                // `self_contained` (a JWT: iss, sub, aud=client_id, exp, iat, nbf, jti, scope, client_id) or
+                // `reference` (opaque; resolved only through introspection/userinfo). ttl in seconds.
+                // Revocation (and the rotation that replaces an access token) is recorded on the authorization,
+                // so it binds introspection, userinfo and a `reference` token at once — while a `self_contained`
+                // token is accepted by any resource server that verifies the signature until its own `exp`,
+                // which is what the short ttl is for. Choose `reference` when a revocation must bite immediately
+                // at the resource server; it costs an introspection call per request.
+                'access_token' => [
+                    // 'format' => 'self_contained',
+                    // 'ttl' => 300,
+                ],
+
+                // With `reuse` false (the default) every refresh rotates the token; presenting a superseded one
+                // revokes the whole authorization (reuse detection).
+                'refresh_token' => [
+                    // 'ttl' => 3600,
+                    // 'reuse' => false,
+                ],
+
+                'authorization_code' => [
+                    // 'ttl' => 300,
+                ],
+
+                'id_token' => [
+                    // 'ttl' => 1800,
+                ],
+
+                // PKCE (S256 only; `plain` is refused). `require_pkce` demands it of every authorization_code
+                // request (OAuth 2.1); `require_proof_key_for_public_clients` demands it of public clients
+                // (client_authentication_methods: [none]) even when the first is off.
+                // 'require_pkce' => true,
+                // 'require_proof_key_for_public_clients' => true,
+
+                // Whether a client needs the user's consent by default (a client's
+                // client_settings.require_authorization_consent overrides it), and a Blade view that replaces the
+                // framework's consent page; it receives `$consent` (ConsentPageModel) and falls back, logged at
+                // warning, when it does not exist or throws.
+                'consent' => [
+                    // 'required' => true,
+                    // 'view' => '',
+                ],
+
+                /*
+                 | Registered clients. `driver` is `memory` (this map) or `eloquent` (the oauth2_registered_clients
+                 | table; publish the migration with `php artisan vendor:publish --tag=firefly-oauth2-server-migrations`).
+                 | `client_secret` is the ENCODED secret — `{bcrypt}$2y$…` (password_hash), `{argon2id}…`, or
+                 | `{noop}plain` in development only; a value with no {id} prefix is refused at boot because the
+                 | encoder would never match it. `client_settings.jwk_set` is the decoded JWKS a private_key_jwt
+                 | client signs its assertions with: RSA or EC public keys, `alg` one of RS256, RS384, RS512,
+                 | ES256, ES384 or omitted (RS256 for RSA, ES256/ES384 for P-256/P-384), a `kid` on every key
+                 | when the set holds more than one — a set that could never verify an assertion is refused at
+                 | boot, naming the client and the key. `require_pkce`, `require_authorization_consent` and
+                 | `reuse_refresh_tokens` follow the same rule as every other boolean key: true/false, or a string
+                 | env() may hand back ("on"/"off", "yes"/"no", "1"/"0"); anything else is refused at boot rather
+                 | than cast.
+                */
+                'clients' => [
+                    'driver' => env('FIREFLY_OAUTH2_SERVER_CLIENTS_DRIVER', 'memory'),
+                    // 'web-app' => [
+                    //     'client_id' => 'web-app',
+                    //     'client_secret' => '{bcrypt}$2y$10$…',
+                    //     'client_name' => 'The web application',
+                    //     'client_authentication_methods' => ['client_secret_basic'],
+                    //     'authorization_grant_types' => ['authorization_code', 'refresh_token'],
+                    //     'redirect_uris' => ['https://app.example.com/login/oauth2/code/web-app'],
+                    //     'post_logout_redirect_uris' => ['https://app.example.com/'],
+                    //     'scopes' => ['openid', 'profile', 'email'],
+                    //     'client_settings' => ['require_pkce' => true, 'require_authorization_consent' => true],
+                    //     'token_settings' => ['access_token_ttl' => 300, 'refresh_token_ttl' => 3600, 'reuse_refresh_tokens' => false, 'access_token_format' => 'self_contained', 'authorization_code_ttl' => 300, 'id_token_ttl' => 1800],
+                    // ],
+                ],
+
+                // Where codes, tokens (by SHA-256 hash, never by value) and consents live: `memory` (one process,
+                // fine for tests and a single dev server) or `eloquent` (oauth2_authorizations +
+                // oauth2_authorization_consents). The purge is a scheduled task under the DistributedLock, listed
+                // by `firefly:schedule` and /actuator/scheduledtasks like any #[Scheduled] method.
+                'authorizations' => [
+                    'driver' => env('FIREFLY_OAUTH2_SERVER_AUTHORIZATIONS_DRIVER', 'memory'),
+                    'purge' => [
+                        // 'enabled' => false,
+                        // 'cron' => '*/15 * * * *',
+                    ],
+                ],
+
+                // A token bucket per client id (else per IP) at the token endpoint, over firefly/resilience's
+                // store: `max_tokens` burst, `refill_rate` tokens per second. A refused request is
+                // 429 temporarily_unavailable with Retry-After.
+                'rate_limit' => [
+                    // 'enabled' => false,
+                    // 'max_tokens' => 60,
+                    // 'refill_rate' => 1.0,
+                ],
+            ],
         ],
 
         /*

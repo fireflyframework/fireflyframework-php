@@ -713,7 +713,7 @@ return [
         ],
     ],
     9 => [
-        'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
         'postConstruct' => [
         ],
         'preDestroy' => [
@@ -734,6 +734,27 @@ return [
         ],
     ],
     10 => [
+        'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    11 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'postConstruct' => [
         ],

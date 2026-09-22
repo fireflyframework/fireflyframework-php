@@ -535,16 +535,34 @@ return [
         'lazy' => false,
         'dependencies' => [
             0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
-            1 => 'Firefly\\Security\\Session\\SecurityContextRepository',
-            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
-            3 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
-            4 => 'Illuminate\\Container\\Container',
-            5 => 'Firefly\\Config\\Config',
-            6 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
-            7 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
+            1 => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+            2 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+            3 => 'Illuminate\\Container\\Container',
+            4 => 'Firefly\\Config\\Config',
+            5 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
         ],
     ],
     10 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+            1 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            3 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    11 => [
         'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -566,7 +584,7 @@ return [
             4 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
         ],
     ],
-    11 => [
+    12 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,

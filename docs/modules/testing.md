@@ -155,6 +155,17 @@ and `#[WithMockUser]`; `RecordingAuthenticationEvents` records the security even
 [Security → Testing](security.md#testing) and [OAuth2 Client → Testing](security-oauth2-client.md#testing), where
 `Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` — an OpenID Connect provider in one class, real front-channel
 routes and a faked back channel — is described.
+## The OAuth2 authorization server: `OAuth2ServerTestClient`
+
+`Firefly\Testing\Security\OAuth2\OAuth2ServerTestClient` drives an application's own
+[authorization server](security-oauth2-server.md#testing) through the test client: `authorize()` (a fresh PKCE
+pair and state), `approveConsent()`, `obtainCode()`, `exchangeCode()`, `clientCredentials()`, `refresh()`,
+`introspect()`, `revoke()`, `userInfo()` and `tokens()`, with the endpoint paths read from the
+`AuthorizationServerSettings` bean. Sign the user in through the login page first and carry the session cookie:
+the authorization endpoint answers a browser and reads the principal the `SecurityContextRepository` holds
+between requests, so `actingAsPrincipal()` — a principal in the holder for one request — is answered with the
+login redirect, exactly as an anonymous browser is. The token, introspection, revocation and userinfo helpers are
+machine endpoints and need no sign-in.
 
 ## Pest expectations
 

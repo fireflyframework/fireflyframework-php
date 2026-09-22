@@ -70,7 +70,7 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | **Data & Domain** | [Domain (DDD)](modules/domain.md) · [Data & Repositories](modules/data.md) · [Relational Data](modules/data-relational.md) · [Transactions](modules/transactional.md) |
 | **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
-| **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) |
+| **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) · [OAuth2 Authorization Server](modules/security-oauth2-server.md) |
 | **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) |
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |

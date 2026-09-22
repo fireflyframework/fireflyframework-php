@@ -10,17 +10,13 @@ use Firefly\Container\Attributes\Component;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\Core\SecurityContextHolder;
-use Firefly\Security\Event\AuthenticationEventPublisher;
-use Firefly\Security\Session\SecurityContextRepository;
 use Firefly\Security\Web\Csrf\SessionCsrf;
-use Firefly\Security\Web\RememberMe\RememberMeServices;
 use Firefly\Security\Web\Settings\LogoutSettings;
 use Firefly\Web\Filter\OncePerRequestFilter;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Cookie;
 
 /**
  * POST {logout_url} (Spring's LogoutFilter). POST only, CSRF-checked against the session token, because a
@@ -32,18 +28,16 @@ use Symfony\Component\HttpFoundation\Cookie;
  *
  *   1. the session CSRF token (SessionCsrf, the same check the login filter makes; a 403 on a mismatch),
  *   1b. the bound LogoutSuccessHandler, if any, is asked for the response — before anything below, so it can
- *      still read the session (an OIDC id token for the provider's end-session endpoint) — and null means
- *      the default redirect of step 5,
- *   2. the remember-me cookie — when the port is bound — and every `delete_cookies` name are expired on the
- *      response: an empty value, an expiry in the past, on the root path,
- *   3. the session is invalidated (Store::invalidate(): every attribute flushed and a NEW id, the old file
- *      destroyed, so the cookie the browser had names nothing from now on) or, with `invalidate_session`
- *      off and `clear_authentication` on, only the stored context is removed and the rest of the session —
- *      a shopping cart, a locale — survives,
- *   4. the holder is cleared, the event fires with the principal that was signed in (null for a logout POST
- *      from an anonymous session, which is still answered: signing out of nothing is not an error),
- *   5. the browser goes where the handler of 1b said, or to `logout_success_url` (`/login?logout`, which
- *      the login page turns into the signed-out notice).
+ *      still read the session — and null means the default redirect of step 3,
+ *   2. LogoutHandler runs the sequence that IS signing out — the remember-me cookie and every `delete_cookies`
+ *      name expired on the response, the session invalidated (or only the context removed), the holder cleared,
+ *      LogoutSuccessEvent published with the principal that was signed in. That sequence lives in the handler
+ *      and not here because RP-initiated logout (firefly/security-oauth2-server's OidcLogoutEndpoint) ends a
+ *      session too, and the two must be the same `firefly.security.logout.*` keys by construction,
+ *   3. the browser goes where the bound LogoutSuccessHandler said — asked in step 1b, BEFORE the handler of
+ *      step 2 ends the session, so it can still read an OIDC id token for the provider's end-session endpoint
+ *      — or, when nothing is bound or it returns null, to `logout_success_url` (`/login?logout`, which the
+ *      login page turns into the signed-out notice).
  *
  * THE REDIRECT GOES THROUGH LARAVEL'S UrlGenerator, resolved from the container ON USE, for the reasons the
  * form-login filter gives: `to()` is what the application's own redirects build and what a test's
@@ -58,12 +52,10 @@ final class LogoutFilter extends OncePerRequestFilter
 {
     public function __construct(
         private readonly LogoutSettings $settings,
-        private readonly SecurityContextRepository $repository,
-        private readonly AuthenticationEventPublisher $events,
+        private readonly LogoutHandler $handler,
         private readonly SessionCsrf $csrf,
         private readonly Container $container,
         private readonly Config $config,
-        private readonly ?RememberMeServices $rememberMe = null,
         private readonly ?LogoutSuccessHandler $successHandler = null,
     ) {}
 
@@ -87,7 +79,8 @@ final class LogoutFilter extends OncePerRequestFilter
         $authentication = SecurityContextHolder::getAuthentication();
 
         // The success handler is asked FIRST, while the session is still alive: an RP-initiated logout needs the
-        // id token the session holds, and null hands back to the configured redirect.
+        // id token the session holds (firefly/security-oauth2-client's OidcClientInitiatedLogoutSuccessHandler
+        // reads it to build the provider's end-session URL), and null hands back to the configured redirect.
         $response = $this->successHandler?->onLogoutSuccess($request, $authentication);
         if ($response === null) {
             /** @var UrlGenerator $urls */
@@ -95,21 +88,7 @@ final class LogoutFilter extends OncePerRequestFilter
             $response = new RedirectResponse($urls->to($this->settings->logoutSuccessUrl));
         }
 
-        $this->rememberMe?->logout($request, $response);
-        foreach ($this->settings->deleteCookies as $name) {
-            $response->headers->setCookie(new Cookie($name, '', 1, '/', null, $request->isSecure(), true, false, Cookie::SAMESITE_LAX));
-        }
-
-        if ($request->hasSession()) {
-            if ($this->settings->invalidateSession) {
-                $request->session()->invalidate();
-            } elseif ($this->settings->clearAuthentication) {
-                $this->repository->clear($request);
-            }
-        }
-
-        SecurityContextHolder::clearContext();
-        $this->events->publishLogoutSuccess($authentication);
+        $this->handler->logout($request, $response, $authentication);
 
         return $response;
     }

@@ -19,15 +19,25 @@ use Firefly\Security\Event\LogoutSuccessEvent;
  * Bind it BEFORE boot — `$app->instance(ApplicationEventPublisher::class, $events)` from
  * defineFireflyEnvironment() — so firefly/security's AuthenticationEventPublisher bean wraps it; the
  * framework's own default is a bound()-guarded provider binding, which is why an instance() wins there.
+ *
+ * Bound that way it REPLACES the port, so nothing registered against the dispatcher hears a security event any
+ * more — an #[AsEventListener] on InteractiveAuthenticationSuccessEvent stays silent for the whole suite. A suite
+ * whose pipeline includes such a listener (firefly/security-oauth2-server stamps the sign-in instant that way)
+ * hands the framework's own publisher in as $forwardTo — `new RecordingAuthenticationEvents(new
+ * DispatcherEventPublisher($app))` — and every event is recorded first and then published for real; the
+ * default, null, keeps the spy a pure recorder for a suite that only reads.
  */
 final class RecordingAuthenticationEvents implements ApplicationEventPublisher
 {
     /** @var list<object> */
     public array $events = [];
 
+    public function __construct(private readonly ?ApplicationEventPublisher $forwardTo = null) {}
+
     public function publish(object $event): void
     {
         $this->events[] = $event;
+        $this->forwardTo?->publish($event);
     }
 
     /** @return list<AuthenticationSuccessEvent> */

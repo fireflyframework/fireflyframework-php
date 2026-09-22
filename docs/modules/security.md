@@ -42,6 +42,10 @@ zero boot reflection.
   *different* audience would otherwise be accepted). Both opt-in, both establish and clear the `SecurityContext`
   per request. Neither replaces a principal an outer filter — the session persistence filter, a test's acting
   principal — already established.
+- **Issuing tokens** is the sibling package [`firefly/security-oauth2-server`](security-oauth2-server.md): an OAuth 2.1 /
+  OpenID Connect provider inside the application, built on the session-held principal, the login page, the entry
+  point, `SessionCsrf`, the `PasswordEncoder` and the `JwksDocumentSource` port above — so `jwks_source: local`
+  makes the same application its own resource server.
 
 **JWT/OAuth2 are mutually exclusive.** Enabling both `firefly.security.jwt.enabled` and
 `firefly.security.oauth2.resource_server.enabled` is refused at **boot** (`ConfigurationException`, fail-closed): the
@@ -114,6 +118,18 @@ is held to the JWT secret rule and refused at boot when weak. Logout expires the
 CSRF-checked; a `GET` falls through to whatever route is there — expiring the remember-me cookie and every
 `delete_cookies` name, invalidating the session (or only removing the context), publishing `LogoutSuccessEvent`,
 and redirecting to `logout_success_url` (`/login?logout`).
+
+That sequence is one bean, `LogoutHandler` (Spring's `SecurityContextLogoutHandler` + `CookieClearingLogoutHandler`
++ `RememberMeServices::logout` collapsed into the single collaborator LaraFly's one filter chain needs), and every
+path that ends a session calls it: the filter above, and OpenID Connect RP-initiated logout at
+`{oidc_logout_endpoint}` when `firefly/security-oauth2-server` is on. So `invalidate_session`,
+`clear_authentication` and `delete_cookies` govern both by construction — a second path cannot quietly obey a
+subset. `logout.enabled` decides only whether the framework maps its own logout URL, never what signing out does.
+
+`clear_authentication` removes the stored context through `SecurityContextRepository`, and it does so WHETHER OR
+NOT the request carries a session: the shipped session store is a no-op without one, but that port is meant to be
+rebound (a signed cookie, a cache keyed by a device id), and a bearer-only application that never starts a session
+would otherwise sign out of nothing at all.
 
 A bound `LogoutSuccessHandler` (Spring's) is asked for the response **before** the session is invalidated — so it
 can still read what the session holds — and null hands back to the `logout_success_url` redirect;
@@ -299,11 +315,14 @@ is a 401 for any other.
 | -88 | `OAuth2LoginAuthenticationFilter` (firefly/security-oauth2-client) |
 | -85 | `OAuth2ResourceServerFilter` |
 | -83 | `RememberMeAuthenticationFilter` |
+| -82 | `OAuth2AuthorizationServerFilter` (firefly/security-oauth2-server) |
 | -80 | `CsrfFilter` |
 | -70 | `HttpSecurityFilter` |
 
 Every filter clears `SecurityContextHolder` on exit in a `finally`, so nothing bleeds into the next request under
-Octane; the persistence filter is the outermost and the last to clear.
+Octane; the persistence filter is the outermost and the last to clear. The authorization server's filter answers
+its endpoints ahead of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none
+of its endpoints needs an `http.rules` entry.
 
 ## Configuration (`firefly.security.*`, snake_case)
 
@@ -400,7 +419,10 @@ one beating the class-level one. `actingAsOidcUser()` signs an OpenID Connect us
 [OAuth2 Client](security-oauth2-client.md#testing)), and `actingAsAuthentication()` is the seam beneath both.
 `Firefly\Testing\Double\RecordingAuthenticationEvents` is an
 `ApplicationEventPublisher` that answers `successes()`, `interactive()`, `failures()`, `logouts()` and `denials()` —
-bind it before boot from `defineFireflyEnvironment()`. The package's own suites are the reference:
+bind it before boot from `defineFireflyEnvironment()`. Bound that way it replaces the port, so a listener registered
+against the dispatcher hears nothing; a suite whose pipeline needs one to fire hands the framework's publisher in —
+`new RecordingAuthenticationEvents(new DispatcherEventPublisher($app))` — and every event is recorded, then published
+for real. The package's own suites are the reference:
 `packages/security/tests/Support/SecurityCapstoneTestCase.php` boots the real providers under Testbench with a file
 session driver, and every flow (login page, wrong password, right password → saved request, logout, remember-me
 after the session is gone, Basic on an API path, entry-point negotiation, PostAuthorize on a service, principal
@@ -421,8 +443,9 @@ injection, the Eloquent driver) runs through the real HTTP pipeline.
 
 ## Known-latent
 
-OAuth2 client / OpenID Connect login is [`firefly/security-oauth2-client`](security-oauth2-client.md); the
-authorization server, real IdP adapters beyond its presets, and MFA are the next waves. A `#[PreFilter]` on
+OAuth2 client / OpenID Connect login is [`firefly/security-oauth2-client`](security-oauth2-client.md) and the
+authorization server is [`firefly/security-oauth2-server`](security-oauth2-server.md); real IdP adapters beyond
+the client's presets, and MFA, are the next waves. A `#[PreFilter]` on
 a controller action cannot be applied by the dispatcher (it cannot rewrite the arguments it resolved), so the scan
 refuses it outright rather than evaluate and discard — put it on the service the action calls; likewise a
 `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no stereotype is refused, because no proxy and no

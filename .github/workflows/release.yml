@@ -60,6 +60,7 @@ jobs:
           - { local: packages/cqrs,                split: firefly-cqrs }
           - { local: packages/security,            split: firefly-security }
           - { local: packages/security-oauth2-client, split: firefly-security-oauth2-client }
+          - { local: packages/security-oauth2-server, split: firefly-security-oauth2-server }
           - { local: packages/actuator,            split: firefly-actuator }
           - { local: packages/observability,       split: firefly-observability }
           - { local: packages/admin,               split: firefly-admin }

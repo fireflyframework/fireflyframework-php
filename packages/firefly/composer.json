@@ -42,6 +42,7 @@
         "firefly/scheduling-postgres": "*@dev",
         "firefly/security": "*@dev",
         "firefly/security-oauth2-client": "*@dev",
+        "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev"
     },

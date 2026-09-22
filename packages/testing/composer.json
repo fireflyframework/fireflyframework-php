@@ -37,6 +37,7 @@
         "firefly/scheduling": "*@dev",
         "firefly/security": "*@dev",
         "firefly/security-oauth2-client": "*@dev",
+        "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
         "guzzlehttp/promises": "^2.0 || ^3.0",

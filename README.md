@@ -592,11 +592,14 @@ class WithdrawHandler
 ```
 
 `SecurityCommandAuthorizer` enforces this **before** the handler runs, at the bus — a denied withdraw surfaces
-as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The
-expression evaluator is a closed, no-`eval` whitelist tokenizer (`hasRole`, `hasAnyRole`, `hasAuthority`,
-`hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`, `#param` references only). **Highlights:** the
-deny-by-default `HttpSecurity` URL DSL, `JwtService`/OAuth2 resource server, CSRF + security headers — see
-[Security](docs/modules/security.md).
+as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The same
+rules hold on the controller dispatcher and on **any stereotyped bean**, through the one compiled proxy chain
+`#[Transactional]` already used — so a `#[Service]` method carrying `#[PreAuthorize]`, `#[PostAuthorize]`,
+`#[PreFilter]` or `#[PostFilter]` is guarded wherever it is called from, and a refusal never opens a
+transaction. The expression evaluator is a closed, no-`eval` whitelist tokenizer (`hasRole`, `hasAnyRole`,
+`hasAuthority`, `hasPermission`, `hasScope`, `isAuthenticated`, `permitAll`, `denyAll`, `#param` references
+only). **Highlights:** the deny-by-default `HttpSecurity` URL DSL, form/basic/session login with remember-me,
+`JwtService`/OAuth2 resource server, CSRF + security headers — see [Security](docs/modules/security.md).
 
 ### Observability — a `HealthIndicator` bean
 
@@ -762,6 +765,7 @@ its own installable Composer package with its own tests and its own [module guid
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Security | [OAuth2 Client](docs/modules/security-oauth2-client.md) — OpenID Connect login with presets and discovery, PKCE, id-token validation, `OidcUser`, RP-initiated logout, client credentials, `Http::oauth2Client()` | `firefly/security-oauth2-client` |
+| Security | [OAuth2 Authorization Server](docs/modules/security-oauth2-server.md) — registered clients, auth code + PKCE with consent, client credentials, refresh rotation, RS256 JWTs, JWKS, discovery, introspection, revocation, userinfo, logout | `firefly/security-oauth2-server` |
 | Operations | [Actuator](docs/modules/actuator.md) — health, info, env, beans, conditions, mappings | `firefly/actuator` |
 | Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics with histogram buckets, `/actuator/prometheus`, HTTP exchanges | `firefly/observability` |
 | Operations | [Tracing](docs/modules/tracing.md) — `Tracer` port, OpenTelemetry adapter, W3C `traceparent` over HTTP/CQRS/EDA | `firefly/observability` |
@@ -817,11 +821,11 @@ still ahead, accurately:
   `/shutdown` are not yet implemented; there is also no second management port (an Octane second-listener
   is one option under consideration).
 - **Deeper security surfaces.** OAuth2 client / OpenID Connect login ships as `firefly/security-oauth2-client`
-  (Google, GitHub, Okta, Keycloak and Entra presets plus discovery for any provider); an OAuth2 authorization
-  server, IdP adapters beyond those presets (Cognito, internal-db) and MFA are deferred to their own future
-  packages, matching the Java Firefly Framework's module topology. Generalising `#[PreAuthorize]` to *any*
-  bean method (today it's enforced at the CQRS bus and the controller dispatcher) is a flagged spike, not yet
-  scheduled.
+  (Google, GitHub, Okta, Keycloak and Entra presets plus discovery for any provider), and the authorization
+  server as `firefly/security-oauth2-server` (registered clients, auth code + PKCE with consent, client
+  credentials, refresh rotation, introspection, revocation, userinfo and RP-initiated logout). IdP adapters
+  beyond those presets (Cognito, internal-db) and MFA are deferred to their own future packages, matching the
+  Java Firefly Framework's module topology.
 - **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.

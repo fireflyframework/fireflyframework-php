@@ -29,7 +29,7 @@ install line above.
 
 Most pages are a view over one `ActuatorEndpoint`'s payload; four read the container instead. The menu groups
 them the way an operator thinks rather than the way the packages are laid out — *what is it doing right now*,
-*what did it wire at boot*, *what is its data*, *how is it configured* — because a flat list of seventeen links
+*what did it wire at boot*, *what is its data*, *how is it configured* — because a flat list of eighteen links
 is a worse menu than four short ones.
 
 | Group | Page | Path | Endpoint | Answers |
@@ -43,6 +43,7 @@ is a worse menu than four short ones.
 | Wiring | Conditions | `/firefly/conditions` | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `/firefly/mappings` | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `/firefly/scheduled` | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
+| Wiring | OAuth2 clients | `/firefly/oauth2` | `oauth2clients` | The clients registered with this application's [authorization server](security-oauth2-server.md), their grants and scopes, and the authorizations alive for each — hidden while the package is absent |
 | Configuration | Environment | `/firefly/env` | `env` | Resolved `firefly.*` configuration, flattened to dotted keys, with secrets masked |
 | Configuration | Config properties | `/firefly/configprops` | `configprops` | Every `#[ConfigProperties]` DTO the application bound, with the values it resolved |
 | Configuration | Caches | `/firefly/caches` | `caches` | The cache stores this application has configured |
@@ -58,9 +59,17 @@ an entry that led to "there is nothing here" is worse than no entry.
 A page whose endpoint is **not registered in this process** — or is switched off — is *hidden from the menu* rather
 than offered as a link that lands on an apology, and requesting it directly answers 404 with a page saying which
 endpoint it needed. That matters because the actuator's endpoints are conditional: `metrics` disappears when
-`firefly.observability.metrics.enabled` is false, and `configprops`, `caches` and `httpexchanges` exist only if the
-package contributing them is installed. The menu has to be built from what this process actually registered, so it
-is.
+`firefly.observability.metrics.enabled` is false, `configprops`, `caches` and `httpexchanges` exist only if the
+package contributing them is installed, and `oauth2clients` needs `firefly/security-oauth2-server` installed with
+**both** of its gates on (`firefly.security.enabled` and `firefly.security.oauth2.server.enabled`) — so the OAuth2
+clients page is absent from a process that is not an authorization server. The menu has to be built from what this
+process actually registered, so it is.
+
+The OAuth2 clients page carries one caveat the others do not: the **Active** column counts the authorizations the
+store *this worker* resolved is holding, and on the default `memory` authorizations driver that is a map rebuilt in
+every PHP process. The page says so under the table and prints `—` rather than `0` for a client the worker counted
+nothing for, because a per-process zero is not "no one holds a token for this client" — it is "not here". The
+endpoint publishes the same fact as `authorizations.processLocal`.
 
 The Overview is the page an operator leaves open, so it answers the three questions that matter without a click: the
 aggregate health status with every indicator beside it, the `/actuator/info` runtime fragment flattened to one row

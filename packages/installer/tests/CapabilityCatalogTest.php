@@ -87,6 +87,12 @@ it('pulls the security core in with the OAuth2 client, and offers the client as 
         ->and(CapabilityCatalog::all()['security-oauth2-client']->package)->toBe('firefly/security-oauth2-client');
 });
 
+it('resolves the security core before the authorization server that is built on it', function () {
+    $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['security-oauth2-server']));
+
+    expect($ids)->toBe(['security', 'security-oauth2-server']);
+});
+
 it('deduplicates a capability requested twice, directly and transitively', function () {
     $ids = array_map(static fn (Capability $c): string => $c->id, CapabilityCatalog::resolve(['eda', 'eda-kafka', 'eda']));
 
