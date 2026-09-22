@@ -375,11 +375,18 @@ Nine showcases below, each an accurate snippet lifted straight from `samples/lum
 sample) or the framework itself — no invented API. Every attribute and class shown here compiles against the
 shipped `26.09.2` release.
 
-That is a checked claim, not a promise: every listing in this file carries an HTML comment naming the file it
-was copied from, and `tests/DocsCodeIsRealTest.php` fails the build unless the listing appears **verbatim** in
-that file. A line that is exactly `// …` is the one permitted cut — it means "whole lines omitted here" and
-nothing else. The handful of listings that show code *you* write, which therefore exists in no file of this
-repository, are marked illustrative instead and are still linted and resolved against the real class names.
+That is a checked claim, not a promise — and here is exactly how far it reaches. Every **PHP** listing below
+carries an HTML comment naming the file it was copied from, and `tests/DocsCodeIsRealTest.php` fails the build
+unless the listing appears **verbatim** in that file. A line that is exactly `// …` is the one permitted cut —
+it means "whole lines omitted here" and nothing else. The handful of listings that show code *you* write,
+which therefore exists in no file of this repository, are marked illustrative instead and are still linted and
+resolved against the real class names.
+
+The shell listings are the exception: there is no file to copy a command line from, so they carry no marker
+and the same test holds them to what they **assert** instead — every `php artisan firefly:*` /
+`make:firefly-*` command must be a `$signature` the framework really declares, every `composer <script>` a
+script `composer.json` or `skeleton/composer.json` really defines, and every `firefly.*` key a key the
+framework really reads.
 
 ### Attribute DI — `#[Service]`
 
@@ -567,10 +574,12 @@ final class LedgerProjector
 ```
 
 `#[EventListener]` enumerates event-**type** names (matched with `fnmatch` against `$envelope->eventType`), not
-the `#[PublishDomainEvent]` destination — a common gotcha the sample's own docblock calls out explicitly. This
-projector turns committed wallet events into an append-only `ledger_entries` read model. **Highlights:** the
-in-memory/queue adapters, retry + `DeadLetterStore`, and why `#[AsEventListener]` (in-process) and
-`#[EventListener]` (the broker bus) are two distinct surfaces — see
+the `#[PublishDomainEvent]` destination — a common gotcha the sample's own docblock calls out explicitly. The
+`sourceWalletId` fallback is not defensive padding either: `TransferCompleted` names its wallet
+`sourceWalletId` rather than `walletId`, so without that fallback every completed transfer would project under
+an empty wallet id. This projector turns committed wallet events into an append-only `ledger_entries` read
+model. **Highlights:** the in-memory/queue adapters, retry + `DeadLetterStore`, and why `#[AsEventListener]`
+(in-process) and `#[EventListener]` (the broker bus) are two distinct surfaces — see
 [Event-Driven Architecture](docs/modules/eda.md).
 
 ### Same-transaction outbox — `firefly.eda.provider=postgres`

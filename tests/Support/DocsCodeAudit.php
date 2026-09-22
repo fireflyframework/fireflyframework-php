@@ -19,25 +19,31 @@ use SplFileInfo;
  * that no file backs is the single failure mode that makes documentation worse than none, because a reader
  * cannot tell it from the rest.
  *
- * So every fenced block in an audited file is held to exactly one of three contracts:
+ * So every fenced block in an audited file is held to exactly one of three contracts, chosen by what the block
+ * CLAIMS and not by what language its fence names:
  *
- *   (a) PROVENANCE — a `php` block preceded by `<!-- source: <repo-relative-path> -->`. Its code must appear
- *       VERBATIM in that file: the same lines, in the same order, with the same relative indentation, allowing
- *       one constant indentation offset (a method excerpted out of its class is written at column 0) and
- *       allowing whole lines to be cut where the listing says so with a line that is exactly ELISION.
+ *   (a) PROVENANCE — a block preceded by `<!-- source: <repo-relative-path> -->`, in ANY language. Its code
+ *       must appear VERBATIM in that file: the same lines, in the same order, with the same relative
+ *       indentation, allowing one constant indentation offset (a method excerpted out of its class is written
+ *       at column 0) and allowing whole lines to be cut where the listing says so with a line that is exactly
+ *       ELISION — or HASH_ELISION, so that a cut in a YAML or shell excerpt is a comment in that language.
+ *       The marker is a claim about a file, and a claim about a file is checkable whether the fence says
+ *       `php`, `yaml` or `json`: a guard that honoured it only on `php` would advertise a contract it did not
+ *       keep the moment a listing excerpted `composer.json` or a workflow.
  *
- *   (b) SHAPE — anything that is not `php`: shell, json, yaml, ini, text. There is nothing to compare
- *       verbatim, so what it ASSERTS is checked instead: every `firefly.*` key it names must be a key the
- *       framework really reads or the reference really documents, every `php artisan firefly:*` /
- *       `make:firefly-*` command must be a $signature that exists, and every `composer <script>` must be a
- *       script in composer.json or skeleton/composer.json (or one of Composer's own commands).
+ *   (b) SHAPE — a block with no marker, which therefore may not be `php` (see (a) and (c)): shell, json, yaml,
+ *       ini, text. There is nothing to compare verbatim, so what it ASSERTS is checked instead: every
+ *       `firefly.*` key it names must be one the framework really reads (see keyLiterals()), every
+ *       `php artisan firefly:*` / `make:firefly-*` command must be a $signature that exists, and every
+ *       `composer <script>` must be a script in composer.json or skeleton/composer.json (or one of Composer's
+ *       own commands).
  *
- *   (c) ILLUSTRATIVE — a `php` block preceded by `<!-- illustrative: <why> -->`. This is for code that CANNOT
- *       exist in this repository: an application's own class, the one a reader would write. It is still not a
- *       free pass — the listing must parse, every `use Firefly\…;` it writes must name a real class, and every
+ *   (c) ILLUSTRATIVE — a block preceded by `<!-- illustrative: <why> -->`. This is for code that CANNOT exist
+ *       in this repository: an application's own class, the one a reader would write. It is still not a free
+ *       pass — a `php` listing must parse, every `use Firefly\…;` it writes must name a real class, and every
  *       `#[Attribute]` must be a real framework attribute or one the listing itself imports.
  *
- * Rule (b) also runs over `php` blocks, because a config array in a listing is exactly where a stale key hides.
+ * Rule (b) also runs over (a) and (c), because a config array in a listing is exactly where a stale key hides.
  *
  * ONE THING THIS CANNOT SEE, stated so nobody trusts it further than it goes: the key check matches the DOTTED
  * form (`firefly.security.enabled`), so a config listing written as a nested PHP array names no key this class
@@ -45,7 +51,8 @@ use SplFileInfo;
  * `source:` block against skeleton/config/firefly.php and is therefore compared verbatim against the reference
  * itself — which is a stronger check than this one. What is genuinely outside the guard is a `firefly.*` key
  * written in PROSE or in a module guide's configuration TABLE; those are checked by hand, once, in wave R's
- * module-docs task.
+ * module-docs task. The reference file is likewise NOT a source of truth for what a key is: it is a nested
+ * array whose dotted strings are all prose, `firefly.trace_id` among them.
  *
  * The audited surface is a list, not "everything", and it only ever GROWS: wave R turned the guard on one
  * surface at a time so that every commit could be green, and its last task asserts the list reaches every
@@ -54,11 +61,20 @@ use SplFileInfo;
 final class DocsCodeAudit
 {
     /**
-     * The one elided-lines marker: `//` followed by U+2026. A `source:` listing may cut whole lines anywhere
-     * it likes as long as it says so with a line that trims to exactly this, and the guard then resumes its
-     * search AFTER what it has already matched — so the segments must still appear in the file in order.
+     * The elided-lines marker: a comment introducer followed by U+2026. A `source:` listing may cut whole
+     * lines anywhere it likes as long as it says so with a line that trims to exactly one of these, and the
+     * guard then resumes its search AFTER what it has already matched — so the segments must still appear in
+     * the file in order.
+     *
+     * TWO FORMS, BECAUSE A CUT MUST BE LEGAL IN THE LANGUAGE IT IS WRITTEN IN. Provenance is checked on any
+     * fence, so a listing may excerpt `composer.json` or a workflow, and `// …` inside a YAML document is not
+     * a comment — printing it in the documentation would be showing the reader a line that would break their
+     * file. `# …` is the same cut for the hash-commented half of the world; ELISION is the one a `php`
+     * listing writes and the one the failure messages name there.
      */
     public const string ELISION = '// …';
+
+    public const string HASH_ELISION = '# …';
 
     /**
      * Repo-relative files and directories whose every fenced block is audited.
@@ -206,37 +222,46 @@ final class DocsCodeAudit
         return $blocks;
     }
 
+    /**
+     * The one message a failure returns, or null when the block keeps every contract that applies to it.
+     *
+     * THE MARKER CHOOSES THE CONTRACT, NOT THE FENCE. A `source:` comment is a claim about a file, and it is
+     * checked wherever it is written — a `yaml` excerpt of a workflow and a `php` excerpt of a filter are both
+     * compared line for line against the file they name. What the language still decides is only what can be
+     * checked AFTERWARDS: imports, attributes and `php -l` exist for PHP and for nothing else.
+     */
     public function verify(DocsCodeBlock $block): ?string
     {
-        if (in_array($block->language, self::PHP_LANGUAGES, true)) {
-            return $this->verifyPhp($block);
-        }
+        $php = in_array($block->language, self::PHP_LANGUAGES, true);
 
-        return $this->verifyShape($block);
-    }
-
-    private function verifyPhp(DocsCodeBlock $block): ?string
-    {
+        // (a) PROVENANCE.
         if ($block->source !== null) {
             return $this->verifyProvenance($block)
-                ?? $this->verifySymbols($block)
+                ?? ($php ? $this->verifySymbols($block) : null)
                 ?? $this->verifyShape($block);
         }
 
+        // (c) ILLUSTRATIVE.
         if ($block->illustrative !== null) {
             if (strlen($block->illustrative) < 12) {
                 return 'is marked illustrative with no reason a reader could act on: `'.$block->illustrative.'`.';
             }
 
-            return $this->verifyLints($block)
-                ?? $this->verifySymbols($block)
+            return ($php ? ($this->verifyLints($block) ?? $this->verifySymbols($block)) : null)
                 ?? $this->verifyShape($block);
         }
 
-        return 'is a php listing with no provenance. Put `<!-- source: <repo-relative-path> -->` above it and '
-            .'make the listing verbatim (cut whole lines with a line that is exactly `'.self::ELISION.'`), or '
-            .'`<!-- illustrative: <why this code cannot exist in the repository> -->` if it is a class the '
-            .'reader writes in their own application.';
+        // A php listing with no marker at all is the one thing no shape check can rescue: it LOOKS like an
+        // excerpt of the framework, and nothing says which file it came from or that it came from none.
+        if ($php) {
+            return 'is a php listing with no provenance. Put `<!-- source: <repo-relative-path> -->` above it '
+                .'and make the listing verbatim (cut whole lines with a line that is exactly `'.self::ELISION
+                .'`), or `<!-- illustrative: <why this code cannot exist in the repository> -->` if it is a '
+                .'class the reader writes in their own application.';
+        }
+
+        // (b) SHAPE.
+        return $this->verifyShape($block);
     }
 
     private function verifyProvenance(DocsCodeBlock $block): ?string
@@ -264,7 +289,8 @@ final class DocsCodeAudit
             if ($after === null) {
                 return 'is not verbatim in `'.$path.'`: the first line that does not match, in order, is '
                     .var_export($segment[0], true).'. Copy the lines as the file has them, or cut whole lines '
-                    .'and mark the cut with a line that is exactly `'.self::ELISION.'`.';
+                    .'and mark the cut with a line that is exactly `'.self::ELISION.'` (or `'
+                    .self::HASH_ELISION.'` in a file whose comments start with a hash).';
             }
 
             $cursor = $after;
@@ -289,6 +315,19 @@ final class DocsCodeAudit
         return 'does not parse: '.trim(str_replace($file, '<listing>', implode(' ', $output)));
     }
 
+    /**
+     * Every `use Firefly\…;` names a class that exists, and every `#[Attribute]` is one the framework declares
+     * or the listing itself imports.
+     *
+     * GROUPED IMPORTS ARE RESOLVED MEMBER BY MEMBER, and they have to be. The grouped form
+     * (`use Firefly\Container\Attributes\{Primary, Qualifier, Service};`) is idiomatic in these documents —
+     * the README carried exactly that line — and it matches neither of the two patterns above, because both
+     * stop at the brace. A member merely collected into $imported would therefore do double damage: the
+     * fabricated class would pass the import check unseen AND then whitelist its own `#[Fabricated]`
+     * attribute, so a listing could invent an entire API and stay green. A member may carry its own alias
+     * (`{Service as Svc}`), in which case the alias is the name the code writes and the member before it is
+     * the class that must exist.
+     */
     private function verifySymbols(DocsCodeBlock $block): ?string
     {
         $symbols = $this->frameworkSymbols();
@@ -303,13 +342,29 @@ final class DocsCodeAudit
 
         preg_match_all('/^\s*use\s+(?:[A-Za-z0-9_\\\\]+\\\\)?(\w+)\s*;/m', $block->code, $plain);
         preg_match_all('/^\s*use\s+[A-Za-z0-9_\\\\]+\s+as\s+(\w+)\s*;/m', $block->code, $aliased);
-        preg_match_all('/^\s*use\s+[A-Za-z0-9_\\\\]+\\\\\{([^}]+)\}\s*;/m', $block->code, $grouped);
 
         $imported = array_merge($plain[1], $aliased[1], self::PHP_ATTRIBUTES);
 
-        foreach ($grouped[1] as $group) {
-            foreach (explode(',', $group) as $member) {
-                $imported[] = trim($member);
+        preg_match_all('/^\s*use\s+([A-Za-z0-9_\\\\]+)\\\\\{([^}]+)\}\s*;/m', $block->code, $grouped, PREG_SET_ORDER);
+
+        foreach ($grouped as $group) {
+            $prefix = rtrim($group[1], '\\');
+
+            foreach (explode(',', $group[2]) as $member) {
+                $parts = preg_split('/\s+as\s+/', trim($member)) ?: [];
+                $name = trim($parts[0] ?? '');
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $alias = count($parts) > 1 ? trim((string) $parts[count($parts) - 1]) : '';
+
+                if (str_starts_with($prefix.'\\', 'Firefly\\') && ! isset($symbols['fqcn'][$prefix.'\\'.$name])) {
+                    return 'imports a framework class that does not exist: `'.$prefix.'\\'.$name.'`.';
+                }
+
+                $imported[] = $alias !== '' ? $alias : $this->shortName($name);
             }
         }
 
@@ -318,9 +373,7 @@ final class DocsCodeAudit
         preg_match_all('/#\[\s*\\\\?([A-Za-z_][A-Za-z0-9_\\\\]*)/', $block->code, $used);
 
         foreach (array_unique($used[1]) as $attribute) {
-            $short = str_contains($attribute, '\\')
-                ? substr($attribute, (int) strrpos($attribute, '\\') + 1)
-                : $attribute;
+            $short = $this->shortName($attribute);
 
             if (isset($known[$short]) || isset($symbols['short'][$short])) {
                 continue;
@@ -330,6 +383,16 @@ final class DocsCodeAudit
         }
 
         return null;
+    }
+
+    /**
+     * The last segment of a possibly-qualified name — what the code actually writes.
+     */
+    private function shortName(string $name): string
+    {
+        return str_contains($name, '\\')
+            ? substr($name, (int) strrpos($name, '\\') + 1)
+            : $name;
     }
 
     private function verifyShape(DocsCodeBlock $block): ?string
@@ -351,9 +414,11 @@ final class DocsCodeAudit
                 continue;
             }
 
-            return 'names the configuration key `'.$key.'`, which no file under packages/*/src and no line of '
-                .'skeleton/config/firefly.php spells. Either the key is wrong, or its prefix belongs in '
-                .'DocsCodeAudit::USER_KEY_PREFIXES because the next segment is the application\'s to choose.';
+            return 'names the configuration key `'.$key.'`, which nothing under packages/*/src reads: no '
+                .'`$config->…(\'firefly.…\')`, no #[ConditionalOnProperty] gate, and no key constant handed to '
+                .'a Config read spells it, nor does any key it is the block of. Either the key is wrong, or its '
+                .'prefix belongs in DocsCodeAudit::USER_KEY_PREFIXES because the next segment is the '
+                .'application\'s to choose.';
         }
 
         return null;
@@ -395,12 +460,19 @@ final class DocsCodeAudit
         return null;
     }
 
+    /**
+     * A listing may name a key, or the BLOCK a key lives in — `firefly.security.headers` is how a document
+     * refers to the whole header section, and refusing it would push authors to mutilate an excerpt that is
+     * otherwise verbatim. A prefix is therefore real exactly when some real key continues it.
+     */
     private function keyIsReal(string $key): bool
     {
         $literals = $this->keyLiterals();
 
-        if (in_array($key, $literals, true)) {
-            return true;
+        foreach ($literals as $literal) {
+            if ($literal === $key || str_starts_with($literal, $key.'.')) {
+                return true;
+            }
         }
 
         foreach (self::USER_KEY_PREFIXES as $prefix) {
@@ -455,9 +527,9 @@ final class DocsCodeAudit
     }
 
     /**
-     * The listing, split on ELISION lines into segments that must each appear verbatim, in order. Every
-     * segment is right-trimmed, stripped of blank edges and dedented, so an excerpt written at column 0 still
-     * matches a method that lives four spaces in.
+     * The listing, split on ELISION/HASH_ELISION lines into segments that must each appear verbatim, in
+     * order. Every segment is right-trimmed, stripped of blank edges and dedented, so an excerpt written at
+     * column 0 still matches a method that lives four spaces in.
      *
      * @return list<list<string>>
      */
@@ -467,7 +539,7 @@ final class DocsCodeAudit
         $current = [];
 
         foreach (explode("\n", $code) as $line) {
-            if (trim($line) === self::ELISION) {
+            if (in_array(trim($line), [self::ELISION, self::HASH_ELISION], true)) {
                 $raw[] = $current;
                 $current = [];
 
@@ -585,6 +657,36 @@ final class DocsCodeAudit
     }
 
     /**
+     * Every `firefly.*` string the framework uses AS A CONFIGURATION KEY — which is a much smaller set than
+     * every `firefly.*` string it contains, and the difference is the whole point of this method.
+     *
+     * A grep for `firefly\.` over packages/*\/src and skeleton/ answers 290 strings. This method collects 240
+     * of them, and the 30 that keyIsReal() then refuses outright are not settings at all: `firefly.trace_id`,
+     * `firefly.span_id` and `firefly.correlation_id` are Laravel Context keys (the last is a CONTEXT_KEY
+     * constant in packages/web/src/Filter/CorrelationIdFilter.php, which tests/ConfigReferenceTest.php calls
+     * out by name as NOT a setting), `firefly.actuator.index` and `firefly.security.login` are route names,
+     * `firefly.container.registered` is a container flag, `firefly.events.dlx` is a default exchange NAME,
+     * `firefly.security.saved_request` is a session key, and `firefly.cache.enabled` only ever appears as an
+     * EXAMPLE inside a docblock. A guard built on that grep would happily let a listing tell a reader to put
+     * `firefly.trace_id` in config/firefly.php — which is exactly the misinformation it exists to stop.
+     *
+     * So a key is collected only where the framework DECLARES it is one, in four shapes:
+     *
+     *   1. a read through the Config port, spelt in full — the same pattern tests/ConfigReferenceTest.php
+     *      uses to decide which keys the shipped reference must document, so the two tests agree on what a
+     *      key is by construction;
+     *   2. the env-then-config helper (`->setting('FIREFLY_PROFILES_ACTIVE', 'firefly.profiles.active')`),
+     *      whose config key is its second argument;
+     *   3. a `#[ConditionalOnProperty]` / `#[ConditionalOnMissingProperty]` gate, which is how a whole bean
+     *      is switched on and is therefore just as much a documented key as a settings-class read;
+     *   4. a class constant holding the key — but ONLY when the same file hands that constant to a TYPED
+     *      Config read (`$config->bool(self::HEADERS_KEY, false)`). That last condition is what separates
+     *      `HttpExchangeFilter::EXCLUDE_KEY` (a real key) from `CorrelationIdFilter::CONTEXT_KEY` (a Context
+     *      key that is read with `$context?->get(self::CONTEXT_KEY)`, never through Config).
+     *
+     * The USER_KEY_PREFIXES are added as blocks of their own, so a listing may name `firefly.feature` or
+     * `firefly.security.users` without inventing an application's segment to hang under it.
+     *
      * @return list<string>
      */
     private function keyLiterals(): array
@@ -595,12 +697,30 @@ final class DocsCodeAudit
 
         $literals = [];
 
-        foreach ([...$this->phpFilesUnder('packages/*/src'), ...$this->phpFilesUnder('skeleton')] as $file) {
-            preg_match_all('/firefly\.[a-z0-9_.-]*[a-z0-9_-]/', (string) file_get_contents($file), $matches);
+        foreach ($this->phpFilesUnder('packages/*/src') as $file) {
+            $contents = (string) file_get_contents($file);
 
-            foreach ($matches[0] as $literal) {
+            preg_match_all("/->(?:bool|string|int|array|get|has)\(\s*'(firefly\.[a-z0-9._\-]+)'/", $contents, $port);
+            preg_match_all("/->setting\(\s*'[A-Z0-9_]+'\s*,\s*'(firefly\.[a-z0-9._\-]+)'/", $contents, $setting);
+            preg_match_all("/ConditionalOn\w*Property\(\s*(?:name:\s*)?'(firefly\.[a-z0-9._\-]+)'/", $contents, $gates);
+
+            foreach ([...$port[1], ...$setting[1], ...$gates[1]] as $literal) {
                 $literals[$literal] = true;
             }
+
+            preg_match_all("/const\s+(?:\w+\s+)?(\w+)\s*=\s*'(firefly\.[a-z0-9._\-]+)'/", $contents, $constants, PREG_SET_ORDER);
+
+            foreach ($constants as $constant) {
+                $read = '/->(?:bool|string|int|array)\(\s*(?:self|static)::'.preg_quote($constant[1], '/').'\b/';
+
+                if (preg_match($read, $contents) === 1) {
+                    $literals[$constant[2]] = true;
+                }
+            }
+        }
+
+        foreach (self::USER_KEY_PREFIXES as $prefix) {
+            $literals[rtrim($prefix, '.')] = true;
         }
 
         return $this->keyLiterals = array_keys($literals);
