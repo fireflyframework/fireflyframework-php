@@ -30,6 +30,8 @@ use Firefly\Security\OAuth2\Server\Eloquent\RegisteredClientModelRepository;
 use Firefly\Security\OAuth2\Server\Jose\AuthorizationServerJwksDocumentSource;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
+use Firefly\Security\OAuth2\Server\Oidc\DefaultOidcUserInfoMapper;
+use Firefly\Security\OAuth2\Server\Oidc\OidcUserInfoMapper;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Token\OAuth2TokenCustomizer;
 use Firefly\Security\OAuth2\Server\Token\OAuth2TokenGenerator;
@@ -42,10 +44,14 @@ use Firefly\Security\OAuth2\Server\Web\Grant\RefreshTokenGrant;
 use Firefly\Security\OAuth2\Server\Web\Grant\TokenGrants;
 use Firefly\Security\OAuth2\Server\Web\JwkSetEndpoint;
 use Firefly\Security\OAuth2\Server\Web\OAuth2Endpoints;
+use Firefly\Security\OAuth2\Server\Web\OidcClientRegistrationEndpoint;
+use Firefly\Security\OAuth2\Server\Web\OidcLogoutEndpoint;
+use Firefly\Security\OAuth2\Server\Web\OidcUserInfoEndpoint;
 use Firefly\Security\OAuth2\Server\Web\TokenEndpoint;
 use Firefly\Security\OAuth2\Server\Web\TokenIntrospectionEndpoint;
 use Firefly\Security\OAuth2\Server\Web\TokenRevocationEndpoint;
 use Firefly\Security\Password\PasswordEncoder;
+use Firefly\Security\User\UserDetailsService;
 use Illuminate\Container\Container;
 use Psr\Log\LoggerInterface;
 
@@ -201,6 +207,21 @@ final class OAuth2ServerAutoConfiguration
         return new TokenEndpointRateLimiter($store, $settings->rateLimitMaxTokens, $settings->rateLimitRefillRate);
     }
 
+    /**
+     * The claims /userinfo answers. The shipped mapper knows only what the principal model knows — `sub`, and
+     * with `profile`/`email` what the username itself says — and consults the UserDetailsService, when one is
+     * bound, so a user the store has forgotten keeps `sub` and loses the profile. An application with names,
+     * pictures or addresses to answer binds its own OidcUserInfoMapper and this bean steps aside.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(OidcUserInfoMapper::class)]
+    public function oidcUserInfoMapper(?UserDetailsService $users = null): OidcUserInfoMapper
+    {
+        return new DefaultOidcUserInfoMapper($users);
+    }
+
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
@@ -218,9 +239,9 @@ final class OAuth2ServerAutoConfiguration
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnProperty(name: 'firefly.security.oauth2.server.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(OAuth2Endpoints::class)]
-    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet, TokenEndpoint $token, AuthorizationEndpoint $authorization, TokenIntrospectionEndpoint $introspection, TokenRevocationEndpoint $revocation): OAuth2Endpoints
+    public function oauth2Endpoints(AuthorizationServerSettings $settings, AuthorizationServerMetadataEndpoint $metadata, JwkSetEndpoint $jwkSet, TokenEndpoint $token, AuthorizationEndpoint $authorization, TokenIntrospectionEndpoint $introspection, TokenRevocationEndpoint $revocation, OidcUserInfoEndpoint $userInfo, OidcLogoutEndpoint $logout, OidcClientRegistrationEndpoint $registration): OAuth2Endpoints
     {
-        return new OAuth2Endpoints($settings, [
+        $byPath = [
             AuthorizationServerMetadataEndpoint::OPENID_CONFIGURATION => $metadata,
             AuthorizationServerMetadataEndpoint::OAUTH_AUTHORIZATION_SERVER => $metadata,
             $settings->jwkSetEndpoint => $jwkSet,
@@ -228,7 +249,16 @@ final class OAuth2ServerAutoConfiguration
             $settings->authorizationEndpoint => $authorization,
             $settings->tokenIntrospectionEndpoint => $introspection,
             $settings->tokenRevocationEndpoint => $revocation,
-        ]);
+            $settings->oidcUserInfoEndpoint => $userInfo,
+            $settings->oidcLogoutEndpoint => $logout,
+        ];
+        // Dynamic registration is mapped ONLY when a path is configured: with the key empty the endpoint has no
+        // address, the filter answers nothing there, and the metadata publishes no registration_endpoint.
+        if ($settings->hasClientRegistration()) {
+            $byPath[$settings->oidcClientRegistrationEndpoint] = $registration;
+        }
+
+        return new OAuth2Endpoints($settings, $byPath);
     }
 
     /** firefly/data's translator when its provider is booted (so `exception-translation.enabled` is honoured), the enabled default otherwise. */

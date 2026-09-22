@@ -324,6 +324,33 @@ return [
                 ],
             ],
             10 => [
+                'method' => 'oidcUserInfoMapper',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.oauth2.server.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\OAuth2\\Server\\Oidc\\OidcUserInfoMapper',
+                        ],
+                    ],
+                ],
+            ],
+            11 => [
                 'method' => 'tokenGrants',
                 'conditions' => [
                     0 => [
@@ -350,7 +377,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'oauth2Endpoints',
                 'conditions' => [
                     0 => [
@@ -617,7 +644,7 @@ return [
         ],
     ],
     10 => [
-        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcClientRegistrationEndpoint',
         'postConstruct' => [
         ],
         'preDestroy' => [
@@ -646,7 +673,7 @@ return [
         ],
     ],
     11 => [
-        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenIntrospectionEndpoint',
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcLogoutEndpoint',
         'postConstruct' => [
         ],
         'preDestroy' => [
@@ -675,6 +702,93 @@ return [
         ],
     ],
     12 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcUserInfoEndpoint',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    13 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    14 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenIntrospectionEndpoint',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.oauth2.server.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    15 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenRevocationEndpoint',
         'postConstruct' => [
         ],

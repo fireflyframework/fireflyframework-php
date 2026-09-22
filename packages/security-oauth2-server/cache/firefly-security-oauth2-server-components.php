@@ -165,6 +165,18 @@ return [
                 ],
             ],
             10 => [
+                'method' => 'oidcUserInfoMapper',
+                'returns' => 'Firefly\\Security\\OAuth2\\Server\\Oidc\\OidcUserInfoMapper',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\User\\UserDetailsService',
+                ],
+            ],
+            11 => [
                 'method' => 'tokenGrants',
                 'returns' => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\TokenGrants',
                 'name' => null,
@@ -178,7 +190,7 @@ return [
                     2 => 'Firefly\\Security\\OAuth2\\Server\\Web\\Grant\\RefreshTokenGrant',
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'oauth2Endpoints',
                 'returns' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoints',
                 'name' => null,
@@ -194,6 +206,9 @@ return [
                     4 => 'Firefly\\Security\\OAuth2\\Server\\Web\\AuthorizationEndpoint',
                     5 => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenIntrospectionEndpoint',
                     6 => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenRevocationEndpoint',
+                    7 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcUserInfoEndpoint',
+                    8 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcLogoutEndpoint',
+                    9 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcClientRegistrationEndpoint',
                 ],
             ],
         ],
@@ -366,6 +381,72 @@ return [
         ],
     ],
     10 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcClientRegistrationEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+            1 => 'Firefly\\Security\\OAuth2\\Server\\Client\\RegisteredClientRepository',
+            2 => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
+            3 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+            4 => 'Firefly\\Security\\Password\\PasswordEncoder',
+        ],
+    ],
+    11 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcLogoutEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
+            1 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+            2 => 'Firefly\\Security\\OAuth2\\Server\\Client\\RegisteredClientRepository',
+            3 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            4 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            5 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+            6 => 'Psr\\Log\\LoggerInterface',
+        ],
+    ],
+    12 => [
+        'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\OidcUserInfoEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Web\\OAuth2Endpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
+            1 => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
+            2 => 'Firefly\\Security\\OAuth2\\Server\\Oidc\\OidcUserInfoMapper',
+        ],
+    ],
+    13 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -387,7 +468,7 @@ return [
             4 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
-    11 => [
+    14 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenIntrospectionEndpoint',
         'stereotype' => 'component',
         'name' => null,
@@ -407,7 +488,7 @@ return [
             2 => 'Firefly\\Security\\OAuth2\\Server\\Client\\RegisteredClientRepository',
         ],
     ],
-    12 => [
+    15 => [
         'class' => 'Firefly\\Security\\OAuth2\\Server\\Web\\TokenRevocationEndpoint',
         'stereotype' => 'component',
         'name' => null,
