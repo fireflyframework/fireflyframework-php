@@ -102,8 +102,9 @@ that backs off the moment you supply your own bean, a CQRS command/query bus, ev
 demarcation, deny-by-default method and URL security, and a production-ready actuator/observability surface —
 all compiled ahead of time into `bootstrap/cache/firefly/` for a **zero-reflection boot**.
 
+<!-- source: skeleton/app/GreetingService.php -->
+
 ```php
-// skeleton/app/GreetingService.php — a #[Service] bean, autowired by type
 #[Service]
 final class GreetingService
 {
@@ -114,14 +115,18 @@ final class GreetingService
         return sprintf('%s, %s!', $this->properties->salutation, $name);
     }
 }
+```
 
-// skeleton/app/Http/GreetingController.php — a #[RestController], routes compiled to a manifest
+<!-- source: skeleton/app/Http/GreetingController.php -->
+
+```php
 #[RestController]
 final class GreetingController
 {
     public function __construct(private readonly GreetingService $greetings) {}
 
-    #[GetMapping('/greetings/{name}')]
+    /** @return array<string, string> */
+    #[GetMapping('/greetings/{name}', name: 'greetings.show')]
     public function show(#[PathVariable] string $name): array
     {
         return ['message' => $this->greetings->greet($name)];
@@ -131,10 +136,11 @@ final class GreetingController
 
 No service-provider boilerplate, no manual route registration: the component scanner finds `GreetingService`
 and `GreetingController`, the container autowires `GreetingProperties` into the service by constructor type,
-and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table. `php artisan
-firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it the same scan simply
-runs in-process at boot instead, so the app behaves identically either way. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
-outbox, and security tour, drawn from the runnable `samples/lumen/` wallet-ledger sample.
+and the route scanner compiles `#[GetMapping('/greetings/{name}', name: 'greetings.show')]` into the route
+table. `php artisan firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it
+the same scan simply runs in-process at boot instead, so the app behaves identically either way. See
+[Featured Patterns](#featured-patterns) below for the full CQRS, EDA, outbox, and security tour, drawn from the
+runnable `samples/lumen/` wallet-ledger sample.
 
 LaraFly is not a fork of Laravel and does not hide it — every package layers cleanly on top of
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
@@ -195,8 +201,9 @@ Business logic should never `use Illuminate\Database\Eloquent\Model` directly if
 enforces **hexagonal architecture** — ports and adapters — across every capability that touches storage or
 transport:
 
+<!-- source: samples/lumen/src/Infrastructure/WalletRepository.php -->
+
 ```php
-// samples/lumen/src/Infrastructure/WalletRepository.php — the PORT the domain depends on
 interface WalletRepository
 {
     public function save(Wallet $wallet): Wallet;
@@ -208,19 +215,23 @@ interface WalletRepository
 }
 ```
 
+<!-- source: samples/lumen/src/Infrastructure/EloquentWalletRepository.php -->
+
 ```php
-// samples/lumen/src/Infrastructure/EloquentWalletRepository.php — the ADAPTER, auto-bound by interface
 #[Repository]
 final class EloquentWalletRepository extends EloquentRepository implements WalletRepository
 {
     protected string $model = Wallet::class;
-    // save()/findById()/findByOwnerId() implement the port over Eloquent — see the file for the full body.
+
+    // …
 }
 ```
 
-Application and command-handler code depends only on `WalletRepository`; the container's nominal
-interface-binding wires `EloquentWalletRepository` in behind it automatically. Deptrac enforces the boundary at
-the monorepo level — a domain package that imports `Illuminate\Database\*` fails the architecture gate.
+`save()`, `findById()` and `findByOwnerId()` each carry an explicit body in the adapter — `implements` does not
+accept `EloquentRepository`'s magic `__call()` dispatch — and application and command-handler code still depends
+only on `WalletRepository`; the container's nominal interface-binding wires `EloquentWalletRepository` in behind
+it automatically. Deptrac enforces the boundary at the monorepo level — a domain package that imports
+`Illuminate\Database\*` fails the architecture gate.
 
 ### Typed and Attribute-Driven
 
@@ -258,19 +269,49 @@ order. The kernel then drains that buffer and drives the real, phased order:
 ### Dependency Injection & Auto-Configuration
 
 The DI container (`firefly/container`) resolves dependencies from **type hints** discovered by a component
-scan — no XML, no service locators:
+scan — no XML, no service locators. The three classes below are the container package's own test fixtures, so
+every claim made about them is exercised by `packages/container/tests`:
+
+<!-- source: packages/container/tests/Fixtures/Greeter.php -->
 
 ```php
-use Firefly\Container\Attributes\{Primary, Qualifier, Service};
-
-interface Greeter { public function greet(): string; }
-
-#[Service] #[Primary]
-final class EnglishGreeter implements Greeter { public function greet(): string { return 'Hello'; } }
-
-#[Service('spanish')] #[Qualifier('spanish')]
-final class SpanishGreeter implements Greeter { public function greet(): string { return 'Hola'; } }
+interface Greeter
+{
+    public function greet(): string;
+}
 ```
+
+<!-- source: packages/container/tests/Fixtures/EnglishGreeter.php -->
+
+```php
+#[Service]
+#[Primary]
+#[Order(10)]
+final class EnglishGreeter implements Greeter
+{
+    public function greet(): string
+    {
+        return 'Hello';
+    }
+}
+```
+
+<!-- source: packages/container/tests/Fixtures/SpanishGreeter.php -->
+
+```php
+#[Service('spanish')]
+#[Qualifier('spanish')]
+#[Order(20)]
+final class SpanishGreeter implements Greeter
+{
+    public function greet(): string
+    {
+        return 'Hola';
+    }
+}
+```
+
+<!-- illustrative: the calls a reader makes from their own code against the container port; a bean is resolved, never declared, so no file in the repository contains this trio. -->
 
 ```php
 $container->get(Greeter::class);         // EnglishGreeter (the #[Primary] one)
@@ -334,12 +375,20 @@ Nine showcases below, each an accurate snippet lifted straight from `samples/lum
 sample) or the framework itself — no invented API. Every attribute and class shown here compiles against the
 shipped `26.09.2` release.
 
+That is a checked claim, not a promise: every listing in this file carries an HTML comment naming the file it
+was copied from, and `tests/DocsCodeIsRealTest.php` fails the build unless the listing appears **verbatim** in
+that file. A line that is exactly `// …` is the one permitted cut — it means "whole lines omitted here" and
+nothing else. The handful of listings that show code *you* write, which therefore exists in no file of this
+repository, are marked illustrative instead and are still linted and resolved against the real class names.
+
 ### Attribute DI — `#[Service]`
 
 <!-- source: skeleton/app/GreetingService.php -->
 
 ```php
 use Firefly\Container\Attributes\Service;
+
+// …
 
 #[Service]
 final class GreetingService
@@ -372,17 +421,23 @@ final class WalletController
         private readonly QueryBus $queries,
     ) {}
 
+    /** @return array{wallet_id: string} */
     #[PostMapping(status: 201)]
     public function open(#[Valid] #[RequestBody] OpenWalletRequest $body): array
     {
+        /** @var string $id */
         $id = $this->commands->send(new OpenWallet($body->owner_id, Currency::from($body->currency)));
 
         return ['wallet_id' => $id];
     }
 
+    // …
+
+    /** @return array{wallet_id: string, balance_minor: int} */
     #[GetMapping('/{id}/balance')]
     public function balance(#[PathVariable] string $id): array
     {
+        /** @var int|null $balance */
         $balance = $this->queries->ask(new GetBalance($id));
         if ($balance === null) {
             throw new ResourceNotFoundException("Wallet {$id} not found");
@@ -390,6 +445,8 @@ final class WalletController
 
         return ['wallet_id' => $id, 'balance_minor' => $balance];
     }
+
+    // …
 }
 ```
 
@@ -429,12 +486,14 @@ wrapping — see [CQRS](docs/modules/cqrs.md).
 
 ### Domain aggregate + repository — `AggregateRoot`-style events, `EloquentRepository`
 
-<!-- source: samples/lumen/src/Domain/Wallet.php, samples/lumen/src/Domain/Event/WalletOpened.php -->
+<!-- source: samples/lumen/src/Domain/Wallet.php -->
 
 ```php
 final class Wallet extends Model implements RecordsDomainEvents
 {
     use HasDomainEvents;
+
+    // …
 
     public static function open(string $id, string $ownerId, Currency $currency): self
     {
@@ -442,13 +501,24 @@ final class Wallet extends Model implements RecordsDomainEvents
             throw new ConflictException('owner_id is required');
         }
 
-        $wallet = new self(['id' => $id, 'owner_id' => $ownerId, 'currency' => $currency->value, 'balance_minor' => 0]);
+        $wallet = new self([
+            'id' => $id,
+            'owner_id' => $ownerId,
+            'currency' => $currency->value,
+            'balance_minor' => 0,
+        ]);
         $wallet->raiseEvent(new WalletOpened($id, $ownerId, $currency->value));
 
         return $wallet;
     }
-}
 
+    // …
+}
+```
+
+<!-- source: samples/lumen/src/Domain/Event/WalletOpened.php -->
+
+```php
 #[PublishDomainEvent('wallet.events')]
 final readonly class WalletOpened extends DomainEvent
 {
@@ -479,7 +549,9 @@ final class LedgerProjector
     #[EventListener(['WalletOpened', 'FundsDeposited', 'FundsWithdrawn', 'TransferCompleted'])]
     public function onWalletEvent(EventEnvelope $envelope): void
     {
-        $walletId = $envelope->payload['walletId'] ?? '';
+        // …
+
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
         $amountMinor = $envelope->payload['amountMinor'] ?? 0;
         $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
 
@@ -503,16 +575,29 @@ in-memory/queue adapters, retry + `DeadLetterStore`, and why `#[AsEventListener]
 
 ### Same-transaction outbox — `firefly.eda.provider=postgres`
 
-<!-- source: docs/modules/eda-brokers.md -->
+The reference configuration ships both halves already: the `provider` switch and, commented out, the outbox
+block it turns on. Point the switch at `postgres` (`FIREFLY_EDA_PROVIDER=postgres`, or the literal string) and
+uncomment the `postgres` section:
+
+<!-- source: skeleton/config/firefly.php -->
 
 ```php
-// config/firefly.php
 'eda' => [
-    'provider' => 'postgres',
-    'postgres' => [
-        'channel' => 'firefly_eda_events',
-        'max_attempts' => 3,
-    ],
+
+    'provider' => env('FIREFLY_EDA_PROVIDER', 'memory'),
+
+    // …
+
+    // 'postgres' => [
+    //     'connection' => 'pgsql',
+    //     'channel' => 'firefly_eda_events',
+    //     'max_attempts' => 3,
+    //     'relay' => [
+    //         'downstream_provider' => 'rabbitmq',
+    //     ],
+    // ],
+
+    // …
 ],
 ```
 
@@ -549,11 +634,12 @@ class TransferHandler
 
         $amount = new Money($command->amountMinor, $source->currency());
         $source->withdraw($amount);       // debit (raises FundsWithdrawn)
-        $this->wallets->save($source);    // persist inside the tx, so it can genuinely roll back
+        $this->wallets->save($source);    // persist + track the debit INSIDE the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
         $this->wallets->save($destination);
         $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
         // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
+        // (recordTransferTo runs only on the success path: a failed credit throws above, the tx rolls back, nothing publishes.)
     }
 }
 ```
@@ -699,8 +785,9 @@ composer require firefly/openapi   # /openapi.json + /openapi — a spec that ca
 
 Point LaraFly at your app's classes and compile it:
 
+<!-- source: skeleton/config/firefly.php -->
+
 ```php
-// config/firefly.php
 'scan' => [
     'paths' => [
         'App\\' => app_path(),
