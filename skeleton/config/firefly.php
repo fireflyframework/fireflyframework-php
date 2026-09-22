@@ -414,9 +414,11 @@ return [
                 // scope `client.create` registers ONE client: the registration invalidates that access token, so
                 // each further client needs a new initial access token, and a body asking for `client.create`
                 // itself is refused (it would be a self-renewing registration credential no secret rotation
-                // could reach). Registration REQUIRES `clients.driver` = `eloquent` below — the `memory` driver
+                // could reach). Registration REQUIRES A STORE THAT OUTLIVES THE REQUEST: set `clients.driver` to
+                // `eloquent` below, or bind a durable RegisteredClientRepository of your own. The `memory` driver
                 // is this config map rebuilt in every process, so a registered client would not survive the
-                // request that created it; the boot refuses the pairing rather than hand out dead credentials.
+                // request that created it; the boot refuses THAT store — the one it resolves, not the driver
+                // name — rather than hand out dead credentials.
                 // 'authorization_endpoint' => '/oauth2/authorize',
                 // 'token_endpoint' => '/oauth2/token',
                 // 'jwk_set_endpoint' => '/oauth2/jwks',

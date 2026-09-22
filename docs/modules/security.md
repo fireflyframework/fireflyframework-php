@@ -116,6 +116,11 @@ path that ends a session calls it: the filter above, and OpenID Connect RP-initi
 `clear_authentication` and `delete_cookies` govern both by construction — a second path cannot quietly obey a
 subset. `logout.enabled` decides only whether the framework maps its own logout URL, never what signing out does.
 
+`clear_authentication` removes the stored context through `SecurityContextRepository`, and it does so WHETHER OR
+NOT the request carries a session: the shipped session store is a no-op without one, but that port is meant to be
+rebound (a signed cookie, a cache keyed by a device id), and a bearer-only application that never starts a session
+would otherwise sign out of nothing at all.
+
 ### Events
 
 Every mechanism reports through `AuthenticationEventPublisher` over the context `ApplicationEventPublisher`, so an

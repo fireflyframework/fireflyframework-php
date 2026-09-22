@@ -29,13 +29,18 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   1. the remember-me cookie — when the port is bound — and every `delete_cookies` name are expired: an empty
  *      value, an expiry in the past, on the root path,
- *   2. the session is invalidated (Store::invalidate(): every attribute flushed and a NEW id, the old file
- *      destroyed, so the cookie the browser had names nothing from now on) or, with `invalidate_session` off and
- *      `clear_authentication` on, only the stored context is removed and the rest of the session — a shopping
- *      cart, a locale — survives. A request that carries no session at all is left alone: there is nothing to
- *      invalidate and SecurityContextRepository::clear() is a no-op without one,
- *   3. the holder is cleared,
- *   4. LogoutSuccessEvent is published with the principal that was signed in — null for a logout of nothing,
+ *   2. the session is invalidated, when `invalidate_session` and the request HAS one (Store::invalidate(): every
+ *      attribute flushed and a NEW id, the old file destroyed, so the cookie the browser had names nothing from
+ *      now on); with it off, the rest of the session — a shopping cart, a locale — survives,
+ *   3. the stored context is removed through SecurityContextRepository, whenever `clear_authentication`,
+ *      WHETHER OR NOT THERE IS A SESSION. That call is not redundant beside the invalidation and it is not
+ *      session-shaped: the SHIPPED SessionSecurityContextRepository is indeed a no-op without a session, but the
+ *      port exists to be rebound, and its own docblock advertises the implementations this reaches — a signed
+ *      cookie, a cache keyed by a device id. A bearer-only application that bound one and never starts a session
+ *      would otherwise keep its principal stored after both RP-initiated logout and POST {logout_url}: signing
+ *      out would leave the thing that signs the user in untouched,
+ *   4. the holder is cleared,
+ *   5. LogoutSuccessEvent is published with the principal that was signed in — null for a logout of nothing,
  *      which is still answered: signing out when nobody is signed in is not an error.
  *
  * `LogoutSettings::enabled` is NOT consulted here. That flag decides whether the framework MAPS its own logout
@@ -64,12 +69,11 @@ final class LogoutHandler
             $response->headers->setCookie(new Cookie($name, '', 1, '/', null, $request->isSecure(), true, false, Cookie::SAMESITE_LAX));
         }
 
-        if ($request->hasSession()) {
-            if ($this->settings->invalidateSession) {
-                $request->session()->invalidate();
-            } elseif ($this->settings->clearAuthentication) {
-                $this->repository->clear($request);
-            }
+        if ($this->settings->invalidateSession && $request->hasSession()) {
+            $request->session()->invalidate();
+        }
+        if ($this->settings->clearAuthentication) {
+            $this->repository->clear($request);
         }
 
         SecurityContextHolder::clearContext();

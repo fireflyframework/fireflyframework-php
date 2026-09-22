@@ -8,10 +8,13 @@ use Firefly\Cqrs\CqrsServiceProvider;
 use Firefly\Cqrs\CqrsWiringProvider;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Server\Boot\OAuth2ServerWiringPass;
+use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
+use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\KeyPairGenerator;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerServiceProvider;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerWiringProvider;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use Firefly\Security\OAuth2\Server\Tests\Fixtures\OwnClientStore\OwnRegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Web\OAuth2AuthorizationServerFilter;
 use Firefly\Security\OAuth2\Server\Web\OidcClientRegistrationEndpoint;
 use Firefly\Security\SecurityServiceProvider;
@@ -49,11 +52,14 @@ function bootOAuth2ServerAppWith(array $security): Application
  * eager pass, which resolves JwtSigningKeys ahead of the wiring pass too, does not refuse over that first.
  *
  * @param  array<string,mixed>  $security  the `firefly.security.*` tree for this boot, minus the server block
+ * @param  array<string,string>  $scan  extra `firefly.scan.paths`, for a boot that needs an application's own
+ *                                      #[Configuration] — the only seam a #[ConditionalOnMissingBean] default
+ *                                      backs off for
  */
-function bootOAuth2ServerWebAppWith(array $security): Application
+function bootOAuth2ServerWebAppWith(array $security, array $scan = []): Application
 {
     return fireflyApplication(
-        config: ['app' => ['url' => 'http://localhost'], 'session' => ['driver' => 'array'], 'firefly' => ['cqrs' => [], 'security' => $security + [
+        config: ['app' => ['url' => 'http://localhost'], 'session' => ['driver' => 'array'], 'firefly' => ['scan' => ['paths' => $scan], 'cqrs' => [], 'security' => $security + [
             'oauth2' => ['server' => ['enabled' => true, 'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')]]],
         ]]],
         providers: [ValidationServiceProvider::class, WebServiceProvider::class, CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class, SecurityOAuth2ServerServiceProvider::class, SecurityOAuth2ServerWiringProvider::class],
@@ -66,6 +72,16 @@ function bootOAuth2ServerWebAppWith(array $security): Application
 function oauth2ServerConfig(array $security): Config
 {
     return new Config(new Repository(['app' => ['url' => 'http://localhost'], 'firefly' => ['security' => $security]]));
+}
+
+/** The server with the RFC 7591 endpoint mapped and nothing said about `clients.driver`. */
+function registrationConfig(): Config
+{
+    return oauth2ServerConfig([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true, 'oidc_client_registration_endpoint' => '/connect/register']],
+    ]);
 }
 
 it('is inert by default: security on, the server off, no settings bean and no refusal', function () {
@@ -192,32 +208,31 @@ it('refuses the rate limiter without a firefly/resilience store at boot, naming 
     ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.enabled is on but no Firefly\Resilience\Store\ResilienceStore is bound');
 });
 
-it('refuses dynamic client registration onto the memory client store, naming both keys — the 201 would hand out credentials nothing could authenticate again', function () {
+it('refuses dynamic client registration onto the in-memory client store, naming both escapes — the 201 would hand out credentials nothing could authenticate again', function () {
     try {
-        OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
-            'enabled' => true,
-            'form_login' => ['enabled' => true],
-            'oauth2' => ['server' => ['enabled' => true, 'oidc_client_registration_endpoint' => '/connect/register']],
-        ]));
+        OAuth2ServerWiringPass::assertRegistrationHasADurableStore(registrationConfig(), new InMemoryRegisteredClientRepository);
         throw new LogicException('not refused');
     } catch (ConfigurationException $e) {
         expect($e->getMessage())->toContain('firefly.security.oauth2.server.oidc_client_registration_endpoint')
             ->toContain('firefly.security.oauth2.server.clients.driver')
-            ->toContain('eloquent');
+            ->toContain('eloquent')
+            ->toContain('bind a durable RegisteredClientRepository of your own');
     }
 });
 
-it('accepts dynamic client registration on the eloquent client store, and says nothing about the driver while the endpoint is off', function () {
-    OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
-        'enabled' => true,
-        'form_login' => ['enabled' => true],
-        'oauth2' => ['server' => ['enabled' => true, 'oidc_client_registration_endpoint' => '/connect/register', 'clients' => ['driver' => 'eloquent']]],
-    ]));
-    OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
-        'enabled' => true,
-        'form_login' => ['enabled' => true],
-        'oauth2' => ['server' => ['enabled' => true, 'clients' => ['driver' => 'memory']]],
-    ]));
+it('tests the RESOLVED store and not the driver key: an application that bound its own repository is never refused, and the endpoint being off says nothing at all', function () {
+    // The dead end is the config map rebuilt per process, which is InMemoryRegisteredClientRepository and only
+    // that. A driver-keyed rule would refuse this application — whose own bean makes `clients.driver`
+    // meaningless — unless it wrote `eloquent` into a key nothing reads, a config that lies to a guard.
+    OAuth2ServerWiringPass::assertRegistrationHasADurableStore(registrationConfig(), new OwnRegisteredClientRepository);
+
+    OAuth2ServerWiringPass::assertRegistrationHasADurableStore(
+        oauth2ServerConfig(['enabled' => true, 'form_login' => ['enabled' => true], 'oauth2' => ['server' => ['enabled' => true]]]),
+        new InMemoryRegisteredClientRepository,
+    );
+
+    // The rule has left assertRunnable(Config) altogether: a bare Config cannot know which store was resolved.
+    OAuth2ServerWiringPass::assertRunnable(registrationConfig());
 
     expect(true)->toBeTrue();
 });
@@ -247,4 +262,20 @@ it('refuses registration onto the memory store through the real web boot, before
     ])->make(ApplicationContext::class);
 
     expect($context->has(OidcClientRegistrationEndpoint::class))->toBeTrue();
+});
+
+it('boots registration for an application that bound its own durable RegisteredClientRepository, with clients.driver still `memory` — the refusal is the store, not the key', function () {
+    /** @var ApplicationContext $context */
+    $context = bootOAuth2ServerWebAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => [
+            'enabled' => true,
+            'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')],
+            'oidc_client_registration_endpoint' => '/connect/register',
+        ]],
+    ], ['Firefly\\Security\\OAuth2\\Server\\Tests\\Fixtures\\OwnClientStore\\' => dirname(__DIR__).'/Fixtures/OwnClientStore'])->make(ApplicationContext::class);
+
+    expect($context->has(OidcClientRegistrationEndpoint::class))->toBeTrue()
+        ->and($context->get(RegisteredClientRepository::class))->toBeInstanceOf(OwnRegisteredClientRepository::class);
 });

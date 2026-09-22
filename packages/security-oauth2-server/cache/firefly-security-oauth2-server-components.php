@@ -400,6 +400,7 @@ return [
             2 => 'Firefly\\Security\\OAuth2\\Server\\Authorization\\OAuth2AuthorizationService',
             3 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
             4 => 'Firefly\\Security\\Password\\PasswordEncoder',
+            5 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
     11 => [

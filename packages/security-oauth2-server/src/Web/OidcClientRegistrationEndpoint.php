@@ -26,6 +26,7 @@ use Firefly\Security\OAuth2\Server\Token\OAuth2TokenGenerator;
 use Firefly\Security\Password\PasswordEncoder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -49,9 +50,19 @@ use Symfony\Component\HttpFoundation\Response;
  * resource server, exactly as TokenRevocationEndpoint's docblock qualifies.)
  *
  * THE STORE MUST OUTLIVE THE REQUEST. The registered client is written through RegisteredClientRepository, and
- * the `memory` driver rebuilds itself from the config map in every process — a 201 whose credentials nothing
- * could ever authenticate. OAuth2ServerWiringPass refuses that pairing at boot (refusal 5), so this endpoint
- * only ever has an address beside `clients.driver = eloquent`.
+ * InMemoryRegisteredClientRepository rebuilds itself from the config map in every process — a 201 whose
+ * credentials nothing could ever authenticate. OAuth2ServerWiringPass refuses that pairing at boot (refusal 6,
+ * against the store this application RESOLVES and not the `clients.driver` key), so this endpoint only ever has
+ * an address beside a store that outlives the request: the `eloquent` driver, or a durable repository of the
+ * application's own.
+ *
+ * ONE LINE IS LOGGED, at INFO, naming the client that was created, the client whose bearer paid for it, the
+ * principal that bearer belonged to and the authorization id that was spent — the same shape TokenRevocationEndpoint
+ * and AuthorizationEndpoint log their own events in. This is the most privileged write the server performs and
+ * the only record of it otherwise is the oauth2_registered_clients row, which says WHAT was created and never
+ * WHO created it: when a `client.create` bearer leaks, that missing fact is the first one an incident response
+ * asks for. It is also what makes the single-use rule above observable — an operator can see which authorization
+ * a registration spent, instead of trusting that one was.
  *
  * Metadata that would not authenticate or redirect safely is `invalid_client_metadata` / `invalid_redirect_uri`.
  * The rules are RegisteredClientFactory::assertConsistent() — the ONE rule set every store runs, the same one a
@@ -74,6 +85,7 @@ final class OidcClientRegistrationEndpoint implements OAuth2Endpoint
         private readonly OAuth2AuthorizationService $authorizations,
         private readonly JwtGenerator $jwt,
         private readonly PasswordEncoder $encoder,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
 
     public function methods(): array
@@ -162,10 +174,16 @@ final class OidcClientRegistrationEndpoint implements OAuth2Endpoint
             throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_CLIENT_METADATA, $e->getMessage()));
         }
 
+        // The authorizing client by the id it goes by on the wire, as the sibling endpoints log it; the
+        // authorization's own `registeredClientId` is the registration's stable id, which is what is left when
+        // the registration itself has since been removed.
+        $registrar = $this->clients->findById($authorization->registeredClientId);
+        $registrarId = $registrar === null ? $authorization->registeredClientId : $registrar->clientId;
         $this->clients->save($client);
         // One bearer, one client: the authorization is saved with its access token invalidated, so this value is
         // `invalid_token` from the next request on.
         $this->authorizations->save($authorization->withInvalidatedToken(OAuth2TokenType::AccessToken));
+        $this->logger?->info('OAuth2 client ['.$clientId.'] registered by client ['.$registrarId.'] for ['.$authorization->principalName.'] with authorization ['.$authorization->id.'].');
 
         $document = [
             'client_id' => $clientId,

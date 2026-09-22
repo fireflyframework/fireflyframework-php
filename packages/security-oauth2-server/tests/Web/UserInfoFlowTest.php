@@ -64,6 +64,42 @@ it('refuses a bearer the resource-server filter of the same application cannot v
     /** @var OAuth2ServerCapstoneTestCase $this */
     // No session: nothing has authenticated the request, so OAuth2ResourceServerFilter (-85) examines the
     // bearer and answers its own 401 problem document — the documented interaction of the two.
-    $this->forgetCookies()->withHeader('Authorization', 'Bearer not.a.jwt')->getJson('/userinfo')->assertStatus(401);
+    //
+    // WHICH 401 IS THE WHOLE POINT, so the assertions are the ones only the FILTER's answer satisfies. Both
+    // candidates refuse `not.a.jwt` with a 401: the endpoint's BearerToken::challenge() renders
+    // {"error":"invalid_token",…} under a `WWW-Authenticate: Bearer realm="oauth2"…` header, while the filter
+    // raises InvalidTokenException and the exception translation renders the problem document (INVALID_TOKEN,
+    // pinned by packages/kernel/tests/Exception/ExceptionTaxonomyTest.php) with no challenge header at all. On
+    // `assertStatus(401)` alone this case would still pass with the filter skipped or reordered, which is
+    // exactly the interaction it exists to pin.
+    $this->forgetCookies()->withHeader('Authorization', 'Bearer not.a.jwt')->getJson('/userinfo')
+        ->assertStatus(401)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertHeaderMissing('WWW-Authenticate')
+        ->assertJsonPath('code', 'INVALID_TOKEN')
+        ->assertJsonMissingPath('error');
     $this->flushHeaders();
+});
+
+it('refuses a bearer that was never issued to an end user: client credentials with openid is not a userinfo token', function () {
+    /** @var OAuth2ServerCapstoneTestCase $this */
+    // `web-app` registers client_credentials AND the openid scope, so this token carries `openid` and its
+    // principal is the CLIENT id. OIDC Core §5.3 answers claims about the authenticated End-User; there is none
+    // here, and a 200 would hand the relying party `sub` = "web-app" — a client id where it expects a user.
+    $oauth2 = $this->oauth2();
+    /** @var string $clientToken */
+    $clientToken = $oauth2->clientCredentials('web-app', OAuth2ServerCapstoneTestCase::WEB_APP_SECRET, 'openid')->json('access_token');
+
+    $oauth2->userInfo($clientToken)
+        ->assertStatus(401)
+        ->assertJson(['error' => 'invalid_token', 'error_description' => 'The access token was not issued to an end user.'])
+        ->assertHeader('WWW-Authenticate', 'Bearer realm="oauth2", error="invalid_token", error_description="The access token was not issued to an end user."');
+
+    // The same client's AUTHORIZATION-CODE token, with the same scope, is still answered: the refusal is about
+    // the grant, not the client.
+    $this->signIn();
+    $tokens = $oauth2->tokens('web-app', OAuth2ServerCapstoneTestCase::REDIRECT_URI, 'openid', OAuth2ServerCapstoneTestCase::WEB_APP_SECRET);
+    /** @var string $userToken */
+    $userToken = $tokens['access_token'];
+    $oauth2->userInfo($userToken)->assertOk()->assertExactJson(['sub' => 'ada']);
 });

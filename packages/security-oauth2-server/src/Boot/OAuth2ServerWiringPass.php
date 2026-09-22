@@ -9,6 +9,7 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Jose\JwtSigningKeys;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
@@ -42,16 +43,25 @@ use Firefly\Security\Session\SessionSecuritySettings;
  *      The same dead end as (3), one filter earlier. Refused, naming both keys: the server authenticates its
  *      clients itself. (Spring Authorization Server escapes this by owning a SecurityFilterChain of its own for
  *      the server's endpoints; LaraFly has one chain, so the two cannot share it.)
- *  (5) DYNAMIC REGISTRATION ONTO A STORE THAT FORGETS. `oidc_client_registration_endpoint` maps the RFC 7591
- *      endpoint, which WRITES a client through RegisteredClientRepository; the `memory` driver — the default —
- *      is the config map rebuilt in every process, so the write lives for the rest of that request and no
- *      longer. The 201 would hand a relying party a client_id and a client_secret that no later request could
- *      ever authenticate, with nothing logged and nothing refused. The same shape of dead end as (3) and (4),
- *      one layer down: the answer is given where it can never be honoured. Refused, naming both keys.
- *  (6) THE SETTINGS, KEYS AND CLIENTS are resolved now, so a bad algorithm, a missing signing key or a client
+ *  (5) THE SETTINGS, KEYS AND CLIENTS are resolved now, so a bad algorithm, a missing signing key or a client
  *      block with no redirect URI is a startup failure (each bean refuses in its own constructor), not a 500 on
  *      the first request that needs it. JwtSigningKeys is resolved right after the settings, so an empty or
  *      unloadable signing key refuses the boot with the command that generates one.
+ *  (6) DYNAMIC REGISTRATION ONTO A STORE THAT FORGETS. `oidc_client_registration_endpoint` maps the RFC 7591
+ *      endpoint, which WRITES a client through RegisteredClientRepository; InMemoryRegisteredClientRepository —
+ *      what `clients.driver: memory`, the default, resolves to — is the config map rebuilt in every process, so
+ *      the write lives for the rest of that request and no longer. The 201 would hand a relying party a
+ *      client_id and a client_secret that no later request could ever authenticate, with nothing logged and
+ *      nothing refused. The same shape of dead end as (3) and (4), one layer down: the answer is given where it
+ *      can never be honoured.
+ *
+ *      THE RULE IS THE RESOLVED STORE, NOT THE DRIVER KEY, which is why it runs HERE and not in
+ *      assertRunnable(Config): `registeredClientRepository()` carries #[ConditionalOnMissingBean], so an
+ *      application may bind its own durable repository (Redis, an internal API) and then `clients.driver` names
+ *      nothing — a driver-keyed refusal would leave such an application no way to enable registration except to
+ *      write `eloquent` into a key its own bean ignores, which is a config that lies. Only
+ *      InMemoryRegisteredClientRepository is the dead end, so only it is refused; the message names both
+ *      escapes.
  *  (7) THE RATE LIMITER, resolved when `rate_limit.enabled` so a missing firefly/resilience store refuses at
  *      boot (the bean names the store and the key), not on the first token request — which would otherwise be a
  *      500 for every client until someone read the log.
@@ -79,14 +89,39 @@ final class OAuth2ServerWiringPass implements BootPass
 
         $context->container->make(AuthorizationServerSettings::class);
         $context->container->make(JwtSigningKeys::class);
-        $context->container->make(RegisteredClientRepository::class);
+        /** @var RegisteredClientRepository $clients */
+        $clients = $context->container->make(RegisteredClientRepository::class);
+        self::assertRegistrationHasADurableStore($config, $clients);
         if ($config->bool('firefly.security.oauth2.server.rate_limit.enabled', false)) {
             $context->container->make(TokenEndpointRateLimiter::class);
         }
     }
 
     /**
-     * Refusals (1)–(5), as one static so the rules are testable against a bare Config without a boot; a no-op
+     * Refusal (6), against the RESOLVED store rather than the `clients.driver` key, so an application that bound
+     * its own durable RegisteredClientRepository is never refused over a driver name its bean makes meaningless.
+     * A static for the same reason as assertRunnable(): the rule is testable without a boot.
+     */
+    public static function assertRegistrationHasADurableStore(Config $config, RegisteredClientRepository $clients): void
+    {
+        if ($config->string('firefly.security.oauth2.server.oidc_client_registration_endpoint', '') === ''
+            || ! $clients instanceof InMemoryRegisteredClientRepository) {
+            return;
+        }
+
+        throw new ConfigurationException(
+            'firefly.security.oauth2.server.oidc_client_registration_endpoint is set but the RegisteredClientRepository this '
+            .'application resolves is the in-memory one (firefly.security.oauth2.server.clients.driver is `memory`): the config '
+            .'map rebuilt in every process, so a dynamically registered client would live for the rest of one request and the 201 '
+            .'would hand out a client_id and client_secret nothing could ever authenticate again. Set clients.driver to `eloquent` '
+            .'(and run the oauth2_registered_clients migration), or bind a durable RegisteredClientRepository of your own — with '
+            .'one bound, clients.driver names nothing and this refusal does not apply. Leave oidc_client_registration_endpoint '
+            .'empty to keep registration off.'
+        );
+    }
+
+    /**
+     * Refusals (1)–(4), as one static so the rules are testable against a bare Config without a boot; a no-op
      * while the server is off.
      */
     public static function assertRunnable(Config $config): void
@@ -124,17 +159,6 @@ final class OAuth2ServerWiringPass implements BootPass
                 .'answers every Authorization: Basic header as a user login — a 401 and a failure event — before the server\'s '
                 .'filter (-82) could read a client_secret_basic credential at the token, introspection or revocation endpoint. '
                 .'Turn http_basic.enabled off; the server authenticates its clients itself.'
-            );
-        }
-
-        if ($config->string('firefly.security.oauth2.server.oidc_client_registration_endpoint', '') !== ''
-            && $config->string('firefly.security.oauth2.server.clients.driver', 'memory') !== 'eloquent') {
-            throw new ConfigurationException(
-                'firefly.security.oauth2.server.oidc_client_registration_endpoint is set but '
-                .'firefly.security.oauth2.server.clients.driver is `memory`: the memory driver is the config map rebuilt in every '
-                .'process, so a dynamically registered client would live for the rest of one request and the 201 would hand out a '
-                .'client_id and client_secret nothing could ever authenticate again. Set clients.driver to `eloquent` (and run the '
-                .'oauth2_registered_clients migration), or leave oidc_client_registration_endpoint empty to keep registration off.'
             );
         }
     }

@@ -5,19 +5,43 @@ declare(strict_types=1);
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Tests\Support\OAuth2ServerCapstoneTestCase;
 use Firefly\Security\OAuth2\Server\Tests\Support\OAuth2ServerEloquentCapstoneTestCase;
+use Firefly\Security\Tests\Support\RecordingLogger;
+use Illuminate\Foundation\Application;
+use Psr\Log\LoggerInterface;
 
 /**
- * Registration runs on the ELOQUENT capstone, and only there: the endpoint WRITES a client, the `memory` driver
+ * Registration runs on the ELOQUENT capstone, and only there: the endpoint WRITES a client, the in-memory store
  * is the config map rebuilt in every process, and OAuth2ServerWiringPass refuses that pairing at boot (refusal
- * 5). Testbench keeps one container across the simulated requests of a test, so a memory-driver suite would have
- * passed here and handed out dead credentials in PHP-FPM — the table is the only store on which a registered
- * client survives the request that created it.
+ * 6). Testbench keeps one container across the simulated requests of a test, so a memory-driver suite would have
+ * passed here and handed out dead credentials in PHP-FPM — the table is the only store shipped on which a
+ * registered client survives the request that created it.
+ *
+ * The RecordingLogger is bound before boot, as Psr\Log\LoggerInterface, which is what the endpoint's optional
+ * logger resolves to: registration is the most privileged write the server performs and the line that names WHO
+ * spent WHICH bearer on it is asserted here rather than assumed.
  */
 abstract class RegistrationCapstoneTestCase extends OAuth2ServerEloquentCapstoneTestCase
 {
+    public RecordingLogger $logger;
+
     protected function serverOverrides(): array
     {
         return ['firefly.security.oauth2.server.oidc_client_registration_endpoint' => '/connect/register'] + parent::serverOverrides();
+    }
+
+    protected function defineFireflyEnvironment(Application $app): void
+    {
+        parent::defineFireflyEnvironment($app);
+
+        $this->logger = new RecordingLogger;
+        $app->instance(LoggerInterface::class, $this->logger);
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->logger->reset();
     }
 }
 
@@ -51,6 +75,15 @@ it('publishes the endpoint, registers a client for a bearer with client.create, 
     $clients = $this->app()->make(RegisteredClientRepository::class);
     $stored = $clients->findByClientId($body['client_id']);
     expect($stored?->clientSecret)->toStartWith('{bcrypt}')->and($stored?->clientSecret)->not->toContain($body['client_secret']);
+
+    // The row records WHAT was created; only the log records WHO created it — the client whose bearer paid, the
+    // principal it belonged to and the authorization that was spent, which is what an incident response asks for
+    // when a client.create bearer leaks, and what makes the single-use rule observable at all.
+    $lines = $this->logger->mentioning('OAuth2 client ['.$body['client_id'].'] registered');
+    expect($lines)->toHaveCount(1)
+        ->and($lines[0]['level'])->toBe('info')
+        ->and($lines[0]['message'])->toContain('by client [svc]')->toContain('for [svc]')->toContain('with authorization [')
+        ->and($lines[0]['message'])->not->toContain($body['client_secret']);
 
     // The new client authenticates with client_secret_post and completes the code flow.
     $this->signIn();

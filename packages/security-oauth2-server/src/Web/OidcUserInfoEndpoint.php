@@ -7,6 +7,7 @@ namespace Firefly\Security\OAuth2\Server\Web;
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
+use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Error\OAuth2AuthenticationException;
 use Firefly\Security\OAuth2\Server\Error\OAuth2ErrorCodes;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
@@ -24,6 +25,16 @@ use Symfony\Component\HttpFoundation\Response;
  * `insufficient_scope` (403) naming the scope. The endpoint verifies the token ITSELF, so it works whether or
  * not the resource-server filter is on — and when that filter is on in the same application it examines the
  * bearer first and refuses an invalid one before this endpoint sees it.
+ *
+ * THE SCOPE IS NOT THE WHOLE TEST: THERE MUST BE AN END USER. OIDC Core §5.3 defines UserInfo as claims about
+ * the authenticated End-User, and Spring's OidcUserInfoAuthenticationProvider refuses (`invalid_token`) an
+ * authorization that has no resource owner. A client_credentials authorization has none — RFC 6749 §4.4 is the
+ * client asking in its OWN name, and OAuth2Authorization::create() therefore sets `principalName` to the client
+ * id — so a confidential client that registered both the grant and the `openid` scope (a combination nothing
+ * forbids) would otherwise be answered 200 with `sub` = its client id, which is the identifier a relying party
+ * keys accounts on. The test is the GRANT TYPE and not the presence of an id token: this server's
+ * OAuth2TokenGenerator mints an id token for any grant whose scopes include `openid`, client credentials
+ * included, so `token(IdToken) !== null` would pass for exactly the authorization this refuses.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -63,6 +74,9 @@ final class OidcUserInfoEndpoint implements OAuth2Endpoint
         $scopes = is_array($token->metadata['scopes'] ?? null) ? $token->metadata['scopes'] : $authorization->authorizedScopes;
         if (! in_array('openid', $scopes, true)) {
             return BearerToken::challenge('The access token has no openid scope.', 403, OAuth2ErrorCodes::INSUFFICIENT_SCOPE, 'openid');
+        }
+        if ($authorization->authorizationGrantType === AuthorizationGrantType::ClientCredentials) {
+            return BearerToken::challenge('The access token was not issued to an end user.');
         }
 
         /** @var array<string,mixed> $claims */
