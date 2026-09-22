@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use Firefly\Admin\Web\AdminPage;
-use Firefly\Tests\Browser\Support\BrowserTestCase;
+use Firefly\Tests\Browser\Support\AdminDashboardBrowserTestCase;
 
-pest()->extend(BrowserTestCase::class);
+pest()->extend(AdminDashboardBrowserTestCase::class);
 
 /**
  * Every dashboard page, by slug → the <h1> it renders. Pinned by hand so a page that silently rendered
@@ -22,6 +22,7 @@ $pages = [
     'conditions' => 'Conditions',
     'mappings' => 'Routes',
     'scheduled' => 'Scheduled tasks',
+    'oauth2' => 'OAuth2 clients',
     'env' => 'Environment',
     'configprops' => 'Config properties',
     'caches' => 'Caches',
@@ -33,14 +34,14 @@ $pages = [
 ];
 
 it('covers every page the dashboard declares', function () use ($pages): void {
-    /** @var BrowserTestCase $this */
+    /** @var AdminDashboardBrowserTestCase $this */
     $declared = array_map(static fn (AdminPage $page): string => $page->slug, AdminPage::all());
 
     expect(array_keys($pages))->toEqualCanonicalizing($declared);
 });
 
 it('renders the dashboard page', function (string $slug, string $heading): void {
-    /** @var BrowserTestCase $this */
+    /** @var AdminDashboardBrowserTestCase $this */
     visit('/firefly'.($slug === '' ? '' : '/'.$slug))
         // The navigation's own HTTP status: the admin answers its unavailable / no-such-page / data-disabled
         // views with a 404 and the framework's error page prints the request path, so text alone cannot
@@ -58,7 +59,7 @@ it('renders the dashboard page', function (string $slug, string $heading): void 
 })->with(array_map(static fn (string $slug, string $heading): array => [$slug, $heading], array_keys($pages), $pages));
 
 it('switches the theme with the toolbar button and remembers it across a reload', function (): void {
-    /** @var BrowserTestCase $this */
+    /** @var AdminDashboardBrowserTestCase $this */
     $page = visit('/firefly');
 
     $page->assertAttribute('html[data-theme]', 'data-theme', 'auto')
@@ -74,7 +75,7 @@ it('switches the theme with the toolbar button and remembers it across a reload'
 });
 
 it('renders the overview in dark mode', function (): void {
-    /** @var BrowserTestCase $this */
+    /** @var AdminDashboardBrowserTestCase $this */
     visit('/firefly')
         ->inDarkMode()
         ->assertSee('Overview')
@@ -83,7 +84,7 @@ it('renders the overview in dark mode', function (): void {
 });
 
 it('renders the overview at phone width, with the menu still reachable', function (): void {
-    /** @var BrowserTestCase $this */
+    /** @var AdminDashboardBrowserTestCase $this */
     visit('/firefly')
         ->on()->mobile()
         ->assertSee('Overview')

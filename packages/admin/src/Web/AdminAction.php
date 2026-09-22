@@ -426,6 +426,11 @@ final readonly class AdminAction
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
+            // Shape verified against OAuth2ClientsEndpoint: {issuer: string, clients: list<row>}.
+            'oauth2' => [
+                'issuer' => is_string($this->payload('oauth2clients')['issuer'] ?? null) ? $this->payload('oauth2clients')['issuer'] : '',
+                'clients' => $this->listOf('oauth2clients', 'clients'),
+            ],
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
             // and caches answers {default: name|null, caches: {name => row}}.
