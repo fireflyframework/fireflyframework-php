@@ -380,6 +380,8 @@ return [
                  | `/.well-known/jwks.json` at `app.url`, or at a loopback address on `firefly.server.port`),
                  | and `remote` otherwise. A server must never fetch its own keys from itself over HTTP: on a
                  | single-process dev server that nested request is a deadlock.
+                 | With firefly/security-oauth2-server enabled in this application, say `local`: the server binds
+                 | that bean and publishes at `/oauth2/jwks`, a path `auto` does not recognise as its own.
                 */
                 'jwks_source' => 'auto',
 

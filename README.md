@@ -761,6 +761,7 @@ its own installable Composer package with its own tests and its own [module guid
 | Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
+| Security | [OAuth2 Authorization Server](docs/modules/security-oauth2-server.md) — registered clients, auth code + PKCE with consent, client credentials, refresh rotation, RS256 JWTs, JWKS, discovery, introspection, revocation, userinfo, logout | `firefly/security-oauth2-server` |
 | Operations | [Actuator](docs/modules/actuator.md) — health, info, env, beans, conditions, mappings | `firefly/actuator` |
 | Operations | [Observability](docs/modules/observability.md) — Prometheus-format metrics with histogram buckets, `/actuator/prometheus`, HTTP exchanges | `firefly/observability` |
 | Operations | [Tracing](docs/modules/tracing.md) — `Tracer` port, OpenTelemetry adapter, W3C `traceparent` over HTTP/CQRS/EDA | `firefly/observability` |
@@ -815,9 +816,10 @@ still ahead, accurately:
 - **More actuator endpoints.** `/httpexchanges`, `/caches`, `/configprops`, `/refresh`, `/threaddump`, and
   `/shutdown` are not yet implemented; there is also no second management port (an Octane second-listener
   is one option under consideration).
-- **Deeper security surfaces.** An OAuth2 authorization server, OAuth2 client/login, and real IdP adapters
+- **Deeper security surfaces.** OAuth2 client/login and real IdP adapters
   (Keycloak/Cognito/Entra/internal-db, MFA) are deferred to their own future packages, matching the Java
-  Firefly Framework's module topology. Generalising `#[PreAuthorize]` to *any* bean method (today it's
+  Firefly Framework's module topology. The authorization server shipped as `firefly/security-oauth2-server`.
+  Generalising `#[PreAuthorize]` to *any* bean method (today it's
   enforced at the CQRS bus and the controller dispatcher) is a flagged spike, not yet scheduled.
 - **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event

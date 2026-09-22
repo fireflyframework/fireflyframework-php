@@ -43,7 +43,7 @@ is a worse menu than four short ones.
 | Wiring | Conditions | `/firefly/conditions` | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `/firefly/mappings` | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `/firefly/scheduled` | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
-| Wiring | OAuth2 clients | `/firefly/oauth2` | `oauth2clients` | The clients registered with this application's authorization server, their grants and scopes, and the authorizations alive for each |
+| Wiring | OAuth2 clients | `/firefly/oauth2` | `oauth2clients` | The clients registered with this application's [authorization server](security-oauth2-server.md), their grants and scopes, and the authorizations alive for each — hidden while the package is absent |
 | Configuration | Environment | `/firefly/env` | `env` | Resolved `firefly.*` configuration, flattened to dotted keys, with secrets masked |
 | Configuration | Config properties | `/firefly/configprops` | `configprops` | Every `#[ConfigProperties]` DTO the application bound, with the values it resolved |
 | Configuration | Caches | `/firefly/caches` | `caches` | The cache stores this application has configured |

@@ -57,6 +57,7 @@ nav:
           - CQRS (Command/Query): modules/cqrs.md
       - Security:
           - Security: modules/security.md
+          - OAuth2 Authorization Server: modules/security-oauth2-server.md
       - Operations:
           - Actuator: modules/actuator.md
           - Observability: modules/observability.md

@@ -41,6 +41,10 @@ zero boot reflection.
   *different* audience would otherwise be accepted). Both opt-in, both establish and clear the `SecurityContext`
   per request. Neither replaces a principal an outer filter — the session persistence filter, a test's acting
   principal — already established.
+- **Issuing tokens** is the sibling package [`firefly/security-oauth2-server`](security-oauth2-server.md): an OAuth 2.1 /
+  OpenID Connect provider inside the application, built on the session-held principal, the login page, the entry
+  point, `SessionCsrf`, the `PasswordEncoder` and the `JwksDocumentSource` port above — so `jwks_source: local`
+  makes the same application its own resource server.
 
 **JWT/OAuth2 are mutually exclusive.** Enabling both `firefly.security.jwt.enabled` and
 `firefly.security.oauth2.resource_server.enabled` is refused at **boot** (`ConfigurationException`, fail-closed): the
@@ -294,11 +298,14 @@ the port any package can add a resolver to — whether or not the master flag is
 | -90 | `JwtAuthenticationFilter` |
 | -85 | `OAuth2ResourceServerFilter` |
 | -83 | `RememberMeAuthenticationFilter` |
+| -82 | `OAuth2AuthorizationServerFilter` (firefly/security-oauth2-server) |
 | -80 | `CsrfFilter` |
 | -70 | `HttpSecurityFilter` |
 
 Every filter clears `SecurityContextHolder` on exit in a `finally`, so nothing bleeds into the next request under
-Octane; the persistence filter is the outermost and the last to clear.
+Octane; the persistence filter is the outermost and the last to clear. The authorization server's filter answers
+its endpoints ahead of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none
+of its endpoints needs an `http.rules` entry.
 
 ## Configuration (`firefly.security.*`, snake_case)
 
@@ -417,7 +424,8 @@ injection, the Eloquent driver) runs through the real HTTP pipeline.
 
 ## Known-latent
 
-The OAuth2 authorization server, OAuth2 client/login, real IdP adapters and MFA are the next waves. A `#[PreFilter]` on
+The OAuth2 authorization server is [its own package](security-oauth2-server.md); OAuth2 client/login, real IdP
+adapters and MFA are the next waves. A `#[PreFilter]` on
 a controller action cannot be applied by the dispatcher (it cannot rewrite the arguments it resolved), so the scan
 refuses it outright rather than evaluate and discard — put it on the service the action calls; likewise a
 `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no stereotype is refused, because no proxy and no

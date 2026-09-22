@@ -16,7 +16,8 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
 - `/actuator/beans`, `/actuator/conditions`, `/actuator/mappings`, `/actuator/loggers` (GET/POST), `/actuator/scheduledtasks`
 - `/actuator/metrics`, `/actuator/prometheus`, `/actuator/httpexchanges`, `/actuator/process` — supplied by
   `firefly/observability` when installed
-- `/actuator/oauth2clients` — supplied by `firefly/security-oauth2-server` when installed and enabled (both
+- `/actuator/oauth2clients` — supplied by
+  [`firefly/security-oauth2-server`](security-oauth2-server.md) when installed and enabled (both
   `firefly.security.enabled` and `firefly.security.oauth2.server.enabled`): every registered client with its
   grants, scopes, redirect URIs, settings and live authorization count, never a secret. The counts are
   **per-process** on the default `memory` authorizations driver — a map rebuilt in every PHP worker — which is

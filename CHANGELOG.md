@@ -157,6 +157,39 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   `InteractiveAuthenticationSuccessEvent`, `AuthenticationFailureBadCredentials/Locked/DisabledEvent`,
   `LogoutSuccessEvent`, `AuthorizationDeniedEvent`) published through the context port. Every key defaults to off.
 
+- **`packages/security-oauth2-server` — an OAuth 2.1 / OpenID Connect 1.0 authorization server inside the
+  application (wave C), Spring Authorization Server's shape on the security core.** Registered clients from a
+  validated config map or Eloquent (`RegisteredClientRepository`), the authorization-code grant with PKCE (S256
+  only), the framework's own consent page (or `consent.view`), single-use codes, client credentials, refresh
+  tokens with rotation and reuse detection (a replayed token revokes the family), RS256/ES256 JWT or opaque
+  reference access tokens with an `OAuth2TokenCustomizer` port, id tokens (`nonce`, `auth_time`, `sid`,
+  `at_hash`), signing keys with rotation (`jwt.previous_keys`, `php artisan firefly:oauth2:keys`), JWKS published
+  through the security core's `JwksDocumentSource` so `jwks_source: local` makes the application its own resource
+  server, RFC 8414 / OIDC discovery, RFC 7662 introspection, RFC 7009 revocation, OIDC userinfo
+  (`OidcUserInfoMapper`), RP-initiated logout through the same `LogoutHandler` the logout filter uses, RFC 7591
+  registration on a single-use initial access token, an `OAuth2AuthorizationService` with memory
+  and Eloquent drivers (tokens stored by SHA-256 hash only), a scheduled purge on the framework's own schedule, a
+  per-client rate limit over firefly/resilience, and every protocol error as the RFC 6749 document or the
+  redirect-with-error. One filter at `-82` answers every endpoint ahead of `CsrfFilter` and
+  `HttpSecurityFilter`, so deny-by-default rules need no entry, and the boot refuses every pairing that would be
+  a dead end (no master flag, no session security, `jwt.enabled`, `http_basic.enabled`, no signing key, a client
+  block that could not authenticate or redirect, dynamic registration over a store that forgets, a rate limit
+  with no store). Every key under `firefly.security.oauth2.server.*` defaults to off.
+
+- **`packages/security-oauth2-server` — `/actuator/oauth2clients`, and `packages/admin` — the OAuth2 clients
+  page** (`/firefly/oauth2`, group Wiring): every registered client with its grants, scopes and live
+  authorization count, read in-process, never a secret — with PKCE reported both as registered and as enforced,
+  and the counts qualified by `authorizations.processLocal` so a per-process zero is not read as "nobody holds a
+  token".
+
+- **`packages/cli` — `firefly:oauth2:keys`.** Generates the server's private key (RSA 2048 or `--algorithm=ES256`)
+  into `storage/oauth2/private.pem` with owner-only permissions, or prints it with `--print`.
+
+- **`packages/testing` — `OAuth2ServerTestClient`.** `authorize()`, `approveConsent()`, `obtainCode()`,
+  `exchangeCode()`, `clientCredentials()`, `refresh()`, `introspect()`, `revoke()`, `userInfo()`, `tokens()`
+  against the application's own server; the browser suite drives the whole authorization-code flow in
+  Chromium (`tests/Browser/OAuth2AuthorizationCodeTest.php`).
+
 - **`packages/data` — `MethodInterceptor`, `MethodInvocation`, `Advice`, `AdviceSource`, `ProxyPlan`,
   `ProxyPlanner`, `InterceptorRegistry`.** The transactional proxy generalised into an ordered interceptor chain any
   package can contribute to; `firefly:cache` compiles `proxy-plan.php`.
