@@ -1,5 +1,13 @@
 site_name: LaraFly — Firefly Framework for PHP
 site_description: Spring Boot's cohesion, native to Laravel.
+# The published site (GitHub Pages, from the gh-pages branch `mkdocs gh-deploy` writes). site_url is what
+# gives every page a canonical link and the search index its absolute paths; without it Material emits
+# relative canonicals and a page opened from a search engine can resolve its own links to the wrong host.
+site_url: https://fireflyframework.github.io/fireflyframework-php/
+repo_url: https://github.com/fireflyframework/fireflyframework-php
+repo_name: fireflyframework/fireflyframework-php
+edit_uri: edit/main/docs/
+copyright: Apache-2.0 © Firefly Software Solutions Inc.
 # Internal design docs (specs/plans) live under docs/superpowers/ and must never
 # be built into the published site. They are also git-ignored from the repo.
 exclude_docs: |
@@ -8,8 +16,11 @@ exclude_docs: |
   README.md
 theme:
   name: material
+  icon:
+    repo: fontawesome/brands/github
   features:
     - navigation.sections
+    - navigation.top
     - content.code.copy
 markdown_extensions:
   - admonition
