@@ -15,6 +15,9 @@ use DateTimeImmutable;
  *
  * save() replaces the record with the same id; an implementation strips the token values before writing
  * (OAuth2Authorization::withoutTokenValues), so what findById() returns never carries one.
+ *
+ * processLocal() is on the INTERFACE for the reason HttpExchangeRecorder declares its own storage()/processLocal()
+ * pair: the surface that prints a count has to be able to say what the count MEANS, and only the store knows.
  */
 interface OAuth2AuthorizationService
 {
@@ -32,4 +35,23 @@ interface OAuth2AuthorizationService
 
     /** Delete every authorization whose last token expired before $now; the number removed. */
     public function purgeExpired(DateTimeImmutable $now): int;
+
+    /**
+     * True when the authorizations live only in the CURRENT PHP process — when a reader in another process
+     * (every reader, under php-fpm) counts none of what this one saved.
+     *
+     * countActiveForClient() is published per client by /actuator/oauth2clients and rendered in the dashboard's
+     * Active column, and a number that is silently this worker's alone is not a smaller truth but the opposite
+     * one: on a per-process store every client reads 0 in the process that renders the page while the workers
+     * beside it hold hundreds, and that 0 is read exactly when an operator is asking why a client "cannot get a
+     * token". So the store says which kind it is, and the surfaces print the caveat rather than infer it.
+     *
+     * ASKED OF THE PORT, NEVER GUESSED FROM THE IMPLEMENTATION. The bean carries #[ConditionalOnMissingBean] and
+     * `authorizations.driver` therefore names nothing once an application binds a service of its own, so a
+     * driver-keyed flag would warn it about a store it does not use — and an `instanceof` test against the
+     * shipped memory class is no better in the other direction: an APCu or static-map store, a test double or a
+     * decorator is process-local without being that class, and would be published as durable. Only the store
+     * knows, so only the store answers.
+     */
+    public function processLocal(): bool;
 }

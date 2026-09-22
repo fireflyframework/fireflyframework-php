@@ -74,6 +74,12 @@ final class InMemoryOAuth2AuthorizationService implements OAuth2AuthorizationSer
         return $count;
     }
 
+    /** A map on this object: nothing it holds outlives the process, and no other process ever sees it. */
+    public function processLocal(): bool
+    {
+        return true;
+    }
+
     public function purgeExpired(DateTimeImmutable $now): int
     {
         $removed = 0;

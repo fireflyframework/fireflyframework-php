@@ -71,6 +71,14 @@ it('renders the Clients panel for an admin, read in-process, with the live autho
         // request without a code_challenge. Its issuance cell is the one without `consent`, so this string
         // belongs to that row alone.
         ->assertSee('<td class="dim">self_contained · 300s · PKCE</td>', false)
+        // web-app holds the authorization_code grant and the stock consent default, so it carries both.
+        ->assertSee('<td class="dim">self_contained · 300s · PKCE · consent</td>', false)
+        // …and svc carries NEITHER. It is registered for client_credentials only: it never sends a
+        // code_challenge and never reaches a consent screen, so the two rules do not describe it. Both
+        // defaults are on, so a cell built from them would read `· PKCE · consent` beside a machine client
+        // and hand the operator two requirements to check that nothing in the server enforces for it — on
+        // the page opened to answer why a client cannot get a token.
+        ->assertSee('<td class="dim">self_contained · 300s</td>', false)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::WEB_APP_SECRET)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::SVC_SECRET);
 

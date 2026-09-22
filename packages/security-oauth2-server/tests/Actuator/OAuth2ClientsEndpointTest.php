@@ -13,6 +13,7 @@ use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Eloquent\EloquentOAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Eloquent\OAuth2AuthorizationModelRepository;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
+use Firefly\Security\OAuth2\Server\Tests\Fixtures\OwnAuthorizationStore\OwnProcessLocalOAuth2AuthorizationService;
 
 it('lists every client with its grants, scopes, settings and live authorization count, and never a secret', function () {
     $settings = new AuthorizationServerSettings(issuer: 'https://issuer.test');
@@ -45,7 +46,14 @@ it('lists every client with its grants, scopes, settings and live authorization 
             'requireProofKey' => false, 'requiresProofKey' => true, 'requireAuthorizationConsent' => true,
             'accessTokenFormat' => 'self_contained', 'accessTokenTtl' => 300, 'activeAuthorizations' => 1,
         ])
-        ->and($svc['activeAuthorizations'] ?? null)->toBe(0)
+        // client_credentials only: PKCE and consent are the authorization-code path's rules and describe
+        // this client not at all, so the payload says "does not apply" rather than reporting the stock
+        // defaults of two requirements it never meets and is never refused for.
+        ->and($svc)->toMatchArray([
+            'clientId' => 'svc', 'grantTypes' => ['client_credentials'],
+            'requireProofKey' => null, 'requiresProofKey' => null, 'requireAuthorizationConsent' => null,
+            'activeAuthorizations' => 0,
+        ])
         // The counts are the memory driver's, so the payload says whose they are.
         ->and(is_array($body) ? $body['authorizations'] : null)->toBe(['processLocal' => true])
         ->and(json_encode($body))->not->toContain('very-secret');
@@ -69,9 +77,15 @@ function oauth2ClientsProcessLocal(OAuth2ClientsEndpoint $endpoint): ?bool
  * InMemoryOAuth2AuthorizationService is a map rebuilt in every process, so under php-fpm or Octane the worker
  * rendering this payload has issued no tokens of its own and every `activeAuthorizations` reads 0 while the
  * workers beside it hold hundreds — the same trap HttpExchangesEndpoint publishes `storage`/`processLocal`
- * for. Judged on the RESOLVED service, never on `authorizations.driver`: OAuth2AuthorizationService carries
- * #[ConditionalOnMissingBean], so an application that binds a durable service of its own leaves that key
+ * for. ASKED OF the resolved service, never derived from `authorizations.driver`: OAuth2AuthorizationService
+ * carries #[ConditionalOnMissingBean], so an application that binds a service of its own leaves that key
  * naming nothing, and a driver-keyed flag would warn it about a store it does not use.
+ *
+ * ASKED OF THE PORT, which is what the third arm is for: a store an application bound itself, per-process and
+ * NOT InMemoryOAuth2AuthorizationService. `$service instanceof InMemoryOAuth2AuthorizationService` passes the
+ * first two arms and fails that one — it publishes a static-map store, an APCu store, a test double or a
+ * decorator over the memory driver as durable, and the dashboard then prints one worker's `0` in the Active
+ * column with no caveat beside it.
  *
  * No clients registered on purpose: the flag is a property of the service, and counting against the Eloquent
  * one would need a database to say something this test is not asking about.
@@ -82,17 +96,20 @@ it('publishes whether the authorizations it counted are the rendering process\'s
 
     $memory = new OAuth2ClientsEndpoint($clients, new InMemoryOAuth2AuthorizationService, $settings);
     $durable = new OAuth2ClientsEndpoint($clients, new EloquentOAuth2AuthorizationService(new OAuth2AuthorizationModelRepository), $settings);
+    $own = new OAuth2ClientsEndpoint($clients, new OwnProcessLocalOAuth2AuthorizationService, $settings);
 
     expect(oauth2ClientsProcessLocal($memory))->toBeTrue()
-        ->and(oauth2ClientsProcessLocal($durable))->toBeFalse();
+        ->and(oauth2ClientsProcessLocal($durable))->toBeFalse()
+        ->and(oauth2ClientsProcessLocal($own))->toBeTrue();
 });
 
 /**
- * The PKCE pair of every row, keyed by client id: what the client registered and what the endpoints enforce.
+ * The PKCE pair of every row, keyed by client id: what the client registered and what the endpoints enforce —
+ * or `null` for both when the client has no authorization_code grant and neither of them describes it.
  * Narrowed here rather than at each expectation because the payload is `array<mixed>` to PHPStan at level max.
  *
  * @param  array<string,mixed>  $clients
- * @return array<string, array{registered: bool, effective: bool}>
+ * @return array<string, array{registered: ?bool, effective: ?bool}>
  */
 function oauth2ClientsPkce(AuthorizationServerSettings $settings, array $clients): array
 {
@@ -106,9 +123,11 @@ function oauth2ClientsPkce(AuthorizationServerSettings $settings, array $clients
         if (! is_array($row) || ! is_string($row['clientId'] ?? null)) {
             continue;
         }
+        $registered = $row['requireProofKey'] ?? null;
+        $effective = $row['requiresProofKey'] ?? null;
         $pkce[$row['clientId']] = [
-            'registered' => ($row['requireProofKey'] ?? null) === true,
-            'effective' => ($row['requiresProofKey'] ?? null) === true,
+            'registered' => is_bool($registered) ? $registered : null,
+            'effective' => is_bool($effective) ? $effective : null,
         ];
     }
 
@@ -124,6 +143,11 @@ it('reports the PKCE the endpoints enforce beside the switch the client register
         // Public: `none` is its only method, so AuthorizationEndpoint refuses it without a code_challenge
         // even with both server-wide rules off — nothing else protects its code.
         'public-spa' => ['client_authentication_methods' => ['none'], 'authorization_grant_types' => ['authorization_code'], 'redirect_uris' => ['https://c.test/cb']],
+        // A machine client: no authorization_code grant, so it never sends a code_challenge and is never
+        // refused for the lack of one. requiresProofKey() does not look at the grants and `require_pkce`
+        // defaults to on, so the effective field would otherwise read TRUE for it and the dashboard would
+        // print `PKCE` beside a client no PKCE rule can reach.
+        'machine' => ['client_secret' => '{noop}s', 'authorization_grant_types' => ['client_credentials']],
     ];
 
     // A stock installation: require_pkce and require_proof_key_for_public_clients both default to true, so
@@ -132,10 +156,12 @@ it('reports the PKCE the endpoints enforce beside the switch the client register
         'web-app' => ['registered' => false, 'effective' => true],
         'strict-app' => ['registered' => true, 'effective' => true],
         'public-spa' => ['registered' => false, 'effective' => true],
+        'machine' => ['registered' => null, 'effective' => null],
     ])
         ->and(oauth2ClientsPkce(new AuthorizationServerSettings(requirePkce: false, requireProofKeyForPublicClients: false), $clients))->toBe([
             'web-app' => ['registered' => false, 'effective' => false],
             'strict-app' => ['registered' => true, 'effective' => true],
             'public-spa' => ['registered' => false, 'effective' => true],
+            'machine' => ['registered' => null, 'effective' => null],
         ]);
 });

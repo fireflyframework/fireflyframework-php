@@ -41,10 +41,17 @@
                             // `require_proof_key_for_public_clients` both default to on, so the registered
                             // switch reads "no PKCE" for a client whose every authorization request is in fact
                             // refused without a code_challenge — the first thing this page is opened to explain.
-                            if ($client['requiresProofKey'] ?? false) {
+                            //
+                            // Strictly `=== true`, because both keys are `null` for a client with no
+                            // authorization_code grant: PKCE and consent are that path's rules, so a machine
+                            // client sends no code_challenge and reaches no consent screen, and the endpoint
+                            // says "does not apply" rather than reporting a default nothing enforces. A
+                            // truthy test would print both labels beside it and send the operator checking
+                            // two requirements that are not there.
+                            if (($client['requiresProofKey'] ?? null) === true) {
                                 $issuance[] = 'PKCE';
                             }
-                            if ($client['requireAuthorizationConsent'] ?? false) {
+                            if (($client['requireAuthorizationConsent'] ?? null) === true) {
                                 $issuance[] = 'consent';
                             }
                             $active = is_numeric($client['activeAuthorizations'] ?? null) ? (int) $client['activeAuthorizations'] : 0;
@@ -71,14 +78,15 @@
             </div>
             @if ($processLocal)
                 {{-- Said where the number is read, not in the release notes. Phrased as the store this
-                     process RESOLVED rather than as the value of the driver key, because that is what the
-                     endpoint reports and the two can differ — an application may bind a service of its
-                     own, and then the key names nothing. --}}
+                     process RESOLVED rather than as the value of the driver key or the name of a shipped
+                     class, because what the endpoint reports is the store's own processLocal() — an
+                     application may bind a per-process service of its own, and then neither the key nor the
+                     class says anything. --}}
                 <p class="note"><strong>Active counts this worker only.</strong> The authorization store this
-                   process resolved is the in-memory one — a map rebuilt in every PHP process — so these are
-                   the authorizations held by the worker that rendered this page, and under php-fpm or Octane
-                   the next request lands on a different one. A client with live tokens elsewhere therefore
-                   shows <code>—</code> here. Set
+                   process resolved keeps its authorizations in the process — a map rebuilt in every PHP
+                   worker — so these are the ones held by the worker that rendered this page, and under
+                   php-fpm or Octane the next request lands on a different one. A client with live tokens
+                   elsewhere therefore shows <code>—</code> here. Set
                    <code>firefly.security.oauth2.server.authorizations.driver</code> to <code>eloquent</code>
                    (and run the <code>oauth2_authorizations</code> migration), or bind a durable
                    <code>OAuth2AuthorizationService</code> of your own, for counts that describe the

@@ -60,6 +60,12 @@ final class EloquentOAuth2AuthorizationService implements OAuth2AuthorizationSer
         return $count;
     }
 
+    /** One `oauth2_authorizations` table, read by every worker: a count taken here describes the deployment. */
+    public function processLocal(): bool
+    {
+        return false;
+    }
+
     public function purgeExpired(DateTimeImmutable $now): int
     {
         return $this->models->purgeExpired($now);

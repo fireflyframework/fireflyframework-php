@@ -10,7 +10,6 @@ use Firefly\Actuator\Endpoint\EndpointRequest;
 use Firefly\Actuator\Endpoint\EndpointResponse;
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
-use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\ClientAuthenticationMethod;
@@ -41,6 +40,17 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * renders the effective field; the registered one stays in the payload because "this client demands PKCE even
  * if you turn the server-wide rule off" is a different fact, and only the pair tells them apart.
  *
+ * BOTH PKCE FIELDS AND `requireAuthorizationConsent` DESCRIBE THE AUTHORIZATION-CODE PATH AND ONLY IT, so a
+ * client that cannot take that path publishes `null` for all three rather than a switch's default. Nothing
+ * else in the server reads them: `requiresProofKey()` is consulted by AuthorizationEndpoint and by
+ * AuthorizationCodeGrant, `requireAuthorizationConsent` by AuthorizationEndpoint alone. Yet
+ * requiresProofKey() does not look at the client's grants, and `require_pkce` and `consent.required` both
+ * default to on — so a client registered for `client_credentials` only, which never sends a `code_challenge`
+ * and never reaches a consent screen, would otherwise be published as requiring both and the dashboard would
+ * print `· PKCE · consent` beside it. Two rules the operator can then spend an afternoon checking, on the very
+ * page opened to explain why a client cannot get a token. `null` says "this does not apply to this client",
+ * which is the answer; the keys stay present rather than being omitted so every row keeps one shape.
+ *
  * `authorizations.processLocal` IS PUBLISHED BESIDE THE COUNTS, for the reason HttpExchangesEndpoint publishes
  * its own `storage`/`processLocal` pair: a number that is silently this worker's alone sends an operator
  * chasing a bug that does not exist. `authorizations.driver` defaults to `memory`, which resolves to
@@ -53,11 +63,16 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * and `authorizations.driver: eloquent` (the oauth2_authorizations table, shared by every worker) is what
  * makes them describe the deployment.
  *
- * THE FLAG IS THE RESOLVED SERVICE, NOT THE DRIVER KEY, the same rule OAuth2ServerWiringPass refusal (6)
- * states for the client store: `oauth2AuthorizationService()` carries #[ConditionalOnMissingBean], so an
- * application may bind a durable service of its own (Redis, an internal API) and then `authorizations.driver`
- * names nothing. Only InMemoryOAuth2AuthorizationService is the per-process map, so only it reports
- * `processLocal: true` — a driver-keyed flag would warn such an application about a store it does not use.
+ * THE FLAG IS THE STORE'S OWN ANSWER, NOT THIS ENDPOINT'S GUESS: it is
+ * OAuth2AuthorizationService::processLocal(), declared on the port exactly as HttpExchangeRecorder declares
+ * `storage()`/`processLocal()`, and printed here verbatim the way HttpExchangesEndpoint prints what its
+ * recorder says. The rule OAuth2ServerWiringPass refusal (6) states for the client store holds here too —
+ * `oauth2AuthorizationService()` carries #[ConditionalOnMissingBean], so an application may bind a service of
+ * its own and `authorizations.driver` then names nothing — and a test on the CONCRETE CLASS fails that
+ * extension point in both directions: a durable Redis store is not the memory class and would be classified
+ * right only by luck, while an APCu or static-map store, a test double, or a decorator wrapping the memory one
+ * is process-local WITHOUT being that class and would be published as durable. The dashboard would then print
+ * `0` in the Active column with no caveat at all — the misreading this pair exists to prevent.
  *
  * `handle()` narrows the contract's `?EndpointResponse` to the non-nullable type (the covariant narrowing
  * BeansEndpoint/InfoEndpoint/HttpExchangesEndpoint use): there is no sub-resource to 404 on, so a body is
@@ -99,7 +114,7 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
 
         return EndpointResponse::json([
             'issuer' => $this->settings->issuer,
-            'authorizations' => ['processLocal' => $this->authorizations instanceof InMemoryOAuth2AuthorizationService],
+            'authorizations' => ['processLocal' => $this->authorizations->processLocal()],
             'clients' => $clients,
         ]);
     }
@@ -109,6 +124,10 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
      */
     private function describe(RegisteredClient $client, DateTimeImmutable $now): array
     {
+        // PKCE and consent are enforced on the authorization-code path and nowhere else, so they are reported
+        // for a client that can take it and published as `null` — does not apply — for one that cannot.
+        $code = $client->supportsGrant(AuthorizationGrantType::AuthorizationCode);
+
         return [
             'id' => $client->id,
             'clientId' => $client->clientId,
@@ -118,9 +137,9 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
             'scopes' => $client->scopes,
             'redirectUris' => $client->redirectUris,
             'postLogoutRedirectUris' => $client->postLogoutRedirectUris,
-            'requireProofKey' => $client->clientSettings->requireProofKey,
-            'requiresProofKey' => $client->requiresProofKey($this->settings),
-            'requireAuthorizationConsent' => $client->clientSettings->requireAuthorizationConsent,
+            'requireProofKey' => $code ? $client->clientSettings->requireProofKey : null,
+            'requiresProofKey' => $code ? $client->requiresProofKey($this->settings) : null,
+            'requireAuthorizationConsent' => $code ? $client->clientSettings->requireAuthorizationConsent : null,
             'accessTokenFormat' => $client->tokenSettings->accessTokenFormat->value,
             'accessTokenTtl' => $client->tokenSettings->accessTokenTtl,
             // Counted in whatever store this process resolved, which on the `memory` driver is the rendering
