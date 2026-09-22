@@ -86,7 +86,9 @@ it('the split matrix covers exactly the 29 publishable units, each mapped to fir
     $expectedLocals[] = 'skeleton';
     sort($expectedLocals);
 
-    expect($expectedLocals)->toHaveCount(29);
+    // 29 packages under packages/* plus the skeleton. The number is spelled out so that adding a package
+    // without adding its split row (or the reverse) fails here rather than silently shipping an unpublished unit.
+    expect($expectedLocals)->toHaveCount(30);
 
     /** @var list<string> $actualLocals */
     $actualLocals = [];

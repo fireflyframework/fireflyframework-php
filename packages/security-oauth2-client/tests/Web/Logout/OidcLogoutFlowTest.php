@@ -12,7 +12,7 @@ use Firefly\Testing\Security\OAuth2\FakeAuthorizationServer;
  * gone afterwards, the provider sends the browser back to the post-logout URI, and the login page shows the
  * signed-out notice — with form login OFF, logout exists because OAuth2 login implies it.
  */
-abstract class OidcLogoutCapstoneTestCase extends OAuth2ClientCapstoneTestCase
+abstract class OidcClientLogoutCapstoneTestCase extends OAuth2ClientCapstoneTestCase
 {
     protected function clientOverrides(): array
     {
@@ -20,10 +20,10 @@ abstract class OidcLogoutCapstoneTestCase extends OAuth2ClientCapstoneTestCase
     }
 }
 
-uses(OidcLogoutCapstoneTestCase::class, SecurityFlows::class);
+uses(OidcClientLogoutCapstoneTestCase::class, SecurityFlows::class);
 
 it('signs out at the provider too, then lands on the signed-out login page with no session left', function () {
-    /** @var OidcLogoutCapstoneTestCase $this */
+    /** @var OidcClientLogoutCapstoneTestCase $this */
     $callback = $this->signInThroughProvider();
     $token = $this->csrfTokenOf($callback);
 
@@ -53,7 +53,7 @@ it('signs out at the provider too, then lands on the signed-out login page with 
 });
 
 it('is a plain logout without the CSRF token — the provider is never asked', function () {
-    /** @var OidcLogoutCapstoneTestCase $this */
+    /** @var OidcClientLogoutCapstoneTestCase $this */
     $callback = $this->signInThroughProvider();
     $this->forgetSession();
 
