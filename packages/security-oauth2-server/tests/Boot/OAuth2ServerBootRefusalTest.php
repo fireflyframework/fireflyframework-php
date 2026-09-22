@@ -13,6 +13,7 @@ use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerServiceProvider;
 use Firefly\Security\OAuth2\Server\SecurityOAuth2ServerWiringProvider;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Web\OAuth2AuthorizationServerFilter;
+use Firefly\Security\OAuth2\Server\Web\OidcClientRegistrationEndpoint;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
 use Firefly\Security\Web\Basic\HttpBasicFilter;
@@ -189,4 +190,61 @@ it('refuses the rate limiter without a firefly/resilience store at boot, naming 
             'rate_limit' => ['enabled' => true],
         ]],
     ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.rate_limit.enabled is on but no Firefly\Resilience\Store\ResilienceStore is bound');
+});
+
+it('refuses dynamic client registration onto the memory client store, naming both keys — the 201 would hand out credentials nothing could authenticate again', function () {
+    try {
+        OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
+            'enabled' => true,
+            'form_login' => ['enabled' => true],
+            'oauth2' => ['server' => ['enabled' => true, 'oidc_client_registration_endpoint' => '/connect/register']],
+        ]));
+        throw new LogicException('not refused');
+    } catch (ConfigurationException $e) {
+        expect($e->getMessage())->toContain('firefly.security.oauth2.server.oidc_client_registration_endpoint')
+            ->toContain('firefly.security.oauth2.server.clients.driver')
+            ->toContain('eloquent');
+    }
+});
+
+it('accepts dynamic client registration on the eloquent client store, and says nothing about the driver while the endpoint is off', function () {
+    OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true, 'oidc_client_registration_endpoint' => '/connect/register', 'clients' => ['driver' => 'eloquent']]],
+    ]));
+    OAuth2ServerWiringPass::assertRunnable(oauth2ServerConfig([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => ['enabled' => true, 'clients' => ['driver' => 'memory']]],
+    ]));
+
+    expect(true)->toBeTrue();
+});
+
+it('refuses registration onto the memory store through the real web boot, before a single request could be answered', function () {
+    expect(fn () => bootOAuth2ServerWebAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => [
+            'enabled' => true,
+            'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')],
+            'oidc_client_registration_endpoint' => '/connect/register',
+        ]],
+    ]))->toThrow(ConfigurationException::class, 'firefly.security.oauth2.server.clients.driver');
+
+    // The same recipe on the eloquent driver boots, and the endpoint has its address.
+    /** @var ApplicationContext $context */
+    $context = bootOAuth2ServerWebAppWith([
+        'enabled' => true,
+        'form_login' => ['enabled' => true],
+        'oauth2' => ['server' => [
+            'enabled' => true,
+            'jwt' => ['signing_key' => KeyPairGenerator::generate('RS256')],
+            'oidc_client_registration_endpoint' => '/connect/register',
+            'clients' => ['driver' => 'eloquent'],
+        ]],
+    ])->make(ApplicationContext::class);
+
+    expect($context->has(OidcClientRegistrationEndpoint::class))->toBeTrue();
 });

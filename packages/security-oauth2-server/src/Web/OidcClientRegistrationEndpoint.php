@@ -9,6 +9,7 @@ use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
+use Firefly\Security\OAuth2\Server\Authorization\OAuth2TokenType;
 use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\ClientAuthenticationMethod;
 use Firefly\Security\OAuth2\Server\Client\ClientSettings;
@@ -33,8 +34,32 @@ use Symfony\Component\HttpFoundation\Response;
  * the `client.create` scope (Spring's rule — a client registered with that scope obtains it through client
  * credentials) registers a client from `client_name`, `redirect_uris`, `post_logout_redirect_uris`,
  * `grant_types`, `token_endpoint_auth_method` and `scope`. The ids are random; the secret is returned ONCE,
- * in the 201 body, and stored encoded. Metadata that would not authenticate or redirect safely is
- * `invalid_client_metadata` / `invalid_redirect_uri` — the same rules a config block meets at boot.
+ * in the 201 body, and stored encoded.
+ *
+ * THE BEARER IS SINGLE-USE. A successful registration invalidates the access token that paid for it — the same
+ * `OAuth2Authorization::withInvalidatedToken()` the revocation endpoint writes — so an initial access token
+ * registers ONE client and a second POST carrying it is `invalid_token` (401). That is Spring's rule
+ * (OidcClientRegistrationAuthenticationProvider invalidates the authorized access token after registering) and
+ * it is what keeps `client.create` from being a licence: without it one bearer would register clients without
+ * limit for its whole TTL, and rotating the secret of the client that obtained it would revoke nothing.
+ * Registering a client that carries `client.create` ITSELF is refused for the same reason — a client with that
+ * scope and the client_credentials grant mints its own registration bearers for ever, and no secret rotation
+ * anywhere reaches it. (The invalidation binds every reader that asks the authorization store, which every
+ * endpoint of this server does; it does not reach a `self_contained` access token presented to some OTHER
+ * resource server, exactly as TokenRevocationEndpoint's docblock qualifies.)
+ *
+ * THE STORE MUST OUTLIVE THE REQUEST. The registered client is written through RegisteredClientRepository, and
+ * the `memory` driver rebuilds itself from the config map in every process — a 201 whose credentials nothing
+ * could ever authenticate. OAuth2ServerWiringPass refuses that pairing at boot (refusal 5), so this endpoint
+ * only ever has an address beside `clients.driver = eloquent`.
+ *
+ * Metadata that would not authenticate or redirect safely is `invalid_client_metadata` / `invalid_redirect_uri`.
+ * The rules are RegisteredClientFactory::assertConsistent() — the ONE rule set every store runs, the same one a
+ * config block meets at boot and the `eloquent` driver re-runs on every read — applied to the BUILT client, so a
+ * rule added there reaches a dynamically registered client instead of becoming a ConfigurationException 500 on
+ * the first read of the row this endpoint just wrote. The redirect-URI checks ahead of it are not a second rule
+ * set: they are a CLASSIFIER, run first only so those failures carry RFC 7591's `invalid_redirect_uri` code
+ * rather than `invalid_client_metadata`.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -68,7 +93,7 @@ final class OidcClientRegistrationEndpoint implements OAuth2Endpoint
             return BearerToken::challenge('A bearer access token with the client.create scope is required.');
         }
         try {
-            [, $token] = BearerToken::resolve($value, $this->jwt, $this->authorizations);
+            [$authorization, $token] = BearerToken::resolve($value, $this->jwt, $this->authorizations);
         } catch (OAuth2AuthenticationException $e) {
             return BearerToken::challenge($e->error()->description, $e->status());
         }
@@ -92,6 +117,12 @@ final class OidcClientRegistrationEndpoint implements OAuth2Endpoint
             throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_CLIENT_METADATA, $e->getMessage()));
         }
 
+        if (in_array(self::SCOPE, $scope, true)) {
+            throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_CLIENT_METADATA, 'scope must not ask for '.self::SCOPE.': a registered client that can register clients would renew that power for ever. Issue an initial access token instead.'));
+        }
+
+        // The CLASSIFIER, not a rule set: assertConsistent() below makes both of these checks again. They run
+        // first only so a bad or missing redirect URI answers RFC 7591's `invalid_redirect_uri` code.
         try {
             if (in_array(AuthorizationGrantType::AuthorizationCode, $grants, true) && $redirectUris === []) {
                 throw new ConfigurationException('redirect_uris is required for the authorization_code grant.');
@@ -124,7 +155,17 @@ final class OidcClientRegistrationEndpoint implements OAuth2Endpoint
             clientSettings: ClientSettings::fromArray([], $this->settings->consentRequired, $id),
             tokenSettings: TokenSettings::defaults($this->settings),
         );
+
+        try {
+            RegisteredClientFactory::assertConsistent($client);
+        } catch (ConfigurationException $e) {
+            throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_CLIENT_METADATA, $e->getMessage()));
+        }
+
         $this->clients->save($client);
+        // One bearer, one client: the authorization is saved with its access token invalidated, so this value is
+        // `invalid_token` from the next request on.
+        $this->authorizations->save($authorization->withInvalidatedToken(OAuth2TokenType::AccessToken));
 
         $document = [
             'client_id' => $clientId,

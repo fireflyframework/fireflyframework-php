@@ -42,11 +42,17 @@ use Firefly\Security\Session\SessionSecuritySettings;
  *      The same dead end as (3), one filter earlier. Refused, naming both keys: the server authenticates its
  *      clients itself. (Spring Authorization Server escapes this by owning a SecurityFilterChain of its own for
  *      the server's endpoints; LaraFly has one chain, so the two cannot share it.)
- *  (5) THE SETTINGS, KEYS AND CLIENTS are resolved now, so a bad algorithm, a missing signing key or a client
+ *  (5) DYNAMIC REGISTRATION ONTO A STORE THAT FORGETS. `oidc_client_registration_endpoint` maps the RFC 7591
+ *      endpoint, which WRITES a client through RegisteredClientRepository; the `memory` driver — the default —
+ *      is the config map rebuilt in every process, so the write lives for the rest of that request and no
+ *      longer. The 201 would hand a relying party a client_id and a client_secret that no later request could
+ *      ever authenticate, with nothing logged and nothing refused. The same shape of dead end as (3) and (4),
+ *      one layer down: the answer is given where it can never be honoured. Refused, naming both keys.
+ *  (6) THE SETTINGS, KEYS AND CLIENTS are resolved now, so a bad algorithm, a missing signing key or a client
  *      block with no redirect URI is a startup failure (each bean refuses in its own constructor), not a 500 on
  *      the first request that needs it. JwtSigningKeys is resolved right after the settings, so an empty or
  *      unloadable signing key refuses the boot with the command that generates one.
- *  (6) THE RATE LIMITER, resolved when `rate_limit.enabled` so a missing firefly/resilience store refuses at
+ *  (7) THE RATE LIMITER, resolved when `rate_limit.enabled` so a missing firefly/resilience store refuses at
  *      boot (the bean names the store and the key), not on the first token request — which would otherwise be a
  *      500 for every client until someone read the log.
  */
@@ -80,7 +86,7 @@ final class OAuth2ServerWiringPass implements BootPass
     }
 
     /**
-     * Refusals (1)–(4), as one static so the rules are testable against a bare Config without a boot; a no-op
+     * Refusals (1)–(5), as one static so the rules are testable against a bare Config without a boot; a no-op
      * while the server is off.
      */
     public static function assertRunnable(Config $config): void
@@ -118,6 +124,17 @@ final class OAuth2ServerWiringPass implements BootPass
                 .'answers every Authorization: Basic header as a user login — a 401 and a failure event — before the server\'s '
                 .'filter (-82) could read a client_secret_basic credential at the token, introspection or revocation endpoint. '
                 .'Turn http_basic.enabled off; the server authenticates its clients itself.'
+            );
+        }
+
+        if ($config->string('firefly.security.oauth2.server.oidc_client_registration_endpoint', '') !== ''
+            && $config->string('firefly.security.oauth2.server.clients.driver', 'memory') !== 'eloquent') {
+            throw new ConfigurationException(
+                'firefly.security.oauth2.server.oidc_client_registration_endpoint is set but '
+                .'firefly.security.oauth2.server.clients.driver is `memory`: the memory driver is the config map rebuilt in every '
+                .'process, so a dynamically registered client would live for the rest of one request and the 201 would hand out a '
+                .'client_id and client_secret nothing could ever authenticate again. Set clients.driver to `eloquent` (and run the '
+                .'oauth2_registered_clients migration), or leave oidc_client_registration_endpoint empty to keep registration off.'
             );
         }
     }

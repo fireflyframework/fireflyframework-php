@@ -7,7 +7,6 @@ namespace Firefly\Security\OAuth2\Server\Web;
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\Core\SecurityContextHolder;
-use Firefly\Security\Event\AuthenticationEventPublisher;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClient;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Error\OAuth2Error;
@@ -15,8 +14,7 @@ use Firefly\Security\OAuth2\Server\Error\OAuth2ErrorCodes;
 use Firefly\Security\OAuth2\Server\Error\OAuth2ErrorResponse;
 use Firefly\Security\OAuth2\Server\Jose\JwtGenerator;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
-use Firefly\Security\Session\SecurityContextRepository;
-use Firefly\Security\Web\RememberMe\RememberMeServices;
+use Firefly\Security\Web\Logout\LogoutHandler;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Psr\Log\LoggerInterface;
@@ -29,10 +27,16 @@ use Throwable;
  * keys (its `exp` ignored — a session usually outlives its id token), must name this issuer and a registered
  * client in `aud`; `client_id`, when sent, must be that client; `post_logout_redirect_uri`, when sent, must be
  * one the client registered (exact); and a signed-in principal other than the hint's `sub` is refused, so a
- * link cannot end someone else's session. Then the session is invalidated, the holder cleared, the remember-me
- * cookie expired when the port is bound, LogoutSuccessEvent published, and the browser sent to the redirect URI
- * (with `state`) or to `/`. Refusals are the RFC 6749 JSON document (400): there is nowhere safe to redirect a
- * request that failed these checks.
+ * link cannot end someone else's session. Then the browser is sent to the redirect URI (with `state`) or to `/`.
+ * Refusals are the RFC 6749 JSON document (400): there is nowhere safe to redirect a request that failed these
+ * checks.
+ *
+ * ENDING THE SESSION IS NOT THIS CLASS'S BUSINESS. It hands the request and the redirect to firefly/security's
+ * LogoutHandler — the same bean LogoutFilter's `POST {logout_url}` hands them to, which is Spring's arrangement
+ * (one SecurityContextLogoutHandler behind both LogoutFilter and OidcLogoutEndpointFilter). So the remember-me
+ * cookie, every `firefly.security.logout.delete_cookies` name, `invalidate_session` and `clear_authentication`
+ * govern RP-initiated logout exactly as they govern the form logout, and a key added to LogoutSettings reaches
+ * both paths without anyone remembering to come back here.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -43,9 +47,7 @@ final class OidcLogoutEndpoint implements OAuth2Endpoint
         private readonly AuthorizationServerSettings $settings,
         private readonly JwtGenerator $jwt,
         private readonly RegisteredClientRepository $clients,
-        private readonly SecurityContextRepository $contexts,
-        private readonly AuthenticationEventPublisher $events,
-        private readonly ?RememberMeServices $rememberMe = null,
+        private readonly LogoutHandler $logout,
         private readonly ?LoggerInterface $logger = null,
     ) {}
 
@@ -102,14 +104,7 @@ final class OidcLogoutEndpoint implements OAuth2Endpoint
         }
         $response = new RedirectResponse($target);
 
-        if ($request->hasSession()) {
-            $request->session()->invalidate();
-        } else {
-            $this->contexts->clear($request);
-        }
-        $this->rememberMe?->logout($request, $response);
-        SecurityContextHolder::clearContext();
-        $this->events->publishLogoutSuccess($authentication);
+        $this->logout->logout($request, $response, $authentication);
         $this->logger?->info('OAuth2 RP-initiated logout by client ['.$client->clientId.'] for ['.($authentication?->getName() ?? (is_string($claims['sub'] ?? null) ? $claims['sub'] : 'unknown')).'].');
 
         return $response;

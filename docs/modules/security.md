@@ -109,6 +109,13 @@ CSRF-checked; a `GET` falls through to whatever route is there — expiring the 
 `delete_cookies` name, invalidating the session (or only removing the context), publishing `LogoutSuccessEvent`,
 and redirecting to `logout_success_url` (`/login?logout`).
 
+That sequence is one bean, `LogoutHandler` (Spring's `SecurityContextLogoutHandler` + `CookieClearingLogoutHandler`
++ `RememberMeServices::logout` collapsed into the single collaborator LaraFly's one filter chain needs), and every
+path that ends a session calls it: the filter above, and OpenID Connect RP-initiated logout at
+`{oidc_logout_endpoint}` when `firefly/security-oauth2-server` is on. So `invalidate_session`,
+`clear_authentication` and `delete_cookies` govern both by construction — a second path cannot quietly obey a
+subset. `logout.enabled` decides only whether the framework maps its own logout URL, never what signing out does.
+
 ### Events
 
 Every mechanism reports through `AuthenticationEventPublisher` over the context `ApplicationEventPublisher`, so an

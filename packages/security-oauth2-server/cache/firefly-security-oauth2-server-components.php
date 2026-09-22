@@ -420,10 +420,8 @@ return [
             0 => 'Firefly\\Security\\OAuth2\\Server\\Settings\\AuthorizationServerSettings',
             1 => 'Firefly\\Security\\OAuth2\\Server\\Jose\\JwtGenerator',
             2 => 'Firefly\\Security\\OAuth2\\Server\\Client\\RegisteredClientRepository',
-            3 => 'Firefly\\Security\\Session\\SecurityContextRepository',
-            4 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
-            5 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
-            6 => 'Psr\\Log\\LoggerInterface',
+            3 => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+            4 => 'Psr\\Log\\LoggerInterface',
         ],
     ],
     12 => [
