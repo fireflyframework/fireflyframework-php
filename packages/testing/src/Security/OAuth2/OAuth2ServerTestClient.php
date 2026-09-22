@@ -17,8 +17,16 @@ use Symfony\Component\HttpFoundation\Response;
  * (Spring Authorization Server's tests do this with MockMvc): an authorization request with a fresh PKCE pair
  * and state, the consent form when the page appears, the code off the redirect, the token exchange, client
  * credentials, refresh, introspection, revocation and userinfo. The endpoint paths come from the
- * AuthorizationServerSettings bean, so a renamed endpoint needs no change here. Sign the user in first —
- * `actingAsPrincipal()`, or the framework login page — and the authorization endpoint finds the principal.
+ * AuthorizationServerSettings bean, so a renamed endpoint needs no change here.
+ *
+ * SIGN THE USER IN THROUGH THE LOGIN PAGE FIRST — the framework's form, or whatever the application's own
+ * mechanism is — and carry the session cookie (`followSession()`). `actingAsPrincipal()` is NOT enough at the
+ * authorization endpoint and is not meant to be: it establishes a principal in SecurityContextHolder for the
+ * one request, while the endpoint answers a browser and demands the principal the SecurityContextRepository
+ * holds BETWEEN requests, so that no bearer, no test double and no filter of an application's own can be the
+ * resource owner without a session behind it (AuthorizationEndpoint::sessionHeldPrincipal()). A holder-only
+ * principal is answered with the login redirect, exactly as an anonymous browser is. The token, introspection,
+ * revocation and userinfo helpers are machine endpoints and need no sign-in at all.
  *
  * A confidential client authenticates with `client_secret_basic` (withBasicAuth), a public one with `client_id`
  * in the body; the Basic header is flushed after every call so it never leaks into the test's next request.

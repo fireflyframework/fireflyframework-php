@@ -11,7 +11,7 @@ uses(OAuth2ServerCapstoneTestCase::class);
 
 it('does NOT redirect for an unknown client or an unregistered redirect_uri: the resource owner sees the 400', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
 
     $oauth2->authorize('ghost', OAuth2ServerCapstoneTestCase::REDIRECT_URI)->assertStatus(400);
@@ -26,7 +26,7 @@ it('does NOT redirect for an unknown client or an unregistered redirect_uri: the
 it('redirects every redirectable refusal with the RFC error and the echoed state', function (string $clientId, string $redirectUri, string $scope, array $extra, string $error) {
     /** @var OAuth2ServerCapstoneTestCase $this */
     /** @var array<string,string> $extra */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
 
     $response = $oauth2->authorize($clientId, $redirectUri, $scope, $extra);
@@ -58,7 +58,7 @@ it('redirects an anonymous prompt=none with login_required instead of the login 
 
 it('refuses at the token endpoint a wrong verifier, a missing verifier, a wrong redirect_uri, another client\'s code and a wrong secret', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
 
     $code = $oauth2->obtainCode('public-spa', OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI, 'openid');
@@ -80,7 +80,7 @@ it('refuses at the token endpoint a wrong verifier, a missing verifier, a wrong 
 
 it('refuses a reused code with invalid_grant AND revokes the tokens it issued (RFC 6749 §4.1.2)', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
     $code = $oauth2->obtainCode('web-app', OAuth2ServerCapstoneTestCase::REDIRECT_URI, 'openid');
 
@@ -97,7 +97,7 @@ it('refuses a reused code with invalid_grant AND revokes the tokens it issued (R
 
 it('refuses an expired code', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
     $code = $oauth2->obtainCode('public-spa', OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI, 'openid');
 
@@ -114,7 +114,7 @@ it('refuses an expired code', function () {
 
 it('refuses a client with no authorization_code grant before any redirect', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
 
     // svc registered no redirect URI, so nothing can be redirected to: the 400 page, not unauthorized_client.
     $this->oauth2()->authorize('svc', OAuth2ServerCapstoneTestCase::REDIRECT_URI, 'orders:read')->assertStatus(400);

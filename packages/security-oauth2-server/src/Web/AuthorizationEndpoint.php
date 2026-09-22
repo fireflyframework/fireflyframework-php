@@ -60,19 +60,21 @@ use Throwable;
  *      the client did not register (no scope asks for every registered one), PKCE missing when the server, the
  *      client or its public nature demands it, `plain`, a malformed challenge, a non-numeric `max_age` — a 302
  *      to the redirect URI with `error`, `error_description` and the echoed `state`.
- *   3. THE PRINCIPAL: anonymous, or `prompt=login`, or `max_age` exceeded (measured from the instant
- *      SessionAuthenticationTimeListener stamped at an ACTIVE sign-in — a session the remember-me cookie signed
- *      in has none and exceeds any `max_age`; one that signed in before the listener could see it is stamped on
- *      this first look, see SessionAuthenticationTime) → `login_required` for `prompt=none`, otherwise the entry
- *      point (the bean when HttpSecurityFilter is on; a LoginUrlAuthenticationEntryPoint over the form-login
- *      settings when it is not; a plain 401 when form login is off) with the request saved WITHOUT `login` among
- *      its prompts — whether the browser was anonymous or is being asked again, since the return visit is
- *      signed in either way and would otherwise read the prompt as a demand to sign in once more. When it IS a
- *      signed-in browser being asked again, the stored context and the instant are cleared and the remember-me
- *      cookie is expired on the redirect (the cookie would otherwise sign the browser straight back in on the
- *      return trip, no credential entered — the filter at -83 runs ahead of this endpoint's), so the sign-in
- *      that follows is a credentialed one, stamped afresh, that comes back here once (`max_age` still on the
- *      request, now satisfied) and proceeds.
+ *   3. THE PRINCIPAL — the one the SecurityContextRepository HOLDS between requests, never merely whatever
+ *      SecurityContextHolder carries at -82 (see sessionHeldPrincipal(): a bearer the resource-server filter
+ *      authenticated at -85 is not a resource owner) — anonymous, or `prompt=login`, or `max_age` exceeded
+ *      (measured from the instant SessionAuthenticationTimeListener stamped at an ACTIVE sign-in — a session the
+ *      remember-me cookie signed in has none and exceeds any `max_age`; one that signed in before the listener
+ *      could see it is stamped on this first look, see SessionAuthenticationTime) → `login_required` for
+ *      `prompt=none`, otherwise the entry point (the bean when HttpSecurityFilter is on; a
+ *      LoginUrlAuthenticationEntryPoint over the form-login settings when it is not; a plain 401 when form login
+ *      is off) with the request saved WITHOUT `login` among its prompts — whether the browser was anonymous or is
+ *      being asked again, since the return visit is signed in either way and would otherwise read the prompt as
+ *      a demand to sign in once more. When it IS a signed-in browser being asked again, the stored context and
+ *      the instant are cleared and the remember-me cookie is expired on the redirect (the cookie would otherwise
+ *      sign the browser straight back in on the return trip, no credential entered — the filter at -83 runs
+ *      ahead of this endpoint's), so the sign-in that follows is a credentialed one, stamped afresh, that comes
+ *      back here once (`max_age` still on the request, now satisfied) and proceeds.
  *   4. CONSENT: when the client requires it and (`prompt=consent`, or no stored consent covers the requested
  *      scopes) → `consent_required` for `prompt=none`, otherwise the page (the framework's, or `consent.view`
  *      with the same model, falling back logged at warning like the login view) with the request pending in
@@ -83,8 +85,9 @@ use Throwable;
  *
  * The POST verifies the session token through SessionCsrf FIRST (a forged consent is an attack, so this cannot
  * depend on CsrfFilter, which runs later), consumes the pending request the `state` names (a stale or foreign
- * state is the 400 page), requires the same signed-in principal, and either records the consent (merged with
- * the stored one) and issues the code for the approved scopes, or redirects with `access_denied`.
+ * state is the 400 page), requires the same session-held principal (the same rule as the GET, so a bearer cannot
+ * approve a consent the browser left pending either), and either records the consent (merged with the stored
+ * one) and issues the code for the approved scopes, or redirects with `access_denied`.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -139,11 +142,10 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
             return OAuth2ErrorResponse::redirect($redirectUri, $e->error(), $authorizationRequest->state);
         }
 
-        $principal = SecurityContextHolder::getAuthentication();
-        $authenticated = SecurityContextHolder::getContext()->isAuthenticated() && $principal !== null;
-        $reauthenticate = $authenticated && ($authorizationRequest->prompts('login') || $this->maxAgeExceeded($request, $authorizationRequest));
+        $principal = $this->sessionHeldPrincipal($request);
+        $reauthenticate = $principal !== null && ($authorizationRequest->prompts('login') || $this->maxAgeExceeded($request, $authorizationRequest));
 
-        if (! $authenticated || $reauthenticate) {
+        if ($principal === null || $reauthenticate) {
             if ($authorizationRequest->prompts('none')) {
                 return OAuth2ErrorResponse::redirect($redirectUri, new OAuth2Error(OAuth2ErrorCodes::LOGIN_REQUIRED, 'The user is not signed in.'), $authorizationRequest->state);
             }
@@ -218,6 +220,38 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
     }
 
     /**
+     * THE RESOURCE OWNER IS THE PRINCIPAL THE REPOSITORY HOLDS BETWEEN REQUESTS, not merely whatever
+     * SecurityContextHolder carries when this endpoint runs at -82. A filter ahead of it may have authenticated
+     * something that is not a person in front of a browser: OAuth2ResourceServerFilter (-85) authenticates any
+     * bearer, and the shape this package documents — the server is the resource server for its own keys — turns
+     * that filter on, so an access token this very server issued arrives here already authenticated. Left
+     * unchecked, such a token would BE the resource owner: a stolen or narrowly scoped one would redeem itself
+     * for a fresh code — wider scopes, a new refresh token, an `auth_time` stamped on a session nobody signed
+     * into — at any client that needs no consent or was consented to once, with no browser and nobody present.
+     * A test's actingAsPrincipal() and an application filter that sets only the holder are the same shape.
+     *
+     * So the holder's principal counts only when the SecurityContextRepository — the session, or whatever an
+     * application bound in its place — holds an authenticated context under the SAME name: SecurityContextPersistenceFilter
+     * (-94) read it from the browser's session, or RememberMeAuthenticationFilter (-83) stored it on the way
+     * through. Anything else is anonymous HERE and nowhere else (the bearer still authenticates the API call it
+     * was minted for): the login redirect, or `login_required` for `prompt=none`. A sign-in mechanism of an
+     * application's own is answered like any browser as soon as it stores its context through the repository,
+     * which is what every shipped filter does.
+     */
+    private function sessionHeldPrincipal(Request $request): ?Authentication
+    {
+        $principal = SecurityContextHolder::getAuthentication();
+        if ($principal === null || ! SecurityContextHolder::getContext()->isAuthenticated()) {
+            return null;
+        }
+
+        $stored = $this->contexts->load($request);
+        $held = $stored === null || ! $stored->isAuthenticated() ? null : $stored->getAuthentication();
+
+        return $held !== null && $held->getName() === $principal->getName() ? $principal : null;
+    }
+
+    /**
      * `max_age` against the active sign-in instant the listener stamped (OpenID Connect Core §3.1.2.1); a session
      * the remember-me cookie signed in has no such instant and exceeds any `max_age`. Without a session there is
      * nothing to measure from, so the check cannot fail — a stateless deployment cannot honour `max_age`.
@@ -228,7 +262,7 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
             return false;
         }
 
-        $authenticatedAt = SessionAuthenticationTime::of($request->session());
+        $authenticatedAt = SessionAuthenticationTime::ofSessionHeldPrincipal($request->session());
 
         return $authenticatedAt === null || $authenticatedAt + $authorizationRequest->maxAge < time();
     }
@@ -352,8 +386,8 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
             throw new InvalidAuthorizationRequestException('The consent submission does not match a pending authorization request.');
         }
 
-        $principal = SecurityContextHolder::getAuthentication();
-        if ($principal === null || ! SecurityContextHolder::getContext()->isAuthenticated() || $principal->getName() !== ($pending['principal'] ?? null)) {
+        $principal = $this->sessionHeldPrincipal($request);
+        if ($principal === null || $principal->getName() !== ($pending['principal'] ?? null)) {
             throw new InvalidAuthorizationRequestException('The consent submission does not belong to the signed-in user.');
         }
 
@@ -399,7 +433,7 @@ final class AuthorizationEndpoint implements OAuth2Endpoint
     {
         $now = new DateTimeImmutable;
         if ($request->hasSession()) {
-            $attributes['auth_time'] = SessionAuthenticationTime::of($request->session());
+            $attributes['auth_time'] = SessionAuthenticationTime::ofSessionHeldPrincipal($request->session());
             $attributes['sid'] = $request->session()->getId();
         }
 

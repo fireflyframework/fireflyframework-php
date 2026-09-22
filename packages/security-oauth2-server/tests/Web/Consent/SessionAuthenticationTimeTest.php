@@ -24,46 +24,46 @@ function interactiveSignIn(string $mechanism = InteractiveAuthenticationSuccessE
     return new InteractiveAuthenticationSuccessEvent(Authentication::authenticated('ada', 'ada', []), $mechanism);
 }
 
-it('keeps the stamp once written, and stamps now only for a session that has none', function () {
+it('keeps the stamp once written, and stamps now only for a session-held principal that has none', function () {
     $session = startedSessionStore();
 
     $before = time();
-    $first = SessionAuthenticationTime::of($session);
+    $first = SessionAuthenticationTime::ofSessionHeldPrincipal($session);
     expect($first)->toBeGreaterThanOrEqual($before)
         ->and($session->get(SessionAuthenticationTime::KEY))->toBe($first);
 
     $session->put(SessionAuthenticationTime::KEY, 1_700_000_000);
-    expect(SessionAuthenticationTime::of($session))->toBe(1_700_000_000);
+    expect(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBe(1_700_000_000);
 
     SessionAuthenticationTime::stamp($session);
-    expect(SessionAuthenticationTime::of($session))->toBeGreaterThanOrEqual($before);
+    expect(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBeGreaterThanOrEqual($before);
 
     SessionAuthenticationTime::forget($session);
     expect($session->get(SessionAuthenticationTime::KEY))->toBeNull();
 });
 
-it('marks a session the cookie signed in as remembered — no active instant, so of() answers null and never stamps now', function () {
+it('marks a session the cookie signed in as remembered — no active instant, so the reader answers null and never stamps now', function () {
     $session = startedSessionStore();
 
     SessionAuthenticationTime::remembered($session);
     expect($session->get(SessionAuthenticationTime::KEY))->toBe(SessionAuthenticationTime::REMEMBERED)
-        ->and(SessionAuthenticationTime::of($session))->toBeNull()
+        ->and(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBeNull()
         ->and($session->get(SessionAuthenticationTime::KEY))->toBe(SessionAuthenticationTime::REMEMBERED);
 
     // A credentialed sign-in after it is an active one: the instant replaces the marker.
     SessionAuthenticationTime::stamp($session);
-    expect(SessionAuthenticationTime::of($session))->toBeInt();
+    expect(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBeInt();
 
     // The other way round, an active instant already there is the last active authentication: the cookie keeps it.
     $session->put(SessionAuthenticationTime::KEY, 1_700_000_000);
     SessionAuthenticationTime::remembered($session);
-    expect(SessionAuthenticationTime::of($session))->toBe(1_700_000_000);
+    expect(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBe(1_700_000_000);
 
     // forget() clears the marker like the instant, so the next look falls back to stamping now.
     SessionAuthenticationTime::forget($session);
     SessionAuthenticationTime::remembered($session);
     SessionAuthenticationTime::forget($session);
-    expect(SessionAuthenticationTime::of($session))->toBeInt();
+    expect(SessionAuthenticationTime::ofSessionHeldPrincipal($session))->toBeInt();
 });
 
 it('stamps the session of the request the container holds at the moment of the sign-in, never a captured one', function () {

@@ -102,7 +102,7 @@ it('runs the whole authorization-code flow through the real pipeline: login page
 
 it('issues a code to a public client without consent, exchanges it with PKCE alone, and issues no refresh token', function () {
     /** @var OAuth2ServerCapstoneTestCase $this */
-    $this->actingAsPrincipal('ada', ['ROLE_USER']);
+    $this->signIn();
     $oauth2 = $this->oauth2();
 
     $redirect = $oauth2->authorize('public-spa', OAuth2ServerCapstoneTestCase::SPA_REDIRECT_URI, 'openid profile');
