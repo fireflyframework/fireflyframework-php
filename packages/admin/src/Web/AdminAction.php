@@ -426,11 +426,7 @@ final readonly class AdminAction
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
-            // Shape verified against OAuth2ClientsEndpoint: {issuer: string, clients: list<row>}.
-            'oauth2' => [
-                'issuer' => is_string($this->payload('oauth2clients')['issuer'] ?? null) ? $this->payload('oauth2clients')['issuer'] : '',
-                'clients' => $this->listOf('oauth2clients', 'clients'),
-            ],
+            'oauth2' => $this->oauth2(),
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
             // and caches answers {default: name|null, caches: {name => row}}.
@@ -594,6 +590,27 @@ final readonly class AdminAction
         }
 
         return $rows;
+    }
+
+    /**
+     * The OAuth2 page's model, from ONE read of the `oauth2clients` endpoint.
+     *
+     * Shape verified against OAuth2ClientsEndpoint: `{issuer: string, clients: list<row>}`. The single read is
+     * the point. AdminEndpointReader::read() does not memoize — it calls handle() again on every call, and
+     * re-walks the registry through has() on the way — and this endpoint is not a cheap in-memory
+     * introspection like `caches` or `configprops`: it counts the authorizations alive for every client, which
+     * the Eloquent service answers with one query per client. Filling the two keys with three payload() calls
+     * tripled that for nothing, and it also broke the endpoint's own "one clock for the whole sweep"
+     * guarantee across the rendered page — the issuer and the counts would each come from a different sweep.
+     *
+     * @return array<string,mixed>
+     */
+    private function oauth2(): array
+    {
+        $payload = $this->payload('oauth2clients');
+        $issuer = $payload['issuer'] ?? null;
+
+        return ['issuer' => is_string($issuer) ? $issuer : '', 'clients' => $this->subArray($payload, 'clients')];
     }
 
     /**

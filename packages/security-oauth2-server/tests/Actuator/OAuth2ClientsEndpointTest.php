@@ -38,9 +38,64 @@ it('lists every client with its grants, scopes, settings and live authorization 
         ->and($web)->toMatchArray([
             'id' => 'web-app', 'clientId' => 'web-app', 'clientName' => 'web-app',
             'authenticationMethods' => ['client_secret_basic'], 'grantTypes' => ['authorization_code', 'refresh_token'],
-            'scopes' => ['openid'], 'redirectUris' => ['https://a.test/cb'], 'requireProofKey' => false, 'requireAuthorizationConsent' => true,
+            'scopes' => ['openid'], 'redirectUris' => ['https://a.test/cb'],
+            // Registered false, effective true: the stock `require_pkce` demands it of every code request.
+            'requireProofKey' => false, 'requiresProofKey' => true, 'requireAuthorizationConsent' => true,
             'accessTokenFormat' => 'self_contained', 'accessTokenTtl' => 300, 'activeAuthorizations' => 1,
         ])
         ->and($svc['activeAuthorizations'] ?? null)->toBe(0)
         ->and(json_encode($body))->not->toContain('very-secret');
+});
+
+/**
+ * The PKCE pair of every row, keyed by client id: what the client registered and what the endpoints enforce.
+ * Narrowed here rather than at each expectation because the payload is `array<mixed>` to PHPStan at level max.
+ *
+ * @param  array<string,mixed>  $clients
+ * @return array<string, array{registered: bool, effective: bool}>
+ */
+function oauth2ClientsPkce(AuthorizationServerSettings $settings, array $clients): array
+{
+    $repository = InMemoryRegisteredClientRepository::fromConfig($clients, $settings);
+    $endpoint = new OAuth2ClientsEndpoint($repository, new InMemoryOAuth2AuthorizationService, $settings);
+    $body = $endpoint->handle(new EndpointRequest('GET', []))->body;
+    $rows = is_array($body) && is_array($body['clients'] ?? null) ? $body['clients'] : [];
+
+    $pkce = [];
+    foreach ($rows as $row) {
+        if (! is_array($row) || ! is_string($row['clientId'] ?? null)) {
+            continue;
+        }
+        $pkce[$row['clientId']] = [
+            'registered' => ($row['requireProofKey'] ?? null) === true,
+            'effective' => ($row['requiresProofKey'] ?? null) === true,
+        ];
+    }
+
+    return $pkce;
+}
+
+it('reports the PKCE the endpoints enforce beside the switch the client registered', function () {
+    $clients = [
+        // No switch of its own: only a server-wide rule can demand PKCE of it.
+        'web-app' => ['client_secret' => '{noop}s', 'redirect_uris' => ['https://a.test/cb']],
+        // Its own switch on: it needs PKCE whatever the server-wide rules say.
+        'strict-app' => ['client_secret' => '{noop}s', 'redirect_uris' => ['https://b.test/cb'], 'client_settings' => ['require_pkce' => true]],
+        // Public: `none` is its only method, so AuthorizationEndpoint refuses it without a code_challenge
+        // even with both server-wide rules off — nothing else protects its code.
+        'public-spa' => ['client_authentication_methods' => ['none'], 'authorization_grant_types' => ['authorization_code'], 'redirect_uris' => ['https://c.test/cb']],
+    ];
+
+    // A stock installation: require_pkce and require_proof_key_for_public_clients both default to true, so
+    // every client needs PKCE while its own switch still reads false — the asymmetry the page must not hide.
+    expect(oauth2ClientsPkce(new AuthorizationServerSettings, $clients))->toBe([
+        'web-app' => ['registered' => false, 'effective' => true],
+        'strict-app' => ['registered' => true, 'effective' => true],
+        'public-spa' => ['registered' => false, 'effective' => true],
+    ])
+        ->and(oauth2ClientsPkce(new AuthorizationServerSettings(requirePkce: false, requireProofKeyForPublicClients: false), $clients))->toBe([
+            'web-app' => ['registered' => false, 'effective' => false],
+            'strict-app' => ['registered' => true, 'effective' => true],
+            'public-spa' => ['registered' => false, 'effective' => true],
+        ]);
 });

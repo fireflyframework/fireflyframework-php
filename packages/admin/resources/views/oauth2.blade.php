@@ -29,7 +29,12 @@
                             // directive that is NOT glued to a word character, so `…}}s@if(…) · PKCE@endif`
                             // silently leaves an unclosed `if` in the compiled view.
                             $issuance = [(string) ($client['accessTokenFormat'] ?? ''), ($client['accessTokenTtl'] ?? 0).'s'];
-                            if ($client['requireProofKey'] ?? false) {
+                            // `requiresProofKey` (what the endpoints enforce), never `requireProofKey` (the
+                            // switch the client registered): `require_pkce` and
+                            // `require_proof_key_for_public_clients` both default to on, so the registered
+                            // switch reads "no PKCE" for a client whose every authorization request is in fact
+                            // refused without a code_challenge — the first thing this page is opened to explain.
+                            if ($client['requiresProofKey'] ?? false) {
                                 $issuance[] = 'PKCE';
                             }
                             if ($client['requireAuthorizationConsent'] ?? false) {

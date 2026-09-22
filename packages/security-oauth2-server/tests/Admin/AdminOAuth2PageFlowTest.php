@@ -61,6 +61,11 @@ it('renders the Clients panel for an admin, read in-process, with the live autho
         ->assertSee('client.create')
         // The one client-credentials token issued above is the one live authorization the svc row reports.
         ->assertSee('<td class="num">1</td>', false)
+        // PKCE is reported as the endpoints ENFORCE it, not as the client registered it: public-spa carries
+        // no `require_pkce` of its own, yet the stock server-wide default refuses its every authorization
+        // request without a code_challenge. Its issuance cell is the one without `consent`, so this string
+        // belongs to that row alone.
+        ->assertSee('<td class="dim">self_contained · 300s · PKCE</td>', false)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::WEB_APP_SECRET)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::SVC_SECRET);
 

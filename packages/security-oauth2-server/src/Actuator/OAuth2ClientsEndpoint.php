@@ -30,6 +30,16 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * secret out by construction: there is no place in describe() where `clientSecret` is named, so a future
  * field added to the model cannot leak into this payload by accident.
  *
+ * PKCE IS REPORTED TWICE, and the pair is the point. `requireProofKey` is the client's own switch, exactly as
+ * it was registered; `requiresProofKey` is RegisteredClient::requiresProofKey() — the rule the authorization
+ * endpoint and the code grant actually enforce, which also fires when the server-wide `require_pkce` is on
+ * (its default), when the client is public and `require_proof_key_for_public_clients` is on (also its
+ * default), or when `none` is the client's only method. Publishing only the registered switch would tell an
+ * operator on a stock installation that no client needs PKCE while every authorization_code client is being
+ * refused for a missing `code_challenge` — the first thing this endpoint exists to answer. The dashboard
+ * renders the effective field; the registered one stays in the payload because "this client demands PKCE even
+ * if you turn the server-wide rule off" is a different fact, and only the pair tells them apart.
+ *
  * `handle()` narrows the contract's `?EndpointResponse` to the non-nullable type (the covariant narrowing
  * BeansEndpoint/InfoEndpoint/HttpExchangesEndpoint use): there is no sub-resource to 404 on, so a body is
  * always produced and PHPStan at level max flags the nullable type as dead code otherwise.
@@ -86,6 +96,7 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
             'redirectUris' => $client->redirectUris,
             'postLogoutRedirectUris' => $client->postLogoutRedirectUris,
             'requireProofKey' => $client->clientSettings->requireProofKey,
+            'requiresProofKey' => $client->requiresProofKey($this->settings),
             'requireAuthorizationConsent' => $client->clientSettings->requireAuthorizationConsent,
             'accessTokenFormat' => $client->tokenSettings->accessTokenFormat->value,
             'accessTokenTtl' => $client->tokenSettings->accessTokenTtl,
