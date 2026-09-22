@@ -10,6 +10,7 @@ use Firefly\Actuator\Endpoint\EndpointRequest;
 use Firefly\Actuator\Endpoint\EndpointResponse;
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Security\OAuth2\Server\Authorization\InMemoryOAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2AuthorizationService;
 use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\ClientAuthenticationMethod;
@@ -19,10 +20,10 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 
 /**
  * /actuator/oauth2clients: every registered client with the methods, grants, scopes, redirect URIs and
- * settings it was registered with and the number of authorizations alive for it right now — what an operator
- * asks first when a client "cannot get a token". Unexposed by default like every endpoint beyond health and
- * info; the admin dashboard's OAuth2 page reads it in-process. No secret ever enters the payload, encoded or
- * not.
+ * settings it was registered with, and the authorizations alive for it in the store THIS process reads — what
+ * an operator asks first when a client "cannot get a token". Unexposed by default like every endpoint beyond
+ * health and info; the admin dashboard's OAuth2 page reads it in-process. No secret ever enters the payload,
+ * encoded or not.
  *
  * The payload is built from RegisteredClient's PUBLIC fields rather than from its jsonSerialize() masked
  * view, because an operator needs the redirect URIs, the post-logout URIs and the token settings that the
@@ -39,6 +40,24 @@ use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
  * refused for a missing `code_challenge` — the first thing this endpoint exists to answer. The dashboard
  * renders the effective field; the registered one stays in the payload because "this client demands PKCE even
  * if you turn the server-wide rule off" is a different fact, and only the pair tells them apart.
+ *
+ * `authorizations.processLocal` IS PUBLISHED BESIDE THE COUNTS, for the reason HttpExchangesEndpoint publishes
+ * its own `storage`/`processLocal` pair: a number that is silently this worker's alone sends an operator
+ * chasing a bug that does not exist. `authorizations.driver` defaults to `memory`, which resolves to
+ * InMemoryOAuth2AuthorizationService — a map rebuilt in every process — so under php-fpm, Herd, Valet or
+ * Octane the request rendering this payload has issued no tokens of its own and `activeAuthorizations` is 0
+ * for every client, while the workers beside it hold hundreds. Read as "this client has no live
+ * authorizations", that 0 is the opposite of the truth, and it is read exactly when a client "cannot get a
+ * token" — the question this endpoint exists to answer. So the payload states its own storage model:
+ * `"authorizations": {"processLocal": true}` means the counts describe the rendering worker and nothing else,
+ * and `authorizations.driver: eloquent` (the oauth2_authorizations table, shared by every worker) is what
+ * makes them describe the deployment.
+ *
+ * THE FLAG IS THE RESOLVED SERVICE, NOT THE DRIVER KEY, the same rule OAuth2ServerWiringPass refusal (6)
+ * states for the client store: `oauth2AuthorizationService()` carries #[ConditionalOnMissingBean], so an
+ * application may bind a durable service of its own (Redis, an internal API) and then `authorizations.driver`
+ * names nothing. Only InMemoryOAuth2AuthorizationService is the per-process map, so only it reports
+ * `processLocal: true` — a driver-keyed flag would warn such an application about a store it does not use.
  *
  * `handle()` narrows the contract's `?EndpointResponse` to the non-nullable type (the covariant narrowing
  * BeansEndpoint/InfoEndpoint/HttpExchangesEndpoint use): there is no sub-resource to 404 on, so a body is
@@ -78,7 +97,11 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
             $clients[] = $this->describe($client, $now);
         }
 
-        return EndpointResponse::json(['issuer' => $this->settings->issuer, 'clients' => $clients]);
+        return EndpointResponse::json([
+            'issuer' => $this->settings->issuer,
+            'authorizations' => ['processLocal' => $this->authorizations instanceof InMemoryOAuth2AuthorizationService],
+            'clients' => $clients,
+        ]);
     }
 
     /**
@@ -100,6 +123,9 @@ final class OAuth2ClientsEndpoint implements ActuatorEndpoint
             'requireAuthorizationConsent' => $client->clientSettings->requireAuthorizationConsent,
             'accessTokenFormat' => $client->tokenSettings->accessTokenFormat->value,
             'accessTokenTtl' => $client->tokenSettings->accessTokenTtl,
+            // Counted in whatever store this process resolved, which on the `memory` driver is the rendering
+            // worker's own map — hence the payload's `authorizations.processLocal`, which says so rather than
+            // letting a 0 read as "no one holds a token for this client".
             'activeAuthorizations' => $this->authorizations->countActiveForClient($client->id, $now),
         ];
     }

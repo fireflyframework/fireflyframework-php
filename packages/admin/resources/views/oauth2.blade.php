@@ -1,6 +1,13 @@
 @extends('firefly-admin::layout')
 @section('title', 'OAuth2 clients')
 @section('body')
+    @php
+        // Whether the Active counts came from a per-process store (the endpoint's own
+        // `authorizations.processLocal`). Defaulted rather than assumed, so a payload that does not say is
+        // rendered without a caveat instead of with one nothing substantiates.
+        $processLocal = ($processLocalAuthorizations ?? false) === true;
+    @endphp
+
     <div class="head">
         <h1>OAuth2 clients</h1>
         <p>The clients registered with this application's authorization server
@@ -40,6 +47,14 @@
                             if ($client['requireAuthorizationConsent'] ?? false) {
                                 $issuance[] = 'consent';
                             }
+                            $active = is_numeric($client['activeAuthorizations'] ?? null) ? (int) $client['activeAuthorizations'] : 0;
+                            // A `0` counted in a per-process store is the one cell that reads as a fact and is
+                            // not one: the workers beside this one may be holding a hundred live
+                            // authorizations for this client, and an operator who reads "none" goes looking
+                            // for a token endpoint that is refusing nobody. Shown as `—` — nothing counted
+                            // here — while a non-zero count is kept, because that one is a floor the store
+                            // can vouch for. The note under the table names the key that makes it server-wide.
+                            $activeCell = $processLocal && $active === 0 ? '—' : (string) $active;
                         @endphp
                         <tr>
                             <td class="cls"><span class="nm">{{ $client['clientId'] ?? '' }}</span><span class="ns">{{ $client['clientName'] ?? '' }}</span></td>
@@ -48,12 +63,27 @@
                             <td class="mono dim">{{ implode(' ', $client['scopes'] ?? []) ?: '—' }}</td>
                             <td class="mono dim">{{ implode(' ', $client['redirectUris'] ?? []) ?: '—' }}</td>
                             <td class="dim">{{ implode(' · ', $issuance) }}</td>
-                            <td class="num">{{ $client['activeAuthorizations'] ?? 0 }}</td>
+                            <td class="num">{{ $activeCell }}</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+            @if ($processLocal)
+                {{-- Said where the number is read, not in the release notes. Phrased as the store this
+                     process RESOLVED rather than as the value of the driver key, because that is what the
+                     endpoint reports and the two can differ — an application may bind a service of its
+                     own, and then the key names nothing. --}}
+                <p class="note"><strong>Active counts this worker only.</strong> The authorization store this
+                   process resolved is the in-memory one — a map rebuilt in every PHP process — so these are
+                   the authorizations held by the worker that rendered this page, and under php-fpm or Octane
+                   the next request lands on a different one. A client with live tokens elsewhere therefore
+                   shows <code>—</code> here. Set
+                   <code>firefly.security.oauth2.server.authorizations.driver</code> to <code>eloquent</code>
+                   (and run the <code>oauth2_authorizations</code> migration), or bind a durable
+                   <code>OAuth2AuthorizationService</code> of your own, for counts that describe the
+                   deployment.</p>
+            @endif
         @endif
     </div>
 @endsection

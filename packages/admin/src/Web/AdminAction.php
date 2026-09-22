@@ -595,13 +595,19 @@ final readonly class AdminAction
     /**
      * The OAuth2 page's model, from ONE read of the `oauth2clients` endpoint.
      *
-     * Shape verified against OAuth2ClientsEndpoint: `{issuer: string, clients: list<row>}`. The single read is
-     * the point. AdminEndpointReader::read() does not memoize — it calls handle() again on every call, and
-     * re-walks the registry through has() on the way — and this endpoint is not a cheap in-memory
-     * introspection like `caches` or `configprops`: it counts the authorizations alive for every client, which
-     * the Eloquent service answers with one query per client. Filling the two keys with three payload() calls
-     * tripled that for nothing, and it also broke the endpoint's own "one clock for the whole sweep"
-     * guarantee across the rendered page — the issuer and the counts would each come from a different sweep.
+     * Shape verified against OAuth2ClientsEndpoint: `{issuer: string, authorizations: {processLocal: bool},
+     * clients: list<row>}`. The single read is the point. AdminEndpointReader::read() does not memoize — it
+     * calls handle() again on every call, and re-walks the registry through has() on the way — and this
+     * endpoint is not a cheap in-memory introspection like `caches` or `configprops`: it counts the
+     * authorizations alive for every client, which the Eloquent service answers with one query per client.
+     * Filling the keys with a payload() call each tripled that for nothing, and it also broke the endpoint's
+     * own "one clock for the whole sweep" guarantee across the rendered page — the issuer and the counts would
+     * each come from a different sweep.
+     *
+     * `processLocalAuthorizations` is carried through because the Active column is otherwise a number that
+     * looks server-wide and is not: on the default `memory` driver the counts belong to the worker that
+     * rendered this page (see OAuth2ClientsEndpoint). Defaulting to FALSE when the key is absent is
+     * deliberate — a warning the payload does not substantiate is its own kind of wrong answer.
      *
      * @return array<string,mixed>
      */
@@ -610,7 +616,11 @@ final readonly class AdminAction
         $payload = $this->payload('oauth2clients');
         $issuer = $payload['issuer'] ?? null;
 
-        return ['issuer' => is_string($issuer) ? $issuer : '', 'clients' => $this->subArray($payload, 'clients')];
+        return [
+            'issuer' => is_string($issuer) ? $issuer : '',
+            'clients' => $this->subArray($payload, 'clients'),
+            'processLocalAuthorizations' => ($this->subArray($payload, 'authorizations')['processLocal'] ?? null) === true,
+        ];
     }
 
     /**

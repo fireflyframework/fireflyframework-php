@@ -61,6 +61,11 @@ it('renders the Clients panel for an admin, read in-process, with the live autho
         ->assertSee('client.create')
         // The one client-credentials token issued above is the one live authorization the svc row reports.
         ->assertSee('<td class="num">1</td>', false)
+        // …counted in the `memory` driver's map, which belongs to the process that rendered this page. The
+        // page says so, and prints `—` rather than `0` for the two clients this worker holds nothing for:
+        // under php-fpm that zero would be every client's, whatever the pool is actually holding.
+        ->assertSee('Active counts this worker only')
+        ->assertSee('<td class="num">—</td>', false)
         // PKCE is reported as the endpoints ENFORCE it, not as the client registered it: public-spa carries
         // no `require_pkce` of its own, yet the stock server-wide default refuses its every authorization
         // request without a code_challenge. Its issuance cell is the one without `consent`, so this string

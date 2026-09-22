@@ -10,6 +10,8 @@ use Firefly\Security\OAuth2\Server\Authorization\OAuth2Token;
 use Firefly\Security\OAuth2\Server\Authorization\OAuth2TokenType;
 use Firefly\Security\OAuth2\Server\Client\AuthorizationGrantType;
 use Firefly\Security\OAuth2\Server\Client\InMemoryRegisteredClientRepository;
+use Firefly\Security\OAuth2\Server\Eloquent\EloquentOAuth2AuthorizationService;
+use Firefly\Security\OAuth2\Server\Eloquent\OAuth2AuthorizationModelRepository;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 
 it('lists every client with its grants, scopes, settings and live authorization count, and never a secret', function () {
@@ -44,7 +46,45 @@ it('lists every client with its grants, scopes, settings and live authorization 
             'accessTokenFormat' => 'self_contained', 'accessTokenTtl' => 300, 'activeAuthorizations' => 1,
         ])
         ->and($svc['activeAuthorizations'] ?? null)->toBe(0)
+        // The counts are the memory driver's, so the payload says whose they are.
+        ->and(is_array($body) ? $body['authorizations'] : null)->toBe(['processLocal' => true])
         ->and(json_encode($body))->not->toContain('very-secret');
+});
+
+/**
+ * `authorizations.processLocal` of a payload, narrowed for PHPStan at level max.
+ */
+function oauth2ClientsProcessLocal(OAuth2ClientsEndpoint $endpoint): ?bool
+{
+    $body = $endpoint->handle(new EndpointRequest('GET', []))->body;
+    $authorizations = is_array($body) && is_array($body['authorizations'] ?? null) ? $body['authorizations'] : [];
+    $processLocal = $authorizations['processLocal'] ?? null;
+
+    return is_bool($processLocal) ? $processLocal : null;
+}
+
+/**
+ * The counts mean one thing on `memory` and another on `eloquent`, and the payload has to say which.
+ *
+ * InMemoryOAuth2AuthorizationService is a map rebuilt in every process, so under php-fpm or Octane the worker
+ * rendering this payload has issued no tokens of its own and every `activeAuthorizations` reads 0 while the
+ * workers beside it hold hundreds — the same trap HttpExchangesEndpoint publishes `storage`/`processLocal`
+ * for. Judged on the RESOLVED service, never on `authorizations.driver`: OAuth2AuthorizationService carries
+ * #[ConditionalOnMissingBean], so an application that binds a durable service of its own leaves that key
+ * naming nothing, and a driver-keyed flag would warn it about a store it does not use.
+ *
+ * No clients registered on purpose: the flag is a property of the service, and counting against the Eloquent
+ * one would need a database to say something this test is not asking about.
+ */
+it('publishes whether the authorizations it counted are the rendering process\'s own', function () {
+    $settings = new AuthorizationServerSettings(issuer: 'https://issuer.test');
+    $clients = InMemoryRegisteredClientRepository::fromConfig([], $settings);
+
+    $memory = new OAuth2ClientsEndpoint($clients, new InMemoryOAuth2AuthorizationService, $settings);
+    $durable = new OAuth2ClientsEndpoint($clients, new EloquentOAuth2AuthorizationService(new OAuth2AuthorizationModelRepository), $settings);
+
+    expect(oauth2ClientsProcessLocal($memory))->toBeTrue()
+        ->and(oauth2ClientsProcessLocal($durable))->toBeFalse();
 });
 
 /**
