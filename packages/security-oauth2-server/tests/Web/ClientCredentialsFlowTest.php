@@ -107,7 +107,7 @@ it('refuses a public client the client_credentials grant, and a confidential cli
 
     $this->oauth2()->token('web-app', OAuth2ServerCapstoneTestCase::WEB_APP_SECRET, ['grant_type' => 'refresh_token', 'refresh_token' => 'x'])
         ->assertStatus(400)
-        ->assertJson(['error' => 'unsupported_grant_type']);
+        ->assertJson(['error' => 'invalid_grant']);
 });
 
 it('answers GET with 405 and a browser with JSON, never an HTML page', function () {
