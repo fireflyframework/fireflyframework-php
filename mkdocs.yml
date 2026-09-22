@@ -76,19 +76,28 @@ markdown_extensions:
       permalink: true
       toc_depth: 3
 
+# Five tabs, because `navigation.tabs` turns exactly the top level of this list into the header row, and
+# five is the number of questions a reader arrives with: what is it (Home), how do I use it (Guide), what is
+# in it (Modules), what is it called (Reference), how do I work on it (Contributing).
+#
+# The bare `- modules.md` under Modules is what `navigation.indexes` binds to the section itself, so the tab
+# opens a real landing page instead of the first module guide underneath it. It is docs/modules.md, NOT
+# docs/modules/index.md, which is why tests/ModuleDocumentationTest.php's glob over docs/modules/*.md never
+# sees it and never demands a README-table row for it.
+#
+# Every `modules/<name>.md` string below is load-bearing: that same test greps this file for each of the 32
+# module guides and fails if one is missing, so a guide dropped from the navigation is red, not invisible.
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Getting Started: getting-started.md
-  - Tutorial: tutorial.md
-  - Tutorial (Español): tutorial.es.md
-  - Architecture: architecture.md
-  - CLI Reference: cli.md
-  - Laravel Comparison: laravel-comparison.md
-  - Versioning: versioning.md
-  - Contributing: contributing.md
-  - Publishing: publishing.md
+  - Guide:
+      - Installation: installation.md
+      - Getting Started: getting-started.md
+      - Tutorial: tutorial.md
+      - Tutorial (Español): tutorial.es.md
+      - Architecture: architecture.md
+      - Laravel Comparison: laravel-comparison.md
   - Modules:
+      - modules.md
       - Foundation:
           - Error Handling: modules/error-handling.md
           - Dependency Injection: modules/dependency-injection.md
@@ -131,3 +140,9 @@ nav:
           - Integration Testing: modules/integration-testing.md
       - Tooling:
           - Installer: modules/installer.md
+  - Reference:
+      - CLI Reference: cli.md
+      - Versioning: versioning.md
+  - Contributing:
+      - Contributing: contributing.md
+      - Publishing: publishing.md

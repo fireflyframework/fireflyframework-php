@@ -83,6 +83,8 @@ final class DocsCodeAudit
      */
     public const array AUDITED = [
         'README.md',
+        'docs/index.md',
+        'docs/modules.md',
     ];
 
     /**

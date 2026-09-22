@@ -4,39 +4,49 @@
 
 **LaraFly** is the PHP edition of the Firefly Framework — Spring Boot's cohesion, native to Laravel 13. It
 layers dependency injection with stereotypes, conditional auto-configuration, hexagonal ports & adapters,
-CQRS, event-driven architecture, first-party security, and a project CLI directly onto Laravel's own
-runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a Laravel developer would
-recognize, still a Laravel app — it just boots like a Spring Boot one.
+CQRS, event-driven architecture, first-party security including both halves of OAuth2, and a project CLI
+directly onto Laravel's own runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a
+Laravel developer would recognize, still a Laravel app — it just boots like a Spring Boot one.
 
 The whole framework is one monorepo of small, independently-installable Composer packages, wired together by
 a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
 request after that runs against plain PHP arrays — no runtime reflection on the hot path.
 
-## Why LaraFly?
+## Start here
 
-- **Attribute-driven DI & auto-configuration** — `#[Service]`, `#[Repository]`, `#[Configuration]` classes are
-  discovered by a compiled scan; install a capability package and its defaults wire themselves up, your own
-  beans always win.
-- **Hexagonal by construction** — every subsystem exposes a port and one or more adapters, with architectural
-  direction enforced by Deptrac, not convention alone.
-- **Declarative transactions & CQRS** — `#[Transactional]` demarcates boundaries at scan time; a
-  `CommandBus`/`QueryBus` mediator dispatches commands and queries, with domain events bridged onto the
-  event-transport bus after commit.
-- **Event-driven, with real brokers** — an in-memory default plus RabbitMQ, Postgres LISTEN/NOTIFY, and Kafka
-  adapters behind one `EventPublisher` port.
-- **Secure by default** — a Spring-Security-6-shaped principal model, deny-by-default `HttpSecurity` URL DSL,
-  and method security (`#[PreAuthorize]`) enforced with no proxy magic, and OpenID Connect login with
-  `firefly/security-oauth2-client`.
-- **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
-  metrics core, both secured by the same config as everything else, plus a server-rendered
-  [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md), and an
-  opt-in, off-by-default [data browser](modules/data-browser.md) over your own repositories, with filtering,
-  full CRUD, relations you can walk and a drawn [entity map](modules/admin.md#the-entity-map).
-- **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
-  same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
-  origin — no annotation dialect, no npm, no CDN.
-- **A first-party test kit** — a boot harness, recording doubles for every port, and web/data test-slice
-  builders, dogfooded across the framework's own test suite.
+<div class="lf-cards" markdown>
+
+<div class="lf-card" markdown>
+<span class="lf-card-title">Install</span>
+[Installation](installation.md)
+<span class="lf-card-note">Requirements, `composer create-project`, and the manual setup for adding LaraFly to an app you already have.</span>
+</div>
+
+<div class="lf-card" markdown>
+<span class="lf-card-title">First run</span>
+[Getting Started](getting-started.md)
+<span class="lf-card-note">Boot the skeleton, read what it generated, and write your first `#[RestController]` and `#[Service]`.</span>
+</div>
+
+<div class="lf-card" markdown>
+<span class="lf-card-title">Build something</span>
+[Tutorial](tutorial.md) · [Tutorial (Español)](tutorial.es.md)
+<span class="lf-card-note">A hand-built, 12-step walkthrough from `composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice, with a curl'd expected output at every step.</span>
+</div>
+
+<div class="lf-card" markdown>
+<span class="lf-card-title">Understand it</span>
+[Architecture](architecture.md)
+<span class="lf-card-note">The hexagonal design, the phased boot pipeline, and where the compiled manifests come from.</span>
+</div>
+
+<div class="lf-card" markdown>
+<span class="lf-card-title">Coming from Laravel</span>
+[Laravel Comparison](laravel-comparison.md)
+<span class="lf-card-note">Concept mapping for developers who already know Laravel: what stays, what is added, and what a stereotype replaces.</span>
+</div>
+
+</div>
 
 ## Quickstart
 
@@ -50,17 +60,50 @@ php artisan serve
 See [Installation](installation.md) for requirements and manual setup, and
 [Getting Started](getting-started.md) for a walkthrough of the generated app.
 
-## Documentation Map
+## Why LaraFly?
 
-| Start here | |
-|---|---|
-| [Installation](installation.md) | Requirements and how to stand up a new app |
-| [Getting Started](getting-started.md) | Boot the skeleton, write your first controller/service |
-| [Tutorial](tutorial.md) | A hand-built, 12-step walkthrough building a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature |
-| [Architecture](architecture.md) | The hexagonal design and the boot pipeline |
-| [Laravel Comparison](laravel-comparison.md) | Concept mapping for developers coming from plain Laravel |
+- **Attribute-driven DI & auto-configuration** — `#[Service]`, `#[Repository]`, `#[Configuration]` classes are
+  discovered by a compiled scan; install a capability package and its defaults wire themselves up, your own
+  beans always win.
+- **Hexagonal by construction** — every subsystem exposes a port and one or more adapters, with architectural
+  direction enforced by Deptrac, not convention alone.
+- **Declarative transactions & CQRS** — `#[Transactional]` demarcates boundaries at scan time; one generated
+  proxy per bean runs the whole advice chain, security *before* transaction (`Advice` order 100 against
+  1000), so a refusal is thrown before a transaction is ever opened. A `CommandBus`/`QueryBus` mediator
+  dispatches commands and queries, with domain events bridged onto the event-transport bus after commit.
+- **Event-driven, with real brokers** — an in-memory default plus RabbitMQ, Postgres LISTEN/NOTIFY, and Kafka
+  adapters behind one `EventPublisher` port.
+- **Secure by default** — a session-persisted `SecurityContext`, form login on the framework's own page, HTTP
+  Basic, remember-me, logout, deny-by-default [`HttpSecurity`](modules/security.md) URL rules, and method
+  security (`#[PreAuthorize]`, `#[PostAuthorize]`, `#[PreFilter]`, `#[PostFilter]`) enforced on **any**
+  stereotyped bean through that same shared interceptor chain.
+- **Both halves of OAuth2** — sign in with an external provider ([OIDC login](modules/security-oauth2-client.md)
+  with provider presets, discovery, PKCE, id-token validation, RP-initiated logout, client credentials and
+  `Http::oauth2Client()`), or **be** the provider
+  ([an authorization server](modules/security-oauth2-server.md) with registered clients, `/oauth2/authorize`
+  with PKCE and a consent page, `/oauth2/token` with three grants, introspection, revocation, `/userinfo`,
+  JWKS and both `.well-known` documents).
+- **Traced and logged like a service, not a script** — a `Tracer`/`Span` port with an
+  [OpenTelemetry adapter](modules/tracing.md), a W3C `traceparent` continued at the server filter and carried
+  on through the `Http` client, both CQRS buses and every EDA envelope, and
+  [structured logging](modules/logging.md) in `json`, `ecs` or `logstash` carrying the same ids.
+- **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
+  metrics core, both secured by the same config as everything else, plus a server-rendered
+  [admin dashboard](modules/admin.md) over them with a drawn [bean graph](modules/bean-graph.md), and an
+  opt-in, off-by-default [data browser](modules/data-browser.md) over your own repositories, with filtering,
+  full CRUD, relations you can walk and a drawn [entity map](modules/admin.md#the-entity-map).
+- **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
+  same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
+  origin — no annotation dialect, no npm, no CDN.
+- **A first-party test kit** — a boot harness, recording doubles for every port, web/data test-slice builders
+  and a Pest 4 + Playwright browser suite (`composer test:browser`) driving real Chromium over the skeleton,
+  dogfooded across the framework's own test suite.
 
-Module guides are grouped by concern under [`modules/`](modules/error-handling.md):
+## The modules
+
+Every capability above ships as a package you install on its own. The [module index](modules.md) lays all
+thirty-two guides out by concern, with a line on each saying what it is for, and the same grouping is the
+site's **Modules** tab.
 
 | Group | Guides |
 |---|---|
@@ -75,11 +118,9 @@ Module guides are grouped by concern under [`modules/`](modules/error-handling.m
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |
 
-New to LaraFly? Follow the [Tutorial](tutorial.md) — a hand-built, 12-step walkthrough from
-`composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice, with a
-curl'd expected output at every step.
+## See it running
 
-Want to see it all running together? The
+Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *LaraFly by Example*
@@ -91,9 +132,7 @@ in [`book/`](https://github.com/fireflyframework/fireflyframework-php/tree/main/
 - **CLI commands:** [CLI Reference](cli.md)
 - **Releases & versioning:** [Versioning](versioning.md) · [Publishing](publishing.md)
 - **Contributing to the monorepo:** [Contributing](contributing.md)
-- **Full table of contents:** browse
-  [`docs/README.md`](https://github.com/fireflyframework/fireflyframework-php/blob/main/docs/README.md) on
-  GitHub
+- **Every module guide, grouped:** [Modules](modules.md)
 
 ---
 
