@@ -40,9 +40,18 @@ Both are self-contained on the same terms as the banner and the diagrams: no `<s
 `@font-face`, no external reference of any kind. `tests/BannerAssetTest.php` holds all three brand assets to
 exactly that: each file exists, parses as XML, contains none of those three things, and carries no URL other
 than the SVG namespace itself. It also checks that whatever consumes each asset still names it — `mkdocs.yml`
-for the logo and the favicon, `README.md` and `docs/index.md` for the banner, which `mkdocs.yml` never refers
-to at all. That second half is the one that earns its keep over time, because the way an asset like this rots
-is that a theme key is renamed and the file is orphaned without anything going red.
+for the logo, the favicon and the stylesheet, `README.md` and `docs/index.md` for the banner, which
+`mkdocs.yml` never refers to at all. That second half is the one that earns its keep over time, because the
+way an asset like this rots is that a theme key is renamed and the file is orphaned without anything going
+red.
+
+Which is why the `mkdocs.yml` side of it is read off the **parsed** document — `theme.logo`, `theme.favicon`
+and the `extra_css` list — and not out of the file's text. A whole-file substring match would be satisfied by
+any line that happens to spell the path, and this is a config written in a comment-heavy voice: the note above
+its `palette:` block already spells `docs/assets/stylesheets/larafly.css` while explaining where the custom
+colours live. Matched as text, that comment alone keeps the check green on a site whose `extra_css` key has
+been deleted outright — the stylesheet fully unwired, every page rendered unstyled, nothing red. Matched as a
+key, a rename or a deletion is not something the test can miss.
 
 ## Stylesheet
 
@@ -54,7 +63,9 @@ wide configuration tables.
 Its palette is read out of `larafly-banner.svg`: the slate background gradient (`#0f172a` → `#1e293b`), the
 spark's three ambers (`#fde68a`, `#fbbf24`, `#f59e0b`) and the greys the wordmark, tagline and credit line sit
 in (`#f8fafc`, `#e2e8f0`, `#94a3b8`, `#64748b`). Three values are *chosen* rather than read, and the file
-marks each one where it is defined.
+marks each one where it is defined. The `--lf-*` tokens are numbered by where each colour falls on the slate
+and amber ramps it belongs to, which is why the mid-slate is `--lf-slate-500` (`#64748b`) and not a `-600`:
+`#475569` is the 600 step, and the banner does not contain it.
 
 Two of the three are the link inks. `--lf-amber-deep` `#f59e0b` — the outer stop of the banner's spark
 gradient — is `hsl(38, 92%, 50%)` and carries 2.15:1 against white, which cannot be a link in a paragraph, so
@@ -66,6 +77,12 @@ readable direction is the other one, and links are that spark colour itself (9.6
 The third is `#0b1220`, one step under the banner's darkest slate, for the single thing Material paints with
 `--md-primary-fg-color--dark`: the repository block the navigation drawer puts directly under its title,
 which is `--md-primary-fg-color` and would otherwise be the same colour.
+
+`tests/BannerAssetTest.php` also holds the palette closed over itself: every `--lf-*` token the stylesheet
+reads with `var()` must be a token the stylesheet declares. A custom property is the one CSS reference that
+fails silently — `var(--lf-slate-600)` is not a parse error, the declaration is simply dropped and the element
+inherits its parent's colour — so a renamed token would otherwise survive `mkdocs build --strict` and every
+other check here, and show up only as a page that looks slightly wrong.
 
 # Diagrams
 
