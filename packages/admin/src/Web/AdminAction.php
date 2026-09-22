@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Web;
 
+use DateTimeImmutable;
 use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
@@ -24,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Session\Store;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Throwable;
 
 /**
  * The single invokable behind every dashboard page.
@@ -181,6 +183,7 @@ final readonly class AdminAction
             'connections' => $connections,
             'pooling' => $this->datasource->pooling(),
             'transactional' => $this->datasource->transactionalMethods(),
+            'dataLayer' => $this->datasource->dataLayer(),
             'probe' => $probe,
             'probeEnabled' => $this->datasource->probeEnabled(),
             'wizard' => $this->wizard,
@@ -261,17 +264,24 @@ final readonly class AdminAction
     /**
      * Redirect back with the outcome sentence flashed.
      *
-     * Guarded on the session actually being started: the dashboard mounts on the plain router and an
-     * application can serve it without session middleware, where with() would throw — and a write that
-     * SUCCEEDED failing on its way to reporting success is the worst possible outcome for this control.
+     * Guarded on the session actually being started: an application can serve the dashboard without
+     * session middleware, where with() would throw — and a write that SUCCEEDED failing on its way to
+     * reporting success is the worst possible outcome for this control.
+     *
+     * `session.store`, NOT `session`. The `session` binding is the SessionManager — the factory that hands
+     * out stores — and a manager is never a Store, so the guard below was false on every request and no
+     * outcome ever reached a page: a refused create looked exactly like a page reload. `session.store` is
+     * the Store the StartSession middleware started for this request. And a RedirectResponse built by hand
+     * carries no session of its own, so it is handed the store before with() asks it to flash.
      */
     private function redirect(string $to, string $message): RedirectResponse
     {
         $response = new RedirectResponse($to);
 
-        $session = $this->container->bound('session') ? $this->container->get('session') : null;
+        $session = $this->container->bound('session.store') ? $this->container->get('session.store') : null;
 
         if ($session instanceof Store && $session->isStarted()) {
+            $response->setSession($session);
             $response->with('data-message', $message);
         }
 
@@ -416,6 +426,7 @@ final readonly class AdminAction
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
             'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
+            'oauth2' => $this->oauth2(),
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
             // and caches answers {default: name|null, caches: {name => row}}.
@@ -548,7 +559,12 @@ final readonly class AdminAction
     }
 
     /**
-     * Recent HTTP exchanges, newest first, with each duration pre-formatted.
+     * Recent HTTP exchanges, newest first, with each duration pre-formatted and the trace id carried through.
+     *
+     * The row is read in the shape HttpExchange::toArray() actually emits — `uri` (the route template) and an
+     * ISO-8601 `timestamp` — with `path` and a numeric timestamp still accepted. This method used to read
+     * only the latter pair, which the endpoint never produced, so the page showed an empty path and `—` for
+     * the age of every request it listed.
      *
      * @return list<array<string,mixed>>
      */
@@ -561,17 +577,72 @@ final readonly class AdminAction
             }
 
             $duration = $exchange['durationMs'] ?? $exchange['duration'] ?? null;
+            $uri = $exchange['uri'] ?? $exchange['path'] ?? null;
             $rows[] = [
                 'method' => is_string($exchange['method'] ?? null) ? $exchange['method'] : '',
-                'path' => is_string($exchange['path'] ?? null) ? $exchange['path'] : '',
+                'path' => is_string($uri) ? $uri : '',
                 'status' => is_numeric($exchange['status'] ?? null) ? (int) $exchange['status'] : 0,
                 'duration' => is_numeric($duration) ? Format::milliseconds((float) $duration) : '—',
                 'correlationId' => is_string($exchange['correlationId'] ?? null) ? $exchange['correlationId'] : '',
-                'timestamp' => is_numeric($exchange['timestamp'] ?? null) ? (float) $exchange['timestamp'] : 0.0,
+                'traceId' => is_string($exchange['traceId'] ?? null) ? $exchange['traceId'] : '',
+                'timestamp' => $this->epoch($exchange['timestamp'] ?? null),
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * The OAuth2 page's model, from ONE read of the `oauth2clients` endpoint.
+     *
+     * Shape verified against OAuth2ClientsEndpoint: `{issuer: string, authorizations: {processLocal: bool},
+     * clients: list<row>}`. The single read is the point. AdminEndpointReader::read() does not memoize — it
+     * calls handle() again on every call, and re-walks the registry through has() on the way — and this
+     * endpoint is not a cheap in-memory introspection like `caches` or `configprops`: it counts the
+     * authorizations alive for every client, which the Eloquent service answers with one query per client.
+     * Filling the keys with a payload() call each tripled that for nothing, and it also broke the endpoint's
+     * own "one clock for the whole sweep" guarantee across the rendered page — the issuer and the counts would
+     * each come from a different sweep.
+     *
+     * `processLocalAuthorizations` is carried through because the Active column is otherwise a number that
+     * looks server-wide and is not: on the default `memory` driver the counts belong to the worker that
+     * rendered this page (see OAuth2ClientsEndpoint). Defaulting to FALSE when the key is absent is
+     * deliberate — a warning the payload does not substantiate is its own kind of wrong answer.
+     *
+     * @return array<string,mixed>
+     */
+    private function oauth2(): array
+    {
+        $payload = $this->payload('oauth2clients');
+        $issuer = $payload['issuer'] ?? null;
+
+        return [
+            'issuer' => is_string($issuer) ? $issuer : '',
+            'clients' => $this->subArray($payload, 'clients'),
+            'processLocalAuthorizations' => ($this->subArray($payload, 'authorizations')['processLocal'] ?? null) === true,
+        ];
+    }
+
+    /**
+     * The endpoint's `timestamp` is ISO-8601 UTC with microseconds (HttpExchange::timestampFrom()); the page
+     * wants seconds since the epoch for Format::since(). A numeric value is accepted too, so a row from an
+     * older cache entry still renders. Anything unparseable is 0.0, which the view shows as `—`.
+     */
+    private function epoch(mixed $timestamp): float
+    {
+        if (is_numeric($timestamp)) {
+            return (float) $timestamp;
+        }
+
+        if (! is_string($timestamp) || $timestamp === '') {
+            return 0.0;
+        }
+
+        try {
+            return (float) (new DateTimeImmutable($timestamp))->format('U.u');
+        } catch (Throwable) {
+            return 0.0;
+        }
     }
 
     private function setLoggerLevel(Request $request): RedirectResponse

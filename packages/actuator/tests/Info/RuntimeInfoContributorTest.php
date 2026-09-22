@@ -22,12 +22,15 @@ use Illuminate\Foundation\Application;
  * #[ConditionalOnProperty] has to be evaluated by the real condition pipeline off the compiled context
  * manifest. A unit test over the class alone would prove neither.
  *
+ * The on-by-default db health indicator is switched off because this bare skeleton registers no
+ * DatabaseServiceProvider (a database the test never meant to have; see PackageBootTest).
+ *
  * @param  array<string, mixed>  $management
  */
 function runtimeInfoApp(array $management = []): Application
 {
     return fireflyApplication(
-        config: ['firefly' => ['management' => ['enabled' => true] + $management]],
+        config: ['firefly' => ['management' => ['enabled' => true, 'endpoint' => ['health' => ['db' => ['enabled' => false]]]] + $management]],
         providers: [ActuatorServiceProvider::class, ActuatorWiringProvider::class],
         bindings: [
             RouteManifest::class => new RouteManifest([]),

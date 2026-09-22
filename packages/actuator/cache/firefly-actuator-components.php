@@ -66,13 +66,15 @@ return [
         'order' => 0,
         'qualifier' => null,
         'interfaces' => [
-            0 => 'Firefly\\Actuator\\Health\\HealthIndicator',
+            0 => 'Firefly\\Actuator\\Health\\ConditionalHealthIndicator',
+            1 => 'Firefly\\Actuator\\Health\\HealthIndicator',
         ],
         'beans' => [
         ],
         'lazy' => false,
         'dependencies' => [
             0 => 'Illuminate\\Database\\ConnectionResolverInterface',
+            1 => 'Firefly\\Config\\Config',
         ],
     ],
     2 => [

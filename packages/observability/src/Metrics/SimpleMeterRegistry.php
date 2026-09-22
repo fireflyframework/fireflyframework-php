@@ -16,6 +16,8 @@ use InvalidArgumentException;
  * MeterType (e.g. counter('foo') then gauge('foo', ...)) is a programming error, not a valid overload: it would
  * make the renderer emit two conflicting `# TYPE foo` lines for one name, which is invalid Prometheus exposition.
  * We fail fast on that instead of silently producing broken output.
+ *
+ * Timers are created with the buckets DistributionStatisticConfig assigns their name (none by default).
  */
 final class SimpleMeterRegistry implements MeterRegistry, MetricsRecorder
 {
@@ -27,6 +29,8 @@ final class SimpleMeterRegistry implements MeterRegistry, MetricsRecorder
 
     /** @var array<string, float> backing store for setGauge() values, keyed like the meter */
     private array $gaugeValues = [];
+
+    public function __construct(private readonly DistributionStatisticConfig $distribution = new DistributionStatisticConfig) {}
 
     /** @param array<string, string> $tags */
     public function counter(string $name, array $tags = []): Counter
@@ -49,7 +53,7 @@ final class SimpleMeterRegistry implements MeterRegistry, MetricsRecorder
         $key = $this->key(MeterType::Timer, $name, $tags);
         $meter = $this->meters[$key] ?? null;
         if (! $meter instanceof Timer) {
-            $meter = new Timer($name, $this->sort($tags));
+            $meter = new Timer($name, $this->sort($tags), $this->distribution->bucketsFor($name));
             $this->meters[$key] = $meter;
         }
 

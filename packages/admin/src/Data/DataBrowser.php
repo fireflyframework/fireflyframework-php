@@ -470,6 +470,18 @@ final class DataBrowser
                 continue;
             }
 
+            // A BLANK IN A COLUMN THE PERSON DID NOT HAVE TO FILL IS LEFT OUT OF THE INSERT, not coerced.
+            // The form submits '' for every field the operator did not touch, and coerce() has two answers
+            // for that, both wrong on a create: on a NOT NULL number it is "invalid", which refused a whole
+            // order because `total DEFAULT 0` was left alone — a value the schema was about to supply
+            // itself; on a nullable column it is an explicit null, which is "dirty" to Eloquent and
+            // silenced its own timestamps, so a browser-created row came back with `created_at: null`.
+            // Omitting the attribute lets whoever owns the missing value fill it — the DEFAULT clause, the
+            // column's NULL, or the model's clock. Create only: on an existing row a blank is an edit.
+            if (! $column->isRequired() && $this->isBlank($value)) {
+                continue;
+            }
+
             $coerced = $this->coerce($entity, $column, $value);
             if ($coerced === false) {
                 return DataWriteResult::refused(
@@ -587,6 +599,12 @@ final class DataBrowser
             DataColumn::TYPE_JSON => $this->coerceJson($entity, $column, $string),
             default => [is_string($value) ? $value : $string],
         };
+    }
+
+    /** What a form field the operator never touched arrives as: null, or a string that trims to nothing. */
+    private function isBlank(mixed $value): bool
+    {
+        return $value === null || (is_scalar($value) && trim((string) $value) === '');
     }
 
     /** @return array{0: bool}|false */

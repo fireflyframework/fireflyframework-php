@@ -80,3 +80,34 @@ it('carries field errors when built from a ValidationException', function () {
     expect($r->status)->toBe(422)
         ->and($r->errors)->toBe($fields);
 });
+
+it('spreads extension members after the standard ones and never lets them override a standard member', function () {
+    $e = (new ResourceNotFoundException('Order 42 not found'))
+        ->withExtensions(['field' => 'orderId', 'status' => 999, 'code' => 'SPOOFED', 'title' => 'spoofed']);
+
+    $payload = ErrorResponse::fromException($e)->toArray();
+
+    expect($payload['status'])->toBe(404)
+        ->and($payload['code'])->toBe('RESOURCE_NOT_FOUND')
+        ->and($payload['title'])->toBe('Not Found')
+        ->and($payload['field'])->toBe('orderId');
+});
+
+it('uses the exception\'s own title when it has one, and the status phrase otherwise', function () {
+    $titled = ErrorResponse::fromException((new ResourceNotFoundException('Order 42 not found'))->withTitle('No such order'));
+    $plain = ErrorResponse::fromException(new ResourceNotFoundException('Order 42 not found'));
+
+    expect($titled->title)->toBe('No such order')
+        ->and($plain->title)->toBe('Not Found');
+});
+
+it('titles 402 and 405', function () {
+    expect(ErrorResponse::titleFor(402))->toBe('Payment Required')
+        ->and(ErrorResponse::titleFor(405))->toBe('Method Not Allowed');
+});
+
+it('keeps extension members out of the array when there are none', function () {
+    $payload = ErrorResponse::fromException(new ResourceNotFoundException('Order 42 not found'))->toArray();
+
+    expect(array_keys($payload))->toBe(['status', 'title', 'code', 'category', 'severity', 'detail']);
+});

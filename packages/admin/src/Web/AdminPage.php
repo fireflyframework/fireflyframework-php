@@ -59,6 +59,8 @@ final readonly class AdminPage
                 'The compiled route table the dispatcher serves from.'),
             new self('scheduled', 'Scheduled', 'scheduledtasks', self::GROUP_WIRING,
                 'Methods registered by #[Scheduled], with the cron or interval that drives them.'),
+            new self('oauth2', 'OAuth2 clients', 'oauth2clients', self::GROUP_WIRING,
+                'The clients registered with this application\'s OAuth2 authorization server, their grants and scopes, and the authorizations alive for each.'),
 
             new self('env', 'Environment', 'env', self::GROUP_CONFIG,
                 'Resolved firefly.* configuration, with secrets masked.'),

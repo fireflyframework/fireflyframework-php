@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Firefly\Eda\Consumer\EnvelopeSink;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\Consumer\TopicSubscriptionResolver;
+use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Tests\Support\EdaConsumeCommandTestCase;
+use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 
 uses(EdaConsumeCommandTestCase::class);
@@ -62,4 +65,55 @@ it('exits FAILURE without subscribing when no broker EventConsumer is bound', fu
 
     expect($this->runConsume())->toBe(1)
         ->and($this->consumer->subscribed)->toBe([]);
+});
+
+it('delivers to the application\'s EnvelopeSink when one is bound, instead of the #[EventListener] registry', function () {
+    /** @var EdaConsumeCommandTestCase $this */
+    $sink = new class implements EnvelopeSink
+    {
+        /** @var list<string> */
+        public array $types = [];
+
+        public function handle(EventEnvelope $envelope): void
+        {
+            $this->types[] = $envelope->eventType;
+        }
+    };
+    $this->app()->instance(EnvelopeSink::class, $sink);
+    $this->consumer->enqueue(new EventEnvelope('order.created', 'orders', ['id' => 7]));
+
+    expect($this->runConsume(['--max-messages' => 1]))->toBe(0)
+        ->and($sink->types)->toBe(['order.created'])
+        ->and($this->consumer->acked)->toHaveCount(1);
+});
+
+/**
+ * The registry sink the command builds when no EnvelopeSink is bound must carry the bound EdaTracing, or a
+ * broker worker would be the one consume path without a CONSUMER span. The event type matches no listener, so
+ * delivery itself is inert and what is asserted is the seam wrapping it.
+ */
+it('routes the registry sink\'s delivery through the bound EdaTracing seam', function () {
+    /** @var EdaConsumeCommandTestCase $this */
+    $tracing = new class implements EdaTracing
+    {
+        /** @var list<string> */
+        public array $consumed = [];
+
+        public function tracePublish(string $destination, string $eventType, array $headers, callable $send): void
+        {
+            $send($headers);
+        }
+
+        public function traceConsume(EventEnvelope $envelope, callable $deliver): void
+        {
+            $this->consumed[] = "{$envelope->destination} {$envelope->eventType}";
+            $deliver($envelope);
+        }
+    };
+    $this->app()->instance(EdaTracing::class, $tracing);
+    $this->consumer->enqueue(new EventEnvelope('user.created', 'users', ['id' => 7]));
+
+    expect($this->runConsume(['--max-messages' => 1]))->toBe(0)
+        ->and($tracing->consumed)->toBe(['users user.created'])
+        ->and($this->consumer->acked)->toHaveCount(1);
 });

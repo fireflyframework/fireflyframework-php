@@ -6,6 +6,23 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Security\\Access\\Method\\MethodSecurityAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Security\\OAuth2\\OAuth2ResourceServerFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -24,7 +41,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Security\\SecurityAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -120,6 +137,35 @@ return [
                 ],
             ],
             7 => [
+                'method' => 'methodSecurityEvaluator',
+                'returns' => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
+                    1 => 'Firefly\\Security\\Access\\RoleHierarchy',
+                    2 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                    3 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                    4 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            8 => [
+                'method' => 'methodSecurityInterceptor',
+                'returns' => 'Firefly\\Security\\Access\\Method\\MethodSecurityInterceptor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            9 => [
                 'method' => 'methodSecurityMessageEnforcer',
                 'returns' => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 'name' => null,
@@ -133,9 +179,12 @@ return [
                     2 => 'Firefly\\Security\\Access\\Expression\\SecurityExpressionEvaluator',
                     3 => 'Firefly\\Security\\Access\\RoleHierarchy',
                     4 => 'Firefly\\Security\\Access\\PermissionEvaluator',
+                    5 => 'Firefly\\Config\\Config',
+                    6 => 'Psr\\Log\\LoggerInterface',
+                    7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
                 ],
             ],
-            8 => [
+            10 => [
                 'method' => 'commandAuthorizer',
                 'returns' => 'Firefly\\Cqrs\\Security\\CommandAuthorizer',
                 'name' => null,
@@ -147,7 +196,7 @@ return [
                     0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 ],
             ],
-            9 => [
+            11 => [
                 'method' => 'queryAuthorizer',
                 'returns' => 'Firefly\\Cqrs\\Security\\QueryAuthorizer',
                 'name' => null,
@@ -159,7 +208,7 @@ return [
                     0 => 'Firefly\\Security\\Cqrs\\MethodSecurityMessageEnforcer',
                 ],
             ],
-            10 => [
+            12 => [
                 'method' => 'auditorAware',
                 'returns' => 'Firefly\\Data\\Repository\\Auditing\\AuditorAware',
                 'name' => null,
@@ -170,7 +219,132 @@ return [
                 'dependencies' => [
                 ],
             ],
-            11 => [
+            13 => [
+                'method' => 'authenticationEventPublisher',
+                'returns' => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                ],
+            ],
+            14 => [
+                'method' => 'sessionSecuritySettings',
+                'returns' => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            15 => [
+                'method' => 'securityContextRepository',
+                'returns' => 'Firefly\\Security\\Session\\SecurityContextRepository',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            16 => [
+                'method' => 'formLoginSettings',
+                'returns' => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            17 => [
+                'method' => 'httpBasicSettings',
+                'returns' => 'Firefly\\Security\\Web\\Settings\\HttpBasicSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            18 => [
+                'method' => 'logoutSettings',
+                'returns' => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            19 => [
+                'method' => 'rememberMeSettings',
+                'returns' => 'Firefly\\Security\\Web\\Settings\\RememberMeSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            20 => [
+                'method' => 'rememberMeServices',
+                'returns' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Security\\Web\\Settings\\RememberMeSettings',
+                    1 => 'Firefly\\Security\\User\\UserDetailsService',
+                    2 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            21 => [
+                'method' => 'authenticationEntryPoint',
+                'returns' => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+                    2 => 'Firefly\\Security\\Web\\Settings\\HttpBasicSettings',
+                    3 => 'Firefly\\Web\\Error\\ErrorPageRenderer',
+                    4 => 'Firefly\\Web\\Exception\\ProblemDetailsRenderer',
+                ],
+            ],
+            22 => [
+                'method' => 'sessionCsrf',
+                'returns' => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            23 => [
                 'method' => 'jwtService',
                 'returns' => 'Firefly\\Security\\Jwt\\JwtService',
                 'name' => null,
@@ -182,7 +356,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            12 => [
+            24 => [
                 'method' => 'httpSecurity',
                 'returns' => 'Firefly\\Security\\Access\\HttpSecurity',
                 'name' => null,
@@ -194,7 +368,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
-            13 => [
+            25 => [
                 'method' => 'jwksProvider',
                 'returns' => 'Firefly\\Security\\OAuth2\\JwksProvider',
                 'name' => null,
@@ -212,7 +386,51 @@ return [
         'dependencies' => [
         ],
     ],
-    2 => [
+    3 => [
+        'class' => 'Firefly\\Security\\Session\\SecurityContextPersistenceFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -94,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            1 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            2 => 'Firefly\\Config\\Config',
+        ],
+    ],
+    4 => [
+        'class' => 'Firefly\\Security\\Web\\Basic\\HttpBasicFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -91,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\HttpBasicSettings',
+            1 => 'Firefly\\Security\\Authentication\\AuthenticationManager',
+            2 => 'Firefly\\Security\\Web\\EntryPoint\\BasicAuthenticationEntryPoint',
+            3 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            4 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            5 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            6 => 'Firefly\\Config\\Config',
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -228,9 +446,10 @@ return [
         'lazy' => false,
         'dependencies' => [
             0 => 'Firefly\\Config\\Config',
+            1 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
         ],
     ],
-    3 => [
+    6 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -250,9 +469,12 @@ return [
             2 => 'Firefly\\Security\\Access\\RoleHierarchy',
             3 => 'Firefly\\Security\\Access\\PermissionEvaluator',
             4 => 'Firefly\\Config\\Config',
+            5 => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+            6 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+            7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
         ],
     ],
-    4 => [
+    7 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -271,7 +493,98 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    5 => [
+    8 => [
+        'class' => 'Firefly\\Security\\Web\\Login\\FormLoginFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -92,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+            1 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            2 => 'Firefly\\Security\\Authentication\\AuthenticationManager',
+            3 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            4 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            5 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+            6 => 'Illuminate\\Container\\Container',
+            7 => 'Firefly\\Config\\Config',
+            8 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    9 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -93,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+            1 => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+            2 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+            3 => 'Illuminate\\Container\\Container',
+            4 => 'Firefly\\Config\\Config',
+            5 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
+        ],
+    ],
+    10 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+            1 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            3 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    11 => [
+        'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -83,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+            1 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+            2 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+            3 => 'Firefly\\Config\\Config',
+            4 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+        ],
+    ],
+    12 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,

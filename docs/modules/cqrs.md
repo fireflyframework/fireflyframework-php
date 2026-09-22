@@ -70,6 +70,9 @@ All default to no-ops so the pipeline is a series of skippable collaborators:
 - **Correlation** — `CorrelationContext` propagates a uuid4 correlation id, restored after each dispatch
   and stamped into integration-event headers (`x-correlation-id`).
 - **Metrics** — `CqrsMetrics` seam (no-op default); the real recorder is M12-observability.
+- **Tracing** — `CqrsTracing` seam (`NoOpCqrsTracing` default) wrapping validate → authorize → resolve →
+  invoke; observability's `TracerCqrsTracing` puts an INTERNAL span around every message (see
+  [Tracing](tracing.md)).
 - **Query cache** — `QueryCache` seam (`NoOpQueryCache` = always-miss) consulted for a `Cacheable` query;
   a real adapter lands with `firefly/cache`.
 

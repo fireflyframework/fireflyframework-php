@@ -552,8 +552,8 @@ curl -X POST http://127.0.0.1:8000/greetings \
     "severity": "warning",
     "detail": "Validation failed",
     "errors": [
-        { "field": "name", "message": "The name field is required." },
-        { "field": "message", "message": "The message field is required." }
+        { "field": "name", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": "" },
+        { "field": "message", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": "" }
     ]
 }
 ```

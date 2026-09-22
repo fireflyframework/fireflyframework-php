@@ -51,12 +51,21 @@ final readonly class DataColumn
 
     public const string TYPE_JSON = 'json';
 
+    /**
+     * `$hasDefault` records whether the SCHEMA supplies a value when none is written — a `DEFAULT` clause,
+     * which only the table-derived path can know (an entity's promoted parameters say nothing about the
+     * column under them, so that path leaves it false). It exists for one decision, made twice: the
+     * new-record form marks such a column optional rather than required, and DataBrowser::create() leaves a
+     * blank in it out of the insert so the default lands — see isRequired() for why nullability alone was
+     * the wrong question.
+     */
     public function __construct(
         public string $name,
         public string $type = self::TYPE_STRING,
         public bool $nullable = true,
         public bool $identifier = false,
         public bool $sensitive = false,
+        public bool $hasDefault = false,
     ) {}
 
     /**
@@ -87,6 +96,20 @@ final readonly class DataColumn
     public function isEditable(): bool
     {
         return ! $this->identifier && ! $this->sensitive;
+    }
+
+    /**
+     * Whether a person creating a record has to supply this column.
+     *
+     * NOT NULL was the whole test before, and it asked the wrong question: `total decimal NOT NULL DEFAULT 0`
+     * is a column nobody has to type, yet the form labelled it `required` and a blank in it refused the
+     * row as "not a valid float" — a create that could only succeed by inventing a value the database was
+     * about to supply itself. A column is required only when the schema has no answer of its own for a
+     * missing value: neither null nor a default.
+     */
+    public function isRequired(): bool
+    {
+        return ! $this->nullable && ! $this->hasDefault;
     }
 
     /** `created_at` => `Created at`. Snake and kebab both split; nothing else is guessed. */

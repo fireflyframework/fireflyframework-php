@@ -44,6 +44,17 @@ use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 #[Service]
 class OrderService
 {
+    /**
+     * The code and the sentence a missing order answers with. OrderController puts the same two on the
+     * `{id}` attribute for a MALFORMED id (`/orders/abc`), so the two 404s are byte-for-byte identical and the
+     * wire cannot tell "no such order" from "not even an order id". The sentence does not echo the id for
+     * the same reason: an id that is not an int has no `%d` form, and a sentence that differed by shape would
+     * say what the code was careful not to.
+     */
+    public const string NOT_FOUND = 'ORDER_NOT_FOUND';
+
+    public const string NOT_FOUND_SENTENCE = 'That order does not exist.';
+
     public function __construct(
         private readonly OrderRepository $orders,
         private readonly OrderLineRepository $lines,
@@ -149,7 +160,7 @@ class OrderService
         $row = $this->orders->findById($id);
 
         if (! $row instanceof OrderEntity) {
-            throw new ResourceNotFoundException(sprintf('Order %d does not exist.', $id), 'ORDER_NOT_FOUND');
+            throw new ResourceNotFoundException(self::NOT_FOUND_SENTENCE, self::NOT_FOUND);
         }
 
         return $row;

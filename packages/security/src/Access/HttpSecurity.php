@@ -9,9 +9,12 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
 /**
  * A fluent, deny-by-default URL-authorization DSL (Spring's HttpSecurity.authorizeHttpRequests). Each
  * requestMatcher(pattern) opens a pending rule that the next access verb (permitAll/denyAll/authenticated/
- * hasRole/hasAuthority) finalises into a UrlAuthorizationRule whose `expression` reuses the exact same grammar
- * the method-security evaluator runs — one authorization engine, two entry points. build() returns the rules in
- * declaration order (first match wins); an app should end with anyRequest()->denyAll()/authenticated().
+ * hasRole/hasAuthority/hasScope) finalises into a UrlAuthorizationRule whose `expression` reuses the exact same
+ * grammar the method-security evaluator runs — one authorization engine, two entry points. build() returns the
+ * rules in declaration order (first match wins); an app should end with anyRequest()->denyAll()/authenticated().
+ * fromConfig() reads the same verbs as `firefly.security.http.rules` access specs: `permitAll`, `denyAll`,
+ * `authenticated`, `hasRole:<role>`, `hasAuthority:<authority>` and `hasScope:<scope>` (the `SCOPE_x`
+ * authority a bearer token or an OAuth2 login granted); anything else denies.
  */
 final class HttpSecurity
 {
@@ -62,6 +65,11 @@ final class HttpSecurity
         return $this->finalise("hasAuthority('".self::assertSafeValue($authority)."')");
     }
 
+    public function hasScope(string $scope): self
+    {
+        return $this->finalise("hasScope('".self::assertSafeValue($scope)."')");
+    }
+
     /**
      * @return list<UrlAuthorizationRule>
      */
@@ -91,15 +99,17 @@ final class HttpSecurity
             $access === 'authenticated' => 'isAuthenticated()',
             str_starts_with($access, 'hasRole:') => "hasRole('".self::assertSafeValue(substr($access, 8))."')",
             str_starts_with($access, 'hasAuthority:') => "hasAuthority('".self::assertSafeValue(substr($access, 13))."')",
+            str_starts_with($access, 'hasScope:') => "hasScope('".self::assertSafeValue(substr($access, 9))."')",
             default => 'denyAll()', // fail-closed: an unrecognised access spec denies
         };
     }
 
     /**
-     * Every value interpolated into a single-quoted expression literal (hasRole()/hasAuthority(), including the
-     * fromConfig() access-spec path) must be rejected if it contains a quote: a legitimate role/authority never
-     * does (Spring authorities are ROLE_X / resource:action), but a quote would let the value break out of its
-     * string literal and splice extra grammar into the fixed expression — e.g. widening it with `or permitAll()`.
+     * Every value interpolated into a single-quoted expression literal (hasRole()/hasAuthority()/hasScope(),
+     * including the fromConfig() access-spec path) must be rejected if it contains a quote: a legitimate
+     * role/authority/scope never does (Spring authorities are ROLE_X / SCOPE_x / resource:action), but a quote
+     * would let the value break out of its string literal and splice extra grammar into the fixed expression —
+     * e.g. widening it with `or permitAll()`.
      */
     private static function assertSafeValue(string $value): string
     {

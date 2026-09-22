@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Firefly\Security\OAuth2\JwksUnavailableException;
 use Firefly\Security\OAuth2\RemoteJwksProvider;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Orchestra\Testbench\TestCase;
@@ -76,11 +79,79 @@ it('fails closed on a fetch failure and leaves nothing usable cached', function 
     $cache = freshArrayCache();
     $provider = new RemoteJwksProvider($jwksUri, $cache, 3600);
 
-    expect(fn () => $provider->keys())->toThrow(RequestException::class);
+    // The failure is typed and a 503, not the HTTP client's own RequestException: the token was never
+    // examined, and a caller answered 401 for an outage it did not cause would rotate a perfectly good token.
+    try {
+        $provider->keys();
+        throw new LogicException('not thrown');
+    } catch (JwksUnavailableException $e) {
+        expect($e->httpStatus())->toBe(503)
+            ->and($e->errorCode())->toBe(JwksUnavailableException::CODE)
+            // The HOST is named, so an operator knows which upstream is down; the full URI is not, because
+            // a query string on a JWKS URI is where a tenant hint or a key would sit.
+            ->and($e->getMessage())->toContain('issuer.example.com')
+            ->not->toContain('/.well-known/')
+            ->and($e->getPrevious())->toBeInstanceOf(RequestException::class);
+    }
 
     // The failed fetch must not poison the cache — remember()'s put() only runs after the callback
     // returns successfully, so a subsequent call (e.g. once the issuer recovers) is free to retry.
     expect($cache->get('firefly.security.jwks.'.sha1($jwksUri)))->toBeNull();
 
     Http::assertSentCount(1);
+});
+
+/*
+ * THE TIMEOUT THAT TOOK A DEV STACK DOWN. The fetch ran with Laravel's default client timeout, thirty seconds
+ * — the same as PHP's execution limit — inside cache->remember(). With CACHE_STORE=array (a store that lives
+ * one request) and a JWKS URI pointing back at the same `php -S` pool, every authenticated request made a
+ * nested request that needed a second free worker; when the pool ran out the outer request sat in curl until
+ * the engine killed it, and the client saw "Maximum execution time of 30 seconds exceeded" on an ordinary GET.
+ * Five seconds to connect and five to answer, both configurable, and a failure that is an exception a 503
+ * can be made from rather than a fatal error nothing can be made from.
+ */
+it('bounds the fetch with connect and read timeouts, five seconds each by default', function () {
+    $jwksUri = 'https://issuer.example.com/.well-known/jwks.json';
+    $seen = [];
+    Http::fake(function (Request $request, array $options) use (&$seen) {
+        $seen = $options;
+
+        return Http::response(fakeJwksDocument(), 200);
+    });
+
+    (new RemoteJwksProvider($jwksUri, freshArrayCache(), 3600))->keys();
+
+    expect($seen['connect_timeout'])->toEqual(5)
+        ->and($seen['timeout'])->toEqual(5);
+});
+
+it('honours explicit timeouts', function () {
+    $jwksUri = 'https://issuer.example.com/.well-known/jwks.json';
+    $seen = [];
+    Http::fake(function (Request $request, array $options) use (&$seen) {
+        $seen = $options;
+
+        return Http::response(fakeJwksDocument(), 200);
+    });
+
+    (new RemoteJwksProvider($jwksUri, freshArrayCache(), 3600, connectTimeoutSeconds: 2, timeoutSeconds: 3))->keys();
+
+    expect($seen['connect_timeout'])->toEqual(2)
+        ->and($seen['timeout'])->toEqual(3);
+});
+
+it('reports a timed-out or refused connection as JwksUnavailableException too', function () {
+    $jwksUri = 'https://issuer.example.com/.well-known/jwks.json';
+    Http::fake(static fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
+
+    expect(fn () => (new RemoteJwksProvider($jwksUri, freshArrayCache(), 3600))->keys())
+        ->toThrow(JwksUnavailableException::class);
+});
+
+it('reports a JWKS document that is not JSON as JwksUnavailableException', function () {
+    $jwksUri = 'https://issuer.example.com/.well-known/jwks.json';
+    Http::fake([$jwksUri => Http::response('<html>maintenance</html>', 200, ['Content-Type' => 'text/html'])]);
+
+    expect(fn () => (new RemoteJwksProvider($jwksUri, freshArrayCache(), 3600))->keys())
+        ->toThrow(JwksUnavailableException::class);
 });

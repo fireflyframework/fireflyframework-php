@@ -36,6 +36,40 @@
         </div>
     @endisset
 
+    {{-- What a failure looks like from outside: the translated-exception table and the transaction budget. --}}
+    @isset($dataLayer)
+        <div class="panel">
+            @include('firefly-admin::_panel-head', ['title' => 'Data layer', 'count' => 'firefly.data.*'])
+            <dl class="stats">
+                <div class="stat">
+                    <dt>Exception translation</dt>
+                    <dd><span class="chip {{ $dataLayer['exceptionTranslation'] ? 'up' : 'warn' }}">{{ $dataLayer['exceptionTranslation'] ? 'on' : 'off' }}</span></dd>
+                </div>
+                <div class="stat">
+                    <dt>Default transaction timeout</dt>
+                    <dd class="sm">{{ $dataLayer['defaultTimeout'] > 0 ? $dataLayer['defaultTimeout'].'s' : 'none' }}</dd>
+                </div>
+                <div class="stat">
+                    <dt>Driver statement timeout</dt>
+                    <dd><span class="chip {{ $dataLayer['statementTimeout'] ? 'up' : '' }}">{{ $dataLayer['statementTimeout'] ? 'on' : 'off' }}</span></dd>
+                </div>
+                <div class="stat">
+                    <dt>Transactional listeners</dt>
+                    <dd><span class="chip {{ $dataLayer['transactionalEventListeners'] ? 'up' : '' }}">{{ $dataLayer['transactionalEventListeners'] ? 'on' : 'off' }}</span></dd>
+                </div>
+            </dl>
+            <p class="note">
+                With translation on (<code>firefly.data.exception-translation.enabled</code>) a driver failure leaves
+                the repository and every <code>#[Transactional]</code> method as the kernel's
+                <code>DataAccessException</code> family — a duplicate key is a 409 <code>DUPLICATE_KEY</code>, an
+                unreachable database a 503, a bad statement a 500 without the SQL in it. The default timeout
+                (<code>firefly.data.transaction.default-timeout</code>, seconds; 0 is none) applies to every
+                <code>#[Transactional]</code> method that does not name its own; a unit of work that overruns it is
+                rolled back and answered 504.
+            </p>
+        </div>
+    @endisset
+
     <div class="panel">
         @include('firefly-admin::_panel-head', [
             'title' => 'Connections', 'count' => count($connections),

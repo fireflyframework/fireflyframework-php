@@ -6,6 +6,8 @@ use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\Tests\Fixtures\Capstone\AccountService;
 use Firefly\Data\Tests\Fixtures\Capstone\IgnorableException;
 use Firefly\Data\Tests\Support\DataCapstoneTestCase;
+use Firefly\Kernel\Exception\Infrastructure\DuplicateKeyException;
+use Firefly\Kernel\Exception\Infrastructure\TransactionTimedOutException;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 
@@ -66,4 +68,16 @@ it('unwinds a NESTED inner rollback to a savepoint, leaving the outer row intact
     accountService($this->app())->outerWithNested();
 
     expect(DB::table('accounts')->pluck('name')->all())->toBe(['outer']);
+});
+
+it('throws the translated type out of a #[Transactional] method, rolled back', function () {
+    /** @var DataCapstoneTestCase $this */
+    expect(fn () => accountService($this->app())->insertDuplicate())->toThrow(DuplicateKeyException::class)
+        ->and(DB::table('accounts')->count())->toBe(0);
+});
+
+it('enforces #[Transactional(timeout:)] through the proxy: overrun, rolled back, 504', function () {
+    /** @var DataCapstoneTestCase $this */
+    expect(fn () => accountService($this->app())->slowTransfer())->toThrow(TransactionTimedOutException::class)
+        ->and(DB::table('accounts')->count())->toBe(0);
 });

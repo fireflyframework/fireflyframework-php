@@ -32,11 +32,15 @@ it('documents every configuration key the framework reads', function () {
                 continue;
             }
 
-            // Only keys read through the Config PORT. A bare `firefly.*` string elsewhere is as likely to be
-            // a route name or a container flag, and demanding a config entry for those would make this test
-            // noise rather than signal.
+            // Only keys read through the Config PORT — a method call, `->bool('firefly.…')`, never a static
+            // `Context::get('firefly.correlation_id')`, which is Laravel's request context and not a setting.
+            // A bare `firefly.*` string elsewhere is as likely to be a route name or a container flag, and
+            // demanding a config entry for those would make this test noise rather than signal. The character
+            // class admits `_` because the firefly.security block is snake_case (form_login, oauth2.server.
+            // access_token); without it every such key was invisible here — 75 of them when this was noticed,
+            // all documented by care rather than by this test.
             preg_match_all(
-                "/(?:bool|string|int|array|get|has)\(\s*'(firefly\.[a-z0-9.\-]+)'/",
+                "/->(?:bool|string|int|array|get|has)\(\s*'(firefly\.[a-z0-9._\-]+)'/",
                 (string) file_get_contents($file->getPathname()),
                 $matches,
             );
@@ -61,6 +65,45 @@ it('documents every configuration key the framework reads', function () {
     sort($undocumented);
 
     expect($undocumented)->toBe([]);
+});
+
+/**
+ * Every Config-port read names its key in full, so the test above can see it.
+ *
+ * The discovery above is a regex over source, and a regex is only as good as the strings it can find: a
+ * read written as `$config->bool("{$p}.enabled")` or `$config->bool(self::PREFIX.'.enabled')` is a key the
+ * first test never learns about, and a package that reads every key that way is a package the reference
+ * check has silently stopped covering — its keys happen to be documented today, and nothing would say so
+ * the day one is not. The settings classes spell `'firefly.security.…'` out on every line; this asserts
+ * that convention so the shortcut cannot come back without a red build. A key whose HEAD is literal and a
+ * later segment interpolated (`"firefly.management.endpoint.{$id}.enabled"`) is a genuinely per-endpoint
+ * key, not a hidden one, and is left alone.
+ */
+it('spells every configuration key it reads in full, so the reference check can see it', function () {
+    $root = dirname(__DIR__);
+
+    $hidden = [];
+    foreach (glob($root.'/packages/*/src') ?: [] as $source) {
+        /** @var iterable<SplFileInfo> $files */
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS));
+
+        foreach ($files as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            foreach (file($file->getPathname(), FILE_IGNORE_NEW_LINES) ?: [] as $index => $line) {
+                // A key that begins with an interpolation (`"{$p}.`, `"$p.`) or a class constant (`self::PREFIX.`).
+                if (preg_match('/->(?:bool|string|int|array|get|has)\(\s*(?:"\{?\$|[\w\\\\]+::\w+\s*\.)/', $line) === 1) {
+                    $hidden[] = substr($file->getPathname(), strlen($root) + 1).':'.($index + 1);
+                }
+            }
+        }
+    }
+
+    sort($hidden);
+
+    expect($hidden)->toBe([]);
 });
 
 /**

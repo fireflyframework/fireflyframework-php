@@ -1,0 +1,158 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Firefly\Observability\Web;
+
+use Firefly\Observability\Tracing\Span;
+use Firefly\Observability\Tracing\SpanKind;
+use Firefly\Observability\Tracing\SpanStatus;
+use Firefly\Observability\Tracing\Tracer;
+use Firefly\Observability\Tracing\W3CTraceContextPropagator;
+use GuzzleHttp\Promise\Create;
+use GuzzleHttp\Promise\PromiseInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
+use Throwable;
+
+/**
+ * A Guzzle middleware that gives every Laravel Http client request a CLIENT span and a traceparent — Spring's
+ * RestClient/WebClient observation, on the transport LaraFly already has. Installed once, on the Http factory,
+ * by HttpClientTracingPass; a Guzzle middleware is `callable(callable $handler): callable(Request, array):
+ * PromiseInterface`, and this class is exactly that shape.
+ *
+ * WHAT IS ON THE SPAN, and what is deliberately not. Attributes follow the OTel HTTP client semantic
+ * conventions — http.request.method, url.scheme, server.address, server.port, url.path,
+ * http.response.status_code — and NOT url.full: a full URL carries the query string, and `?token=`,
+ * `?api_key=` and signed URLs live there. The same rule keeps the query out of /actuator/httpexchanges, and
+ * it governs a failure's message too: Guzzle 7's transport errors end in `for <uri>` with only the password
+ * masked (its psr7 redactUserInfo leaves the query and fragment in), Laravel's Http::failedConnection() fake
+ * and StrayRequestException print the whole URI, and Guzzle 8 is the first to strip the query itself. So
+ * the request's query, fragment and userinfo are cut out of the message before it becomes the span's status
+ * description and the exception event's exception.message — the throwable that is rethrown, and the
+ * RequestException a caller handles, keep their message as is. The span is named by the method alone (the
+ * conventions' `{method}`: a client has no route template, and a path with ids in it would be an unbounded
+ * name).
+ *
+ * WHEN IT IS CURRENT, and when it ends — two different moments, because a Guzzle handler returns a promise.
+ * The span is the tracer's current span only while the handler runs: the synchronous part of the send, which
+ * is where the inner handlers (and anything they start) belong under it. The moment the handler returns, the
+ * span is deactivate()d — released as current, kept open — and it ends later, in the promise's then(): a
+ * fulfilled response sets the status code (ERROR at 4xx/5xx — the client-side convention, unlike a server
+ * span's 5xx-only rule) and ends; a rejection records the reason as the exception, marks ERROR, ends, and
+ * re-rejects untouched so RequestException handling downstream is unaffected. A handler that throws
+ * synchronously (a stray-request guard, a malformed option) ends the span before the throwable escapes.
+ *
+ * The early release is what Laravel's concurrent APIs need. Http::pool() and Http::batch() build every
+ * request's promise — running this middleware for each — BEFORE waiting on any of them, so the second request
+ * starts while the first has not settled (an Http::async() request is a LazyPromise built on wait(), which
+ * happens to serialise the sends, but nothing here relies on that). Were the span current until end(), the
+ * second CLIENT span would be a child of the first, the traceparent it sent would carry that ancestry to the
+ * downstream service, a log line written between the two sends would carry the first request's span id, and
+ * the OpenTelemetry SDK's scope stack would unwind out of order (a notice, and under Laravel's error handler
+ * an exception, whenever assertions are on). With the release, every request of a pool is a sibling under
+ * the span that issued it, which is what a trace of a fan-out should look like.
+ *
+ * Laravel's own before-sending, recorder and stub handlers sit INSIDE this one (global middleware is pushed
+ * first, so it is outermost), which is why Http::fake() exercises the whole path and Http::recorded() sees
+ * the injected header.
+ */
+final class HttpClientTracingMiddleware
+{
+    public function __construct(
+        private readonly Tracer $tracer,
+        private readonly W3CTraceContextPropagator $propagator,
+    ) {}
+
+    /**
+     * @param  callable(RequestInterface, array<mixed>): PromiseInterface  $handler
+     * @return callable(RequestInterface, array<mixed>): PromiseInterface
+     */
+    public function __invoke(callable $handler): callable
+    {
+        return function (RequestInterface $request, array $options) use ($handler): PromiseInterface {
+            $uri = $request->getUri();
+            $span = $this->tracer->startSpan($request->getMethod(), SpanKind::Client, [
+                'http.request.method' => $request->getMethod(),
+                'url.scheme' => $uri->getScheme(),
+                'server.address' => $uri->getHost(),
+                'server.port' => $uri->getPort() ?? ($uri->getScheme() === 'https' ? 443 : 80),
+                'url.path' => $uri->getPath() === '' ? '/' : $uri->getPath(),
+            ]);
+
+            foreach ($this->propagator->inject($span->context()) as $name => $value) {
+                $request = $request->withHeader($name, $value);
+            }
+
+            try {
+                $promise = $handler($request, $options);
+            } catch (Throwable $e) {
+                $this->fail($span, $e, $uri);
+
+                throw $e;
+            }
+
+            // The synchronous part is over: release the span as current now, end it when the response lands.
+            $span->deactivate();
+
+            return $promise->then(
+                function (ResponseInterface $response) use ($span): ResponseInterface {
+                    $span->setAttribute('http.response.status_code', $response->getStatusCode());
+                    if ($response->getStatusCode() >= 400) {
+                        $span->setStatus(SpanStatus::Error);
+                    }
+                    $span->end();
+
+                    return $response;
+                },
+                function (mixed $reason) use ($span, $uri): PromiseInterface {
+                    if ($reason instanceof Throwable) {
+                        $this->fail($span, $reason, $uri);
+                    } else {
+                        $span->setStatus(SpanStatus::Error);
+                        $span->end();
+                    }
+
+                    return Create::rejectionFor($reason);
+                },
+            );
+        };
+    }
+
+    private function fail(Span $span, Throwable $e, UriInterface $uri): void
+    {
+        $message = self::redact($e->getMessage(), $uri);
+
+        $span->recordException($e, ['exception.message' => $message])->setStatus(SpanStatus::Error, $message);
+        $span->end();
+    }
+
+    /**
+     * Cuts the request URI's query, fragment and userinfo out of a message, wherever they appear. The needles
+     * are the components themselves rather than one rendering of the whole URI, because the renderings differ
+     * — psr7 2 (Guzzle 7) prints the userinfo with the password replaced by three asterisks, psr7 3 replaces
+     * the whole userinfo with them, and Laravel's own messages print it raw — while the query and fragment are
+     * printed verbatim by all of them, straight from this Uri.
+     */
+    private static function redact(string $message, UriInterface $uri): string
+    {
+        $needles = [];
+
+        if ($uri->getQuery() !== '') {
+            $needles[] = '?'.$uri->getQuery();
+        }
+
+        if ($uri->getFragment() !== '') {
+            $needles[] = '#'.$uri->getFragment();
+        }
+
+        if ($uri->getUserInfo() !== '') {
+            $needles[] = $uri->getUserInfo().'@';
+            $needles[] = explode(':', $uri->getUserInfo(), 2)[0].':***@';
+            $needles[] = '***@';
+        }
+
+        return $needles === [] ? $message : str_replace($needles, '', $message);
+    }
+}

@@ -171,6 +171,52 @@ return [
                 ],
             ],
             7 => [
+                'method' => 'methodSecurityEvaluator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityEvaluator',
+                        ],
+                    ],
+                ],
+            ],
+            8 => [
+                'method' => 'methodSecurityInterceptor',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.method.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Access\\Method\\MethodSecurityInterceptor',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
                 'method' => 'methodSecurityMessageEnforcer',
                 'conditions' => [
                     0 => [
@@ -189,7 +235,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            10 => [
                 'method' => 'commandAuthorizer',
                 'conditions' => [
                     0 => [
@@ -208,7 +254,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            11 => [
                 'method' => 'queryAuthorizer',
                 'conditions' => [
                     0 => [
@@ -227,7 +273,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            12 => [
                 'method' => 'auditorAware',
                 'conditions' => [
                     0 => [
@@ -246,7 +292,205 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            13 => [
+                'method' => 'authenticationEventPublisher',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
+                        ],
+                    ],
+                ],
+            ],
+            14 => [
+                'method' => 'sessionSecuritySettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Session\\SessionSecuritySettings',
+                        ],
+                    ],
+                ],
+            ],
+            15 => [
+                'method' => 'securityContextRepository',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Session\\SecurityContextRepository',
+                        ],
+                    ],
+                ],
+            ],
+            16 => [
+                'method' => 'formLoginSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Settings\\FormLoginSettings',
+                        ],
+                    ],
+                ],
+            ],
+            17 => [
+                'method' => 'httpBasicSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Settings\\HttpBasicSettings',
+                        ],
+                    ],
+                ],
+            ],
+            18 => [
+                'method' => 'logoutSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Settings\\LogoutSettings',
+                        ],
+                    ],
+                ],
+            ],
+            19 => [
+                'method' => 'rememberMeSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Settings\\RememberMeSettings',
+                        ],
+                    ],
+                ],
+            ],
+            20 => [
+                'method' => 'rememberMeServices',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.remember_me.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
+                        ],
+                    ],
+                ],
+            ],
+            21 => [
+                'method' => 'authenticationEntryPoint',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.http.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\EntryPoint\\AuthenticationEntryPoint',
+                        ],
+                    ],
+                ],
+            ],
+            22 => [
+                'method' => 'sessionCsrf',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
+                        ],
+                    ],
+                ],
+            ],
+            23 => [
                 'method' => 'jwtService',
                 'conditions' => [
                     0 => [
@@ -265,7 +509,7 @@ return [
                     ],
                 ],
             ],
-            12 => [
+            24 => [
                 'method' => 'httpSecurity',
                 'conditions' => [
                     0 => [
@@ -284,7 +528,7 @@ return [
                     ],
                 ],
             ],
-            13 => [
+            25 => [
                 'method' => 'jwksProvider',
                 'conditions' => [
                     0 => [
@@ -306,6 +550,56 @@ return [
         ],
     ],
     2 => [
+        'class' => 'Firefly\\Security\\Session\\SecurityContextPersistenceFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    3 => [
+        'class' => 'Firefly\\Security\\Web\\Basic\\HttpBasicFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.http_basic.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
         'postConstruct' => [
         ],
@@ -326,7 +620,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    3 => [
+    5 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
         'postConstruct' => [
         ],
@@ -355,7 +649,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    4 => [
+    6 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
         'postConstruct' => [
         ],
@@ -376,7 +670,91 @@ return [
         'beanConditions' => [
         ],
     ],
-    5 => [
+    7 => [
+        'class' => 'Firefly\\Security\\Web\\Login\\FormLoginFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    8 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    9 => [
+        'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    10 => [
+        'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    11 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'postConstruct' => [
         ],

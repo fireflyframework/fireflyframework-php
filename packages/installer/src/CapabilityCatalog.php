@@ -56,6 +56,8 @@ final class CapabilityCatalog
     {
         $capabilities = [
             new Capability('security', 'firefly/security', 'Authentication, method security, JWT + in-memory principals'),
+            new Capability('security-oauth2-client', 'firefly/security-oauth2-client', 'OAuth2 client and OpenID Connect login: Google/GitHub/Okta/Keycloak/Microsoft presets, PKCE login, id-token validation, OidcUser principals', requires: ['security']),
+            new Capability('security-oauth2-server', 'firefly/security-oauth2-server', 'OAuth 2.1 / OIDC authorization server on top of security: clients, PKCE + consent, JWT access tokens, JWKS, introspection, revocation', requires: ['security']),
             new Capability('validation', 'firefly/validation', 'validate() port, financial Rule objects, #[Valid] interception'),
             new Capability('data', 'firefly/data', '#[Transactional] interception and the transaction manager'),
             new Capability('domain', 'firefly/domain', 'DDD building blocks: Entity, ValueObject, AggregateRoot, DomainEvent'),

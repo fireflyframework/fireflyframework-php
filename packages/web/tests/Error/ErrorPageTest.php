@@ -58,6 +58,24 @@ it('is switched off by configuration, and then never claims a request', function
     expect($renderer->handles($request('text/html')))->toBeFalse();
 });
 
+it('still knows a browser from an API client when the page is switched off', function () use ($request) {
+    // `handles()` answers "render this page?"; `prefersHtml()` answers "is a person at a browser asking?".
+    // The second is what the security entry point needs to decide on a login redirect, and that decision
+    // must not change with a flag whose documented meaning is "use Laravel's stock error page instead".
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: false, jsonPaths: ['api/*']));
+    $browserAccept = ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml'];
+
+    expect($renderer->prefersHtml($request('text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')))->toBeTrue()
+        ->and($renderer->prefersHtml($request('*/*')))->toBeFalse()
+        ->and($renderer->prefersHtml($request('application/json')))->toBeFalse()
+        ->and($renderer->prefersHtml($request('text/html', ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])))->toBeFalse()
+        // json-paths says what the URL IS, not what the page does, so it still applies with the page off.
+        ->and($renderer->prefersHtml(Request::create('/api/orders/9', 'GET', server: $browserAccept)))->toBeFalse()
+        ->and($renderer->prefersHtml(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeTrue()
+        // And the page itself still declines everything: the flag gates rendering, not recognition.
+        ->and($renderer->handles(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeFalse();
+});
+
 it('gathers nothing to leak when the trace is off', function () use ($report) {
     $error = $report(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), new ErrorPageSettings(trace: false));
 
@@ -225,15 +243,16 @@ it('keeps publishing a FireflyException\'s own message, which was written for th
 });
 
 it('renders problem+json with the message withheld when the settings say so', function () {
-    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings(trace: false));
+    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings(disclose: false));
     $body = (string) $renderer->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent();
 
     expect($body)->not->toContain('/srv/app/.env')
-        ->toContain(ProblemMapper::OPAQUE)
+        ->toContain('An unexpected error occurred.')
         ->toContain('INTERNAL_ERROR');
 
-    // And with the gate open — a developer's machine — the real message comes through.
-    $debug = new ProblemDetailsRenderer(new ErrorPageSettings(trace: true));
+    // And with the problem gate open — set explicitly, never inherited from app.debug — the real message
+    // comes through.
+    $debug = new ProblemDetailsRenderer(new ErrorPageSettings(disclose: true));
     expect((string) $debug->render(new RuntimeException('internal detail: /srv/app/.env'), Request::create('/api/x'))->getContent())
         ->toContain('/srv/app/.env');
 });
@@ -243,5 +262,36 @@ it('defaults to withholding when no settings object was bound at all', function 
     // an absent gate must not mean an open one.
     expect((string) (new ProblemDetailsRenderer)->render(new RuntimeException('leak me'), Request::create('/api/x'))->getContent())
         ->not->toContain('leak me')
-        ->toContain(ProblemMapper::OPAQUE);
+        ->toContain('An unexpected error occurred.');
+});
+
+it('publishes the request reference on the production page so a person can quote it', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-1234-abcd']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($error->reference)->toBe('ref-1234-abcd')
+        ->and($html)->toContain('ref-1234-abcd')
+        ->toContain('quote reference ref-1234-abcd if you report it')
+        // The reference is the ONLY thing the production 500 adds; the cause stays withheld.
+        ->not->toContain('boom')
+        ->not->toContain('RuntimeException');
+});
+
+it('carries the same reference the problem document does, on the detailed page too', function () {
+    $settings = new ErrorPageSettings(trace: true, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_ACCEPT' => 'text/html', 'HTTP_X_CORRELATION_ID' => 'ref-5678-efgh']);
+    $renderer = new ErrorPageRenderer($settings, dirname(__DIR__, 4));
+
+    $html = (string) $renderer->render(new RuntimeException('boom'), $request)->getContent();
+
+    // The fact-row MARKUP, not the bare words: with the trace on the page embeds a source excerpt of this
+    // very test file, which contains the words "Reference" and the id as text — but HTML-escaped, so the
+    // unescaped <dt>/<dd> pair can only come from the facts table.
+    expect($html)->toContain('<dt>Reference</dt><dd>ref-5678-efgh</dd>')
+        // With the trace on the message is shown, so the reassurance sentence is not — the fact row is
+        // where the reference lives on this variant.
+        ->not->toContain('quote reference')
+        ->toContain('boom');
 });

@@ -7,10 +7,19 @@ namespace Firefly\Validation\Constraint;
 use Attribute;
 
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Email implements Constraint
+final class Email implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     public function toRules(): array
     {
         return ['email'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must be a well-formed email address');
     }
 }

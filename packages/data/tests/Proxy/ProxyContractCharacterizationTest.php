@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Data\Proxy\ProxyClassGenerator;
 use Firefly\Data\Proxy\ProxyFactory;
 use Firefly\Data\Scanner\TransactionalScanner;
+use Firefly\Data\Tests\Fixtures\Proxy\TxLedger;
 use Firefly\Data\Tests\Fixtures\Proxy\TxWidget;
 use Firefly\Data\Tests\Support\DatabaseTestCase;
 use Firefly\Data\Transaction\TransactionInterceptor;
@@ -75,4 +76,26 @@ it('(e) runs a non-transactional inherited method on the proxy copied state', fu
     $proxy->bump(); // inherited, non-transactional
 
     expect($proxy->counter())->toBe(2);
+});
+
+/**
+ * (f) is the tripwire for the hierarchy copy. A closure bound to the DECLARED class alone cannot see a parent's
+ * private, and on the PHP 8.3 floor cannot initialise a parent's `protected readonly` either — so a proxied
+ * EloquentRepository subclass lost its translator (and, on 8.3, could not be wrapped at all). Every slot is now
+ * written from the class that declares it, and two privates under one name stay two slots.
+ */
+it('(f) reproduces state declared PRIVATE or readonly on a PARENT of the declared class, slot by slot', function () {
+    $bean = new TxLedger('m', 's');
+    $psr4 = ['Firefly\\Data\\Tests\\Fixtures\\Proxy\\' => dirname(__DIR__).'/Fixtures/Proxy'];
+    $methods = (new TransactionalScanner)->scanProxyMethods($psr4)[TxLedger::class];
+    $proxyClass = (new ProxyClassGenerator)->load(TxLedger::class, $methods);
+
+    /** @var TxLedger $proxy */
+    $proxy = (new ProxyFactory)->wrap($bean, TxLedger::class, $proxyClass, new TransactionInterceptor(new TransactionTemplate));
+
+    expect($proxy->secret())->toBe('s')          // parent-private, readonly
+        ->and($proxy->manifest())->toBe('m')     // parent protected readonly (promoted)
+        ->and($proxy->baseLabel())->toBe('base') // the parent's private $label ...
+        ->and($proxy->childLabel())->toBe('child') // ... and the child's, same name, distinct slot
+        ->and($proxy->reveal())->toBe('s/m/base/child'); // through the transactional override
 });

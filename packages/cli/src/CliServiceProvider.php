@@ -18,7 +18,9 @@ use Firefly\Cli\Command\Make\MakeListenerCommand;
 use Firefly\Cli\Command\Make\MakeRepositoryCommand;
 use Firefly\Cli\Command\Make\MakeServiceCommand;
 use Firefly\Cli\Command\MetricsCommand;
+use Firefly\Cli\Command\OAuth2KeysCommand;
 use Firefly\Cli\Command\RoutesCommand;
+use Firefly\Cli\Command\ScheduleCommand;
 use Firefly\Cli\Command\ServeCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -38,6 +40,7 @@ final class CliServiceProvider extends ServiceProvider
                 RoutesCommand::class,
                 HealthCommand::class,
                 MetricsCommand::class,
+                OAuth2KeysCommand::class,
                 MakeControllerCommand::class,
                 MakeServiceCommand::class,
                 MakeComponentCommand::class,
@@ -47,6 +50,7 @@ final class CliServiceProvider extends ServiceProvider
                 MakeRepositoryCommand::class,
                 MakeConfigPropertiesCommand::class,
                 ServeCommand::class,
+                ScheduleCommand::class,
                 DbCommand::class,
             ]);
         }

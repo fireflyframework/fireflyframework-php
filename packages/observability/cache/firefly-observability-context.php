@@ -140,9 +140,112 @@ return [
                     ],
                 ],
             ],
+            6 => [
+                'method' => 'cqrsTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.cqrs.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
+                'method' => 'edaTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Eda\\Tracing\\EdaTracing',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.eda.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     3 => [
+        'class' => 'Firefly\\Observability\\Tracing\\OpenTelemetry\\OpenTelemetryAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnClass',
+                'args' => [
+                    0 => 'OpenTelemetry\\SDK\\Trace\\TracerProvider',
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'tracerProvider',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'tracer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
         'postConstruct' => [
         ],
@@ -163,7 +266,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    4 => [
+    5 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'postConstruct' => [
         ],
@@ -176,6 +279,35 @@ return [
                 'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
                 'args' => [
                     0 => 'firefly.observability.metrics.enabled',
+                    1 => 'true',
+                    2 => true,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    6 => [
+        'class' => 'Firefly\\Observability\\Web\\TracingFilter',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.observability.tracing.http-server.enabled',
                     1 => 'true',
                     2 => true,
                 ],

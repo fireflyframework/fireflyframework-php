@@ -10,6 +10,7 @@ use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Resilience\Duration;
 use Firefly\Scheduling\Lock\DistributedLock;
+use Firefly\Scheduling\Schedule\Cadence;
 use Firefly\Scheduling\Schedule\ScheduledDescriptor;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Illuminate\Console\Scheduling\Event;
@@ -83,26 +84,9 @@ final class ScheduleWiringPass implements BootPass
 
     private function applyFrequency(Event $event, ScheduledDescriptor $descriptor): void
     {
-        if ($descriptor->cron !== null) {
-            $event->cron($descriptor->cron);
-        } else {
-            // fixedRate/fixedDelay are parsed to seconds then mapped to the NEAREST native Laravel frequency.
-            // Laravel has no arbitrary-interval DSL, so a rate between the buckets rounds up to the next
-            // supported cadence; precise sub-minute / arbitrary-second scheduling is a documented known-latent
-            // until SP-5's cron shims.
-            $seconds = Duration::parse((string) ($descriptor->fixedRate ?? $descriptor->fixedDelay));
-
-            match (true) {
-                $seconds <= 60.0 => $event->everyMinute(),
-                $seconds <= 300.0 => $event->everyFiveMinutes(),
-                $seconds <= 600.0 => $event->everyTenMinutes(),
-                $seconds <= 900.0 => $event->everyFifteenMinutes(),
-                $seconds <= 1800.0 => $event->everyThirtyMinutes(),
-                $seconds <= 3600.0 => $event->hourly(),
-                $seconds <= 86400.0 => $event->daily(),
-                default => $event->weekly(),
-            };
-        }
+        // The trigger-to-cadence table lives in Cadence so `firefly:schedule` prints the same answer this
+        // pass wires; see that class for the rounding rule and for the sub-minute half of the table.
+        Cadence::of($descriptor)->apply($event);
 
         if ($descriptor->zone !== null) {
             $event->timezone($descriptor->zone);

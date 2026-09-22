@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Data\Tests\Fixtures\Repository;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A plain Eloquent fixture over the `records` table (created per test via Schema::create). Guarded=[] opens
@@ -22,4 +23,10 @@ final class Record extends Model
     public $timestamps = false;
 
     protected $guarded = [];
+
+    /** @return HasMany<RecordEntry, $this> */
+    public function entries(): HasMany
+    {
+        return $this->hasMany(RecordEntry::class, 'record_id');
+    }
 }

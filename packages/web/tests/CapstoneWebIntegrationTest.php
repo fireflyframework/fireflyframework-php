@@ -31,9 +31,12 @@ it('renders an invalid #[Valid] body as a 422 RFC-7807 payload', function () {
         ->assertJsonPath('status', 422)
         ->assertJsonPath('code', 'VALIDATION_ERROR')
         ->assertJsonPath('category', 'validation')
-        // The per-field error for `iban` is present in the RFC-7807 `errors` list (framework-native,
-        // type-clean equivalent of plucking 'field' from the errors array).
         ->assertJsonFragment(['field' => 'iban']);
+
+    // Worded by the constraint, naming it, with the rejected value — the compiled-manifest capstone path.
+    expect((array) $response->json('errors'))
+        ->toContain(['field' => 'iban', 'message' => 'must be a valid IBAN', 'constraint' => 'Iban', 'rejectedValue' => 'nope'])
+        ->toContain(['field' => 'owner', 'message' => 'must not be blank', 'constraint' => 'NotBlank', 'rejectedValue' => '']);
 });
 
 it('renders a thrown ResourceNotFoundException as 404 problem+json', function () {
@@ -92,4 +95,55 @@ it('renders a generic Throwable as problem+json ONLY when the request expects JS
     /** @var Response $base */
     $base = $html->baseResponse;
     expect((string) $base->headers->get('Content-Type'))->not->toContain('application/problem+json');
+});
+
+it('answers a malformed #[PathVariable(pattern:)] segment with the entity\'s own 404 through the real pipeline', function () {
+    /** @var WebCapstoneTestCase $this */
+    // RoomsController::show declares PathVariable::UUID with ROOM_NOT_FOUND; the resolver refuses the
+    // segment before the controller, and the problem renderer answers it exactly as a missing row would be.
+    $this->getJson('/rooms/not-a-uuid')
+        ->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'ROOM_NOT_FOUND')
+        ->assertJsonPath('detail', 'That room does not exist, or is not yours.')
+        ->assertHeader('X-Correlation-Id');
+
+    $this->getJson('/rooms/0f8fad5b-d9cb-469f-a165-70867728950e')
+        ->assertStatus(200)
+        ->assertExactJson(['id' => '0f8fad5b-d9cb-469f-a165-70867728950e']);
+});
+
+it('answers a wrong verb as a 405 with the reason phrase, a client sentence, `allowed` and the Allow header', function () {
+    /** @var WebCapstoneTestCase $this */
+    $response = $this->deleteJson('/balances/7');
+
+    $response->assertStatus(405)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('title', 'Method Not Allowed')
+        ->assertJsonPath('code', 'METHOD_NOT_ALLOWED')
+        ->assertJsonPath('detail', 'This address only accepts GET.')
+        ->assertJsonPath('allowed', ['GET'])
+        ->assertHeader('Allow');
+
+    expect($response->headers->get('Allow'))->toContain('GET');
+});
+
+it('withholds an unhandled exception from problem+json even though the test app runs with app.debug on, and names the reference', function () {
+    /** @var WebCapstoneTestCase $this */
+    // BoomController throws a plain RuntimeException; its message must not reach the wire whatever app.debug says.
+    config()->set('app.debug', true);
+    $response = $this->getJson('/boom/generic');
+
+    $response->assertStatus(500)
+        ->assertJsonPath('code', 'INTERNAL_ERROR')
+        ->assertHeader('X-Correlation-Id');
+
+    /** @var string $traceId */
+    $traceId = $response->json('traceId');
+    /** @var string $detail */
+    $detail = $response->json('detail');
+
+    expect($response->headers->get('X-Correlation-Id'))->toBe($traceId)
+        ->and($detail)->toContain($traceId)
+        ->and($detail)->not->toContain('kaboom');
 });

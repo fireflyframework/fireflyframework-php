@@ -10,6 +10,8 @@ use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Security\OAuth2\InMemoryJwksProvider;
+use Firefly\Security\OAuth2\JwksProvider;
+use Firefly\Security\OAuth2\JwksUnavailableException;
 use Firefly\Security\OAuth2\OAuth2ResourceServerFilter;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
@@ -163,4 +165,35 @@ it('accepts a signature+exp-valid token when neither issuer nor audience is conf
     $seen = authenticateVia($filter, $token);
 
     expect($seen?->getName())->toBe('svc-1');
+});
+
+/*
+ * A JWKS OUTAGE IS A 503, NOT A 401. The filter used to wrap EVERY throwable from JWT::decode($token,
+ * $this->jwks->keys()) — the key fetch included — as INVALID_TOKEN, so an unreachable issuer told every caller
+ * their token was bad. The token was never examined: the keys it would have been checked against did not
+ * arrive. The keys are now resolved before the try that maps decoding failures, and the provider's own
+ * exception reaches the renderer as what it is.
+ */
+it('lets a JwksUnavailableException through as a 503 instead of calling the token invalid', function () {
+    $provider = new class implements JwksProvider
+    {
+        public function keys(): array
+        {
+            throw JwksUnavailableException::at('https://issuer.example.com/.well-known/jwks.json', new RuntimeException('refused'));
+        }
+    };
+    $config = new Config(new Repository([
+        'firefly' => ['security' => ['oauth2' => ['resource_server' => ['enabled' => true]]]],
+    ]));
+    $filter = new OAuth2ResourceServerFilter($provider, $config);
+
+    $request = Request::create('/api/x', 'GET');
+    $request->headers->set('Authorization', 'Bearer not-even-looked-at');
+
+    try {
+        $filter->handle($request, static fn () => new Response('ok'));
+        throw new LogicException('not thrown');
+    } catch (JwksUnavailableException $e) {
+        expect($e->httpStatus())->toBe(503);
+    }
 });

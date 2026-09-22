@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Assert;
+
 it('the firefly/eda-kafka adapter uses no boot-time reflection', function () {
     $hits = [];
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(dirname(__DIR__).'/src', RecursiveDirectoryIterator::SKIP_DOTS));
@@ -29,7 +31,7 @@ it('the firefly/eda-kafka adapter uses no boot-time reflection', function () {
  */
 it('every eda-kafka source file autoloads with no fatal when ext-rdkafka is absent', function () {
     if (extension_loaded('rdkafka')) {
-        $this->markTestSkipped('rdkafka present — this proves the no-ext autoload path specifically.');
+        Assert::markTestSkipped('rdkafka present — this proves the no-ext autoload path specifically.');
     }
 
     $files = [];

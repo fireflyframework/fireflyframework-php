@@ -6,5 +6,5 @@ namespace Firefly\Security\Jwt;
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 
-/** The JWT signing secret is a placeholder or too short — boot refuses (mirrors pyfly's WEAK_SIGNING_SECRET). */
+/** A signing secret — the JWT secret, the remember-me key — is a placeholder or too short: boot refuses (mirrors pyfly's WEAK_SIGNING_SECRET). */
 final class WeakSigningSecretException extends ConfigurationException {}

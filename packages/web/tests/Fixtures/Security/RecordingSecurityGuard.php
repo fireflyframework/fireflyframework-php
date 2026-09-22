@@ -12,7 +12,13 @@ final class RecordingSecurityGuard implements ControllerSecurityGuard
     /** @var list<array{class: string, method: string, args: array<int,mixed>}> */
     public array $calls = [];
 
-    public function __construct(private readonly ?string $denyMethod = null) {}
+    /** @var list<array{class: string, method: string, args: array<int,mixed>}> */
+    public array $afterCalls = [];
+
+    public function __construct(
+        private readonly ?string $denyMethod = null,
+        private readonly mixed $replaceResultWith = null,
+    ) {}
 
     public function check(string $controllerClass, string $method, array $args): void
     {
@@ -20,5 +26,12 @@ final class RecordingSecurityGuard implements ControllerSecurityGuard
         if ($method === $this->denyMethod) {
             throw new AuthorizationException('Denied by test guard.');
         }
+    }
+
+    public function afterInvocation(string $controllerClass, string $method, array $args, mixed $result): mixed
+    {
+        $this->afterCalls[] = ['class' => $controllerClass, 'method' => $method, 'args' => $args];
+
+        return $this->replaceResultWith ?? $result;
     }
 }

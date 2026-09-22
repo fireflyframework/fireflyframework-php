@@ -71,3 +71,27 @@ it('parse() throws ExpressionParseException on a pathologically long expression'
 it('still evaluates a normal, well-under-the-cap expression correctly', function () use ($evaluator) {
     expect($evaluator->evaluate("hasRole('ADMIN') and isAuthenticated()", evalRoot(['ROLE_ADMIN'])))->toBeTrue();
 });
+
+/*
+ * The authorities an expression ASKS FOR, read off its tokens without evaluating it — what a refusal reports
+ * as `requiredAuthorities` so a client can say "you need ROLE_ADMIN" without ever seeing the expression.
+ * Roles are normalised the way hasRole() normalises them at evaluation, so the list names what the principal
+ * would actually have to hold.
+ */
+it('lists the authorities an expression names, roles normalised to ROLE_', function () {
+    $evaluator = new SecurityExpressionEvaluator;
+
+    expect($evaluator->authorities("hasRole('ADMIN') or hasAnyAuthority('orders:admin', 'orders:write') or hasAnyRole('ROLE_STAFF', 'AUDITOR')"))
+        ->toBe(['ROLE_ADMIN', 'orders:admin', 'orders:write', 'ROLE_STAFF', 'ROLE_AUDITOR'])
+        ->and($evaluator->authorities("hasPermission(#id, 'READ') and isAuthenticated()"))->toBe([])
+        ->and($evaluator->authorities('not an expression ('))->toBe([]);
+});
+
+it('whitelists hasScope and hasAnyScope, and reports the scopes an expression asks for', function () use ($evaluator) {
+    expect($evaluator->evaluate("hasScope('orders:read')", evalRoot(['SCOPE_orders:read'])))->toBeTrue()
+        ->and($evaluator->evaluate("hasAnyScope('a','orders:read') and isAuthenticated()", evalRoot(['SCOPE_orders:read'])))->toBeTrue()
+        ->and($evaluator->evaluate("hasScope('orders:read')", evalRoot(['orders:read'])))->toBeFalse()
+        ->and($evaluator->authorities("hasScope('orders:read') or hasAnyScope('SCOPE_profile', 'email')"))->toBe(['SCOPE_orders:read', 'SCOPE_profile', 'SCOPE_email']);
+
+    $evaluator->parse("hasScope('x')");
+});

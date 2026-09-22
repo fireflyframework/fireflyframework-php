@@ -163,12 +163,77 @@ return [
                     0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
                 ],
             ],
+            6 => [
+                'method' => 'cqrsTracing',
+                'returns' => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                ],
+            ],
+            7 => [
+                'method' => 'edaTracing',
+                'returns' => 'Firefly\\Eda\\Tracing\\EdaTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
         ],
     ],
     5 => [
+        'class' => 'Firefly\\Observability\\Tracing\\OpenTelemetry\\OpenTelemetryAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 400,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'tracerProvider',
+                'returns' => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            1 => [
+                'method' => 'tracer',
+                'returns' => 'Firefly\\Observability\\Tracing\\Tracer',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'OpenTelemetry\\SDK\\Trace\\TracerProviderInterface',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    6 => [
         'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -187,7 +252,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -203,6 +268,26 @@ return [
         'lazy' => true,
         'dependencies' => [
             0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+        ],
+    ],
+    8 => [
+        'class' => 'Firefly\\Observability\\Web\\TracingFilter',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -110,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Web\\Filter\\WebFilter',
+        ],
+        'beans' => [
+        ],
+        'lazy' => true,
+        'dependencies' => [
+            0 => 'Firefly\\Observability\\Tracing\\Tracer',
+            1 => 'Firefly\\Observability\\Tracing\\W3CTraceContextPropagator',
+            2 => 'Firefly\\Config\\Config',
         ],
     ],
 ];

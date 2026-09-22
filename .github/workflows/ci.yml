@@ -33,6 +33,38 @@ jobs:
       - name: Deptrac (architecture)
         run: composer deptrac
 
+  browser:
+    name: Browser (Pest + Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Pest (browser)
+        run: composer test:browser
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-screenshots
+          path: tests/Browser/Screenshots
+          retention-days: 14
+          if-no-files-found: warn
+
   docs:
     name: Docs (mkdocs --strict)
     runs-on: ubuntu-latest

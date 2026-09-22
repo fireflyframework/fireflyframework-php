@@ -18,14 +18,18 @@ use Firefly\Validation\Rule\Size as SizeRule;
  * that rule for the full account of the defect and of what "measurable" means per type.
  *
  * An unbounded #[Size] (neither min nor max) still contributes nothing: it constrains nothing, and emitting a
- * rule object that can never fail would only add noise to the compiled manifest.
+ * rule object that can never fail would only add noise to the compiled manifest — and it has no sentence,
+ * for the same reason.
  */
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Size implements Constraint
+final class Size implements Constraint, HasMessage
 {
+    use MessageElement;
+
     public function __construct(
         public readonly ?int $min = null,
         public readonly ?int $max = null,
+        public readonly ?string $message = null,
     ) {}
 
     /** @return list<SizeRule> */
@@ -36,5 +40,17 @@ final class Size implements Constraint
         }
 
         return [new SizeRule($this->min, $this->max)];
+    }
+
+    public function message(): ?string
+    {
+        $default = match (true) {
+            $this->min !== null && $this->max !== null => "size must be between {$this->min} and {$this->max}",
+            $this->min !== null => "size must be at least {$this->min}",
+            $this->max !== null => "size must be at most {$this->max}",
+            default => null,
+        };
+
+        return ConstraintMessage::resolve($this->message, $default, ['min' => $this->min, 'max' => $this->max]);
     }
 }

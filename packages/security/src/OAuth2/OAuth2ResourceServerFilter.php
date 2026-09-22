@@ -27,7 +27,8 @@ use Throwable;
  * configured roles-claim entry is carried through verbatim. COMPOSES with the local-JWT filter rather than
  * replacing it: if the context is already authenticated (the −90 filter ran first), this filter no-ops. Ordered
  * −85. Fail-closed: a present-but-invalid token, one missing `exp`, or one whose `iss`/`aud` does not match the
- * configured issuer/audience (when configured), is a 401; an absent header is anonymous.
+ * configured issuer/audience (when configured), is a 401; an absent header is anonymous; the key set being
+ * UNAVAILABLE is the provider's own exception (a 503), never a 401, because the token was never examined.
  */
 #[Component]
 #[Order(-85)]
@@ -81,8 +82,14 @@ final class OAuth2ResourceServerFilter extends OncePerRequestFilter
 
     private function authenticationFor(string $token): Authentication
     {
+        // Resolved OUTSIDE the try below, on purpose. The try maps "this token could not be validated" to a
+        // 401; the keys not arriving is not that — the token was never examined — and wrapping the fetch in
+        // the same catch told every caller their token was bad whenever the issuer was unreachable. A
+        // provider failure (RemoteJwksProvider throws JwksUnavailableException, a 503) propagates as itself.
+        $keys = $this->jwks->keys();
+
         try {
-            $decoded = JWT::decode($token, $this->jwks->keys());
+            $decoded = JWT::decode($token, $keys);
         } catch (ExpiredException $e) {
             throw new TokenExpiredException('Resource-server JWT has expired.', 'TOKEN_EXPIRED', $e);
         } catch (Throwable $e) {

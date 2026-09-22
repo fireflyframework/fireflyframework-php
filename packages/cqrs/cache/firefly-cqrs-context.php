@@ -83,6 +83,17 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'cqrsTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
                 'method' => 'queryCache',
                 'conditions' => [
                     0 => [
@@ -93,7 +104,7 @@ return [
                     ],
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'commandEventPublisher',
                 'conditions' => [
                     0 => [
@@ -104,7 +115,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'domainEventBridge',
                 'conditions' => [
                     0 => [
@@ -115,7 +126,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'commandBus',
                 'conditions' => [
                     0 => [
@@ -126,7 +137,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'queryBus',
                 'conditions' => [
                     0 => [

@@ -18,17 +18,24 @@ use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Access\RoleHierarchy;
 use Firefly\Security\Access\UrlAuthorizationRule;
 use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Event\AuthenticationEventPublisher;
+use Firefly\Security\Web\EntryPoint\AuthenticationEntryPoint;
+use Firefly\Security\Web\EntryPoint\ProblemAuthenticationEntryPoint;
+use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Web\Filter\OncePerRequestFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Deny-by-default URL authorization. Walks the compiled rules first-match-wins; the matched rule's expression is
  * evaluated (via the same no-eval evaluator method security uses) against the SecurityContext the auth filters
- * established. A request that matches NO rule is denied — fail-closed. A denied request is a 401 when the context
- * is anonymous (authenticate first) and a 403 when authenticated but under-privileged, surfaced through the
- * existing kernel security exceptions → ProblemDetailsRenderer (RFC-7807). Ordered −70, after every auth filter.
+ * established. A request that matches NO rule is denied — fail-closed. A denied request is handed to the
+ * AuthenticationEntryPoint when the context is anonymous (a login redirect, a Basic challenge, or the 401
+ * problem/page) and is a 403 — published as an AuthorizationDeniedEvent — when authenticated but
+ * under-privileged. The form-login page is always let through. Ordered −70, after every auth filter.
  */
 #[Component]
 #[Order(-70)]
@@ -44,14 +51,20 @@ final class HttpSecurityFilter extends OncePerRequestFilter
     /** @var list<UrlAuthorizationRule> */
     private readonly array $rules;
 
+    private readonly AuthenticationEntryPoint $entryPoint;
+
     public function __construct(
         HttpSecurity $httpSecurity,
         private readonly SecurityExpressionEvaluator $evaluator,
         private readonly RoleHierarchy $roleHierarchy,
         private readonly PermissionEvaluator $permissionEvaluator,
         private readonly Config $config,
+        ?AuthenticationEntryPoint $entryPoint = null,
+        private readonly ?FormLoginSettings $formLogin = null,
+        private readonly ?AuthenticationEventPublisher $events = null,
     ) {
         $this->rules = $httpSecurity->build();
+        $this->entryPoint = $entryPoint ?? new ProblemAuthenticationEntryPoint;
     }
 
     public function shouldNotFilter(Request $request): bool
@@ -65,6 +78,12 @@ final class HttpSecurityFilter extends OncePerRequestFilter
 
     protected function doFilter(Request $request, Closure $next): mixed
     {
+        // The login page must be reachable by the very person the rules turn away, or the redirect the entry
+        // point answers with would loop back here forever.
+        if ($this->formLogin !== null && $this->formLogin->isLoginPage($request)) {
+            return $next($request);
+        }
+
         $path = $request->path();
         $context = SecurityContextHolder::getContext();
         $authentication = $context->getAuthentication() ?? Authentication::unauthenticated('anonymous', 'anonymous', null);
@@ -78,17 +97,26 @@ final class HttpSecurityFilter extends OncePerRequestFilter
                 return $next($request);
             }
 
-            throw $this->deny($context->isAuthenticated());
+            return $this->deny($request, $context, $rule->expression);
         }
 
         // No rule matched — deny-by-default.
-        throw $this->deny($context->isAuthenticated());
+        return $this->deny($request, $context, null);
     }
 
-    private function deny(bool $authenticated): AuthenticationException|AuthorizationException
+    /**
+     * An anonymous denial is the entry point's to answer — a login redirect, a challenge, or the 401 thrown as
+     * before; an authenticated one is the 403, published as an AuthorizationDeniedEvent naming the request.
+     */
+    private function deny(Request $request, SecurityContext $context, ?string $expression): Response
     {
-        return $authenticated
-            ? new AuthorizationException('Access is denied.')
-            : new AuthenticationException('Authentication is required to access this resource.');
+        $authentication = $context->getAuthentication();
+        if (! $context->isAuthenticated() || $authentication === null) {
+            return $this->entryPoint->commence($request, new AuthenticationException('Authentication is required to access this resource.'));
+        }
+
+        $this->events?->publishAuthorizationDenied($authentication, $request->getMethod().' /'.trim($request->path(), '/'), $expression);
+
+        throw new AuthorizationException('Access is denied.');
     }
 }

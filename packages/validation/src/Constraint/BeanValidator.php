@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Validation\Constraint;
 
 use Firefly\Kernel\Exception\Business\ValidationException;
+use Firefly\Validation\SmartValidator;
 use Firefly\Validation\Validator;
 
 /**
@@ -12,6 +13,11 @@ use Firefly\Validation\Validator;
  * a DTO class. Delegates to the M5 Validator port (IlluminateValidator by default), so a failure throws the
  * kernel's ValidationException (HTTP 422) with FieldErrors already shaped — the web #[Valid] interceptor
  * (M6) calls this; it never re-implements validation.
+ *
+ * A SmartValidator (the shipped adapter) is also handed the constraint descriptors the manifest compiled
+ * beside the rules, and words each failure by the constraint that declared it. A Validator that is not
+ * smart — an application's own binding, which #[ConditionalOnMissingBean] lets stand — gets the rules alone
+ * and answers exactly as it always has.
  */
 final class BeanValidator
 {
@@ -28,7 +34,13 @@ final class BeanValidator
      */
     public function validate(array $data, string $dtoClass): array
     {
-        return $this->validator->validate($data, $this->manifest->rulesFor($dtoClass));
+        $rules = $this->manifest->rulesFor($dtoClass);
+
+        if ($this->validator instanceof SmartValidator) {
+            return $this->validator->validateConstraints($data, $rules, $this->manifest->constraintsFor($dtoClass));
+        }
+
+        return $this->validator->validate($data, $rules);
     }
 
     /**

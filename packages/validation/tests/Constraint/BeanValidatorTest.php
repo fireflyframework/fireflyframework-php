@@ -11,6 +11,7 @@ use Firefly\Validation\Tests\Fixtures\Constraint\MoneyTransferRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateFactory;
+use PHPUnit\Framework\Assert;
 
 /**
  * @param  class-string  ...$classes
@@ -53,7 +54,7 @@ it('throws a structured ValidationException with FieldErrors on an invalid paylo
             'beneficiary' => ['street' => '', 'postcode' => '@@@'],
         ], MoneyTransferRequest::class);
 
-        $this->fail('Expected ValidationException');
+        Assert::fail('Expected ValidationException');
     } catch (ValidationException $e) {
         $fields = array_map(fn ($fe) => $fe->field, $e->fieldErrors());
 

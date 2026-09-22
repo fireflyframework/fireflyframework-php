@@ -49,6 +49,17 @@ return [
                     ],
                 ],
             ],
+            3 => [
+                'method' => 'edaTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Eda\\Tracing\\EdaTracing',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

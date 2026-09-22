@@ -17,6 +17,18 @@ return [
         ],
         'beans' => [
             0 => [
+                'method' => 'validationSettings',
+                'returns' => 'Firefly\\Validation\\ValidationSettings',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            1 => [
                 'method' => 'validator',
                 'returns' => 'Firefly\\Validation\\Validator',
                 'name' => null,
@@ -26,6 +38,7 @@ return [
                 'lazy' => false,
                 'dependencies' => [
                     0 => 'Illuminate\\Contracts\\Validation\\Factory',
+                    1 => 'Firefly\\Validation\\ValidationSettings',
                 ],
             ],
         ],

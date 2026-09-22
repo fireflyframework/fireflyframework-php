@@ -16,6 +16,13 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
 - `/actuator/beans`, `/actuator/conditions`, `/actuator/mappings`, `/actuator/loggers` (GET/POST), `/actuator/scheduledtasks`
 - `/actuator/metrics`, `/actuator/prometheus`, `/actuator/httpexchanges`, `/actuator/process` — supplied by
   `firefly/observability` when installed
+- `/actuator/oauth2clients` — supplied by
+  [`firefly/security-oauth2-server`](security-oauth2-server.md) when installed and enabled (both
+  `firefly.security.enabled` and `firefly.security.oauth2.server.enabled`): every registered client with its
+  grants, scopes, redirect URIs, settings and live authorization count, never a secret. The counts are
+  **per-process** on the default `memory` authorizations driver — a map rebuilt in every PHP worker — which is
+  why the payload states its own storage model in `authorizations.processLocal`; `authorizations.driver =
+  eloquent` is what makes them describe the deployment
 
 !!! tip "A browser view over all of this"
     `firefly/admin` renders these same endpoints as a server-side dashboard, reading them **in-process** rather
@@ -62,11 +69,17 @@ end-to-end: with the lockdown rules above and `env` exposed, an anonymous `GET /
 (`AuthenticationException`, no matching rule's expression is satisfied) while `GET /actuator/health` stays **200**
 (`permitAll`).
 
-`/actuator/env` and `/actuator/configprops` additionally mask any key matching `password|secret|token|key|credential|passwd`
-(case-insensitive, recursive — the shared `SensitiveValueMasker`) with `******`. The key is tested **before** the value's
-type, so a sensitive key holding an array (a JWT keyring, a credentials pair) is replaced wholesale rather than recursed
-into, independent of whether the URL lockdown above is configured — defense in depth for an
-endpoint that is reachable at all only once explicitly exposed.
+`/actuator/env` and `/actuator/configprops` additionally mask any key matching
+`password|secret|token|key|credential|passwd|authorization|headers` (case-insensitive, substring, recursive — the shared
+`SensitiveValueMasker`) with `******`. The key is tested **before** the value's type, so a sensitive key holding an array
+(a JWT keyring, a credentials pair) is replaced wholesale rather than recursed into, independent of whether the URL
+lockdown above is configured — defense in depth for an endpoint that is reachable at all only once explicitly exposed.
+`headers` is in the list because a bag of outbound headers is where a client's credential travels
+(`firefly.observability.tracing.otlp.headers` documents `authorization=Bearer …` as its contents, and a vendor's
+`x-honeycomb-team` leaf matches nothing on its own, so only the bag's key can decide); the accepted cost is that
+`firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block, nothing an operator cannot read
+off any response — renders as `******` too. The singular `header` is deliberately not matched: the same rule names the
+data browser's sensitive columns, and `page_header` is page furniture, not a credential.
 
 ## Configuration (`firefly.management.*`, kebab-case)
 
@@ -76,7 +89,7 @@ endpoint that is reachable at all only once explicitly exposed.
 - `firefly.management.endpoint.{id}.enabled` (per-endpoint)
 - `firefly.management.endpoint.health.show-details` (default `never`; only the literal `always` shows component details — see Known-latent for `when-authorized`)
 - `firefly.management.endpoint.health.group.{name}.include`
-- `firefly.management.endpoint.health.db.enabled` (default `false`) — opt-in `Db` health indicator
+- `firefly.management.endpoint.health.db.enabled` (default **`true`**) — the `db` health indicator, registered whenever `database.default` names a connection with a driver (Spring Boot's `DataSourceHealthIndicator` auto-configuration); a failing or missing database reports DOWN and `/actuator/health` answers 503; an application with no default database gets no `db` component at all. `false` removes the indicator. An indicator can decline registration itself by implementing `ConditionalHealthIndicator::available()`.
 - `firefly.management.info.app.*`, `firefly.management.info.build.path`
 - `firefly.management.info.runtime.enabled` (default `true`, `#[ConditionalOnProperty(matchIfMissing: true)]`) — the `runtime` fragment of `/actuator/info` (PHP version/SAPI/OPcache, Laravel version, LaraFly version, current+peak memory). Setting it `false` removes the contributor bean entirely.
 

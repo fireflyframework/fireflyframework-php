@@ -32,7 +32,9 @@ verbs and components are all sorted so a regenerated document diffs cleanly.
 **Parameters** come from the binding plan — the same `kind` discriminator `ArgumentResolver` dispatches on at
 request time. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects;
 `#[UploadedFile]` becomes a `multipart/form-data` part; a container-injected service is not part of the HTTP
-contract and never appears.
+contract and never appears, and neither does a parameter a registered `HandlerMethodArgumentResolver` claims
+(firefly/security's `#[AuthenticationPrincipal]`, `?UserDetails`, `Authentication`) — the generator asks the
+same registry the dispatcher asks first.
 
 **Request bodies** come from the `#[RequestBody]` DTO, as a `$ref` into `components/schemas` — one component
 per DTO, reused everywhere, with nested `#[Valid]` DTOs given their own component rather than being inlined

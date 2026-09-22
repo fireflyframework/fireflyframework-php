@@ -234,6 +234,27 @@ derives concrete subscriptions from the compiled `EventListenerManifest` via `To
 
 `ConsumerLoop::run()` is the broker-agnostic drive loop: `poll → sink → ack`, or `nack(requeue: true)` on a
 sink throw (at-least-once), until `--max-messages` or `--time-limit` trips, or a `SIGINT`/`SIGTERM` arrives.
+The **sink is a port**: bind a `Firefly\Eda\Consumer\EnvelopeSink` and the command delivers every envelope
+to it instead of to the `#[EventListener]` registry (`SubscriberRegistrySink`, the default) — for an
+application whose events go to a command bus, a projector or a relay, which used to mean writing its own
+consumer command, loop, signal handling and dead-letter path. A throw from `handle()` is "not handled" and
+the loop nacks with requeue; a sink that has exhausted its own retries dead-letters the record itself and
+returns, so the loop acks.
+
+**An undeserialisable record cannot kill the worker.** Every adapter decodes the body inside a
+`catch (Throwable)` — not a catch of `SerializationException` alone, because the serializer is a port and
+because a well-keyed body with a string `payload`, an int `eventType` or a timestamp PHP cannot parse used to
+leave `EventEnvelope::fromArray` as a `TypeError` or a `DateMalformedStringException` — and, whatever the
+decode throws, hands the loop a *poison* `ReceivedEnvelope` (`envelope` null, `raw` the bytes verbatim,
+`failure`, `destination`). `JsonSerializer` itself checks every member's *type*, not just the six keys, and
+refuses each mismatch as one `SerializationException`; the `Throwable` catch is the backstop for any other
+`Serializer`. The loop never offers it to the sink, logs the destination and the
+failure, and calls `nack(requeue: false)` — Kafka produces the raw bytes to `<topic>.DLT` and commits the
+offset, RabbitMQ's queue routes it to its DLX — and polls the next record. It used to throw out of `poll()`,
+outside every catch in the process, and a supervisor restarted the worker onto the same offset for ever.
+`poll()` itself stays outside the loop's try on purpose: what can still throw from it is the transport (a lost
+connection, an auth refusal), and for that there is no record in hand to nack — the honest answer is to let
+the supervisor see it rather than spin on a dead broker.
 Signals are registered once via `pcntl_signal` (a no-op if the `pcntl` extension isn't loaded) and dispatched
 once per loop iteration via `pcntl_signal_dispatch()`, so a `kill`/Ctrl-C stops **cleanly between messages —
 never mid-ack**. `--sleep` only applies between *empty* polls (`poll()` returned `null`); it never delays a
@@ -242,7 +263,8 @@ message that was actually received.
 ## DLQ surface per broker
 
 **Division of labour first.** The default `ConsumerLoop::run()` calls `nack(requeue: true)` on a sink throw
-(redeliver) — it never auto-escalates to `nack(requeue: false)`. So **bounded retry and dead-lettering are
+(redeliver) — it never auto-escalates to `nack(requeue: false)` for a record the sink *saw*; the one record it
+dead-letters itself is a poison one the serializer could not decode (above). So **bounded retry and dead-lettering are
 driven by the M9 `RetryingEventHandler` + in-memory `DeadLetterStore` inside the `#[EventListener]` sink** —
 that remains the primary, broker-agnostic mechanism, unchanged here. The broker-native surfaces below are an
 SPI *capability* each adapter exposes: they are reached when an application-level consumer explicitly decides

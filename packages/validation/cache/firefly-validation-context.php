@@ -17,6 +17,17 @@ return [
         ],
         'beanConditions' => [
             0 => [
+                'method' => 'validationSettings',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Validation\\ValidationSettings',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
                 'method' => 'validator',
                 'conditions' => [
                     0 => [

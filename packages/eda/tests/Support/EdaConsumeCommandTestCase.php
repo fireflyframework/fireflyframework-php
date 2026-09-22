@@ -25,10 +25,15 @@ use Illuminate\Foundation\Application;
  *
  * Not `final`: Pest's uses() generates a per-test-file class that EXTENDS this one (the ClearCommandTestCase
  * convention, which also records why an anonymous `new class ...::class` cannot be used here).
+ *
+ * The consumer and the two helpers are PUBLIC: the test closures read and call them with `$this` bound to
+ * that generated class, and PHPStan types a test closure's `$this` as Pest's TestCall — unrelated to this
+ * hierarchy — so protected members read as illegal accesses from outside. Protected stays reserved for the
+ * FireflyTestCase template hooks below, which only the harness calls.
  */
 class EdaConsumeCommandTestCase extends FireflyTestCase
 {
-    protected ScriptedEventConsumer $consumer;
+    public ScriptedEventConsumer $consumer;
 
     /** @return list<class-string> */
     protected function fireflyProviders(): array
@@ -52,19 +57,19 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
     }
 
     /**
-     * Run the command with a zero message budget: ConsumerLoop start()s, immediately trips the max-messages
-     * bound and stop()s, so subscribe() has run and nothing polls. Goes through Kernel::call() rather than
+     * Run the command with a zero message budget unless the caller sets one: ConsumerLoop start()s, immediately
+     * trips the max-messages bound and stop()s, so subscribe() has run and nothing polls. Goes through Kernel::call() rather than
      * $this->artisan() because InteractsWithConsole::artisan() is declared `PendingCommand|int` and every call
      * site would otherwise need the union handled for PHPStan (firefly/cli's ArtisanAssertions precedent).
      *
      * @param  array<string, mixed>  $parameters
      */
-    protected function runConsume(array $parameters = []): int
+    public function runConsume(array $parameters = []): int
     {
         /** @var Kernel $kernel */
         $kernel = $this->app()->make(Kernel::class);
 
-        return $kernel->call('firefly:eda:consume', ['--max-messages' => 0] + $parameters);
+        return $kernel->call('firefly:eda:consume', $parameters + ['--max-messages' => 0]);
     }
 
     /**
@@ -73,7 +78,7 @@ class EdaConsumeCommandTestCase extends FireflyTestCase
      *
      * @param  array<int, mixed>  $destinations
      */
-    protected function setDestinationConfig(array $destinations): void
+    public function setDestinationConfig(array $destinations): void
     {
         /** @var Repository $config */
         $config = $this->app()->make('config');

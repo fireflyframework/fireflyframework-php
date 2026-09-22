@@ -89,6 +89,34 @@ it('masks a sensitive /env key whose value is an array, leaking neither values n
         ->and($flat)->toContain('******');
 });
 
+// The second audit finding, pinned on /env with the real key: `firefly.observability.tracing.otlp.headers` is
+// documented as the place for a vendor's auth header, and `headers` matched none of the masker's original six
+// words, so the framework introduced a key whose documented purpose is to carry a credential and its own
+// fail-safe invariant let the credential through in clear. Both documented shapes are covered — the
+// OTEL_EXPORTER_OTLP_HEADERS string and the map — because the map's leaves (`x-honeycomb-team`) match nothing
+// on their own; only the bag's key can decide. The endpoint beside it stays readable: a mask that hid the
+// whole `otlp` block would be a different bug.
+it('masks an OTLP headers key on /env in both its string and map forms, leaving the endpoint readable', function () {
+    $repository = new Repository(['firefly' => ['observability' => ['tracing' => [
+        'enabled' => true,
+        'otlp' => [
+            'endpoint' => 'https://api.honeycomb.io',
+            'headers' => 'x-honeycomb-team=hcaik_SECRET,authorization=Bearer abc',
+        ],
+        'otlp-map' => ['headers' => ['x-honeycomb-team' => 'hcaik_SECRET_TOO']],
+    ]]]]);
+
+    $body = (new EnvEndpoint($repository))->handle(new EndpointRequest('GET', []))->body;
+
+    $flat = json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    expect($flat)->not->toContain('hcaik_SECRET')
+        ->and($flat)->not->toContain('Bearer abc')
+        ->and($flat)->not->toContain('x-honeycomb-team')
+        ->and($flat)->toContain('https://api.honeycomb.io')
+        ->and($flat)->toContain('"headers":"******"')
+        ->and($flat)->toContain('"enabled":true');
+});
+
 it('lists beans from the boot-time catalog', function () {
     $catalog = new BeansCatalog([
         ['class' => 'App\\Foo', 'stereotype' => 'service', 'scope' => 'Singleton', 'name' => null, 'interfaces' => ['App\\FooPort'], 'beans' => []],

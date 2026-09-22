@@ -20,7 +20,9 @@ use Illuminate\Http\Request;
 /**
  * Establishes the request SecurityContext from a local (HMAC) Bearer JWT and ALWAYS clears it on exit (finally),
  * so nothing bleeds into the next request even under Octane. An absent Authorization header is the anonymous
- * path — the request proceeds unauthenticated and the deny-by-default HttpSecurityFilter decides access. A
+ * path — the request proceeds unauthenticated and the deny-by-default HttpSecurityFilter decides access —
+ * unless an outer filter (the session persistence filter, a test's acting principal) already established a
+ * principal, which is left alone. A
  * PRESENT-but-invalid token is fail-closed: JwtService throws a 401 that flows through the RFC-7807 renderer.
  * Ordered −90 (after the framework filters, before HttpSecurityFilter at −70). Opt-in via
  * firefly.security.jwt.enabled — both the #[ConditionalOnProperty] gate and the shouldNotFilter() guard honour it.
@@ -48,7 +50,12 @@ final class JwtAuthenticationFilter extends OncePerRequestFilter
     {
         $token = $this->bearer($request);
         if ($token === null) {
-            SecurityContextHolder::setContext(SecurityContext::anonymous());
+            // No bearer: the anonymous path — unless an outer filter (the session persistence filter, a
+            // test's acting principal) already established a principal, which this filter has no business
+            // replacing with anonymous.
+            if (! SecurityContextHolder::getContext()->isAuthenticated()) {
+                SecurityContextHolder::setContext(SecurityContext::anonymous());
+            }
         } else {
             SecurityContextHolder::setContext(new SecurityContext($this->authenticationFor($token)));
         }

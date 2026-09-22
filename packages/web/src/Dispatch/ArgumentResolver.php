@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Firefly\Web\Dispatch;
 
 use Error;
+use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Web\Exception\InvalidRequestException;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Http\UploadedFile;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile as IlluminateUploadedFile;
 
@@ -75,15 +77,22 @@ use Illuminate\Http\UploadedFile as IlluminateUploadedFile;
  * Error codes raised here: MISSING_PARAMETER, TYPE_CONVERSION_ERROR, MALFORMED_BODY, INVALID_REQUEST,
  * INVALID_UPLOAD and UNBINDABLE_BODY — all 400, all category Validation (see InvalidRequestException).
  *
+ * A PATH VARIABLE'S SHAPE IS CHECKED HERE, BEFORE THE CONTROLLER, AND A MISS IS THE ENTITY'S OWN 404. See
+ * #[PathVariable] for the defect (a malformed uuid reaching `?::uuid` and answering 500) and for why the
+ * answer is a 404 with the entity's code rather than a distinct 400: under row-level security "no such row"
+ * and "not even a valid id" must be indistinguishable on the wire. The check runs before coercion, so a
+ * `[0-9]+` pattern on an int parameter answers the 404 and never TYPE_CONVERSION_ERROR.
+ *
  * @phpstan-type PropertyPlan array{class: string|null, list: bool}
  * @phpstan-type DtoShape array<string, PropertyPlan>
- * @phpstan-type BodyBinding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, DtoShape>}
+ * @phpstan-type BodyBinding array{name: string, kind: string, key: string, type: string|null, required: bool, default: mixed, valid: bool, properties: list<string>, dtos?: array<string, DtoShape>, pattern?: string, notFoundCode?: string, notFoundMessage?: string, attributes?: list<string>, nullable?: bool}
  */
 final class ArgumentResolver
 {
     public function __construct(
         private readonly MessageConverterRegistry $converters,
         private readonly BeanValidator $beanValidator,
+        private readonly ?HandlerMethodArgumentResolvers $resolvers = null,
     ) {}
 
     /**
@@ -110,15 +119,41 @@ final class ArgumentResolver
      */
     private function resolveOne(array $binding, Request $request, Container $container): mixed
     {
+        // A registered resolver is asked first: a parameter it understands (a principal, a tenant) is not a
+        // container service even when it is class-typed.
+        $custom = $this->resolvers?->resolverFor($binding);
+        if ($custom !== null) {
+            return $custom->resolve($binding, $request);
+        }
+
         return match ($binding['kind']) {
             'path' => $this->coerce($this->pathValue($binding, $request), $binding),
             'query' => $this->coerce($this->queryValue($binding, $request), $binding),
             'header' => $this->coerce($this->headerValue($binding, $request), $binding),
             'file' => $this->fileValue($binding, $request),
             'body' => $this->bodyValue($binding, $request),
-            'service' => $container->make($binding['type'] ?? ''),
+            'service' => $this->serviceValue($binding, $container),
             default => throw new InvalidRequestException("Unknown binding kind {$binding['kind']}."),
         };
+    }
+
+    /**
+     * A nullable service the container cannot build is null, as PHP's own autowiring rules would give it;
+     * a required one still fails loud, because a missing collaborator is a wiring error, not a request error.
+     *
+     * @param  BodyBinding  $binding
+     */
+    private function serviceValue(array $binding, Container $container): mixed
+    {
+        try {
+            return $container->make($binding['type'] ?? '');
+        } catch (BindingResolutionException $e) {
+            if ($binding['nullable'] ?? false) {
+                return null;
+            }
+
+            throw $e;
+        }
     }
 
     /**
@@ -131,7 +166,45 @@ final class ArgumentResolver
             throw new InvalidRequestException("Missing path variable {$binding['key']}.", 'MISSING_PARAMETER');
         }
 
+        $pattern = $binding['pattern'] ?? null;
+        if ($pattern !== null && $value !== null && ! $this->matchesSegment($pattern, $value)) {
+            throw new ResourceNotFoundException(
+                $binding['notFoundMessage'] ?? self::notFoundSentence($binding['name']),
+                $binding['notFoundCode'] ?? 'RESOURCE_NOT_FOUND',
+            );
+        }
+
         return $value;
+    }
+
+    /**
+     * Anchored to the whole segment and case-insensitive: `PathVariable::UUID` must accept the upper-case
+     * form PostgreSQL also accepts, and a pattern that matched a prefix would let `<uuid>-extra` through to
+     * the database. A non-string value (an already-bound model, a nested array) cannot match a segment
+     * pattern and is refused for the same reason. RouteScanner validated the expression at cache time, so
+     * preg_match() cannot return false here for a compiled plan; a hand-written plan with a broken pattern
+     * is treated as a miss, because failing closed is the only safe answer on the request path.
+     */
+    private function matchesSegment(string $pattern, mixed $value): bool
+    {
+        if (! is_string($value)) {
+            return false;
+        }
+
+        return preg_match('~^(?:'.$pattern.')$~i', $value) === 1;
+    }
+
+    /**
+     * "That room does not exist." for `roomId`, "That plan step does not exist." for `planStepId`, and "That
+     * resource does not exist." for a bare `id` — the same shape a repository's own 404 usually has, so an
+     * attribute that gives no sentence still reads like the application rather than like the framework.
+     */
+    public static function notFoundSentence(string $parameter): string
+    {
+        $entity = str_ends_with($parameter, 'Id') && strlen($parameter) > 2 ? substr($parameter, 0, -2) : $parameter;
+        $words = strtolower(trim((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', ' ', $entity)));
+
+        return sprintf('That %s does not exist.', $words === '' || $words === 'id' ? 'resource' : $words);
     }
 
     /**

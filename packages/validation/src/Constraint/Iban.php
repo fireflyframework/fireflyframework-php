@@ -8,11 +8,20 @@ use Attribute;
 use Firefly\Validation\Rule\Iban as IbanRule;
 
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Iban implements Constraint
+final class Iban implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     /** @return list<IbanRule> */
     public function toRules(): array
     {
         return [new IbanRule];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must be a valid IBAN');
     }
 }

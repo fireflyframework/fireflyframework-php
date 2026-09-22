@@ -6,11 +6,12 @@ namespace Firefly\Eda\Kafka;
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
 use Firefly\Eda\EventEnvelope;
-use Firefly\Eda\JsonSerializer;
+use Firefly\Eda\Serializer;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
 use RdKafka\Producer;
 use RuntimeException;
+use Throwable;
 
 /**
  * The REAL KafkaConsumerClient over ext-rdkafka, wrapping the rdkafka KafkaConsumer (built lazily via
@@ -33,7 +34,7 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
     public function __construct(
         private readonly KafkaConsumerFactory $consumerFactory,
         private readonly KafkaProducerFactory $producerFactory,
-        private readonly JsonSerializer $serializer,
+        private readonly Serializer $serializer,
     ) {}
 
     /**
@@ -57,12 +58,37 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         $message = $this->consumer()->consume($timeoutMs);
 
         return match ($message->err) {
-            RD_KAFKA_RESP_ERR_NO_ERROR => new ReceivedEnvelope(
-                $this->serializer->deserialize((string) $message->payload),
-                $message,
-            ),
+            RD_KAFKA_RESP_ERR_NO_ERROR => self::received((string) $message->payload, $message->topic_name, $message, $this->serializer),
             default => null,
         };
+    }
+
+    /**
+     * The pure half of consume(): the record for one delivered payload. Public and static so it is testable
+     * without ext-rdkafka's Message class, which is the only reason consume() itself is not.
+     *
+     * THE DESERIALISATION HAPPENS HERE, INSIDE A CATCH. It used to happen on the way out of consume() with no
+     * catch anywhere between it and ConsumerLoop's `poll()` call, so one malformed body — the most ordinary
+     * failure on a topic another language also writes to — killed the worker, and the supervisor restarted it
+     * onto the same offset for ever. A body the serializer refuses is now a POISON record carrying the raw
+     * bytes and the topic; ConsumerLoop nacks it without requeue, KafkaEventConsumer produces the bytes to
+     * `<topic>.DLT` and commits, and the loop is on the next record.
+     *
+     * THE CATCH IS `Throwable`, ON PURPOSE. The first cut caught SerializationException only, and a body with all
+     * six keys but a string payload, an int eventType or a timestamp PHP could not parse went past it as a
+     * TypeError or a DateMalformedStringException — the same crash, on the same offset, for the very
+     * cross-language bodies this path was written for. The shipped serializer now refuses those as
+     * SerializationException too, but the serializer is a PORT: a third-party implementation may throw anything,
+     * and nothing it throws changes what the bytes are. Whatever comes out of deserialize(), the record is
+     * poison and the worker lives.
+     */
+    public static function received(string $payload, string $topic, mixed $deliveryTag, Serializer $serializer): ReceivedEnvelope
+    {
+        try {
+            return new ReceivedEnvelope($serializer->deserialize($payload), $deliveryTag, destination: $topic);
+        } catch (Throwable $e) {
+            return ReceivedEnvelope::poison($payload, $deliveryTag, $e, $topic !== '' ? $topic : null);
+        }
     }
 
     public function commit(mixed $deliveryTag): void
@@ -82,6 +108,15 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         // RD_KAFKA_PARTITION_UA (-1) = librdkafka picks the partition; a dead-lettered record carries no partition
         // key, so there is no "correct" partition to preserve.
         $topic->produce(RD_KAFKA_PARTITION_UA, 0, $this->serializer->serialize($envelope));
+        $producer->flush(2000);
+    }
+
+    public function deadLetterRaw(string $raw, string $dltTopic): void
+    {
+        $producer = $this->producer();
+        $topic = $producer->newTopic($dltTopic);
+
+        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $raw);
         $producer->flush(2000);
     }
 

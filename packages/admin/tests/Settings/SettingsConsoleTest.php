@@ -160,3 +160,11 @@ it('merges its overrides into the live configuration', function () {
     @unlink($writable->file());
     @rmdir($dir);
 });
+
+it('lists the tracing master switch under Observability, off by default', function () {
+    $toggle = FeatureToggle::find('firefly.observability.tracing.enabled');
+
+    expect($toggle)->not->toBeNull()
+        ->and($toggle?->group)->toBe('Observability')
+        ->and($toggle?->default)->toBeFalse();
+});

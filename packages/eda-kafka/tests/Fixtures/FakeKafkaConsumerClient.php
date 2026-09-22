@@ -28,6 +28,9 @@ final class FakeKafkaConsumerClient implements KafkaConsumerClient
     /** @var list<array{0: EventEnvelope, 1: string}> every [envelope, dltTopic] deadLetter() was called with */
     public array $deadLettered = [];
 
+    /** @var list<array{0: string, 1: string}> every [raw, dltTopic] deadLetterRaw() was called with */
+    public array $deadLetteredRaw = [];
+
     public int $closeCalls = 0;
 
     public function subscribe(array $topics): void
@@ -48,6 +51,11 @@ final class FakeKafkaConsumerClient implements KafkaConsumerClient
     public function deadLetter(EventEnvelope $envelope, string $dltTopic): void
     {
         $this->deadLettered[] = [$envelope, $dltTopic];
+    }
+
+    public function deadLetterRaw(string $raw, string $dltTopic): void
+    {
+        $this->deadLetteredRaw[] = [$raw, $dltTopic];
     }
 
     public function close(): void

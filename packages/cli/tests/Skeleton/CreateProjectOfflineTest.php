@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Assert;
 use Symfony\Component\Process\Process;
 
 /**
@@ -21,7 +22,7 @@ use Symfony\Component\Process\Process;
 it('creates a booting, cached app via local firefly path repos (Packagist deps from host cache)', function () {
     $composer = trim((string) shell_exec('command -v composer')) ?: null;
     if ($composer === null) {
-        $this->markTestSkipped('composer binary not available.');
+        Assert::markTestSkipped('composer binary not available.');
     }
 
     $mono = dirname(__DIR__, 4); // packages/cli/tests/Skeleton -> repo root
@@ -46,7 +47,7 @@ it('creates a booting, cached app via local firefly path repos (Packagist deps f
         }
     }
     if ($hostCacheDir === '') {
-        $this->markTestSkipped('no host Composer cache available; refusing to force a full network resolve.');
+        Assert::markTestSkipped('no host Composer cache available; refusing to force a full network resolve.');
     }
 
     $work = sys_get_temp_dir().'/firefly-cp-'.bin2hex(random_bytes(6));

@@ -23,7 +23,7 @@ it('emits every app manifest data file with a var_export array shape', function 
         FireflyCachePaths::COMPONENT, FireflyCachePaths::CONTEXT, FireflyCachePaths::CONFIG_PROPERTIES,
         FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS,
         FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::SCHEDULED,
-        FireflyCachePaths::SECURITY_METHODS, FireflyCachePaths::TRANSACTIONAL,
+        FireflyCachePaths::SECURITY_METHODS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_PLAN,
     ] as $basename) {
         $path = $dir.'/'.$basename;
         expect(is_file($path))->toBeTrue("expected $basename to be emitted")

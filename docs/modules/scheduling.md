@@ -127,10 +127,15 @@ when) `Schedule` is eventually resolved, the hook walks every `ScheduledManifest
 
 1. Calls `$schedule->call($closure)` with a closure that resolves the target bean from the container and
    invokes the annotated method — wrapped in the lock guard described below.
-2. Maps the descriptor's trigger onto the returned `Event` (`applyFrequency()`): `cron` applies verbatim;
-   `fixedRate`/`fixedDelay` parse to seconds and bucket onto the nearest of `everyMinute()`,
-   `everyFiveMinutes()`, `everyTenMinutes()`, `everyFifteenMinutes()`, `everyThirtyMinutes()`, `hourly()`,
-   `daily()`, or `weekly()`.
+2. Maps the descriptor's trigger onto the returned `Event` through `Firefly\Scheduling\Schedule\Cadence`:
+   `cron` applies verbatim; `fixedRate`/`fixedDelay` parse to seconds and bucket onto the nearest cadence
+   **not shorter than the rate** — below a minute, Laravel's repeat-seconds cadences `everySecond()`,
+   `everyTwoSeconds()`, `everyFiveSeconds()`, `everyTenSeconds()`, `everyFifteenSeconds()`,
+   `everyTwentySeconds()`, `everyThirtySeconds()` (honoured by `schedule:work`, which re-runs the event inside
+   the minute); at or above it `everyMinute()`, `everyFiveMinutes()`, `everyTenMinutes()`,
+   `everyFifteenMinutes()`, `everyThirtyMinutes()`, `hourly()`, `daily()`, or `weekly()`. Rounding is always
+   *up*: `'7s'` runs every 10 seconds, `'45s'` every minute, `'7m'` every ten. `Cadence::describe()` is what
+   `php artisan firefly:schedule` prints beside each task, so the listing and the wiring cannot disagree.
 
 ### The lock guard (at-most-one-node)
 
@@ -175,9 +180,10 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   connection itself is torn down.
 - **`fixedRate`/`fixedDelay` map to the *nearest* Laravel frequency, not an exact interval.** Laravel's
   scheduler has no arbitrary-interval DSL (no "every 42 seconds"); a configured rate that falls between two
-  supported cadences rounds up to the next one (`applyFrequency()`'s bucket table above), so e.g.
-  `fixedRate: '7m'` runs `everyTenMinutes()`, not every 7 minutes. Precise cron generation and sub-minute
-  scheduling are documented as landing with **SP-5**'s cron shims.
+  supported cadences rounds up to the next one (`Cadence`'s table above), so e.g. `fixedRate: '7m'` runs
+  `everyTenMinutes()`, not every 7 minutes, and `'42s'` runs every minute. Sub-minute rates ARE honoured down
+  to one second, but only under a resident scheduler (`schedule:work` / `firefly:schedule`); a cron-driven
+  `schedule:run` starts the event once a minute and re-runs it until that minute ends.
 - **`initialDelay` is accepted but not yet applied.** As noted above, the attribute parameter is captured
   through to the compiled descriptor but `ScheduleWiringPass` does not currently read it when registering the
   Laravel `Event` — no initial-delay offset is set. Laravel's frequency DSL has no native way to express "run

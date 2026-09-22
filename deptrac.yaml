@@ -78,6 +78,14 @@ deptrac:
       collectors:
         - type: directory
           value: packages/security/src/.*
+    - name: SecurityOAuth2Client
+      collectors:
+        - type: directory
+          value: packages/security-oauth2-client/src/.*
+    - name: SecurityOAuth2Server
+      collectors:
+        - type: directory
+          value: packages/security-oauth2-server/src/.*
     - name: Actuator
       collectors:
         - type: directory
@@ -133,9 +141,11 @@ deptrac:
     # Validation core (Validator/IlluminateValidator/Rule/*) needs only Kernel + illuminate/validation.
     # Container: ValidationAutoConfiguration's #[Configuration]/#[Bean]/#[Order] attributes.
     # Context: its #[ConditionalOnMissingBean]. AutoConfigure: the AutoConfiguration base its provider extends.
+    # Config: ValidationSettings reads firefly.validation.* through the Config port (the DataSettings idiom).
     Validation:
       - Kernel
       - Container
+      - Config
       - AutoConfigure
       - Context
 
@@ -307,6 +317,44 @@ deptrac:
       - Cqrs
       - Validation
 
+    # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
+    # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and
+    # settings, extends Web's filter base, carries Container/Context attributes, reads Config, reuses Kernel
+    # exceptions and extends AutoConfigure's base. Security never depends on it (the login page and the
+    # logout filter see it only through ports Security owns). NOTHING depends on it except Testing.
+    SecurityOAuth2Client:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Security
+
+    # SecurityOAuth2Server is the authorization server on top of Security (the session-held principal, the entry
+    # point, SessionCsrf, PasswordEncoder, JwksDocumentSource, the event publisher) and Web (WebFilter, the
+    # error model); it stores clients and authorizations through Data's EloquentRepository, publishes an
+    # Actuator endpoint the admin dashboard renders, contributes a ScheduledDescriptor to Scheduling's manifest
+    # for the purge, and rate-limits the token endpoint with Resilience's RateLimiter. NOTHING depends on it
+    # except Testing (the test client) and Cli (firefly:oauth2:keys).
+    # The Domain edge is INHERITED ONLY: Deptrac flattens a parent class's dependencies onto every subclass, and
+    # EloquentRepository::save() tests its entity against Domain's RecordsDomainEvents, so the three
+    # src/Eloquent/*ModelRepository subclasses carry that edge without naming a Domain type themselves. No file
+    # in this package may import Firefly\Domain\*; a store is a store, not an aggregate.
+    SecurityOAuth2Server:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Domain
+      - Data
+      - Security
+      - Actuator
+      - Scheduling
+      - Resilience
+
     # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
     # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
     # boot/condition attributes, extends AutoConfigure's base, mounts on Web (RouteManifest/ProblemDetailsRenderer/
@@ -323,8 +371,9 @@ deptrac:
 
     # Observability is a top-of-stack capability: a pure-PHP MeterRegistry + Prometheus exposition whose metrics
     # endpoints implement Actuator's ActuatorEndpoint contract (=> Actuator), instruments HTTP via a Web filter
-    # (=> Web), backs Cqrs's CqrsMetrics seam (=> Cqrs), and gauges Resilience circuit breakers (=> Resilience). It
-    # reads Config, carries Container/Context attributes, extends AutoConfigure's base. NOTHING depends on it.
+    # (=> Web), backs Cqrs's CqrsMetrics/CqrsTracing seams (=> Cqrs) and Eda's EdaTracing seam (=> Eda), and
+    # gauges Resilience circuit breakers (=> Resilience). It reads Config, carries Container/Context attributes,
+    # extends AutoConfigure's base. NOTHING depends on it.
     Observability:
       - Kernel
       - Container
@@ -334,6 +383,7 @@ deptrac:
       - Web
       - Actuator
       - Cqrs
+      - Eda
       - Resilience
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
@@ -380,8 +430,9 @@ deptrac:
       - Web
 
     # Testing is the top-of-stack test-support kit: its recording doubles implement every capability
-    # package's frozen ports, so it depends on ALL layers. It is depended on by NONE — consumers use it
-    # only from their tests/, which Deptrac's src-only collectors never see (no cycle; dev-scoped dep).
+    # package's frozen ports, so it depends on ALL layers (and SecurityOAuth2Client, for actingAsOidcUser()).
+    # It is depended on by NONE — consumers use it only from their tests/, which Deptrac's src-only
+    # collectors never see (no cycle; dev-scoped dep).
     Testing:
       - Kernel
       - Container
@@ -399,6 +450,8 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Client
+      - SecurityOAuth2Server
       - Actuator
       - Observability
 
@@ -423,6 +476,7 @@ deptrac:
       - Messaging
       - Cqrs
       - Security
+      - SecurityOAuth2Server
       - Actuator
       - Observability
 

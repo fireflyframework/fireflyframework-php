@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Web\Error;
 
 use Firefly\Kernel\Error\ErrorResponse;
+use Firefly\Web\Filter\CorrelationIdFilter;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -25,6 +26,12 @@ use Throwable;
 final readonly class ErrorReport
 {
     /**
+     * `reference` — the request's correlation id (the same value problem+json publishes as `traceId`), so
+     * a person can quote it; '' only when no request is known. It is the one field the PRODUCTION page adds
+     * beyond the status and the code: it names nothing internal, and it is the single action a reader of
+     * that page can take — report the id — which the JSON document already invites and the HTML page did
+     * not make possible.
+     *
      * @param  list<ErrorFrame>  $frames
      * @param  list<array{class: string, message: string, location: string}>  $previous
      */
@@ -43,11 +50,13 @@ final readonly class ErrorReport
         public string $location = '',
         public array $frames = [],
         public array $previous = [],
+        public string $reference = '',
     ) {}
 
     public static function of(Throwable $e, Request $request, ErrorPageSettings $settings, string $basePath, int $status, string $reason, string $timestamp): self
     {
         $payload = ErrorResponse::fromException(ProblemMapper::toFireflyException($e), instance: $request->path(), timestamp: $timestamp)->toArray();
+        $reference = CorrelationIdFilter::of($request);
 
         $public = new self(
             status: $status,
@@ -59,6 +68,7 @@ final readonly class ErrorReport
             path: '/'.ltrim($request->path(), '/'),
             timestamp: $timestamp,
             detailed: false,
+            reference: $reference,
         );
 
         if (! $settings->trace) {
@@ -80,6 +90,7 @@ final readonly class ErrorReport
             location: self::shorten($e->getFile(), $basePath).':'.$e->getLine(),
             frames: self::frames($e, $basePath, $settings->excerptLines),
             previous: self::previous($e, $basePath),
+            reference: $reference,
         );
     }
 

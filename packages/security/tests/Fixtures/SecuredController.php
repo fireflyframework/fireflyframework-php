@@ -22,5 +22,8 @@ final class SecuredController
     #[Secured('orders:write')]
     public function store(string $body): void {}
 
+    #[PreAuthorize("hasAnyRole('MANAGER', 'TENANT_ADMIN')", code: 'RUN_ROLE_REQUIRED', message: 'Only a manager may start a run.')]
+    public function start(): void {}
+
     public function unguarded(): void {}
 }

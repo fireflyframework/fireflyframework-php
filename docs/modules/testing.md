@@ -132,7 +132,7 @@ Laravel's `Event::fake()`/`Bus::fake()` (which don't see Firefly's own ports):
 | `Firefly\Messaging\MessageBrokerPort` | `RecordingMessageBroker` | `$published` — a list of `{topic, value, key, headers}`; `publishedTo(string $topic)` filters |
 | `Firefly\Scheduling\Lock\DistributedLock` | `RecordingDistributedLock` | `$acquired`/`$released`; constructor `(bool $available = true)`; `setAvailable(bool $available)` toggles whether `tryAcquire()` grants the lock |
 | `Firefly\Actuator\Health\HealthIndicator` | `FakeHealthIndicator` | Defaults `Status::Up`; constructor takes a `Health`, `setHealth(Health $health)` reprograms it for DOWN/OUT_OF_SERVICE scenarios |
-| `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | `$spans` — every traced span name, in call order; faithfully invokes and returns the traced callback (like `NoOpTracer`, but observable) |
+| `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | The whole port in memory with real W3C-shaped ids: `recorded()` (list of `RecordedSpan` — `name`, `kind`, `attributes`, `events`, `status`, `exception`, `parent`, `ended`), `find(name)`, `ofKind(kind)`, `reset()`; `$spans` — every span name, in start order |
 
 ```php
 <?php
@@ -145,6 +145,27 @@ $publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice'], ['
 expect($publisher->published)->toHaveCount(1)
     ->and($publisher->published[0]['eventType'])->toBe('AccountOpened');
 ```
+
+## Security test support
+
+`FireflyTestCase` carries Spring Security's test module as methods: `actingAsPrincipal()` (a principal for direct calls
+and every HTTP request), `actingAsOidcUser()` (a real `OidcUser` with claims, scopes, extra authorities and a registration
+id — no provider involved), `actingAsAuthentication()` (any `Authentication`, the seam beneath both), `withoutSecurity()`,
+and `#[WithMockUser]`; `RecordingAuthenticationEvents` records the security event family. See
+[Security → Testing](security.md#testing) and [OAuth2 Client → Testing](security-oauth2-client.md#testing), where
+`Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` — an OpenID Connect provider in one class, real front-channel
+routes and a faked back channel — is described.
+## The OAuth2 authorization server: `OAuth2ServerTestClient`
+
+`Firefly\Testing\Security\OAuth2\OAuth2ServerTestClient` drives an application's own
+[authorization server](security-oauth2-server.md#testing) through the test client: `authorize()` (a fresh PKCE
+pair and state), `approveConsent()`, `obtainCode()`, `exchangeCode()`, `clientCredentials()`, `refresh()`,
+`introspect()`, `revoke()`, `userInfo()` and `tokens()`, with the endpoint paths read from the
+`AuthorizationServerSettings` bean. Sign the user in through the login page first and carry the session cookie:
+the authorization endpoint answers a browser and reads the principal the `SecurityContextRepository` holds
+between requests, so `actingAsPrincipal()` — a principal in the holder for one request — is answered with the
+login redirect, exactly as an anonymous browser is. The token, introspection, revocation and userinfo helpers are
+machine endpoints and need no sign-in.
 
 ## Pest expectations
 

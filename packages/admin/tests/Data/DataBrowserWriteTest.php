@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Admin\Data\DataWriteOutcome;
+use Firefly\Admin\Tests\Data\Fixtures\AdminStampRepository;
 use Firefly\Admin\Tests\Data\Support\DataBrowserTestCase;
 use Illuminate\Support\Facades\DB;
 
@@ -219,6 +220,48 @@ it('creates a record on an Eloquent-backed resource, under the same two switches
         ->and(DB::table('admin_records')->where('email', 'new@example.test')->value('amount'))->toBe(75);
 });
 
+it('leaves a blank column to its database default on create, rather than refusing the row', function () {
+    /** @var DataBrowserTestCase $this */
+    $browser = $this->browser(writableData());
+
+    // A generic form submits '' for every field the operator left alone. `active` is NOT NULL DEFAULT true,
+    // so the database never needed a value for it — refusing the whole row as "not a valid bool" was a
+    // form demanding what the schema already supplies. The blank is left OUT of the insert, and the default
+    // is what lands, not a coerced false.
+    $result = $browser->create('admin-record', ['email' => 'blank@example.test', 'amount' => '5', 'active' => '']);
+
+    expect($result->isDone())->toBeTrue()
+        ->and($result->changed)->not->toContain('active')
+        ->and(DB::table('admin_records')->where('email', 'blank@example.test')->value('active'))->toBe(1);
+
+    // A NOT NULL column with NO default is still refused on a blank: nothing could fill it.
+    $refused = $browser->create('admin-record', ['email' => 'no-amount@example.test', 'amount' => '']);
+
+    expect($refused->outcome)->toBe(DataWriteOutcome::Refused)
+        ->and($refused->reason)->toContain('amount')
+        ->and(DB::table('admin_records')->where('email', 'no-amount@example.test')->count())->toBe(0);
+});
+
+it('leaves a blank timestamp to the model on create, so Eloquent still stamps the row', function () {
+    /** @var DataBrowserTestCase $this */
+    $browser = $this->browserOver([AdminStampRepository::class], writableData());
+
+    // The form renders created_at/updated_at as optional datetime fields and submits '' for both. Written
+    // as an explicit null they are "dirty", and Eloquent's updateTimestamps() steps aside for a dirty
+    // column — a browser-created row came back with `created_at: null` on a model that timestamps.
+    $result = $browser->create('admin-stamp', ['label' => 'stamped', 'created_at' => '', 'updated_at' => '']);
+
+    expect($result->isDone())->toBeTrue()
+        ->and(DB::table('admin_stamps')->where('label', 'stamped')->value('created_at'))->not->toBeNull()
+        ->and(DB::table('admin_stamps')->where('label', 'stamped')->value('updated_at'))->not->toBeNull();
+
+    // A value the person DID type still wins over the model's clock.
+    $typed = $browser->create('admin-stamp', ['label' => 'dated', 'created_at' => '2020-02-02 02:02:02', 'updated_at' => '']);
+
+    expect($typed->isDone())->toBeTrue()
+        ->and(DB::table('admin_stamps')->where('label', 'dated')->value('created_at'))->toBe('2020-02-02 02:02:02');
+});
+
 it('refuses create for a resource whose entity is not an Eloquent model', function () {
     /** @var DataBrowserTestCase $this */
     // THIS is the invariant the old blanket ban was protecting, and it is the only half of it that was ever
@@ -257,4 +300,25 @@ it('refuses a create naming a column the resource does not have, and skips the o
     expect($result->isDone())->toBeTrue()
         ->and(DB::table('admin_records')->where('id', 999)->count())->toBe(0)
         ->and(DB::table('admin_records')->where('email', 'chosen@example.test')->value('api_token'))->toBeNull();
+});
+
+it('says in a sentence that a duplicate unique value was refused, without the SQL', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->seedRecords();
+
+    $result = $this->browser(writableData())->create('admin-record', ['email' => 'ada@example.test', 'amount' => '1']);
+
+    expect($result->outcome)->toBe(DataWriteOutcome::Failed)
+        ->and($result->reason)->toBe('The insert failed: a row with the same unique value already exists.')
+        ->and($result->reason)->not->toContain('insert into')
+        ->and(DB::table('admin_records')->count())->toBe(5);
+});
+
+it('says in a sentence that a constraint refused the write', function () {
+    /** @var DataBrowserTestCase $this */
+    // `amount` is NOT NULL with no default: an insert without it is the database saying no, not the browser.
+    $result = $this->browser(writableData())->create('admin-record', ['email' => 'nullamount@example.test']);
+
+    expect($result->outcome)->toBe(DataWriteOutcome::Failed)
+        ->and($result->reason)->toBe('The insert failed: the database refused it because a constraint (a foreign key, a NOT NULL or a check) would be broken.');
 });

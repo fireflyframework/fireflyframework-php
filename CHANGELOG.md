@@ -2,6 +2,453 @@
 
 All notable changes to LaraFly are documented here. This project uses CalVer (`YY.MM.Patch`).
 
+## [Unreleased]
+
+Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
+application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught
+at a hundred and forty-four sites, three exception renderables registered ahead of the framework's, a
+RouteMatched listener validating ids, a replacement JWKS provider, thirty-five hand-written role checks, a
+whole Kafka consumer command, and a shell script whose body was one line. Each fix was reproduced by a
+failing test first, and each one deletes a workaround downstream.
+
+Alongside them, `firefly/data` reaches Spring Data parity: a driver failure now leaves a repository or a
+`#[Transactional]` method as a typed member of the kernel's `DataAccessException` family with a fixed sentence
+and never the statement, query by example is a `Specification`, `#[Modifying]`/`#[Projection]`/`#[Lock]`/
+`#[EntityGraph]` and `Slice` are compiled into the manifest by the one scanner the package already had,
+`#[Transactional(timeout:)]` is enforced rather than carried, `#[TransactionalEventListener]` runs in four
+phases, and the actuator's `db` health indicator is on whenever a database is configured — every behaviour
+behind a documented `firefly.data.*` key and tested through the real Testbench pipeline.
+
+### BREAKING
+
+- **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
+  `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
+  names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new
+  `ConditionalHealthIndicator::available()` hook, which `HealthContributorRegistrar` honours). A failing or
+  missing database is reported DOWN and `/actuator/health` answers **503**; an application with no default
+  database gets no `db` component at all. **Migration:** `FIREFLY_HEALTH_DB_ENABLED=false` (or
+  `firefly.management.endpoint.health.db.enabled => false`) removes the indicator. An application whose
+  `config/firefly.php` was generated before this release still has the old `false` written out and keeps the
+  old behaviour until it edits that line.
+
+- **`packages/web` — problem+json no longer discloses an unhandled throwable's message when `app.debug` is
+  on.** The JSON renderer shared the HTML page's `firefly.web.error-page.trace` gate, which follows
+  `app.debug` — the wrong gate for a machine surface. Every local and compose environment sets `APP_DEBUG`,
+  so a console fed by problem+json rendered a duplicate-key insert as the DSN, the tenant id, the acting user
+  and the full statement in a red banner, while the HTML page beside it withheld everything. The problem
+  document now has its own gate, **`firefly.web.problem.disclose`**, default `false`, inheriting from
+  nothing. **Migration:** a developer who wants driver messages inside JSON `detail` sets that key; nothing
+  else changes, and the message is still on the exception for the log.
+
+- **`packages/web` — the router's own 404 and 405 sentences are replaced with ones written for a person.**
+  `The route api/x could not be found.` becomes `There is nothing at this address.` and `The GET method is
+  not supported for route api/x. Supported methods: POST.` becomes `This address only accepts POST.`, with
+  the verbs in an `allowed` extension member and the `Allow` header copied through (it used to be dropped).
+  "Route" is the framework's word and the path is already in `instance`. An author's `abort(404, '…')`
+  message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
+  not on the router's sentence.
+
+- **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
+  denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
+  rule asked for in a `requiredAuthorities` extension member; the class, method, principal and authorities go
+  to the log at warning. One real application kept every `#[PreAuthorize]` at `isAuthenticated()` and judged
+  roles by hand at thirty-five sites because a consultant had read a class name on a panel. **Migration:**
+  assert on `ACCESS_DENIED` and `requiredAuthorities`, not on the sentence.
+
+- **`packages/security` — a JWKS outage is a `503 JWKS_UNAVAILABLE`, not a `401 INVALID_TOKEN`.**
+  `OAuth2ResourceServerFilter` wrapped every throwable from `JWT::decode($token, $this->jwks->keys())` — the
+  key fetch included — as an invalid token, so an unreachable issuer told every caller their token was bad and
+  a well-behaved client rotated a good one. The keys are resolved before the try that maps decoding failures.
+  `RemoteJwksProvider` throws `JwksUnavailableException` (a `ServiceUnavailableException`) for every fetch
+  failure — 5xx, refused, timed out, not JSON — where it used to let the HTTP client's `RequestException`
+  escape. **Migration:** a test asserting `RequestException` asserts `JwksUnavailableException`.
+
+- **`packages/security` — a method-security refusal for an ANONYMOUS caller at the CQRS bus is a `401`, not a
+  `403`.** `MethodSecurityMessageEnforcer` used to answer `ACCESS_DENIED` whether or not anyone was signed in; it now
+  shares `MethodSecurityEvaluator` with the dispatcher guard and the proxy interceptor, and all three say
+  `AUTHENTICATION_FAILED` for nobody and `ACCESS_DENIED` for somebody. **Migration:** a test asserting a 403 for an
+  anonymous command asserts a 401.
+
+- **`packages/security` — a `final` bean carrying method-security rules that no dispatch seam enforces refuses
+  `firefly:cache` (and the uncached boot).** A `#[Service]`/`#[Component]`/`#[Repository]` with `#[PreAuthorize]` and
+  the like is now proxied so the rule is actually enforced; the proxy must extend the class. Before this wave those
+  rules were silently unenforced. **Migration:** remove `final`, or move the rule onto the controller or handler.
+  The same scan refuses a `#[PreFilter]` on a `#[RestController]`/`#[Controller]` action (the dispatcher cannot
+  rewrite the arguments it resolved) and a `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no
+  `#[Component]`-family stereotype (nothing would enforce it). **Migration:** move the filter onto the service the
+  action calls; add a stereotype to the class.
+
+- **`packages/web` — `ControllerSecurityGuard` gains `afterInvocation()`.** An implementation outside this repo adds
+  the method (return `$result` to keep the old behaviour). `ArgumentResolver`'s constructor takes an optional third
+  `HandlerMethodArgumentResolvers`. `RouteScanner` records two optional binding keys (`attributes`, `nullable`) and
+  compiles an interface-typed parameter as a `service` binding rather than a query parameter.
+
+- **`packages/data` — the proxy engine is a `MethodInterceptor` chain.** `TransactionalBeanPostProcessor` is constructed
+  from a `ProxyPlan` and an `InterceptorRegistry`; `ProxyMethod` takes a list of `BoundAdvice` instead of a
+  `TransactionalDescriptor`; `ProxyMaterializer::materialize()` takes a planner and a plan; `TransactionInterceptor`
+  implements `MethodInterceptor`. Every proxy member name, `ProxyFactory::wrap()`'s first four parameters and the
+  compiled `transactional.php` are unchanged; `firefly:cache` additionally writes `proxy-plan.php`. **Migration:** run
+  `php artisan firefly:cache` once.
+
+- **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
+  `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
+  poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
+  catch in the process, that killed the worker onto the same offset for ever. The adapters catch `Throwable`
+  around the decode, not `SerializationException` alone, and `JsonSerializer::deserialize()` now refuses a
+  member of the wrong type (a string `payload`, an int `eventType`, a non-string header) and an unparseable
+  `timestamp` as a `SerializationException` instead of leaking a `TypeError` or a
+  `DateMalformedStringException` out of `EventEnvelope::fromArray`. `ConsumerLoop` nacks a poison record
+  without requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
+  `RabbitMqEventConsumer` lets the queue's DLX take it. `RdKafkaConsumerClient` and `RabbitMqEventConsumer`
+  take the `Serializer` port rather than `JsonSerializer` (a widening; every caller still passes
+  `JsonSerializer`). **Migration:** an `EventConsumer` implementation outside this repo reads
+  `$received->envelope` as nullable (`?->`), a `KafkaConsumerClient` implements `deadLetterRaw(string $raw,
+  string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
+  well-keyed body expects `SerializationException`.
+
+### Added
+
+- **`packages/security-oauth2-client` — a new package: Spring Security's `oauth2Login()` and `oauth2Client()` (wave B).**
+  Client registrations in Spring Boot's shape (`firefly.security.oauth2.client.registration.{id}` / `provider.{id}`)
+  with **presets** for `google`, `github`, `okta`, `keycloak` and `microsoft`/`entra` and **OIDC discovery** for any
+  `issuer_uri` (bounded, validated against the issuer, cached, lazy — `discovery.eager` resolves at boot; a dead
+  issuer is a `503 OIDC_DISCOVERY_UNAVAILABLE`), every static refusal at boot naming the key; **authorization-code
+  login** (`OAuth2AuthorizationRequestRedirectFilter` `-89`, `OAuth2LoginAuthenticationFilter` `-88`) with
+  single-use constant-time `state`, a nonce for `openid`, **PKCE S256** on by default and mandatory for a public
+  client, an exact `redirect_uri` check, the code exchanged over Laravel's Http client with `client_secret_basic`/
+  `client_secret_post`/`none`, the **id token verified** against the provider's JWKS through `RemoteJwksProvider`
+  and validated per OIDC Core §3.1.3.7 (`iss`, `aud`, `azp`, `exp`, `iat`, `sub`, `nonce`), userinfo loaded and
+  merged, and an **`OidcUser`/`OAuth2User` principal** (claims, `OIDC_USER`/`OAUTH2_USER` + `SCOPE_x`, a
+  **`GrantedAuthoritiesMapper`** bean seam) signed into the session-persisted `SecurityContext` with the session id
+  regenerated and the event family published (`InteractiveAuthenticationSuccessEvent::OAUTH2_LOGIN`); the
+  framework's **login page lists every provider** as "Sign in with …"; **RP-initiated logout**
+  (`logout.oidc_initiated`) on the new `LogoutSuccessHandler` port; **`OAuth2AuthorizedClientManager`** for client
+  credentials and refresh over an encrypted session repository and an encrypted cache service, and
+  **`Http::oauth2Client('{id}')`**. Tokens are stored encrypted with the application key, the principal in the session
+  carries claims and never a token, and no exception or log line carries a secret, a code, a verifier or a token.
+  Every key lives under `firefly.security.oauth2.client.*` and defaults to off; the package is required by
+  `firefly/firefly`, documented in `docs/modules/security-oauth2-client.md` and the config reference, and gated by a
+  Testbench capstone suite plus a Chromium round trip (`tests/Browser/OAuth2LoginTest.php`).
+
+- **`packages/security` — four seams for a second login mechanism.** `LoginPageLinks`/`LoginPageLink` (the login
+  page draws "Sign in with …" buttons after the form, or alone when `form` is off; `LoginPageModel` gains `form` and
+  `links`), `LogoutSuccessHandler` (asked by `LogoutFilter` before the session is invalidated; null means the
+  default redirect), `hasScope()`/`hasAnyScope()` in `SecurityExpressionRoot`, the evaluator's whitelist and
+  `authorities()`, and `hasScope:<scope>` in the URL vocabulary, and `FormLoginSettings::$pageEnabled` —
+  `firefly.security.oauth2.client.login.enabled` implies the login page, the session middleware and logout exactly
+  as `form_login.enabled` does (the entry point's `login` mode accepts it too). The page's `?error` notice names the
+  provider when there is no password form. `InteractiveAuthenticationSuccessEvent::OAUTH2_LOGIN`.
+
+- **`packages/testing` — `FakeAuthorizationServer`, `actingAsOidcUser()`, `actingAsAuthentication()`.**
+  `Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` is an OpenID Connect provider in one class: real
+  front-channel routes (`/authorize` with an optional consent page, `/end-session`) mounted on the application and
+  a faked back channel (`/.well-known/openid-configuration`, `/token`, `/jwks`, `/userinfo`) answering the real
+  calls the framework makes — RS256 tokens from a per-process key pair, single-use PKCE-checked codes, Basic/post/
+  none client authentication, rotating refresh tokens, every hop recorded, and knobs for every failure mode.
+  `actingAsOidcUser()` signs a real `OidcUser` in without a provider; `actingAsPrincipal()` takes the token's
+  `attributes` and delegates to the new `actingAsAuthentication()` seam.
+
+- **`packages/kernel` — the `DataAccessException` family, and a transaction timeout.**
+  `DataIntegrityViolationException` (409), `DuplicateKeyException` (409, under it), `CannotAcquireLockException`
+  (409), `DeadlockLoserDataAccessException` (409, under it), `QueryTimeoutException` (504),
+  `TransientDataAccessResourceException` (503), `DataAccessResourceFailureException` (503),
+  `BadSqlGrammarException` (500), `EmptyResultDataAccessException` (404), `IncorrectResultSizeDataAccessException`
+  (500) and `OptimisticLockingFailureException` (409), every one under `DataAccessException`. Beside the family,
+  not in it, `TransactionTimedOutException` (504) extends `Infrastructure\TimeoutException` like every other
+  timeout — Spring's `TransactionException` side — so `catch (DataAccessException $e)` does not see it and
+  `catch (TimeoutException $e)` does. `DataAccessException`'s constructor gains trailing `httpStatus`/`severity`
+  parameters; `Firefly\Data\Repository\Locking\OptimisticLockException` is now an
+  `OptimisticLockingFailureException` and keeps its name and code.
+
+- **`packages/data` — Spring Data parity.** `PersistenceExceptionTranslator` behind
+  `firefly.data.exception-translation.enabled` (default on), applied in every `EloquentRepository` method, in
+  `TransactionTemplate` and therefore in every `#[Transactional]` method, with the driver/SQLSTATE tables in one
+  file (`DriverErrorTable`, one test per row) and fixed-sentence messages; query by example (`Example`,
+  `ExampleMatcher`, `StringMatcher`, `GenericPropertyMatcher`, `findByExample`/`findOneByExample`/
+  `countByExample`/`existsByExample`/`findByExamplePaged`); `#[Modifying]` (statements, affected-row count,
+  transaction required unless said otherwise, refused on a SELECT at scan time); `#[Projection(Dto::class)]`
+  (constructor hydration with lossless typed coercion, reflection-free at runtime); `#[Lock(LockMode::PESSIMISTIC_WRITE|
+  PESSIMISTIC_READ)]` and `findByIdForUpdate()` (transaction required); `#[EntityGraph]` with named graphs on
+  every read; `Slice` and `PagingAndSortingRepository::findSlice()`, derived queries paging by a trailing
+  `Pageable`; `getById()`; `#[Transactional(timeout:)]` enforced with a per-driver statement timeout
+  (`StatementTimeoutApplier` — pgsql `statement_timeout`, mysql `max_execution_time`, mariadb
+  `max_statement_time`, sqlite's busy timeout) and a wall-clock deadline that rolls back and throws the kernel's
+  `TransactionTimedOutException` (a `TimeoutException`, 504), `firefly.data.transaction.default-timeout` and
+  `.statement-timeout`; `#[TransactionalEventListener]` in `BEFORE_COMMIT`/`AFTER_COMMIT`/`AFTER_ROLLBACK`/
+  `AFTER_COMPLETION` over a `TransactionSynchronizationRegistry` that follows savepoints, registered by the new
+  `DataWiringProvider` (`firefly.data.transactional-event-listeners.enabled`). The compiled `transactional.php`
+  gains `repositories` and `listeners` maps; older files still load.
+
+- **`packages/admin` — the datasource page shows the data layer** (exception translation, default transaction
+  timeout, statement timeout, transactional listeners) and the data browser's write failures read as sentences
+  for a duplicate key, a broken constraint, a lock, a timeout or an unreachable database — never the SQL.
+
+- **`packages/security` — Spring Security 6 parity for everything that is not OAuth2 client/server (wave A).**
+  A session-persisted `SecurityContext` (`SecurityContextPersistenceFilter`, `SessionSecurityBootstrap` pushing
+  Laravel's cookie/session middleware globally ahead of the filter chain, fixation protection), **form login** with the
+  framework's own sign-in page (`firefly.security.form_login.*`, CSRF-checked against the session token, redirect to
+  the saved request), **HTTP Basic** (`http_basic.*`, RFC 7617 challenge), **logout** (`logout.*`, POST only),
+  **remember-me** (`remember_me.*`, Spring's signed-token cookie, key held to the JWT secret rule), a negotiating
+  **`AuthenticationEntryPoint`** (`http.entry_point`: `auto`|`login`|`challenge`|`problem`), **`#[PostAuthorize]`**,
+  **`#[PreFilter]`/`#[PostFilter]`**, **method security on any stereotyped bean** (`method.enabled`) through the shared
+  proxy chain with security ahead of transactions, **principal injection** (`Authentication`, `?UserDetails`,
+  `#[AuthenticationPrincipal]`, `#[CurrentSecurityContext]`), an **Eloquent `UserDetailsService`**
+  (`users.driver = eloquent`), and the **event family** (`AuthenticationSuccessEvent`,
+  `InteractiveAuthenticationSuccessEvent`, `AuthenticationFailureBadCredentials/Locked/DisabledEvent`,
+  `LogoutSuccessEvent`, `AuthorizationDeniedEvent`) published through the context port. Every key defaults to off.
+
+- **`packages/security-oauth2-server` — an OAuth 2.1 / OpenID Connect 1.0 authorization server inside the
+  application (wave C), Spring Authorization Server's shape on the security core.** Registered clients from a
+  validated config map or Eloquent (`RegisteredClientRepository`), the authorization-code grant with PKCE (S256
+  only), the framework's own consent page (or `consent.view`), single-use codes, client credentials, refresh
+  tokens with rotation and reuse detection (a replayed token revokes the family), RS256/ES256 JWT or opaque
+  reference access tokens with an `OAuth2TokenCustomizer` port, id tokens (`nonce`, `auth_time`, `sid`,
+  `at_hash`), signing keys with rotation (`jwt.previous_keys`, `php artisan firefly:oauth2:keys`), JWKS published
+  through the security core's `JwksDocumentSource` so `jwks_source: local` makes the application its own resource
+  server, RFC 8414 / OIDC discovery, RFC 7662 introspection, RFC 7009 revocation, OIDC userinfo
+  (`OidcUserInfoMapper`), RP-initiated logout through the same `LogoutHandler` the logout filter uses, RFC 7591
+  registration on a single-use initial access token, an `OAuth2AuthorizationService` with memory
+  and Eloquent drivers (tokens stored by SHA-256 hash only), a scheduled purge on the framework's own schedule, a
+  per-client rate limit over firefly/resilience, and every protocol error as the RFC 6749 document or the
+  redirect-with-error. One filter at `-82` answers every endpoint ahead of `CsrfFilter` and
+  `HttpSecurityFilter`, so deny-by-default rules need no entry, and the boot refuses every pairing that would be
+  a dead end (no master flag, no session security, `jwt.enabled`, `http_basic.enabled`, no signing key, a client
+  block that could not authenticate or redirect, dynamic registration over a store that forgets, a rate limit
+  with no store). Every key under `firefly.security.oauth2.server.*` defaults to off.
+
+- **`packages/security-oauth2-server` — `/actuator/oauth2clients`, and `packages/admin` — the OAuth2 clients
+  page** (`/firefly/oauth2`, group Wiring): every registered client with its grants, scopes and live
+  authorization count, read in-process, never a secret — with PKCE reported both as registered and as enforced,
+  and the counts qualified by `authorizations.processLocal` so a per-process zero is not read as "nobody holds a
+  token".
+
+- **`packages/cli` — `firefly:oauth2:keys`.** Generates the server's private key (RSA 2048 or `--algorithm=ES256`)
+  into `storage/oauth2/private.pem` with owner-only permissions, or prints it with `--print`.
+
+- **`packages/testing` — `OAuth2ServerTestClient`.** `authorize()`, `approveConsent()`, `obtainCode()`,
+  `exchangeCode()`, `clientCredentials()`, `refresh()`, `introspect()`, `revoke()`, `userInfo()`, `tokens()`
+  against the application's own server; the browser suite drives the whole authorization-code flow in
+  Chromium (`tests/Browser/OAuth2AuthorizationCodeTest.php`).
+
+- **`packages/data` — `MethodInterceptor`, `MethodInvocation`, `Advice`, `AdviceSource`, `ProxyPlan`,
+  `ProxyPlanner`, `InterceptorRegistry`.** The transactional proxy generalised into an ordered interceptor chain any
+  package can contribute to; `firefly:cache` compiles `proxy-plan.php`.
+
+- **`packages/web` — `HandlerMethodArgumentResolver`/`HandlerMethodArgumentResolvers`.** The extension point a package
+  registers a controller-argument resolver into, consulted before the built-in binding kinds.
+
+- **`packages/testing` — `actingAsPrincipal()`, `withoutSecurity()`, `#[WithMockUser]`,
+  `RecordingAuthenticationEvents`.**
+
+- **`packages/kernel` — RFC 9457 extension members and a per-exception title on `FireflyException`.**
+  `withExtensions([...])`/`extensions()` and `withTitle('…')`/`title()` (also constructor arguments), spread
+  by `ErrorResponse::toArray()` after the standard members — so an extension can never override `status`,
+  `code` or `title`. `Business\PaymentRequiredException` (402 `PAYMENT_REQUIRED`) joins the taxonomy: a sales
+  event, not a permission problem. `ErrorResponse::titleFor()` is public and knows 402, 405 and the other
+  common statuses. The OpenAPI problem schema declares `additionalProperties: true` so a generated client
+  keeps the members an application put there.
+
+- **`packages/web` — every problem document carries `traceId` and `X-Correlation-Id`.** The request's
+  correlation id (`CorrelationIdFilter::of()`: Context, then the header, then minted) is in the body and on
+  the response, and an opaque 5xx names it: `An unexpected error occurred. It has been logged; quote
+  reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum execution time of N
+  seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500 quoting the engine.
+
+- **`packages/web` — `#[PathVariable(pattern:, notFoundCode:, notFoundMessage:)]`.** The segment's shape is
+  checked by `ArgumentResolver` before the controller runs, and a miss is the entity's own 404 (default
+  `RESOURCE_NOT_FOUND`, sentence derived from the parameter name) — a 404 and not a 400, so under row-level
+  security the wire cannot tell "no such row" from "not even an id". `PathVariable::UUID` is the RFC 4122
+  shape. `RouteScanner` refuses an invalid pattern at cache time; `firefly/openapi` publishes it as the
+  parameter's JSON Schema `pattern`. A malformed uuid used to reach `?::uuid` and answer 500.
+
+- **`packages/security` — `#[PreAuthorize(expression, code:, message:)]`.** A rule can carry its own product
+  code and sentence (`RUN_ROLE_REQUIRED`, "Only a manager may start a run.") so the role rule and the words
+  for breaking it live beside the method they guard. Compiled into `SecurityMethodDescriptor`; a manifest
+  compiled before the keys existed still loads. `SecurityExpressionEvaluator::authorities()` lists the
+  authorities an expression names, roles normalised to `ROLE_`.
+
+- **`packages/security` — bounded, typed, in-process JWKS.** `RemoteJwksProvider` connects and reads with
+  five-second timeouts (`jwks_connect_timeout`/`jwks_timeout`; Laravel's default of thirty equals PHP's
+  execution limit and turned a slow issuer into a fatal error). `JwksDocumentSource` is the port a server
+  that signs its own tokens implements; `LocalJwksProvider` answers from it with no socket, and
+  `firefly.security.oauth2.resource_server.jwks_source` (`auto`|`local`|`remote`) chooses — `auto` when the
+  source is bound and `JwksUri::isOwn()` says `jwks_uri` names this application. A server fetching its own
+  keys from itself over HTTP was one nested request per authenticated call (844 of 3,000 measured) and a
+  deadlock on a single-process dev server.
+
+- **`packages/eda` — `EnvelopeSink`, the port `firefly:eda:consume` delivers to.** Bind one and the command
+  delivers every envelope to it instead of the `#[EventListener]` registry (`SubscriberRegistrySink`, the
+  default). An application whose events go to a command bus used to write its own consumer command, loop,
+  signal handling, offset commits and dead-letter path because the only seam was a callable the command built
+  and never let anyone replace. `ConsumerLoop` takes an optional PSR logger and reports each poison record.
+
+- **`packages/scheduling` — sub-minute `fixedRate`/`fixedDelay`.** Everything at or under sixty seconds
+  used to bucket onto `everyMinute()`, so `fixedRate: '10s'` ran six times less often than it said.
+  `Cadence` maps a rate onto Laravel's repeat-seconds cadences (1, 2, 5, 10, 15, 20, 30 s), rounding *up*
+  (`'7s'` → 10 s, `'45s'` → a minute), and is the one table both the wiring pass and `firefly:schedule` use.
+
+- **`packages/cli` — `php artisan firefly:schedule {--once}`.** The companion to `firefly:serve`: lists every
+  `#[Scheduled]` task with the cadence it will really run at, its lock and its zone, then delegates to
+  `schedule:work` (or one `schedule:run` with `--once`). A `#[Scheduled]` method fires only under a scheduler
+  and nothing started one; one real application lost a verification pass to a product whose clock was stopped.
+
+- **Browser end-to-end suite (`tests/Browser`, PHPUnit testsuite `browser`).** The shipped skeleton app is served
+  to a real Chromium through `pestphp/pest-plugin-browser` (the whole suite moved from Pest 3 to Pest 4 for
+  it): the welcome page, every admin dashboard page, the data browser's list → filter → edit → create →
+  delete → relation round trip, a feature-switch toggle, and the 401/403/404/405/500 pages in both themes,
+  at phone width, with and without the trace. Excluded from the default gate; `composer test:browser` and a
+  dedicated CI job run it, with screenshots uploaded as an artifact.
+
+- **`packages/web` — the HTML error page publishes the request reference.** The production 500 now reads
+  "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
+  problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
+
+- **Cross-wave browser scenarios (`tests/Browser/LoginFlowTest.php`, `ObservabilityTest.php`,
+  `DataSurfacesTest.php`).** The framework's real form login replaces the harness's `?as=user` stand-in
+  (`tests/Browser/Support/FixturePrincipalFilter.php` is deleted): a browser refused at `/orders` is sent to the
+  framework's login page, a wrong password is answered on it, the right one comes back to the saved request,
+  `POST /logout` lands on the signed-out notice and leaves the browser anonymous, bob gets the 403 page at his
+  saved request, and an API path keeps its 401 problem document. The observability wave is proved in Chromium —
+  trace ids on the admin HTTP traffic page and in `/actuator/httpexchanges`, the HTTP server timer as a
+  Prometheus histogram, the tracing switch on the settings page — plus the ECS log document a traced request
+  writes, read back in-process and matched to the exchange row's trace id. The data wave: the `db` indicator UP
+  with no key set, the datasource page's data-layer panel, and a duplicate key refused with the data browser's
+  sentence rather than a 500. `tests/BrowserSignInFixtureTest.php` drives the sign-in fixture through Laravel's
+  test client inside the default gate. No new configuration keys.
+
+- **`packages/observability` — distributed tracing (wave F).** The `Tracer` port grew into a Spring/OTel-shaped
+  API (`startSpan(name, kind, attributes, parent): Span`, `currentSpan()`, `Span::{setAttribute, addEvent,
+  setStatus, recordException, updateName, deactivate, end}`, `SpanContext`, `SpanKind`, `SpanStatus`) with
+  `NoOpTracer` still the default and `trace()` kept. `OpenTelemetryAutoConfiguration` binds an OpenTelemetry
+  tracer when `open-telemetry/sdk` is installed and `firefly.observability.tracing.enabled` is on (default
+  off): `none`, `console` or `otlp` exporters (http/protobuf, http/json, grpc), `always_on`/`always_off`/`ratio`
+  samplers, `service.name` and resource attributes, a bound `SpanExporterInterface` bean winning over config. A
+  first-party `W3CTraceContextPropagator` carries `traceparent`/`tracestate`: `TracingFilter` starts a SERVER
+  span per request (named by the route template, ids in Laravel `Context` and on the
+  `/actuator/httpexchanges` row as `traceId`), `HttpClientTracingMiddleware` gives every Laravel `Http` call a
+  CLIENT span and the header, and two new seams shaped like `CqrsMetrics` — `Firefly\Cqrs\Tracing\CqrsTracing`
+  (INTERNAL spans per command/query) and `Firefly\Eda\Tracing\EdaTracing` (PRODUCER/CONSUMER spans,
+  `traceparent` in the envelope headers, on the in-memory bus, the queue bus and every broker's consumer
+  sink) — are filled by observability and no-ops otherwise. `firefly/testing`'s `RecordingTracer` implements
+  the whole port in memory (`recorded()`, `find()`, `ofKind()`). New docs: `docs/modules/tracing.md`.
+
+- **`packages/observability` — log correlation and structured logging.** `TraceContextLogProcessor` stamps
+  `trace_id`, `span_id`, `correlation_id` and `request_id` on every record of the configured channels;
+  `firefly.logging.structured.format` (`json` | `ecs` | `logstash`, default `''`) applies Monolog's
+  `JsonFormatter`, a first-party ECS 8 `EcsFormatter`, or Monolog's `LogstashFormatter` to those channels'
+  existing handlers — never replacing one — with `service.name`/environment on every line. An unknown format,
+  or a listed channel `logging.channels` does not define, refuses the boot from `LogChannelWiringPass`. New
+  docs: `docs/modules/logging.md`.
+
+- **`packages/observability` — histogram buckets.** `firefly.observability.metrics.distribution.buckets` and
+  `distribution.per-meter.<name>` give timers cumulative `_bucket{le}` lines (`# TYPE … histogram`, plus the
+  same `_count`/`_sum`) in `SimpleMeterRegistry` and `CacheMeterRegistry` alike; without buckets a timer stays
+  the `summary` it was. Default off.
+
+- **`packages/admin` — the HTTP traffic page shows the trace id**, and `firefly.observability.tracing.enabled`
+  is a feature switch.
+
+- **`packages/validation` — `#[Valid]` cascades into list elements.** `#[Valid] array $lines` is validated
+  element by element with the element class's compiled constraints, keyed the way the client wrote them
+  (`lines[0].sku`, `lines[2].quantity`). The element class comes from `#[Valid(each: X::class)]` (new), a
+  `@var list<X>` docblock on the member, or the constructor's `@param list<X> $lines` — read by ONE resolver
+  (`ContainerElementType`) that `RouteScanner` and the OpenAPI generator's fallback now share, so a list the
+  validator checks is a list the hydrator builds. A `#[Valid]` list whose element class cannot be told (no
+  docblock, `list<string>`, `list<list<X>>`) is a `ConfigurationException` at `firefly:cache` time, not a
+  silent skip. The skeleton's `OrderRequest` uses it; a bad SKU on the second line is a 422 naming
+  `lines[1].sku`, where it was a 400 `UNBINDABLE_BODY`.
+
+- **`packages/validation` — Bean Validation's `message` element, and `constraint` on every field error.**
+  Every constraint attribute takes `message:` (`#[Size(min: 1, max: 50, message: 'between {min} and {max}
+  lines')]`, placeholders filled; `#[Rules('min:3', message: '…')]` as a named argument) and implements
+  `HasMessage`. `FieldError` gains `constraint` — the attribute that failed (`NotBlank`, `Size`, `Pattern`),
+  Spring's `FieldError` code — serialised after `code`, documented in the OpenAPI problem schema. The
+  compiled manifest carries a `ConstraintDescriptor` table under a reserved `@constraints` key;
+  `IlluminateValidator` is a `SmartValidator` (Spring's name) that receives it; a custom `Validator` an
+  application bound stays on the plain path. **`firefly.validation.messages`** (`constraint` | `laravel`,
+  default `constraint`) is read into a `ValidationSettings` bean.
+
+- **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
+  page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
+  document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"
+  [Pattern]`.
+
+### Changed
+
+- **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
+  template invariant and started requiring `view-string` for every `Factory::make()` argument; both are
+  analysis-rule changes, not framework defects, and the root lock is not committed, so a floating `^3.9`
+  would have turned CI red on the day the tool released. Adopting 3.12's rules (typing `query()` as
+  `Builder<TModel>` through the specification and entity-graph seams, and `ModelAndView::$view` as a
+  `view-string`) is a follow-up of its own.
+
+- **`packages/validation` — a field error's `message` is the constraint's sentence, not Laravel's humanised
+  attribute.** `{"field":"shipTo.street","message":"The ship to.street field is required."}` is now
+  `{"field":"shipTo.street","message":"must not be blank","constraint":"NotBlank","rejectedValue":""}`, the
+  way Spring's `FieldError` reads: `must not be blank`, `size must be between 1 and 50`, `must be a
+  well-formed email address`, `must match "^[A-Z0-9]…"`, `must be greater than 0` (the full table is in
+  `docs/modules/validation.md`). One violation is reported per constraint. The `validate($data, $rules)`
+  primitive is unchanged. **Migration:** a client or test that asserts on the old sentences sets
+  `firefly.validation.messages: laravel` (`FIREFLY_VALIDATION_MESSAGES=laravel`) and keeps them — the field
+  path and the new `constraint` member are the same in both styles.
+
+### Fixed
+
+- **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
+  API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context
+  manually`) when a fiber reads its context before anything was attached in it; Laravel's handler turned that
+  into an `ErrorException` on the SERVER span's first read, so the first traced request under any fiber-based
+  server — the browser suite's in-process AMP server, an Amp or ReactPHP application server — failed.
+  `OpenTelemetryTracer` now attaches the root context to the current fiber once, before its first read there,
+  and only when the fiber has no context yet (an application's own scope, or the FFI fiber observer, is nested
+  under rather than shadowed); it memoises only the fibers whose floor it laid itself, so a fiber whose foreign
+  scope is later detached gets its floor on the next read instead of the warning. Pinned by four unit cases
+  inside a real `Fiber` under a warnings-are-fatal handler and by a capstone that handles `/demo/{id}` inside a
+  fiber through the real kernel. Found by the browser suite's observability scenarios.
+
+- **`packages/admin` — a write's outcome sentence reaches the page again.** `AdminAction::redirect()` resolved
+  the `session` binding — the `SessionManager`, never a `Store` — so its "is the session started" guard was
+  false on every request and `Created.`, `Updated N field(s).` and every refusal were dropped: a refused create
+  looked exactly like a page reload. It now resolves the request's `session.store` and hands it to the redirect
+  before flashing. Found by the browser suite, which watched a create come back to an empty form in silence.
+
+- **`packages/admin` — a blank in a column the person did not have to fill is left to the schema on create.**
+  The form marked every NOT NULL column `required` and a blank in one was refused as "not a valid float", so
+  the skeleton's own order — `total decimal NOT NULL DEFAULT 0` — could not be created from the dashboard
+  without typing the total the domain computes; and a blank in a nullable timestamp was written as an explicit
+  null, which is "dirty" to Eloquent and silenced its own `created_at`/`updated_at`. `DataColumn` now carries
+  `hasDefault` (read from the table) and `isRequired()` (NOT NULL and no default); the new-record form marks
+  the rest `optional`, and `DataBrowser::create()` omits a blank in any non-required column from the insert so
+  the `DEFAULT`, the `NULL` or the model's clock fills it. A blank in a genuinely required column is still
+  refused; an update treats a blank as an edit, as before.
+
+- **`packages/actuator` — `/actuator/env`, `/actuator/configprops` and the admin's environment page mask a
+  `headers` or `authorization` key.** `SensitiveValueMasker`'s rule grows from
+  `password|secret|token|key|credential|passwd` to include `authorization` and the plural `headers`: the
+  framework had just introduced `firefly.observability.tracing.otlp.headers`, documented as the place for a
+  vendor's auth header, and rendered it in clear because `headers` matched none of the six words. The bag's
+  key decides, not its leaves (a map's `x-honeycomb-team` matches nothing on its own). The accepted cost is
+  `firefly.security.headers` — the response-header filter's `enabled`/`hsts`/`csp` block — showing as
+  `******`, and a `headers` column counting as sensitive in the data browser; the singular `header`
+  (`page_header`, `header_image`) is deliberately not matched.
+
+- **`packages/admin` — the HTTP traffic page rendered an empty path and `—` for every row.** `AdminAction`
+  read `path` and a numeric `timestamp` off the `/actuator/httpexchanges` row, which carries `uri` and an
+  ISO-8601 timestamp. Found while adding the trace column; covered by `AdminHttpTrafficTest` over the real
+  observability stack.
+
+- **`packages/data` — a `#[Transactional]` proxy now carries the state its bean inherits.** `ProxyFactory`
+  copied the bean's state through one closure bound to the declared class, which cannot see a `private`
+  declared on a parent and, on PHP 8.3, cannot initialise a parent's `protected readonly` either — so a
+  `#[Repository]` that was also `#[Transactional]` lost `EloquentRepository`'s translator (every driver failure
+  surfaced as a bare `Error: … must not be accessed before initialization` with the `QueryException` gone) and
+  on the 8.3 floor could not be wrapped at all. Every slot is now written from the class that declares it;
+  the Known-latent note in the transactions module is retired. `TransactionTemplate` also no longer drops the
+  exception a `noRollbackFor` rule kept when the commit-and-rethrow's commit itself fails: both escape as
+  `Firefly\Data\Transaction\Exception\TransactionSystemException` (`TRANSACTION_SYSTEM_ERROR`), the commit
+  failure as `previous` and the method's exception as `$applicationException`, after the open transaction is
+  rolled back.
+
 ## [26.09.2] - 2026-09-09
 
 A correctness release found by building a real application on `26.09.1`. Five defects, every one of them

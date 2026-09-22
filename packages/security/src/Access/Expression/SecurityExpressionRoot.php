@@ -12,8 +12,9 @@ use Firefly\Security\Core\Authentication;
  * The evaluation context the whitelist evaluator dispatches against — the ONLY object whose methods an
  * expression can call. Every function name in the grammar maps 1:1 to a public method here; there is no way to
  * reach anything else (no property access, no arbitrary calls). hasRole/hasAuthority test membership in the
- * role-hierarchy-expanded authority set; hasRole normalises a bare `ADMIN` to `ROLE_ADMIN`. #param references
- * resolve through arg().
+ * role-hierarchy-expanded authority set; hasRole normalises a bare `ADMIN` to `ROLE_ADMIN`. hasScope/hasAnyScope
+ * test the `SCOPE_x` authorities a bearer token or an OAuth2 login granted, normalising a bare scope to
+ * `SCOPE_`. #param references resolve through arg().
  */
 final class SecurityExpressionRoot
 {
@@ -41,6 +42,23 @@ final class SecurityExpressionRoot
     {
         foreach ($roles as $role) {
             if ($this->hasRole($role)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** `SCOPE_orders:read` — a bare `orders:read` is normalised, as hasRole() normalises `ROLE_`. */
+    public function hasScope(string $scope): bool
+    {
+        return $this->hasAuthority(str_starts_with($scope, 'SCOPE_') ? $scope : 'SCOPE_'.$scope);
+    }
+
+    public function hasAnyScope(string ...$scopes): bool
+    {
+        foreach ($scopes as $scope) {
+            if ($this->hasScope($scope)) {
                 return true;
             }
         }

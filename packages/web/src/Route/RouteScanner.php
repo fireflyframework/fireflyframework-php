@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Web\Route;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Validation\Constraint\ContainerElementType;
 use Firefly\Validation\Valid;
 use Firefly\Web\Attributes\Controller;
 use Firefly\Web\Attributes\ControllerAdvice;
@@ -33,6 +35,13 @@ use ReflectionParameter;
  */
 final class RouteScanner
 {
+    /**
+     * The six parameter attributes this scanner compiles itself — each is already expressed in the plan as a
+     * kind or the `valid` flag, so binding() leaves them out of the `attributes` list it records for the
+     * HandlerMethodArgumentResolvers that know attributes firefly/web does not.
+     */
+    private const array OWN_PARAMETER_ATTRIBUTES = [PathVariable::class, RequestBody::class, RequestHeader::class, UploadedFile::class, QueryParam::class, Valid::class];
+
     /**
      * @param  array<string,string>  $psr4  namespace-prefix => absolute directory
      * @return list<RouteDescriptor>
@@ -212,6 +221,39 @@ final class RouteScanner
      */
     private function binding(ReflectionParameter $parameter): array
     {
+        $binding = $this->bindingPlan($parameter);
+
+        // Both keys are emitted only when there is something to say, so a plan for an ordinary parameter
+        // — and a manifest compiled before the keys existed — stays byte-identical. `attributes` lists the
+        // attributes this scanner does NOT itself compile (its own six are already expressed as kind/valid),
+        // so a HandlerMethodArgumentResolver can claim a parameter by one it knows (#[AuthenticationPrincipal]).
+        // `nullable` is recorded for the two bindings a resolver may answer — a service binding, and ANY
+        // binding that carries such an attribute, whatever kind the type alone planned it as — so the
+        // resolver can hand back null honestly instead of a TypeError. The second case matters for a scalar:
+        // `#[AuthenticationPrincipal] ?string $sub` (a JWT subject) plans as a `query` binding by its type,
+        // and without the key the resolver could not tell it from `string $sub` and would refuse the null
+        // with a 401. An ordinary query parameter still gets no key: nothing reads it there.
+        $attributes = [];
+        foreach ($parameter->getAttributes() as $attribute) {
+            if (! in_array($attribute->getName(), self::OWN_PARAMETER_ATTRIBUTES, true)) {
+                $attributes[] = $attribute->getName();
+            }
+        }
+        if ($attributes !== []) {
+            $binding['attributes'] = $attributes;
+        }
+        if (($attributes !== [] || $binding['kind'] === 'service') && $parameter->getType()?->allowsNull() === true) {
+            $binding['nullable'] = true;
+        }
+
+        return $binding;
+    }
+
+    /**
+     * @return Binding
+     */
+    private function bindingPlan(ReflectionParameter $parameter): array
+    {
         $name = $parameter->getName();
         $type = $this->typeName($parameter);
         $valid = $parameter->getAttributes(Valid::class) !== [];
@@ -220,7 +262,7 @@ final class RouteScanner
         if (($attrs = $parameter->getAttributes(PathVariable::class)) !== []) {
             $pathVariable = $attrs[0]->newInstance();
 
-            return $this->plan($name, 'path', $pathVariable->name ?? $name, $type, true, null, $valid);
+            return $this->pathPlan($parameter, $pathVariable, $name, $type, $valid);
         }
 
         if (($attrs = $parameter->getAttributes(RequestBody::class)) !== []) {
@@ -245,12 +287,69 @@ final class RouteScanner
             return $this->plan($name, 'query', $query->name ?? $name, $type, $query->required, $query->default, $valid);
         }
 
-        // No binding attribute: a class type is a container service; a scalar defaults to a query param.
-        if ($type !== null && class_exists($type)) {
+        // No binding attribute: a class or interface type is a container service; a scalar defaults to a
+        // query param. An interface is a service for the same reason a class is — it is what the container,
+        // or a HandlerMethodArgumentResolver, would be asked for — and a query parameter could never hold it.
+        if ($type !== null && (class_exists($type) || interface_exists($type))) {
             return $this->plan($name, 'service', $type, $type, ! $parameter->isOptional(), $default, $valid);
         }
 
         return $this->plan($name, 'query', $name, $type, ! $parameter->isOptional(), $default, $valid);
+    }
+
+    /**
+     * A path binding, plus the shape rule the attribute declares. The pattern is compiled ONCE here, with the
+     * anchors and flag the resolver will use, so an invalid expression is a ConfigurationException naming the
+     * method at cache time rather than a preg_match() returning false on every request — which the resolver
+     * would have to treat as a miss, turning every request to that route into a 404 with no build-time
+     * signal. The three keys are emitted only when given, so a plan for an unpatterned variable is byte-
+     * identical to the one this scanner produced before shapes existed.
+     *
+     * @return Binding
+     */
+    private function pathPlan(ReflectionParameter $parameter, PathVariable $pathVariable, string $name, ?string $type, bool $valid): array
+    {
+        $plan = $this->plan($name, 'path', $pathVariable->name ?? $name, $type, true, null, $valid);
+
+        if ($pathVariable->pattern !== null) {
+            if (! self::compiles($pathVariable->pattern)) {
+                $method = $parameter->getDeclaringFunction();
+                $class = $parameter->getDeclaringClass()?->getName() ?? '';
+
+                throw new ConfigurationException(
+                    "Invalid #[PathVariable] pattern on {$class}::{$method->getName()} \${$name}: `{$pathVariable->pattern}` is not a valid regular expression.",
+                );
+            }
+
+            $plan['pattern'] = $pathVariable->pattern;
+        }
+
+        if ($pathVariable->notFoundCode !== null) {
+            $plan['notFoundCode'] = $pathVariable->notFoundCode;
+        }
+
+        if ($pathVariable->notFoundMessage !== null) {
+            $plan['notFoundMessage'] = $pathVariable->notFoundMessage;
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Whether a #[PathVariable] pattern is a regular expression PCRE accepts, exactly as the resolver will
+     * run it. PCRE reports a bad pattern as a warning plus `false`; the warning is turned into the return
+     * value here rather than silenced with `@`, because a silenced warning still reaches a test runner's
+     * error handler and a scan-time check must be quiet when it passes.
+     */
+    private static function compiles(string $pattern): bool
+    {
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            return preg_match('~^(?:'.$pattern.')$~i', '') !== false;
+        } finally {
+            restore_error_handler();
+        }
     }
 
     /**
@@ -312,7 +411,9 @@ final class RouteScanner
      * builtin) and whether the payload holds a LIST of that class.
      *
      * Compiled here because this is the one sanctioned reflection site in the package — the resolver runs on
-     * the per-request hot path and must stay reflection-free (ReflectionFreeWebTest guards it).
+     * the per-request hot path and must stay reflection-free (ReflectionFreeWebTest guards it). The element
+     * class of a list member is not read here but asked of Firefly\Validation\Constraint\ContainerElementType,
+     * so hydration, the #[Valid] cascade and the OpenAPI document share one reading of `list<X>`.
      *
      * Keyed by CLASS rather than nested inline, so depth is unbounded: a DTO that points at itself is one row,
      * and $seen stops the WALK from recursing forever without capping how deep a payload may nest.
@@ -333,7 +434,6 @@ final class RouteScanner
         }
 
         $seen[$type] = true;
-        $docTypes = $this->docblockParamTypes($constructor->getDocComment() ?: '', $reflection);
 
         $shape = [];
         $shapes = [];
@@ -343,13 +443,18 @@ final class RouteScanner
             $named = $parameterType instanceof ReflectionNamedType ? $parameterType->getName() : null;
 
             // A class-typed parameter is a nested DTO; an `array` carries no element type in PHP, so its
-            // element class can only come from the docblock.
+            // element class comes from ContainerElementType — #[Valid(each:)], a `@var` tag or the
+            // constructor's `@param` — the one answer the constraint scanner cascades into as well, so a
+            // list the validator checks element by element is a list the hydrator builds element by element.
             $nested = $named !== null && class_exists($named) ? $named : null;
             $isList = false;
 
-            if ($nested === null && $named === 'array' && isset($docTypes[$name])) {
-                $nested = $docTypes[$name];
-                $isList = true;
+            if ($nested === null && $named === 'array') {
+                $element = ContainerElementType::of($parameter);
+                if ($element !== null) {
+                    $nested = $element;
+                    $isList = true;
+                }
             }
 
             $shape[$name] = ['class' => $nested, 'list' => $isList];
@@ -360,103 +465,5 @@ final class RouteScanner
         }
 
         return [$type => $shape, ...$shapes];
-    }
-
-    /**
-     * Element classes read out of a constructor docblock: `@param list<Line> $lines`, `@param Line[] $lines`
-     * and `@param array<int, Line> $lines` all mean the same thing to the hydrator.
-     *
-     * A docblock name may be written short, so it is resolved the way PHP would resolve it: an explicitly
-     * leading-slashed or already-qualified name as-is, then the declaring class's own namespace, then the
-     * file's `use` imports. Anything that does not resolve to a real class is left out of the table entirely,
-     * which lands the value on the resolver's documented "plan cannot say" path — a clean 400 rather than a
-     * guess.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string> parameter name => element class
-     */
-    private function docblockParamTypes(string $docComment, ReflectionClass $declaring): array
-    {
-        if ($docComment === '') {
-            return [];
-        }
-
-        // Two patterns rather than one alternation: `list<X>`/`array<int, X>`/`iterable<X>` and the
-        // `X[]` spelling. Kept separate so each match has a fixed shape.
-        $types = [];
-
-        foreach ([
-            '/@param\s+(?:list|array|iterable)<(?:[^,<>]+,\s*)?([^<>]+)>\s+\$(\w+)/',
-            '/@param\s+([\w\\\\]+)\[\]\s+\$(\w+)/',
-        ] as $pattern) {
-            if (preg_match_all($pattern, $docComment, $matches, PREG_SET_ORDER) === false) {
-                continue;
-            }
-
-            foreach ($matches as $match) {
-                $resolved = $this->resolveClassName(trim($match[1]), $declaring);
-                if ($resolved !== null) {
-                    $types[$match[2]] = $resolved;
-                }
-            }
-        }
-
-        return $types;
-    }
-
-    /**
-     * @param  ReflectionClass<object>  $declaring
-     */
-    private function resolveClassName(string $name, ReflectionClass $declaring): ?string
-    {
-        $name = ltrim($name, '\\');
-        if (class_exists($name)) {
-            return $name;
-        }
-
-        $namespace = $declaring->getNamespaceName();
-        if ($namespace !== '' && class_exists($candidate = $namespace.'\\'.$name)) {
-            return $candidate;
-        }
-
-        foreach ($this->imports($declaring) as $alias => $fqcn) {
-            if ($alias === $name && class_exists($fqcn)) {
-                return $fqcn;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The file's `use` imports, alias => FQCN. Read from the source because reflection does not expose them.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return array<string, string>
-     */
-    private function imports(ReflectionClass $declaring): array
-    {
-        $file = $declaring->getFileName();
-        if ($file === false || ! is_file($file)) {
-            return [];
-        }
-
-        $source = (string) file_get_contents($file);
-        if (preg_match_all('/^use\s+([\w\\\\]+)(?:\s+as\s+(\w+))?\s*;/mi', $source, $matches, PREG_SET_ORDER) === false) {
-            return [];
-        }
-
-        $imports = [];
-        foreach ($matches as $match) {
-            $fqcn = $match[1];
-            $alias = $match[2] ?? '';
-            if ($alias === '') {
-                $parts = explode('\\', $fqcn);
-                $alias = end($parts);
-            }
-            $imports[$alias] = $fqcn;
-        }
-
-        return $imports;
     }
 }

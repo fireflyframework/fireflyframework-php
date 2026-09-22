@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Web\Route\RouteScanner;
 use Firefly\Web\Tests\Fixtures\AddressPayload;
+use Firefly\Web\Tests\Fixtures\BatchRequest;
 use Firefly\Web\Tests\Fixtures\GeoPoint;
 use Firefly\Web\Tests\Fixtures\MoneyTransferRequest;
 use Firefly\Web\Tests\Fixtures\NodeRequest;
@@ -68,6 +69,15 @@ it('reads the element class of a list out of the constructor docblock', function
     expect($root['lines'])->toBe(['class' => TransferLine::class, 'list' => true])
         ->and($root['beneficiary'])->toBe(['class' => AddressPayload::class, 'list' => false])
         ->and($root['amount'])->toBe(['class' => null, 'list' => false]);
+});
+
+// The other way to say it: #[Valid(each:)] on the member, with no docblock anywhere. The same resolver answers
+// both, so a list the validator cascades into is a list the hydrator builds.
+it('reads the element class from #[Valid(each:)] when there is no docblock', function () {
+    $dtos = shapeTableFor('/batches');
+
+    expect($dtos[BatchRequest::class]['lines'])->toBe(['class' => TransferLine::class, 'list' => true])
+        ->and($dtos)->toHaveKey(TransferLine::class);
 });
 
 // Keying by class is what makes depth unbounded. A DTO that points at itself is ONE row, so the walk

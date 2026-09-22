@@ -180,13 +180,25 @@ interface Serializer
 ```
 
 `JsonSerializer` is the **only** shipped implementation: `json_encode`/`json_decode` over
-`EventEnvelope::toArray()`/`fromArray()`, `JSON_THROW_ON_ERROR`, re-wrapping any `JsonException` (or a
-decoded value missing an expected envelope key) as a fail-loud `SerializationException`. Selecting any other
+`EventEnvelope::toArray()`/`fromArray()`, `JSON_THROW_ON_ERROR`, re-wrapping any `JsonException` as a fail-loud
+`SerializationException` — and refusing, with the same exception, a decoded value that is not the envelope
+*shape*: a missing key, a member of the wrong type (a string `payload`, an int `eventType`, a non-string
+header), or a `timestamp` PHP cannot parse. One failure type for every malformed body is what lets the broker
+adapters turn it into a poison record instead of a crash. Selecting any other
 `firefly.eda.serialization_format` throws the same exception at boot — Avro/Protobuf are documented seams
 for their own future opt-in packages, not implemented here. Neither shipped adapter actually calls the
 serializer on its default path (in-memory delivers the envelope object directly in-process; the queue
 adapter rides Laravel's own job serialization) — the seam exists for a future broker adapter that puts raw
 bytes on a real wire.
+
+## Tracing seam
+
+`Firefly\Eda\Tracing\EdaTracing` wraps an envelope's two boundary crossings — `tracePublish()` owns the headers
+(so a `traceparent` can be stamped on the way out) and `traceConsume()` wraps one delivery. `InMemoryEventBus`,
+`QueueEventBus` (publish, and `deliver()` on the worker) and `SubscriberRegistrySink` (every broker consumer)
+call it; `NoOpEdaTracing` is the default and `firefly/observability` swaps in PRODUCER/CONSUMER spans — see
+[Tracing](tracing.md). The broker packages' own `publish()` methods do not call it yet (a documented
+known-latent there).
 
 ## Config keys
 

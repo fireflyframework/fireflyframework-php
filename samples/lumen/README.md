@@ -71,9 +71,11 @@ HTTP endpoints — none of which contain business logic of their own.
 
 Amounts are in **minor units** (cents): `1500` means €15.00 for an EUR
 wallet. The withdraw endpoint requires an authenticated principal carrying
-`ROLE_ADMIN` or `ROLE_WALLET_OWNER` in the `SecurityContextHolder` — without
-one, it renders a 403 `application/problem+json` response (the endpoint is
-secured, not broken).
+`ROLE_ADMIN` or `ROLE_WALLET_OWNER` in the `SecurityContextHolder` — with no
+principal at all it renders a 401 `application/problem+json` response
+(`AUTHENTICATION_FAILED`: authenticate first), and with a principal that is
+signed in but lacks the role a 403 (`ACCESS_DENIED`). The endpoint is
+secured, not broken.
 
 ## Run it
 

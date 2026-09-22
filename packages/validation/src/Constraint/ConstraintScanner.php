@@ -4,126 +4,204 @@ declare(strict_types=1);
 
 namespace Firefly\Validation\Constraint;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Validation\Rule\NullAware;
 use Firefly\Validation\Valid;
 use Illuminate\Contracts\Validation\ValidationRule;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionParameter;
+use ReflectionProperty;
+use ReflectionType;
 
 /**
  * The primary reflection site in packages/validation/src, and — together with ConstraintManifestCompiler's
- * rule-argument recovery — one of only two, both COMPILE-time only: nothing on the cached runtime path
- * reflects, which is the invariant that actually matters. Reflects a DTO's
- * constructor-promoted properties (plus any plain typed properties) once, at COMPILE time, reads each
- * property's #[Constraint] attributes via IS_INSTANCEOF, merges toRules() in declaration order, and
- * cascades one #[Valid] level into dot-prefixed nested keys. Recursion is guarded by an ANCESTOR set
- * threaded DOWN the descent (the class-strings currently on the #[Valid] path); the current class is
- * added to that set only when descending INTO a nested #[Valid], so a self-referential #[Valid] still
- * expands exactly one level. Trace — for SelfReferential{ #[NotBlank] string $label; #[Valid]
- * ?SelfReferential $parent; }, scan() descends into `parent` with $ancestors=[SelfReferential], so the
- * inner `parent` is skipped (in_array(SelfReferential, [SelfReferential]) === true) and the keys are
- * `label` + `parent.label` but NOT `parent.parent.label`. For MoneyTransferRequest{ #[Valid]
- * AddressPayload $beneficiary } it yields `beneficiary.postcode` (etc.). Production loads the compiled
- * ConstraintManifest instead (require+map); this class runs only at cache time or, in tests, inline via
- * ConstraintManifestCompiler.
+ * rule-argument recovery and ContainerElementType's docblock reading — one of only three, all COMPILE-time
+ * only: nothing on the cached runtime path reflects, which is the invariant that actually matters. Reflects
+ * a DTO's constructor-promoted properties (plus any plain typed properties) once, at COMPILE time, reads
+ * each property's #[Constraint] attributes via IS_INSTANCEOF, merges toRules() in declaration order, and
+ * cascades #[Valid] into dot-prefixed nested keys. Recursion is guarded by an ANCESTOR set threaded DOWN the
+ * descent (the class-strings currently on the #[Valid] path); the current class is added to that set only
+ * when descending INTO a nested #[Valid], so a self-referential #[Valid] still expands exactly one level.
+ * Trace — for SelfReferential{ #[NotBlank] string $label; #[Valid] ?SelfReferential $parent; }, the walk
+ * descends into `parent` with $ancestors=[SelfReferential], so the inner `parent` is skipped
+ * (in_array(SelfReferential, [SelfReferential]) === true) and the keys are `label` + `parent.label` but NOT
+ * `parent.parent.label`. For MoneyTransferRequest{ #[Valid] AddressPayload $beneficiary } it yields
+ * `beneficiary.postcode` (etc.). Production loads the compiled ConstraintManifest instead (require+map);
+ * this class runs only at cache time or, in tests, inline via ConstraintManifestCompiler.
+ *
+ * LISTS. A #[Valid] member typed `array`/`iterable` cascades into its ELEMENTS: the element class comes from
+ * ContainerElementType (#[Valid(each:)], a `@var list<X>` tag, or the constructor's `@param list<X> $name`
+ * — the same tag RouteScanner hydrates from, so a list the validator checks element by element is one the
+ * hydrator builds element by element), and its rules and descriptors are compiled under Laravel's wildcard
+ * key `lines.*.sku`, guarded by the same ancestor set (`Tree { #[Valid] list<Tree> $children }` expands one
+ * level). A list whose element class cannot be told is REFUSED here, at cache time, with a
+ * ConfigurationException naming the member and the three ways to say it — a #[Valid] that silently did
+ * nothing is how a bad SKU used to reach the element's constructor and come back as a 400 rather than a 422.
+ *
+ * TWO TABLES FROM ONE WALK. scan() is the rule list Laravel runs, exactly as it always was. constraints()
+ * is the same walk's OTHER output: per property path, the ConstraintDescriptors that contributed those
+ * rules — name, sentence, and the rule keys each one owns — which is what lets a failed Laravel rule be
+ * reported as the constraint that declared it (see FieldErrorMapper). They are keyed identically, cascade
+ * identically, and are memoised together so a class is reflected once however many times either is asked.
+ * The scanner's own `nullable` flag (applyNullContract()) belongs to no constraint and is described by none;
+ * it never fails, so nothing is lost.
  *
  * Assembling a property's list is also where Jakarta's NULL contract is applied — see applyNullContract().
+ *
+ * @phpstan-type Scanned array{rules: array<string, list<string|ValidationRule>>, constraints: array<string, list<ConstraintDescriptor>>}
  */
 final class ConstraintScanner
 {
+    /** @var array<string, Scanned> top-level walks, memoised so scan() and constraints() reflect a class once */
+    private array $scanned = [];
+
     /**
      * @return array<string, list<string|ValidationRule>>
      */
     public function scan(string $class): array
     {
-        return $this->scanClass($class, []);
+        return $this->scanned($class)['rules'];
+    }
+
+    /**
+     * @return array<string, list<ConstraintDescriptor>>
+     */
+    public function constraints(string $class): array
+    {
+        return $this->scanned($class)['constraints'];
+    }
+
+    /**
+     * @return Scanned
+     */
+    private function scanned(string $class): array
+    {
+        return $this->scanned[$class] ??= $this->walk($class, []);
     }
 
     /**
      * @param  list<class-string>  $ancestors  class-strings currently on the #[Valid] descent path
-     * @return array<string, list<string|ValidationRule>>
+     * @return Scanned
      */
-    private function scanClass(string $class, array $ancestors): array
+    private function walk(string $class, array $ancestors): array
     {
+        $scanned = ['rules' => [], 'constraints' => []];
+
         if (! class_exists($class)) {
-            return [];
+            return $scanned;
         }
 
         $reflection = new ReflectionClass($class);
         if ($reflection->isAbstract() || $reflection->isInterface()) {
-            return [];
+            return $scanned;
         }
 
-        $rules = [];
-
-        $constructor = $reflection->getConstructor();
-        foreach ($constructor?->getParameters() ?? [] as $parameter) {
-            if (! $parameter->isPromoted()) {
-                continue;
+        foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
+            if ($parameter->isPromoted()) {
+                $this->collect($parameter, $class, $ancestors, $scanned);
             }
-            $this->collect(
-                $parameter->getName(),
-                $parameter->getAttributes(Constraint::class, ReflectionAttribute::IS_INSTANCEOF),
-                $this->hasValid($parameter->getAttributes(Valid::class)),
-                $this->classTypeOf($parameter->getType()),
-                $parameter->getType()?->allowsNull() ?? true,
-                $class,
-                $ancestors,
-                $rules,
-            );
         }
 
         foreach ($reflection->getProperties() as $property) {
-            if ($property->isPromoted()) {
-                continue;
+            if (! $property->isPromoted()) {
+                $this->collect($property, $class, $ancestors, $scanned);
             }
-            $this->collect(
-                $property->getName(),
-                $property->getAttributes(Constraint::class, ReflectionAttribute::IS_INSTANCEOF),
-                $this->hasValid($property->getAttributes(Valid::class)),
-                $this->classTypeOf($property->getType()),
-                $property->getType()?->allowsNull() ?? true,
-                $class,
-                $ancestors,
-                $rules,
-            );
         }
 
-        return $rules;
+        return $scanned;
     }
 
     /**
-     * @param  list<ReflectionAttribute<Constraint>>  $constraintAttributes
-     * @param  bool  $acceptsNull  whether the property's DECLARED type admits null (see applyNullContract())
      * @param  class-string  $class  the class currently being scanned (pushed onto $ancestors on descent)
      * @param  list<class-string>  $ancestors
-     * @param  array<string, list<string|ValidationRule>>  $rules
+     * @param  Scanned  $scanned
      */
-    private function collect(
-        string $name,
-        array $constraintAttributes,
-        bool $valid,
-        ?string $nestedClass,
-        bool $acceptsNull,
-        string $class,
-        array $ancestors,
-        array &$rules,
-    ): void {
+    private function collect(ReflectionParameter|ReflectionProperty $member, string $class, array $ancestors, array &$scanned): void
+    {
+        $name = $member->getName();
+        $type = $member->getType();
+
         $propertyRules = [];
-        foreach ($constraintAttributes as $attribute) {
-            foreach ($attribute->newInstance()->toRules() as $rule) {
-                $propertyRules[] = $rule;
+        $descriptors = [];
+        foreach ($member->getAttributes(Constraint::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+            $constraint = $attribute->newInstance();
+            $contributed = $constraint->toRules();
+
+            // An unbounded #[Size] constrains nothing and describes nothing.
+            if ($contributed === []) {
+                continue;
             }
-        }
-        if ($propertyRules !== []) {
-            $rules[$name] = $this->applyNullContract($propertyRules, $acceptsNull);
+
+            $propertyRules = [...$propertyRules, ...$contributed];
+            $descriptors[] = ConstraintDescriptor::of($constraint, $contributed);
         }
 
-        if ($valid && $nestedClass !== null && ! in_array($nestedClass, $ancestors, true)) {
-            foreach ($this->scanClass($nestedClass, [...$ancestors, $class]) as $nestedKey => $nestedRules) {
-                $rules["{$name}.{$nestedKey}"] = $nestedRules;
+        if ($propertyRules !== []) {
+            $scanned['rules'][$name] = $this->applyNullContract($propertyRules, $type?->allowsNull() ?? true);
+            $scanned['constraints'][$name] = $descriptors;
+        }
+
+        if ($member->getAttributes(Valid::class) === []) {
+            return;
+        }
+
+        $nestedClass = $this->classTypeOf($type);
+        if ($nestedClass !== null) {
+            if (! in_array($nestedClass, $ancestors, true)) {
+                $this->cascade($this->walk($nestedClass, [...$ancestors, $class]), $name.'.', $scanned);
             }
+
+            return;
+        }
+
+        if (! $this->isContainer($type)) {
+            return;
+        }
+
+        $element = ContainerElementType::of($member);
+        if ($element === null) {
+            throw new ConfigurationException(sprintf(
+                '#[Valid] on %s::$%s cannot cascade: the element class of the list could not be determined. State it '
+                .'with #[Valid(each: Element::class)], a `@var list<Element>` docblock on the member, or `@param '
+                .'list<Element> $%s` on the constructor. The element must be a class — a list of scalars is '
+                .'constrained on the property itself — and a nested list (list<list<Element>>) is not supported.',
+                $class,
+                $name,
+                $name,
+            ));
+        }
+
+        if (! in_array($element, $ancestors, true)) {
+            $this->cascade($this->walk($element, [...$ancestors, $class]), $name.'.*.', $scanned);
+        }
+    }
+
+    /**
+     * An `array` or `iterable` declared type — the only shapes a #[Valid] list can wear. A union
+     * (`array|Countable`) or an untyped member is not a container the scanner will guess at.
+     */
+    private function isContainer(?ReflectionType $type): bool
+    {
+        return $type instanceof ReflectionNamedType && in_array($type->getName(), ['array', 'iterable'], true);
+    }
+
+    /**
+     * Copies a nested walk's two tables under a key prefix — `beneficiary.` for a nested object, `lines.*.` for
+     * every element of a list (Illuminate expands the wildcard per element and reports `lines.0.sku`).
+     *
+     * @param  Scanned  $nested
+     * @param  Scanned  $scanned
+     */
+    private function cascade(array $nested, string $prefix, array &$scanned): void
+    {
+        foreach ($nested['rules'] as $key => $rules) {
+            $scanned['rules'][$prefix.$key] = $rules;
+        }
+
+        foreach ($nested['constraints'] as $key => $descriptors) {
+            $scanned['constraints'][$prefix.$key] = $descriptors;
         }
     }
 
@@ -183,15 +261,7 @@ final class ConstraintScanner
         return ['nullable', ...$propertyRules];
     }
 
-    /**
-     * @param  list<ReflectionAttribute<Valid>>  $attributes
-     */
-    private function hasValid(array $attributes): bool
-    {
-        return $attributes !== [];
-    }
-
-    private function classTypeOf(?\ReflectionType $type): ?string
+    private function classTypeOf(?ReflectionType $type): ?string
     {
         if ($type instanceof ReflectionNamedType && ! $type->isBuiltin()) {
             $name = $type->getName();

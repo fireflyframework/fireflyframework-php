@@ -45,6 +45,7 @@ final readonly class HttpExchange
      *                             semantic) rather than when it finished, so a row's timestamp plus its
      *                             durationMs describe the same interval.
      * @param  array<string, string>  $requestHeaders  masked and opt-in; empty unless header capture is on.
+     * @param  string|null  $traceId  the W3C trace id of the SERVER span TracingFilter started for this request; null when tracing is off.
      */
     public function __construct(
         public string $timestamp,
@@ -54,6 +55,7 @@ final readonly class HttpExchange
         public float $durationMs,
         public ?string $correlationId,
         public array $requestHeaders = [],
+        public ?string $traceId = null,
     ) {}
 
     /**
@@ -87,7 +89,7 @@ final readonly class HttpExchange
      * ActuatorDispatchAction::toResponse() documents for the top-level body. Present-or-absent is a distinction
      * every JSON client already handles correctly.
      *
-     * @return array{timestamp: string, method: string, uri: string, status: int, durationMs: float, correlationId: string|null, requestHeaders?: array<string, string>}
+     * @return array{timestamp: string, method: string, uri: string, status: int, durationMs: float, correlationId: string|null, traceId?: string, requestHeaders?: array<string, string>}
      */
     public function toArray(): array
     {
@@ -99,6 +101,12 @@ final readonly class HttpExchange
             'durationMs' => $this->durationMs,
             'correlationId' => $this->correlationId,
         ];
+
+        // Present-or-absent like requestHeaders, and for the same reason: the M12 row shape is asserted
+        // byte for byte, and a client that never saw a trace id should not start seeing a null.
+        if ($this->traceId !== null) {
+            $row['traceId'] = $this->traceId;
+        }
 
         if ($this->requestHeaders !== []) {
             $row['requestHeaders'] = $this->requestHeaders;
@@ -127,6 +135,7 @@ final readonly class HttpExchange
         $status = $row['status'] ?? null;
         $durationMs = $row['durationMs'] ?? null;
         $correlationId = $row['correlationId'] ?? null;
+        $traceId = $row['traceId'] ?? null;
 
         // durationMs accepts int as well as float on the way back in: a cache driver that round-trips through
         // JSON (rather than PHP serialize()) writes 12.0 and reads back the integer 12, and rejecting that row
@@ -154,6 +163,7 @@ final readonly class HttpExchange
             (float) $durationMs,
             is_string($correlationId) ? $correlationId : null,
             $headers,
+            is_string($traceId) && $traceId !== '' ? $traceId : null,
         );
     }
 }

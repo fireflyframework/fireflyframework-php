@@ -43,5 +43,5 @@ final class OrderController
     }
 
     #[DeleteMapping('/{id}', status: 204)]
-    public function cancel(#[PathVariable] string $id): void {}
+    public function cancel(#[PathVariable(pattern: PathVariable::UUID, notFoundCode: 'ORDER_NOT_FOUND')] string $id): void {}
 }

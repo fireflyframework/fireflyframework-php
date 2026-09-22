@@ -95,6 +95,10 @@ final class DataSchemaFactory
                 nullable: $row['nullable'],
                 identifier: $name === $key,
                 sensitive: SensitiveValueMasker::isSensitive($name) || in_array($name, $hidden, true),
+                // The driver reports the DEFAULT clause as its expression text and null when there is none;
+                // the browser needs only the distinction, never the value, because it is the database that
+                // fills the column when the form leaves it blank.
+                hasDefault: $row['default'] !== null,
             );
         }
 

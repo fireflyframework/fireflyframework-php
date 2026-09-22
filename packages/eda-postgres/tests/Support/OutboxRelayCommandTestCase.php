@@ -14,6 +14,10 @@ use Illuminate\Contracts\Console\Kernel;
  * firefly.eda.postgres.relay.downstream_provider is deliberately NOT seeded here. RelayDownstream reads it inside
  * handle(), so each test sets exactly the (mis)configuration it is about, and the default state of the harness is
  * the unconfigured one.
+ *
+ * runRelay()/relayOutput() are PUBLIC for the reason firefly/eda's EdaConsumeCommandTestCase documents: PHPStan
+ * types a test closure's `$this` as Pest's TestCall, outside this hierarchy, so a protected helper reads as an
+ * illegal call. Protected stays reserved for the FireflyTestCase template hooks.
  */
 abstract class OutboxRelayCommandTestCase extends OutboxCapstoneTestCase
 {
@@ -29,7 +33,7 @@ abstract class OutboxRelayCommandTestCase extends OutboxCapstoneTestCase
      * rather than $this->artisan() for the same PHPStan reason firefly/eda's EdaConsumeCommandTestCase documents:
      * InteractsWithConsole::artisan() is declared `PendingCommand|int`.
      */
-    protected function runRelay(): int
+    public function runRelay(): int
     {
         /** @var Kernel $kernel */
         $kernel = $this->app()->make(Kernel::class);
@@ -37,7 +41,7 @@ abstract class OutboxRelayCommandTestCase extends OutboxCapstoneTestCase
         return $kernel->call('firefly:outbox:relay', ['--max-messages' => 0]);
     }
 
-    protected function relayOutput(): string
+    public function relayOutput(): string
     {
         /** @var Kernel $kernel */
         $kernel = $this->app()->make(Kernel::class);

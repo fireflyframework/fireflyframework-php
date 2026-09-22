@@ -23,19 +23,17 @@ final class FireflyExpectations
     {
         expect()->extend('toHavePublished', function (string $eventType, array $payloadContains = []) {
             // Pest rebinds $this to the Pest\Expectation under test deep inside its own internals — AFTER
-            // this closure is handed to Extendable::extend() — so PHPStan (analysing the closure body in
-            // isolation, with no visibility into that later rebind) cannot know $this's type here; the
-            // enclosing method is static, so lexically there is no $this to infer from either. This is a
-            // static-analysis gap in Pest's custom-expectation API, not a real defect (proven at runtime by
-            // RecordingEventPublisherTest). We guard the resulting value with instanceof-narrow-or-throw
-            // (this repo's established pattern; see EloquentRepository::applyPredicate's LIKE-ignore and
-            // AfterCommitDispatchTest's asItemAdded/asNoteAdded) rather than an `@var`/cast override.
+            // this closure is handed to Extendable::extend(). Since Pest 4 that method declares the rebind
+            // to PHPStan (`@param-closure-this`), so $this->value is typed here — but only as `mixed`, the
+            // expectation's own value type. We guard it with instanceof-narrow-or-throw (this repo's
+            // established pattern; see EloquentRepository::applyPredicate's LIKE-ignore and
+            // AfterCommitDispatchTest's asItemAdded/asNoteAdded) rather than an `@var`/cast override; the
+            // runtime shape is proven by RecordingEventPublisherTest.
             // NOTE: Pest also rebinds the closure's *scope* to Expectation::class (Expectation::
             // getExpectationClosure() calls `bindTo($this, Expectation::class)`), so `self::` here would
             // resolve against Pest\Expectation, not this class — a bare `self::` call silently gets
             // intercepted by Expectation::__call() and forwarded onto $this->value instead of reaching this
             // class's helper. The literal class name below is required, not stylistic.
-            // @phpstan-ignore variable.undefined, property.nonObject
             $publisher = FireflyExpectations::asRecordingEventPublisher($this->value);
 
             $matches = array_values(array_filter(
@@ -58,21 +56,18 @@ final class FireflyExpectations
                 "Expected an event of type [{$eventType}] with the given payload to have been published.",
             );
 
-            // @phpstan-ignore variable.undefined
             return $this;
         });
 
         expect()->extend('toHaveHandledCommand', function (string $class) {
             // Same Pest scope-rebind gotcha as toHavePublished above: $this is Pest\Expectation inside this
             // closure, and the literal class name (not self::) is required to reach this class's helper.
-            // @phpstan-ignore variable.undefined, property.nonObject
             $bus = FireflyExpectations::asRecordingCommandBus($this->value);
 
             expect($bus->handled($class))->not->toBeEmpty(
                 "Expected a command of type [{$class}] to have been sent through the bus.",
             );
 
-            // @phpstan-ignore variable.undefined
             return $this;
         });
 
@@ -80,7 +75,6 @@ final class FireflyExpectations
             // Same Pest scope-rebind gotcha as toHavePublished/toHaveHandledCommand above: $this is
             // Pest\Expectation inside this closure, and the literal class name (not self::) is required
             // to reach this class's helper.
-            // @phpstan-ignore variable.undefined, property.nonObject
             $health = FireflyExpectations::asHealth($this->value);
 
             expect($health->status)->toBe(
@@ -88,15 +82,13 @@ final class FireflyExpectations
                 'Expected health status to be UP, got '.$health->status->value.'.',
             );
 
-            // @phpstan-ignore variable.undefined
             return $this;
         });
 
         expect()->extend('toHaveRecordedMetric', function (string $name, array $tags = []) {
             // Same Pest scope-rebind gotcha as toHavePublished/toHaveHandledCommand/toBeUp above: $this is
-            // Pest\Expectation inside this closure, invisible to PHPStan's static analysis.
+            // Pest\Expectation inside this closure, and its ->value is `mixed` to PHPStan.
             /** @var object{meters: callable} $registry */
-            // @phpstan-ignore variable.undefined, property.nonObject
             $registry = $this->value;
             // The @var shape above describes $registry only well enough to satisfy PHPStan's need for SOME
             // type; it does not (and cannot, via inline @var) declare a meters() method signature, so the
@@ -122,13 +114,11 @@ final class FireflyExpectations
 
             expect($matches)->not->toBeEmpty("Expected a metric named [{$name}] with the given tags to be recorded.");
 
-            // @phpstan-ignore variable.undefined
             return $this;
         });
 
         expect()->extend('toBeProblemDetails', function (int $status) {
             // Same Pest scope-rebind gotcha as the other extend() closures above.
-            // @phpstan-ignore variable.undefined, property.nonObject
             $value = $this->value;
 
             if ($value instanceof TestResponse) {
@@ -143,7 +133,6 @@ final class FireflyExpectations
             expect($body)->toHaveKeys(['type', 'title', 'status'])
                 ->and($body['status'])->toBe($status);
 
-            // @phpstan-ignore variable.undefined
             return $this;
         });
     }

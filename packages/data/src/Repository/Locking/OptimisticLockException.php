@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Firefly\Data\Repository\Locking;
 
-use Firefly\Kernel\Exception\Infrastructure\DataAccessException;
+use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Throwable;
 
 /**
- * A concurrent-write conflict: the row's version moved between load and save. Extends the frozen kernel
- * DataAccessException (Data -> Kernel is an allowed edge) with an OPTIMISTIC_LOCK error code.
+ * A concurrent-write conflict: the row's version moved between load and save. The concrete member of the
+ * kernel's OptimisticLockingFailureException (Data -> Kernel is an allowed edge), so a `catch` on either name
+ * works; it keeps its own OPTIMISTIC_LOCK error code and the message that names the entity and the version.
  */
-final class OptimisticLockException extends DataAccessException
+final class OptimisticLockException extends OptimisticLockingFailureException
 {
     public function __construct(string $entity, int|string|null $id, int $expectedVersion, ?Throwable $previous = null)
     {

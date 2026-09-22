@@ -1,0 +1,8 @@
+{
+    "name": "firefly-monorepo-browser-tests",
+    "private": true,
+    "description": "Playwright is launched by pestphp/pest-plugin-browser for tests/Browser; it is not a runtime dependency of any firefly/* package.",
+    "devDependencies": {
+        "playwright": "^1.59.1"
+    }
+}

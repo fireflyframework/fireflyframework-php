@@ -20,12 +20,15 @@ use Illuminate\Http\Request;
  * than producing a container whose guard permits everything.
  *
  * Same bare-skeleton shape as PackageBootTest — RouteManifest/ScheduledManifest are stubbed in rather than dragging
- * the Web/Scheduling boot pipelines in behind them.
+ * the Web/Scheduling boot pipelines in behind them, and the on-by-default db health indicator is switched off because
+ * no DatabaseServiceProvider is registered here (a database the test never meant to have; see PackageBootTest).
  *
  * @param  array<string, mixed>  $firefly
  */
 function bootActuatorWithManagement(array $firefly): Application
 {
+    $firefly = array_replace_recursive(['management' => ['endpoint' => ['health' => ['db' => ['enabled' => false]]]]], $firefly);
+
     return fireflyApplication(
         config: ['firefly' => $firefly],
         providers: [ActuatorServiceProvider::class, ActuatorWiringProvider::class],

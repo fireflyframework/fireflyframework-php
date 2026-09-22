@@ -22,6 +22,9 @@ final class ScriptedEventConsumer implements EventConsumer
     /** @var list<mixed> */
     public array $nacked = [];
 
+    /** @var list<bool> the requeue flag of every nack(), in call order */
+    public array $nackedRequeue = [];
+
     /**
      * Every destination list handed to subscribe(), in call order — the command's routing contract is asserted on this.
      *
@@ -34,9 +37,15 @@ final class ScriptedEventConsumer implements EventConsumer
     public bool $stopped = false;
 
     /**
-     * @param  list<EventEnvelope>  $queue
+     * @param  list<EventEnvelope|ReceivedEnvelope>  $queue  envelopes, or already-built records (a poison one, say)
      */
     public function __construct(private array $queue) {}
+
+    /** Queue one more envelope (or record) for a later poll(). */
+    public function enqueue(EventEnvelope|ReceivedEnvelope $next): void
+    {
+        $this->queue[] = $next;
+    }
 
     /**
      * @param  list<string>  $destinations
@@ -53,9 +62,13 @@ final class ScriptedEventConsumer implements EventConsumer
 
     public function poll(int $timeoutMs): ?ReceivedEnvelope
     {
-        $envelope = array_shift($this->queue);
+        $next = array_shift($this->queue);
 
-        return $envelope === null ? null : new ReceivedEnvelope($envelope, spl_object_id($envelope));
+        if ($next instanceof ReceivedEnvelope) {
+            return $next;
+        }
+
+        return $next === null ? null : new ReceivedEnvelope($next, spl_object_id($next));
     }
 
     public function ack(ReceivedEnvelope $received): void
@@ -66,6 +79,7 @@ final class ScriptedEventConsumer implements EventConsumer
     public function nack(ReceivedEnvelope $received, bool $requeue = true): void
     {
         $this->nacked[] = $received->deliveryTag;
+        $this->nackedRequeue[] = $requeue;
     }
 
     public function stop(): void
