@@ -1,0 +1,3206 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/data-browser/">
+      
+      
+        <link rel="prev" href="../bean-graph/">
+      
+      
+        <link rel="next" href="../testing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Data Browser - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#data-browser" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Data Browser
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial.es/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-discovers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it discovers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What it discovers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slugs-are-derived-from-the-class-not-from-a-counter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slugs are derived from the class, not from a counter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two gates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fireflyadmindataenabled-defaults-to-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firefly.admin.data.enabled defaults to false
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writes-need-fireflyadmindatawritable-on-top-of-that" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes need firefly.admin.data.writable on top of that
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#create-exists-for-eloquent-and-is-refused-for-everything-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create exists for Eloquent, and is refused for everything else
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reads-four-paths-and-one-of-them-is-a-foot-gun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reads: four paths, and one of them is a foot-gun
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reads: four paths, and one of them is a foot-gun">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#search-is-bound-never-interpolated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search is bound, never interpolated
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#columns-are-a-property-of-the-resource-never-of-a-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columns are a property of the resource, never of a row
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Columns are a property of the resource, never of a row">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-display-type-vocabulary-is-closed-and-deliberately-small" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The display type vocabulary is closed, and deliberately small
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-identifier-is-derived-and-allowed-to-be-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The identifier is derived, and allowed to be null
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filtering-sorting-and-paging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering, sorting and paging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nothing-throws-at-the-caller-and-no-error-text-is-an-exception-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nothing throws at the caller, and no error text is an exception message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflyadmindata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.admin.data.*)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reflection-is-confined-to-one-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reflection is confined to one class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-discovers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it discovers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What it discovers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slugs-are-derived-from-the-class-not-from-a-counter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slugs are derived from the class, not from a counter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two gates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fireflyadmindataenabled-defaults-to-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firefly.admin.data.enabled defaults to false
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writes-need-fireflyadmindatawritable-on-top-of-that" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes need firefly.admin.data.writable on top of that
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#create-exists-for-eloquent-and-is-refused-for-everything-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create exists for Eloquent, and is refused for everything else
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reads-four-paths-and-one-of-them-is-a-foot-gun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reads: four paths, and one of them is a foot-gun
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reads: four paths, and one of them is a foot-gun">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#search-is-bound-never-interpolated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search is bound, never interpolated
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#columns-are-a-property-of-the-resource-never-of-a-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columns are a property of the resource, never of a row
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Columns are a property of the resource, never of a row">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-display-type-vocabulary-is-closed-and-deliberately-small" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The display type vocabulary is closed, and deliberately small
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-identifier-is-derived-and-allowed-to-be-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The identifier is derived, and allowed to be null
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filtering-sorting-and-paging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering, sorting and paging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nothing-throws-at-the-caller-and-no-error-text-is-an-exception-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nothing throws at the caller, and no error text is an exception message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflyadmindata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.admin.data.*)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reflection-is-confined-to-one-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reflection is confined to one class
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="data-browser">Data Browser<a class="headerlink" href="#data-browser" title="Permanent link">&para;</a></h1>
+<p>The data browser is a Django-admin-style view over your application's own data, built on top of the LaraFly
+<a href="../data/">data layer</a> and shipped with the <a href="../admin/">admin dashboard</a>.</p>
+<p>It is <strong>off by default, and it does not inherit the dashboard's default.</strong> Read
+<a href="#the-two-gates">The two gates</a> before you switch it on — that section is the point of this page.</p>
+<div class="admonition tip">
+<p class="admonition-title">Two switches, and neither follows <code>app.debug</code></p>
+<p><code>firefly.admin.data.enabled</code> turns the browser on and <code>firefly.admin.data.writable</code> permits writes on top
+of it. Both default to <strong>false</strong> and neither is implied by <code>app.debug</code> or by <code>firefly.admin.enabled</code> —
+see <a href="#the-two-gates">The two gates</a>, which is the point of this page.</p>
+</div>
+<div class="highlight"><pre><span></span><code>composer<span class="w"> </span>require<span class="w"> </span>firefly/admin<span class="w">      </span><span class="c1"># already required by firefly/firefly; the browser is a part of the dashboard, not a package of its own</span>
+</code></pre></div>
+<p><code>DataBrowser</code> is the single entry point, and <code>DataBrowser::forContainer($container)</code> assembles one from the
+application container in a line. Discovery, schema derivation, reads and the two writes all go through it, and
+every one of them is behind the gates below.</p>
+<h2 id="what-it-discovers">What it discovers<a class="headerlink" href="#what-it-discovers" title="Permanent link">&para;</a></h2>
+<p>Nothing is registered, declared or configured. The browsable resources are <strong>every bean whose scan-time
+interface list contains <code>CrudRepository</code></strong> — which means a repository you wrote is browsable the moment the
+container has it, and one you delete stops being browsable without anyone editing a list.</p>
+<p>The source is <code>BeansCatalog</code>, the boot-time snapshot of the condition-filtered bean registry — the same rows
+<code>/actuator/beans</code> serves. Each row already carries <code>class</code>, <code>stereotype</code> and the <strong>full interface closure</strong>
+<code>ComponentScanner</code> recorded with <code>class_implements()</code> at scan time, so "is this bean a repository, and does it
+also page?" is two <code>in_array()</code> calls over data the process already holds.</p>
+<p>Re-deriving that by reflecting over every registered class at request time would be slower, would break the
+framework's reflection-free boot contract for no gain, and — the decisive point — would find classes the
+<strong>container never registered</strong>, so the menu would offer resources that cannot be resolved. The catalogue is the
+definition of <em>what this application actually wired</em>, which is exactly the question a browser is asking.</p>
+<p>Each discovered resource carries the capability flags every later path branches on:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Means</th>
+<th>Consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>paged</code></td>
+<td>The repository implements <code>PagingAndSortingRepository</code></td>
+<td>A page can be asked for by page number; the database does the offset, limit, <code>ORDER BY</code> and <code>COUNT</code></td>
+</tr>
+<tr>
+<td><code>eloquent</code></td>
+<td>It is an <code>EloquentRepository</code> whose <code>$model</code> resolved to a real model class</td>
+<td>Schema-derived columns, SQL-side search and sort, and any write at all</td>
+</tr>
+</tbody>
+</table>
+<p>A resource with neither is still listable — it is just expensive and read-only.</p>
+<h3 id="slugs-are-derived-from-the-class-not-from-a-counter">Slugs are derived from the class, not from a counter<a class="headerlink" href="#slugs-are-derived-from-the-class-not-from-a-counter" title="Permanent link">&para;</a></h3>
+<p>A slug is what addresses a resource — in a URL an operator bookmarks, in a link another page renders — so it
+must not move because an unrelated repository was added. The base slug is the kebab-cased short name of the <strong>entity</strong> (falling back
+to the repository's own name with the conventional <code>Eloquent</code> prefix and <code>Repository</code> suffix stripped), which
+depends on nothing but that class.</p>
+<p>A genuine collision — two <code>Wallet</code> entities in different namespaces — is resolved by <strong>qualifying both sides</strong>
+with their full namespace rather than by suffixing one with <code>-2</code>. An index suffix depends on scan order, so the
+loser's URL would change if the winner were ever removed; a namespace-qualified slug is a property of the class
+alone. Labels are disambiguated the same way, because a menu with two entries both reading "Wallet" is not a
+menu.</p>
+<h2 id="the-two-gates">The two gates<a class="headerlink" href="#the-two-gates" title="Permanent link">&para;</a></h2>
+<h3 id="fireflyadmindataenabled-defaults-to-false"><code>firefly.admin.data.enabled</code> defaults to <strong><code>false</code></strong><a class="headerlink" href="#fireflyadmindataenabled-defaults-to-false" title="Permanent link">&para;</a></h3>
+<p>The dashboard itself follows <code>app.debug</code>, and <a href="../admin/#access-the-whole-security-boundary">the argument for that</a>
+is sound <em>for what the dashboard shows</em>: beans, conditions, mappings and resolved configuration are facts about
+the <strong>application</strong>, and an application already serving stack traces has already published facts of that kind.</p>
+<p>This page shows facts about the application's <strong>users</strong>.</p>
+<p>That is a categorically bigger disclosure, and the routine mistakes that expose it are the same ones that expose
+nothing much today: a debug flag left on in a staging environment that shares a database with production, a
+<code>.env</code> copied to a box that was supposed to be internal, a developer laptop tunnelled for a demo. Each becomes a
+customer-record disclosure the moment a browser is wired to <code>app.debug</code>.</p>
+<p>So the gate is <strong>separate, explicit, and off</strong>. <code>app.debug</code> cannot switch it on, and neither can
+<code>firefly.admin.enabled</code>. Both of those must already be true <strong>and</strong> this key must be set:</p>
+<div class="highlight"><pre><span></span><code><span class="x">'firefly' =&gt; [</span>
+<span class="x">    'admin' =&gt; [</span>
+<span class="x">        'enabled' =&gt; true,          // the dashboard itself</span>
+<span class="x">        'data' =&gt; [</span>
+<span class="x">            'enabled' =&gt; true,      // ...and, separately, the data browser</span>
+<span class="x">        ],</span>
+<span class="x">    ],</span>
+<span class="x">],</span>
+</code></pre></div>
+<p>Disabled means <strong>empty, everywhere</strong>. The resource registry returns nothing when the key is off, even though
+every operation is gated again downstream. The redundancy is deliberate: the registry is public API a view could
+hold directly, and a discovery list that leaked the names of an application's entities while the browser was
+switched off would already be a disclosure.</p>
+<h3 id="writes-need-fireflyadmindatawritable-on-top-of-that">Writes need <code>firefly.admin.data.writable</code> <strong>on top of that</strong><a class="headerlink" href="#writes-need-fireflyadmindatawritable-on-top-of-that" title="Permanent link">&para;</a></h3>
+<p>Also <code>false</code>, also its own key, and <strong>ineffective on its own</strong> — a write requires both.</p>
+<p>Reading the wrong row is a disclosure; deleting it is data loss with no undo, from a form, over a session that
+may be nothing more than "debug was on". Turning on the browser is a decision about <strong>visibility</strong>; turning on
+writes is a decision about <strong>custody</strong>. Collapsing the two into one key means the operator who wanted to look at
+a table also armed the delete button.</p>
+<p>A write attempted with only one gate set is <strong>refused with a stated reason</strong>, not silently ignored.</p>
+<h2 id="create-exists-for-eloquent-and-is-refused-for-everything-else">Create exists for Eloquent, and is refused for everything else<a class="headerlink" href="#create-exists-for-eloquent-and-is-refused-for-everything-else" title="Permanent link">&para;</a></h2>
+<p>The browser once had no <code>create()</code> at all, and the argument for that was half right.</p>
+<p><strong>An aggregate's constructor is where its invariants live</strong> — an <code>Order</code> that must have at least one line, a
+<code>Wallet</code> whose balance starts at zero in the currency it was opened in, a value object that rejects a malformed
+IBAN — and a form built from a column list knows none of them. For a repository over a hand-written domain object
+there are only two ways to build the row and both are wrong: call the constructor, which needs arguments the form
+cannot supply in the right types or the right order; or write the columns straight to the table, which produces a
+row the domain model considers impossible and which every later read then has to cope with. The second is what a
+"just insert the columns" implementation actually does, and it is <em>worse than having no button</em>, because it looks
+like it worked. <strong>That case is still refused, by name.</strong></p>
+<p>It was never true for an <strong>Eloquent model</strong>. Eloquent constructs one empty and fills it by attribute — which is
+exactly what <code>update()</code> has always done to a row that exists. Create was refusing on a risk update was already
+taking, and the inconsistency cost every application a CRUD surface that stopped at RUD.</p>
+<p>So: <code>create()</code> is offered when the resource is Eloquent-backed, under the same two switches, the same coercion and
+the same unknown-field refusal. The identifier and any masked column are <strong>omitted from the form</strong> rather than
+disabled in it — a field the browser would refuse to write should not appear to accept — so a crafted POST cannot
+choose a primary key or plant a value the page would only ever show as <code>******</code>.</p>
+<p><strong>A field left blank is left to the schema.</strong> The form renders every editable column, and a browser submits <code>''</code>
+for each one the person did not touch. On create, a blank in a column that is not <em>required</em> — nullable, or
+carrying a <code>DEFAULT</code> clause (<code>DataColumn::$hasDefault</code>, read from the table) — is <strong>omitted from the insert</strong>
+rather than coerced: a <code>total decimal NOT NULL DEFAULT 0</code> lands as <code>0</code>, and a model's own <code>created_at</code>/<code>updated_at</code>
+are stamped by Eloquent, which an explicit null would have silenced (a null attribute is "dirty", and
+<code>updateTimestamps()</code> steps aside for a dirty column). The form marks such a column <code>optional</code>; <code>required</code>
+(<code>DataColumn::isRequired()</code>) is reserved for a NOT NULL column with no default, where a blank is still refused
+because nothing could fill it. Before this rule the skeleton's own order could not be created from the dashboard
+without typing the total the domain computes. On update a blank is an edit, as before: an emptied nullable field
+becomes null, an emptied NOT NULL field is refused.</p>
+<h2 id="reads-four-paths-and-one-of-them-is-a-foot-gun">Reads: four paths, and one of them is a foot-gun<a class="headerlink" href="#reads-four-paths-and-one-of-them-is-a-foot-gun" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Path</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Paged, unsearched</strong></td>
+<td><code>findPaged(Pageable)</code> — the repository does the offset, limit, <code>ORDER BY</code> and <code>COUNT</code>. The only path whose cost is independent of table size.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Paged, searched, Eloquent</strong></td>
+<td><code>findBySpecificationPaged(Specification, Pageable)</code> — filter, page and count all happen in SQL</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Unpaged</strong></td>
+<td><code>findAll()</code>, then sort and slice <strong>in PHP</strong></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Unpaged, searched</strong></td>
+<td>Path 3 plus an in-PHP substring filter; no SQL is involved in the matching at all</td>
+</tr>
+</tbody>
+</table>
+<p>Path 2 goes through <code>EloquentRepository</code>'s public <strong>specification seam</strong>, which applies the predicate to the
+repository's <em>own</em> <code>query()</code> builder. Going around it with <code>Model::query()</code> would have been shorter and would
+have silently dropped any constraint a repository added by overriding <code>query()</code> — which on a repository that
+scopes to a tenant is a cross-tenant disclosure.</p>
+<div class="admonition warning">
+<p class="admonition-title">Path 3 is a foot-gun, and it is load-bearing to say so</p>
+<p><code>findAll()</code> on a plain <code>CrudRepository</code> issues <code>SELECT *</code> with no <code>LIMIT</code>, hydrates every row of the table
+into PHP objects, and only then does the browser throw away all but 25 of them. On a table of ten thousand
+rows that is a slow page; on a table of ten million it is an out-of-memory that kills the worker — and it
+happens on the <strong>first click</strong>, not gradually. There is no way to do better through the <code>CrudRepository</code>
+interface: it has no limit, no offset and no count-with-predicate. The honest options were "refuse to browse
+repositories that cannot page" or "browse them and say what it costs"; this is the second. <strong>A repository
+that will be browsed against a large table should implement <code>PagingAndSortingRepository</code></strong>, at which point
+it takes path 1.</p>
+</div>
+<p><strong>Every listing is ordered, even when nobody asked.</strong> With no <code>ORDER BY</code>, a paged query's row order is whatever
+the storage engine finds convenient, and it is allowed to differ between the query for page 1 and the query for
+page 2 — so a row can appear on both pages while another appears on neither, and the operator sees a table
+missing records that are actually there. With no requested sort, the identifier is used: stable, and always
+indexed.</p>
+<h3 id="search-is-bound-never-interpolated">Search is bound, never interpolated<a class="headerlink" href="#search-is-bound-never-interpolated" title="Permanent link">&para;</a></h3>
+<p>On the SQL paths the term is passed as a <strong>binding</strong> to <code>where(column, 'like', ?)</code>. It is never concatenated
+into a fragment, never handed to <code>whereRaw</code>, and therefore cannot become SQL no matter what it contains.</p>
+<p>The <strong>column names are not caller data at all</strong>: they come from the derived schema, built from the driver's own
+column list or from a class's declared properties, and a caller-supplied sort column is checked for membership
+in that list before use — an unknown one is dropped, not quoted.</p>
+<p><code>%</code> and <code>_</code> inside the term are deliberately left as <strong>wildcards</strong> rather than escaped. <code>LIKE</code> has no portable
+escape character (sqlite has none by default, MySQL uses backslash, ANSI needs an explicit <code>ESCAPE</code> clause), so
+escaping "portably" means breaking search on some driver — and an operator who types <code>%</code> into an admin search
+box wants a wildcard.</p>
+<p>Search covers the <strong>first twelve searchable columns</strong> in schema order: OR-ing a <code>LIKE</code> across every text column
+of a wide table produces a query no index can help with, and past a dozen columns the page is slow enough that
+an operator will assume it hung.</p>
+<h2 id="columns-are-a-property-of-the-resource-never-of-a-row">Columns are a property of the resource, never of a row<a class="headerlink" href="#columns-are-a-property-of-the-resource-never-of-a-row" title="Permanent link">&para;</a></h2>
+<p>The tempting implementation is <code>$model-&gt;getAttributes()</code> on the first row, using its keys as the columns. It is
+wrong in three ways that all bite in production: an <strong>empty table</strong> yields no columns at all (so the page
+renders as broken rather than as empty), a row hydrated with a <code>select</code> of two columns yields two columns for
+the whole resource, and an accessor-heavy model yields whatever <code>$appends</code> decided rather than what the table
+holds.</p>
+<p>So columns are derived <strong>once</strong>, from a source that describes the resource:</p>
+<table>
+<thead>
+<tr>
+<th><code>source</code></th>
+<th>Derivation</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema</code></td>
+<td>The live database via the schema builder</td>
+<td>Authoritative — every column, real nullability</td>
+</tr>
+<tr>
+<td><code>entity</code></td>
+<td>The entity class's public and promoted properties</td>
+<td>Whatever the class chose to expose</td>
+</tr>
+<tr>
+<td><code>none</code></td>
+<td>Nothing could be derived</td>
+<td>No connection, no model, no typed entity</td>
+</tr>
+</tbody>
+</table>
+<p>The source is recorded on the schema and shown, because <em>"why is this column missing"</em> is a question the page
+has to be able to answer.</p>
+<p><strong>The schema is authoritative; the casts refine it.</strong> <code>Schema::getColumns()</code> reports what the driver knows, and
+the driver frequently does not know what the application meant — sqlite stores a <code>json()</code> column as <code>text</code> and a
+<code>boolean()</code> as <code>tinyint</code>, so a type map built from <code>type_name</code> alone shows a JSON blob as a string and a flag as
+a number. The model's own <code>$casts</code> carry the semantic type the schema cannot express, and where the two disagree
+<strong>the cast wins</strong>, because the cast is what the application will hand the view.</p>
+<h3 id="the-display-type-vocabulary-is-closed-and-deliberately-small">The display type vocabulary is closed, and deliberately small<a class="headerlink" href="#the-display-type-vocabulary-is-closed-and-deliberately-small" title="Permanent link">&para;</a></h3>
+<p><code>string</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>datetime</code>, <code>json</code>. It is a <strong>rendering hint, not a schema echo</strong>: the view has
+to decide "right-align this", "draw a chip", "format this as a timestamp", "clip this blob", and there are only
+those decisions plus a default. Anything outside the vocabulary degrades to <code>string</code> rather than reaching the view.</p>
+<div class="admonition note">
+<p class="admonition-title"><code>float</code> never reformats the value</p>
+<p>A <code>decimal(10,2)</code> column arrives from PDO as the string <code>"10.10"</code>, and that is not an accident of the driver
+— it is how the value survives a round trip without binary floating point eating the last cent. Every
+non-integer number used to be typed <code>string</code> for that reason, which meant a money column read as a string in
+the explorer, was offered to a <code>LIKE</code> search, and let the editor save <code>"abc"</code> into it.</p>
+<p><code>float</code> is a hint about <strong>alignment and validation</strong>, not about formatting. The cell prints the value
+verbatim, so <code>"10.10"</code> renders as <code>10.10</code>; it is right-aligned with tabular numerals so digits line up down
+the column. And a write is <strong>validated</strong> with <code>is_numeric</code> but <strong>stored as the string</strong>: casting to a PHP
+float to store it would reintroduce exactly the precision loss a <code>decimal</code> column exists to avoid —
+<code>12345678901234567890.12</code> does not survive a <code>float</code>, and the driver can bind the digits verbatim.</p>
+</div>
+<h3 id="the-identifier-is-derived-and-allowed-to-be-null">The identifier is derived, and allowed to be null<a class="headerlink" href="#the-identifier-is-derived-and-allowed-to-be-null" title="Permanent link">&para;</a></h3>
+<p>Everything past the listing keys on it: the detail view addresses a row by it, delete addresses a row by it, and
+update addresses a row by it <em>while refusing to write it</em>. A browser that guessed wrong would render a link to a
+row it cannot fetch — or, far worse, issue a delete whose <code>WHERE</code> clause matched more than one row.</p>
+<p>So it is derived explicitly: Eloquent's own <code>getKeyName()</code> (which respects a model that renamed it), or a
+conventional identifier property on a plain entity. When it cannot be determined the resource is browsable as a
+<strong>list and nothing else</strong>, and every <code>find</code>/<code>delete</code>/<code>update</code> is refused with a reason rather than improvised.</p>
+<p>Records are projected against the schema's column list and inherit <strong>its order</strong>, with a column the row did not
+supply present as <code>null</code> rather than missing. <code>getAttributes()</code> returns keys in whatever order the driver
+returned them, which differs between drivers and can differ between two rows of the same table after a migration
+adds a column — and a detail page whose fields move between rows is unreadable.</p>
+<h2 id="relations">Relations<a class="headerlink" href="#relations" title="Permanent link">&para;</a></h2>
+<p>An entity's relations are discovered by <strong>calling</strong> the methods that declare one, because that is the only way to
+learn which columns they join on: a method's name says nothing and its return type says only the kind.</p>
+<p>Which makes "what is safe to call" the load-bearing question, and the answer is the <strong>declared return type</strong>. Only
+a public, non-static, no-argument method whose return type is an Eloquent <code>Relation</code> subclass is ever called — a
+method announcing <code>: HasMany</code> is a relation definition by construction, the same signal Laravel's own IDE tooling
+and <code>with()</code> validation rely on, and one an accessor cannot claim without lying about its signature. Anything
+without that annotation is left alone. The call itself executes no query: Eloquent defers until <code>get()</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="x">class OrderEntity extends Model</span>
+<span class="x">{</span>
+<span class="x">    /** @return HasMany&lt;OrderLineEntity, $this&gt; */</span>
+<span class="x">    public function lines(): HasMany</span>
+<span class="x">    {</span>
+<span class="x">        return $this-&gt;hasMany(OrderLineEntity::class, 'order_id');</span>
+<span class="x">    }</span>
+<span class="x">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Relation</th>
+<th>On the record page</th>
+<th>Where it goes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BelongsTo</code></td>
+<td><strong>Open →</strong></td>
+<td>the one parent record</td>
+</tr>
+<tr>
+<td><code>HasOne</code>/<code>HasMany</code></td>
+<td><strong>Browse →</strong></td>
+<td>the child listing, filtered to this row's key</td>
+</tr>
+<tr>
+<td><code>BelongsToMany</code>, <code>HasManyThrough</code>, the morph family</td>
+<td>listed, not linked</td>
+<td>no single column to filter on</td>
+</tr>
+<tr>
+<td><code>MorphTo</code></td>
+<td>listed, not linked</td>
+<td>the other end is decided per row by a type column</td>
+</tr>
+</tbody>
+</table>
+<p>A relation whose other end is <strong>not a browsable resource</strong> — no repository declares it, or its resource is excluded
+— is still shown, because it tells a reader the shape of the model, but is not rendered as a link: distinguishing
+the two in the model rather than in the template is what stops a view minting a URL that 404s.</p>
+<h2 id="filtering-sorting-and-paging">Filtering, sorting and paging<a class="headerlink" href="#filtering-sorting-and-paging" title="Permanent link">&para;</a></h2>
+<p>The listing is a <strong>URL</strong>. Every filtered, sorted, paged view is something an operator can bookmark, paste into a
+ticket or hand to someone else, which is most of what a data explorer is for — and every link on the page carries
+the whole state, because a sort that dropped the filter would widen the listing back to every row, which reads as
+rows appearing from nowhere.</p>
+<p>Eight comparisons, over the columns the resource publishes <strong>minus the masked ones</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>eq</code>, <code>ne</code></td>
+<td><code>=</code>, <code>!=</code></td>
+</tr>
+<tr>
+<td><code>contains</code>, <code>starts</code></td>
+<td><code>LIKE</code>, with the wildcards added around an <strong>escaped</strong> value</td>
+</tr>
+<tr>
+<td><code>gt</code>, <code>lt</code></td>
+<td><code>&gt;</code>, <code>&lt;</code></td>
+</tr>
+<tr>
+<td><code>null</code>, <code>notnull</code></td>
+<td><code>IS NULL</code>, <code>IS NOT NULL</code></td>
+</tr>
+</tbody>
+</table>
+<p>Two spellings in the URL: <code>?fk=order_id&amp;fv=7</code> is a single equality and is what every relation link produces —
+short enough to read in a status bar — while <code>?fc[]=…&amp;fo[]=…&amp;fv[]=…</code> is what the filter bar builds. Both are
+validated identically.</p>
+<p><strong>A column the schema does not publish for filtering, and an operator outside that set, are dropped</strong> rather
+than passed to the driver. Both arrive in a URL an operator can hand-edit, and a query that reached the driver
+with an arbitrary identifier in it is a column-name oracle at best. Dropping rather than erroring is deliberate
+too: an error that distinguished "no such column" from "no rows" would answer the same question more slowly.</p>
+<div class="admonition danger">
+<p class="admonition-title">A sensitive column is not filterable, and this was learned the hard way</p>
+<p>Filtering was first shipped over <em>every</em> column, which quietly re-opened the channel masking exists to
+close. A masked column renders as <code>******</code>, but a filter over it answers a yes/no question about the real
+value — and a yes/no question you can ask repeatedly is an <strong>extraction oracle</strong>. An adversarial review of
+the branch proved it against the fixture: twenty-one filtered requests recovered <code>correct horse battery</code>
+from a column the listing showed only as asterisks, and <code>&gt;</code>/<code>&lt;</code> do it faster still by binary search. The
+filterable set is now <code>searchable()</code>'s rule applied to every type — everything except the masked columns —
+and <code>tests/Data/DataFilterSafetyTest.php</code> runs the original attack as a regression test.</p>
+</div>
+<div class="admonition danger">
+<p class="admonition-title">Escaping a <code>LIKE</code> without an <code>ESCAPE</code> clause is worse than not escaping</p>
+<p>The same review found the other half. <code>contains</code> and <code>starts with</code> backslash-escape the user's <code>%</code> and
+<code>_</code> so they cannot act as wildcards — but a plain <code>LIKE ?</code> leaves the driver with no escape character
+declared, so the backslash is matched <em>literally</em>. Suppressing the wildcards worked; finding anything
+containing an underscore stopped working, and it failed <strong>silently</strong>: a search for <code>ada_love</code> returned
+zero rows against a table holding <code>ada_lovelace@example.test</code>. The predicate now emits an explicit
+<code>ESCAPE</code> clause, with the column wrapped by the grammar rather than interpolated, and the search box —
+which had no escaping at all, so a bare <code>%</code> matched every row — goes through the same helper.</p>
+</div>
+<p>Filters <strong>AND</strong> with each other and with the search box, so narrowing a relation's listing cannot escape it. Every
+comparison binds its value, including the <code>LIKE</code> ones.</p>
+<p>The same eight comparisons are implemented for the <a href="#reads-four-paths-and-one-of-them-is-a-foot-gun">in-PHP fallback path</a>,
+because a repository that cannot page must be filtered by the same rules as one that can — two implementations
+would drift, and the drift would show as one filter meaning different things on different resources.</p>
+<h2 id="secrets">Secrets<a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h2>
+<p>Sensitivity is decided <strong>by name, in one place</strong>: the actuator's own <code>SensitiveValueMasker</code>, the same rule that
+masks <code>/env</code> and <code>/configprops</code>, reused rather than mirrored — a second copy of a masking list is how a masking
+list rots.</p>
+<p>A model's own <strong><code>$hidden</code> is treated as a second sensitivity source.</strong> The name rule catches <code>password</code>,
+<code>api_token</code>, <code>authorization</code>, a <code>headers</code> column (a webhook or request-log table's header bag is precisely where a
+captured <code>Authorization</code> ends up; the singular <code>page_header</code> is left alone) and their relatives, but cannot know that
+this application considers <code>recovery_phrase</code> a secret. A
+model that already hid a field from its JSON representation has stated that intent in the only place it could,
+so the browser honours it rather than publishing in HTML what the model refuses to publish in JSON.</p>
+<p>A sensitive column is masked in the listing, masked in the detail view, <strong>excluded from search</strong>, and <strong>refused
+as an update target</strong>:</p>
+<ul>
+<li>Excluded from search because a box that answers <em>"yes, some row's <code>api_token</code> starts with <code>sk_live_9</code>"</em> is an
+  oracle, and an operator can walk it one character at a time.</li>
+<li>Refused as an update target because its <em>displayed</em> value is <code>******</code> — round-tripping a rendered form would
+  write the mask over the real credential, which is a data-loss bug the masking itself created.</li>
+</ul>
+<p>The <strong>identifier</strong> is refused as an update target too, for a different reason: re-keying a row from a generic
+form is not an edit, it is a different row. Foreign keys pointing at the old value do not follow, and the browser
+has no way to know which ones exist.</p>
+<p>Both refusals are enforced twice — a predicate the view uses to render the field read-only, and again in the
+write path, so a hand-crafted POST cannot reach what the form would not offer.</p>
+<h2 id="writes">Writes<a class="headerlink" href="#writes" title="Permanent link">&para;</a></h2>
+<p><code>update()</code> and <code>delete()</code>, both returning a typed <code>DataWriteResult</code> with <strong>four distinguishable outcomes</strong>
+rather than a bool:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Means</th>
+<th>What the operator should do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Done</code></td>
+<td>It happened</td>
+<td>See the new state</td>
+</tr>
+<tr>
+<td><code>Refused</code></td>
+<td>A gate, or something the browser will never do</td>
+<td>Change configuration — or stop asking</td>
+</tr>
+<tr>
+<td><code>NotFound</code></td>
+<td>The row or the resource is gone</td>
+<td>Navigate away; a retry will not help</td>
+</tr>
+<tr>
+<td><code>Failed</code></td>
+<td>The database said no</td>
+<td>Look at the log</td>
+</tr>
+</tbody>
+</table>
+<p>A bare <code>false</code> collapses four situations a person needs to tell apart, and rendering "delete failed" for all four
+sends an operator to debug a database that is working perfectly because a config key is off.</p>
+<p><strong>An update only writes what actually changed.</strong> A submitted form round-trips every field; the ones whose value
+did not change — plus the identifier and any masked secret — are dropped, and the result lists the columns
+actually written. A submitted field that is not a column of the resource refuses the whole update rather than
+being ignored.</p>
+<p><strong>A delete is verified after the fact</strong> with <code>existsById()</code> rather than trusted, because
+<code>CrudRepository::deleteById()</code> returns <code>void</code>: a repository whose delete was a no-op — a soft-delete scope that
+excluded the row, an override that swallowed it — would otherwise report success, and the operator would watch
+the row reappear on the next page load.</p>
+<p><strong>A non-Eloquent resource is refused for writes</strong>, with a reason. There is no table to address and no
+<code>setAttribute</code> to call.</p>
+<p><strong>The outcome's sentence is flashed onto the page the write redirects to</strong> — the record after an edit or a
+create, the form after a refused create — so <code>Updated 1 field(s).</code>, <code>Created.</code> or <code>The value for \</code>total` is not
+a valid float.<code>is read where the person is already looking, not inferred from a status code. It rides the
+session the dashboard's routes start, and the dashboard resolves the request's</code>session.store<code>for it (the</code>session` binding is the manager that makes stores, never a store itself — which is how the sentence was lost on
+every write for a while); an application serving the dashboard without session middleware gets the redirect and
+no sentence, never an exception.</p>
+<h2 id="nothing-throws-at-the-caller-and-no-error-text-is-an-exception-message">Nothing throws at the caller, and no error text is an exception message<a class="headerlink" href="#nothing-throws-at-the-caller-and-no-error-text-is-an-exception-message" title="Permanent link">&para;</a></h2>
+<p>Reads answer with a listing that carries a reason, or a null record; writes answer with one of the four outcomes.
+A view rendering an admin page must not have to be exception-safe to stay on its feet — and, more sharply, an
+exception that escaped would be rendered by the framework's error page.</p>
+<p>That matters because of what a database exception <em>contains</em>. Laravel's <code>QueryException</code> stringifies the failing
+SQL <strong>and its bindings</strong> into <code>getMessage()</code>. Echoing that to the browser would publish the schema and, far
+worse, the values that were bound — which on a search over a users table is the operator's own query, and on a
+detail lookup is a primary key.</p>
+<p>So every reason a page can render is a <strong>fixed sentence composed in this layer</strong>, plus at most the exception's
+class name. The message stays in the exception, where a log can have it.</p>
+<h2 id="configuration-fireflyadmindata">Configuration (<code>firefly.admin.data.*</code>)<a class="headerlink" href="#configuration-fireflyadmindata" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.admin.data.enabled</code></td>
+<td><strong><code>false</code></strong></td>
+<td>Enable the browser at all — the <code>/firefly/data</code> pages, the entity map, and the <code>DataBrowser</code> API. Does <strong>not</strong> follow <code>app.debug</code> or <code>firefly.admin.enabled</code> — see <a href="#the-two-gates">The two gates</a>.</td>
+</tr>
+<tr>
+<td><code>firefly.admin.data.writable</code></td>
+<td><strong><code>false</code></strong></td>
+<td>Allow <code>update</code> and <code>delete</code>. Requires <code>enabled</code> as well; ineffective alone.</td>
+</tr>
+<tr>
+<td><code>firefly.admin.data.page-size</code></td>
+<td><code>25</code></td>
+<td>Default rows per page. Clamped into <code>[1, max-page-size]</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.admin.data.max-page-size</code></td>
+<td><code>200</code></td>
+<td>Ceiling applied to any caller-supplied page size. Itself capped at <strong>1000</strong>, because <code>?perPage=1000000</code> on a resource that cannot page is a request to materialise the table into PHP memory.</td>
+</tr>
+<tr>
+<td><code>firefly.admin.data.exclude</code></td>
+<td><code>''</code></td>
+<td>CSV of resource slugs to refuse. A <strong>hard refusal, not a menu preference</strong>: the resource is hidden <em>and</em> every operation on it is refused. Hiding <code>user</code> because the table holds PII achieves nothing if the row URL still answers.</td>
+</tr>
+<tr>
+<td><code>firefly.admin.data.relations</code></td>
+<td><code>true</code></td>
+<td>Discover relations, so records link to what they reference and the <a href="../admin/#the-entity-map">entity map</a> has edges. Discovery <strong>calls</strong> the model methods that declare one — see <a href="#relations">Relations</a> — so it is a key rather than a constant.</td>
+</tr>
+</tbody>
+</table>
+<p>The page-size cap is applied to whatever the caller asks for, so the query layer never sees a size it did not
+agree to.</p>
+<h2 id="reflection-is-confined-to-one-class">Reflection is confined to one class<a class="headerlink" href="#reflection-is-confined-to-one-class" title="Permanent link">&para;</a></h2>
+<p>Discovery reads the compiled catalogue; schema derivation reads Laravel's schema builder; queries read the
+container. Exactly one class reflects, and only for two facts no manifest carries:</p>
+<ol>
+<li><strong>Which model a repository manages.</strong> <code>EloquentRepository</code> declares <code>protected string $model</code> and the
+   concrete repository sets it as a property <em>default</em>. It is protected, there is no accessor, and the value
+   never reaches a descriptor — <code>ComponentScanner</code> records a class's dependencies and interfaces, not its
+   property initialisers. It is read via <code>getDefaultProperties()</code>, which does <strong>not</strong> construct the repository:
+   discovery must stay cheap and must not be able to fail because a repository constructor wanted a live
+   connection.</li>
+<li><strong>What shape a non-Eloquent entity has.</strong> A plain <code>CrudRepository</code> over value objects has no table to ask, so
+   the only honest column list is the entity's declared fields — public properties and promoted constructor
+   parameters. Promoted parameters are why accessibility has to be bypassed: <code>Firefly\Domain\Entity</code> promotes
+   <code>protected int|string|null $id</code>, so a public-only scan would miss the identifier of every entity built on the
+   framework's own DDD base class.</li>
+</ol>
+<p>Confining both to one class is what keeps the rest honest — the registry, the schema factory, the query engine
+and the browser contain no <code>Reflection*</code> reference at all, so the cost and the risk are auditable by grep. Every
+entry point is guarded and memoised: reflection on a class the autoloader cannot complete throws, and a
+resource list that dies because one repository is broken is useless, so a failure degrades <strong>that one resource</strong>
+instead.</p>
+<h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>No create for a non-Eloquent repository</strong>, permanently — see
+  <a href="#create-exists-for-eloquent-and-is-refused-for-everything-else">above</a>.</li>
+<li><strong>Writes are Eloquent-only.</strong> A plain <code>CrudRepository</code> over value objects is browsable and read-only, for
+  the same reason.</li>
+<li><strong>A pivot or a polymorphic relation is listed, not walkable.</strong> <code>BelongsToMany</code>, <code>HasManyThrough</code> and the
+  morph family have no single column the browser can filter on — a <code>MorphTo</code>'s other end is decided per row
+  by a type column — so they appear on a record page and are absent from the <a href="../admin/#the-entity-map">entity map</a>,
+  because a line with no join to name would be decoration.</li>
+<li><strong><code>firefly/admin</code> still ships no authentication of its own.</strong> The data browser inherits the dashboard's
+  access model exactly, which means the <a href="../admin/#access-the-whole-security-boundary">route-level protection</a>
+  is your responsibility — and matters more here than anywhere else in the dashboard.</li>
+</ul>
+<hr />
+<p>See also: <a href="../admin/">Admin Dashboard</a> for the access model this page sits inside, <a href="../data/">Data &amp; Repositories</a>
+for <code>CrudRepository</code>/<code>PagingAndSortingRepository</code> and the specification seam, and
+<a href="../data-relational/">Relational Data</a> for <code>EloquentRepository</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

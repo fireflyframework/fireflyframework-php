@@ -1,0 +1,2770 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/error-handling/">
+      
+      
+        <link rel="prev" href="../../publishing/">
+      
+      
+        <link rel="next" href="../dependency-injection/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Error Handling - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#error-handling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Error Handling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial.es/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-exception-taxonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The exception taxonomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-members-and-a-title-of-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension members and a title of your own
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-level-validation-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-level validation errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-rfc-7807-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RFC-7807 response
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-rendering-m6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web rendering (M6)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-gets-json-and-who-gets-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who gets JSON, and who gets a page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-html-error-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The HTML error page
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-exception-taxonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The exception taxonomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-members-and-a-title-of-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension members and a title of your own
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-level-validation-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field-level validation errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-rfc-7807-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RFC-7807 response
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-rendering-m6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web rendering (M6)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-gets-json-and-who-gets-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who gets JSON, and who gets a page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-html-error-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The HTML error page
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h1>
+<p>The <code>firefly/kernel</code> package provides LaraFly's product-agnostic error model. It has no Laravel or
+external dependencies, so every other package (and your application) can throw and describe errors
+consistently.</p>
+<h2 id="the-exception-taxonomy">The exception taxonomy<a class="headerlink" href="#the-exception-taxonomy" title="Permanent link">&para;</a></h2>
+<p>All framework exceptions extend <code>Firefly\Kernel\Exception\FireflyException</code>, which carries four pieces of
+metadata beyond the message:</p>
+<table>
+<thead>
+<tr>
+<th>Accessor</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>errorCode(): string</code></td>
+<td>A stable, machine-readable code (e.g. <code>RESOURCE_NOT_FOUND</code>).</td>
+</tr>
+<tr>
+<td><code>httpStatus(): int</code></td>
+<td>The HTTP status the web layer should emit.</td>
+</tr>
+<tr>
+<td><code>category(): ErrorCategory</code></td>
+<td><code>Business</code> / <code>Validation</code> / <code>Security</code> / <code>Infrastructure</code> / <code>External</code> / <code>Framework</code> / <code>Plugin</code> / <code>Internal</code>.</td>
+</tr>
+<tr>
+<td><code>severity(): ErrorSeverity</code></td>
+<td><code>Info</code> / <code>Warning</code> / <code>Error</code> / <code>Critical</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Typed subclasses fix these values. Selected examples:</p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>Code</th>
+<th>Status</th>
+<th>Category</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Business\ResourceNotFoundException</code></td>
+<td><code>RESOURCE_NOT_FOUND</code></td>
+<td>404</td>
+<td>Business</td>
+</tr>
+<tr>
+<td><code>Business\ConflictException</code></td>
+<td><code>CONFLICT</code></td>
+<td>409</td>
+<td>Business</td>
+</tr>
+<tr>
+<td><code>Business\PaymentRequiredException</code></td>
+<td><code>PAYMENT_REQUIRED</code></td>
+<td>402</td>
+<td>Business</td>
+</tr>
+<tr>
+<td><code>Business\ValidationException</code></td>
+<td><code>VALIDATION_ERROR</code></td>
+<td>422</td>
+<td>Validation</td>
+</tr>
+<tr>
+<td><code>Security\AuthenticationException</code></td>
+<td><code>AUTHENTICATION_FAILED</code></td>
+<td>401</td>
+<td>Security</td>
+</tr>
+<tr>
+<td><code>Security\AuthorizationException</code></td>
+<td><code>ACCESS_DENIED</code></td>
+<td>403</td>
+<td>Security</td>
+</tr>
+<tr>
+<td><code>Infrastructure\ServiceUnavailableException</code></td>
+<td><code>SERVICE_UNAVAILABLE</code></td>
+<td>503</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\RateLimitExceededException</code></td>
+<td><code>RATE_LIMIT_EXCEEDED</code></td>
+<td>429</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\DataAccessException</code></td>
+<td><code>DATA_ACCESS_ERROR</code></td>
+<td>500</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\DataIntegrityViolationException</code></td>
+<td><code>DATA_INTEGRITY_VIOLATION</code></td>
+<td>409</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\DuplicateKeyException</code></td>
+<td><code>DUPLICATE_KEY</code></td>
+<td>409</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\CannotAcquireLockException</code></td>
+<td><code>LOCK_NOT_ACQUIRED</code></td>
+<td>409</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\DeadlockLoserDataAccessException</code></td>
+<td><code>DEADLOCK</code></td>
+<td>409</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\OptimisticLockingFailureException</code></td>
+<td><code>OPTIMISTIC_LOCKING_FAILURE</code></td>
+<td>409</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\EmptyResultDataAccessException</code></td>
+<td><code>EMPTY_RESULT</code></td>
+<td>404</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\IncorrectResultSizeDataAccessException</code></td>
+<td><code>INCORRECT_RESULT_SIZE</code></td>
+<td>500</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\BadSqlGrammarException</code></td>
+<td><code>BAD_SQL_GRAMMAR</code></td>
+<td>500</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\QueryTimeoutException</code></td>
+<td><code>QUERY_TIMEOUT</code></td>
+<td>504</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\TransactionTimedOutException</code></td>
+<td><code>TRANSACTION_TIMED_OUT</code></td>
+<td>504</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\DataAccessResourceFailureException</code></td>
+<td><code>DATASOURCE_UNAVAILABLE</code></td>
+<td>503</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>Infrastructure\TransientDataAccessResourceException</code></td>
+<td><code>TRANSIENT_DATA_ACCESS_FAILURE</code></td>
+<td>503</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td><code>External\ExternalServiceException</code></td>
+<td><code>EXTERNAL_SERVICE_ERROR</code></td>
+<td>502</td>
+<td>External</td>
+</tr>
+</tbody>
+</table>
+<p>The data-access rows are what <code>firefly/data</code> throws — its exception translation for the driver failures, and
+<code>getById()</code>, <code>findOneByExample()</code>, the versioning trait and the transaction deadline for
+<code>EmptyResultDataAccessException</code>, <code>IncorrectResultSizeDataAccessException</code>, <code>OptimisticLockingFailureException</code>
+and <code>TransactionTimedOutException</code> respectively (see <a href="../data/#exception-translation">Data &amp; Repositories</a>). They
+nest — <code>DuplicateKeyException</code> under <code>DataIntegrityViolationException</code>, <code>DeadlockLoserDataAccessException</code> under
+<code>CannotAcquireLockException</code>, everything under <code>DataAccessException</code> <strong>except</strong> <code>TransactionTimedOutException</code>,
+which sits under <code>Infrastructure\TimeoutException</code> like every other timeout (Spring's <code>TransactionException</code>
+side, not its <code>DataAccessException</code> side) — so a handler catches at the granularity it needs: <code>catch
+(DataAccessException $e)</code> does not see a transaction that ran past its deadline; <code>catch (TimeoutException $e)</code>
+does. Their messages are fixed sentences; the driver's message, with the statement in it, stays on <code>previous</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Kernel\Exception\Business\ResourceNotFoundException;</span>
+
+<span class="x">throw new ResourceNotFoundException("Order {$id} not found");</span>
+</code></pre></div>
+<h2 id="extension-members-and-a-title-of-your-own">Extension members and a title of your own<a class="headerlink" href="#extension-members-and-a-title-of-your-own" title="Permanent link">&para;</a></h2>
+<p>RFC 9457 lets a problem document carry <em>extension members</em> beside the standard ones, and lets <code>title</code> be
+the problem type's own phrase rather than the status's reason phrase. Both live on <code>FireflyException</code>, so
+any exception in the taxonomy — or any subclass you write — can carry them without a renderer of its own:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Kernel\Exception\Business\PaymentRequiredException;</span>
+
+<span class="x">throw (new PaymentRequiredException('The Team edition includes up to five workers.', 'EDITION_LIMIT'))</span>
+<span class="x">    -&gt;withExtensions(['field' =&gt; 'workers', 'limit' =&gt; 5])</span>
+<span class="x">    -&gt;withTitle('Your plan does not include this');</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">402</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Your plan does not include this"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"EDITION_LIMIT"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"business"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The Team edition includes up to five workers."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"workers"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"limit"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>withExtensions()</code>/<code>withTitle()</code> mutate the instance and return it, so a throw site stays one expression and
+no subclass has to widen its constructor; both are also constructor arguments on <code>FireflyException</code> itself
+for a subclass that wants to fix them. An extension can never override a standard member: <code>ErrorResponse</code>
+writes <code>status</code>, <code>title</code>, <code>code</code> and the rest <em>over</em> the extensions, so <code>['status' =&gt; 999]</code> is harmless.
+The generated OpenAPI problem schema declares <code>additionalProperties: true</code> for the same reason.</p>
+<h2 id="field-level-validation-errors">Field-level validation errors<a class="headerlink" href="#field-level-validation-errors" title="Permanent link">&para;</a></h2>
+<p><code>ValidationException</code> additionally carries <code>Firefly\Kernel\Error\FieldError</code> instances — the shape of Spring's
+<code>FieldError</code>: the field path exactly as the client sent it (<code>shipTo.postcode</code>, <code>lines[1].sku</code>), a <code>message</code>
+that describes the constraint, an optional application <code>code</code>, the <code>constraint</code> that failed by its attribute
+name, and the <code>rejectedValue</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Kernel\Error\FieldError;</span>
+<span class="x">use Firefly\Kernel\Exception\Business\ValidationException;</span>
+
+<span class="x">throw new ValidationException('Validation failed', [</span>
+<span class="x">    new FieldError('email', 'must not be blank', constraint: 'NotBlank', rejectedValue: ''),</span>
+<span class="x">    new FieldError('age', 'must be &gt;= 0', 'min', -1),</span>
+<span class="x">]);</span>
+</code></pre></div>
+<p>Rendered inside the problem document's <code>errors</code> array as <code>field</code>, <code>message</code>, then <code>code</code>, <code>constraint</code> and
+<code>rejectedValue</code> when present:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">"errors"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"email"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must not be blank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"constraint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NotBlank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"age"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must be &gt;= 0"</span><span class="p">,</span><span class="w"> </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"min"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="mi">-1</span><span class="w"> </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+<p><code>firefly/validation</code>'s <code>#[Valid]</code> produces these for every declared constraint — the constraint's own sentence
+(<code>must not be blank</code>, <code>size must be between 1 and 50</code>, <code>must match "^[A-Z0-9]…"</code>) rather than Laravel's
+humanised attribute (<code>The ship to.street field is required.</code>), unless <code>firefly.validation.messages</code> is
+<code>laravel</code>; see <a href="../validation/#field-errors-shaped-like-springs">Validation § Field errors</a>. The HTML error
+page renders the status, code and detail of a 422 and no field list.</p>
+<h2 id="the-rfc-7807-response">The RFC-7807 response<a class="headerlink" href="#the-rfc-7807-response" title="Permanent link">&para;</a></h2>
+<p><code>Firefly\Kernel\Error\ErrorResponse</code> turns any <code>FireflyException</code> into a problem+json payload. The web
+layer (a later package) renders it; here is the shape:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Kernel\Error\ErrorResponse;</span>
+
+<span class="x">$response = ErrorResponse::fromException($exception, instance: '/orders/42', traceId: $traceId);</span>
+<span class="x">$payload  = $response-&gt;toArray(); // omits null/empty optionals</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">404</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Not Found"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"RESOURCE_NOT_FOUND"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"business"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Order 42 not found"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"instance"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/orders/42"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"traceId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="web-rendering-m6">Web rendering (M6)<a class="headerlink" href="#web-rendering-m6" title="Permanent link">&para;</a></h2>
+<p><code>firefly/web</code> (<a href="../web/">Web Layer</a>) is the concrete renderer this document promised: every
+<code>FireflyException</code> thrown while handling a request is turned into an <code>application/problem+json</code> response
+by <code>Firefly\Web\Exception\ProblemDetailsRenderer</code>, via <code>ErrorResponse::fromException(...)</code>, at the
+exception's own <code>httpStatus()</code> — the shape is exactly the payload above, produced by the same
+kernel-level <code>ErrorResponse</code> this page documents.</p>
+<p><code>Firefly\Web\Error\ProblemMapper</code> owns the rule for turning <em>any</em> throwable into that shape, in one place,
+because the HTML page below needs the same answer and two copies of it would eventually tell a browser and a
+client different things about one failure. It has <strong>three</strong> cases, and only the third is a disclosure:</p>
+<table>
+<thead>
+<tr>
+<th>Throwable</th>
+<th>Status</th>
+<th>Whose message is it?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A <code>FireflyException</code></td>
+<td>its own <code>httpStatus()</code></td>
+<td>the application's, written <strong>for</strong> the client</td>
+</tr>
+<tr>
+<td>An <code>HttpExceptionInterface</code> (the router's own 404, <code>abort(409, '…')</code>)</td>
+<td>its real status</td>
+<td>the author's, via <code>abort()</code></td>
+</tr>
+<tr>
+<td>Anything else</td>
+<td>500 <code>INTERNAL_ERROR</code></td>
+<td><strong>an accident</strong>, and withheld — see below</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition danger">
+<p class="admonition-title">A generic throwable's message is not for the client</p>
+<p>A <code>QueryException</code> stringifies the failing SQL <em>and its bindings</em>; a <code>TypeError</code> names an absolute path on
+the server; a <code>PDOException</code> names the host it could not reach. All three were copied verbatim into
+<code>detail</code> and published as problem+json. The problem document now has a gate of its <strong>own</strong>,
+<code>firefly.web.problem.disclose</code>, which defaults to <code>false</code> and follows <em>nothing</em> — not <code>app.debug</code>, not the
+HTML page's <code>trace</code>. For one release the JSON path shared <code>trace</code>, and that was the wrong gate for a machine
+surface: every local and compose environment sets <code>APP_DEBUG</code>, and a console fed by problem+json rendered
+a duplicate-key insert as the DSN, the tenant id and the full statement in a red banner while the HTML page
+beside it withheld everything. With the gate off an unhandled throwable answers
+<code>An unexpected error occurred. It has been logged; quote reference &lt;traceId&gt; if you report it.</code> and its
+real message stays on the exception, where the log has it beside the same id. When no settings object is
+bound at all — a JSON-only deployment that never constructed one — the default is the <strong>safe</strong> one; an
+absent gate must not mean an open one.</p>
+</div>
+<p>Two more things every problem document carries. <strong><code>traceId</code></strong> is the request's correlation id — the one
+<code>CorrelationIdFilter</code> reads or mints at order <code>-100</code> and stamps on every log line — and the same value is on
+the response as <code>X-Correlation-Id</code>, so the body a person screenshots and the log line an operator searches
+for share it; a request that arrived with no id is given one rather than left unreferenced. And the headers an
+<code>HttpExceptionInterface</code> carries are copied through: a <strong>405</strong> keeps its <code>Allow</code> header, and is rendered with
+the reason phrase as its title, a sentence written for a person (<code>This address only accepts POST.</code>) in place of
+the router's, and the permitted verbs in an <code>allowed</code> extension member. A 404 the router raised for a URL that
+matches nothing says <code>There is nothing at this address.</code>; an <code>abort(404, '…')</code> message the author wrote is
+kept verbatim. A 503 carries <code>Retry-After</code>, and PHP's own execution-time limit (<code>Maximum execution time of N
+seconds exceeded</code>) is answered as <code>503 EXECUTION_TIME_EXCEEDED</code> rather than a 500 quoting the engine: the
+request was not wrong, the server stopped it.</p>
+<p>Before that generic rendering happens, LaraFly gives the application a chance to handle the exception
+itself:</p>
+<ul>
+<li><strong><code>#[ExceptionHandler(SomeException::class)]</code></strong> marks a method — on the throwing <code>#[RestController]</code>
+  itself, or on a <strong><code>#[ControllerAdvice]</code></strong> bean — as the renderer for a specific exception class (or any
+  of its subclasses).</li>
+<li>A <strong>controller-local</strong> handler (declared directly on the controller that threw) always beats a
+  <strong>global</strong> <code>#[ControllerAdvice]</code> handler for the same exception.</li>
+<li>Within whichever scope wins, the <strong>most-specific</strong> matching handler by class hierarchy is chosen — a
+  handler for a more-derived exception class outranks one for an ancestor class.</li>
+<li>A matched handler's return value is content-negotiated like any other controller return, but rendered
+  at the <strong>exception's</strong> <code>httpStatus()</code> rather than the route's default status.</li>
+<li>If no handler matches at any scope, the exception propagates to the renderers described above — so an
+  unhandled 404/422/500 comes back as <code>application/problem+json</code>, or as the LaraFly error page when the
+  caller asked for HTML (see the next section), and never as an uncaught framework error page.</li>
+</ul>
+<h2 id="who-gets-json-and-who-gets-a-page">Who gets JSON, and who gets a page<a class="headerlink" href="#who-gets-json-and-who-gets-a-page" title="Permanent link">&para;</a></h2>
+<p>The same failure is rendered two ways, and the choice is not "is this a <code>FireflyException</code>". It used to be,
+which meant a person clicking a stale link to <code>/orders/999999</code> in a browser was shown a raw JSON blob: the
+exception taxonomy that makes LaraFly's errors consistent for clients was the very thing that made them
+unreadable for people.</p>
+<table>
+<thead>
+<tr>
+<th>The caller</th>
+<th>What it gets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Named <code>text/html</code> (or <code>application/xhtml+xml</code>) in <code>Accept</code></td>
+<td>The HTML error page</td>
+</tr>
+<tr>
+<td>Asked for JSON, or is an <code>XMLHttpRequest</code></td>
+<td><code>application/problem+json</code></td>
+</tr>
+<tr>
+<td>Sent only a wildcard <code>Accept</code> — a bare <code>curl</code></td>
+<td><code>application/problem+json</code></td>
+</tr>
+<tr>
+<td>Requested a path under <code>firefly.web.error-page.json-paths</code></td>
+<td><code>application/problem+json</code>, whatever it asked for</td>
+</tr>
+</tbody>
+</table>
+<p>The rule is <strong>the client NAMED text/html</strong>, not <code>acceptsHtml()</code>. A bare <code>curl</code> sends <code>*/*</code>, which
+<code>acceptsHtml()</code> answers true for, so keying off it would have turned every unadorned command-line request
+against an API into an HTML page — a worse regression than the bug being fixed.</p>
+<p><code>json-paths</code> is the stronger statement and is checked <strong>first</strong>: the Accept header says who is asking, the
+path says what the URL <em>is</em>. It defaults to <code>api/*</code>, because a developer opening an API URL in a browser
+wants the payload their client will receive, not a styled page telling them the endpoint renders HTML.</p>
+<h2 id="the-html-error-page">The HTML error page<a class="headerlink" href="#the-html-error-page" title="Permanent link">&para;</a></h2>
+<p><code>firefly/web</code> ships a page in the same visual language as the welcome page and the admin dashboard, showing
+the status, the reason, the stable error <code>code</code> — the same one the problem document carries, so a support
+ticket quoting it finds the same code in the log — and, when permitted, the exception, its <code>previous</code> chain,
+the source around the throwing line, and the stack trace with <strong>your</strong> frames separated from your
+dependencies'.</p>
+<div class="highlight"><pre><span></span><code><span class="x">// config/firefly.php</span>
+<span class="x">'web' =&gt; [</span>
+<span class="x">    'error-page' =&gt; [</span>
+<span class="x">        'enabled' =&gt; true,                  // false falls back to Laravel's own page</span>
+<span class="x">        'trace' =&gt; env('APP_DEBUG', false), // the disclosure gate; follows app.debug</span>
+<span class="x">        'title' =&gt; env('APP_NAME', 'LaraFly'),</span>
+<span class="x">        'excerpt-lines' =&gt; 7,               // source lines around the throw, clamped 0-40</span>
+<span class="x">        'json-paths' =&gt; 'api/*',</span>
+<span class="x">        'views' =&gt; ['404' =&gt; 'errors.not-found', 'default' =&gt; 'errors.generic'],</span>
+<span class="x">    ],</span>
+<span class="x">],</span>
+</code></pre></div>
+<p><strong><code>trace</code> is enforced where the data is gathered, not where it is printed.</strong> With it off the framework never
+walks the stack, never opens a source file and never copies the exception message — so there is nothing
+assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
+<strong>reference</strong> — the same correlation id the problem document publishes as <code>traceId</code>, so the 500 page reads
+"quote reference <code>&lt;id&gt;</code> if you report it" and an operator can find the log line it stamps: enough to quote
+into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
+advice about <em>how</em> to turn traces on is suppressed outside non-production environments too, because naming
+the framework and a config key to an anonymous visitor is a free hint about your stack.</p>
+<p><strong>Overriding it.</strong> <code>views</code> hands a status — or <code>default</code> — to your own Blade view. The view receives the same
+<code>$error</code> report the built-in page gets, so it is bound by the same <code>trace</code> gate and cannot print a stack
+trace the settings withheld. A view that <strong>throws</strong> falls back to the built-in page rather than propagating:
+this renders while the application is already failing, and an override is application code (a renamed
+layout, a component querying the database that is down) — a white screen at that moment is the worst
+possible outcome.</p>
+<p><strong>It is not a Blade view itself.</strong> The built-in page is assembled as a string with no container lookups, no
+view factory and no network font, because the failure being explained may <em>be</em> the view layer. String
+building is not the elegant choice; it is the one that still works when nothing else does.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

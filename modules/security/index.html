@@ -1,0 +1,3476 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/security/">
+      
+      
+        <link rel="prev" href="../cqrs/">
+      
+      
+        <link rel="next" href="../security-oauth2-client/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Security - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#security" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Security
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial.es/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principal-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Principal model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sessions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#form-login" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Form login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-basic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP Basic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remember-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remember-me
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authorization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authorization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-refused-principal-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a refused principal reads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-security-fails-open-on-an-empty-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method security fails open on an empty manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expression-evaluation-is-re-entrant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expression evaluation is re-entrant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-config-access-vocabulary-is-fixed-and-fail-closed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The config access vocabulary is fixed, and fail-closed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-entry-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The entry point
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#principal-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Principal injection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflysecurity-snake_case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.security.*, snake_case)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#laravel-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Laravel comparison
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principal-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Principal model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authentication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sessions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#form-login" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Form login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-basic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP Basic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remember-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remember-me
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authorization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Authorization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-refused-principal-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a refused principal reads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-security-fails-open-on-an-empty-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method security fails open on an empty manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expression-evaluation-is-re-entrant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expression evaluation is re-entrant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-config-access-vocabulary-is-fixed-and-fail-closed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The config access vocabulary is fixed, and fail-closed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-entry-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The entry point
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#principal-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Principal injection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflysecurity-snake_case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.security.*, snake_case)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#laravel-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Laravel comparison
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h1>
+<p><code>firefly/security</code> is LaraFly's first-party security core — a Spring-Security-6-shaped principal model persisted in
+the session, authentication (form login with a shipped sign-in page, HTTP Basic, remember-me, logout, JWT and OAuth2
+bearer, a negotiating entry point, memory or Eloquent users), OAuth2/OpenID Connect login and client through
+<a href="../security-oauth2-client/"><code>firefly/security-oauth2-client</code></a>, and deny-by-default authorization (URL rules, and
+method rules at the CQRS bus, the controller dispatcher and on any stereotyped bean through the proxy chain shared
+with <code>#[Transactional]</code>) that <strong>lights up</strong> the seams shipped in earlier milestones (the CQRS
+<code>Command</code>/<code>QueryAuthorizer</code>, the M8 <code>AuditorAware</code>, the M6 web filter chain, the M8 transaction proxy). Every
+mechanism publishes Spring's event family and every key defaults to off. Secure-by-default, fail-closed, opt-in,
+zero boot reflection.</p>
+<h2 id="principal-model">Principal model<a class="headerlink" href="#principal-model" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>Authentication</code> — an immutable token (<code>authenticated()</code> / <code>unauthenticated()</code> factories); credentials are erased
+  on success. <code>GrantedAuthority</code> / <code>SimpleGrantedAuthority</code> wrap authority strings.</li>
+<li><code>CredentialsContainer</code> — a principal that hands back a copy of itself without its credential (Spring's, derived
+  rather than mutated). The shipped <code>User</code> implements it; <code>Authentication::eraseCredentials()</code> applies it to the
+  principal, and the session repository stores that copy, so an encoded password never reaches the session store.</li>
+<li><code>SecurityContext</code> — an immutable snapshot; <code>anonymous()</code> is the zero-value.</li>
+<li><code>SecurityContextHolder</code> — a request-scoped static holder backed by Laravel's <code>Context</code> (per-request, Octane-safe);
+  the auth filters clear it on exit.</li>
+</ul>
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Ports: <code>UserDetails</code> / <code>UserDetailsService</code>, <code>PasswordEncoder</code> (<code>BcryptPasswordEncoder</code>, <code>Argon2idPasswordEncoder</code>,
+  <code>DelegatingPasswordEncoder</code> with <code>{id}</code> prefixes — constant-time).</li>
+<li>User stores (<code>firefly.security.users.driver</code>): <strong><code>memory</code></strong> (the <code>InMemoryUserDetailsService</code> map, unchanged) and
+  <strong><code>eloquent</code></strong> (<code>EloquentUserDetailsService</code> over any Eloquent model — <code>email</code>/<code>password</code>/<code>enabled</code>/<code>locked</code>/
+  <code>authorities</code>, every column configurable, <code>authorities</code> a JSON list or <code>relation.attribute</code>; a model class that
+  does not exist or is not an Eloquent model refuses to boot, and a configured column the loaded row does not carry
+  is refused on the lookup rather than read as <code>NULL</code>). Both map a row to the immutable <code>User</code> value object, never
+  to the model.</li>
+<li><code>AuthenticationProvider</code> / <code>ProviderManager</code> (first-supports-wins) / <code>DaoAuthenticationProvider</code> (maps bad-credentials/
+  disabled/locked to 401 subtypes; timing- and content-safe against username enumeration). <strong>Every interactive
+  mechanism below authenticates through it</strong>, so the equalisation is inherited whole.</li>
+<li><code>JwtService</code> — HMAC encode/decode with a <strong>mandatory <code>exp</code></strong> claim and a <strong>weak-secret boot refusal</strong>; the same rule
+  (<code>JwtService::assertStrongSecret()</code>) guards the remember-me key.</li>
+<li>Bearer: <code>JwtAuthenticationFilter</code> (<code>-90</code>, local JWT) and <code>OAuth2ResourceServerFilter</code> (<code>-85</code>, JWKS via the
+  <code>JwksProvider</code> port, scopes → <code>SCOPE_*</code>; validates <code>iss</code>/<code>aud</code> when configured — protection against a
+  confused-deputy/token-redirection attack, RFC 9700, where a JWKS-signed token minted by the same issuer for a
+  <em>different</em> audience would otherwise be accepted). Both opt-in, both establish and clear the <code>SecurityContext</code>
+  per request. Neither replaces a principal an outer filter — the session persistence filter, a test's acting
+  principal — already established.</li>
+<li><strong>Issuing tokens</strong> is the sibling package <a href="../security-oauth2-server/"><code>firefly/security-oauth2-server</code></a>: an OAuth 2.1 /
+  OpenID Connect provider inside the application, built on the session-held principal, the login page, the entry
+  point, <code>SessionCsrf</code>, the <code>PasswordEncoder</code> and the <code>JwksDocumentSource</code> port above — so <code>jwks_source: local</code>
+  makes the same application its own resource server.</li>
+</ul>
+<p><strong>JWT/OAuth2 are mutually exclusive.</strong> Enabling both <code>firefly.security.jwt.enabled</code> and
+<code>firefly.security.oauth2.resource_server.enabled</code> is refused at <strong>boot</strong> (<code>ConfigurationException</code>, fail-closed): the
+local-JWT filter runs first (<code>#[Order(-90)]</code>) and unconditionally rejects any Bearer token it cannot decode with the
+local HMAC secret, before the resource-server filter (<code>#[Order(-85)]</code>) — which validates against the issuer's
+JWKS — ever gets a chance to run. Pick exactly one bearer mechanism, matching Spring's one-resource-server-mechanism
+model.</p>
+<h3 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h3>
+<p>Firefly filters are <strong>global</strong> kernel middleware; Laravel starts the session in the <code>web</code> route group, later. When
+session security is on (<code>firefly.security.session.enabled</code>, or implied by form login, remember-me or
+<code>http_basic.session</code>), <code>SessionSecurityBootstrap</code> — a boot pass at <code>WiringPasses</code> order 90, after every route
+registrar and before the filter chain — pushes <code>EncryptCookies</code>, <code>AddQueuedCookiesToResponse</code> and <code>StartSession</code>
+onto the <strong>global</strong> stack ahead of the filter chain, removes them from the <code>web</code> group and excludes them
+(<code>Route::withoutMiddleware</code>) on the matched route from a <code>RouteMatched</code> listener, at dispatch time: a second
+<code>EncryptCookies</code> pass decrypts already-decrypted cookies, nulls them, and <code>StartSession</code> then mints a fresh
+session — the login would be lost on any route that carried the group. Excluding on the matched instance rather
+than on the boot-time collection is what makes it hold under <code>route:cache</code> (a compiled collection builds a fresh
+<code>Route</code> on every match) and bakes nothing into the cache. A session driver is required; boot refuses without one.</p>
+<p><code>SecurityContextPersistenceFilter</code> (<code>-94</code>) loads the <code>SecurityContext</code> from the <code>SecurityContextRepository</code> (the
+session, under one key) into <code>SecurityContextHolder</code> at request start — unless something outside already
+established one — and on exit saves a context that changed during the request and <strong>always clears the holder</strong>.
+The mechanisms save themselves at the moment of success, because the inner filters clear the holder in their own
+<code>finally</code> before the persistence filter's exit runs. What is stored never carries a credential: a
+<code>CredentialsContainer</code> principal (the shipped <code>User</code>) is written without its encoded password. Every interactive
+sign-in regenerates the session id (<code>session.fixation_protection</code>).</p>
+<h3 id="form-login">Form login<a class="headerlink" href="#form-login" title="Permanent link">&para;</a></h3>
+<p><code>firefly.security.form_login.enabled</code> mounts <code>GET /login</code> (the framework's own server-rendered page, in the error
+page's design — or your Blade <code>view</code>, which receives <code>$login</code>, a <code>LoginPageModel</code>; a <code>GET</code> route of your own at that
+path is left in place) and <code>FormLoginFilter</code> (<code>-92</code>) handles <code>POST /login</code> before routing, as Spring's
+<code>UsernamePasswordAuthenticationFilter</code> does: the session CSRF token first (<code>SessionCsrf</code>, independent of
+<code>CsrfFilter</code> — a login CSRF is an attack), then <code>AuthenticationManager</code>, then — on success — a regenerated session
+id, the context stored, <code>AuthenticationSuccessEvent</code> + <code>InteractiveAuthenticationSuccessEvent(form)</code>, the
+remember-me cookie when asked, and a redirect to the request the entry point saved (<code>SavedRequest</code>) or
+<code>default_success_url</code>. A failure publishes <code>AuthenticationFailure*Event</code> (username and source ip, never the
+password) and redirects to <code>failure_url</code> (<code>/login?error</code>, the page's error state). The login page is always
+permitted by <code>HttpSecurityFilter</code>, or the redirect would loop.</p>
+<p>The page also lists every link a bound <code>LoginPageLinks</code> port answers, as "Sign in with {label}" buttons after the
+form (or alone, with no form, when only <code>firefly.security.oauth2.client.login.enabled</code> is on — that key implies the
+page, the session middleware and logout exactly as <code>form_login.enabled</code> does; it is the one <code>oauth2.client.*</code> fact
+the core reads). <code>LoginPageModel</code> carries <code>form</code> and <code>links</code> for a custom view.</p>
+<h3 id="http-basic">HTTP Basic<a class="headerlink" href="#http-basic" title="Permanent link">&para;</a></h3>
+<p><code>firefly.security.http_basic.enabled</code>: <code>HttpBasicFilter</code> (<code>-91</code>) authenticates a present <code>Authorization: Basic</code>
+header on <strong>every</strong> request — stateless — unless <code>http_basic.session</code> stores a success in the session like a form
+login. A wrong password, an unknown user and a header that does not parse all get the
+<code>BasicAuthenticationEntryPoint</code>'s 401 with <code>WWW-Authenticate: Basic realm="…", charset="UTF-8"</code> (the Basic entry
+point, whatever <code>http.entry_point</code> says — a request that presented Basic credentials has chosen its mechanism); no
+header is the anonymous path.</p>
+<h3 id="remember-me">Remember-me<a class="headerlink" href="#remember-me" title="Permanent link">&para;</a></h3>
+<p><code>firefly.security.remember_me.enabled</code>: <code>TokenBasedRememberMeServices</code> (Spring's) signs a cookie
+<code>username:expiry:HMAC-SHA256(username:expiry:password-hash, key)</code> when the form's <code>parameter</code> is ticked (or
+<code>always_remember</code>), and <code>RememberMeAuthenticationFilter</code> (<code>-83</code>) re-authenticates a request whose session holds no
+principal — as an interactive sign-in (new session id, context stored, <code>InteractiveAuthenticationSuccessEvent(remember-me)</code>),
+so the cookie is consulted once per session, not once per request. The password hash in the signature means a
+password change invalidates every cookie; a disabled or locked account is refused even on a genuine cookie; the key
+is held to the JWT secret rule and refused at boot when weak. Logout expires the cookie.</p>
+<h3 id="logout">Logout<a class="headerlink" href="#logout" title="Permanent link">&para;</a></h3>
+<p><code>firefly.security.logout.*</code> (on with form login): <code>LogoutFilter</code> (<code>-93</code>) handles <code>POST /logout</code> — POST only,
+CSRF-checked; a <code>GET</code> falls through to whatever route is there — expiring the remember-me cookie and every
+<code>delete_cookies</code> name, invalidating the session (or only removing the context), publishing <code>LogoutSuccessEvent</code>,
+and redirecting to <code>logout_success_url</code> (<code>/login?logout</code>).</p>
+<p>That sequence is one bean, <code>LogoutHandler</code> (Spring's <code>SecurityContextLogoutHandler</code> + <code>CookieClearingLogoutHandler</code>
++ <code>RememberMeServices::logout</code> collapsed into the single collaborator LaraFly's one filter chain needs), and every
+path that ends a session calls it: the filter above, and OpenID Connect RP-initiated logout at
+<code>{oidc_logout_endpoint}</code> when <code>firefly/security-oauth2-server</code> is on. So <code>invalidate_session</code>,
+<code>clear_authentication</code> and <code>delete_cookies</code> govern both by construction — a second path cannot quietly obey a
+subset. <code>logout.enabled</code> decides only whether the framework maps its own logout URL, never what signing out does.</p>
+<p><code>clear_authentication</code> removes the stored context through <code>SecurityContextRepository</code>, and it does so WHETHER OR
+NOT the request carries a session: the shipped session store is a no-op without one, but that port is meant to be
+rebound (a signed cookie, a cache keyed by a device id), and a bearer-only application that never starts a session
+would otherwise sign out of nothing at all.</p>
+<p>A bound <code>LogoutSuccessHandler</code> (Spring's) is asked for the response <strong>before</strong> the session is invalidated — so it
+can still read what the session holds — and null hands back to the <code>logout_success_url</code> redirect;
+firefly/security-oauth2-client's RP-initiated logout is the first implementation.</p>
+<h3 id="events">Events<a class="headerlink" href="#events" title="Permanent link">&para;</a></h3>
+<p>Every mechanism reports through <code>AuthenticationEventPublisher</code> over the context <code>ApplicationEventPublisher</code>, so an
+<code>#[AsEventListener]</code> method receives them and <code>Event::fake()</code> sees them: <code>AuthenticationSuccessEvent</code>,
+<code>InteractiveAuthenticationSuccessEvent</code> (<code>form</code>|<code>basic</code>|<code>remember-me</code>), <code>AuthenticationFailureBadCredentialsEvent</code>
+(an unknown user is reported as this on purpose), <code>AuthenticationFailureLockedEvent</code>,
+<code>AuthenticationFailureDisabledEvent</code>, <code>LogoutSuccessEvent</code>, <code>AuthorizationDeniedEvent</code> (a URL rule or a method rule
+refusing an <strong>authenticated</strong> principal — <code>subject</code> is <code>GET /admin/users</code> or <code>App\Reports::totals</code>).</p>
+<h2 id="authorization">Authorization<a class="headerlink" href="#authorization" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>URL (deny-by-default):</strong> the <code>HttpSecurity</code> DSL builds an ordered rule list; <code>HttpSecurityFilter</code> evaluates
+  first-match-wins and denies anything unmatched — 401 when anonymous, 403 when authenticated.</li>
+<li><strong>Method — everywhere:</strong> <code>#[PreAuthorize('…')]</code>, <code>#[PostAuthorize('…')]</code> (evaluated after the call with
+  <code>#returnObject</code> bound — <code>hasPermission(#returnObject, 'READ')</code>), <code>#[Secured('…')]</code>, <code>#[RolesAllowed('…')]</code>,
+  <code>#[PreFilter('…', filterTarget: 'ids')]</code> and <code>#[PostFilter('…')]</code> (over iterables, <code>#filterObject</code> bound to each
+  element; arrays keep keys, Enumerables are filtered in kind, a non-iterable is refused). A single
+  <code>MethodSecurityScanner</code> compiles them into a <code>var_export</code> manifest (the sole reflection site). Enforced at the CQRS
+  bus (pre rules), the controller dispatcher (<code>ControllerSecurityGuard::check()</code> before, <code>afterInvocation()</code> after)
+  and — with <code>firefly.security.method.enabled</code>, default on — on <strong>any stereotyped bean</strong> (<code>#[Service]</code>,
+  <code>#[Component]</code>, <code>#[Repository]</code>) through the proxy chain shared with <code>#[Transactional]</code>:
+  <code>MethodSecurityAdviceSource</code> contributes the rules to the proxy plan, <code>MethodSecurityInterceptor</code> runs at advice
+  order 100, ahead of the transactional link at 1000, so a refusal never opens a transaction (see
+  <a href="../transactional/#the-proxy-model">transactional.md</a>). Controllers and pre-only CQRS handlers are left to their
+  seams; a <code>final</code> bean that needs a proxy is refused at scan time. All three sites share <code>MethodSecurityEvaluator</code>:
+  a refusal is a 401 when anonymous and a 403 worded by <code>MethodSecurityRefusal</code> when authenticated. Imperatively,
+  <code>AuthorizationChecker</code>. Method security is <strong>additive, not a second deny-by-default gate</strong> — see
+  <a href="#method-security-fails-open-on-an-empty-manifest">Method security fails open on an empty manifest</a>. The
+  scanner rejects, at compile (cache) time, any <code>#[Secured]</code>/<code>#[RolesAllowed]</code>
+  role/authority value containing a single quote — even one that would otherwise compile into <em>grammar-valid</em>
+  expression text (e.g. a value that splices in <code>or permitAll()</code>) — so a malicious or malformed attribute value can
+  never widen access silently; it fails the <code>firefly:cache</code>-equivalent scan step loudly instead.</li>
+<li><strong>Expressions</strong> run through a hand-rolled <strong>whitelist tokenizer + recursive-descent parser — never <code>eval</code></strong>:
+  <code>hasRole</code>, <code>hasAnyRole</code>, <code>hasAuthority</code>, <code>hasAnyAuthority</code>, <code>hasScope</code>, <code>hasAnyScope</code>, <code>hasPermission</code>,
+  <code>isAuthenticated</code>, <code>permitAll</code>, <code>denyAll</code>, plus <code>#param</code> references. <code>RoleHierarchy</code> expands implied roles;
+  <code>PermissionEvaluator</code> (deny-all default) backs <code>hasPermission</code>. <code>hasScope</code>/<code>hasAnyScope</code> test the <code>SCOPE_x</code>
+  authorities a bearer token or an OAuth2 login granted, normalising a bare scope to <code>SCOPE_</code> as <code>hasRole</code>
+  normalises <code>ROLE_</code>.</li>
+</ul>
+<p><code>RoleHierarchy</code> rules are <strong>single-arrow only</strong> — one implication per entry, e.g. <code>"ROLE_ADMIN &gt; ROLE_USER"</code>. A
+  chained <code>"ROLE_ADMIN &gt; ROLE_STAFF &gt; ROLE_USER"</code> in a single entry is <strong>not</strong> supported; express a multi-level
+  hierarchy as separate single-arrow entries (<code>["ROLE_ADMIN &gt; ROLE_STAFF", "ROLE_STAFF &gt; ROLE_USER"]</code>).</p>
+<p><code>HttpSecurity::hasRole()</code>/<code>hasAuthority()</code> (and the equivalent <code>firefly.security.http.rules</code> config access specs)
+  likewise reject a role/authority value containing a single quote, for the same expression-injection reason as
+  method security above — a legitimate role/authority string never needs one.</p>
+<h3 id="what-a-refused-principal-reads">What a refused principal reads<a class="headerlink" href="#what-a-refused-principal-reads" title="Permanent link">&para;</a></h3>
+<p>A method-security denial is a <code>403 ACCESS_DENIED</code> whose <code>detail</code> is <code>You do not have permission to do this.</code>
+and whose problem document carries the authorities the rule asked for as an RFC 9457 extension member —
+<code>"requiredAuthorities": ["ROLE_ADMIN", "orders:write"]</code>, read off the expression's <code>hasRole</code>/<code>hasAnyRole</code>/
+<code>hasAuthority</code>/<code>hasAnyAuthority</code> literals with roles normalised to <code>ROLE_</code>. The guarded <strong>class and method go
+to the log</strong>, at warning, with the principal and its authorities — they used to be the wire sentence
+("Access is denied for [App\Ctrl::admin].") and a PHP class name is not something a person should read on a
+panel. A rule can carry its own product code and sentence:</p>
+<div class="highlight"><pre><span></span><code><span class="x">#[PreAuthorize("hasAnyRole('MANAGER', 'TENANT_ADMIN')", code: 'RUN_ROLE_REQUIRED', message: 'Only a manager may start a run.')]</span>
+<span class="x">public function start(): void {}</span>
+</code></pre></div>
+<p>so the role rule and the words for breaking it live on the same line, beside the method they guard, instead
+of in a service the controller has to call first. An anonymous caller still gets <code>401</code> <code>Authentication is
+required.</code>; <code>#[Secured]</code> and <code>#[RolesAllowed]</code> have no slot for words and use the framework's sentence.</p>
+<h3 id="method-security-fails-open-on-an-empty-manifest">Method security fails open on an empty manifest<a class="headerlink" href="#method-security-fails-open-on-an-empty-manifest" title="Permanent link">&para;</a></h3>
+<p>Both enforcement sites (<code>MethodSecurityMessageEnforcer::enforce()</code> and the controller guard) read "no rule
+recorded for this method" as <strong>ALLOW</strong>. That is correct — method security adds rules on top of URL security,
+it is not a second gate — but it makes an <em>empty</em> <code>SecurityMethodManifest</code> indistinguishable from an
+application that declares no rules at all. An empty manifest silently disables every <code>#[PreAuthorize]</code>,
+<code>#[Secured]</code> and <code>#[RolesAllowed]</code> in the app, with nothing logged.</p>
+<p>The manifest is therefore resolved like every other compiled manifest: <strong>the artifact <code>firefly:cache</code> wrote if
+it exists, otherwise an in-process scan of <code>firefly.scan.paths</code>, otherwise empty</strong>. An uncached app enforces
+the same rules a cached one does. (Before that fallback existed, only <code>firefly/cli</code> — a <code>require-dev</code> package
+that was not in the <code>firefly/firefly</code> metapackage — ever bound the compiled rules, so a production install
+could run entirely unguarded.)</p>
+<p><code>firefly.security.method.strict</code> (default <code>false</code>) closes the remaining hole: with it on, a boot that finds no
+compiled artifact <strong>refuses to start</strong> rather than falling back to the scan. Set it in any image that runs
+<code>firefly:cache</code> — it converts "someone forgot the compile step" from silently unguarded handlers into a
+startup failure, and it is the only defence against a build that ships without the manifest.</p>
+<p>Rules on a <code>#[Service]</code> or any other stereotyped bean have a second artifact: the proxy plan. <code>firefly:cache</code>
+plans every class through Data's transactional advice source <em>and</em> Security's <code>MethodSecurityAdviceSource</code>,
+writes <code>proxy-plan.php</code>, and generates one <code>{Target}__FireflyTransactionalProxy</code> per planned class with the
+security link baked in — so a bean whose only rule is <code>#[PreAuthorize]</code> is proxied exactly like a
+<code>#[Transactional]</code> one. A cache written before that file existed holds <code>security-methods.php</code> listing every
+rule while the proxy plan bridged from <code>transactional.php</code> knows nothing about method security: the rows
+compile, nothing enforces the bean-level ones, and <code>strict</code> cannot see it because the manifest it checks for
+<em>is</em> present. <code>SecurityWiringPass</code> therefore <strong>refuses to boot</strong> over <code>security-methods.php</code> with no
+<code>proxy-plan.php</code> beside it (under the master flag and <code>method.enabled</code>), naming the remedy: run
+<code>php artisan firefly:cache</code> again. The scan itself refuses, at compile time and on every entry point, a rule
+no seam could apply — a <code>#[PreFilter]</code> on a controller action, a <code>#[PostAuthorize]</code>/<code>#[PreFilter]</code>/
+<code>#[PostFilter]</code> on a class with no stereotype, and a <code>final</code> bean whose rules only a proxy could enforce —
+rather than compile a row that would be evaluated and discarded.</p>
+<h3 id="expression-evaluation-is-re-entrant">Expression evaluation is re-entrant<a class="headerlink" href="#expression-evaluation-is-re-entrant" title="Permanent link">&para;</a></h3>
+<p><code>SecurityExpressionEvaluator</code> is a singleton whose recursive-descent parse state lives on the instance, and
+<code>hasPermission()</code> is the one dispatch path that calls <strong>application</strong> code — a user-supplied
+<code>PermissionEvaluator</code>, which is a documented extension point and may evaluate an expression of its own on the
+same singleton. The inner call used to overwrite the outer parse state; on return the outer parse resumed
+against the inner token stream, saw EOF, and returned the inner result — silently discarding every term after
+<code>hasPermission(...)</code>. <code>hasPermission(#id, 'read') and hasRole('ADMIN')</code> returned <strong>true</strong> for a principal
+holding no authorities at all: a fail-open, not a fail-closed. The parse state is now saved and restored
+around <code>evaluate()</code>/<code>parse()</code> in a <code>finally</code>, so a throwing inner evaluator cannot strand torn state either.</p>
+<h3 id="the-config-access-vocabulary-is-fixed-and-fail-closed">The config access vocabulary is fixed, and fail-closed<a class="headerlink" href="#the-config-access-vocabulary-is-fixed-and-fail-closed" title="Permanent link">&para;</a></h3>
+<p>The fluent <code>HttpSecurity</code> DSL (<code>permitAll()</code>, <code>denyAll()</code>, <code>authenticated()</code>, <code>hasRole()</code>, <code>hasAuthority()</code>,
+<code>hasScope()</code>) compiles to the same expression grammar method security uses. The <strong>config</strong> spelling in
+<code>firefly.security.http.rules</code> does not accept that grammar — <code>HttpSecurity::fromConfig()</code> maps a fixed set of
+tokens:</p>
+<table>
+<thead>
+<tr>
+<th><code>access</code> value</th>
+<th>Compiled expression</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>permitAll</code></td>
+<td><code>permitAll()</code></td>
+</tr>
+<tr>
+<td><code>denyAll</code></td>
+<td><code>denyAll()</code></td>
+</tr>
+<tr>
+<td><code>authenticated</code></td>
+<td><code>isAuthenticated()</code></td>
+</tr>
+<tr>
+<td><code>hasRole:&lt;ROLE&gt;</code></td>
+<td><code>hasRole('&lt;ROLE&gt;')</code></td>
+</tr>
+<tr>
+<td><code>hasAuthority:&lt;AUTHORITY&gt;</code></td>
+<td><code>hasAuthority('&lt;AUTHORITY&gt;')</code></td>
+</tr>
+<tr>
+<td><code>hasScope:&lt;scope&gt;</code></td>
+<td><code>hasScope('&lt;scope&gt;')</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Anything else compiles to <code>denyAll()</code>.</strong> So <code>hasRole('ADMIN')</code> — the expression spelling — is not a valid
+config access spec, and a rule written that way locks the path down instead of opening it. That direction is
+deliberate: an unrecognised spec must fail closed. Interpolated role/authority values containing a single
+quote are rejected outright (expression injection).</p>
+<h2 id="web">Web<a class="headerlink" href="#web" title="Permanent link">&para;</a></h2>
+<h3 id="the-entry-point">The entry point<a class="headerlink" href="#the-entry-point" title="Permanent link">&para;</a></h3>
+<p><code>HttpSecurityFilter</code> (<code>-70</code>) keeps deny-by-default. An <strong>unauthenticated</strong> denial is handed to the
+<code>AuthenticationEntryPoint</code> chosen by <code>firefly.security.http.entry_point</code>: <code>auto</code> sends a browser (the request names
+<code>text/html</code>, is not an XMLHttpRequest and is not under <code>firefly.web.error-page.json-paths</code> — the error page's own
+negotiation, <code>ErrorPageRenderer::prefersHtml()</code>, independent of <code>firefly.web.error-page.enabled</code>) to the login page
+with the request saved when form login is on, answers <code>401</code> + <code>WWW-Authenticate: Basic</code> when HTTP Basic is on, and
+otherwise throws the 401 for firefly/web to render as before (problem+json, or the HTML 401 page); <code>login</code>,
+<code>challenge</code> and <code>problem</code> force one. An <strong>authenticated</strong> denial stays the 403 page/problem and publishes
+<code>AuthorizationDeniedEvent</code>.</p>
+<h3 id="principal-injection">Principal injection<a class="headerlink" href="#principal-injection" title="Permanent link">&para;</a></h3>
+<p>A controller action can take <code>Authentication $auth</code> (401 when anonymous) or <code>?Authentication $auth</code> (null),
+<code>?UserDetails $user</code> (the principal when it is one, else null — a JWT's principal is its <code>sub</code> string),
+<code>#[AuthenticationPrincipal] mixed $principal</code> (<code>?string $sub</code> for that JWT case) and
+<code>#[CurrentSecurityContext] SecurityContext $context</code> (the anonymous context when nobody is signed in). An
+attributed principal is handed over only when it <em>is</em> what the parameter declares and is null otherwise, so the
+same action can serve a form login's <code>User</code> and a bearer's <code>sub</code> without a <code>TypeError</code>; a null for a non-nullable
+parameter is a 401. <code>SecurityArgumentResolver</code> is registered into firefly/web's <code>HandlerMethodArgumentResolvers</code> —
+the port any package can add a resolver to — whether or not the master flag is on, so the annotations are inert
+(null, anonymous, an honest 401) rather than misread as query parameters while security is off. An interface type
+works the same way: <code>#[AuthenticationPrincipal] OidcUser $user</code> receives the OIDC principal of an OAuth2 login and
+is a 401 for any other.</p>
+<h3 id="hardening">Hardening<a class="headerlink" href="#hardening" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>CsrfFilter</code> (<code>-80</code>) — Laravel's session token whenever the request has a started session (session security
+  on), read through <code>SessionCsrf</code> from the same three sources Laravel's own <code>PreventRequestForgery</code> reads:
+  <code>_token</code>, <code>X-CSRF-TOKEN</code>, or <code>X-XSRF-TOKEN</code> carrying the encrypted <code>XSRF-TOKEN</code> cookie a Laravel SPA client
+  echoes back; the stateless double-submit cookie otherwise (safe-method + path exemptions, constant-time compare).</li>
+<li><code>SecurityHeadersFilter</code> (<code>-95</code>) — HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and a conservative CSP.</li>
+</ul>
+<h3 id="filter-order">Filter order<a class="headerlink" href="#filter-order" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Order</th>
+<th>Filter</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>-95</td>
+<td><code>SecurityHeadersFilter</code></td>
+</tr>
+<tr>
+<td>-94</td>
+<td><code>SecurityContextPersistenceFilter</code></td>
+</tr>
+<tr>
+<td>-93</td>
+<td><code>LogoutFilter</code></td>
+</tr>
+<tr>
+<td>-92</td>
+<td><code>FormLoginFilter</code></td>
+</tr>
+<tr>
+<td>-91</td>
+<td><code>HttpBasicFilter</code></td>
+</tr>
+<tr>
+<td>-90</td>
+<td><code>JwtAuthenticationFilter</code></td>
+</tr>
+<tr>
+<td>-89</td>
+<td><code>OAuth2AuthorizationRequestRedirectFilter</code> (firefly/security-oauth2-client)</td>
+</tr>
+<tr>
+<td>-88</td>
+<td><code>OAuth2LoginAuthenticationFilter</code> (firefly/security-oauth2-client)</td>
+</tr>
+<tr>
+<td>-85</td>
+<td><code>OAuth2ResourceServerFilter</code></td>
+</tr>
+<tr>
+<td>-83</td>
+<td><code>RememberMeAuthenticationFilter</code></td>
+</tr>
+<tr>
+<td>-82</td>
+<td><code>OAuth2AuthorizationServerFilter</code> (firefly/security-oauth2-server)</td>
+</tr>
+<tr>
+<td>-80</td>
+<td><code>CsrfFilter</code></td>
+</tr>
+<tr>
+<td>-70</td>
+<td><code>HttpSecurityFilter</code></td>
+</tr>
+</tbody>
+</table>
+<p>Every filter clears <code>SecurityContextHolder</code> on exit in a <code>finally</code>, so nothing bleeds into the next request under
+Octane; the persistence filter is the outermost and the last to clear. The authorization server's filter answers
+its endpoints ahead of the CSRF and URL-rule filters, so its token endpoint needs no <code>csrf.except</code> entry and none
+of its endpoints needs an <code>http.rules</code> entry.</p>
+<h2 id="configuration-fireflysecurity-snake_case">Configuration (<code>firefly.security.*</code>, snake_case)<a class="headerlink" href="#configuration-fireflysecurity-snake_case" title="Permanent link">&para;</a></h2>
+<p><code>firefly.security.enabled</code> is the <strong>master flag</strong>. It gates the core security stack: the password encoder, user
+store, role hierarchy, permission evaluator, expression evaluator, authentication manager, <code>AuthorizationChecker</code>,
+the real CQRS <code>Command</code>/<code>QueryAuthorizer</code>, the event publisher, and the real <code>AuditorAware</code>. Among the per-surface
+flags below, <strong><code>firefly.security.http.enabled</code> additionally requires the master flag</strong> — <code>HttpSecurityFilter</code>'s
+constructor consumes three master-gated beans (<code>SecurityExpressionEvaluator</code>, <code>RoleHierarchy</code>, <code>PermissionEvaluator</code>),
+so the URL-rule filter cannot construct at all unless both flags are on. <code>jwt</code>, <code>oauth2.resource_server</code>, <code>csrf</code>, and
+<code>headers</code> are <strong>independent</strong> of the master flag — each is a <code>Config</code>-only (or single-extra-bean) filter gated solely
+by its own flag, so it can be turned on without enabling the broader security stack. (Turning on <code>jwt</code>/<code>oauth2</code> alone
+authenticates a principal but enforces no authorization unless <code>http</code>/master or the CQRS/method-security seams are
+also enabled — pair it with <code>http.enabled</code> + master, or with method security, to actually gate anything.) Every
+mechanism added by the Spring-parity wave — <code>session</code>, <code>form_login</code>, <code>http_basic</code>, <code>logout</code>, <code>remember_me</code>, the
+entry point, <code>method.enabled</code> and the <code>users</code> driver — is gated by the master flag as well as its own key, because
+each depends on master-gated beans.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.security.enabled</code></td>
+<td><code>false</code></td>
+<td>Master flag — enables the core stack (password encoder, user store, role hierarchy, permission evaluator, expression evaluator, authentication manager, <code>AuthorizationChecker</code>, CQRS authorizers, the event publisher, <code>AuditorAware</code>). Required by <code>http</code>, <code>method.enabled</code>, <code>session</code>, <code>form_login</code>, <code>http_basic</code>, <code>logout</code>, <code>remember_me</code>, the entry point and the <code>users</code> driver (each consumes master-gated beans); <code>jwt</code>/<code>oauth2.resource_server</code>/<code>csrf</code>/<code>headers</code> do not require it.</td>
+</tr>
+<tr>
+<td><code>firefly.security.method.strict</code></td>
+<td><code>false</code></td>
+<td>Refuse to boot when no compiled method-security manifest exists, instead of falling back to the in-process scan. See <a href="#method-security-fails-open-on-an-empty-manifest">above</a>. Independent of the master flag — the manifest binding is registered whether or not security is enabled.</td>
+</tr>
+<tr>
+<td><code>firefly.security.method.enabled</code></td>
+<td><code>true</code></td>
+<td>With the master flag on, enforces method-security attributes on <strong>any</strong> stereotyped bean through the proxy chain (security advice before the transactional one), on both boot paths: <code>firefly:cache</code> compiles the plan into <code>proxy-plan.php</code> and a proxy per planned class, and the uncached boot scans the same advice sources. A cache written before <code>proxy-plan.php</code> existed (<code>security-methods.php</code> with no plan beside it) is <strong>refused at boot</strong> — recompile — because such a cache lists every rule and enforces none of the bean-level ones. Off keeps the dispatcher and bus enforcing theirs; the proxy link becomes a pass-through, and the stale-cache refusal stands down with it. Read live.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users</code></td>
+<td><em>(unset)</em></td>
+<td>The user store. With no <code>driver</code> (or <code>driver: memory</code>) the block is the <code>InMemoryUserDetailsService</code> map (<code>{username: {password, authorities, enabled, locked}}</code>; <code>password</code> is the <strong>encoded</strong> string, typically <code>{id}</code>-prefixed; <code>authorities</code> defaults to <code>[]</code>, <code>enabled</code> to <code>true</code>, <code>locked</code> to <code>false</code>). The reserved keys below are never read as usernames.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users.driver</code></td>
+<td><code>memory</code></td>
+<td><code>memory</code> or <code>eloquent</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users.model</code></td>
+<td><code>''</code></td>
+<td>The Eloquent model (<code>eloquent</code> only); a class that does not exist or is not an Eloquent model refuses to boot.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users.username_column</code> / <code>password_column</code></td>
+<td><code>email</code> / <code>password</code></td>
+<td>The columns the lookup and the encoded password come from. A configured column (<code>password_column</code>, <code>enabled_column</code>, <code>locked_column</code>, <code>authorities</code>) that the loaded row does not carry is a <code>ConfigurationException</code> on the lookup naming the setting, never read as <code>NULL</code> — a <code>locked_column</code> typo would otherwise unlock every account silently. The three optional columns opt out with <code>''</code>, never by being absent. An absent <code>username_column</code> is the lookup's <code>WHERE</code>: a query error, or no row, never a user.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users.enabled_column</code> / <code>locked_column</code></td>
+<td><code>''</code> / <code>''</code></td>
+<td>Boolean columns; empty means every account is enabled / none is locked.</td>
+</tr>
+<tr>
+<td><code>firefly.security.users.authorities</code></td>
+<td><code>authorities</code></td>
+<td>A column holding a JSON list (or an <code>array</code> cast), or <code>relation.attribute</code> (<code>roles.name</code>: the attribute plucked from every related model, or from the one model of a <code>belongsTo</code>). Entries that are not non-empty strings are dropped; a relation the model does not define is refused like an absent column. <code>''</code> means the model carries no authorities: every account authenticates with none (<code>[]</code>, as the memory driver's optional <code>authorities</code> does). Laravel's stock <code>users</code> table has no such column, so <code>App\Models\User</code> needs <code>authorities: ''</code> — or a column/relation added — because the default names a column the driver refuses on the lookup.</td>
+</tr>
+<tr>
+<td><code>firefly.security.role_hierarchy</code></td>
+<td><code>[]</code></td>
+<td>Single-arrow implication rules, e.g. <code>["ROLE_ADMIN &gt; ROLE_USER"]</code> (one implication per entry — not chainable in one string).</td>
+</tr>
+<tr>
+<td><code>firefly.security.session.enabled</code></td>
+<td><code>false</code></td>
+<td>Carry the <code>SecurityContext</code> in the Laravel session (<code>SecurityContextPersistenceFilter</code>, <code>-94</code>; <code>SessionSecurityBootstrap</code> runs Laravel's cookie/session middleware globally ahead of the filters and excludes it on each route as it is matched, so <code>route:cache</code> needs nothing). Implied by <code>form_login</code>, <code>remember_me</code>, <code>http_basic.session</code> and <code>oauth2.client.login.enabled</code>. What is carried is a context saved through <code>SecurityContextRepository</code> — by the interactive mechanisms at the moment of success, or by application code — and never a credential: a principal that implements <code>CredentialsContainer</code> (the shipped <code>User</code>) is stored without its encoded password. A bearer principal (<code>jwt</code>, <code>oauth2.resource_server</code>) is re-verified per request and never stored. A context a controller merely sets on the holder is saved on exit only when no filter cleared the holder first: never while <code>jwt</code> is on (that filter clears the holder unconditionally on exit); under <code>oauth2.resource_server</code>, which clears only a bearer context it established itself, whenever the request presented no bearer. Requires a session driver (boot refuses otherwise).</td>
+</tr>
+<tr>
+<td><code>firefly.security.session.fixation_protection</code></td>
+<td><code>true</code></td>
+<td>Regenerate the session id on every interactive sign-in.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.enabled</code></td>
+<td><code>false</code></td>
+<td>Form login (<code>FormLoginFilter</code>, <code>-92</code>, plus the login page route). Implies <code>session</code> and <code>logout</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.login_page</code></td>
+<td><code>/login</code></td>
+<td>The page a browser is redirected to; always permitted by <code>HttpSecurityFilter</code>. The framework mounts its own page there (<code>firefly.security.login</code>) <strong>only when no <code>GET</code> route of yours already answers that path</strong> — a <code>#[GetMapping('/login')]</code>, a routes-file route, with or without a domain. A page the application registers is left in place and the framework page is not mounted (Spring's rule: a custom login page belongs to the application), and the rest of the mechanism is unchanged: the entry point redirects there, the URL rules let it through, and <code>FormLoginFilter</code> answers the <code>POST</code> to <code>login_processing_url</code> before routing — your form only has to post the session token as <code>_token</code>. To customise the framework page without owning the route, use <code>view</code>. The framework page's <code>&lt;form action&gt;</code> is root-relative (the request's base path plus the path of <code>login_processing_url</code>), so it posts to the origin the browser fetched the page from even behind a TLS-terminating proxy the application does not trust.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.login_processing_url</code></td>
+<td><code>/login</code></td>
+<td>The POST the filter authenticates.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.username_parameter</code> / <code>password_parameter</code></td>
+<td><code>username</code> / <code>password</code></td>
+<td>Form field names.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.default_success_url</code></td>
+<td><code>/</code></td>
+<td>Where a login goes when no request was saved.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.always_use_default_success_url</code></td>
+<td><code>false</code></td>
+<td>Ignore the saved request.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.failure_url</code></td>
+<td><code>/login?error</code></td>
+<td>Where a failed login is redirected.</td>
+</tr>
+<tr>
+<td><code>firefly.security.form_login.view</code></td>
+<td><code>''</code></td>
+<td>A Blade view rendered instead of the framework page; receives <code>$login</code> (<code>LoginPageModel</code>: <code>title</code>, <code>action</code>, <code>usernameParameter</code>, <code>passwordParameter</code>, <code>csrfToken</code>, <code>error</code>, <code>loggedOut</code>, <code>rememberMeParameter</code>). A view that does not exist or that throws while rendering falls back to the framework page — a person who cannot sign in cannot fix the view — and the fallback is <strong>logged at warning naming the view</strong>, since a 200 with the framework form is otherwise indistinguishable from an unconfigured application.</td>
+</tr>
+<tr>
+<td><code>firefly.security.http_basic.enabled</code></td>
+<td><code>false</code></td>
+<td>HTTP Basic (<code>HttpBasicFilter</code>, <code>-91</code>).</td>
+</tr>
+<tr>
+<td><code>firefly.security.http_basic.realm</code></td>
+<td><code>LaraFly</code></td>
+<td>The <code>WWW-Authenticate</code> realm.</td>
+</tr>
+<tr>
+<td><code>firefly.security.http_basic.session</code></td>
+<td><code>false</code></td>
+<td>Store a successful Basic authentication in the session (implies <code>session</code>).</td>
+</tr>
+<tr>
+<td><code>firefly.security.logout.enabled</code></td>
+<td>follows <code>form_login.enabled</code> or <code>oauth2.client.login.enabled</code></td>
+<td><code>LogoutFilter</code> (<code>-93</code>), POST only, CSRF-checked.</td>
+</tr>
+<tr>
+<td><code>firefly.security.logout.logout_url</code> / <code>logout_success_url</code></td>
+<td><code>/logout</code> / <code>/login?logout</code></td>
+<td>The POST address and the redirect after it.</td>
+</tr>
+<tr>
+<td><code>firefly.security.logout.invalidate_session</code> / <code>clear_authentication</code></td>
+<td><code>true</code> / <code>true</code></td>
+<td>Invalidate the whole session, or only remove the context.</td>
+</tr>
+<tr>
+<td><code>firefly.security.logout.delete_cookies</code></td>
+<td><code>[]</code></td>
+<td>Extra cookie names expired on logout (the remember-me cookie always is).</td>
+</tr>
+<tr>
+<td><code>firefly.security.remember_me.enabled</code></td>
+<td><code>false</code></td>
+<td>Signed remember-me cookie (<code>RememberMeAuthenticationFilter</code>, <code>-83</code>). Implies <code>session</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.remember_me.key</code></td>
+<td><em>(required when enabled)</em></td>
+<td>HMAC key, ≥ 32 bytes, no placeholders — refused at boot like the JWT secret.</td>
+</tr>
+<tr>
+<td><code>firefly.security.remember_me.parameter</code> / <code>cookie_name</code></td>
+<td><code>remember-me</code> / <code>remember-me</code></td>
+<td>The form checkbox name and the cookie name.</td>
+</tr>
+<tr>
+<td><code>firefly.security.remember_me.token_validity_seconds</code></td>
+<td><code>1209600</code></td>
+<td>Cookie lifetime (14 days).</td>
+</tr>
+<tr>
+<td><code>firefly.security.remember_me.always_remember</code></td>
+<td><code>false</code></td>
+<td>Set the cookie on every login, checkbox or not.</td>
+</tr>
+<tr>
+<td><code>firefly.security.jwt.enabled</code></td>
+<td><code>false</code></td>
+<td>Enables <code>JwtAuthenticationFilter</code> + <code>JwtService</code> (refuses a weak secret at boot). Independent of the master flag. Mutually exclusive with <code>oauth2.resource_server.enabled</code> (refused at boot).</td>
+</tr>
+<tr>
+<td><code>firefly.security.jwt.secret</code></td>
+<td><em>(required when jwt.enabled)</em></td>
+<td>HMAC signing secret (≥ 32 bytes, no placeholders).</td>
+</tr>
+<tr>
+<td><code>firefly.security.jwt.algorithm</code></td>
+<td><code>HS256</code></td>
+<td>HMAC algorithm passed to <code>JwtService</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.jwt.leeway</code></td>
+<td><code>0</code></td>
+<td>Clock-skew leeway in seconds when validating <code>exp</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.jwt.authorities_claim</code></td>
+<td><code>authorities</code></td>
+<td>Claim carrying the authority list.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.enabled</code></td>
+<td><code>false</code></td>
+<td>Enables the JWKS resource-server filter. Independent of the master flag. Mutually exclusive with <code>jwt.enabled</code> (refused at boot).</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.jwks_uri</code></td>
+<td><em>(required when enabled)</em></td>
+<td>Issuer JWKS URI (cached).</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.cache_ttl</code></td>
+<td><code>3600</code></td>
+<td>Seconds the fetched JWKS is cached for.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.jwks_source</code></td>
+<td><code>auto</code></td>
+<td><code>remote</code> fetches <code>jwks_uri</code> over HTTP; <code>local</code> answers from a <code>JwksDocumentSource</code> bean the application binds (the key set it signs its own tokens with) and refuses to boot without one; <code>auto</code> picks <code>local</code> when such a bean exists <strong>and</strong> <code>jwks_uri</code> names this application (<code>JwksUri::isOwn</code>: its <code>/.well-known/jwks.json</code> at <code>app.url</code>, or at a loopback address on <code>firefly.server.port</code>), <code>remote</code> otherwise. A server must never fetch its own keys from itself over HTTP — on a single-process dev server that nested request deadlocks the pool.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.jwks_connect_timeout</code></td>
+<td><code>5</code></td>
+<td>Seconds to connect to the JWKS URI. Laravel's default (30) equals PHP's execution limit and turns a slow issuer into a fatal error.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.jwks_timeout</code></td>
+<td><code>5</code></td>
+<td>Seconds to wait for the JWKS response. Any fetch failure — 5xx, refused, timed out, not JSON — is a <code>503 JWKS_UNAVAILABLE</code> (<code>JwksUnavailableException</code>), never a <code>401</code>: the token was not examined.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.issuer</code></td>
+<td><code>''</code></td>
+<td>Expected <code>iss</code> claim. When set, a token whose <code>iss</code> doesn't match is rejected (confused-deputy protection, RFC 9700); empty skips the check.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.audience</code></td>
+<td><code>''</code></td>
+<td>Expected <code>aud</code> claim (checked against a string or array <code>aud</code>, per RFC 7519). When set, a token whose <code>aud</code> doesn't include it is rejected; empty skips the check.</td>
+</tr>
+<tr>
+<td><code>firefly.security.oauth2.resource_server.authorities_claim</code></td>
+<td><code>roles</code></td>
+<td>Claim carrying the authority list (distinct from the local-JWT default).</td>
+</tr>
+<tr>
+<td><code>firefly.security.http.enabled</code></td>
+<td><code>false</code></td>
+<td>Enables the deny-by-default <code>HttpSecurityFilter</code>. <strong>Requires the master flag</strong> (see above).</td>
+</tr>
+<tr>
+<td><code>firefly.security.http.rules</code></td>
+<td><code>[]</code></td>
+<td>Ordered <code>{pattern, access}</code> URL rules — see <a href="#the-config-access-vocabulary-is-fixed-and-fail-closed">the access vocabulary</a>. With the filter on, an empty list denies <strong>everything</strong> — deny-by-default is the point.</td>
+</tr>
+<tr>
+<td><code>firefly.security.http.entry_point</code></td>
+<td><code>auto</code></td>
+<td>What an anonymous request to a protected URL gets: <code>auto</code> negotiates (browser + a login page (form or OAuth2 login) → login redirect with the request saved; else HTTP Basic on → <code>401</code> + <code>WWW-Authenticate</code>; else the 401 problem/page), <code>login</code>/<code>challenge</code>/<code>problem</code> force one. <code>login</code> without form login or OAuth2 login is refused at boot. A <strong>browser</strong> is a request that names <code>text/html</code> (or <code>application/xhtml+xml</code>), is not an <code>XMLHttpRequest</code> and is not under <code>firefly.web.error-page.json-paths</code> — the error page's own negotiation (<code>ErrorPageRenderer::prefersHtml</code>), and independent of <code>firefly.web.error-page.enabled</code>: that flag decides how a 401 is drawn, never whether a person is sent to sign in.</td>
+</tr>
+<tr>
+<td><code>firefly.security.csrf.enabled</code></td>
+<td><code>false</code></td>
+<td>Enables <code>CsrfFilter</code> (<code>-80</code>). Independent of the master flag. Without a session it is the stateless double-submit check: the <code>XSRF-TOKEN</code> cookie echoed in <code>X-XSRF-TOKEN</code> (or <code>_token</code>). With a started session (<code>session.enabled</code>, or any mechanism that implies it) it verifies Laravel's session token instead, accepting exactly what Laravel's <code>PreventRequestForgery</code> accepts, in the same order: the <code>_token</code> field, the <code>X-CSRF-TOKEN</code> header, or the <code>X-XSRF-TOKEN</code> header carrying the <strong>encrypted</strong> <code>XSRF-TOKEN</code> cookie as the browser holds it and Axios sends it (decrypted through the application <code>Encrypter</code>; one that does not decrypt is a mismatch). The double-submit cookie value is ignored on that path. Any mismatch is a <code>403</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.csrf.except</code></td>
+<td><code>[]</code></td>
+<td>Path globs exempt from CSRF.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.enabled</code></td>
+<td><code>false</code></td>
+<td>Enables the security-headers filter. Independent of the master flag.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.hsts</code></td>
+<td><code>max-age=31536000; includeSubDomains</code></td>
+<td><code>Strict-Transport-Security</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.frame_options</code></td>
+<td><code>DENY</code></td>
+<td><code>X-Frame-Options</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.content_type_options</code></td>
+<td><code>nosniff</code></td>
+<td><code>X-Content-Type-Options</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.referrer_policy</code></td>
+<td><code>no-referrer</code></td>
+<td><code>Referrer-Policy</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.security.headers.csp</code></td>
+<td><code>default-src 'self'</code></td>
+<td><code>Content-Security-Policy</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<p><code>firefly/testing</code> adds three things to <code>FireflyTestCase</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">$this-&gt;actingAsPrincipal('ada', ['ROLE_USER', 'orders:read']);   // direct calls AND every HTTP request</span>
+<span class="x">$this-&gt;withoutSecurity();                                         // filters, dispatcher guard, bus authorizers and proxy link off</span>
+
+<span class="x">#[WithMockUser(name: 'admin', roles: ['ADMIN'], authorities: ['orders:write'])]   // on a class or a method</span>
+</code></pre></div>
+<p><code>actingAsPrincipal()</code> sets the holder now and prepends <code>ActingPrincipalMiddleware</code> to the kernel, so URL rules, the
+dispatcher guard and proxied beans all see the principal; <code>withoutSecurity()</code> flips the flags every filter, the bus
+authorizers and the proxy link read live and rebinds the dispatcher guard to the no-op default, so beans already
+built change their gates without a rebuild; <code>#[WithMockUser]</code> is Spring's, honoured in <code>setUp()</code>, the method-level
+one beating the class-level one. <code>actingAsOidcUser()</code> signs an OpenID Connect user in (see
+<a href="../security-oauth2-client/#testing">OAuth2 Client</a>), and <code>actingAsAuthentication()</code> is the seam beneath both.
+<code>Firefly\Testing\Double\RecordingAuthenticationEvents</code> is an
+<code>ApplicationEventPublisher</code> that answers <code>successes()</code>, <code>interactive()</code>, <code>failures()</code>, <code>logouts()</code> and <code>denials()</code> —
+bind it before boot from <code>defineFireflyEnvironment()</code>. Bound that way it replaces the port, so a listener registered
+against the dispatcher hears nothing; a suite whose pipeline needs one to fire hands the framework's publisher in —
+<code>new RecordingAuthenticationEvents(new DispatcherEventPublisher($app))</code> — and every event is recorded, then published
+for real. The package's own suites are the reference:
+<code>packages/security/tests/Support/SecurityCapstoneTestCase.php</code> boots the real providers under Testbench with a file
+session driver, and every flow (login page, wrong password, right password → saved request, logout, remember-me
+after the session is gone, Basic on an API path, entry-point negotiation, PostAuthorize on a service, principal
+injection, the Eloquent driver) runs through the real HTTP pipeline.</p>
+<h2 id="laravel-comparison">Laravel comparison<a class="headerlink" href="#laravel-comparison" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Plain Laravel</th>
+<th>LaraFly (<code>firefly/security</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Principal</td>
+<td><code>Auth::user()</code> (Eloquent <code>Authenticatable</code>)</td>
+<td>first-party immutable <code>Authentication</code>/<code>SecurityContext</code>, session-persisted, injected into actions</td>
+</tr>
+<tr>
+<td>Sign-in</td>
+<td><code>Auth::attempt()</code>, Breeze/Fortify scaffolding</td>
+<td>form login with a shipped page, HTTP Basic, remember-me, logout — all configuration</td>
+</tr>
+<tr>
+<td>Authorization</td>
+<td>Gates/Policies, <code>authorize()</code></td>
+<td>deny-by-default URL rules + <code>#[PreAuthorize]</code>/<code>#[PostAuthorize]</code>/filters on any bean, the bus and the dispatcher</td>
+</tr>
+<tr>
+<td>Users</td>
+<td>the <code>users</code> table</td>
+<td><code>memory</code> or <code>eloquent</code> driver behind one <code>UserDetailsService</code> port</td>
+</tr>
+<tr>
+<td>JWT</td>
+<td>a package + manual middleware</td>
+<td><code>JwtService</code> (mandatory <code>exp</code>, weak-secret refusal) + opt-in filters</td>
+</tr>
+<tr>
+<td>Method rules</td>
+<td><code>$this-&gt;authorize()</code> in controllers</td>
+<td>attribute-discovered, compiled manifest, no-eval expression engine, one proxy chain with <code>#[Transactional]</code></td>
+</tr>
+<tr>
+<td>CSRF / headers</td>
+<td><code>VerifyCsrfToken</code> + a headers package</td>
+<td>session-token or double-submit <code>CsrfFilter</code> + <code>SecurityHeadersFilter</code>, config-driven</td>
+</tr>
+<tr>
+<td>Testing</td>
+<td><code>actingAs($user)</code></td>
+<td><code>actingAsPrincipal()</code>, <code>withoutSecurity()</code>, <code>#[WithMockUser]</code>, recording event doubles</td>
+</tr>
+</tbody>
+</table>
+<h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
+<p>OAuth2 client / OpenID Connect login is <a href="../security-oauth2-client/"><code>firefly/security-oauth2-client</code></a> and the
+authorization server is <a href="../security-oauth2-server/"><code>firefly/security-oauth2-server</code></a>; real IdP adapters beyond
+the client's presets, and MFA, are the next waves. A <code>#[PreFilter]</code> on
+a controller action cannot be applied by the dispatcher (it cannot rewrite the arguments it resolved), so the scan
+refuses it outright rather than evaluate and discard — put it on the service the action calls; likewise a
+<code>#[PostAuthorize]</code>/<code>#[PreFilter]</code>/<code>#[PostFilter]</code> on a class with no stereotype is refused, because no proxy and no
+dispatch seam would ever enforce it. The CQRS bus enforces pre rules only, so <code>#[PostAuthorize]</code>/<code>#[PostFilter]</code> on a
+handler are enforced only when the handler is proxied (non-final). <code>SessionSecurityBootstrap</code> excludes the session
+middleware from the matched route as it is dispatched, so a route registered after boot is covered too; what it
+cannot see is a middleware <em>alias</em> or group of the application's own that re-adds one of the three classes under
+another name. The <code>SecurityMethodManifest</code> needs no hand-wiring: it is resolved from the <code>firefly:cache</code> artifact,
+else an in-process scan, else empty (with <code>firefly.security.method.strict</code> available to refuse the last case).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

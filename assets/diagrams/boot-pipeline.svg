@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1000" font-family="sans-serif">
+  <title>Boot pipeline</title>
+  <desc>register() buffers BootPass contributions into PendingBootPasses; the kernel drains and orders them at booting()/booted().</desc>
+  <defs>
+    <marker id="bp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1118" height="998" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="560" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">Boot pipeline: register() buffers, the kernel drains + orders</text>
+  <text x="560" y="52" text-anchor="middle" font-size="11" fill="#6b7280">packages/context/src/Boot/FireflyServiceProvider.php · PendingBootPasses.php · BootPhase.php</text>
+
+  <text x="560" y="74" text-anchor="middle" font-size="11" fill="#6b7280" font-style="italic">Laravel discovers package providers ALPHABETICALLY — order here is irrelevant to boot order</text>
+
+  <!-- Row 1: providers -->
+  <g>
+    <rect x="40" y="82" width="300" height="66" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <text x="190" y="108" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">FireflyServiceProvider subclass</text>
+    <text x="190" y="126" text-anchor="middle" font-size="11.5" fill="#374151">e.g. firefly/web, firefly/cqrs, …</text>
+    <text x="190" y="141" text-anchor="middle" font-size="11.5" fill="#374151">register(): passes() → contributed BootPass[]</text>
+
+    <rect x="410" y="82" width="300" height="66" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <text x="560" y="108" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">FireflyServiceProvider subclass</text>
+    <text x="560" y="126" text-anchor="middle" font-size="11.5" fill="#374151">one per Firefly package</text>
+    <text x="560" y="141" text-anchor="middle" font-size="11.5" fill="#374151">register(): passes() → contributed BootPass[]</text>
+
+    <rect x="780" y="82" width="300" height="66" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <text x="930" y="108" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">FireflyServiceProvider subclass</text>
+    <text x="930" y="126" text-anchor="middle" font-size="11.5" fill="#374151">…and every other installed package</text>
+    <text x="930" y="141" text-anchor="middle" font-size="11.5" fill="#374151">register(): passes() → contributed BootPass[]</text>
+  </g>
+
+  <!-- converge to buffer -->
+  <line x1="190" y1="148" x2="540" y2="198" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+  <line x1="560" y1="148" x2="560" y2="198" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+  <line x1="930" y1="148" x2="580" y2="198" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="310" y="200" width="500" height="66" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="224" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1f2937">PendingBootPasses (shared, first-bound-wins)</text>
+  <text x="560" y="242" text-anchor="middle" font-size="11.5" fill="#374151">.add(pass) — buffered; nothing is resolved yet, so a capability provider</text>
+  <text x="560" y="257" text-anchor="middle" font-size="11.5" fill="#374151">registering before the kernel is bound never fails</text>
+
+  <line x1="560" y1="266" x2="560" y2="308" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="210" y="310" width="700" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="338" text-anchor="middle" font-size="13" fill="#1f2937">$app-&gt;booting() callback fires ONCE — before ANY provider's own boot()</text>
+
+  <line x1="560" y1="356" x2="560" y2="392" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="210" y="394" width="700" height="52" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="416" text-anchor="middle" font-size="13" fill="#1f2937">drainInto(): resolve FireflyKernel (now bound) → move every buffered</text>
+  <text x="560" y="433" text-anchor="middle" font-size="13" fill="#1f2937">pass in; drain() empties the buffer</text>
+
+  <line x1="560" y1="446" x2="560" y2="482" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="180" y="484" width="760" height="46" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="560" y="512" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1f2937">kernel-&gt;run(definitionStagePhases) — DEFINITION stage: pure registry data; 650 is the one write</text>
+
+  <!-- Phase chips: definition stage -->
+  <g font-size="11" fill="#1f2937">
+    <rect x="40" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="111" y="563" text-anchor="middle" font-weight="bold">100</text>
+    <text x="111" y="578" text-anchor="middle">ConfigAndProfiles</text>
+
+    <rect x="190" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="261" y="563" text-anchor="middle" font-weight="bold">200</text>
+    <text x="261" y="578" text-anchor="middle">AutoConfigDiscovery</text>
+
+    <rect x="340" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="411" y="563" text-anchor="middle" font-weight="bold">300</text>
+    <text x="411" y="578" text-anchor="middle">UserConfigurations</text>
+
+    <rect x="490" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="561" y="563" text-anchor="middle" font-weight="bold">400</text>
+    <text x="561" y="578" text-anchor="middle">ConditionPassOne</text>
+
+    <rect x="640" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="711" y="563" text-anchor="middle" font-weight="bold">500</text>
+    <text x="711" y="578" text-anchor="middle">AutoConfigurations</text>
+
+    <rect x="790" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="861" y="563" text-anchor="middle" font-weight="bold">600</text>
+    <text x="861" y="578" text-anchor="middle">ConditionPassTwo</text>
+
+    <rect x="940" y="546" width="142" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="1011" y="563" text-anchor="middle" font-weight="bold">650</text>
+    <text x="1011" y="578" text-anchor="middle">FlushDefinitions</text>
+  </g>
+
+  <line x1="560" y1="588" x2="560" y2="624" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="210" y="626" width="700" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="654" text-anchor="middle" font-size="13" fill="#1f2937">$app-&gt;booted() callback fires ONCE — after EVERY provider's own boot()</text>
+
+  <line x1="560" y1="672" x2="560" y2="708" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="210" y="710" width="700" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="560" y="738" text-anchor="middle" font-size="13" fill="#1f2937">drainInto() again — no-op now (buffer already empty); returns the SAME kernel</text>
+
+  <line x1="560" y1="756" x2="560" y2="792" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="180" y="794" width="760" height="46" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="560" y="822" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1f2937">kernel-&gt;run(instanceStagePhases) — INSTANCE stage: operates on resolved instances</text>
+
+  <!-- Phase chips: instance stage -->
+  <g font-size="11" fill="#1f2937">
+    <rect x="40" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="122" y="873" text-anchor="middle" font-weight="bold">700</text>
+    <text x="122" y="888" text-anchor="middle">BeanPostProcessors</text>
+
+    <rect x="215" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="297" y="873" text-anchor="middle" font-weight="bold">800</text>
+    <text x="297" y="888" text-anchor="middle">EventListeners</text>
+
+    <rect x="390" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="472" y="873" text-anchor="middle" font-weight="bold">850</text>
+    <text x="472" y="888" text-anchor="middle">InfrastructureStart</text>
+
+    <rect x="565" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="647" y="873" text-anchor="middle" font-weight="bold">900</text>
+    <text x="647" y="888" text-anchor="middle">EagerSingletons</text>
+
+    <rect x="740" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="822" y="873" text-anchor="middle" font-weight="bold">1000</text>
+    <text x="822" y="888" text-anchor="middle">WiringPasses</text>
+
+    <rect x="915" y="856" width="165" height="42" rx="6" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="997" y="873" text-anchor="middle" font-weight="bold">1200</text>
+    <text x="997" y="888" text-anchor="middle">ContextRefreshed</text>
+  </g>
+
+  <line x1="560" y1="898" x2="560" y2="924" stroke="#4b5563" stroke-width="1.5" marker-end="url(#bp-arrow)"/>
+
+  <rect x="140" y="926" width="840" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="560" y="948" text-anchor="middle" font-size="12.5" fill="#1f2937">bootApplicationContext(): kernel-&gt;boot() finalizes → ApplicationContext bound as singleton;</text>
+  <text x="560" y="963" text-anchor="middle" font-size="12.5" fill="#1f2937">close() wired to terminating() (PHP-FPM) or WorkerStopping (Octane)</text>
+
+  <text x="560" y="990" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">FireflyKernel::run() is idempotent PER PHASE — every other provider's own booting()/booted() callback becomes a no-op after the first.</text>
+</svg>

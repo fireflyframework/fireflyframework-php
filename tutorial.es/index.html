@@ -1,0 +1,3574 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/tutorial.es/">
+      
+      
+        <link rel="prev" href="../tutorial/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tutorial (Español) - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tutorial-construye-tu-primera-funcionalidad-larafly" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tutorial (Español)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tabla-de-contenidos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tabla de contenidos
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requisitos-previos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requisitos previos
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-1-crea-la-aplicacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 1: crea la aplicación
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-2-tu-primer-endpoint-restcontroller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 2: tu primer endpoint — #[RestController]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-3-autoinyeccion-de-un-servicio-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 3: autoinyección de un servicio — #[Service]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-4-configuracion-tipada-configproperties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 4: configuración tipada — #[ConfigProperties]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-5-ejecutala-y-llama-a-la-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 5: ejecútala y llama a la API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-6-persistiendo-greetings-repository-y-consultas-derivadas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 6: persistiendo greetings — #[Repository] y consultas derivadas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-7-validando-el-cuerpo-de-la-peticion-valid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 7: validando el cuerpo de la petición — #[Valid]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-8-manejo-de-errores-rfc-7807" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 8: manejo de errores RFC-7807
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-9-comandos-y-consultas-cqrs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 9: comandos y consultas — CQRS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 10: reaccionando a un evento de dominio — #[EventListener]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 11: la caché sin reflexión y la introspección de salud
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-12-y-ahora-que" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 12: y ahora qué
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Paso 12: y ahora qué">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fundamentos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fundamentos
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#web-datos-y-dominio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web, datos y dominio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cqrs-eventos-y-mensajeria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CQRS, eventos y mensajería
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#produccion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Producción
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verlo-a-escala" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verlo a escala
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/eda-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/data-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tabla-de-contenidos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tabla de contenidos
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requisitos-previos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requisitos previos
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-1-crea-la-aplicacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 1: crea la aplicación
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-2-tu-primer-endpoint-restcontroller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 2: tu primer endpoint — #[RestController]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-3-autoinyeccion-de-un-servicio-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 3: autoinyección de un servicio — #[Service]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-4-configuracion-tipada-configproperties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 4: configuración tipada — #[ConfigProperties]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-5-ejecutala-y-llama-a-la-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 5: ejecútala y llama a la API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-6-persistiendo-greetings-repository-y-consultas-derivadas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 6: persistiendo greetings — #[Repository] y consultas derivadas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-7-validando-el-cuerpo-de-la-peticion-valid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 7: validando el cuerpo de la petición — #[Valid]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-8-manejo-de-errores-rfc-7807" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 8: manejo de errores RFC-7807
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-9-comandos-y-consultas-cqrs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 9: comandos y consultas — CQRS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 10: reaccionando a un evento de dominio — #[EventListener]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 11: la caché sin reflexión y la introspección de salud
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paso-12-y-ahora-que" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paso 12: y ahora qué
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Paso 12: y ahora qué">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fundamentos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fundamentos
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#web-datos-y-dominio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web, datos y dominio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cqrs-eventos-y-mensajeria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CQRS, eventos y mensajería
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#produccion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Producción
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verlo-a-escala" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verlo a escala
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="tutorial-construye-tu-primera-funcionalidad-larafly">Tutorial: construye tu primera funcionalidad LaraFly<a class="headerlink" href="#tutorial-construye-tu-primera-funcionalidad-larafly" title="Permanent link">&para;</a></h1>
+<p>Este es un recorrido paso a paso, construido a mano, de cómo levantar una funcionalidad LaraFly real desde
+un <code>composer create-project</code> vacío hasta una porción completa gobernada por atributos — un controlador REST,
+un servicio, configuración tipada, un modelo de dominio respaldado por un repositorio, validación de
+peticiones, manejo de errores RFC-7807, un par de comando/consulta CQRS y un listener de evento de dominio.
+Cada bloque de código de abajo es fiel al framework tal como se distribuye en este repositorio — los
+atributos, nombres de clase y firmas de método se toman literalmente de las fuentes de los paquetes
+<code>firefly/*</code> y del sample de wallet ejecutable <code>samples/lumen</code>; no se inventan para el tutorial.</p>
+<p>Al terminar habrás hecho crecer la porción de ejemplo <code>Greeting</code> del starter <code>firefly/skeleton</code> hasta
+convertirla en una pequeña funcionalidad de "greetings" con una tabla <code>greetings</code> persistida, un
+<code>#[EventListener]</code> que reacciona a un evento de dominio y un arranque cacheado sin reflexión — la misma
+arquitectura que usa el <a href="#paso-12-y-ahora-que">sample de Lumen</a> a mayor escala.</p>
+<h2 id="tabla-de-contenidos">Tabla de contenidos<a class="headerlink" href="#tabla-de-contenidos" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#paso-1-crea-la-aplicacion">Paso 1: crea la aplicación</a></li>
+<li><a href="#paso-2-tu-primer-endpoint-restcontroller">Paso 2: tu primer endpoint — <code>#[RestController]</code></a></li>
+<li><a href="#paso-3-autoinyeccion-de-un-servicio-service">Paso 3: autoinyección de un servicio — <code>#[Service]</code></a></li>
+<li><a href="#paso-4-configuracion-tipada-configproperties">Paso 4: configuración tipada — <code>#[ConfigProperties]</code></a></li>
+<li><a href="#paso-5-ejecutala-y-llama-a-la-api">Paso 5: ejecútala y llama a la API</a></li>
+<li><a href="#paso-6-persistiendo-greetings-repository-y-consultas-derivadas">Paso 6: persistiendo greetings — <code>#[Repository]</code> y consultas derivadas</a></li>
+<li><a href="#paso-7-validando-el-cuerpo-de-la-peticion-valid">Paso 7: validando el cuerpo de la petición — <code>#[Valid]</code></a></li>
+<li><a href="#paso-8-manejo-de-errores-rfc-7807">Paso 8: manejo de errores RFC-7807</a></li>
+<li><a href="#paso-9-comandos-y-consultas-cqrs">Paso 9: comandos y consultas — CQRS</a></li>
+<li><a href="#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener">Paso 10: reaccionando a un evento de dominio — <code>#[EventListener]</code></a></li>
+<li><a href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud">Paso 11: la caché sin reflexión y la introspección de salud</a></li>
+<li><a href="#paso-12-y-ahora-que">Paso 12: y ahora qué</a></li>
+</ol>
+<h2 id="requisitos-previos">Requisitos previos<a class="headerlink" href="#requisitos-previos" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>PHP 8.3+</strong> (se recomienda 8.4) y <strong>Composer 2</strong>.</li>
+<li>Un <strong>terminal</strong> y un editor de código.</li>
+<li><code>curl</code> (o cualquier cliente HTTP) para probar los endpoints a medida que los construyes.</li>
+</ul>
+<p>Consulta <a href="../installation/">Instalación</a> para la lista completa de requisitos.</p>
+<hr />
+<h2 id="paso-1-crea-la-aplicacion">Paso 1: crea la aplicación<a class="headerlink" href="#paso-1-crea-la-aplicacion" title="Permanent link">&para;</a></h2>
+<p>Genera una nueva aplicación LaraFly con la plantilla de Composer <code>firefly/skeleton</code>:</p>
+<div class="highlight"><pre><span></span><code>composer<span class="w"> </span>create-project<span class="w"> </span>firefly/skeleton<span class="w"> </span>my-app
+<span class="nb">cd</span><span class="w"> </span>my-app
+</code></pre></div>
+<p>El <code>post-create-project-cmd</code> de <code>firefly/skeleton</code> se ejecuta automáticamente y te deja con una app que ya
+arranca y que ya está cacheada: copia <code>.env.example</code> a <code>.env</code>, crea <code>database/database.sqlite</code>, ejecuta
+<code>php artisan key:generate</code> y ejecuta <code>php artisan firefly:cache</code> — el paso de compilación sin reflexión que
+retomarás en el <a href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud">Paso 11</a>. Consulta
+<a href="../installation/">Instalación</a> para el atajo equivalente del instalador global <code>firefly new my-app</code>.</p>
+<p>El proyecto generado tiene este aspecto:</p>
+<div class="highlight"><pre><span></span><code>my-app/
+├── app/
+│   ├── GreetingProperties.php     # DTO #[ConfigProperties('greeting')]
+│   ├── GreetingService.php        # bean #[Service]
+│   └── Http/
+│       └── GreetingController.php # #[RestController]
+├── bootstrap/
+│   ├── app.php
+│   ├── cache/firefly/              # manifiestos compilados — ya poblados
+│   └── providers.php
+├── config/
+│   ├── app.php
+│   ├── database.php
+│   └── firefly.php                 # rutas de escaneo + rutas de caché
+├── database/
+│   └── database.sqlite
+├── routes/
+│   ├── console.php
+│   └── web.php
+├── artisan
+└── composer.json
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Fichero/Directorio</th>
+<th>Propósito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app/</code></td>
+<td>El código de tu aplicación — controladores, servicios, clases de dominio, todo lo que LaraFly escanea.</td>
+</tr>
+<tr>
+<td><code>config/firefly.php</code></td>
+<td>Indica al component scan y a <code>firefly:cache</code> de LaraFly dónde viven tus clases.</td>
+</tr>
+<tr>
+<td><code>bootstrap/cache/firefly/</code></td>
+<td>Los manifiestos compilados que escribe <code>firefly:cache</code> — la ruta de arranque sin reflexión.</td>
+</tr>
+<tr>
+<td><code>database/database.sqlite</code></td>
+<td>La base de datos por defecto — no se necesita ningún servicio externo para arrancar.</td>
+</tr>
+</tbody>
+</table>
+<p>Abre <code>config/firefly.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">return [</span>
+<span class="x">    'scan' =&gt; [</span>
+<span class="x">        'paths' =&gt; [</span>
+<span class="x">            'App\\' =&gt; app_path(),</span>
+<span class="x">        ],</span>
+<span class="x">    ],</span>
+<span class="x">    'cache' =&gt; [</span>
+<span class="x">        'path' =&gt; base_path('bootstrap/cache/firefly'),</span>
+<span class="x">        'component_manifest' =&gt; base_path('bootstrap/cache/firefly/component.php'),</span>
+<span class="x">        'context_manifest' =&gt; base_path('bootstrap/cache/firefly/context.php'),</span>
+<span class="x">    ],</span>
+<span class="x">];</span>
+</code></pre></div>
+<p><code>scan.paths</code> es un mapa PSR-4 (prefijo → directorio) — todo atributo de la familia <code>#[Component]</code>
+(<code>#[Service]</code>, <code>#[Repository]</code>, <code>#[RestController]</code>, <code>#[CommandHandler]</code>, …) bajo <code>app_path()</code> se descubre
+desde aquí, ya sea mediante un escaneo en proceso durante el desarrollo o, una vez compilado, desde los
+manifiestos de <code>cache</code>. El skeleton trae ya una porción completamente cableada de extremo a extremo:
+<code>app/Http/GreetingController.php</code>, respaldado por <code>app/GreetingService.php</code> y
+<code>app/GreetingProperties.php</code>. El resto de este tutorial hace crecer esa porción.</p>
+<hr />
+<h2 id="paso-2-tu-primer-endpoint-restcontroller">Paso 2: tu primer endpoint — <code>#[RestController]</code><a class="headerlink" href="#paso-2-tu-primer-endpoint-restcontroller" title="Permanent link">&para;</a></h2>
+<p>Abre <code>app/Http/GreetingController.php</code> — esto es lo que <code>firefly new</code> ya generó por ti:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Http</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\GreetingService</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\GetMapping</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\PathVariable</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\RestController</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">RestController</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingController</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingService</span> <span class="nv">$greetings</span><span class="p">)</span> <span class="p">{}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">GetMapping</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">index</span><span class="p">()</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">greet</span><span class="p">(</span><span class="s1">'World'</span><span class="p">)];</span>
+    <span class="p">}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">GetMapping</span><span class="p">(</span><span class="s1">'/greetings/{name}'</span><span class="p">,</span> <span class="nx">name</span><span class="o">:</span> <span class="s1">'greetings.show'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">show</span><span class="p">(#[</span><span class="nd">PathVariable</span><span class="p">]</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">greet</span><span class="p">(</span><span class="nv">$name</span><span class="p">)];</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Elemento por elemento:</p>
+<ul>
+<li><strong><code>#[RestController]</code></strong> — un estereotipo que extiende <code>Firefly\Container\Attributes\Component</code>. Como el
+  component scan descubre estereotipos con <code>ReflectionAttribute::IS_INSTANCEOF</code>, una clase <code>#[RestController]</code>
+  queda <em>a la vez</em> auto-registrada como bean singleton de DI <em>y</em> enrutada — sin registro de rutas por
+  separado.</li>
+<li><strong><code>#[GetMapping('/')]</code></strong> — mapea <code>GET /</code> a <code>index()</code>. <code>#[GetMapping]</code>/<code>#[PostMapping]</code>/<code>#[PutMapping]</code>/
+  <code>#[PatchMapping]</code>/<code>#[DeleteMapping]</code> aceptan cada uno <code>path</code>, <code>status</code> (el status de respuesta por
+  defecto) y un <code>name</code> opcional de ruta Laravel.</li>
+<li><strong><code>#[GetMapping('/greetings/{name}', name: 'greetings.show')]</code></strong> junto con <strong><code>#[PathVariable]</code></strong> — el
+  segmento de ruta <code>{name}</code> se vincula automáticamente al parámetro <code>$name</code>.</li>
+<li>Un <strong>retorno de array plano</strong> (<code>array&lt;string, string&gt;</code>) se codifica a JSON por la negociación de
+  contenido del framework — no hay que construir un objeto <code>Response</code> a mano.</li>
+</ul>
+<p>Un <code>RouteScanner</code> aparte lee los metadatos de enrutamiento de la misma clase que ya encontró el component
+scan — un <code>#[RestController]</code> nunca registra sus propias rutas.</p>
+<hr />
+<h2 id="paso-3-autoinyeccion-de-un-servicio-service">Paso 3: autoinyección de un servicio — <code>#[Service]</code><a class="headerlink" href="#paso-3-autoinyeccion-de-un-servicio-service" title="Permanent link">&para;</a></h2>
+<p>Abre <code>app/GreetingService.php</code> — también generado ya:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Container\Attributes\Service</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">Service</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingService</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingProperties</span> <span class="nv">$properties</span><span class="p">)</span> <span class="p">{}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">greet</span><span class="p">(</span><span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="nx">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nb">sprintf</span><span class="p">(</span><span class="s1">'%s, %s!'</span><span class="p">,</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">properties</span><span class="o">-&gt;</span><span class="na">salutation</span><span class="p">,</span> <span class="nv">$name</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong><code>#[Service]</code></strong> es un estereotipo <code>#[Component]</code> — semánticamente "lógica de negocio", registrado como
+bean singleton de DI exactamente igual que <code>#[RestController]</code>. El constructor pide una instancia de
+<code>GreetingProperties</code>; el contenedor inspecciona los type hints de <code>__construct()</code> y la resuelve
+automáticamente — sin factory, sin XML, sin llamada manual a <code>bind()</code>. El propio constructor de
+<code>GreetingController</code> funciona igual: pide <code>GreetingService</code>, y el contenedor lo cablea.</p>
+<hr />
+<h2 id="paso-4-configuracion-tipada-configproperties">Paso 4: configuración tipada — <code>#[ConfigProperties]</code><a class="headerlink" href="#paso-4-configuracion-tipada-configproperties" title="Permanent link">&para;</a></h2>
+<p>Abre <code>app/GreetingProperties.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Config\Attributes\ConfigProperties</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">ConfigProperties</span><span class="p">(</span><span class="s1">'greeting'</span><span class="p">)]</span>
+<span class="k">final</span> <span class="k">readonly</span> <span class="k">class</span> <span class="nc">GreetingProperties</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">public</span> <span class="nx">string</span> <span class="nv">$salutation</span> <span class="o">=</span> <span class="s1">'Hello'</span><span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong><code>#[ConfigProperties('greeting')]</code></strong> enlaza el subárbol de configuración <code>greeting</code> (es decir,
+<code>config('greeting')</code>) sobre este DTO de solo lectura y registra la <em>instancia ya enlazada</em> como singleton
+del contenedor, de modo que puede inyectarse allí donde se solicite <code>GreetingProperties</code> — exactamente lo
+que hace <code>GreetingService</code> arriba. No existe ningún fichero <code>config/greeting.php</code> en el skeleton, así que
+<code>config('greeting')</code> resuelve a un subárbol vacío; el binder recurre entonces al valor por defecto propio
+de cada parámetro del constructor (<code>'Hello'</code>) en lugar de fallar. Por eso el endpoint ya saluda con "Hello"
+tal cual, sin configuración adicional.</p>
+<p>Para sobrescribirlo, añade un fichero de configuración Laravel real — <code>config/greeting.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">return</span> <span class="p">[</span>
+    <span class="s1">'salutation'</span> <span class="o">=&gt;</span> <span class="nx">env</span><span class="p">(</span><span class="s1">'GREETING_SALUTATION'</span><span class="p">,</span> <span class="s1">'Hello'</span><span class="p">),</span>
+<span class="p">];</span>
+</code></pre></div>
+<p>Y en <code>.env</code>:</p>
+<div class="highlight"><pre><span></span><code>GREETING_SALUTATION="Howdy"
+</code></pre></div>
+<p>Aquí no hay nada específico del framework — <code>#[ConfigProperties]</code> enlaza a partir de lo que resuelva
+<code>config('greeting')</code>, y la propia convención de Laravel de <code>config/*.php</code> + <code>env()</code> es la que usas para
+poblarlo. No hace falta volver a ejecutar <code>firefly:cache</code> por un simple cambio de valor de configuración
+(solo al añadir o modificar clases anotadas — ver el <a href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud">Paso 11</a>).</p>
+<hr />
+<h2 id="paso-5-ejecutala-y-llama-a-la-api">Paso 5: ejecútala y llama a la API<a class="headerlink" href="#paso-5-ejecutala-y-llama-a-la-api" title="Permanent link">&para;</a></h2>
+<p>Arranca el servidor de desarrollo:</p>
+<div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>firefly:serve
+</code></pre></div>
+<p><code>firefly:serve</code> es un passthrough delgado a <code>artisan serve</code> (o a <code>octane:start</code> si <code>laravel/octane</code> está
+instalado), escuchando por defecto en <code>127.0.0.1:8000</code>. En otro terminal:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>http://127.0.0.1:8000/
+<span class="c1"># {"message":"Hello, World!"}</span>
+
+curl<span class="w"> </span>http://127.0.0.1:8000/greetings/Ada
+<span class="c1"># {"message":"Hello, Ada!"}</span>
+</code></pre></div>
+<p>Si configuraste <code>GREETING_SALUTATION="Howdy"</code> en el <a href="#paso-4-configuracion-tipada-configproperties">Paso 4</a>,
+esas mismas dos peticiones ahora devuelven <code>"Howdy, World!"</code> y <code>"Howdy, Ada!"</code> — sin necesidad de reiniciar,
+ya que <code>config('greeting')</code> se relee del entorno en cada petición.</p>
+<hr />
+<h2 id="paso-6-persistiendo-greetings-repository-y-consultas-derivadas">Paso 6: persistiendo greetings — <code>#[Repository]</code> y consultas derivadas<a class="headerlink" href="#paso-6-persistiendo-greetings-repository-y-consultas-derivadas" title="Permanent link">&para;</a></h2>
+<p>Hasta ahora <code>greet()</code> no tiene estado. Vamos a persistir greetings con nombre en la base de datos.</p>
+<p>Primero, genera una migración (un comando de Laravel corriente — nada específico de Firefly aquí):</p>
+<div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>make:migration<span class="w"> </span>create_greetings_table
+</code></pre></div>
+<p>Edita el <code>database/migrations/..._create_greetings_table.php</code> generado:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">use</span> <span class="nx">Illuminate\Database\Migrations\Migration</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Illuminate\Database\Schema\Blueprint</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Illuminate\Support\Facades\Schema</span><span class="p">;</span>
+
+<span class="k">return</span> <span class="k">new</span> <span class="k">class</span> <span class="k">extends</span> <span class="nx">Migration</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">up</span><span class="p">()</span><span class="o">:</span> <span class="nx">void</span>
+    <span class="p">{</span>
+        <span class="nx">Schema</span><span class="o">::</span><span class="na">create</span><span class="p">(</span><span class="s1">'greetings'</span><span class="p">,</span> <span class="k">function</span> <span class="p">(</span><span class="nx">Blueprint</span> <span class="nv">$table</span><span class="p">)</span><span class="o">:</span> <span class="nx">void</span> <span class="p">{</span>
+            <span class="nv">$table</span><span class="o">-&gt;</span><span class="na">id</span><span class="p">();</span>
+            <span class="nv">$table</span><span class="o">-&gt;</span><span class="na">string</span><span class="p">(</span><span class="s1">'name'</span><span class="p">);</span>
+            <span class="nv">$table</span><span class="o">-&gt;</span><span class="na">string</span><span class="p">(</span><span class="s1">'message'</span><span class="p">);</span>
+            <span class="nv">$table</span><span class="o">-&gt;</span><span class="na">timestamps</span><span class="p">();</span>
+        <span class="p">});</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">down</span><span class="p">()</span><span class="o">:</span> <span class="nx">void</span>
+    <span class="p">{</span>
+        <span class="nx">Schema</span><span class="o">::</span><span class="na">dropIfExists</span><span class="p">(</span><span class="s1">'greetings'</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>Ejecútala — <code>firefly:db</code> es un passthrough delgado a los propios comandos de base de datos de Laravel
+(acción por defecto <code>migrate</code>):</p>
+<p><div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>firefly:db
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>INFO  Running migrations.
+
+  2026_07_28_120500_create_greetings_table ... DONE
+</code></pre></div></p>
+<p>Ahora añade el modelo Eloquent, <code>app/Domain/Greeting.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Domain</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Illuminate\Database\Eloquent\Model</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">class</span> <span class="nc">Greeting</span> <span class="k">extends</span> <span class="nx">Model</span>
+<span class="p">{</span>
+    <span class="sd">/** @var list&lt;string&gt; */</span>
+    <span class="k">protected</span> <span class="nv">$fillable</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'name'</span><span class="p">,</span> <span class="s1">'message'</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Y un repositorio, <code>app/Infrastructure/GreetingRepository.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Infrastructure</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Domain\Greeting</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Container\Attributes\Repository</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Data\Repository\EloquentRepository</span><span class="p">;</span>
+
+<span class="sd">/**</span>
+<span class="sd"> * @extends EloquentRepository&lt;Greeting&gt;</span>
+<span class="sd"> * @method Greeting|null findFirstByName(string $name)</span>
+<span class="sd"> */</span>
+<span class="p">#[</span><span class="nd">Repository</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingRepository</span> <span class="k">extends</span> <span class="nx">EloquentRepository</span>
+<span class="p">{</span>
+    <span class="k">protected</span> <span class="nx">string</span> <span class="nv">$model</span> <span class="o">=</span> <span class="nx">Greeting</span><span class="o">::</span><span class="na">class</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Elemento por elemento:</p>
+<ul>
+<li><strong><code>#[Repository]</code></strong> — otro estereotipo <code>#[Component]</code> (de la misma familia que <code>#[Service]</code>): un bean de
+  contenedor, descubierto de la misma manera.</li>
+<li><strong><code>EloquentRepository</code></strong> es la base respaldada por Eloquent de <code>firefly/data</code>, que implementa los
+  puertos de CRUD/paginación (<code>save()</code>, <code>findById()</code>, <code>findAll()</code>, <code>count()</code>, …). Declarar
+  <code>protected string $model</code> es lo único que necesita un repositorio concreto — el resto viene del padre.</li>
+<li><strong><code>findFirstByName(string $name)</code></strong> nunca se implementa — no hace falta. Es una <strong>consulta derivada</strong>:
+  <code>EloquentRepository::__call()</code> analiza el nombre del método (<code>DerivedQueryParser</code>, análisis puro de
+  cadenas, sin reflexión) en <code>find</code> (prefijo) + <code>First</code> (límite 1, devuelve un único resultado anulable en
+  vez de una lista) + <code>Name</code> (mapeado a la columna <code>name</code>, operador <code>Equals</code> implícito), y ejecuta
+  <code>Greeting::query()-&gt;where('name', '=', $name)-&gt;first()</code>. El docblock <code>@method</code> solo está ahí para que
+  PHPStan vea un retorno tipado para lo que, en tiempo de ejecución, es despacho dinámico.</li>
+</ul>
+<p>Cablea el repositorio en el servicio, actualizando <code>app/GreetingService.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Domain\Greeting</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\Infrastructure\GreetingRepository</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Container\Attributes\Service</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">Service</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingService</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingProperties</span> <span class="nv">$properties</span><span class="p">,</span>
+        <span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingRepository</span> <span class="nv">$repository</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">greet</span><span class="p">(</span><span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="nx">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nb">sprintf</span><span class="p">(</span><span class="s1">'%s, %s!'</span><span class="p">,</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">properties</span><span class="o">-&gt;</span><span class="na">salutation</span><span class="p">,</span> <span class="nv">$name</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">record</span><span class="p">(</span><span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span> <span class="nx">string</span> <span class="nv">$message</span><span class="p">)</span><span class="o">:</span> <span class="nx">Greeting</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">repository</span><span class="o">-&gt;</span><span class="na">save</span><span class="p">(</span><span class="k">new</span> <span class="nx">Greeting</span><span class="p">([</span><span class="s1">'name'</span> <span class="o">=&gt;</span> <span class="nv">$name</span><span class="p">,</span> <span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$message</span><span class="p">]));</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">findRecord</span><span class="p">(</span><span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="o">?</span><span class="nx">Greeting</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">repository</span><span class="o">-&gt;</span><span class="na">findFirstByName</span><span class="p">(</span><span class="nv">$name</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Y expónlo, añadiendo un método <code>store()</code> a <code>app/Http/GreetingController.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use App\Web\Dto\CreateGreetingRequest;</span>
+<span class="x">use Firefly\Web\Attributes\PostMapping;</span>
+<span class="x">use Firefly\Web\Attributes\RequestBody;</span>
+
+<span class="x">// ...dentro de GreetingController...</span>
+
+<span class="x">    /** @return array&lt;string, string&gt; */</span>
+<span class="x">    #[PostMapping('/greetings', status: 201)]</span>
+<span class="x">    public function store(#[RequestBody] CreateGreetingRequest $body): array</span>
+<span class="x">    {</span>
+<span class="x">        $greeting = $this-&gt;greetings-&gt;record($body-&gt;name, $body-&gt;message);</span>
+
+<span class="x">        return ['name' =&gt; $greeting-&gt;name, 'message' =&gt; $greeting-&gt;message];</span>
+<span class="x">    }</span>
+</code></pre></div>
+<p>con un DTO de petición sencillo, <code>app/Web/Dto/CreateGreetingRequest.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Web\Dto</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">class</span> <span class="nc">CreateGreetingRequest</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="nx">string</span> <span class="nv">$message</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>#[RequestBody]</code> decodifica el cuerpo JSON e hidrata <code>CreateGreetingRequest</code> a partir de él. Pruébalo:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8000/greetings<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"name": "Ada", "message": "Hello from the database!"}'</span>
+<span class="c1"># {"name":"Ada","message":"Hello from the database!"}</span>
+</code></pre></div>
+<p>Sin embargo, nada impide que se guarde un cuerpo vacío:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8000/greetings<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"name": "", "message": ""}'</span>
+<span class="c1"># {"name":"","message":""}   &lt;- ¡se guarda! todavía nada lo valida.</span>
+</code></pre></div>
+<p>Vamos a arreglar eso a continuación.</p>
+<hr />
+<h2 id="paso-7-validando-el-cuerpo-de-la-peticion-valid">Paso 7: validando el cuerpo de la petición — <code>#[Valid]</code><a class="headerlink" href="#paso-7-validando-el-cuerpo-de-la-peticion-valid" title="Permanent link">&para;</a></h2>
+<p>Añade restricciones a <code>app/Web/Dto/CreateGreetingRequest.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Web\Dto</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Validation\Constraint\NotBlank</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Validation\Constraint\Size</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">class</span> <span class="nc">CreateGreetingRequest</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="p">#[</span><span class="nd">NotBlank</span><span class="p">]</span>
+        <span class="p">#[</span><span class="nd">Size</span><span class="p">(</span><span class="nb">min</span><span class="o">:</span> <span class="mi">2</span><span class="p">,</span> <span class="nb">max</span><span class="o">:</span> <span class="mi">40</span><span class="p">)]</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span>
+        <span class="p">#[</span><span class="nd">NotBlank</span><span class="p">]</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="nx">string</span> <span class="nv">$message</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Y protege el parámetro del controlador con <code>#[Valid]</code>, en <code>app/Http/GreetingController.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Validation\Valid;</span>
+
+<span class="x">    #[PostMapping('/greetings', status: 201)]</span>
+<span class="x">    public function store(#[Valid] #[RequestBody] CreateGreetingRequest $body): array</span>
+<span class="x">    {</span>
+<span class="x">        $greeting = $this-&gt;greetings-&gt;record($body-&gt;name, $body-&gt;message);</span>
+
+<span class="x">        return ['name' =&gt; $greeting-&gt;name, 'message' =&gt; $greeting-&gt;message];</span>
+<span class="x">    }</span>
+</code></pre></div>
+<p>Elemento por elemento:</p>
+<ul>
+<li><strong><code>#[NotBlank]</code></strong> (de <code>Firefly\Validation\Constraint</code>) rechaza <code>null</code>, <code>''</code> y una cadena compuesta solo
+  de espacios en blanco.</li>
+<li><strong><code>#[Size(min: 2, max: 40)]</code></strong> acota la longitud de la cadena.</li>
+<li><strong><code>#[Valid]</code></strong> sobre el parámetro <code>#[RequestBody]</code> pasa el cuerpo decodificado en bruto por
+  <code>Firefly\Validation\Constraint\BeanValidator</code> contra las reglas de restricción compiladas del DTO
+  <strong>antes</strong> de que se construya el DTO. Solo si tiene éxito se hidrata <code>CreateGreetingRequest</code> — un fallo
+  lanza la <code>ValidationException</code> del kernel y el cuerpo del método del controlador nunca llega a
+  ejecutarse.</li>
+</ul>
+<p>Repite la petición inválida:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8000/greetings<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"name": "", "message": ""}'</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">422</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Unprocessable Entity"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"VALIDATION_ERROR"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"validation"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Validation failed"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"errors"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"name"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must not be blank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"constraint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NotBlank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="w"> </span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"message"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must not be blank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"constraint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NotBlank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>servida como <code>application/problem+json</code>, con un status <code>422</code> — la misma forma que cubre en detalle el
+<a href="#paso-8-manejo-de-errores-rfc-7807">Paso 8</a>. La petición válida del Paso 6 sigue funcionando exactamente
+igual que antes.</p>
+<hr />
+<h2 id="paso-8-manejo-de-errores-rfc-7807">Paso 8: manejo de errores RFC-7807<a class="headerlink" href="#paso-8-manejo-de-errores-rfc-7807" title="Permanent link">&para;</a></h2>
+<p>Añade un endpoint de búsqueda para un greeting guardado, en <code>app/Http/GreetingController.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">use Firefly\Kernel\Exception\Business\ResourceNotFoundException;</span>
+
+<span class="x">    /** @return array&lt;string, string&gt; */</span>
+<span class="x">    #[GetMapping('/greetings/{name}/record')]</span>
+<span class="x">    public function showRecord(#[PathVariable] string $name): array</span>
+<span class="x">    {</span>
+<span class="x">        $greeting = $this-&gt;greetings-&gt;findRecord($name);</span>
+<span class="x">        if ($greeting === null) {</span>
+<span class="x">            throw new ResourceNotFoundException("No saved greeting for '{$name}'");</span>
+<span class="x">        }</span>
+
+<span class="x">        return ['name' =&gt; $greeting-&gt;name, 'message' =&gt; $greeting-&gt;message];</span>
+<span class="x">    }</span>
+</code></pre></div>
+<p>Toda excepción del framework extiende <code>Firefly\Kernel\Exception\FireflyException</code>, que fija un status HTTP,
+un <code>errorCode()</code> estable y legible por máquinas, una <code>ErrorCategory</code> y una <code>ErrorSeverity</code>.
+<code>Firefly\Kernel\Exception\Business\ResourceNotFoundException</code> es una subclase tipada <code>404</code>/
+<code>RESOURCE_NOT_FOUND</code> — nunca escribes un try/catch en el controlador. El
+<code>Firefly\Web\Exception\ProblemDetailsRenderer</code> de <code>firefly/web</code> convierte cualquier <code>FireflyException</code>
+lanzada en una respuesta <code>application/problem+json</code>, globalmente, en el <code>httpStatus()</code> propio de la
+excepción.</p>
+<p>Pruébalo:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>http://127.0.0.1:8000/greetings/Ada/record
+<span class="c1"># {"name":"Ada","message":"Hello from the database!"}</span>
+
+curl<span class="w"> </span>-i<span class="w"> </span>http://127.0.0.1:8000/greetings/Nowhere/record
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>HTTP/1.1 404 Not Found
+Content-Type: application/problem+json
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">404</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Not Found"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"RESOURCE_NOT_FOUND"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"business"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"No saved greeting for 'Nowhere'"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"instance"</span><span class="p">:</span><span class="w"> </span><span class="s2">"greetings/Nowhere/record"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>No escribiste este renderer, ni una tabla de códigos de estado, ni una clase de respuesta de error — es un
+único mecanismo consistente en todo el framework. Consulta <a href="../modules/error-handling/">Manejo de errores</a>
+para la taxonomía completa de excepciones (<code>ConflictException</code>, <code>AuthenticationException</code>,
+<code>AuthorizationException</code>, y más).</p>
+<hr />
+<h2 id="paso-9-comandos-y-consultas-cqrs">Paso 9: comandos y consultas — CQRS<a class="headerlink" href="#paso-9-comandos-y-consultas-cqrs" title="Permanent link">&para;</a></h2>
+<p>Para una lectura, <code>findRecord()</code> del Paso 6 es suficiente. Pero una <em>mutación</em> — renombrar un greeting
+guardado — es una buena candidata para <code>firefly/cqrs</code>: obtiene semántica transaccional y publicación de
+eventos de dominio gratis.</p>
+<p>Primero, enseña al modelo <code>Greeting</code> a levantar un evento de dominio al renombrarse. Actualiza
+<code>app/Domain/Greeting.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Domain</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Domain\Event\GreetingRenamed</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Domain\HasDomainEvents</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Domain\RecordsDomainEvents</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Illuminate\Database\Eloquent\Model</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">class</span> <span class="nc">Greeting</span> <span class="k">extends</span> <span class="nx">Model</span> <span class="k">implements</span> <span class="nx">RecordsDomainEvents</span>
+<span class="p">{</span>
+    <span class="k">use</span> <span class="nx">HasDomainEvents</span><span class="p">;</span>
+
+    <span class="sd">/** @var list&lt;string&gt; */</span>
+    <span class="k">protected</span> <span class="nv">$fillable</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'name'</span><span class="p">,</span> <span class="s1">'message'</span><span class="p">];</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">rename</span><span class="p">(</span><span class="nx">string</span> <span class="nv">$newMessage</span><span class="p">)</span><span class="o">:</span> <span class="nx">void</span>
+    <span class="p">{</span>
+        <span class="nv">$old</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">message</span> <span class="o">=</span> <span class="nv">$newMessage</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">raiseEvent</span><span class="p">(</span><span class="k">new</span> <span class="nx">GreetingRenamed</span><span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">,</span> <span class="nv">$old</span><span class="p">,</span> <span class="nv">$newMessage</span><span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>Firefly\Domain\HasDomainEvents</code> es la forma en trait del comportamiento de acumulación de eventos de
+<code>Firefly\Domain\AggregateRoot</code> (<code>raiseEvent()</code>/<code>pendingEvents()</code>/<code>pullEvents()</code>/<code>clearEvents()</code>) para una
+clase cuyo único slot de herencia ya está gastado en el propio <code>Model</code> de Eloquent — implementar
+<code>RecordsDomainEvents</code> junto a él te da un único objeto que es a la vez una fila persistida <em>y</em> un agregado
+que levanta eventos. (Un objeto de dominio puro, sin Eloquent, en cambio haría directamente
+<code>extend AggregateRoot</code> — ver <a href="../modules/domain/">Dominio (DDD)</a>.)</p>
+<p>Añade el evento, <code>app/Domain/Event/GreetingRenamed.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Domain\Event</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Cqrs\Attributes\PublishDomainEvent</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Domain\DomainEvent</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">PublishDomainEvent</span><span class="p">(</span><span class="s1">'greeting.events'</span><span class="p">)]</span>
+<span class="k">final</span> <span class="k">readonly</span> <span class="k">class</span> <span class="nc">GreetingRenamed</span> <span class="k">extends</span> <span class="nx">DomainEvent</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span>
+        <span class="k">public</span> <span class="nx">string</span> <span class="nv">$oldMessage</span><span class="p">,</span>
+        <span class="k">public</span> <span class="nx">string</span> <span class="nv">$newMessage</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{</span>
+        <span class="k">parent</span><span class="o">::</span><span class="na">__construct</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>#[PublishDomainEvent('greeting.events')]</code> enruta este evento hacia el destino de evento de integración
+<code>greeting.events</code> en cuanto se puentea hacia el bus de eda tras el commit (ver el
+<a href="#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener">Paso 10</a>).</p>
+<p>Ahora el lado de escritura — un comando y su handler. <code>app/Application/Command/RenameGreeting.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Application\Command</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">readonly</span> <span class="k">class</span> <span class="nc">RenameGreeting</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">public</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span> <span class="k">public</span> <span class="nx">string</span> <span class="nv">$newMessage</span><span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>app/Application/Command/RenameGreetingHandler.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Application\Command</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Infrastructure\GreetingRepository</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Cqrs\Attributes\CommandHandler</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Data\Transaction\Attributes\Transactional</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Kernel\Exception\Business\ResourceNotFoundException</span><span class="p">;</span>
+
+<span class="sd">/**</span>
+<span class="sd"> * Intentionally NOT final: the generated #[Transactional] proxy subclasses this handler.</span>
+<span class="sd"> */</span>
+<span class="p">#[</span><span class="nd">CommandHandler</span><span class="p">]</span>
+<span class="k">class</span> <span class="nc">RenameGreetingHandler</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingRepository</span> <span class="nv">$greetings</span><span class="p">)</span> <span class="p">{}</span>
+
+    <span class="p">#[</span><span class="nd">Transactional</span><span class="p">]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">handle</span><span class="p">(</span><span class="nx">RenameGreeting</span> <span class="nv">$command</span><span class="p">)</span><span class="o">:</span> <span class="nx">void</span>
+    <span class="p">{</span>
+        <span class="nv">$greeting</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">findFirstByName</span><span class="p">(</span><span class="nv">$command</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$greeting</span> <span class="o">===</span> <span class="k">null</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nx">ResourceNotFoundException</span><span class="p">(</span><span class="s2">"No saved greeting for '</span><span class="si">{</span><span class="nv">$command</span><span class="o">-&gt;</span><span class="na">name</span><span class="si">}</span><span class="s2">'"</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">rename</span><span class="p">(</span><span class="nv">$command</span><span class="o">-&gt;</span><span class="na">newMessage</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">save</span><span class="p">(</span><span class="nv">$greeting</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Y el lado de lectura — una consulta y su handler. <code>app/Application/Query/GetGreeting.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Application\Query</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">readonly</span> <span class="k">class</span> <span class="nc">GetGreeting</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">public</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>app/Application/Query/GetGreetingHandler.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Application\Query</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Domain\Greeting</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\Infrastructure\GreetingRepository</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Cqrs\Attributes\QueryHandler</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">QueryHandler</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GetGreetingHandler</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span><span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingRepository</span> <span class="nv">$greetings</span><span class="p">)</span> <span class="p">{}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">handle</span><span class="p">(</span><span class="nx">GetGreeting</span> <span class="nv">$query</span><span class="p">)</span><span class="o">:</span> <span class="o">?</span><span class="nx">Greeting</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">findFirstByName</span><span class="p">(</span><span class="nv">$query</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Elemento por elemento:</p>
+<ul>
+<li><strong><code>#[CommandHandler]</code></strong> / <strong><code>#[QueryHandler]</code></strong> especializan ambos a <code>#[Component]</code> — un único atributo a
+  la vez registra el handler como bean de DI inyectado por constructor <em>y</em> le dice a <code>HandlerScanner</code> cómo
+  construir el manifiesto comando/consulta → handler. Cada handler expone exactamente un método público
+  <code>handle()</code>; el tipo de mensaje manejado se infiere del único parámetro de ese método (pasa un
+  class-string explícito, <code>#[CommandHandler(RenameGreeting::class)]</code>, solo si necesitas desambiguar).</li>
+<li><strong><code>#[Transactional]</code></strong> sobre <code>handle()</code> es estructural, no decorativo: un proxy generado envuelve la
+  llamada real en una transacción, y tras un commit exitoso vacía los eventos de dominio acumulados de
+  <code>Greeting</code> y los publica — sin él, <code>GreetingRenamed</code> nunca se levantaría hacia el bus de eda. Ver
+  <a href="../modules/transactional/">Transacciones</a>.</li>
+<li><code>RenameGreetingHandler</code> <strong>no</strong> es <code>final</code> — el framework genera
+  <code>RenameGreetingHandler__FireflyTransactionalProxy extends RenameGreetingHandler</code>, lo cual fallaría de
+  forma fatal al cargar la clase si el padre fuese <code>final</code>.</li>
+</ul>
+<p>Cablea ambos buses en el controlador y cambia <code>showRecord()</code> para que use <code>QueryBus::ask()</code>, actualizando
+<code>app/Http/GreetingController.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Http</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">App\Application\Command\RenameGreeting</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\Application\Query\GetGreeting</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\GreetingService</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\Web\Dto\CreateGreetingRequest</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">App\Web\Dto\RenameGreetingRequest</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Cqrs\Command\CommandBus</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Cqrs\Query\QueryBus</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Kernel\Exception\Business\ResourceNotFoundException</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Validation\Valid</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\GetMapping</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\PatchMapping</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\PathVariable</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\PostMapping</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\RequestBody</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Web\Attributes\RestController</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">RestController</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingController</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="k">private</span> <span class="k">readonly</span> <span class="nx">GreetingService</span> <span class="nv">$greetings</span><span class="p">,</span>
+        <span class="k">private</span> <span class="k">readonly</span> <span class="nx">CommandBus</span> <span class="nv">$commands</span><span class="p">,</span>
+        <span class="k">private</span> <span class="k">readonly</span> <span class="nx">QueryBus</span> <span class="nv">$queries</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">GetMapping</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">index</span><span class="p">()</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">greet</span><span class="p">(</span><span class="s1">'World'</span><span class="p">)];</span>
+    <span class="p">}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">GetMapping</span><span class="p">(</span><span class="s1">'/greetings/{name}'</span><span class="p">,</span> <span class="nx">name</span><span class="o">:</span> <span class="s1">'greetings.show'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">show</span><span class="p">(#[</span><span class="nd">PathVariable</span><span class="p">]</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">greet</span><span class="p">(</span><span class="nv">$name</span><span class="p">)];</span>
+    <span class="p">}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">PostMapping</span><span class="p">(</span><span class="s1">'/greetings'</span><span class="p">,</span> <span class="nx">status</span><span class="o">:</span> <span class="mi">201</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">store</span><span class="p">(#[</span><span class="nd">Valid</span><span class="p">]</span> <span class="p">#[</span><span class="nd">RequestBody</span><span class="p">]</span> <span class="nx">CreateGreetingRequest</span> <span class="nv">$body</span><span class="p">)</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="nv">$greeting</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">greetings</span><span class="o">-&gt;</span><span class="na">record</span><span class="p">(</span><span class="nv">$body</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">,</span> <span class="nv">$body</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'name'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">,</span> <span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">];</span>
+    <span class="p">}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">GetMapping</span><span class="p">(</span><span class="s1">'/greetings/{name}/record'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">showRecord</span><span class="p">(#[</span><span class="nd">PathVariable</span><span class="p">]</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">)</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="sd">/** @var \App\Domain\Greeting|null $greeting */</span>
+        <span class="nv">$greeting</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">queries</span><span class="o">-&gt;</span><span class="na">ask</span><span class="p">(</span><span class="k">new</span> <span class="nx">GetGreeting</span><span class="p">(</span><span class="nv">$name</span><span class="p">));</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$greeting</span> <span class="o">===</span> <span class="k">null</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nx">ResourceNotFoundException</span><span class="p">(</span><span class="s2">"No saved greeting for '</span><span class="si">{</span><span class="nv">$name</span><span class="si">}</span><span class="s2">'"</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'name'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">,</span> <span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">];</span>
+    <span class="p">}</span>
+
+    <span class="sd">/** @return array&lt;string, string&gt; */</span>
+    <span class="p">#[</span><span class="nd">PatchMapping</span><span class="p">(</span><span class="s1">'/greetings/{name}/record'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">rename</span><span class="p">(#[</span><span class="nd">PathVariable</span><span class="p">]</span> <span class="nx">string</span> <span class="nv">$name</span><span class="p">,</span> <span class="p">#[</span><span class="nd">Valid</span><span class="p">]</span> <span class="p">#[</span><span class="nd">RequestBody</span><span class="p">]</span> <span class="nx">RenameGreetingRequest</span> <span class="nv">$body</span><span class="p">)</span><span class="o">:</span> <span class="k">array</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">commands</span><span class="o">-&gt;</span><span class="na">send</span><span class="p">(</span><span class="k">new</span> <span class="nx">RenameGreeting</span><span class="p">(</span><span class="nv">$name</span><span class="p">,</span> <span class="nv">$body</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">));</span>
+
+        <span class="sd">/** @var \App\Domain\Greeting $greeting */</span>
+        <span class="nv">$greeting</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">queries</span><span class="o">-&gt;</span><span class="na">ask</span><span class="p">(</span><span class="k">new</span> <span class="nx">GetGreeting</span><span class="p">(</span><span class="nv">$name</span><span class="p">));</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="s1">'name'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">name</span><span class="p">,</span> <span class="s1">'message'</span> <span class="o">=&gt;</span> <span class="nv">$greeting</span><span class="o">-&gt;</span><span class="na">message</span><span class="p">];</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>con un pequeño DTO adicional, <code>app/Web/Dto/RenameGreetingRequest.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Web\Dto</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Validation\Constraint\NotBlank</span><span class="p">;</span>
+
+<span class="k">final</span> <span class="k">class</span> <span class="nc">RenameGreetingRequest</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="fm">__construct</span><span class="p">(</span>
+        <span class="p">#[</span><span class="nd">NotBlank</span><span class="p">]</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="nx">string</span> <span class="nv">$message</span><span class="p">,</span>
+    <span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong><code>CommandBus::send(object $command): mixed</code></strong> es el lado de escritura; <strong><code>QueryBus::ask(object $query): mixed</code></strong>
+es el lado de lectura (<code>ask</code>, y no <code>query</code>, para no colisionar con el propio <code>query()</code> de Eloquent). Ambos
+ejecutan un pipeline acotado (correlacionar → validar → autorizar → resolver e invocar el handler →
+métricas) antes de llegar a tu handler. Pruébalo:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>PATCH<span class="w"> </span>http://127.0.0.1:8000/greetings/Ada/record<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"message": "Hello again from the database!"}'</span>
+<span class="c1"># {"name":"Ada","message":"Hello again from the database!"}</span>
+</code></pre></div>
+<hr />
+<h2 id="paso-10-reaccionando-a-un-evento-de-dominio-eventlistener">Paso 10: reaccionando a un evento de dominio — <code>#[EventListener]</code><a class="headerlink" href="#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener" title="Permanent link">&para;</a></h2>
+<p><code>GreetingRenamed</code> es un evento de dominio, levantado en proceso por <code>Greeting::rename()</code>. En cuanto se
+confirma la unidad de trabajo <code>#[Transactional]</code> de <code>RenameGreetingHandler</code>, el puente
+dominio → evento-de-integración de <code>firefly/cqrs</code> lo vuelve a publicar en el bus de broker de <code>firefly/eda</code>
+como un evento de integración — <code>eventType</code> pasa a ser el nombre corto de la clase del evento
+(<code>"GreetingRenamed"</code>), y <code>destination</code> viene de <code>#[PublishDomainEvent]</code> (<code>"greeting.events"</code>).</p>
+<p>Añade un listener, <code>app/Listener/GreetingRenamedListener.php</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="cp">&lt;?php</span>
+
+<span class="k">declare</span><span class="p">(</span><span class="nx">strict_types</span><span class="o">=</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="k">namespace</span> <span class="nx">App\Listener</span><span class="p">;</span>
+
+<span class="k">use</span> <span class="nx">Firefly\Container\Attributes\Component</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Eda\Attributes\EventListener</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Firefly\Eda\EventEnvelope</span><span class="p">;</span>
+<span class="k">use</span> <span class="nx">Illuminate\Support\Facades\Log</span><span class="p">;</span>
+
+<span class="p">#[</span><span class="nd">Component</span><span class="p">]</span>
+<span class="k">final</span> <span class="k">class</span> <span class="nc">GreetingRenamedListener</span>
+<span class="p">{</span>
+    <span class="p">#[</span><span class="nd">EventListener</span><span class="p">(</span><span class="s1">'GreetingRenamed'</span><span class="p">)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">onGreetingRenamed</span><span class="p">(</span><span class="nx">EventEnvelope</span> <span class="nv">$envelope</span><span class="p">)</span><span class="o">:</span> <span class="nx">void</span>
+    <span class="p">{</span>
+        <span class="nx">Log</span><span class="o">::</span><span class="na">info</span><span class="p">(</span><span class="s1">'greeting.renamed'</span><span class="p">,</span> <span class="nv">$envelope</span><span class="o">-&gt;</span><span class="na">payload</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Elemento por elemento:</p>
+<ul>
+<li><strong><code>#[Component]</code></strong> — un bean sencillo; el listener no necesita ningún estereotipo HTTP ni de CQRS, solo
+  registro en el DI.</li>
+<li><strong><code>#[EventListener('GreetingRenamed')]</code></strong> se suscribe al bus de broker de eda, <strong>no</strong> al bus de eventos de
+  aplicación en proceso (ese es el <code>#[AsEventListener]</code> de <code>firefly/context</code>, algo no relacionado). El
+  patrón se compara contra el <code>eventType</code> del envelope con <code>fnmatch()</code> — una cadena plana como
+  <code>'GreetingRenamed'</code> se comporta como una coincidencia exacta; también podrías pasar un glob
+  (<code>'Greeting*'</code>) o un array de varios nombres exactos. El patrón debe nombrar el <strong>tipo</strong> del evento,
+  nunca la cadena de destino de <code>#[PublishDomainEvent]</code>.</li>
+<li><strong><code>EventEnvelope</code></strong> transporta <code>eventType</code>, <code>destination</code>, <code>payload</code> (los campos públicos del evento —
+  <code>name</code>, <code>oldMessage</code>, <code>newMessage</code>, más el propio <code>eventId</code>/<code>occurredAt</code> de <code>DomainEvent</code>) y <code>headers</code>.</li>
+</ul>
+<p>Con el proveedor de eda en memoria por defecto del skeleton, la entrega es síncrona — el listener se
+ejecuta antes de que la petición <code>PATCH</code> del Paso 9 siquiera devuelva su respuesta. Vuelve a lanzar el
+<code>PATCH</code> del Paso 9 y comprueba el log:</p>
+<div class="highlight"><pre><span></span><code>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span>storage/logs/laravel.log
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>[2026-07-28 12:10:03] local.INFO: greeting.renamed {"name":"Ada","oldMessage":"Hello from the database!","newMessage":"Hello again from the database!", ...}
+</code></pre></div>
+<p>Consulta <a href="../modules/eda/">Arquitectura orientada a eventos</a> para el modelo completo de broker/adaptador y
+<a href="../modules/cqrs/">CQRS</a> para ver exactamente cómo se dispara el puente dominio → evento-de-integración.</p>
+<hr />
+<h2 id="paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud">Paso 11: la caché sin reflexión y la introspección de salud<a class="headerlink" href="#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud" title="Permanent link">&para;</a></h2>
+<p>Cada clase que has añadido desde el Paso 1 — el repositorio, los handlers de comando/consulta, el listener
+de evento — necesita compilarse en los manifiestos de la app antes de que se recoja en un arranque
+cacheado. Vuelve a ejecutar:</p>
+<div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>firefly:cache
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>firefly:cache — wrote 12 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+</code></pre></div>
+<p>Este único comando ejecuta <em>cada</em> par escáner → compilador ya asentado de cada paquete sobre
+<code>config('firefly.scan.paths')</code> y escribe, en <code>bootstrap/cache/firefly/</code>: los manifiestos de
+DI/context/config-properties, la tabla de rutas compilada, el manifiesto de restricciones de validación, el
+manifiesto de handlers de CQRS, los manifiestos de listeners de evento/mensaje, el manifiesto de tareas
+programadas, el manifiesto de métodos de seguridad, el manifiesto de <code>#[Transactional]</code>, <strong>y</strong> un fichero
+de clase <code>RenameGreetingHandler__FireflyTransactionalProxy</code> generado (el "1 proxy" de arriba — uno por cada
+objetivo <code>#[Transactional]</code> en tu app). Un <code>FireflyCacheServiceProvider</code> enlaza estos manifiestos
+compilados antes de cualquier resolución de beans, de modo que toda petición posterior corre contra
+simples arrays de PHP — sin reflexión en tiempo de ejecución en la ruta caliente. Vuelve a ejecutarlo cada
+vez que añadas o cambies una clase anotada; <code>php artisan firefly:clear</code> borra la caché y vuelve al escáner
+en proceso.</p>
+<p>Ahora introspecciona la app en ejecución desde el terminal, en proceso — sin ida y vuelta HTTP:</p>
+<div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>firefly:health
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"UP"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>firefly:health</code> resuelve el mismo <code>ActuatorRegistry</code> que resolvería una petición HTTP
+<code>GET /actuator/health</code> e imprime su respuesta — la CLI no reimplementa ninguna lógica propia de actuator.
+Prueba también la ruta HTTP:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>http://127.0.0.1:8000/actuator/health
+<span class="c1"># {"status":"UP"}</span>
+
+curl<span class="w"> </span>-i<span class="w"> </span>http://127.0.0.1:8000/actuator/env
+<span class="c1"># HTTP/1.1 404 Not Found   &lt;- los endpoints sensibles no se exponen hasta que lo activas</span>
+</code></pre></div>
+<p>Consulta la <a href="../cli/">Referencia de la CLI</a> para cada comando <code>firefly:*</code> y generador <code>make:firefly-*</code>
+(incluyendo <code>make:firefly-handler</code>, <code>make:firefly-listener</code> y <code>make:firefly-repository</code>, que generan
+exactamente los estereotipos que acabas de escribir a mano), y <a href="../modules/actuator/">Actuator</a> para la
+lista completa de endpoints y el modelo de exposición/seguridad.</p>
+<hr />
+<h2 id="paso-12-y-ahora-que">Paso 12: y ahora qué<a class="headerlink" href="#paso-12-y-ahora-que" title="Permanent link">&para;</a></h2>
+<p>Has construido una pequeña porción de funcionalidad — <code>#[RestController]</code> → <code>#[Service]</code> →
+<code>#[ConfigProperties]</code> → <code>#[Repository]</code> → <code>#[Valid]</code> → errores RFC-7807 →
+<code>#[CommandHandler]</code>/<code>#[QueryHandler]</code> → <code>#[EventListener]</code> → un arranque cacheado, sin reflexión — usando
+únicamente los atributos reales y ya distribuidos del propio framework. Desde aquí:</p>
+<h3 id="fundamentos">Fundamentos<a class="headerlink" href="#fundamentos" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../modules/dependency-injection/">Inyección de dependencias</a> — toda la familia <code>#[Component]</code>, los
+  scopes, los beans condicionales y cómo funciona el manifiesto compilado.</li>
+<li><a href="../modules/configuration/">Configuración</a> — perfiles, <code>#[Value]</code> y DTOs <code>#[ConfigProperties]</code> anidados.</li>
+<li><a href="../modules/validation/">Validación</a> — el catálogo completo de restricciones (incluidas las reglas del
+  dominio financiero).</li>
+</ul>
+<h3 id="web-datos-y-dominio">Web, datos y dominio<a class="headerlink" href="#web-datos-y-dominio" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../modules/web/">Capa web</a> — el binding de parámetros (<code>#[QueryParam]</code>, <code>#[RequestHeader]</code>,
+  <code>#[UploadedFile]</code>), la negociación de contenido y el modelo completo de cascada de <code>#[Valid]</code>.</li>
+<li><a href="../modules/data/">Datos y repositorios</a> — la gramática completa de consultas derivadas, <code>#[Query]</code>, las
+  <code>Specification</code> y la paginación.</li>
+<li><a href="../modules/data-relational/">Datos relacionales</a> y <a href="../modules/transactional/">Transacciones</a> — todo lo
+  que hacen <code>EloquentRepository</code> y <code>#[Transactional]</code> más allá de este tutorial (modos de propagación,
+  aislamiento, reglas de rollback).</li>
+<li><a href="../modules/domain/">Dominio (DDD)</a> — <code>Entity</code>, <code>ValueObject</code>, <code>AggregateRoot</code>, y el modelo completo de
+  eventos tras el commit.</li>
+<li><a href="../modules/error-handling/">Manejo de errores</a> — la taxonomía completa de excepciones y
+  <code>#[ExceptionHandler]</code>/<code>#[ControllerAdvice]</code>.</li>
+</ul>
+<h3 id="cqrs-eventos-y-mensajeria">CQRS, eventos y mensajería<a class="headerlink" href="#cqrs-eventos-y-mensajeria" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../modules/cqrs/">CQRS (comando/consulta)</a> — el pipeline acotado, el puente dominio →
+  evento-de-integración en detalle, y los mecanismos de autorización/caché.</li>
+<li><a href="../modules/eda/">Arquitectura orientada a eventos</a> — la política de reintento/DLQ, el adaptador de cola,
+  y la distinción entre las dos superficies de evento (<code>#[AsEventListener]</code> frente a <code>#[EventListener]</code>).</li>
+<li><a href="../modules/eda-brokers/">Brokers de EDA</a> y <a href="../modules/messaging/">Mensajería</a> — adaptadores de broker
+  reales y el <code>MessageBrokerPort</code> de bajo nivel, de bytes en bruto.</li>
+</ul>
+<h3 id="produccion">Producción<a class="headerlink" href="#produccion" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../modules/security/">Seguridad</a> — autenticación, <code>HttpSecurity</code> con denegación por defecto, y
+  <code>#[PreAuthorize]</code>.</li>
+<li><a href="../modules/actuator/">Actuator</a> y <a href="../modules/observability/">Observabilidad</a> — el conjunto completo de
+  endpoints y el núcleo de métricas al estilo Prometheus/Micrometer.</li>
+<li><a href="../modules/resilience/">Resiliencia</a> y <a href="../modules/scheduling/">Planificación</a> — <code>Retry</code>/
+  <code>CircuitBreaker</code>/<code>Bulkhead</code> y <code>#[Scheduled]</code>.</li>
+<li><a href="../modules/testing/">Testing</a> — el arnés de arranque de <code>firefly/testing</code> y los dobles de grabación para
+  cada puerto usado en este tutorial.</li>
+</ul>
+<h3 id="verlo-a-escala">Verlo a escala<a class="headerlink" href="#verlo-a-escala" title="Permanent link">&para;</a></h3>
+<p>El <a href="https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen">sample de Lumen</a> es
+una porción vertical ejecutable de wallet digital y ledger que ejercita exactamente los mismos primitivos
+que acabas de usar — <code>#[Transactional]</code>, CQRS, eventos de dominio sobre EDA, seguridad a nivel de método y
+renderizado de errores RFC-7807 — a la escala de un agregado completo con múltiples comandos, consultas y
+un proyector de modelo de lectura.</p>
+<hr />
+<p>Apache-2.0 © Firefly Software Solutions Inc.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

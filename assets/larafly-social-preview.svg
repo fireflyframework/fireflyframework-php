@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <title>LaraFly — Firefly Framework for PHP</title>
+  <desc>The social preview card: 1280x640, the banner's own palette and firefly motif, composed for GitHub's link card. Rendered to larafly-social-preview.png, which is what Settings - Social preview takes.</desc>
+
+  <defs>
+    <linearGradient id="sp-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <radialGradient id="sp-spark" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sp-wordmark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Self-contained background: the card is cropped and re-scaled by every surface that shows it, so
+       nothing important sits within 40px of an edge and the whole canvas is painted. -->
+  <rect x="0" y="0" width="1280" height="640" fill="url(#sp-bg)"/>
+  <rect x="8" y="8" width="1264" height="624" rx="20" fill="none" stroke="#334155" stroke-width="2"/>
+
+  <!-- The banner's particle texture, at this canvas's scale -->
+  <g opacity="0.12" stroke="#94a3b8" stroke-width="1">
+    <circle cx="150" cy="96" r="3"/>
+    <circle cx="1150" cy="548" r="3"/>
+    <circle cx="1040" cy="84" r="2"/>
+    <circle cx="96" cy="540" r="2"/>
+    <circle cx="640" cy="60" r="2"/>
+    <line x1="8" y1="320" x2="1272" y2="320" stroke-dasharray="2 12"/>
+  </g>
+
+  <!-- The firefly/spark glyph of docs/assets/larafly-banner.svg, drawn from the same primitives at 1.28x -->
+  <g transform="translate(640,196) scale(1.28)">
+    <circle r="58" fill="url(#sp-spark)"/>
+    <ellipse cx="-22" cy="-18" rx="30" ry="16" fill="#e0f2fe" opacity="0.55" transform="rotate(-18 -22 -18)"/>
+    <ellipse cx="22" cy="-18" rx="30" ry="16" fill="#e0f2fe" opacity="0.55" transform="rotate(18 22 -18)"/>
+    <ellipse cx="0" cy="4" rx="15" ry="22" fill="#1f2937"/>
+    <ellipse cx="0" cy="-8" rx="10" ry="9" fill="#111827"/>
+    <ellipse cx="0" cy="22" rx="9" ry="11" fill="#fbbf24"/>
+    <ellipse cx="0" cy="22" rx="9" ry="11" fill="#fde68a" opacity="0.6"/>
+    <g fill="#fbbf24">
+      <circle cx="-46" cy="46" r="3.5" opacity="0.85"/>
+      <circle cx="-62" cy="62" r="2.5" opacity="0.6"/>
+      <circle cx="-76" cy="74" r="1.6" opacity="0.35"/>
+    </g>
+  </g>
+
+  <!-- Two texts anchored at the same seam rather than one text with a coloured tspan: a renderer that
+       resolves text-anchor per chunk (cairo does) advances the tspan from the anchor and opens a gap. -->
+  <text x="640" y="390" text-anchor="end" font-size="104" font-weight="800" fill="url(#sp-wordmark)" letter-spacing="-1">Lara</text>
+  <text x="640" y="390" text-anchor="start" font-size="104" font-weight="800" fill="#fbbf24" letter-spacing="-1">Fly</text>
+
+  <text x="640" y="448" text-anchor="middle" font-size="27" fill="#cbd5e1">Spring Boot&#8217;s cohesion, native to Laravel 13</text>
+
+  <!-- What the framework actually ships, six chips wide. Text lengths are eyeballed against the pill
+       widths below; a longer label needs a wider rect, there is no auto-layout in SVG. -->
+  <g font-size="16.5" fill="#e2e8f0" text-anchor="middle">
+    <g fill="#1e293b" stroke="#475569" stroke-width="1.25">
+      <rect x="112" y="482" width="176" height="42" rx="21"/>
+      <rect x="300" y="482" width="150" height="42" rx="21"/>
+      <rect x="462" y="482" width="182" height="42" rx="21"/>
+      <rect x="656" y="482" width="176" height="42" rx="21"/>
+      <rect x="844" y="482" width="164" height="42" rx="21"/>
+      <rect x="1020" y="482" width="148" height="42" rx="21"/>
+    </g>
+    <text x="200" y="509" fill="#e2e8f0">DI &#183; auto-config</text>
+    <text x="375" y="509" fill="#e2e8f0">Spring Data</text>
+    <text x="553" y="509" fill="#e2e8f0">OAuth2 &#183; OIDC</text>
+    <text x="744" y="509" fill="#e2e8f0">OpenTelemetry</text>
+    <text x="926" y="509" fill="#e2e8f0">CQRS &#183; outbox</text>
+    <text x="1094" y="509" fill="#e2e8f0">Actuator</text>
+  </g>
+
+  <text x="640" y="576" text-anchor="middle" font-size="17" fill="#94a3b8">github.com/fireflyframework/fireflyframework-php</text>
+  <text x="640" y="602" text-anchor="middle" font-size="14.5" fill="#64748b">PHP 8.3+ &#183; Laravel 13 &#183; Apache-2.0 &#183; &#169; Firefly Software Solutions Inc.</text>
+</svg>

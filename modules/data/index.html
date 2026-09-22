@@ -1,0 +1,3127 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/data/">
+      
+      
+        <link rel="prev" href="../domain/">
+      
+      
+        <link rel="next" href="../data-relational/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Data & Repositories - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#data-repositories" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Data & Repositories
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial.es/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-ports-crudrepository-pagingandsortingrepository" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ports: CrudRepository / PagingAndSortingRepository
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived queries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Derived queries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-query-explicit-query-escape-hatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The #[Query] explicit-query escape hatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification-composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#query-by-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query by example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attribute-driven-repository-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribute-driven repository methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attribute-driven repository methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modifying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Modifying]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Projection]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Lock]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entitygraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[EntityGraph]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slices
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination-value-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pagination value objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exception-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exception translation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflydata-kebab-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.data.*, kebab-case)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browsing-what-a-repository-holds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browsing what a repository holds
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-ports-crudrepository-pagingandsortingrepository" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The ports: CrudRepository / PagingAndSortingRepository
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#derived-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived queries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Derived queries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-query-explicit-query-escape-hatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The #[Query] explicit-query escape hatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification-composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#query-by-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query by example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attribute-driven-repository-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribute-driven repository methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attribute-driven repository methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modifying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Modifying]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Projection]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[Lock]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entitygraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #[EntityGraph]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slices
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination-value-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pagination value objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exception-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exception translation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-fireflydata-kebab-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.data.*, kebab-case)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-latent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-latent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browsing-what-a-repository-holds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browsing what a repository holds
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="data-repositories">Data &amp; Repositories<a class="headerlink" href="#data-repositories" title="Permanent link">&para;</a></h1>
+<p><code>firefly/data</code> is LaraFly's repository and query layer over Eloquent: Spring-Data-style CRUD/paging ports, an
+extended-Spring <strong>derived-query</strong> grammar parsed straight from the method name, an explicit <code>#[Query]</code> escape
+hatch, composable <code>Specification</code>s, query by example, and the attribute-driven <code>#[Modifying]</code>/<code>#[Projection]</code>/
+<code>#[Lock]</code>/<code>#[EntityGraph]</code> methods — plus the <code>#[Transactional]</code> interception core documented separately in
+<a href="../transactional/">Transactions</a>. The derived-query parser and the Eloquent dispatch it drives are both
+<strong>reflection-free</strong>; a dedicated test confines every reflection site in <code>packages/data/src</code> to exactly two
+sanctioned files (<code>TransactionalScanner</code> at scan time, <code>ProxyFactory</code> for proxy state-copy) — nothing else in
+this page's surface touches reflection.</p>
+<h2 id="the-ports-crudrepository-pagingandsortingrepository">The ports: <code>CrudRepository</code> / <code>PagingAndSortingRepository</code><a class="headerlink" href="#the-ports-crudrepository-pagingandsortingrepository" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="x">/**</span>
+<span class="x"> * @template TEntity of object</span>
+<span class="x"> * @template TId</span>
+<span class="x"> */</span>
+<span class="x">interface CrudRepository</span>
+<span class="x">{</span>
+<span class="x">    public function save(object $entity): object;</span>
+<span class="x">    public function saveAll(iterable $entities): array;</span>
+<span class="x">    public function findById(mixed $id): ?object;</span>
+<span class="x">    public function findAll(): array;</span>
+<span class="x">    public function findAllById(iterable $ids): array;</span>
+<span class="x">    public function existsById(mixed $id): bool;</span>
+<span class="x">    public function count(): int;</span>
+<span class="x">    public function delete(object $entity): void;</span>
+<span class="x">    public function deleteById(mixed $id): void;</span>
+<span class="x">    public function deleteAll(): void;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p>PHP has no runtime generics, so the signatures are deliberately <code>object</code>/<code>mixed</code>/<code>array</code> — the <code>@template
+TEntity</code>/<code>@template TId</code> docblock parameters (plus <code>@param</code>/<code>@return</code> tags naming <code>TEntity</code>/<code>list&lt;TEntity&gt;</code>)
+give PHPStan the precise entity and id types back.</p>
+<p><code>PagingAndSortingRepository extends CrudRepository</code> adds paging and sorting. Spring overloads a single
+<code>findAll(Pageable)</code>/<code>findAll(Sort)</code>; PHP has no method overloading, so the two are distinct, cleanly-typed
+methods instead:</p>
+<div class="highlight"><pre><span></span><code><span class="x">interface PagingAndSortingRepository extends CrudRepository</span>
+<span class="x">{</span>
+<span class="x">    public function findPaged(Pageable $pageable): Page;</span>
+<span class="x">    public function findSlice(Pageable $pageable): Slice;   // no count query — see Slices below</span>
+<span class="x">    public function findSorted(Sort $sort): array;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>EloquentRepository</code> (see <a href="../data-relational/">Relational Data</a>) is the Eloquent-backed implementation of
+both ports; an application repository extends <code>EloquentRepository</code>, not these interfaces directly.</p>
+<h2 id="derived-queries">Derived queries<a class="headerlink" href="#derived-queries" title="Permanent link">&para;</a></h2>
+<p>A repository method whose name follows the grammar below needs no body at all — it is resolved dynamically by
+<code>EloquentRepository::__call()</code>, which parses the method name with <code>DerivedQueryParser::parse()</code> (pure string
+parsing, no reflection, the method name is the only input) and drives the Eloquent <code>Builder</code> accordingly.</p>
+<h3 id="grammar">Grammar<a class="headerlink" href="#grammar" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Values</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prefix</td>
+<td><code>findBy</code> / <code>countBy</code> / <code>existsBy</code> / <code>deleteBy</code></td>
+<td><code>find</code> also accepts <code>findFirstBy…</code> (limit 1), <code>findTop{N}By…</code> (limit N), <code>findDistinctBy…</code> (adds <code>DISTINCT</code>) before the <code>By</code>.</td>
+</tr>
+<tr>
+<td>Connector</td>
+<td><code>And</code> / <code>Or</code></td>
+<td>Splits predicate groups; only recognized before a new CamelCase field, so a field that merely <em>starts with</em> <code>Or</code>/<code>And</code> (e.g. <code>OrderId</code>) is left intact.</td>
+</tr>
+<tr>
+<td>Operator</td>
+<td>see table below</td>
+<td>Matched <strong>longest-first</strong> against the end of each predicate group; <code>Equals</code> (no token) is the implicit default.</td>
+</tr>
+<tr>
+<td>Case modifier</td>
+<td><code>IgnoreCase</code> suffix</td>
+<td>Routes the equality/LIKE family through <code>LOWER(col) op LOWER(?)</code>.</td>
+</tr>
+<tr>
+<td>Ordering</td>
+<td>trailing <code>OrderBy{Field}{Asc\|Desc}</code></td>
+<td>Chainable (<code>OrderByStatusAscAmountDesc</code>); direction defaults to <code>asc</code> if omitted.</td>
+</tr>
+</tbody>
+</table>
+<p>Operators, in the <strong>exact longest-match-first order</strong> the parser walks (reordering this list is the
+fault-injection tripwire the parser's own tests guard against — e.g. shortest-first would parse
+<code>StatusNotIn</code> as field <code>StatusNot</code> op <code>In</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>SQL effect</th>
+<th>Args consumed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GreaterThanEqual</code></td>
+<td><code>&gt;=</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>LessThanEqual</code></td>
+<td><code>&lt;=</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>GreaterThan</code></td>
+<td><code>&gt;</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>LessThan</code></td>
+<td><code>&lt;</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>Between</code></td>
+<td><code>WHERE col BETWEEN ? AND ?</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>NotLike</code></td>
+<td><code>not like</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>Like</code></td>
+<td><code>like</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>NotIn</code></td>
+<td><code>WHERE col NOT IN (?)</code></td>
+<td>1 (array/iterable)</td>
+</tr>
+<tr>
+<td><code>In</code></td>
+<td><code>WHERE col IN (?)</code></td>
+<td>1 (array/iterable)</td>
+</tr>
+<tr>
+<td><code>Containing</code></td>
+<td><code>like '%value%'</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>StartingWith</code></td>
+<td><code>like 'value%'</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>EndingWith</code></td>
+<td><code>like '%value'</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>IsNotNull</code></td>
+<td><code>WHERE col IS NOT NULL</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>IsNull</code></td>
+<td><code>WHERE col IS NULL</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>Not</code></td>
+<td><code>!=</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>True</code></td>
+<td><code>WHERE col = true</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>False</code></td>
+<td><code>WHERE col = false</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td><em>(none)</em></td>
+<td><code>Equals</code> → <code>=</code></td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>Each CamelCase field segment is mapped to a <code>snake_case</code> column (<code>AmountGreaterThan</code> → <code>amount</code>), and every
+derived column is validated against a bare-identifier pattern before it can reach a query — the method name
+is untrusted input reachable through the public <code>__call</code>, and the <code>IgnoreCase</code> path interpolates the column
+into a raw <code>LOWER(col)</code> fragment, so this validation is what keeps that fragment injection-free. Arguments
+bind to predicates <strong>in declaration order</strong>, left to right, advancing a cursor by however many values each
+operator consumes (<code>Between</code> consumes two, <code>IsNull</code>/<code>True</code>/<code>False</code> consume none, everything else consumes
+one):</p>
+<div class="highlight"><pre><span></span><code><span class="x">/**</span>
+<span class="x"> * @extends EloquentRepository&lt;Record&gt;</span>
+<span class="x"> *</span>
+<span class="x"> * @method list&lt;Record&gt; findByStatusAndAmountGreaterThan(string $status, int $amount)</span>
+<span class="x"> * @method list&lt;Record&gt; findTop2ByStatusOrderByAmountDesc(string $status)</span>
+<span class="x"> * @method bool existsByEmailIgnoreCase(string $email)</span>
+<span class="x"> * @method int countByStatus(string $status)</span>
+<span class="x"> * @method int deleteByStatus(string $status)</span>
+<span class="x"> */</span>
+<span class="x">#[Repository]</span>
+<span class="x">class RecordRepository extends EloquentRepository</span>
+<span class="x">{</span>
+<span class="x">    protected string $model = Record::class;</span>
+<span class="x">}</span>
+
+<span class="x">$repo-&gt;findByStatusAndAmountGreaterThan('open', 100);        // WHERE status = ? AND amount &gt; ?</span>
+<span class="x">$repo-&gt;findTop2ByStatusOrderByAmountDesc('open');             // WHERE status = ? ORDER BY amount desc LIMIT 2</span>
+<span class="x">$repo-&gt;existsByEmailIgnoreCase('b@x.test');                   // WHERE LOWER(email) = LOWER(?)</span>
+</code></pre></div>
+<p><code>@method</code> tags on the class (not a real method body) are how PHPStan sees a typed return for what is, at
+runtime, dynamic <code>__call</code> dispatch.</p>
+<h2 id="the-query-explicit-query-escape-hatch">The <code>#[Query]</code> explicit-query escape hatch<a class="headerlink" href="#the-query-explicit-query-escape-hatch" title="Permanent link">&para;</a></h2>
+<p>A method can instead declare its SQL directly, bypassing the derived-query grammar entirely:</p>
+<div class="highlight"><pre><span></span><code><span class="x">final class Query</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(</span>
+<span class="x">        public string $sql,</span>
+<span class="x">        public bool $native = false,</span>
+<span class="x">    ) {}</span>
+<span class="x">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="x">#[Query('select * from records where email = :email order by amount asc')]</span>
+<span class="x">public function findByEmailRaw(string $email): array</span>
+<span class="x">{</span>
+<span class="x">    return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
+<span class="x">}</span>
+</code></pre></div>
+<p>Named <code>:param</code> placeholders are rewritten to positional <code>?</code> in appearance order and the method's arguments
+bind positionally. <code>#[Query]</code> methods are discovered by the same <code>TransactionalScanner</code> that compiles the
+<code>#[Transactional]</code> manifest (see <a href="../transactional/">Transactions</a>), so a declared <code>#[Query]</code> method's SQL is
+resolved from the compiled manifest with no per-request reflection; both the derived-query path and a
+declared <code>#[Query]</code> method funnel through the single <code>dispatchQuery()</code> method shared by <code>__call</code> and any
+method body that calls it explicitly — explicit SQL from the manifest wins over a derived-query parse when
+both would otherwise apply to the same method name.</p>
+<h2 id="specification-composition"><code>Specification</code> composition<a class="headerlink" href="#specification-composition" title="Permanent link">&para;</a></h2>
+<p>A <code>Specification&lt;TModel&gt;</code> is a composable predicate over an Eloquent <code>Builder</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="x">/** @template TModel of Model */</span>
+<span class="x">interface Specification</span>
+<span class="x">{</span>
+<span class="x">    public function toBuilder(Builder $query): Builder;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>Specifications</code> is the static factory (interfaces can't carry static factory bodies in PHP):</p>
+<div class="highlight"><pre><span></span><code><span class="x">Specifications::allOf(...$specifications); // AND-folds left-to-right; zero-arg = match-all</span>
+<span class="x">Specifications::anyOf(...$specifications); // OR-folds left-to-right; zero-arg = match-all</span>
+<span class="x">Specifications::not($specification);</span>
+<span class="x">Specifications::where(fn (Builder $q) =&gt; $q-&gt;where('status', 'open'));</span>
+</code></pre></div>
+<p>Each combinator groups its side in a nested closure so precedence survives further composition —
+<code>AndSpecification</code> emits <code>-&gt;where(fn ($inner) =&gt; ...)-&gt;where(fn ($inner) =&gt; ...)</code>, <code>OrSpecification</code> emits
+<code>-&gt;where(...)-&gt;orWhere(...)</code>, and <code>NotSpecification</code> wraps its inner specification in <code>-&gt;whereNot(...)</code>.
+Apply a built specification with:</p>
+<div class="highlight"><pre><span></span><code><span class="x">public function findBySpecification(Specification $specification): array;</span>
+<span class="x">public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page;</span>
+</code></pre></div>
+<h2 id="query-by-example">Query by example<a class="headerlink" href="#query-by-example" title="Permanent link">&para;</a></h2>
+<p><code>Example</code> is Spring Data's <code>Example&lt;T&gt;</code> — and it <strong>is a <code>Specification</code></strong>, so it drives <code>findBySpecification()</code>
+directly and composes with <code>Specifications::allOf()</code>/<code>anyOf()</code>/<code>not()</code> like any other predicate. The probe is an
+Eloquent model with some attributes set (only what was set, not every column — <code>new Order(['status' =&gt; 'open'])</code>
+is a one-property probe), a plain object (its public properties) or a plain <code>column =&gt; value</code> array; the
+<code>ExampleMatcher</code> carries the rules:</p>
+<div class="highlight"><pre><span></span><code><span class="x">$repo-&gt;findByExample(Example::of(['status' =&gt; 'open']));                       // WHERE status = ?</span>
+<span class="x">$repo-&gt;findByExample(Example::of(new Order(['status' =&gt; 'open', 'customer' =&gt; 'Ada'])));</span>
+
+<span class="x">$matcher = ExampleMatcher::matching()                                           // = matchingAll(): AND</span>
+<span class="x">    -&gt;withIgnorePaths('id', 'created_at')                                       // dropped from the probe</span>
+<span class="x">    -&gt;withStringMatcher(StringMatcher::CONTAINING)                              // every string: LIKE %v%</span>
+<span class="x">    -&gt;withIgnoreCase('customer')                                                // no paths = every string</span>
+<span class="x">    -&gt;withMatcher('email', GenericPropertyMatcher::startsWith()-&gt;caseSensitive())</span>
+<span class="x">    -&gt;withIncludeNullValues();                                                  // null probe value =&gt; IS NULL</span>
+
+<span class="x">$repo-&gt;findByExample(Example::of($probe, $matcher));</span>
+<span class="x">$repo-&gt;findOneByExample($example);        // null, the row, or IncorrectResultSizeDataAccessException for more</span>
+<span class="x">$repo-&gt;countByExample($example);</span>
+<span class="x">$repo-&gt;existsByExample($example);</span>
+<span class="x">$repo-&gt;findByExamplePaged($example, Pageable::of(1, 20, Sort::by('id')));</span>
+</code></pre></div>
+<p>Rules: <code>matchingAny()</code> folds with OR; a <code>null</code> probe value is skipped unless <code>withIncludeNullValues()</code>; only
+<strong>string</strong> values get string matching (<code>EXACT</code> = <code>=</code>, <code>CONTAINING</code>/<code>STARTING</code>/<code>ENDING</code> = <code>LIKE</code>), an int,
+float or bool is always <code>=</code>; LIKE patterns escape <code>!</code>, <code>%</code> and <code>_</code> with <code>!</code> and carry <code>ESCAPE '!'</code> — the one
+escape spelling that reads the same on sqlite, mysql, pgsql and sqlsrv; <code>withIgnoreCase()</code> wraps both sides in
+<code>LOWER()</code>. Every probe key is validated as a bare identifier at <code>Example::of()</code> (an <code>InvalidArgumentException</code>
+otherwise) because a key can reach a raw fragment — the same guard the derived-query parser applies.</p>
+<h2 id="attribute-driven-repository-methods">Attribute-driven repository methods<a class="headerlink" href="#attribute-driven-repository-methods" title="Permanent link">&para;</a></h2>
+<p>PHP cannot attach an attribute to a method that is never declared, so the attributes below sit on <strong>declared</strong>
+repository methods — a <code>#[Query]</code> method, or a derived-query method declared with the one-line body
+<code>return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</code>. The <code>TransactionalScanner</code> records them into
+the compiled manifest's <code>repositories</code> map (a <code>#[Projection]</code>'s DTO constructor is reflected <strong>once</strong>, at scan
+time); <code>EloquentRepository</code> honours them at dispatch with no reflection. A <code>#[Repository]</code> that is also
+<code>#[Transactional]</code> runs as its generated proxy subclass; lookups strip the proxy suffix, so the attributes work
+there too.</p>
+<h3 id="modifying"><code>#[Modifying]</code><a class="headerlink" href="#modifying" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="x">#[Modifying]</span>
+<span class="x">#[Query('update orders set status = :status where placed_at &lt; :before')]</span>
+<span class="x">public function closeOlderThan(string $status, string $before): int</span>
+<span class="x">{</span>
+<span class="x">    $affected = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
+<span class="x">    assert(is_int($affected));</span>
+
+<span class="x">    return $affected;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p>The SQL runs as a <strong>statement</strong> (<code>Connection::affectingStatement()</code>) and the method returns the affected-row
+count. Two rules, both refused at scan time (a <code>ConfigurationException</code> from <code>firefly:cache</code> or the first
+boot): <code>#[Modifying]</code> needs a <code>#[Query]</code> (a derived <code>deleteBy…</code> is already a statement), and the SQL must not
+be a <code>SELECT</code>/<code>WITH</code>/<code>VALUES</code>. The statement refuses to run outside an active transaction on the model's
+connection (<code>TransactionRequiredException</code>) unless <code>#[Modifying(requiresTransaction: false)]</code>.
+<code>clearAutomatically</code> is accepted for source compatibility and does nothing — Eloquent has no persistence
+context to clear.</p>
+<h3 id="projection"><code>#[Projection]</code><a class="headerlink" href="#projection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="x">final readonly class OrderSummary</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(public int $id, public string $customer, public ?int $total = null) {}</span>
+<span class="x">}</span>
+
+<span class="x">/** @return list&lt;OrderSummary&gt; */</span>
+<span class="x">#[Projection(OrderSummary::class)]</span>
+<span class="x">public function findByStatusOrderByPlacedAtDesc(string $status): array</span>
+<span class="x">{</span>
+<span class="x">    return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
+<span class="x">}</span>
+</code></pre></div>
+<p>Each row is hydrated through the DTO's constructor: snake_case column → camelCase parameter, <code>int</code>/<code>float</code>/
+<code>string</code>/<code>bool</code> coerced from what the driver returns, a backed enum from its backing value, <code>DateTimeImmutable</code>/
+<code>DateTime</code> from the string; an optional parameter whose column is absent takes its default. Coercion is
+<strong>lossless</strong> or refused: <code>'150.75'</code> into an <code>int</code>, a backing value the enum has no case for, a string that is
+not a date — each is a <code>ConfigurationException</code> naming the DTO, the column, the value and the parameter, never
+a bare <code>ValueError</code> or <code>TypeError</code>. On a derived method the <code>SELECT</code> list is <code>columns:</code>
+(<code>#[Projection(OrderSummary::class, columns: ['id', 'customer'])]</code>) or the parameters' columns; on a <code>#[Query]</code>
+method the SQL owns its select list. A missing required column and a <code>NULL</code> into a non-nullable parameter are
+<code>ConfigurationException</code>s at first use, naming both the column and the parameter (the columns are checked
+against the table before the query runs — sqlite would otherwise read an unknown double-quoted identifier as a
+string literal). <code>findFirst…</code> returns one DTO or null; <code>count</code>/<code>exists</code>/<code>delete</code> ignore a projection.
+Interface-style projections (Spring's <code>interface OrderSummary { String getCustomer(); }</code>) are not offered —
+PHP has no proxy that could implement an interface by column name at runtime; declare the DTO.</p>
+<h3 id="lock"><code>#[Lock]</code><a class="headerlink" href="#lock" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="x">/** @return list&lt;Order&gt; */</span>
+<span class="x">#[Lock(LockMode::PESSIMISTIC_WRITE)]     // lockForUpdate(); PESSIMISTIC_READ is sharedLock()</span>
+<span class="x">public function findByCustomer(string $customer): array</span>
+<span class="x">{</span>
+<span class="x">    return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
+<span class="x">}</span>
+
+<span class="x">$repo-&gt;findByIdForUpdate($id);           // findById() under FOR UPDATE — the programmatic twin</span>
+</code></pre></div>
+<p>Both refuse to run outside an active transaction on the model's connection (<code>TransactionRequiredException</code>,
+Spring's behaviour): a row lock is released when the transaction ends, so outside one it guards nothing. Refused
+by the scanner on a <code>#[Query]</code> method — a raw statement carries its own locking clause. The clause is spelled by
+the connection's own grammar (<code>FOR UPDATE</code>, <code>FOR SHARE</code>/<code>LOCK IN SHARE MODE</code>); sqlite has no row locks and
+compiles it to nothing, so the read simply succeeds there.</p>
+<h3 id="entitygraph"><code>#[EntityGraph]</code><a class="headerlink" href="#entitygraph" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="x">protected array $entityGraphs = ['Order.full' =&gt; ['lines', 'lines.product']];</span>
+
+<span class="x">/** @return list&lt;Order&gt; */</span>
+<span class="x">#[EntityGraph(attributePaths: ['lines'])]</span>
+<span class="x">public function findByStatus(string $status): array { return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args()); }</span>
+
+<span class="x">/** @return list&lt;Order&gt; */</span>
+<span class="x">#[EntityGraph('Order.full')]</span>
+<span class="x">public function findAll(): array { return parent::findAll(); }</span>
+</code></pre></div>
+<p>Mapped to Eloquent's <code>with()</code>. Every inherited read (<code>findById</code>, <code>findAll</code>, <code>findAllById</code>, <code>findPaged</code>,
+<code>findSorted</code>, <code>findSlice</code>, <code>findBySpecification[Paged]</code>, <code>findByExample[Paged]</code>, <code>findOneByExample</code>,
+<code>findAllIncludingDeleted</code>, <code>findByIdForUpdate</code>) starts from the graph the manifest holds for <em>this repository
+class and that method</em>, so annotating an override that returns <code>parent::findAll()</code> is the whole recipe — the
+Spring shape. A named graph the repository does not declare is a <code>ConfigurationException</code> at first use.</p>
+<h3 id="slices">Slices<a class="headerlink" href="#slices" title="Permanent link">&para;</a></h3>
+<p>A derived method whose <strong>last argument is a <code>Pageable</code></strong> pages its result: a <code>Slice</code> when its declared return
+type is <code>Slice</code>, a <code>Page</code> otherwise — so an undeclared <code>@method</code> derived query with a <code>Pageable</code> is always a
+<code>Page</code> (it has no declared type to read).</p>
+<div class="highlight"><pre><span></span><code><span class="x">/** @return Slice&lt;Order&gt; */</span>
+<span class="x">public function findByStatusOrderByIdAsc(string $status, Pageable $pageable): Slice</span>
+<span class="x">{</span>
+<span class="x">    return $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
+<span class="x">}</span>
+
+<span class="x">$repo-&gt;findSlice(Pageable::of(3, 20, Sort::by('id')));   // the port's own count-free page</span>
+</code></pre></div>
+<h2 id="pagination-value-objects">Pagination value objects<a class="headerlink" href="#pagination-value-objects" title="Permanent link">&para;</a></h2>
+<p><code>Page&lt;T&gt;</code> — one page of results plus the grand total, built at the Eloquent edge from a sliced fetch plus a
+count query:</p>
+<div class="highlight"><pre><span></span><code><span class="x">final readonly class Page</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(</span>
+<span class="x">        public array $items,</span>
+<span class="x">        public int $total,</span>
+<span class="x">        public int $page = 1,</span>
+<span class="x">        public int $size = 20,</span>
+<span class="x">    ) {}</span>
+
+<span class="x">    public function totalPages(): int;      // ceil(total / size)</span>
+<span class="x">    public function hasNext(): bool;</span>
+<span class="x">    public function hasPrevious(): bool;</span>
+<span class="x">    public function numberOfElements(): int;</span>
+<span class="x">    public function map(callable $mapper): self;  // transforms items, preserves paging metadata</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>Slice&lt;T&gt;</code> — a page without a total, built by fetching one row past the page size; no count query ever runs
+(Spring's <code>content</code>/<code>number</code> are <code>items</code>/<code>page</code> here, the names <code>Page</code> already uses):</p>
+<div class="highlight"><pre><span></span><code><span class="x">final readonly class Slice</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(public array $items, public bool $hasNext, public int $page = 1, public int $size = 20) {}</span>
+
+<span class="x">    public function hasNext(): bool;</span>
+<span class="x">    public function hasPrevious(): bool;</span>
+<span class="x">    public function numberOfElements(): int;</span>
+<span class="x">    public function nextPageable(): Pageable;</span>
+<span class="x">    public function map(callable $mapper): self;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>Pageable</code> — a page request (1-based page number, size, optional <code>Sort</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="x">final readonly class Pageable</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(public int $page = 1, public int $size = 20, public ?Sort $sort = null) {}</span>
+
+<span class="x">    public static function of(int $page, int $size, ?Sort $sort = null): self;</span>
+<span class="x">    public static function unpaged(?Sort $sort = null): self;  // PHP_INT_MAX size sentinel; isPaged() reports false</span>
+
+<span class="x">    public function offset(): int;    // zero-based row offset, (page - 1) * size</span>
+<span class="x">    public function next(): self;</span>
+<span class="x">    public function previous(): self; // clamps to page 1</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>Sort</code>/<code>Order</code>/<code>Direction</code> — an immutable, composable ordering:</p>
+<div class="highlight"><pre><span></span><code><span class="x">final readonly class Sort</span>
+<span class="x">{</span>
+<span class="x">    public static function unsorted(): self;</span>
+<span class="x">    public static function by(string ...$properties): self;  // ascending over each property</span>
+
+<span class="x">    public function and(self $other): self;         // concatenates</span>
+<span class="x">    public function ascending(): self;               // rewrites every order to Asc</span>
+<span class="x">    public function descending(): self;              // rewrites every order to Desc</span>
+<span class="x">}</span>
+
+<span class="x">final readonly class Order</span>
+<span class="x">{</span>
+<span class="x">    public function __construct(public string $property, public Direction $direction = Direction::Asc) {}</span>
+
+<span class="x">    public static function asc(string $property): self;</span>
+<span class="x">    public static function desc(string $property): self;</span>
+<span class="x">}</span>
+
+<span class="x">enum Direction: string</span>
+<span class="x">{</span>
+<span class="x">    case Asc = 'asc';</span>
+<span class="x">    case Desc = 'desc';</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>Direction</code>'s backing value <strong>is</strong> the Eloquent <code>orderBy()</code> direction string, so the mapping at the Eloquent
+edge is a bare <code>-&gt;orderBy($order-&gt;property, $order-&gt;direction-&gt;value)</code> with no translation table.</p>
+<h2 id="exception-translation">Exception translation<a class="headerlink" href="#exception-translation" title="Permanent link">&para;</a></h2>
+<p>Every <code>EloquentRepository</code> method, and <code>TransactionTemplate::execute()</code> (and so every <code>#[Transactional]</code>
+method), throws the kernel's <code>DataAccessException</code> family instead of a raw <code>QueryException</code> — Spring's
+<code>PersistenceExceptionTranslator</code>, on by default under <code>firefly.data.exception-translation.enabled</code>. The
+translated type is the sentence: <code>DuplicateKeyException</code> (409 <code>DUPLICATE_KEY</code>, under
+<code>DataIntegrityViolationException</code>), <code>CannotAcquireLockException</code> / <code>DeadlockLoserDataAccessException</code> (409),
+<code>QueryTimeoutException</code> (504), <code>DataAccessResourceFailureException</code> (503, unreachable),
+<code>TransientDataAccessResourceException</code> (503, retryable), <code>BadSqlGrammarException</code> (500), the generic
+<code>DataAccessException</code> (500) for anything the tables do not know; the original is <code>previous</code>, the SQLSTATE rides
+as the <code>sqlState</code> extension member, and the message never carries the statement. The tables — driver error
+codes for sqlite/mysql/mariadb/sqlsrv, exact SQLSTATEs, SQLSTATE classes — live in one file,
+<code>Firefly\Data\Exception\DriverErrorTable</code>, with one test row per table row. <code>getById($id)</code> throws
+<code>EmptyResultDataAccessException</code> (404) where <code>findById()</code> returns null; <code>findOneByExample()</code> throws
+<code>IncorrectResultSizeDataAccessException</code> for more than one match; the existing <code>OptimisticLockException</code> is now
+a kernel <code>OptimisticLockingFailureException</code> (409). See <a href="../error-handling/">Error Handling</a> for the whole table.</p>
+<h2 id="configuration-fireflydata-kebab-case">Configuration (<code>firefly.data.*</code>, kebab-case)<a class="headerlink" href="#configuration-fireflydata-kebab-case" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.data.exception-translation.enabled</code></td>
+<td><code>true</code></td>
+<td>translate driver failures into the <code>DataAccessException</code> family at the repository and the template</td>
+</tr>
+<tr>
+<td><code>firefly.data.transaction.default-timeout</code></td>
+<td><code>0</code></td>
+<td>seconds a <code>#[Transactional]</code> method may run when it names no <code>timeout:</code>; 0 = none — see <a href="../transactional/#timeouts">Transactions</a></td>
+</tr>
+<tr>
+<td><code>firefly.data.transaction.statement-timeout</code></td>
+<td><code>true</code></td>
+<td>issue the driver-level statement timeout at transaction start (the wall-clock check is always on when a timeout is set)</td>
+</tr>
+<tr>
+<td><code>firefly.data.transactional-event-listeners.enabled</code></td>
+<td><code>true</code></td>
+<td>register <code>#[TransactionalEventListener]</code> methods — see <a href="../transactional/#transactional-event-listeners">Transactions</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Attributes need a declared method.</strong> <code>#[Modifying]</code>, <code>#[Projection]</code>, <code>#[Lock]</code>, <code>#[EntityGraph]</code> and a
+  <code>Slice</code> return live on methods with a <code>dispatchQuery(__FUNCTION__, func_get_args())</code> body; an undeclared
+  <code>@method</code> derived query cannot carry them and pages as a <code>Page</code>.</li>
+<li><strong><code>#[Query]</code> binds positionally.</strong> Named <code>:placeholders</code> are rewritten to <code>?</code> in appearance order; a
+  placeholder used twice needs the argument twice.</li>
+<li><strong>Interface projections are out</strong> — PHP has no runtime proxy for an interface keyed by column name; declare
+  the DTO class.</li>
+<li><strong>A <code>#[Projection]</code> and a trailing <code>Pageable</code> do not combine</strong>: the projection returns the whole (unpaged)
+  result. Page the entities, or add a <code>LIMIT</code> to the <code>#[Query]</code>.</li>
+</ul>
+<hr />
+<h2 id="browsing-what-a-repository-holds">Browsing what a repository holds<a class="headerlink" href="#browsing-what-a-repository-holds" title="Permanent link">&para;</a></h2>
+<p><code>firefly/admin</code> ships a <a href="../data-browser/">data browser</a> that discovers its resources from exactly these ports:
+any bean whose scan-time interface list contains <code>CrudRepository</code> is browsable, and a repository that also
+implements <code>PagingAndSortingRepository</code> is paged <strong>in the database</strong> rather than in PHP — which on a large table
+is the difference between one page of rows and an out-of-memory.</p>
+<p>It is <strong>disabled by default</strong> and does not follow <code>app.debug</code> or <code>firefly.admin.enabled</code>; writes need a second
+key on top of that, and create is offered only for an Eloquent-backed resource — for a hand-written aggregate
+the invariants live in its constructor, not in a column list. See <a href="../data-browser/">Data Browser</a> for the
+reasoning, and for the relations it walks between your entities.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

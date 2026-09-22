@@ -1,0 +1,3143 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Spring Boot's cohesion, native to Laravel.">
+      
+      
+      
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/eda-brokers/">
+      
+      
+        <link rel="prev" href="../eda/">
+      
+      
+        <link rel="next" href="../messaging/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>EDA Brokers - LaraFly — Firefly Framework for PHP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#eda-brokers-sp-4" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LaraFly — Firefly Framework for PHP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              EDA Brokers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LaraFly — Firefly Framework for PHP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fireflyframework/fireflyframework-php" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fireflyframework/fireflyframework-php
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial.es/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial (Español)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../laravel-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Laravel Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../error-handling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Error Handling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dependency-injection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dependency Injection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../starters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auto-Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web & API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Web & API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Resilience & Scheduling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resilience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resilience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Domain
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Domain
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain (DDD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Repositories
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-relational/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relational Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eventing & Messaging
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_12_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Eventing & Messaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eda/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event-Driven Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EDA Brokers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three adapters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fireflyedaprovider-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The firefly.eda.provider switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rabbitmq-fireflyeda-rabbitmq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RabbitMQ (firefly/eda-rabbitmq)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#postgres-fireflyeda-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Postgres (firefly/eda-postgres)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kafka-fireflyeda-kafka" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka (firefly/eda-kafka)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-genuine-same-transaction-outbox-fireflyeda-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The genuine same-transaction outbox (firefly/eda-postgres)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The genuine same-transaction outbox (firefly/eda-postgres)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-seam-precommiteventhook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The seam: PreCommitEventHook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-insert-pg_notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The INSERT + pg_notify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#double-publish-avoidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Double-publish avoidance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-forward-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two forward paths
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two forward paths">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-terminal-in-process-delivery-fireflyedaconsume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) Terminal in-process delivery — firefly:eda:consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-the-optional-relay-fireflyoutboxrelay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) The optional relay — firefly:outbox:relay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fireflyedaconsume-bounds-and-signal-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firefly:eda:consume — bounds and signal stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dlq-surface-per-broker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DLQ surface per broker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kafka-extension-is-optional-suggest-extension_loaded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Kafka extension is OPTIONAL (suggest + extension_loaded)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-wildcard-subscriptions-fnmatch-regex-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka wildcard subscriptions: fnmatch → ^-regex translation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-consumer-loop-spi-fireflyeda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The consumer-loop SPI (firefly/eda)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groupintegration-testcontainer-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        @group('integration') testcontainer harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-switching-an-app-to-the-postgres-outbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: switching an app to the Postgres outbox
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CQRS
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cqrs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CQRS (Command/Query)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-oauth2-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OAuth2 Authorization Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../actuator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Actuator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bean-graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bean Graph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-browser/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tooling
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tooling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three adapters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fireflyedaprovider-switch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The firefly.eda.provider switch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rabbitmq-fireflyeda-rabbitmq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RabbitMQ (firefly/eda-rabbitmq)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#postgres-fireflyeda-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Postgres (firefly/eda-postgres)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kafka-fireflyeda-kafka" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka (firefly/eda-kafka)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-genuine-same-transaction-outbox-fireflyeda-postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The genuine same-transaction outbox (firefly/eda-postgres)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The genuine same-transaction outbox (firefly/eda-postgres)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-seam-precommiteventhook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The seam: PreCommitEventHook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-insert-pg_notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The INSERT + pg_notify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#double-publish-avoidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Double-publish avoidance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-forward-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two forward paths
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two forward paths">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-terminal-in-process-delivery-fireflyedaconsume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) Terminal in-process delivery — firefly:eda:consume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-the-optional-relay-fireflyoutboxrelay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) The optional relay — firefly:outbox:relay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fireflyedaconsume-bounds-and-signal-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firefly:eda:consume — bounds and signal stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dlq-surface-per-broker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DLQ surface per broker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-kafka-extension-is-optional-suggest-extension_loaded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Kafka extension is OPTIONAL (suggest + extension_loaded)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kafka-wildcard-subscriptions-fnmatch-regex-translation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kafka wildcard subscriptions: fnmatch → ^-regex translation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-consumer-loop-spi-fireflyeda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The consumer-loop SPI (firefly/eda)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groupintegration-testcontainer-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        @group('integration') testcontainer harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-switching-an-app-to-the-postgres-outbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: switching an app to the Postgres outbox
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="eda-brokers-sp-4">EDA Brokers (SP-4)<a class="headerlink" href="#eda-brokers-sp-4" title="Permanent link">&para;</a></h1>
+<p><code>firefly/eda-rabbitmq</code>, <code>firefly/eda-postgres</code>, and <code>firefly/eda-kafka</code> are real message-broker
+adapters behind the <code>firefly/eda</code> (M9) <code>EventPublisher</code> port — the "real brokers" seam M9 deliberately
+left for later (see <a href="../eda/#known-latent">Event-Driven Architecture § Known-latent</a>). Each is its own
+opt-in package, gated behind <code>firefly.eda.provider</code>, and each ships its own <code>HealthIndicator</code>. Installing
+any of them without selecting it as the active provider is fully inert: no connection is opened, no
+extension is required, and <code>/actuator/health</code> is unaffected.</p>
+<p>This page assumes you have already read <a href="../eda/">Event-Driven Architecture</a> — the <code>EventPublisher</code> port,
+<code>EventEnvelope</code>, <code>#[EventListener]</code>, and the retry/DLQ model it describes are unchanged here. What's new
+in SP-4 is (1) three adapters that put envelopes on a real wire instead of in-memory/queue, and (2) a
+<strong>consumer-loop SPI</strong> in <code>firefly/eda</code> itself, because a real broker needs a long-running process to pull
+messages back off the wire — something M9's <code>start()</code>/<code>stop()</code> never needed.</p>
+<h2 id="the-three-adapters">The three adapters<a class="headerlink" href="#the-three-adapters" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Client library</th>
+<th>Destination shape</th>
+<th>DLQ</th>
+<th>Health indicator name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly/eda-rabbitmq</code></td>
+<td><code>php-amqplib/php-amqplib</code> (AMQP 0-9-1)</td>
+<td><code>"exchange/routingKey"</code> (or a bare routing key against the default exchange)</td>
+<td>Broker-native DLX (dead-letter exchange)</td>
+<td><code>rabbitmq</code></td>
+</tr>
+<tr>
+<td><code>firefly/eda-postgres</code></td>
+<td><code>ext-pdo_pgsql</code> (via Laravel's <code>ConnectionInterface</code>)</td>
+<td>a destination string stored on the outbox row</td>
+<td>Outbox row <code>status='FAILED'</code></td>
+<td><code>postgres</code></td>
+</tr>
+<tr>
+<td><code>firefly/eda-kafka</code></td>
+<td><code>ext-rdkafka</code> (<strong>OPTIONAL</strong>)</td>
+<td>a topic name</td>
+<td>Dead-letter topic <code>&lt;topic&gt;.DLT</code></td>
+<td><code>kafka</code></td>
+</tr>
+</tbody>
+</table>
+<p>All three implement the same <code>EventPublisher::publish(string $destination, string $eventType, array
+$payload, array $headers = []): void</code> signature <code>firefly/eda</code> defines, and all three ship an
+<code>EventConsumer</code> (see <a href="#the-consumer-loop-spi-fireflyeda">The consumer-loop SPI</a> below) with the identical
+<code>subscribe(array)/start()/poll(int):?ReceivedEnvelope/ack(ReceivedEnvelope)/nack(ReceivedEnvelope,
+bool)/stop()</code> shape.</p>
+<h2 id="the-fireflyedaprovider-switch">The <code>firefly.eda.provider</code> switch<a class="headerlink" href="#the-fireflyedaprovider-switch" title="Permanent link">&para;</a></h2>
+<p><code>firefly.eda.provider</code> now has five values: <code>memory</code> (default) and <code>queue</code> bind the M9 in-process/queue
+adapters (<code>EdaAutoConfiguration</code>, <code>#[Order(1000)]</code>); <code>rabbitmq</code>, <code>postgres</code>, and <code>kafka</code> each bind their own
+<code>EventPublisher</code> + <code>EventConsumer</code> pair from <code>#[Order(900)]</code> autoconfigurations (<code>RabbitMqAutoConfiguration</code>,
+<code>PostgresOutboxAutoConfiguration</code>, <code>KafkaAutoConfiguration</code>) — running <em>before</em> <code>EdaAutoConfiguration</code>'s
+<code>#[ConditionalOnMissingBean(EventPublisher::class)]</code> so it backs off correctly (the
+<code>firefly/scheduling-postgres</code> win-the-race precedent). Each broker's beans are additionally
+<code>#[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: '&lt;broker&gt;')]</code>-gated, so with any other
+provider selected the whole package resolves nothing and requires nothing.</p>
+<h2 id="config-keys">Config keys<a class="headerlink" href="#config-keys" title="Permanent link">&para;</a></h2>
+<h3 id="rabbitmq-fireflyeda-rabbitmq">RabbitMQ (<code>firefly/eda-rabbitmq</code>)<a class="headerlink" href="#rabbitmq-fireflyeda-rabbitmq" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.eda.rabbitmq.host</code></td>
+<td><code>127.0.0.1</code></td>
+<td>AMQP host.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.port</code></td>
+<td><code>5672</code></td>
+<td>AMQP port.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.user</code></td>
+<td><code>guest</code></td>
+<td>AMQP user.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.password</code></td>
+<td><code>guest</code></td>
+<td>AMQP password.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.vhost</code></td>
+<td><code>/</code></td>
+<td>AMQP vhost.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.exchange</code></td>
+<td><code>firefly.events</code></td>
+<td>The default topic exchange <code>publish()</code> declares/targets when a destination carries no <code>exchange/</code> prefix.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.queue</code></td>
+<td><code>firefly.eda</code></td>
+<td>The durable work queue the consumer declares and binds every subscribed pattern to.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.dlx</code></td>
+<td><code>firefly.events.dlx</code></td>
+<td>The dead-letter topic exchange the work queue's <code>x-dead-letter-exchange</code> argument points at.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.rabbitmq.prefetch</code></td>
+<td><code>10</code></td>
+<td><code>basic_qos</code> prefetch count for the consumer.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="postgres-fireflyeda-postgres">Postgres (<code>firefly/eda-postgres</code>)<a class="headerlink" href="#postgres-fireflyeda-postgres" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.eda.postgres.connection</code></td>
+<td>the default DB connection</td>
+<td>The named Laravel connection the outbox publisher/consumer/relay use — must be <code>pgsql</code> for <code>pg_notify</code>/<code>LISTEN</code> to activate (any other driver, e.g. <code>sqlite</code> in tests, silently skips the NOTIFY optimization and falls back to polling).</td>
+</tr>
+<tr>
+<td><code>firefly.eda.postgres.channel</code></td>
+<td><code>firefly_eda_events</code></td>
+<td>The <code>LISTEN</code>/<code>NOTIFY</code> channel name and the outbox row's <code>channel</code> column value.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.postgres.max_attempts</code></td>
+<td><code>3</code></td>
+<td>How many <code>nack()</code>s (in-process consumer) or failed relay attempts an outbox row tolerates before it is marked <code>FAILED</code>.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.postgres.relay.downstream_provider</code></td>
+<td><em>(unset)</em></td>
+<td><strong>OPTIONAL.</strong> Selects the relay's downstream: the shipped aliases <code>rabbitmq</code>|<code>kafka</code>, the class-string of any <code>EventPublisher</code>, or a bound container id. When set, <code>firefly:outbox:relay</code> forwards <code>PENDING</code> rows there; when unset the command refuses to run with an error naming this key, and delivery is entirely the terminal in-process consumer's job. An app that binds its own publisher under the container id <code>firefly.eda.relay.downstream</code> may leave this key unset — that binding is checked first. Resolution is validated when the relay command runs (not at boot), so a misconfiguration fails before a single row is claimed instead of at the first publish. Whatever it resolves to, a <code>PostgresEventPublisher</code> is <strong>refused</strong>: it would re-insert <code>PENDING</code> rows into the same outbox.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kafka-fireflyeda-kafka">Kafka (<code>firefly/eda-kafka</code>)<a class="headerlink" href="#kafka-fireflyeda-kafka" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.eda.kafka.brokers</code></td>
+<td><code>127.0.0.1:9092</code></td>
+<td><code>metadata.broker.list</code> for both the producer and the consumer.</td>
+</tr>
+<tr>
+<td><code>firefly.eda.consumer.group_id</code></td>
+<td><code>firefly</code></td>
+<td>The Kafka consumer group id (<code>group.id</code>). Namespaced under the broker-agnostic <code>firefly.eda.consumer.*</code> prefix rather than <code>firefly.eda.kafka.*</code> because a consumer group id is a Kafka-specific concept with no RabbitMQ/Postgres analog — it is read only by <code>KafkaAutoConfiguration</code>.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">No config key activates a broker by itself</p>
+<p>Installing <code>firefly/eda-postgres</code> (say) via Composer does nothing until <code>firefly.eda.provider=postgres</code>
+is set. Conversely, setting the provider without installing the matching package throws at boot (eda's
+own <code>#[ConditionalOnMissingBean]</code> default binds nothing useful, or — for Kafka specifically — a clear
+<code>RuntimeException</code> if <code>ext-rdkafka</code> is absent; see <a href="#the-kafka-extension-is-optional-suggest-extension_loaded">The Kafka extension is OPTIONAL</a>).</p>
+</div>
+<h2 id="the-genuine-same-transaction-outbox-fireflyeda-postgres">The genuine same-transaction outbox (<code>firefly/eda-postgres</code>)<a class="headerlink" href="#the-genuine-same-transaction-outbox-fireflyeda-postgres" title="Permanent link">&para;</a></h2>
+<p>M9 shipped only at-least-once delivery within a process/queue — publishing a domain event was never
+atomic with the aggregate's own database write. <code>firefly/eda-postgres</code> closes that gap with a <strong>genuine
+same-transaction outbox</strong>: the <code>firefly_eda_outbox</code> row is written <em>inside</em> the aggregate's own open
+transaction, on the aggregate's own connection, so it commits or rolls back atomically with the aggregate
+— no dual-write, no "commit then hope the publish succeeds."</p>
+<p><img alt="The genuine same-transaction outbox" src="../../assets/diagrams/outbox-flow.svg" /></p>
+<h3 id="the-seam-precommiteventhook">The seam: <code>PreCommitEventHook</code><a class="headerlink" href="#the-seam-precommiteventhook" title="Permanent link">&para;</a></h3>
+<p><code>firefly/data</code>'s <code>Domain\DomainEventDispatcher</code> (non-frozen — this is the one authorized non-<code>Version.php</code>
+edit SP-4 makes) gained an optional constructor seam:</p>
+<div class="highlight"><pre><span></span><code><span class="x">interface PreCommitEventHook</span>
+<span class="x">{</span>
+<span class="x">    public function handle(object $event, ?string $connection = null): void;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>DomainEventDispatcher::afterCommit()</code> — which already runs <em>during</em> the pre-commit drain, before
+<code>DB::connection($connection)-&gt;afterCommit(...)</code> is even registered — now calls
+<code>$this-&gt;preCommitHook?-&gt;handle($event, $connection)</code> first. The hook is <code>null</code> by default: with no
+broker package installed (or any provider other than <code>postgres</code>), <code>DomainEventDispatcher</code> behaves exactly
+as it did in M8 — publish deferred to <code>DB::afterCommit</code> only, zero behaviour change. <code>$connection</code> is
+threaded through unchanged from the dispatcher, so a <code>#[Transactional(connection: 'x')]</code> aggregate's
+outbox row lands on connection <code>x</code>, not some default connection.</p>
+<p><code>firefly/eda-postgres</code>'s <code>OutboxPreCommitHook</code> is the implementation: it resolves the aggregate's <em>own</em>
+connection via the injected <code>ConnectionResolverInterface</code>, builds a <code>PostgresEventPublisher</code> on it, and
+delegates to an <code>EdaCommandEventPublisher</code> (the same M10 mapping <code>HandlerManifest::destinations()</code> +
+<code>CorrelationContext</code> uses for the after-commit bridge) — so the domain-event → envelope mapping
+(event type, payload, per-event destination, <code>transaction_id</code>) is byte-for-byte identical between the
+in-tx path and the ordinary after-commit path. Only non-<code>DomainEvent</code> objects are ignored by the hook (the
+generic <code>ApplicationEventPublisher</code> after-commit dispatch still handles those).</p>
+<h3 id="the-insert-pg_notify">The INSERT + <code>pg_notify</code><a class="headerlink" href="#the-insert-pg_notify" title="Permanent link">&para;</a></h3>
+<p><code>PostgresEventPublisher::publish()</code> does one <code>INSERT ... RETURNING id</code> into <code>firefly_eda_outbox</code> on
+<strong>whatever connection it was constructed with</strong> — inside a transaction, that INSERT enlists in it. When
+the underlying driver is <code>pgsql</code>, the publisher also issues <code>SELECT pg_notify(?, ?)</code> with the row id, in
+the <strong>same transaction</strong>. Postgres queues a <code>NOTIFY</code> fired inside a transaction and only delivers it once
+that transaction actually commits — so the consumer's <code>LISTEN</code> wakes with low latency at exactly the
+moment the row becomes visible to other connections, and never wakes for a row that gets rolled back.</p>
+<p>Outbox columns (one source of truth, <code>OutboxSchema</code>): <code>id, destination, channel, event_type, payload,
+headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at</code>. <code>status</code>
+is one of <code>PENDING</code> (just written) / <code>PUBLISHED</code> (delivered) / <code>FAILED</code> (exhausted <code>max_attempts</code>).</p>
+<h3 id="double-publish-avoidance">Double-publish avoidance<a class="headerlink" href="#double-publish-avoidance" title="Permanent link">&para;</a></h3>
+<p>With <code>provider=postgres</code>, both the in-tx <code>OutboxPreCommitHook</code> <em>and</em> the ordinary M10 after-commit bridge
+(<code>DomainEventBridge</code> → <code>CommandEventPublisher</code> → <code>EdaCommandEventPublisher</code>) could in principle write the
+same event to the outbox twice. <code>PostgresOutboxAutoConfiguration</code> prevents this by binding, all at
+<code>#[Order(900)]</code> (ahead of <code>firefly/data</code>'s and <code>firefly/cqrs</code>'s <code>#[Order(1000)]</code> defaults):</p>
+<ul>
+<li>its own <code>DomainEventDispatcher</code> carrying the <code>OutboxPreCommitHook</code> (wins <code>DataAutoConfiguration</code>'s
+  <code>#[ConditionalOnMissingBean(DomainEventDispatcher::class)]</code>), and</li>
+<li>a <code>NoOpEventPublisher</code> as the <code>CommandEventPublisher</code> (wins <code>CqrsAutoConfiguration</code>'s
+  <code>#[ConditionalOnMissingBean(CommandEventPublisher::class)]</code>), silencing <em>only</em> the after-commit eda leg.</li>
+</ul>
+<p>The result: a domain event is written to the outbox <strong>exactly once</strong> — in-tx, atomically with the
+aggregate. The generic (non-eda) after-commit <code>ApplicationEventPublisher</code> dispatch is untouched, so
+<code>#[AsEventListener]</code> in-process listeners keep working exactly as before.</p>
+<h2 id="two-forward-paths">Two forward paths<a class="headerlink" href="#two-forward-paths" title="Permanent link">&para;</a></h2>
+<p>Once a row is <code>PENDING</code> in the outbox, there are two distinct — and independent — ways it can leave that
+state. Pick one (or neither, if you're only using RabbitMQ/Kafka directly and never installed
+<code>firefly/eda-postgres</code>).</p>
+<h3 id="a-terminal-in-process-delivery-fireflyedaconsume">(a) Terminal in-process delivery — <code>firefly:eda:consume</code><a class="headerlink" href="#a-terminal-in-process-delivery-fireflyedaconsume" title="Permanent link">&para;</a></h3>
+<p>This is the default, always-available path: <code>firefly:eda:consume</code> drives <code>PostgresEventConsumer</code>, which:</p>
+<ol>
+<li><code>subscribe()</code> issues <code>LISTEN &lt;channel&gt;</code> (pgsql only).</li>
+<li><code>poll($timeoutMs)</code> first waits (briefly, best-effort) on a <code>NOTIFY</code> via <code>NotificationWaiter</code> — guarded so
+   <em>any</em> failure on that wait (including a deprecation-to-exception handler tripping on the
+   soon-to-be-deprecated <code>pgsqlGetNotify()</code> fallback path) never crashes the poll loop — then, regardless of
+   whether a notification arrived, <strong>claims</strong> the oldest <code>status='PENDING'</code> row with
+   <code>SELECT ... FOR UPDATE SKIP LOCKED</code> (pgsql) or a plain <code>ORDER BY id</code> (sqlite, for tests). The poll-fallback
+   claim also picks up rows that were written while no consumer was listening.</li>
+<li>The claimed row is handed to <code>ConsumerLoop</code>, which delivers it to the <code>SubscriberRegistry</code> — driving
+   every matching <code>#[EventListener]</code> handler, exactly as the in-memory/queue adapters do.</li>
+<li>On success, <code>ack()</code> runs a guarded <code>UPDATE ... SET status='PUBLISHED' WHERE id=? AND status='PENDING'</code> —
+   the <code>WHERE status='PENDING'</code> guard makes the ack idempotent. On a handler throw, <code>nack()</code> increments
+   <code>attempts</code> and either resets the row to <code>PENDING</code> (retry) or — past <code>max_attempts</code> — marks it <code>FAILED</code>.</li>
+</ol>
+<p>There is <strong>no <code>EventPublisher::publish()</code> call anywhere in this path</strong> — <code>PostgresEventConsumer</code> reads and
+updates the outbox table directly, so there is no re-INSERT and no risk of self-reference.</p>
+<p>This is a <strong>durable <code>PENDING</code>→<code>PUBLISHED</code> status window</strong>, not an in-memory high-water mark: a restarted
+consumer resumes at the oldest still-<code>PENDING</code> row and never replays a <code>PUBLISHED</code> row. A <strong>single</strong>
+consumer worker gives exactly-once in-process delivery. Running <strong>multiple</strong> workers concurrently degrades
+to at-least-once — <code>FOR UPDATE SKIP LOCKED</code> plus the guarded <code>ack()</code> UPDATE prevent two workers from both
+claiming or both acking the same row, but a worker that crashes <em>after</em> running the handler but <em>before</em>
+its <code>ack()</code> commits will have another worker (or its own restart) redeliver that row. <strong>Write your
+<code>#[EventListener]</code> handlers idempotently</strong> if you run more than one consumer worker. A single worker
+consuming in <code>id</code> order also gives effective FIFO per outbox (not per-partition/per-key ordering like
+Kafka — just the natural insertion order of one table).</p>
+<h3 id="b-the-optional-relay-fireflyoutboxrelay">(b) The optional relay — <code>firefly:outbox:relay</code><a class="headerlink" href="#b-the-optional-relay-fireflyoutboxrelay" title="Permanent link">&para;</a></h3>
+<p><code>firefly:outbox:relay</code> is a <strong>distinct, optional</strong> path that fronts a <strong>different downstream broker</strong>. Enable
+it by setting <code>firefly.eda.postgres.relay.downstream_provider</code> — to a shipped alias (<code>rabbitmq</code>/<code>kafka</code>), to
+an <code>EventPublisher</code> class-string, or to the id of a binding you supply — or by binding your own publisher
+under the container id <code>firefly.eda.relay.downstream</code> (checked first, so the key may then stay unset).</p>
+<p>With neither configured, running the command <strong>fails</strong> with a console error naming the key and the available
+aliases, and exits <code>FAILURE</code>. That is deliberate: an operator who starts the relay expects rows to move, and a
+silent success would look like a working relay that delivers nothing. If you did not mean to front a second
+broker, simply do not run the command — <code>provider=postgres</code> already delivers committed rows in-process via
+<code>firefly:eda:consume</code>.</p>
+<p>The downstream is resolved <strong>when the command runs</strong>, not at boot, and a bad value is reported before a single
+row is claimed. Boot-time validation was considered and rejected: a downstream bound in another provider's
+<code>boot()</code> may not exist yet when the check would run, so it would fail correctly-configured applications — and
+it would fail every web request and every unrelated artisan command over a relay-only concern.</p>
+<p><code>OutboxRelay::relayBatch()</code> claims a batch of <code>PENDING</code> rows (<code>FOR UPDATE SKIP LOCKED</code> on pgsql, inside a
+short transaction so concurrent relay workers never double-claim; a plain per-row <code>WHERE id=? AND
+status='PENDING'</code> guard on drivers without row locking), publishes each through the configured downstream
+<code>EventPublisher</code>, and marks it <code>PUBLISHED</code> — or, on a publish failure, increments <code>attempts</code> and marks it
+<code>FAILED</code> past <code>max_attempts</code>, exactly like the in-process consumer's <code>nack()</code>.</p>
+<p>Both the command and <code>OutboxRelay</code>'s constructor <strong>refuse a <code>PostgresEventPublisher</code> as the downstream</strong> —
+that would re-INSERT <code>PENDING</code> rows into the very same outbox, an infinite loop — throwing a <code>LogicException</code>
+/ printing a clear error instead. The refusal applies however the downstream was named: alias, class-string
+or container binding. The relay is for genuinely bridging to a <em>different</em> broker (e.g. you want
+Kafka as your public-facing bus but still want the same-tx outbox guarantee for the write); it is not an
+alternative in-process delivery mechanism.</p>
+<div class="highlight"><pre><span></span><code>php<span class="w"> </span>artisan<span class="w"> </span>firefly:outbox:relay<span class="w"> </span>--max-messages<span class="o">=</span><span class="m">100</span><span class="w"> </span>--time-limit<span class="o">=</span><span class="m">60</span><span class="w"> </span>--sleep<span class="o">=</span><span class="m">1</span><span class="w"> </span>--batch-size<span class="o">=</span><span class="m">50</span>
+</code></pre></div>
+<h2 id="fireflyedaconsume-bounds-and-signal-stop"><code>firefly:eda:consume</code> — bounds and signal stop<a class="headerlink" href="#fireflyedaconsume-bounds-and-signal-stop" title="Permanent link">&para;</a></h2>
+<p><code>firefly:eda:consume</code> (<code>firefly/eda</code>, always registered — inert until a broker <code>EventConsumer</code> is bound) is
+the one long-running command all three brokers' terminal in-process delivery drives through:</p>
+<div class="highlight"><pre><span></span><code>firefly:eda:consume {--max-messages= : stop after N messages}
+                     {--time-limit= : stop after N seconds}
+                     {--sleep=0 : idle ms between empty polls}
+                     {--poll-timeout=5000 : block ms per poll}
+</code></pre></div>
+<p>It resolves the active <code>EventConsumer</code> (fails loudly — "No broker EventConsumer is bound..." — if the
+provider is <code>memory</code>/<code>queue</code>, which have no consumer loop; use <code>queue:work</code> for the queue provider),
+derives concrete subscriptions from the compiled <code>EventListenerManifest</code> via <code>TopicSubscriptionResolver</code>
+(the fnmatch-pattern → concrete-topic bridge — an AMQP routing key, a Kafka topic/regex, or a Postgres
+<code>LISTEN</code> channel, depending on the adapter), and hands everything to <code>ConsumerLoop</code>.</p>
+<p><code>ConsumerLoop::run()</code> is the broker-agnostic drive loop: <code>poll → sink → ack</code>, or <code>nack(requeue: true)</code> on a
+sink throw (at-least-once), until <code>--max-messages</code> or <code>--time-limit</code> trips, or a <code>SIGINT</code>/<code>SIGTERM</code> arrives.
+The <strong>sink is a port</strong>: bind a <code>Firefly\Eda\Consumer\EnvelopeSink</code> and the command delivers every envelope
+to it instead of to the <code>#[EventListener]</code> registry (<code>SubscriberRegistrySink</code>, the default) — for an
+application whose events go to a command bus, a projector or a relay, which used to mean writing its own
+consumer command, loop, signal handling and dead-letter path. A throw from <code>handle()</code> is "not handled" and
+the loop nacks with requeue; a sink that has exhausted its own retries dead-letters the record itself and
+returns, so the loop acks.</p>
+<p><strong>An undeserialisable record cannot kill the worker.</strong> Every adapter decodes the body inside a
+<code>catch (Throwable)</code> — not a catch of <code>SerializationException</code> alone, because the serializer is a port and
+because a well-keyed body with a string <code>payload</code>, an int <code>eventType</code> or a timestamp PHP cannot parse used to
+leave <code>EventEnvelope::fromArray</code> as a <code>TypeError</code> or a <code>DateMalformedStringException</code> — and, whatever the
+decode throws, hands the loop a <em>poison</em> <code>ReceivedEnvelope</code> (<code>envelope</code> null, <code>raw</code> the bytes verbatim,
+<code>failure</code>, <code>destination</code>). <code>JsonSerializer</code> itself checks every member's <em>type</em>, not just the six keys, and
+refuses each mismatch as one <code>SerializationException</code>; the <code>Throwable</code> catch is the backstop for any other
+<code>Serializer</code>. The loop never offers it to the sink, logs the destination and the
+failure, and calls <code>nack(requeue: false)</code> — Kafka produces the raw bytes to <code>&lt;topic&gt;.DLT</code> and commits the
+offset, RabbitMQ's queue routes it to its DLX — and polls the next record. It used to throw out of <code>poll()</code>,
+outside every catch in the process, and a supervisor restarted the worker onto the same offset for ever.
+<code>poll()</code> itself stays outside the loop's try on purpose: what can still throw from it is the transport (a lost
+connection, an auth refusal), and for that there is no record in hand to nack — the honest answer is to let
+the supervisor see it rather than spin on a dead broker.
+Signals are registered once via <code>pcntl_signal</code> (a no-op if the <code>pcntl</code> extension isn't loaded) and dispatched
+once per loop iteration via <code>pcntl_signal_dispatch()</code>, so a <code>kill</code>/Ctrl-C stops <strong>cleanly between messages —
+never mid-ack</strong>. <code>--sleep</code> only applies between <em>empty</em> polls (<code>poll()</code> returned <code>null</code>); it never delays a
+message that was actually received.</p>
+<h2 id="dlq-surface-per-broker">DLQ surface per broker<a class="headerlink" href="#dlq-surface-per-broker" title="Permanent link">&para;</a></h2>
+<p><strong>Division of labour first.</strong> The default <code>ConsumerLoop::run()</code> calls <code>nack(requeue: true)</code> on a sink throw
+(redeliver) — it never auto-escalates to <code>nack(requeue: false)</code> for a record the sink <em>saw</em>; the one record it
+dead-letters itself is a poison one the serializer could not decode (above). So <strong>bounded retry and dead-lettering are
+driven by the M9 <code>RetryingEventHandler</code> + in-memory <code>DeadLetterStore</code> inside the <code>#[EventListener]</code> sink</strong> —
+that remains the primary, broker-agnostic mechanism, unchanged here. The broker-native surfaces below are an
+SPI <em>capability</em> each adapter exposes: they are reached when an application-level consumer explicitly decides
+a message is poison and calls <code>nack(requeue: false)</code> — the default loop does not drive them. The one exception
+is <strong>Postgres</strong>, whose <code>nack()</code> bounds <code>attempts → FAILED</code> natively regardless of <code>$requeue</code>, so its outbox
+consumer <em>does</em> dead-letter through the default loop (see below).</p>
+<p>Each broker's native surface, reached via an explicit <code>nack(requeue: false)</code>:</p>
+<ul>
+<li><strong>RabbitMQ</strong>: the consumer declares the work queue with an <code>x-dead-letter-exchange</code> argument pointing at
+  a dedicated DLX topic exchange (<code>firefly.eda.rabbitmq.dlx</code>, default <code>firefly.events.dlx</code>). An explicit
+  <code>nack(requeue: false)</code> is routed by RabbitMQ itself straight to the DLX — no
+  application code copies the message anywhere.</li>
+<li><strong>Kafka</strong>: there is no broker-native DLX equivalent, so <code>KafkaEventConsumer::nack(requeue: false)</code>
+  re-produces the envelope to a <strong>dead-letter topic</strong> named <code>"&lt;destination&gt;.DLT"</code>, then commits the
+  original offset so the exhausted record is never redelivered from its original topic.</li>
+<li><strong>Postgres</strong>: there is no separate DLQ store at all — an exhausted outbox row is simply marked
+  <code>status='FAILED'</code> (with <code>error_message</code> and <code>failed_at</code> populated) in place, on the same
+  <code>firefly_eda_outbox</code> table. Query for <code>status='FAILED'</code> rows to inspect or reprocess them.</li>
+</ul>
+<p><code>nack(requeue: true)</code> — the redelivery path the default <code>ConsumerLoop</code> uses on every sink throw — behaves
+differently per broker too:
+RabbitMQ's <code>basic_nack(requeue: true)</code> is an immediate broker-level redelivery; Kafka's consumer simply
+leaves the offset uncommitted (the record redelivers on the next rebalance/restart of that consumer group,
+since Kafka's log-offset model has no immediate-requeue primitive short of a manual <code>seek()</code>); Postgres
+resets the row to <code>PENDING</code> so the next poll picks it straight back up.</p>
+<h2 id="the-kafka-extension-is-optional-suggest-extension_loaded">The Kafka extension is OPTIONAL (<code>suggest</code> + <code>extension_loaded</code>)<a class="headerlink" href="#the-kafka-extension-is-optional-suggest-extension_loaded" title="Permanent link">&para;</a></h2>
+<p><code>firefly/eda-kafka</code> never hard-requires <code>ext-rdkafka</code> in <code>composer.json</code> — it only lists it under
+<code>"suggest"</code>. Every <code>\RdKafka\*</code> class reference lives behind an <code>extension_loaded('rdkafka')</code> guard
+(<code>KafkaProducerFactory::available()</code> / <code>KafkaConsumerFactory::available()</code>), checked as the <strong>first</strong>
+statement of every method that would otherwise touch the extension. <code>KafkaAutoConfiguration</code> calls
+<code>available()</code> before constructing either bean and throws a clear <code>RuntimeException</code> at <em>boot</em> time if
+<code>firefly.eda.provider=kafka</code> is set but the extension isn't loaded — never a silent no-op, and never a
+fatal from an unresolvable class at autoload time (a <code>use RdKafka\Producer;</code> import is only a compile-time
+alias; it is safe on a machine with no <code>rdkafka</code> extension as long as nothing actually <em>instantiates</em> the
+class, which <code>available()</code>'s guard prevents).</p>
+<p>For <strong>static analysis</strong> on a machine without the extension installed (this repo's own CI/dev machine), the
+root <code>composer.json</code> carries a dev-only <code>kwn/php-rdkafka-stubs</code> dependency, which resolves <code>\RdKafka\*</code> and
+the <code>RD_KAFKA_*</code> constants for PHPStan — so <code>packages/eda-kafka</code> analyses clean (<code>[OK]</code>, no
+<code>ignoreErrors</code>) even with <code>ext-rdkafka</code> absent.</p>
+<h2 id="kafka-wildcard-subscriptions-fnmatch-regex-translation">Kafka wildcard subscriptions: fnmatch → <code>^</code>-regex translation<a class="headerlink" href="#kafka-wildcard-subscriptions-fnmatch-regex-translation" title="Permanent link">&para;</a></h2>
+<p><code>TopicSubscriptionResolver</code> emits fnmatch-style patterns (e.g. <code>order.*</code>, a bare <code>*</code>) — the same shape
+<code>SubscriberRegistry</code>'s in-process matching already understands. librdkafka, however, treats any topic
+string <strong>not</strong> prefixed with <code>^</code> as an exact literal topic name; subscribing to the literal string
+<code>"order.*"</code> would never match any real topic. <code>KafkaEventConsumer::toTopic()</code> detects a <code>*</code> in the
+destination and rewrites it to a <code>^</code>-prefixed librdkafka regex: <code>preg_quote()</code> escapes every regex
+metacharacter (including turning <code>*</code> into the literal <code>\*</code>), the escaped <code>\*</code> is turned into <code>.*</code>, and the
+whole thing is prefixed with <code>^</code> — so <code>order.*</code> becomes <code>^order\..*</code>. A destination with no <code>*</code> passes
+through unchanged as a literal topic. <code>SubscriberRegistry</code>'s own fnmatch still does the fine-grained
+post-receipt filter, so any broker-level over-matching (e.g. a bare <code>*</code> becoming <code>^.*</code>, matching every
+topic) is harmless — it's the same over-match-then-filter contract <code>RabbitMqEventConsumer</code> uses for AMQP
+routing keys.</p>
+<h2 id="the-consumer-loop-spi-fireflyeda">The consumer-loop SPI (<code>firefly/eda</code>)<a class="headerlink" href="#the-consumer-loop-spi-fireflyeda" title="Permanent link">&para;</a></h2>
+<p>M9's <code>EventPublisher</code> port had <code>start()</code>/<code>stop()</code> but no poll loop — there was nothing to poll, since
+neither in-memory nor queue delivery needs one. A real broker does, so <code>firefly/eda</code> gained a small,
+broker-agnostic SPI every adapter (and <code>firefly:eda:consume</code>) is built on:</p>
+<div class="highlight"><pre><span></span><code><span class="x">interface EventConsumer</span>
+<span class="x">{</span>
+<span class="x">    /** @param list&lt;string&gt; $destinations */</span>
+<span class="x">    public function subscribe(array $destinations): void;</span>
+<span class="x">    public function start(): void;</span>
+<span class="x">    public function poll(int $timeoutMs): ?ReceivedEnvelope; // null on timeout</span>
+<span class="x">    public function ack(ReceivedEnvelope $received): void;</span>
+<span class="x">    public function nack(ReceivedEnvelope $received, bool $requeue = true): void;</span>
+<span class="x">    public function stop(): void;</span>
+<span class="x">}</span>
+</code></pre></div>
+<p><code>ReceivedEnvelope</code> pairs the decoded <code>EventEnvelope</code> with an opaque <code>deliveryTag</code> (an AMQP delivery tag,
+an outbox row id, or a Kafka <code>TopicPartition</code>+offset handle, depending on the adapter) that the <em>same</em>
+adapter's <code>ack()</code>/<code>nack()</code> replays. <code>TopicSubscriptionResolver</code> bridges the fnmatch-pattern world
+(<code>EventListenerManifest</code>) to each adapter's own concrete-subscription model. <code>ConsumerLoop</code> is the one
+shared drive loop described above. None of this SPI is broker-specific — it's what makes <code>firefly:eda:consume</code>
+a single command that works unmodified against RabbitMQ, Postgres, or Kafka.</p>
+<h2 id="groupintegration-testcontainer-harness"><code>@group('integration')</code> testcontainer harness<a class="headerlink" href="#groupintegration-testcontainer-harness" title="Permanent link">&para;</a></h2>
+<p>Every adapter ships a genuine end-to-end round-trip test (<code>RabbitMqRoundTripTest</code>,
+<code>PostgresOutboxRoundTripTest</code>, <code>KafkaRoundTripTest</code>) tagged <code>-&gt;group('integration')</code> — excluded from the
+default <code>vendor/bin/pest</code> run and from <code>composer check</code>. Each is gated behind both a required PHP extension
+and an environment variable carrying real connection details, and additionally requires Docker via the
+<code>firefly/testing</code> <code>RequiresDocker</code> trait (checked in a named base test case's <code>setUp()</code>, not mixed into an
+anonymous Pest closure, so PHPStan can see <code>skipUnlessDocker()</code> statically):</p>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th>Required extension</th>
+<th>Environment variable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RabbitMQ</td>
+<td>— (<code>php-amqplib</code> is a hard Composer dependency)</td>
+<td><code>FIREFLY_RABBITMQ_DSN</code></td>
+</tr>
+<tr>
+<td>Postgres</td>
+<td><code>ext-pdo_pgsql</code></td>
+<td><code>FIREFLY_PG_DSN</code> (parsed as <code>host=…;port=…;dbname=…;user=…;password=…</code>)</td>
+</tr>
+<tr>
+<td>Kafka</td>
+<td><code>ext-rdkafka</code></td>
+<td><code>FIREFLY_KAFKA_BROKERS</code></td>
+</tr>
+</tbody>
+</table>
+<p>Missing extension, missing environment variable, or no Docker daemon reachable — any one of these skips
+the suite with a clear message, so <code>composer check</code> and ordinary CI runs never depend on a live broker.
+Run them explicitly (with the broker/extension/Docker prerequisites satisfied) via:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">FIREFLY_PG_DSN</span><span class="o">=</span><span class="s2">"host=127.0.0.1;port=5432;dbname=firefly;user=postgres;password=postgres"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>vendor/bin/pest<span class="w"> </span>--group<span class="o">=</span>integration
+</code></pre></div>
+<h2 id="example-switching-an-app-to-the-postgres-outbox">Example: switching an app to the Postgres outbox<a class="headerlink" href="#example-switching-an-app-to-the-postgres-outbox" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="x">// config/firefly.php</span>
+<span class="x">'eda' =&gt; [</span>
+<span class="x">    'provider' =&gt; 'postgres',</span>
+<span class="x">    'postgres' =&gt; [</span>
+<span class="x">        'channel' =&gt; 'firefly_eda_events',</span>
+<span class="x">        'max_attempts' =&gt; 3,</span>
+<span class="x">        // 'relay' =&gt; ['downstream_provider' =&gt; 'kafka'], // OPTIONAL — omit for terminal in-process delivery</span>
+<span class="x">    ],</span>
+<span class="x">],</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>composer<span class="w"> </span>require<span class="w"> </span>firefly/eda-postgres
+php<span class="w"> </span>artisan<span class="w"> </span>migrate<span class="w">                 </span><span class="c1"># creates firefly_eda_outbox</span>
+php<span class="w"> </span>artisan<span class="w"> </span>firefly:eda:consume<span class="w">     </span><span class="c1"># terminal in-process delivery — run this as a long-lived worker</span>
+</code></pre></div>
+<p>No application code changes: the same <code>#[EventListener]</code> handlers and the same <code>EventPublisher::publish()</code>
+call sites that worked against <code>memory</code>/<code>queue</code> now run against a durable, same-transaction outbox.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0 © Firefly Software Solutions Inc.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 900" font-family="sans-serif">
+  <title>Request lifecycle</title>
+  <desc>WebFilter chain, ControllerDispatcher, method security, and RFC-7807 error rendering.</desc>
+  <defs>
+    <marker id="rl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1298" height="898" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="650" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">Request lifecycle: filters → dispatcher → method security → controller</text>
+  <text x="650" y="52" text-anchor="middle" font-size="11" fill="#6b7280">packages/web/src/{Filter,Dispatch,Route} · packages/security/src/Web/MethodSecurityControllerGuard.php</text>
+
+  <!-- Main pipeline -->
+  <rect x="400" y="70" width="200" height="40" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="95" text-anchor="middle" font-size="13" fill="#1f2937">HTTP Request</text>
+
+  <line x1="500" y1="110" x2="500" y2="116" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="300" y="118" width="400" height="40" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="143" text-anchor="middle" font-size="13" fill="#1f2937">Laravel HTTP Kernel middleware stack</text>
+
+  <line x1="500" y1="158" x2="500" y2="164" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="200" y="166" width="600" height="44" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="192" text-anchor="middle" font-size="13" fill="#1f2937">RequestContextFilter, CorrelationIdFilter — fixed, prepended by FilterChainRegistrar</text>
+
+  <line x1="500" y1="210" x2="500" y2="216" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="120" y="218" width="760" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="238" text-anchor="middle" font-size="13" fill="#1f2937">Ordered WebFilter beans (#[Order], read from the manifest) — FilterChainRegistrar</text>
+  <text x="500" y="255" text-anchor="middle" font-size="13" fill="#1f2937">pushes them onto the global middleware stack at WiringPasses (1000)</text>
+
+  <line x1="500" y1="264" x2="500" y2="270" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="120" y="272" width="760" height="46" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="292" text-anchor="middle" font-size="13" fill="#1f2937">Native Laravel route (RouteWiringPass, one per compiled RouteDescriptor) →</text>
+  <text x="500" y="309" text-anchor="middle" font-size="13" fill="#1f2937">dispatch closure: ControllerDispatcher::actionFor()</text>
+
+  <line x1="500" y1="318" x2="500" y2="324" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <!-- Dispatcher frame -->
+  <rect x="100" y="326" width="800" height="316" rx="10" fill="none" stroke="#9ca3af" stroke-width="1.25" stroke-dasharray="5,4"/>
+  <text x="500" y="346" text-anchor="middle" font-size="12" font-weight="bold" fill="#374151">ControllerDispatcher::actionFor() — per request, inside try { … } catch (Throwable)</text>
+
+  <rect x="140" y="356" width="720" height="42" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="381" text-anchor="middle" font-size="12.5" fill="#1f2937">container-&gt;make(controllerClass) — DI-wired #[RestController] singleton</text>
+
+  <line x1="500" y1="398" x2="500" y2="414" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="140" y="416" width="720" height="54" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="437" text-anchor="middle" font-size="12.5" fill="#1f2937">ArgumentResolver::resolve(bindings, request, container) — binds #[PathVariable]/</text>
+  <text x="500" y="454" text-anchor="middle" font-size="12.5" fill="#1f2937">#[QueryParam]/#[RequestBody]/#[RequestHeader]/#[UploadedFile]; #[Valid] triggers BeanValidator</text>
+
+  <line x1="500" y1="470" x2="500" y2="486" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="140" y="488" width="720" height="54" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="509" text-anchor="middle" font-size="12.5" fill="#1f2937">ControllerSecurityGuard::check() — MethodSecurityControllerGuard evaluates the compiled</text>
+  <text x="500" y="526" text-anchor="middle" font-size="12.5" fill="#1f2937">#[PreAuthorize] rule (SecurityMethodManifest, no-eval) against SecurityContextHolder</text>
+
+  <line x1="500" y1="542" x2="500" y2="558" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="140" y="560" width="720" height="42" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="585" text-anchor="middle" font-size="12.5" fill="#1f2937">controller method invoked (#[RestController])</text>
+
+  <line x1="500" y1="642" x2="500" y2="670" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="180" y="672" width="640" height="44" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="698" text-anchor="middle" font-size="13" fill="#1f2937">ResponseFactory — content negotiation against Accept (JsonMessageConverter)</text>
+
+  <line x1="500" y1="716" x2="500" y2="726" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="400" y="728" width="200" height="40" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="500" y="753" text-anchor="middle" font-size="13" fill="#1f2937">HTTP Response (2xx)</text>
+
+  <!-- Error / exception branch -->
+  <text x="1115" y="316" text-anchor="middle" font-size="12" fill="#6b7280" font-style="italic">exception path</text>
+  <line x1="900" y1="490" x2="948" y2="380" stroke="#4b5563" stroke-width="1.25" stroke-dasharray="5,4" marker-end="url(#rl-arrow)"/>
+
+  <rect x="950" y="356" width="330" height="60" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25" stroke-dasharray="5,4"/>
+  <text x="1115" y="378" text-anchor="middle" font-size="12" fill="#1f2937">Throwable during dispatch →</text>
+  <text x="1115" y="395" text-anchor="middle" font-size="12" fill="#1f2937">ExceptionHandlerRegistry.resolve(e, controllerClass)</text>
+
+  <line x1="1115" y1="416" x2="1115" y2="432" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="950" y="434" width="330" height="86" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25" stroke-dasharray="5,4"/>
+  <text x="1115" y="454" text-anchor="middle" font-size="11.5" fill="#1f2937">Handler found (controller-local</text>
+  <text x="1115" y="470" text-anchor="middle" font-size="11.5" fill="#1f2937">#[ExceptionHandler] wins): invoke it,</text>
+  <text x="1115" y="486" text-anchor="middle" font-size="11.5" fill="#1f2937">render at the exception's status. No</text>
+  <text x="1115" y="502" text-anchor="middle" font-size="11.5" fill="#1f2937">handler: rethrow, unchanged</text>
+
+  <line x1="1115" y1="520" x2="1115" y2="536" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="950" y="538" width="330" height="54" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="1115" y="559" text-anchor="middle" font-size="11.5" fill="#1f2937">Propagates to Laravel's exception handler:</text>
+  <text x="1115" y="576" text-anchor="middle" font-size="11.5" fill="#1f2937">RFC-7807 ProblemDetailsRenderer</text>
+
+  <line x1="1115" y1="592" x2="1115" y2="608" stroke="#4b5563" stroke-width="1.5" marker-end="url(#rl-arrow)"/>
+
+  <rect x="985" y="610" width="260" height="42" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="1115" y="636" text-anchor="middle" font-size="12" fill="#1f2937">application/problem+json response</text>
+
+  <text x="650" y="800" text-anchor="middle" font-size="11" fill="#6b7280" font-style="italic">A thrown AuthorizationException/AuthenticationException from the security guard flows through the SAME try/catch into this exception path.</text>
+</svg>
