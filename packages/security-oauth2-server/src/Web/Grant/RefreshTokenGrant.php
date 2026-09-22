@@ -33,12 +33,23 @@ use Psr\Log\LoggerInterface;
  * confidential client, be unrevoked and unexpired; a requested `scope` may only narrow the original grant.
  *
  * ROTATION AND REUSE DETECTION (OAuth 2.1 §4.3.1 / RFC 9700 §4.14.2): with the client's `reuse_refresh_tokens`
- * off, every refresh issues a NEW refresh token, the previous access token is invalidated, and the superseded
- * hash joins the family. A refresh token that is found in the family but is NOT the current one has been
- * presented twice — by the client that lost it or by whoever found it — so the whole authorization is removed
- * (every token, current refresh token included) and the answer is `invalid_grant`. With reuse on, the token
- * the client presented is what it gets back (the server holds no value to echo) and nothing joins the family.
- * The stored grant keeps its ORIGINAL scopes; a narrowed access token records its own.
+ * off, every refresh issues a NEW refresh token, the previous access token is invalidated ON THE AUTHORIZATION
+ * (which binds introspection, /userinfo and a `reference` token at once, while a `self_contained` one stays
+ * valid at its resource server until its own `exp` — TokenRevocationEndpoint's docblock says why), and the
+ * superseded hash joins the family. A refresh token that is found in the family but is NOT the current one has
+ * been presented twice — by the client that lost it or by whoever found it — so the whole authorization is
+ * removed (every token, current refresh token included) and the answer is `invalid_grant`. With reuse on, the
+ * token the client presented is what it gets back (the server holds no value to echo) and nothing joins the
+ * family. The stored grant keeps its ORIGINAL scopes; a narrowed access token records its own.
+ *
+ * TWO SCOPE GATES, NOT ONE. A requested scope may only narrow the ORIGINAL grant (RFC 6749 §6), and whatever
+ * comes out of that narrowing must ALSO still be registered to the client today — the check
+ * `ClientCredentialsGrant` and `AuthorizationEndpoint` make, refused here in the same words. Without the second
+ * gate a scope withdrawn from a registration would never actually be withdrawn from a client that already holds
+ * a refresh token: rotation mints a fresh token with a fresh `refresh_token.ttl` on every call, so the chain is
+ * unbounded in time and the withdrawn privilege would be renewed forever. A client that lost a scope refreshes
+ * by ASKING for the scopes it kept; asking for nothing is asking for the whole original grant, and is refused
+ * while any part of that grant is no longer registered.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -91,6 +102,9 @@ final class RefreshTokenGrant implements TokenGrant
             if (! in_array($scope, $authorization->authorizedScopes, true)) {
                 throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_SCOPE, 'The requested scope is wider than the original grant.'));
             }
+        }
+        if (! $client->client->hasScopes($scopes)) {
+            throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes::INVALID_SCOPE, 'The request asks for a scope the client did not register.'));
         }
 
         $reuse = $client->client->tokenSettings->reuseRefreshTokens;

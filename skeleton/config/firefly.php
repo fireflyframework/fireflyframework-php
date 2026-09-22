@@ -439,6 +439,11 @@ return [
 
                 // `self_contained` (a JWT: iss, sub, aud=client_id, exp, iat, nbf, jti, scope, client_id) or
                 // `reference` (opaque; resolved only through introspection/userinfo). ttl in seconds.
+                // Revocation (and the rotation that replaces an access token) is recorded on the authorization,
+                // so it binds introspection, userinfo and a `reference` token at once — while a `self_contained`
+                // token is accepted by any resource server that verifies the signature until its own `exp`,
+                // which is what the short ttl is for. Choose `reference` when a revocation must bite immediately
+                // at the resource server; it costs an introspection call per request.
                 'access_token' => [
                     // 'format' => 'self_contained',
                     // 'ttl' => 300,

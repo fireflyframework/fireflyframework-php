@@ -20,10 +20,23 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * POST {token_revocation_endpoint} (RFC 7009, Spring's OAuth2TokenRevocationEndpointFilter): a confidential
- * client revokes a token it was issued. A refresh token takes the access token down with it (§2.1: SHOULD);
- * an access token goes alone. An unknown token, or a code or id token, is `200` with nothing to say (§2.2: the
- * client cannot learn anything from the difference); a token of ANOTHER client is `invalid_client` — Spring's
- * choice, and the one that keeps a client from probing other clients' tokens.
+ * client revokes a token it was issued. Revoking a refresh token marks the access token invalidated beside it
+ * (§2.1: SHOULD); revoking an access token touches that token alone and leaves the refresh token alive. An
+ * unknown token, or a code or id token, is `200` with nothing to say (§2.2: the client cannot learn anything
+ * from the difference); a token of ANOTHER client is `invalid_client` — Spring's choice, and the one that keeps
+ * a client from probing other clients' tokens.
+ *
+ * WHAT "REVOKED" REACHES, AND WHAT IT DOES NOT. The revocation is recorded ON THE AUTHORIZATION, so it binds
+ * every reader that asks the authorization store, and binds it at once: introspection here, /userinfo, and a
+ * `reference` access token, which is nothing but a handle into that store and is refused by every resource
+ * server the moment the store disowns it. It does NOT reach a `self_contained` access token — the DEFAULT
+ * `firefly.security.oauth2.server.access_token.format` — because the resource server holding one never asks:
+ * Firefly's own OAuth2ResourceServerFilter, like every JWT resource server, validates the bearer by JWKS
+ * signature plus `iss`/`aud`/`exp` and nothing else, so a revoked JWT keeps being accepted until its own `exp`.
+ * That gap is what the short `access_token.ttl` default (300 s) is sized for; an application that needs a
+ * revocation to bite immediately at the resource server issues `access_token.format = reference` instead and
+ * pays with an introspection call per request. The same qualification holds for the access token the
+ * refresh-token rotation invalidates.
  */
 #[Component]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]

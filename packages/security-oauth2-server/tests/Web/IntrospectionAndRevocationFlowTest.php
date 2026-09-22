@@ -106,3 +106,35 @@ it('refuses to revoke another client\'s token, and requires a confidential clien
     $oauth2->introspect('svc', OAuth2ServerCapstoneTestCase::SVC_SECRET, $accessToken)->assertJson(['active' => true]);
     $this->post('/oauth2/revoke', ['token' => 'x', 'client_id' => 'public-spa'], ['Accept' => 'application/json'])->assertStatus(401);
 });
+
+it('records the revocation on the authorization: introspection refuses at once, a self-contained token lives on at the resource server, a reference token does not', function () {
+    /** @var IntrospectionCapstoneTestCase $this */
+    $this->signIn();
+    $oauth2 = $this->oauth2();
+    $tokens = $oauth2->tokens('web-app', OAuth2ServerCapstoneTestCase::REDIRECT_URI, 'openid', OAuth2ServerCapstoneTestCase::WEB_APP_SECRET);
+    /** @var string $accessToken */
+    $accessToken = $tokens['access_token'];
+
+    $oauth2->revoke('web-app', OAuth2ServerCapstoneTestCase::WEB_APP_SECRET, $accessToken, 'access_token')->assertOk();
+    $oauth2->introspect('svc', OAuth2ServerCapstoneTestCase::SVC_SECRET, $accessToken)->assertJson(['active' => false]);
+
+    // ...and the resource server of this very application goes on accepting it. OAuth2ResourceServerFilter
+    // validates a bearer JWT by JWKS signature plus iss/aud/exp and never asks the authorization store, so a
+    // revoked `self_contained` token — the DEFAULT format — is refused only once its own `exp` passes. That is
+    // the gap the short access_token.ttl is sized for, pinned here so nobody reads "revoked" as "refused
+    // everywhere"; an application that needs otherwise issues `access_token_format: reference`.
+    $this->forgetSession();
+    $this->forgetCookies()->withHeader('Authorization', 'Bearer '.$accessToken)->getJson('/api/profile')
+        ->assertOk()->assertJson(['sub' => 'ada', 'authenticated' => true]);
+    $this->flushHeaders();
+
+    // A reference token has no such gap: it carries nothing, it is a handle into the store, and no resource
+    // server can read it without asking — so its revocation binds everywhere at the same moment.
+    /** @var string $reference */
+    $reference = $oauth2->clientCredentials('ref-svc', 'ref-secret', 'orders:read')->json('access_token');
+    $oauth2->introspect('svc', OAuth2ServerCapstoneTestCase::SVC_SECRET, $reference)->assertJson(['active' => true]);
+    $oauth2->revoke('ref-svc', 'ref-secret', $reference, 'access_token')->assertOk();
+    $oauth2->introspect('svc', OAuth2ServerCapstoneTestCase::SVC_SECRET, $reference)->assertJson(['active' => false]);
+    $this->forgetCookies()->withHeader('Authorization', 'Bearer '.$reference)->getJson('/api/profile')->assertStatus(401);
+    $this->flushHeaders();
+});
