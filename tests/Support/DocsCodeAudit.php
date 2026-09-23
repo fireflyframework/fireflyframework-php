@@ -44,6 +44,11 @@ use SplFileInfo;
  *       `#[Attribute]` must be a real framework attribute or one the listing itself imports.
  *
  * Rule (b) also runs over (a) and (c), because a config array in a listing is exactly where a stale key hides.
+ * Its key half has ONE exemption, and only inside (a): a `firefly.*` literal that the `source:` file itself
+ * spells, when that file is under `packages/*\/src`, is proven by the file the listing was already compared
+ * against line for line — see literalProvenInSource(). That is how a verbatim excerpt of `TracingFilter` may
+ * print `'firefly.correlation_id'`, which is a Laravel `Context` key and not a setting at all, without the
+ * document having to cut a line out of a call the framework really ships.
  *
  * ONE THING THIS CANNOT SEE, stated so nobody trusts it further than it goes: the key check matches the DOTTED
  * form (`firefly.security.enabled`), so a config listing written as a nested PHP array names no key this class
@@ -414,18 +419,64 @@ final class DocsCodeAudit
             $key = rtrim($match, '.-_');
 
             // `config/firefly.php` is the reference file's own name, not a key.
-            if ($key === 'firefly.php' || $this->keyIsReal($key)) {
+            if ($key === 'firefly.php' || $this->keyIsReal($key) || $this->literalProvenInSource($block, $key)) {
                 continue;
             }
 
             return 'names the configuration key `'.$key.'`, which nothing under packages/*/src reads: no '
                 .'`$config->…(\'firefly.…\')`, no #[ConditionalOnProperty] gate, and no key constant handed to '
-                .'a Config read spells it, nor does any key it is the block of. Either the key is wrong, or its '
+                .'a Config read spells it, nor does any key it is the block of, nor does the `source:` file '
+                .'this block names spell it as a literal. Either the key is wrong, or its '
                 .'prefix belongs in DocsCodeAudit::USER_KEY_PREFIXES because the next segment is the '
                 .'application\'s to choose.';
         }
 
         return null;
+    }
+
+    /**
+     * A `firefly.*` literal that the framework's own source spells in the very file a PROVENANCE listing
+     * names is proven BY that file, and is therefore not a configuration claim this method has to judge.
+     *
+     * The shape check exists because a listing is exactly where a stale key hides, and it reads any dotted
+     * `firefly.*` token as a settings key because at the character level it cannot tell one from anything
+     * else. Several of those tokens are not settings at all and never were: `firefly.correlation_id` is
+     * `CorrelationIdFilter::CONTEXT_KEY`, `firefly.request_id` is what `RequestContextFilter` seeds, and
+     * `firefly.trace_id` / `firefly.span_id` are `TracingFilter::CONTEXT_TRACE_ID` / `CONTEXT_SPAN_ID` —
+     * Laravel `Context` keys and a span attribute, all four provable literals under `packages/*\/src`. Before
+     * this arm existed, a verbatim `source:` excerpt of `TracingFilter::doFilter()` could not be printed
+     * whole: the guard read the span-attribute array as configuration and refused the listing, so the
+     * README had to cut the `'firefly.correlation_id' => …` line out of a call the framework really ships.
+     * A guard that forces a document to mutilate a true excerpt is producing the untrue listing it exists
+     * to catch.
+     *
+     * This removes that by PROVING MORE, not by asking less. `verify()` runs `verifyProvenance()` first, so
+     * by the time this is reached the block is already verbatim in the file it names; the only question left
+     * is whether that file is the framework's own source, and it is checked rather than assumed. The arm is
+     * deliberately narrow in three ways, because what is being protected is a reader who might otherwise put
+     * a `Context` key into `config/firefly.php`:
+     *
+     *   1. ONLY A `source:` BLOCK. A shell, json or yaml listing with no marker still may not name one —
+     *      that is the negative case tests/DocsCodeIsRealTest.php pins with `# firefly.trace_id`, and it
+     *      stays red.
+     *
+     *   2. ONLY A SOURCE UNDER `packages/*\/src` — the same universe keyLiterals() reads.
+     *      `skeleton/config/firefly.php` is excluded on purpose: it is the documented reference, its dotted
+     *      strings are prose (it mentions `firefly.trace_id` in a comment), and an excerpt of THAT file
+     *      naming one would read to every reader as a setting, which is the misinformation in question.
+     *
+     *   3. ONLY THE LITERAL ITSELF, in quotes. A prefix of one is not proven, so `firefly.trace` in an
+     *      excerpt of TracingFilter is still refused.
+     */
+    private function literalProvenInSource(DocsCodeBlock $block, string $key): bool
+    {
+        if ($block->source === null || preg_match('#^packages/[^/]+/src/#', $block->source) !== 1) {
+            return false;
+        }
+
+        $contents = (string) file_get_contents($this->root.'/'.$block->source);
+
+        return str_contains($contents, "'".$key."'") || str_contains($contents, '"'.$key.'"');
     }
 
     private function verifyArtisan(DocsCodeBlock $block): ?string
@@ -690,6 +741,11 @@ final class DocsCodeAudit
      *
      * The USER_KEY_PREFIXES are added as blocks of their own, so a listing may name `firefly.feature` or
      * `firefly.security.users` without inventing an application's segment to hang under it.
+     *
+     * Those 30 refusals stay refusals in every listing that ASSERTS a key — a shell line, a `.env` excerpt, a
+     * hand-written JSON block. The one place they are not refused is a `source:` excerpt of the framework file
+     * that spells the literal, where the token is a fact about that file rather than a claim about
+     * configuration; literalProvenInSource() is that arm, and it says why it is narrower than it looks.
      *
      * @return list<string>
      */

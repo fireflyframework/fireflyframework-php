@@ -911,12 +911,12 @@ $span = $this->tracer->startSpan($request->getMethod(), SpanKind::Server, [
     'url.path' => $request->getPathInfo(),
     'url.scheme' => $request->getScheme(),
     'server.address' => $request->getHost(),
-    // …
+    'firefly.correlation_id' => (string) $request->headers->get(CorrelationIdFilter::HEADER, ''),
 ], $this->propagator->extract($request->headers->all()));
 ```
 
-The cut line is one more attribute — the correlation id `CorrelationIdFilter` minted or accepted a moment
-earlier, so a span and a `problem+json` body can always be tied to each other. The fourth argument is the
+The last attribute is the correlation id `CorrelationIdFilter` minted or accepted a moment earlier, so a span
+and a `problem+json` body can always be tied to each other. The fourth argument is the
 whole trick: `W3CTraceContextPropagator::extract()` reads the inbound
 `traceparent` and hands back the remote parent, so a request that arrives with a trace *continues* it and one
 that arrives without starts a new root. The span is renamed to `GET /orders/{id}` once the router has matched,

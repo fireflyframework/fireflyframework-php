@@ -200,6 +200,17 @@ it('refuses a listing that breaks any one of its contracts, and names the promis
             docsCodeBlock('bash', 'FIREFLY=1 # firefly.totally.invented.key'), 'names the configuration key `firefly.totally.invented.key`'],
         ['a Context key offered as a setting', $repository,
             docsCodeBlock('bash', 'php artisan tinker # firefly.trace_id'), 'names the configuration key `firefly.trace_id`'],
+        // The provenance exemption is not a way in through the side door. `skeleton/config/firefly.php` is the
+        // documented reference, its prose mentions `firefly.trace_id`, and an excerpt of THAT file is exactly
+        // the listing a reader would copy into their own config — so the source has to be framework code under
+        // packages/*/src before literalProvenInSource() proves anything.
+        ['a reference-file excerpt that names a Context key', $repository,
+            docsCodeBlock(
+                'text',
+                '| PRODUCER/CONSUMER spans. The trace and span ids reach Laravel Context (firefly.trace_id /',
+                'skeleton/config/firefly.php',
+            ),
+            'names the configuration key `firefly.trace_id`'],
         ['an artisan command no $signature declares', $repository,
             docsCodeBlock('bash', 'php artisan firefly:not-a-command'), 'which no $signature under packages/*/src declares'],
         ['a composer script nothing defines', $repository,
@@ -279,6 +290,19 @@ it('accepts every listing its contracts allow', function () {
         ['a yaml excerpt cut with the hash elision', $fixture, docsCodeBlock('yaml', "service:\n# …\n  enabled: true", 'config/app.yml')],
         ['a grouped import of classes that exist', $repository, docsCodeBlock('php', $grouped, null, 'the primary bean an application declares for itself')],
         ['a shell listing of real commands and keys', $repository, docsCodeBlock('bash', "php artisan firefly:about\ncomposer stan\n# firefly.security.enabled=true")],
+        // The two shapes literalProvenInSource() exists for, and the reason it exists: the README's
+        // TracingFilter showcase is a verbatim excerpt of a call whose span-attribute array carries a Laravel
+        // Context key, and the key check used to read that line as configuration and refuse it — which left
+        // the document printing an elision where the framework ships an argument. Both listings are one line
+        // each on purpose: the contract being pinned is the exemption, not either file's formatting.
+        ['a source excerpt declaring a Context key as a constant', $repository,
+            docsCodeBlock('php', "public const CONTEXT_KEY = 'firefly.correlation_id';", 'packages/web/src/Filter/CorrelationIdFilter.php')],
+        ['a source excerpt whose span attributes include a Context key', $repository,
+            docsCodeBlock(
+                'php',
+                "'firefly.correlation_id' => (string) \$request->headers->get(CorrelationIdFilter::HEADER, ''),",
+                'packages/observability/src/Web/TracingFilter.php',
+            )],
     ];
 
     $refused = [];
