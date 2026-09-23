@@ -20,6 +20,7 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
+use Throwable;
 
 /**
  * The SCAN-TIME half of the resilience advice, and the only reflecting file this package adds — the
@@ -87,8 +88,9 @@ use ReflectionNamedType;
  *     declares make the magic methods its own. Reached by the class-level fan-out these are skipped in
  *     silence; written EXPLICITLY on `__invoke()` — the single-action-service shape — or on a `public
  *     static`, they are the exact "compiles and is then honoured by nothing" this scan exists to refuse.
- *   - The five #[Fallback] refusals — see assertFallback(), which is the reason this scanner exists at all
- *     rather than being a copy of the observability one with different attribute names.
+ *   - The six #[Fallback] refusals — five about the recovery METHOD and one about the `on:` LIST — see
+ *     assertFallback(), which is the reason this scanner exists at all rather than being a copy of the
+ *     observability one with different attribute names.
  *
  * Runs at cache time (and once per process on an uncached dev boot, through the AdviceSource). Production
  * loads the compiled plan.
@@ -267,9 +269,12 @@ final class ResilienceMethodScanner
                 );
             }
 
-            if ($fallback !== null) {
-                $this->assertFallback($reflection, $method, $fallback, $hasPattern);
-            }
+            // assertFallback() refuses, and then HANDS BACK the one fact about the recovery that is not a
+            // name: whether its last parameter accepts the caught Throwable. It is answered here, where the
+            // recovery's ReflectionMethod is already open for the arity proof, so the interceptor that
+            // appends the cause never has to reflect — see ResilienceMethodDescriptor's own paragraph on it.
+            $fallbackAcceptsThrowable = $fallback !== null
+                && $this->assertFallback($reflection, $method, $fallback, $hasPattern);
 
             $classRules[] = new ResilienceMethodDescriptor(
                 $class,
@@ -281,6 +286,7 @@ final class ResilienceMethodScanner
                 $retry?->name,
                 $fallback?->method,
                 $fallback === null ? [] : $fallback->on,
+                $fallbackAcceptsThrowable,
             );
 
             // …and who answers for it. A class attribute is always this class's own; a method attribute is the
@@ -295,7 +301,8 @@ final class ResilienceMethodScanner
     }
 
     /**
-     * The five refusals that make #[Fallback] a compile-time contract rather than a runtime hope.
+     * The SIX refusals that make #[Fallback] a compile-time contract rather than a runtime hope — five about
+     * the recovery METHOD and one about the `on:` LIST — and the one FACT the scan hands back about it.
      *
      *   - A #[Fallback] with no other resilience attribute on the method guards nothing: the method would be
      *     proxied only to install a try/catch, which is a `try` the author can write themselves and which
@@ -315,19 +322,36 @@ final class ResilienceMethodScanner
      *     from inside the catch that was absorbing the outage. `hasMethod()` answers true for both, which is
      *     why the check above is not enough on its own; `isPublic()` proves it without running anything.
      *   - The named method must be able to RECEIVE the guarded call: its required-parameter count cannot
-     *     exceed the guarded method's parameter count plus one (the optional trailing Throwable this
-     *     interceptor appends when the last parameter accepts one). Anything looser than that cannot be
-     *     proven without running it — a union type, a variadic — and is left to PHP.
+     *     exceed the guarded method's parameter count, PLUS ONE only when the recovery's own last parameter
+     *     accepts a Throwable — because that is the single condition under which the interceptor appends the
+     *     cause, so an unconditional `+ 1` would wave through a recovery that then fatals with
+     *     `ArgumentCountError` from inside the very catch this refusal exists to keep quiet. Anything looser
+     *     than a required-parameter count cannot be proven without running it — a union type, a variadic —
+     *     and is left to PHP.
+     *   - Every entry of `on:` must be a LOADABLE THROWABLE. `$cause instanceof [a name nothing declares]` is
+     *     false without autoloading and without erroring, and `instanceof stdClass` is false for everything a
+     *     `catch` can ever hold, so a typo or a moved exception compiles verbatim into the row and the
+     *     fallback silently never fires — the same "compiles and is then honoured by nothing" as a misspelt
+     *     method name, one field to the right. `class_exists()`/`interface_exists()` and `is_a(…, true)`
+     *     prove both halves, one entry at a time, in assertRecoverable().
      *
      * The order matters, and it is the order above: "carries no other resilience attribute" is asked first,
      * because a lonely #[Fallback] is wrong whatever it names and answering it with a paragraph about
      * parameter counts would send its author to fix the wrong thing; the self-reference is asked next,
-     * because a method is always its own compatible signature and every later check would pass; and
-     * existence precedes visibility, which precedes arity, because each one is the premise of the next.
+     * because a method is always its own compatible signature and every later check would pass; existence
+     * precedes visibility, which precedes arity, because each one is the premise of the next; and the `on:`
+     * list is asked last, because a list narrowing a recovery that cannot be called at all is the second
+     * thing its author needs to hear.
+     *
+     * THE RETURN VALUE is whether the recovery's LAST parameter accepts the Throwable — the fact the
+     * interceptor needs in order to decide whether to append the cause to the original arguments. It is
+     * answered here, from the ReflectionMethod the arity proof already opened, and compiled into the row; see
+     * ResilienceMethodDescriptor for why that belongs in the plan rather than in a call-time reflection.
      *
      * @param  ReflectionClass<object>  $reflection
+     * @return bool whether the recovery's last parameter accepts the caught Throwable
      */
-    private function assertFallback(ReflectionClass $reflection, ReflectionMethod $guarded, Fallback $fallback, bool $hasPattern): void
+    private function assertFallback(ReflectionClass $reflection, ReflectionMethod $guarded, Fallback $fallback, bool $hasPattern): bool
     {
         $site = $reflection->getName().'::'.$guarded->getName();
 
@@ -370,17 +394,86 @@ final class ResilienceMethodScanner
             );
         }
 
-        $capacity = $guarded->getNumberOfParameters() + 1;
+        $acceptsThrowable = $this->acceptsThrowable($recovery);
+        $capacity = $guarded->getNumberOfParameters() + ($acceptsThrowable ? 1 : 0);
 
         if ($recovery->getNumberOfRequiredParameters() > $capacity) {
             throw new ConfigurationException(
                 "#[Fallback] on {$site} names [{$fallback->method}], which cannot receive the guarded call: it requires "
                 .$recovery->getNumberOfRequiredParameters().' parameters and the call can supply at most '.$capacity
-                .' (the guarded method\'s '.$guarded->getNumberOfParameters().' arguments, plus the Throwable when the '
-                .'last parameter accepts one). Give the fallback the guarded signature, with defaults for anything it '
-                .'does not need.'
+                .' (the guarded method\'s '.$guarded->getNumberOfParameters().' arguments'
+                .($acceptsThrowable
+                    ? ', plus the Throwable its last parameter accepts'
+                    : ' — the interceptor appends the Throwable only when the fallback\'s LAST parameter accepts one, '
+                        .'and this one\'s does not')
+                .'). Give the fallback the guarded signature, with defaults for anything it does not need.'
             );
         }
+
+        foreach ($fallback->on as $entry) {
+            $this->assertRecoverable($entry, $site);
+        }
+
+        return $acceptsThrowable;
+    }
+
+    /**
+     * ONE entry of `on:`, proved to be something a `catch` can actually hold.
+     *
+     * The parameter is a plain `string` on purpose. #[Fallback] declares `list<class-string<Throwable>>` and
+     * that is the right contract for an author's editor, but an attribute argument is USER INPUT reaching
+     * this scanner from an application that may never have run a static analyser — the docblock is a claim
+     * about the list, not a guarantee, and this method is where the claim is made true. Narrowing it back to
+     * `class-string<Throwable>` here would only prove the claim to itself.
+     *
+     * Two sentences rather than one, because the two failures have different remedies and the same symptom:
+     * `$cause instanceof` a name nothing declares is FALSE without autoloading and without erroring, and
+     * `instanceof stdClass` is false for everything a `catch` can hold — either way the narrowed list matches
+     * nothing, the fallback never fires, and the outage propagates as though no #[Fallback] had been written.
+     */
+    private function assertRecoverable(string $entry, string $site): void
+    {
+        if (! class_exists($entry) && ! interface_exists($entry)) {
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} narrows `on:` to [{$entry}], which is not a class or an interface this "
+                .'application can load. `$cause instanceof` a name nothing declares is FALSE without autoloading and '
+                .'without erroring, so the entry compiles into the row verbatim and then matches nothing: the fallback '
+                .'never fires and the outage propagates as though no #[Fallback] had been written. Correct the name, '
+                .'or import the class the guarded call really throws.'
+            );
+        }
+
+        if (! is_a($entry, Throwable::class, true)) {
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} narrows `on:` to [{$entry}], which is not a Throwable. Nothing a `catch` can "
+                .'ever hold is an instance of it, so the entry matches nothing and the fallback never fires for it. '
+                .'Name an exception class or interface — the default, Throwable, recovers everything.'
+            );
+        }
+    }
+
+    /**
+     * Whether a method's LAST parameter accepts a Throwable — the rule #[Fallback] states in its own
+     * docblock, asked once at scan time and compiled into the row, so the interceptor decides whether to
+     * append the cause by reading a boolean rather than by reflecting on every recovery.
+     *
+     * It answers the ARITY proof and the compiled flag with one implementation on purpose: the two disagreeing
+     * is precisely the defect where a recovery with one extra non-Throwable parameter is waved through and
+     * then fatals with `ArgumentCountError` inside the catch. A union type (`Throwable|string`) is not a
+     * ReflectionNamedType and falls to false, which is the conservative answer: the cause is not appended, and
+     * the arity proof treats the parameter as one the call cannot fill.
+     */
+    private function acceptsThrowable(ReflectionMethod $method): bool
+    {
+        $parameters = $method->getParameters();
+
+        if ($parameters === []) {
+            return false;
+        }
+
+        $type = $parameters[count($parameters) - 1]->getType();
+
+        return $type instanceof ReflectionNamedType && is_a($type->getName(), Throwable::class, true);
     }
 
     /**

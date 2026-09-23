@@ -154,6 +154,14 @@ it('skips an ancestor\'s final method the class-level fan-out reached, and guard
         ->toBe([AncestorRetryGateway::class.'::inheritedStep', AncestorRetryGateway::class.'::own']);
 });
 
+it('still refuses a final method that carries the attribute itself, inherited or not', function (): void {
+    // The `! $annotated &&` half of the carve-out above, and the only thing holding it: a hand-written
+    // attribute on a final method is refused however the scan reached the class, because the attribute and
+    // the `final` are in the same file and the remedy is one its author can follow. Without this case,
+    // deleting that conjunct turns the refusal into a silent skip with every other test still green.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('InheritedFinalAttribute'));
+})->throws(ConfigurationException::class, 'SealedChildService::sealed cannot be applied: the method is final');
+
 /*
  | A `static` or `__`-prefixed method cannot be intercepted either way, but the two ways IN are not the same
  | thing. Reached by the class-level fan-out, skipping is right (the author wrote one attribute about the
@@ -170,10 +178,12 @@ it('refuses a guard written by hand on a public static method', function (): voi
 })->throws(ConfigurationException::class, 'StaticRetryGateway::chargeAll cannot be applied: a static call has no instance');
 
 /*
- | The five #[Fallback] refusals, which are the reason this scanner exists at all rather than being the
- | observability one with different attribute names. Each of them is a `Call to …` fatal, or an unbounded
- | recursion, raised from INSIDE the catch block that was absorbing the outage the fallback was written for —
- | the single worst moment to find out — and each is provable by reflection without running anything.
+ | The six #[Fallback] refusals — five about the recovery METHOD, one about the `on:` LIST — which are the
+ | reason this scanner exists at all rather than being the observability one with different attribute names.
+ | Each of them is a `Call to …` fatal, an `ArgumentCountError`, an unbounded recursion or a recovery that
+ | never fires, and every one of those happens INSIDE the catch block that was absorbing the outage the
+ | fallback was written for — the single worst moment to find out — while being provable by reflection
+ | without running anything.
  */
 
 it('refuses a #[Fallback] with nothing to fall back from', function (): void {
@@ -199,5 +209,34 @@ it('refuses a #[Fallback] the interceptor could not call, because the method is 
 })->throws(ConfigurationException::class, 'which is protected. The interceptor calls the recovery on the bean from OUTSIDE the class');
 
 it('refuses a #[Fallback] whose signature cannot receive the guarded call', function (): void {
+    // Three required parameters for one argument plus the cause. The recovery's last parameter IS a
+    // Throwable here, so the capacity really is guarded + 1 and the refusal is about width alone.
     (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('IncompatibleFallback'));
-})->throws(ConfigurationException::class, 'cannot receive the guarded call');
+})->throws(ConfigurationException::class, 'the call can supply at most 2 (the guarded method\'s 1 arguments, plus the Throwable its last parameter accepts)');
+
+it('counts the trailing Throwable in the capacity only when the fallback\'s last parameter accepts one', function (): void {
+    // The off-by-one an unconditional `+ 1` waved through: the recovery requires exactly guarded + 1, and
+    // its last parameter is an `int`. The interceptor appends the cause only when that parameter accepts a
+    // Throwable, so the call it really makes is `queued('acct')` — ArgumentCountError, raised from inside
+    // the catch. The capacity and the interceptor's rule are one implementation for exactly this reason.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('ExtraParameterFallback'));
+})->throws(ConfigurationException::class, 'the interceptor appends the Throwable only when the fallback\'s LAST parameter accepts one, and this one\'s does not');
+
+/*
+ | …and the sixth is about the OTHER half of the attribute. Five things are proved about the recovery method
+ | and, until this one, nothing at all about `on:` — yet a class-string in that list is honoured by
+ | `$cause instanceof $class`, which answers FALSE for a name nothing declares without autoloading and
+ | without erroring. A typo, or an exception somebody moved, therefore compiles into the row verbatim and the
+ | fallback silently never fires. Both halves are provable here: the entry must LOAD, and it must BE a
+ | Throwable, and each half gets its own sentence because each has its own remedy.
+ */
+
+it('refuses a #[Fallback(on:)] entry naming a class nothing in the application declares', function (): void {
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('UnknownThrowableFallback'));
+})->throws(ConfigurationException::class, 'narrows `on:` to [App\\Exceptions\\GatwayDown], which is not a class or an interface this application can load');
+
+it('refuses a #[Fallback(on:)] entry that loads and is not a Throwable', function (): void {
+    // stdClass exists, so the check above waves it through — and nothing a `catch` can ever hold is an
+    // instance of it, so the entry matches nothing exactly as a misspelt one does.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('NonThrowableFallback'));
+})->throws(ConfigurationException::class, 'narrows `on:` to [stdClass], which is not a Throwable');

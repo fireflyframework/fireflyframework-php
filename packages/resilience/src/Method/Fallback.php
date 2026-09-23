@@ -17,7 +17,9 @@ use Throwable;
  * fallback's value, so nothing would ever be retried. See ResilienceMethodInterceptor for the whole order.
  *
  * `on` narrows which throwables are recovered; anything else propagates untouched, so a fallback cannot
- * accidentally swallow a programming error.
+ * accidentally swallow a programming error. Every entry must name a class or interface that LOADS and that
+ * IS a Throwable, and the scan proves both — `$cause instanceof` a class nothing declares is false without
+ * autoloading and without erroring, so a typo in this list is a fallback that silently never fires.
  *
  * A NAMED METHOD THAT DOES NOT EXIST, OR CANNOT RECEIVE THE CALL, IS A ConfigurationException AT SCAN TIME
  * — never a runtime surprise inside a `catch`. The whole point of a fallback is to be the thing that works
@@ -26,8 +28,10 @@ use Throwable;
  * guarded method itself (which recovers by recursing until the stack ends), that it EXISTS, that it is
  * PUBLIC — the interceptor calls it on the bean from outside, so a `protected` one fatals exactly where a
  * missing one would — and that its required-parameter count can be satisfied by the guarded method's
- * arguments (plus the optional trailing Throwable), which is everything reflection can prove without
- * running it.
+ * arguments, counting the trailing Throwable ONLY when the recovery's own last parameter accepts one,
+ * because that is the single condition under which the interceptor appends it. The scan answers that same
+ * question once and compiles the answer into the row, so the two halves cannot drift: the arity the scan
+ * proves is the arity the call really makes.
  */
 #[Attribute(Attribute::TARGET_METHOD)]
 final readonly class Fallback

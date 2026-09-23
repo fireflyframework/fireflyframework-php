@@ -49,6 +49,25 @@ it('compiles all six attributes on one method into one descriptor', function ():
         ->and($charge->fallbackOn)->toBe([Throwable::class]);
 });
 
+/*
+ | The tenth field is the only one that is not a NAME: whether the recovery's last parameter accepts the
+ | caught Throwable. The interceptor needs it to decide whether to append the cause, and compiling it here is
+ | what keeps that interceptor free of `new ReflectionMethod(...)` on every recovery — the exact-set pin in
+ | ReflectionFreeResilienceTest is the other half of the same claim. Both answers are asserted, because a
+ | field that is only ever proved true would pass just as well hard-coded.
+ */
+
+it('compiles whether the fallback\'s last parameter accepts the Throwable, both ways', function (): void {
+    // `chargeUnavailable(string, int, ?Throwable = null)` — the cause is appended, so the capacity the arity
+    // proof allowed and the call the interceptor makes are the same width.
+    expect(resilienceRules()[PaymentService::class.'::charge']->fallbackAcceptsThrowable)->toBeTrue()
+        // `chargeUnavailable(string $account)` — no trailing Throwable, so the row says so and the original
+        // arguments are passed unchanged.
+        ->and(resilienceRules('NarrowedFallback')[NarrowedPaymentGateway::class.'::charge']->fallbackAcceptsThrowable)->toBeFalse()
+        // …and a method with no fallback at all carries the conservative default rather than a stale true.
+        ->and(resilienceRules()[PaymentService::class.'::refund']->fallbackAcceptsThrowable)->toBeFalse();
+});
+
 it('compiles a method that carries only #[Retry]', function (): void {
     $rules = (new ResilienceMethodScanner)->scan(resiliencePsr4());
 
@@ -89,6 +108,7 @@ it('indexes the proxy advice by class and method', function (): void {
             'retry' => 'payments',
             'fallbackMethod' => null,
             'fallbackOn' => [],
+            'fallbackAcceptsThrowable' => false,
         ]);
 });
 

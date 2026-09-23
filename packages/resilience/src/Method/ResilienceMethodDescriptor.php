@@ -18,10 +18,20 @@ use Throwable;
  * patterns guard which method; configuration records how each pattern behaves. Keeping the two apart is what
  * makes the attribute a declaration rather than a second copy of the config file.
  *
- * Every optional key is read with a null default in fromArray() for the reason SecurityMethodDescriptor
- * gives: a plan compiled before a key existed must still load.
+ * `$fallbackAcceptsThrowable` is the one field that is not a name: it is the SHAPE of the recovery, compiled
+ * for the same reason SecurityMethodDescriptor compiles `$params` rather than reading them back off the
+ * method at enforcement time. The interceptor has to know whether to append the caught Throwable to the
+ * original arguments, and the scan is already introspecting the recovery in order to prove its arity —
+ * asking the same question again at call time would make the resilience interceptor the only one in the
+ * framework that introspects on the hot path, and would contradict this class's own first paragraph. The
+ * answer is a property of the compiled class, not of some wider runtime type: a row is compiled PER CONCRETE
+ * CLASS (a stereotyped subclass that widens the recovery's signature compiles its own row against its own
+ * copy of the method), and the proxy the interceptor is handed is the proxy of exactly that class.
  *
- * @phpstan-type ResilienceMethodRow array{class: string, method: string, bulkhead?: string|null, timeLimiter?: string|null, rateLimiter?: string|null, circuitBreaker?: string|null, retry?: string|null, fallbackMethod?: string|null, fallbackOn?: list<class-string<Throwable>>}
+ * Every optional key is read with a null — or, for the booleans and lists, an empty — default in fromArray()
+ * for the reason SecurityMethodDescriptor gives: a plan compiled before a key existed must still load.
+ *
+ * @phpstan-type ResilienceMethodRow array{class: string, method: string, bulkhead?: string|null, timeLimiter?: string|null, rateLimiter?: string|null, circuitBreaker?: string|null, retry?: string|null, fallbackMethod?: string|null, fallbackOn?: list<class-string<Throwable>>, fallbackAcceptsThrowable?: bool}
  */
 final readonly class ResilienceMethodDescriptor
 {
@@ -36,6 +46,7 @@ final readonly class ResilienceMethodDescriptor
         public ?string $retry = null,
         public ?string $fallbackMethod = null,
         public array $fallbackOn = [],
+        public bool $fallbackAcceptsThrowable = false,
     ) {}
 
     public function key(): string
@@ -58,6 +69,7 @@ final readonly class ResilienceMethodDescriptor
             'retry' => $this->retry,
             'fallbackMethod' => $this->fallbackMethod,
             'fallbackOn' => $this->fallbackOn,
+            'fallbackAcceptsThrowable' => $this->fallbackAcceptsThrowable,
         ];
     }
 
@@ -76,6 +88,7 @@ final readonly class ResilienceMethodDescriptor
             $data['retry'] ?? null,
             $data['fallbackMethod'] ?? null,
             $data['fallbackOn'] ?? [],
+            $data['fallbackAcceptsThrowable'] ?? false,
         );
     }
 }
