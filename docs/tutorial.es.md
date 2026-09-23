@@ -187,8 +187,9 @@ Elemento por elemento:
 El docblock nombra lo único que conviene saber antes de ponerse a buscar `GET /`: aquí no está. De `/` se
 encarga `app/Http/WelcomeController.php`, que lleva **`#[Controller]`** — el estereotipo HTML, el
 `@Controller` de Spring frente al `@RestController` de este. El mismo escaneo de rutas encuentra los dos
-(`#[RestController]` extiende `#[Controller]`); la diferencia es que una acción `#[Controller]` devuelve una
-vista y esta devuelve un valor que negociar.
+porque `#[Controller]` extiende `#[RestController]`, así que el filtro `IS_INSTANCEOF` de `RouteScanner` lo
+captura sin cambiar el escáner; la diferencia es que una acción `#[Controller]` devuelve una vista y esta
+devuelve un valor que negociar.
 
 Un `RouteScanner` aparte lee los metadatos de enrutamiento de la misma clase que ya encontró el component
 scan — un `#[RestController]` nunca registra sus propias rutas.

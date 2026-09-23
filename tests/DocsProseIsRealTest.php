@@ -4,6 +4,8 @@
 
 declare(strict_types=1);
 
+use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 use Firefly\Actuator\Endpoint\ExposureModel;
 use Firefly\Config\Config;
 use Firefly\Data\Exception\DriverErrorTable;
@@ -126,6 +128,155 @@ function fireflyWrittenNumber(string $token): ?int
     }
 
     return $words[mb_strtolower($token)] ?? null;
+}
+
+/**
+ * A Markdown table row, as its trimmed cells.
+ *
+ * @return list<string>
+ */
+function fireflyTableCells(string $row): array
+{
+    return array_map('trim', explode('|', trim($row, "| \t")));
+}
+
+/**
+ * Every attribute class the framework ships, keyed by the SHORT name documentation writes inside `#[...]`.
+ *
+ * The map exists so a sentence about the stereotype hierarchy can be held against PHP's own answer. Only
+ * `packages/*\/src/**\/Attributes/*.php` is walked: those directories are where every stereotype lives, the
+ * scan stays cheap, and a name the map does not know makes the caller SKIP rather than fail — a document is
+ * free to write `#[Attribute]` or some vendor's attribute in passing without owing this guard anything. A
+ * short name that two packages both declare is dropped for the same reason, because resolving it would be a
+ * guess; nothing in the tree does that today, and the caller's canary count is what would notice if the day
+ * came that a silently-dropped name mattered.
+ *
+ * @return array<string, class-string>
+ */
+function fireflyAttributeClasses(): array
+{
+    /** @var array<string, class-string>|null $classes */
+    static $classes = null;
+
+    if ($classes !== null) {
+        return $classes;
+    }
+
+    /** @var array<string, class-string> $found */
+    $found = [];
+    /** @var list<string> $ambiguous */
+    $ambiguous = [];
+
+    $walk = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator(dirname(__DIR__).'/packages', FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($walk as $file) {
+        if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+            continue;
+        }
+
+        if (preg_match('#/packages/[^/]+/src/(?:.+/)?Attributes/[^/]+\.php$#', $file->getPathname()) !== 1) {
+            continue;
+        }
+
+        $source = (string) file_get_contents($file->getPathname());
+
+        if (! str_contains($source, '#[Attribute(') || preg_match('/^namespace\s+([^;]+);/m', $source, $matches) !== 1) {
+            continue;
+        }
+
+        $short = $file->getBasename('.php');
+        $candidate = trim($matches[1]).'\\'.$short;
+
+        if (! class_exists($candidate)) {
+            continue;
+        }
+
+        if (isset($found[$short]) && $found[$short] !== $candidate) {
+            $ambiguous[] = $short;
+
+            continue;
+        }
+
+        $found[$short] = $candidate;
+    }
+
+    foreach ($ambiguous as $short) {
+        unset($found[$short]);
+    }
+
+    return $classes = $found;
+}
+
+/**
+ * Every `make:firefly-*` generator, keyed by the command name a document writes, with the two facts a
+ * documentation table can get wrong about it: the options it declares ITSELF, and whether it writes a second
+ * file.
+ *
+ * Both are derived. The options are the ones whose `getOptions()` the Firefly command declares — the
+ * parent's are Laravel's to document, not this repository's — read off an uninitialised instance, which is
+ * safe because every one of those methods returns a literal and touches no state. The second file is read
+ * off the command's own source: `GeneratorCommand` performs the FIRST write itself, so a `$this->files->put(`
+ * in a subclass is by construction an additional file, and that is exactly the fact a table row saying "a
+ * #[RestController] with a sample action" was hiding while the command shipped a REST resource AND its
+ * request DTO.
+ *
+ * @return array<string, array{class: class-string, options: list<string>, secondFile: bool}>
+ */
+function fireflyGenerators(): array
+{
+    /** @var array<string, array{class: class-string, options: list<string>, secondFile: bool}>|null $generators */
+    static $generators = null;
+
+    if ($generators !== null) {
+        return $generators;
+    }
+
+    $found = [];
+
+    foreach ((array) glob(dirname(__DIR__).'/packages/cli/src/Command/Make/*Command.php') as $path) {
+        $path = (string) $path;
+        $source = (string) file_get_contents($path);
+
+        if (preg_match('/^namespace\s+([^;]+);/m', $source, $matches) !== 1) {
+            continue;
+        }
+
+        $class = trim($matches[1]).'\\'.basename($path, '.php');
+
+        if (! class_exists($class)) {
+            continue;
+        }
+
+        $reflection = new ReflectionClass($class);
+        $name = $reflection->getDefaultProperties()['name'] ?? null;
+
+        if (! is_string($name) || ! str_starts_with($name, 'make:firefly-')) {
+            continue;
+        }
+
+        $options = [];
+
+        if ($reflection->hasMethod('getOptions') && $reflection->getMethod('getOptions')->getDeclaringClass()->getName() === $class) {
+            /** @var list<array{0: string}> $declared */
+            $declared = (array) $reflection->getMethod('getOptions')->invoke($reflection->newInstanceWithoutConstructor());
+
+            foreach ($declared as $option) {
+                $options[] = $option[0];
+            }
+        }
+
+        $found[$name] = [
+            'class' => $class,
+            'options' => $options,
+            'secondFile' => str_contains($source, '$this->files->put('),
+        ];
+    }
+
+    ksort($found);
+
+    return $generators = $found;
 }
 
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
@@ -615,4 +766,229 @@ it('pins every prefersHtml() paragraph to the order and the media types ErrorPag
 
     // docs/architecture.md's entry-point bullet, and docs/modules/security.md's prose and its settings table.
     expect($paragraphs)->toBe(3);
+});
+
+it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {
+    // The fifth kind of wrong sentence: one that states a real relation BACKWARDS. Both tutorials shipped
+    // "The same route scan finds both (`#[RestController]` extends `#[Controller]`)" — the inverse of
+    // `class Controller extends RestController`, and the inverse of the bullet three lines above it in the
+    // same document, which says `#[RestController]` extends `#[Component]`. A reader who believed it would
+    // conclude that an IS_INSTANCEOF filter on `#[Controller]` catches REST controllers, which is precisely
+    // the wrong way round, and would mis-model which stereotype is the specialisation of which — the one
+    // idea the whole stereotype design rests on.
+    //
+    // DERIVED: is_subclass_of() over the real attribute classes, and the failure prints the real chain, so
+    // the message is the corrected sentence rather than a report that something is off.
+    $attributes = fireflyAttributeClasses();
+
+    expect($attributes)->toHaveKeys(['Component', 'Controller', 'RestController', 'Service', 'Repository']);
+
+    $claims = 0;
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            // Deliberately narrow: BOTH sides bracketed and adjacent, which is the shape a claim about two
+            // stereotypes takes. "It **extends** `#[RestController]`" — a pronoun subject, as
+            // docs/modules/web.md writes it — is left to a human, because resolving that subject would be
+            // this guard guessing at prose.
+            preg_match_all(
+                '/`#\[(\w+)\]`\s*(?:\*\*)?\s*(?:extends|extiende)\s*(?:\*\*)?\s*`#\[(\w+)\]`/u',
+                $paragraph,
+                $matches,
+                PREG_SET_ORDER,
+            );
+
+            foreach ($matches as [$claim, $child, $parent]) {
+                if (! isset($attributes[$child], $attributes[$parent])) {
+                    continue;
+                }
+
+                $claims++;
+
+                $chain = [];
+                for ($class = $attributes[$child]; $class !== false; $class = get_parent_class($class)) {
+                    $chain[] = $class;
+                }
+
+                expect(is_subclass_of($attributes[$child], $attributes[$parent]))->toBeTrue(sprintf(
+                    '%s writes "%s", but the real hierarchy is %s. The sentence is inverted: swap the two '
+                    .'names, and remember that an IS_INSTANCEOF filter on the PARENT is what finds the child.',
+                    $page,
+                    preg_replace('/\s+/', ' ', $claim),
+                    implode(' extends ', $chain),
+                ));
+            }
+        }
+    }
+
+    // docs/tutorial.md and docs/tutorial.es.md, the two pages that name both stereotypes in one breath.
+    expect($claims)->toBe(2);
+});
+
+it('pins every Composer constraint table to what composer/semver really matches', function () {
+    // The sixth: a sentence about a TOOL's semantics, which no amount of reading the framework can check.
+    // docs/versioning.md said "`^26.09` allows any patch release within `26.09.x` but not a `26.10.x`
+    // release" beside the very paragraph warning that a CalVer month bump is where an incompatible change is
+    // allowed to land. Composer normalises `26.09` to `26.09.0.0` and expands a caret to `< 27.0.0.0`, so
+    // `^26.09` accepts 26.10.x — the page was promising safety it did not provide, which is worse than
+    // saying nothing.
+    //
+    // The fix that holds is to make the claim MACHINE-CHECKABLE: a table of constraint x version, every cell
+    // answered here by Composer's own matcher. composer/semver is the same library Composer resolves with,
+    // and it is in this tree because symplify/monorepo-builder — the tool the release runbook drives — pulls
+    // composer/composer in. Prose either side of the table is free; the table is the load-bearing claim.
+    $cells = 0;
+    $tables = 0;
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $rows = array_values(array_filter(
+                array_map('trim', explode("\n", $paragraph)),
+                static fn (string $line): bool => str_starts_with($line, '|'),
+            ));
+
+            if (count($rows) < 3) {
+                continue;
+            }
+
+            $header = fireflyTableCells($rows[0]);
+
+            if (($header[0] ?? '') !== 'Constraint' || count($header) < 2) {
+                continue;
+            }
+
+            $versions = [];
+            foreach (array_slice($header, 1) as $cell) {
+                if (preg_match('/^`(\d{2}\.\d{2}\.\d+)`$/', $cell, $matched) !== 1) {
+                    $versions = [];
+
+                    break;
+                }
+
+                $versions[] = $matched[1];
+            }
+
+            // Every other `| Constraint |` table in the documentation (validation's sentence table,
+            // openapi's schema table) has a prose column here and is not this table's business.
+            if ($versions === []) {
+                continue;
+            }
+
+            $tables++;
+
+            foreach (array_slice($rows, 1) as $row) {
+                if (preg_match('/^\|[\s:|-]+\|$/', $row) === 1) {
+                    continue;
+                }
+
+                $columns = fireflyTableCells($row);
+
+                $constraint = preg_match('/^`([^`]+)`$/', $columns[0] ?? '', $matched) === 1 ? $matched[1] : '';
+
+                expect($constraint)->not->toBe('', sprintf(
+                    '%s: a constraint table row must open with a backticked constraint, not "%s".',
+                    $page,
+                    $columns[0] ?? '',
+                ));
+
+                foreach ($versions as $index => $version) {
+                    $cells++;
+
+                    $expected = Semver::satisfies($version, $constraint) ? 'accepted' : 'rejected';
+
+                    expect($columns[$index + 1] ?? '')->toBe($expected, sprintf(
+                        '%s says `%s` %s %s, but Composer\'s own matcher says the opposite — composer/semver '
+                        .'expands it to %s.',
+                        $page,
+                        $constraint,
+                        $columns[$index + 1] ?? '(nothing)',
+                        $version,
+                        (string) (new VersionParser)->parseConstraints($constraint),
+                    ));
+                }
+            }
+        }
+    }
+
+    // docs/versioning.md's one table: three constraint shapes against three releases.
+    expect($tables)->toBe(1)->and($cells)->toBe(9);
+});
+
+it('pins every make:firefly-* table to the flags and the file count the generators really have', function () {
+    // The seventh, and the one a reader pays for immediately: a generator table that describes a command's
+    // REPLACED behaviour. `make:firefly-controller` shipped a full REST resource plus the #[Valid]
+    // #[RequestBody] DTO its store/update bind, with the old single-action shape moved behind `--plain`, and
+    // the tables went on promising one file and never named the flag that would give it.
+    //
+    // Two derived contracts, both of which that row failed. A row must name every option its command
+    // declares — an undocumented flag is a feature nobody can reach — and a row for a command that writes a
+    // SECOND file must say so in a word a reader counts with, because "Two files" is the difference between
+    // reviewing one generated file and finding two.
+    $generators = fireflyGenerators();
+
+    expect(array_keys($generators))->toBe([
+        'make:firefly-component',
+        'make:firefly-config-properties',
+        'make:firefly-controller',
+        'make:firefly-entity',
+        'make:firefly-handler',
+        'make:firefly-listener',
+        'make:firefly-repository',
+        'make:firefly-service',
+    ]);
+
+    $checked = 0;
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            foreach (explode("\n", $paragraph) as $line) {
+                $line = trim($line);
+
+                if (preg_match('/^\|\s*`(make:firefly-[\w*-]+)`\s*\|(.*)\|\s*$/u', $line, $matches) !== 1) {
+                    continue;
+                }
+
+                [, $command, $description] = $matches;
+
+                // `make:firefly-*` is how a summary table names the whole family, not one command.
+                if (str_contains($command, '*')) {
+                    continue;
+                }
+
+                expect(array_key_exists($command, $generators))->toBeTrue(sprintf(
+                    '%s documents `%s`, which no Make*Command under packages/cli/src declares.',
+                    $page,
+                    $command,
+                ));
+
+                $checked++;
+
+                foreach ($generators[$command]['options'] as $option) {
+                    expect(str_contains($description, '--'.$option))->toBeTrue(sprintf(
+                        '%s describes `%s` without naming its `--%s` flag, which %s declares — the row '
+                        .'documents one shape of a command that has two.',
+                        $page,
+                        $command,
+                        $option,
+                        $generators[$command]['class'],
+                    ));
+                }
+
+                if (! $generators[$command]['secondFile']) {
+                    continue;
+                }
+
+                expect(preg_match('/\b(two|dos)\b/iu', $description))->toBe(1, sprintf(
+                    '%s describes `%s` as though it wrote one file, but %s calls $this->files->put() itself, '
+                    .'on top of the write GeneratorCommand already performs. Say how many files the row means.',
+                    $page,
+                    $command,
+                    $generators[$command]['class'],
+                ));
+            }
+        }
+    }
+
+    // docs/cli.md, book/src/13-cli-cache.md and book/src-es/13-cli-cache.md, eight generators each.
+    expect($checked)->toBe(24);
 });

@@ -175,7 +175,7 @@ The analogue of PyFly's `generate` family — one Artisan generator per stereoty
 
 | Command | Generates |
 |---------|-----------|
-| `make:firefly-controller` | A `#[RestController]` with a sample `#[GetMapping]` action, under `app/Http`. |
+| `make:firefly-controller` | **Two files**, under `app/Http`: a `#[RestController]` REST resource — `index`/`show`/`store`/`update`/`destroy` under one class-level `#[RequestMapping]` whose path is derived from the resource name (`OrderController` → `/orders`) — *and* the `#[Valid] #[RequestBody]` DTO its `store`/`update` bind. `--plain` writes the single-action shape instead, with no DTO. |
 | `make:firefly-service` | A `#[Service]` bean. |
 | `make:firefly-component` | A `#[Component]` bean. |
 | `make:firefly-handler` | **Two files**: a `#[CommandHandler]` *and* the command class its `handle()` takes (`#[QueryHandler]` + query with `--query`). |
@@ -184,8 +184,21 @@ The analogue of PyFly's `generate` family — one Artisan generator per stereoty
 | `make:firefly-repository` | A concrete `#[Repository]` class extending `Firefly\Data\Repository\EloquentRepository`, with a `$model` to repoint. |
 | `make:firefly-config-properties` | A `#[ConfigProperties]`-bound configuration DTO. |
 
-Three of those outputs are shaped by what the scanners actually accept, and it is worth knowing why:
+Four of those outputs are shaped by what the scanners actually accept, and it is worth knowing why:
 
+- **The controller generator emits its request DTO too, and scaffolds the whole resource.** The old stub was
+  one `index()` action mapped to `#[GetMapping('/{{ class }}')]` — the PHP class name substituted straight
+  into a URL — so `make:firefly-controller OrderController` served `/OrderController`: capitalised, singular,
+  carrying the word "Controller". Nobody ships that, so the first thing every developer did with the
+  framework's own scaffold was delete it. What replaces it derives the collection path from the class name
+  (`OrderController` → `/orders`, `OrderItemController` → `/order-items`, `PersonController` → `/people`) and
+  declares it once as a class-level `#[RequestMapping]`, so each action carries only its own suffix and verb.
+  The DTO is written alongside it for the handler's reason, only stronger: the controller names the DTO type
+  in its `store`/`update` signatures and `firefly:cache` reflects *every* controller parameter to compile its
+  binding plan, so a controller emitted without its DTO would not merely be incomplete — it would be a file
+  PHP cannot load, poisoning the next compile. A DTO that already exists is reused and reported, never
+  overwritten. `--plain` is the escape hatch for the endpoints that are not a collection of things — webhook
+  receivers, probes, reports, RPC-shaped action verbs — and gives the one-action shape with no DTO.
 - **The handler generator emits its message class too.** `HandlerScanner` infers a bare `#[CommandHandler]`'s
   message type from `handle()`'s sole parameter, and a builtin type (the old stub's `object $command`) cannot be
   resolved — it threw `CqrsConfigurationException` out of `firefly:cache`, aborting the *whole* compile. So the
@@ -204,7 +217,8 @@ Three of those outputs are shaped by what the scanners actually accept, and it i
   a `#[Transactional]` proxy that `extends` it.
 
 ```
-php artisan make:firefly-controller GreetingController
+php artisan make:firefly-controller OrderController
+php artisan make:firefly-controller GreetingController --plain
 php artisan make:firefly-service GreetingService
 php artisan make:firefly-handler RegisterWidget
 php artisan make:firefly-handler CountWidgets --query

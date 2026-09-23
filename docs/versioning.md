@@ -57,8 +57,7 @@ beyond this constant (e.g. no reading it back out of an installed `composer.lock
 
 ## Constraints
 
-Application `composer.json` files should depend on Firefly packages with a caret constraint against the
-current month, e.g.:
+Application `composer.json` files depend on Firefly packages with a constraint against a release line, e.g.:
 
 ```json
 {
@@ -68,9 +67,24 @@ current month, e.g.:
 }
 ```
 
-`^26.09` allows any patch release within `26.09.x` but not a `26.10.x` release — the same "pin to the
-release line, accept patches" posture CalVer projects generally recommend, since CalVer numbers don't carry
-semver's guarantee that a bump in the last segment is always backward compatible.
+`^26.09` is the constraint the release runbook writes into every package's sibling requirements
+(`monorepo-builder bump-interdependency`, see [Publishing](publishing.md)) — and it is the **widest** of the
+three shapes below, not the narrowest. Composer normalises `26.09` to `26.09.0.0` and expands a caret to "up
+to the next major", so `^26.09` accepts `26.10.x`, `26.12.x` and every other line released in the `26` year.
+That matters more under CalVer than it would under semver, because a CalVer number carries no promise that a
+bump in anything but the last segment is backward compatible — a month bump is exactly where an incompatible
+change is allowed to land. Pick the row that matches how much you actually mean to accept:
+
+| Constraint | `26.09.3` | `26.10.1` | `27.01.0` |
+|------------|-----------|-----------|-----------|
+| `^26.09` | accepted | accepted | rejected |
+| `~26.09.0` | accepted | rejected | rejected |
+| `26.09.*` | accepted | rejected | rejected |
+
+"Pin to the release line, accept patches" — the posture CalVer projects generally recommend — is the second
+or third row, not the first. Use `^26.09` when you want every release of the `26` year and intend to read
+the CHANGELOG at each month bump; use `~26.09.0` (or `26.09.*`) when you want `26.09` patches and nothing
+else, and to bump the month deliberately.
 
 For anyone tracking the unreleased development branch directly (a path-repo dev dependency, or a
 `dev-main` Packagist requirement) rather than a tagged release, every package's `composer.json` carries:

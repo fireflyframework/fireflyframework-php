@@ -182,9 +182,10 @@ Element by element:
 
 The docblock names the one thing worth knowing before you go looking for `GET /`: it is not here.
 `/` is served by `app/Http/WelcomeController.php`, which carries **`#[Controller]`** — the HTML stereotype,
-Spring's `@Controller` to this one's `@RestController`. The same route scan finds both (`#[RestController]`
-extends `#[Controller]`); the difference is that a `#[Controller]` action returns a view and this one returns
-a value to negotiate.
+Spring's `@Controller` to this one's `@RestController`. The same route scan finds both because
+`#[Controller]` extends `#[RestController]`, so `RouteScanner`'s `IS_INSTANCEOF` filter catches it with no
+scanner change; the difference is that a `#[Controller]` action returns a view and this one returns a value
+to negotiate.
 
 A separate `RouteScanner` pass reads the routing metadata off the same class the component scan already
 found — a `#[RestController]` never registers its own routes.

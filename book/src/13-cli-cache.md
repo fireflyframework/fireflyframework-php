@@ -299,13 +299,13 @@ Every framework stereotype this book has introduced has a matching Artisan gener
 
 | Command | Generates |
 |---------|-----------|
-| `make:firefly-controller` | A `#[RestController]` with a sample `#[GetMapping]` action, under `app/Http`. |
+| `make:firefly-controller` | **Two files**: a `#[RestController]` REST resource (`index`/`show`/`store`/`update`/`destroy` under one class-level `#[RequestMapping]` whose path is derived from the resource name) *and* the `#[Valid] #[RequestBody]` DTO its `store`/`update` bind — `--plain` gives the single-action shape with no DTO. |
 | `make:firefly-service` | A `#[Service]` bean. |
 | `make:firefly-component` | A `#[Component]` bean. |
-| `make:firefly-handler` | A `#[CommandHandler]` by default, or a `#[QueryHandler]` with `--query`. |
+| `make:firefly-handler` | **Two files**: a `#[CommandHandler]` *and* the command class its `handle()` takes — `#[QueryHandler]` plus its query with `--query`. |
 | `make:firefly-listener` | An `#[EventListener]` method by default, or a `#[MessageListener]` with `--message`. |
 | `make:firefly-entity` | A DDD entity extending `Firefly\Domain\Entity` (there is no `#[Entity]` attribute). |
-| `make:firefly-repository` | A repository interface extending `Firefly\Data\Repository\CrudRepository`. |
+| `make:firefly-repository` | A concrete `#[Repository]` class extending `Firefly\Data\Repository\EloquentRepository`, with a `$model` to repoint. |
 | `make:firefly-config-properties` | A `#[ConfigProperties]`-bound configuration DTO. |
 
 `make:firefly-handler` is representative of the whole family — a `GeneratorCommand` that picks which stub to render off a single flag:

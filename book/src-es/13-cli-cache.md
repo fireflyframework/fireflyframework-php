@@ -299,13 +299,13 @@ Cada estereotipo de framework que este libro ha presentado tiene un generador de
 
 | Comando | Genera |
 |---------|-----------|
-| `make:firefly-controller` | Un `#[RestController]` con una acción `#[GetMapping]` de ejemplo, bajo `app/Http`. |
+| `make:firefly-controller` | **Dos archivos**: un recurso REST `#[RestController]` (`index`/`show`/`store`/`update`/`destroy` bajo un único `#[RequestMapping]` de clase cuya ruta se deriva del nombre del recurso) *y* el DTO `#[Valid] #[RequestBody]` que vinculan su `store`/`update` — `--plain` da la forma de una sola acción, sin DTO. |
 | `make:firefly-service` | Un bean `#[Service]`. |
 | `make:firefly-component` | Un bean `#[Component]`. |
-| `make:firefly-handler` | Un `#[CommandHandler]` por defecto, o un `#[QueryHandler]` con `--query`. |
+| `make:firefly-handler` | **Dos archivos**: un `#[CommandHandler]` *y* la clase de comando que toma su `handle()` — `#[QueryHandler]` más su consulta con `--query`. |
 | `make:firefly-listener` | Un método `#[EventListener]` por defecto, o un `#[MessageListener]` con `--message`. |
 | `make:firefly-entity` | Una entidad DDD que extiende `Firefly\Domain\Entity` (no hay ningún atributo `#[Entity]`). |
-| `make:firefly-repository` | Una interfaz de repositorio que extiende `Firefly\Data\Repository\CrudRepository`. |
+| `make:firefly-repository` | Una clase `#[Repository]` concreta que extiende `Firefly\Data\Repository\EloquentRepository`, con un `$model` que reapuntar. |
 | `make:firefly-config-properties` | Un DTO de configuración enlazado con `#[ConfigProperties]`. |
 
 `make:firefly-handler` es representativo de toda la familia — un `GeneratorCommand` que elige qué stub renderizar en función de una única bandera:
