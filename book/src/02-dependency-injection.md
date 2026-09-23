@@ -151,33 +151,35 @@ Nothing in `samples/lumen` ever binds `WalletRepository` to `EloquentWalletRepos
 
 Not everything you need to inject is a class you own. `#[Configuration]` marks a class as a **source of `#[Bean]` factory methods** — each method's return type becomes the bean's registered type, and its parameters are resolved and injected exactly like a constructor's. `#[Configuration]` is itself a `#[Component]`, so the configuration class is a managed bean too.
 
-The skeleton project you scaffolded in the Quick Start already ships one, real, shipped example:
+The framework's own packages are built out of these, and the shortest of them is the one `firefly/validation` uses to assemble the validator Chapter 4 will put to work:
 
-<!-- source: packages/cli/tests/Fixtures/App/CachedTransactionalConfiguration.php -->
+<!-- source: packages/validation/src/ValidationAutoConfiguration.php -->
 ```php
-<?php
-
-declare(strict_types=1);
-// …
-use Firefly\Container\Attributes\Bean;
-use Firefly\Container\Attributes\Configuration;
-use Firefly\Data\Transaction\TransactionalManifest;
-
-/**
- // …
- */
 #[Configuration]
-final class CachedTransactionalConfiguration
+#[Order(1000)]
+final class ValidationAutoConfiguration
 {
     #[Bean]
-    public function transactionalManifest(): TransactionalManifest
+    #[ConditionalOnMissingBean(ValidationSettings::class)]
+    public function validationSettings(Config $config): ValidationSettings
     {
-    // …
+        return ValidationSettings::fromConfig($config);
+    }
+
+    #[Bean]
+    #[ConditionalOnMissingBean(Validator::class)]
+    public function validator(Factory $factory, ValidationSettings $settings): Validator
+    {
+        return new IlluminateValidator($factory, $settings);
     }
 }
 ```
 
-`transactionalManifest()` returns `TransactionalManifest` — so that is the type the bean is registered under, and any constructor that asks for a `TransactionalManifest` receives whatever this method returns. You will not need `#[Transactional]` itself until a later chapter, but the *shape* — `#[Configuration]` class, `#[Bean]` method, return type as registration key — is one you will see again every time this book introduces a new package that needs to hand you a pre-built object rather than a class you construct directly.
+Read the two `#[Bean]` methods and you have the whole mechanism. `validationSettings()` declares `ValidationSettings` as its return type, so `ValidationSettings` is the type its bean is registered under. `validator()` declares `Validator`, and its two parameters — Illuminate's own validation `Factory`, and the `ValidationSettings` the method above it produces — are resolved out of the container exactly as a constructor's parameters would be. Return type in, registration key out; parameter types in, injection out.
+
+The two extra attributes belong to Chapter 3 and are named here only so they do not read as magic. `#[Order(1000)]` sorts this class *after* anything your application declares, and `#[ConditionalOnMissingBean]` makes each default step aside the moment an application binds a `Validator` of its own — the back-off rule that turns an ordinary `#[Configuration]` into an **auto-configuration**, which is how every Firefly package ships a working default you are free to replace.
+
+Nothing about the shape changes when the class is yours rather than the framework's: a `#[Configuration]` under your own `app/` is scanned, ordered and wired by the same pass. It is the shape you will see again every time this book introduces a package that hands you a pre-built object rather than a class you construct yourself.
 
 !!! laravel "Laravel parity"
     `#[Configuration]` + `#[Bean]` is the direct counterpart of a Laravel service provider's `register()` method calling `$this->app->singleton(SomeType::class, fn () => ...)` — except the *type* the closure returns is read from the method's own return-type declaration, so there is nothing to keep in sync by hand.

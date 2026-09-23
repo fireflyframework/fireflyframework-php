@@ -134,14 +134,27 @@ final class DiskSpaceHealthIndicator implements HealthIndicator
 }
 ```
 
-`DbHealthIndicator` is the one indicator that is **opt-in** rather than on by default — `#[ConditionalOnProperty]` with no `matchIfMissing`, so a skeleton project with no database configured never sees a surprise `DOWN` from a check it never asked for:
+`DbHealthIndicator` is **on by default** — `matchIfMissing: true` on its `#[ConditionalOnProperty]`, exactly as Spring Boot's `DataSourceHealthIndicator` auto-configuration is. It used to be opt-in, and the change is worth understanding, because "on by default" is not what stops a database-less project from seeing a surprise `DOWN`. A second interface is:
 
 <!-- source: packages/actuator/src/Health/DbHealthIndicator.php -->
 ```php
 #[Component]
-// …
+#[ConditionalOnProperty(name: 'firefly.management.endpoint.health.db.enabled', havingValue: 'true', matchIfMissing: true)]
+final class DbHealthIndicator implements ConditionalHealthIndicator
 {
     // …
+    public function available(): bool
+    {
+        $default = $this->config->get('database.default');
+        if (! is_string($default) || $default === '') {
+            return false;
+        }
+
+        $driver = $this->config->get("database.connections.{$default}.driver");
+
+        return is_string($driver) && $driver !== '';
+    }
+
     public function health(): Health
     {
         try {
@@ -158,6 +171,10 @@ final class DiskSpaceHealthIndicator implements HealthIndicator
     }
 }
 ```
+
+`ConditionalHealthIndicator` adds exactly one method to the SPI, and `available()` is this framework's answer to Spring's `@ConditionalOnBean(DataSource)`. `HealthEndpoint` asks it before running the check, and an indicator that answers `false` contributes **no component at all** — not an `UNKNOWN`, not a `DOWN`, simply no `db` key in the response. Here the answer is read out of Laravel's own configuration: `database.default` has to name a connection, and that connection's entry has to declare a `driver`. So an application that genuinely has no database gets a health document that does not mention one, which is the honest answer; an application that *has* a database and still wants the check gone sets `firefly.management.endpoint.health.db.enabled=false` and the bean is never registered.
+
+That is the distinction worth carrying forward: the **property** decides whether the indicator exists, and `available()` decides whether an existing indicator has anything to say. Any `HealthIndicator` you write may implement the same interface and get the same treatment.
 
 Notice `DbHealthIndicator` depends directly on Illuminate's own `ConnectionResolverInterface` rather than on anything from `firefly/data` — there is no `Actuator → Data` edge in `deptrac.yaml` at all, so a DB health check costs `firefly/actuator` no new dependency. And every indicator here follows the same fail-safe shape: a query, a comparison, or a filesystem call that could throw is always caught and turned into `Health::down()` with a detail explaining why — never an unhandled exception, never a `500` where a `503` belongs.
 
@@ -642,13 +659,23 @@ final class ObservabilityAutoConfiguration
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
-    // …
+    public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
-        // …
+        $distribution = DistributionStatisticConfig::fromConfig($config);
+
+        $store = $config->string('firefly.observability.metrics.store', '');
+        if ($store === '' || ! $container->bound('cache')) {
+            return new SimpleMeterRegistry($distribution);
         }
+
+        /** @var Factory $factory */
+        $factory = $container->make('cache');
+        $ttl = $config->int('firefly.observability.metrics.ttl', 0);
+
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null, $distribution);
+    }
     // …
     #[Bean]
-    // …
     #[ConditionalOnMissingBean(CqrsMetrics::class)]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     public function cqrsMetrics(MetricsRecorder $recorder): CqrsMetrics
@@ -659,7 +686,9 @@ final class ObservabilityAutoConfiguration
 }
 ```
 
-`ObservabilityAutoConfiguration` is `#[Order(500)]`, strictly below `CqrsAutoConfiguration`'s `#[Order(1000)]`. The incremental condition pass evaluates low-`#[Order]`-first and registers survivors immediately, so this class's `cqrsMetrics()` bean registers **first**; by the time `CqrsAutoConfiguration` evaluates its own `#[ConditionalOnMissingBean(CqrsMetrics::class)]`, a bean is already bound, and the `NoOp` default backs off. No line inside `firefly/cqrs` changes — the win is pure auto-configuration ordering, the same shape you have now seen twice.
+`meterRegistry()` is shown beside it because the two beans answer different questions with the same machinery. It picks the registry: `SimpleMeterRegistry` by default, in process memory; `CacheMeterRegistry` over a named cache store when `firefly.observability.metrics.store` names one, so counters accumulate across PHP-FPM workers rather than each scrape seeing only its own request. Both are handed the same `DistributionStatisticConfig`, so a timer's histogram buckets do not change when the backing store does.
+
+`cqrsMetrics()` is the one this section is about, and `ObservabilityAutoConfiguration` is `#[Order(500)]`, strictly below `CqrsAutoConfiguration`'s `#[Order(1000)]`. The incremental condition pass evaluates low-`#[Order]`-first and registers survivors immediately, so this class's `cqrsMetrics()` bean registers **first**; by the time `CqrsAutoConfiguration` evaluates its own `#[ConditionalOnMissingBean(CqrsMetrics::class)]`, a bean is already bound, and the `NoOp` default backs off. No line inside `firefly/cqrs` changes — the win is pure auto-configuration ordering, the same shape you have now seen twice.
 
 `MeterRegistryCqrsMetrics` itself is the concrete recorder that ordering installs — a small, direct implementation of the `CqrsMetrics` port, recording each command or query as a timer tagged by message type and outcome:
 
@@ -1160,7 +1189,7 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 |---|---|
 | `HealthIndicator` | One-method SPI; a `#[Component]` bean discovered and aggregated automatically |
 | `Health` / `Status` | Immutable reading + a severity-ordered enum; DOWN/OUT_OF_SERVICE both map to HTTP 503 |
-| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Always-up liveness probe; threshold-based disk check; opt-in `SELECT 1` DB check |
+| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Always-up liveness probe; threshold-based disk check; on-by-default `SELECT 1` DB check that declines registration via `ConditionalHealthIndicator::available()` when no default connection is configured |
 | `HealthEndpoint` | Aggregates to the most-severe status; a probe **group** is just a configured, named indicator subset — there is no separate liveness/readiness endpoint class |
 | `ExposureModel` | `include`/`exclude` CSV gate; default `"health,info"`; everything else is a plain 404 until exposed |
 | `EnvEndpoint` / `SensitiveValueMasker` | One shared rule masks `password\|secret\|token\|key\|credential\|passwd\|authorization\|headers` keys with `******`, independent of exposure — the **key** decides first, so a sensitive key masks its whole subtree |

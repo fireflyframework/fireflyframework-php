@@ -128,14 +128,25 @@ final class DiskSpaceHealthIndicator implements HealthIndicator
 }
 ```
 
-`DbHealthIndicator` es el único indicador que es **opcional** en lugar de estar activo por defecto — `#[ConditionalOnProperty]` sin `matchIfMissing`, de modo que un proyecto esqueleto sin base de datos configurada nunca ve un `DOWN` sorpresa de una comprobación que nunca pidió:
+`DbHealthIndicator` está **activo por defecto** — `matchIfMissing: true` en su `#[ConditionalOnProperty]`, igual que la autoconfiguración `DataSourceHealthIndicator` de Spring Boot. Antes era opcional, y el cambio merece entenderse, porque "activo por defecto" no es lo que evita que un proyecto sin base de datos vea un `DOWN` sorpresa. Lo evita una segunda interfaz:
 
 ```php
 #[Component]
-#[ConditionalOnProperty(name: 'firefly.management.endpoint.health.db.enabled', havingValue: 'true')]
-final class DbHealthIndicator implements HealthIndicator
+#[ConditionalOnProperty(name: 'firefly.management.endpoint.health.db.enabled', havingValue: 'true', matchIfMissing: true)]
+final class DbHealthIndicator implements ConditionalHealthIndicator
 {
-    public function __construct(private readonly ConnectionResolverInterface $connections) {}
+    // …
+    public function available(): bool
+    {
+        $default = $this->config->get('database.default');
+        if (! is_string($default) || $default === '') {
+            return false;
+        }
+
+        $driver = $this->config->get("database.connections.{$default}.driver");
+
+        return is_string($driver) && $driver !== '';
+    }
 
     public function health(): Health
     {
@@ -153,6 +164,10 @@ final class DbHealthIndicator implements HealthIndicator
     }
 }
 ```
+
+`ConditionalHealthIndicator` añade exactamente un método al SPI, y `available()` es la respuesta de este framework a `@ConditionalOnBean(DataSource)` de Spring. `HealthEndpoint` lo pregunta antes de ejecutar la comprobación, y un indicador que responde `false` no aporta **ningún componente**: ni `UNKNOWN`, ni `DOWN`, simplemente ninguna clave `db` en la respuesta. Aquí la respuesta se lee de la propia configuración de Laravel: `database.default` tiene que nombrar una conexión, y la entrada de esa conexión tiene que declarar un `driver`. Así, una aplicación que realmente no tiene base de datos obtiene un documento de salud que no la menciona, que es la respuesta honesta; una que *sí* la tiene y aun así quiere quitar la comprobación pone `firefly.management.endpoint.health.db.enabled=false` y el bean nunca se registra.
+
+Esa es la distinción que conviene llevarse: la **propiedad** decide si el indicador existe, y `available()` decide si un indicador que existe tiene algo que decir. Cualquier `HealthIndicator` que escribas puede implementar la misma interfaz y recibir el mismo trato.
 
 Fíjate en que `DbHealthIndicator` depende directamente de la propia `ConnectionResolverInterface` de Illuminate en lugar de nada de `firefly/data` — no hay ninguna arista `Actuator → Data` en `deptrac.yaml` en absoluto, de modo que una comprobación de salud de BD no le cuesta a `firefly/actuator` ninguna dependencia nueva. Y cada indicador aquí sigue la misma forma a prueba de fallos: una consulta, una comparación o una llamada al sistema de archivos que podría lanzar una excepción siempre se captura y se convierte en `Health::down()` con un detalle que explica por qué — nunca una excepción sin manejar, nunca un `500` donde corresponde un `503`.
 
@@ -1020,7 +1035,7 @@ Es un *interruptor de funcionalidad*, no un endpoint de configuración remota: l
 |---|---|
 | `HealthIndicator` | SPI de un método; un bean `#[Component]` descubierto y agregado automáticamente |
 | `Health` / `Status` | Lectura inmutable + un enum ordenado por severidad; DOWN/OUT_OF_SERVICE se mapean ambos a HTTP 503 |
-| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Sondeo de liveness siempre-arriba; comprobación de disco basada en umbral; comprobación de BD `SELECT 1` opcional |
+| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Sondeo de liveness siempre-arriba; comprobación de disco basada en umbral; comprobación de BD `SELECT 1` activa por defecto, que declina su registro mediante `ConditionalHealthIndicator::available()` cuando no hay conexión por defecto configurada |
 | `HealthEndpoint` | Agrega al estado más severo; un **grupo** de sondeo es solo un subconjunto de indicadores con nombre y configurado — no hay una clase de endpoint liveness/readiness separada |
 | `ExposureModel` | Puerta CSV `include`/`exclude`; por defecto `"health,info"`; todo lo demás es un 404 simple hasta que se exponga |
 | `EnvEndpoint` | Enmascara las claves `password\|secret\|token\|key\|credential\|passwd` con `******`, independientemente de la exposición |

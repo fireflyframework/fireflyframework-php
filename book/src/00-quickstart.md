@@ -76,16 +76,15 @@ The skeleton's `composer.json` requires only two Firefly packages directly:
 
 Open the generated project. Two things are worth noticing immediately, because they are the whole idea of this framework in miniature.
 
-First, `bootstrap/providers.php` is empty:
+First, `bootstrap/providers.php` is empty — the whole file, not an excerpt of it:
 
-<!-- source: skeleton/routes/console.php -->
+<!-- source: skeleton/bootstrap/providers.php -->
 ```php
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+<?php
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+declare(strict_types=1);
+
+return [];
 ```
 
 There is no service provider to register by hand. `firefly/cli` and `firefly/firefly`'s own providers are discovered automatically by Composer/Laravel package discovery — you never add a line here for a Firefly package.
@@ -101,25 +100,28 @@ Second, `routes/web.php` is almost empty too:
 
 Routes are not declared here at all. As the comment says, they come from a **compiled `RouteManifest`** — built from attributes on your controllers, not from a routes file you maintain by hand. You will meet the class that comment points to in a moment.
 
-The one file that does matter right now is `config/firefly.php`:
+The one file that does matter right now is `config/firefly.php`. The copy the skeleton ships is a long annotated **reference** — every `firefly.*` key the framework reads, grouped by the package that reads it, with the real default beside it — so the two blocks that matter today are shown here with the rest of the file cut away. Each `// …` below stands for whole lines removed from the real file; the conventions page explains the marker:
 
-<!-- illustrative: the config/firefly.php the Quick Start has the reader write; the shipped reference is far longer and documents every key -->
+<!-- source: skeleton/config/firefly.php -->
 ```php
 <?php
 
 declare(strict_types=1);
-
+// …
 return [
+// …
     'scan' => [
         'paths' => [
             'App\\' => app_path(),
         ],
     ],
+// …
     'cache' => [
         'path' => base_path('bootstrap/cache/firefly'),
         'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
         'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
     ],
+// …
 ];
 ```
 

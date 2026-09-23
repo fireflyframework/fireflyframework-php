@@ -32,7 +32,7 @@
 
 **Component** — The generic stereotype attribute for a managed bean that does not fit the more specific `#[Service]`/`#[Repository]`/`#[Configuration]` roles. All stereotypes are equivalent to the container; the distinction is for human readers and tooling (Chapter 2).
 
-**Condition (`#[ConditionalOn*]`)** — An attribute (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluated during the boot pipeline's condition pass to decide whether a bean definition survives. `DbHealthIndicator`'s `#[ConditionalOnProperty]` with no `matchIfMissing` is what keeps it opt-in rather than on by default (Chapters 2, 11).
+**Condition (`#[ConditionalOn*]`)** — An attribute (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluated during the boot pipeline's condition pass to decide whether a bean definition survives. `DbHealthIndicator`'s `#[ConditionalOnProperty(matchIfMissing: true)]` is what keeps it on by default; a separate interface, `ConditionalHealthIndicator::available()`, is what keeps a database-less application from a surprise `DOWN` (Chapters 2, 11).
 
 **Deptrac** — The static architecture-boundary linter (`deptrac/deptrac`) that enforces which package may depend on which, as declared layers in `deptrac.yaml`. A `0` violation count is part of this book's own definition of done for every chapter's code (Chapters 2, 11, 13).
 

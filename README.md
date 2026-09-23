@@ -72,7 +72,10 @@ The book is **complete and bilingual (English + Spanish)**: a quick start, **fou
 parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD), Coordinating &
 Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security), and Observability, Testing
 & Delivery (actuator, testing, the CLI + zero-reflection cache) — plus a Laravel→LaraFly cheat-sheet and a
-glossary. Every fenced PHP listing is `php -l`-verified against the real sample. The sources live under
+glossary. Every fenced PHP listing in the English manuscript carries a `source:` marker naming the repository
+file it was excerpted from — compared against it line for line by `tests/DocsCodeIsRealTest.php` — or an
+`illustrative:` marker saying it is the reader's own code, which is what `php -l` checks; the Spanish
+manuscript is `php -l`-verified throughout. The sources live under
 [`book/`](book/README.md) ([EN manuscript](book/src/) · [ES manuscript](book/src-es/)) and build to PDF + EPUB
 in both languages via [`book/build/run.sh`](book/README.md). `samples/lumen/` is the fastest way to see the
 whole stack fit together end to end, and the [Featured Patterns](#featured-patterns) section below walks

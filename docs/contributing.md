@@ -98,9 +98,9 @@ DOM-level regression test beside the existing ones — the browser scenario is t
 
 Documentation is held to the same gate as code, by seven Pest tests and a strict site build.
 
-**Every code listing names the file it came from.** A fenced `php` block in `README.md` or on any page
-directly under `docs/` — `DocsCodeAudit::AUDITED` is the list, and adding a page to it is how a page joins
-the gate — must carry one of two HTML comments on the line above it:
+**Every code listing names the file it came from.** A fenced `php` block in `README.md`, on any page under
+`docs/`, or in the English manuscript under `book/src` — `DocsCodeAudit::AUDITED` is the list, and adding a
+path to it is how a surface joins the gate — must carry one of two HTML comments on the line above it:
 
 ```markdown
 <!-- source: packages/web/src/Filter/FilterChainRegistrar.php -->
@@ -117,29 +117,46 @@ names. `tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.
 docblock is the full contract. **A red run is fixed by making the document true**, never by deleting an
 assertion or by marking a framework excerpt `illustrative:`.
 
-The book is linted separately, and less strictly. `book/build/verify_code.py book/src` and
-`book/build/verify_code.py book/src-es` — the two invocations `book/README.md` documents — write every fenced
-`php` listing to a temp file and run `php -l` over it, so a chapter whose code does not parse fails. That is
-the whole of the book's gate. The manuscripts are **not** under the provenance contract above: no chapter
-carries a `source:` or an `illustrative:` marker yet, `DocsCodeAudit::AUDITED` names no book path, and the
-script's own `--require-provenance` switch — the one that would enforce it — fails every `php` listing in
-both languages today and is therefore part of no gate. Converting the chapters is open work; until it is
-done, a green `verify_code.py` run says a listing parses, never that it matches the file it shows.
+**The English manuscript is inside that contract.** `book/src` is an entry in `DocsCodeAudit::AUDITED`, every
+one of its `php` listings carries a `source:` or an `illustrative:` marker, and each `source:` one is compared
+line for line against the file it names exactly as a page under `docs/` is. Two further rules apply to a book
+excerpt, because a cut is where a true listing turns useless: a `// …` may not swallow the declaration it
+belongs to — leaving a `{` with nothing above it saying what is being declared — and it may not reduce a body
+to `{`, `// …`, `}`, which prints a method that appears to do no work. `DocsCodeAudit::verifyExcerpt()`
+refuses both, and its docblock carries the regressions that motivated each.
+
+`book/build/verify_code.py book/src` and `book/build/verify_code.py book/src-es` — the two invocations
+`book/README.md` documents — are the lint half, and they have **one exemption**: a listing carrying a
+`source:` marker is not handed to `php -l`. A verbatim fragment of a real file (one method lifted out of its
+class, an interface's signatures, a docblock) does not parse on its own, and the only way to make it parse is
+to add lines the file does not have — which is precisely the untrue listing the marker exists to prevent. Such
+a listing is held to the comparison instead, and the file it quotes is already analysed by this repository's
+own PHPStan and Pint runs. `illustrative:` and unmarked listings are still linted, and they are the ones that
+need it: no file backs them.
+
+`book/src-es` is the surface still to convert. It carries no markers, so `php -l` runs over all of it and
+`--require-provenance` still fails there, while `book/src` exits 0 under that switch today. Until the Spanish
+manuscript is converted, a green `verify_code.py` run over it says a listing parses, never that it matches the
+file it shows.
 
 **Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
 the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
-did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the book is inside this gate
-even though it is outside the one above — and holds any paragraph that makes an exhaustive claim against a
-value read out of the source at test time, never against a number typed into the test. A count is a claim,
-and the cheapest one to get wrong, so counts are read as words as well as digits, in English and in Spanish.
+did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the Spanish edition is inside
+this gate even though it is still outside the one above — and holds any paragraph that makes an exhaustive
+claim against a value read out of the source at test time, never against a number typed into the test. A
+count is a claim, and the cheapest one to get wrong, so counts are read as words as well as digits, in
+English and in Spanish.
 Under guard today: the expression functions `SecurityExpressionEvaluator` really dispatches, the actuator
 inventory and every "404 until exposed" sentence, the exceptions `PersistenceExceptionTranslator` really
 builds, the order in which `ErrorPageRenderer` really reads an `Accept` header, the stereotype hierarchy PHP
 really declares, the Composer constraint tables `composer/semver` really matches, the `make:firefly-*` tables
 the generators really back, every `firefly:cache` figure `ManifestCacheWriter` really produces (the console
 line, the pair count, the step count and the artifact count, in both manuscripts), the capabilities `--with`
-really fetches — the ones the `firefly/firefly` metapackage does *not* already require — and the roster of
-documentation guards this very section names. The triggers are deliberately narrow — a page may
+really fetches — the ones the `firefly/firefly` metapackage does *not* already require — the roster of
+documentation guards this very section names, the registration default `DbHealthIndicator`'s own condition
+attribute really declares (a stale **default** is as dangerous as a stale count, and that one outlived its
+change in five places), and the account these pages give of the book's own gate, pinned to what
+`verify_code.py` really lints. The triggers are deliberately narrow — a page may
 mention `hasRole()` or `/actuator/env` in passing without owing the full enumeration — so **a red run here
 is fixed by correcting the sentence**, never by loosening the trigger that caught it.
 

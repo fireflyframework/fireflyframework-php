@@ -41,7 +41,12 @@ it('audits a surface that only ever grows', function () {
         expect(file_exists($root.'/'.$entry))->toBeTrue("DocsCodeAudit::AUDITED names a missing path: {$entry}");
     }
 
-    expect(DocsCodeAudit::AUDITED)->toContain('README.md');
+    expect(DocsCodeAudit::AUDITED)->toContain('README.md')
+        // The manuscript joined the audited surface in wave R, and every English listing was given a marker
+        // to make that possible. Removing the entry would leave 274 `source:` comments in book/src that
+        // nothing reads — the exact state README.md was in before this guard existed — while
+        // docs/contributing.md went on telling contributors the book is under the provenance contract.
+        ->and(DocsCodeAudit::AUDITED)->toContain('book/src');
 });
 
 /**
@@ -182,6 +187,16 @@ it('refuses a listing that breaks any one of its contracts, and names the promis
             docsCodeBlock('json', '{"scripts": {"test": "pest"}}', 'composer.lock'), 'names a source that does not exist'],
         ['a yaml excerpt that is not verbatim', $fixture,
             docsCodeBlock('yaml', "service:\n  name: wrong", 'config/app.yml'), 'is not verbatim'],
+        // Both of these ARE verbatim — every line is in the file, in order — and both are useless to a
+        // reader, which is the whole reason verbatim-ness alone is not the contract. The first lost the
+        // `final class Greeter` line to its cut and prints a brace with nothing above it; the second prints
+        // a method that appears to do nothing. `php -l` used to refuse the first shape and no longer sees
+        // these listings at all, so the structural promise is kept here instead.
+        ['an excerpt whose cut swallowed the declaration', $fixture,
+            docsCodeBlock('php', "namespace App;\n// …\n{", 'src/Greeter.php'), 'cuts away the declaration'],
+        ['an excerpt whose body was cut down to nothing', $fixture,
+            docsCodeBlock('php', "public function greet(string \$name): string\n{\n// …\n}", 'src/Greeter.php'),
+            'hollows a body out to nothing'],
 
         // (c) ILLUSTRATIVE — a stated reason, code that parses, and symbols that exist.
         ['an illustrative reason nobody can act on', $repository,

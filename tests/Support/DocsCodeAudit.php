@@ -29,7 +29,9 @@ use SplFileInfo;
  *       ELISION — or HASH_ELISION, so that a cut in a YAML or shell excerpt is a comment in that language.
  *       The marker is a claim about a file, and a claim about a file is checkable whether the fence says
  *       `php`, `yaml` or `json`: a guard that honoured it only on `php` would advertise a contract it did not
- *       keep the moment a listing excerpted `composer.json` or a workflow.
+ *       keep the moment a listing excerpted `composer.json` or a workflow. WHERE a `php` cut may fall is
+ *       constrained too — it may not swallow the declaration it belongs to, nor reduce a body to nothing —
+ *       see verifyExcerpt(), which is the structural promise `php -l` can no longer make for these blocks.
  *
  *   (b) SHAPE — a block with no marker, which therefore may not be `php` (see (a) and (c)): shell, json, yaml,
  *       ini, text. There is nothing to compare verbatim, so what it ASSERTS is checked instead: every
@@ -257,6 +259,7 @@ final class DocsCodeAudit
         // (a) PROVENANCE.
         if ($block->source !== null) {
             return $this->verifyProvenance($block)
+                ?? ($php ? $this->verifyExcerpt($block) : null)
                 ?? ($php ? $this->verifySymbols($block) : null)
                 ?? $this->verifyShape($block);
         }
@@ -314,6 +317,51 @@ final class DocsCodeAudit
             }
 
             $cursor = $after;
+        }
+
+        return null;
+    }
+
+    /**
+     * A CUT MAY NOT HIDE WHAT THE LISTING IS SHOWING. The two shapes refused here are the ones a verbatim
+     * comparison happily accepts and a reader cannot use, and both were found in the manuscript the day this
+     * check was written.
+     *
+     * The FIRST is an elision immediately above a line that is only `{`: the declaration the brace belongs to
+     * was cut away, so the page prints a class or a method body with nothing saying which class or which
+     * method. It is not merely unhelpful — `private function excluded(RouteDescriptor $route, ApiDocs $docs):
+     * bool` lost its signature that way, and the body's `return true` then read as "include this route" beside
+     * a paragraph about what the generator includes, when the method's name says the opposite.
+     *
+     * The SECOND is a body cut down to nothing — `{`, the elision, `}` — which prints a method that appears to
+     * do no work. `InMemoryEventBus::publish()` was shown empty directly above a sentence asserting what its
+     * body does; `Authentication::eraseCredentials()`, whose two lines are the entire argument of the section
+     * around it, likewise. Where a body really is too long for the page, cut its MIDDLE and keep the first and
+     * last statements, so the listing still shows the shape of the work.
+     *
+     * Only `source:` listings are held to this. An `illustrative:` block is the reader's own code, where an
+     * empty body legitimately means "your code goes here", and `php -l` already rejects a fragment of it that
+     * lost a declaration. This is also why the check exists at all: `book/build/verify_code.py` cannot lint a
+     * `source:` listing (a method excerpted out of its class does not parse alone), so the structural promise
+     * `php -l` used to make for those blocks has to be made here instead.
+     */
+    private function verifyExcerpt(DocsCodeBlock $block): ?string
+    {
+        $lines = array_map(static fn (string $line): string => trim($line), explode("\n", $block->code));
+        $elisions = [self::ELISION, self::HASH_ELISION];
+
+        foreach ($lines as $index => $line) {
+            if (in_array($line, $elisions, true) && ($lines[$index + 1] ?? '') === '{') {
+                return 'cuts away the declaration it is showing: the `'.self::ELISION.'` on line '.($index + 1)
+                    .' is followed by a line that is only `{`, so a reader cannot tell what class or method '
+                    .'this is. Move the cut below the signature and cut the docblock or the imports instead.';
+            }
+
+            if ($line === '{' && in_array($lines[$index + 1] ?? '', $elisions, true) && ($lines[$index + 2] ?? '') === '}') {
+                return 'hollows a body out to nothing on line '.($index + 1).' (`{`, `'.self::ELISION.'`, `}`), '
+                    .'so the page prints a method that appears to do no work. Quote the real body, or — if it '
+                    .'is genuinely too long — cut its middle and keep the first and last statements.';
+            }
         }
 
         return null;

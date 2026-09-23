@@ -85,7 +85,10 @@ final class WalletController
     /**
      * Debits `amount_minor` from the wallet. Guarded upstream at the bus: WithdrawHandler carries
      * #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-     // …
+     * SecurityCommandAuthorizer BEFORE the handler runs. With no principal in the SecurityContextHolder
+     * the bus refuses the command with an AuthenticationException that renders as a 401 problem-details
+     * response (authenticate first); with a principal that is signed in but carries neither role it is an
+     * AuthorizationException rendered as 403 — this endpoint is secured, not broken.
      *
      * @return array{wallet_id: string, balance_minor: int}
      */
@@ -308,7 +311,14 @@ final class TransferRequest
 <!-- source: packages/validation/src/Valid.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
+final class Valid
+{
+    // …
+    public function __construct(public readonly ?string $each = null) {}
+}
 ```
+
+Two targets, and both matter. On a **parameter** it is the gate just described. On a **property** of a DTO it means *cascade* — validate the object that member holds, under dot-prefixed keys, so a class-typed `shipTo` reports its failures as `shipTo.postcode`, and a member typed `array` or `iterable` cascades into every element and reports `lines[0].sku`. That second case is the one that needs the constructor parameter the listing keeps: `#[Valid(each: Line::class)]` names the element class of a list member whose docblock does not already say it. Without either the attribute argument or a `@var list<Line>` / `@param list<Line> $lines` tag for `ConstraintScanner` to read, a `#[Valid]` list is **refused at scan time** rather than silently skipped — an unvalidated collection that looks validated is exactly the failure this refusal exists to prevent.
 
 The validation itself runs through `Firefly\Validation\Constraint\BeanValidator`, which delegates to a `Validator` port (`IlluminateValidator` by default) using rules a `ConstraintManifest` compiled ahead of time from each constraint attribute's `toRules()` method:
 
@@ -409,26 +419,70 @@ final class ProblemDetailsRenderer
     // …
     public function render(Throwable $e, Request $request): Response
     {
-        // …
+        // An absent settings object means the SAFE answer, not the open one — see the constructor.
+        $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
+
+        $correlationId = CorrelationIdFilter::of($request);
+        $exception = ProblemMapper::toFireflyException($e, $disclose, $correlationId);
+
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
-            // …
+            traceId: $correlationId,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
         )->toArray();
+
+        $headers = [
+            'Content-Type' => 'application/problem+json',
+            CorrelationIdFilter::HEADER => $correlationId,
+        ];
         // …
         return new Response(
             json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             $exception->httpStatus(),
-        // …
+            $headers,
         );
     }
 }
 ```
 
-Three cases fold onto the same response shape. A `FireflyException` (or one of its typed subclasses, like `ResourceNotFoundException`) renders as-is, at its own `httpStatus()`. A Laravel/Symfony routing exception — a URL with no matching route at all — is converted while **preserving its real status code**, so an unmatched route still answers 404, never a misleading 500. Anything else — a genuinely unexpected `Throwable` — becomes a generic, category-`Internal`, HTTP-500 `FireflyException`. Every path ends at the same `ErrorResponse::fromException(...)->toArray()` call, so the payload shape never depends on which branch produced it.
+`application/problem+json` is set here, on every response this renderer produces — that media type *is* the RFC-7807 contract, and a client is entitled to switch on it. Beside it goes the request's correlation id, both as the `X-Correlation-Id` header and as the payload's `traceId`, so the body a person screenshots and the log line an operator greps share a value.
 
-Requesting a wallet that was never opened renders like this:
+What `render()` deliberately does **not** decide is which `FireflyException` an arbitrary throwable becomes. That rule lives one class along, in `Firefly\Web\Error\ProblemMapper`, because the HTML error page of Chapter 10 needs the identical answer and two copies of it would eventually hand a browser and an API client different codes for the same failure:
+
+<!-- source: packages/web/src/Error/ProblemMapper.php -->
+```php
+    public static function toFireflyException(Throwable $e, bool $disclose = true, ?string $reference = null): FireflyException
+    {
+        return match (true) {
+            $e instanceof FireflyException => $e,
+            self::isExecutionTimeLimit($e) => self::executionTimeExceeded($e, $reference),
+            $e instanceof MethodNotAllowedHttpException => self::methodNotAllowed($e),
+            $e instanceof HttpExceptionInterface => new FireflyException(
+                self::httpMessage($e),
+                self::errorCode($e->getStatusCode()),
+                $e->getStatusCode(),
+                ErrorCategory::Framework,
+                ErrorSeverity::Warning,
+                $e,
+            ),
+            default => new FireflyException(
+                $disclose && $e->getMessage() !== '' ? $e->getMessage() : self::opaque($reference),
+                'INTERNAL_ERROR',
+                500,
+                ErrorCategory::Internal,
+                ErrorSeverity::Error,
+                $e,
+            ),
+        };
+    }
+```
+
+Five arms covering four cases — the `405` has an arm of its own only so the verbs it permits can be lifted out of the router's sentence and into an `allowed` member and the `Allow` header — and every one of them ends back at the same `ErrorResponse::fromException(...)->toArray()` call, so the payload's shape never depends on which arm produced it.
+
+A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the correlation id, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
+
+Requesting a wallet that was never opened renders like this. Note `instance`: it is `$request->path()`, which Laravel returns **without** a leading slash, so it is `api/v1/wallets/wlt-999` and not `/api/v1/wallets/wlt-999` — a small thing, and exactly the kind of small thing a client that compares strings gets wrong.
 
 ```json
 {
@@ -438,12 +492,13 @@ Requesting a wallet that was never opened renders like this:
   "category": "business",
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
-  "instance": "/api/v1/wallets/wlt-999",
+  "instance": "api/v1/wallets/wlt-999",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
 
-A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — additionally carries an `errors` array, one entry per failed field:
+A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — additionally carries an `errors` array, one entry per failed **constraint**:
 
 ```json
 {
@@ -453,14 +508,34 @@ A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — 
   "category": "validation",
   "severity": "warning",
   "detail": "Validation failed",
-  "instance": "/api/v1/wallets",
+  "instance": "api/v1/wallets",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00",
   "errors": [
-    {"field": "owner_id", "message": "is required"}
+    {"field": "owner_id", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": ""}
   ]
 }
 ```
 
-And a withdraw attempt with no authenticated `ADMIN` or `WALLET_OWNER` principal — denied by `WithdrawHandler`'s `#[PreAuthorize]` before the handler body ever runs — renders at 403, with no code change to `WalletController::withdraw()` at all:
+Four members, and the pairing is deliberate: `message` is the sentence — Bean Validation's own wording for the constraint, or whatever `#[NotBlank(message: '…')]` supplied — and `constraint` is the **attribute's short name**, which is the member a client branches on when the sentence is written for a person and may be translated or reworded. `rejectedValue` is what the client actually sent, echoed back so a form can highlight the field without guessing. One entry appears per failed constraint, not per failed rule: `#[NotBlank]` compiles to three Laravel rules and still reports once.
+
+A withdraw attempt is refused twice over, and the two refusals are **not the same status**. With no authenticated principal at all, `WithdrawHandler`'s `#[PreAuthorize]` — enforced at the bus, before the handler body runs — answers `401`: *authenticate first*.
+
+```json
+{
+  "status": 401,
+  "title": "Unauthorized",
+  "code": "AUTHENTICATION_FAILED",
+  "category": "security",
+  "severity": "warning",
+  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
+  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00"
+}
+```
+
+`403` is reserved for a principal who **is** signed in and still lacks `ROLE_ADMIN` or `ROLE_WALLET_OWNER` — *signing in would not help* — and that document names the authorities the expression wanted:
 
 ```json
 {
@@ -469,10 +544,15 @@ And a withdraw attempt with no authenticated `ADMIN` or `WALLET_OWNER` principal
   "code": "ACCESS_DENIED",
   "category": "security",
   "severity": "warning",
-  "detail": "Access is denied",
-  "instance": "/api/v1/wallets/wlt-1/withdraw"
+  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
+  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00",
+  "requiredAuthorities": ["ROLE_ADMIN", "ROLE_WALLET_OWNER"]
 }
 ```
+
+Both are produced with no code change to `WalletController::withdraw()` at all: the bus wraps whichever security exception the evaluator raised in a `CommandProcessingException` that copies the cause's code, status and category, so the wire carries the cause's identity rather than a generic bus error. Chapter 10 returns to this pair — and to the two shipped tests that pin it — in full.
 
 ### Handling an exception yourself
 

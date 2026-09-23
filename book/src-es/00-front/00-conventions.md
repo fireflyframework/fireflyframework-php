@@ -4,7 +4,7 @@ Esta página explica las convenciones tipográficas y estructurales que se usan 
 
 ### Listados de código
 
-El código real se presenta en un bloque delimitado plano etiquetado `php`. Cada uno de estos bloques se resalta con sintaxis aquí mismo y además se valida con el propio CLI de PHP (`php -l`) mediante las herramientas de compilación propias del libro: nada de lo que lees es imposible de analizar, inventado o está desactualizado. Por ejemplo, este fragmento es el objeto de valor `Money` de `samples/lumen`:
+El código real se presenta en un bloque delimitado plano etiquetado `php`. Cada uno de estos bloques se resalta con sintaxis aquí mismo y además se valida con el propio CLI de PHP (`php -l`) mediante las herramientas de compilación propias del libro, de modo que ningún listado que leas deja de ser PHP analizable. La edición inglesa va un paso más allá: cada uno de sus listados declara el fichero del repositorio del que se extrajo y se compara con él línea a línea en cada ejecución de la suite; esa conversión todavía no ha alcanzado a esta edición. Por ejemplo, este fragmento es el objeto de valor `Money` de `samples/lumen`:
 
 ```php
 <?php

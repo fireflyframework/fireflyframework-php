@@ -132,11 +132,10 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
 
 <!-- source: packages/openapi/src/Generator/OperationFactory.php -->
 ```php
-final class OperationFactory
-{
-    // …
+    public function create(RouteDescriptor $route, string $operationId, SchemaRegistry $registry, ApiDocs $docs): array
     {
-        // …
+        $doc = $docs->operation($route);
+
         $parameters = [];
         $body = null;
         $files = [];
@@ -144,20 +143,25 @@ final class OperationFactory
         $rejectable = false;
 
         foreach ($route->bindings as $binding) {
-            // …
+            // Claimed by a resolver: bound from somewhere other than the request, so neither a parameter nor
+            // a reason for a 400 — the same first question ArgumentResolver::resolveOne() asks.
+            if ($this->resolvers?->resolverFor($binding) !== null) {
+                continue;
+            }
+
             $validated = $validated || $binding['valid'];
 
             switch ($binding['kind']) {
                 case 'path':
-                    // …
+                    $parameters[] = $this->parameter($binding, 'path', true, $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $this->coercible($binding);
                     break;
                 case 'query':
-                    // …
+                    $parameters[] = $this->parameter($binding, 'query', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'header':
-                    // …
+                    $parameters[] = $this->parameter($binding, 'header', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'file':
@@ -180,14 +184,14 @@ final class OperationFactory
         } elseif ($files !== []) {
             $operation['requestBody'] = $this->multipartBody($files);
         }
-        // …
+
+        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
+
         return $operation;
     }
-// …
-}
 ```
 
-The one elided block is where the operation's human-facing prose is put together; everything shown is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
+The single `// …` cuts the block that assembles the operation's human-facing prose — its `summary`, `description`, `deprecated` flag and `tags`, all four covered just below. Everything printed is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
 
 Four smaller decisions finish an operation:
 
@@ -472,7 +476,7 @@ That was every success response in every document this generator produced, and i
 
 The reasoning had been that a `@return array{...}` is comment text nothing else in the framework treats as binding. That had already stopped being true. `RouteScanner` reads `@param list<X>` to compile the table `ArgumentResolver` **hydrates** from, so a docblock type expression is exactly as binding as a declared type on the way *in*. And there is a stronger argument still: **PHPStan at level max already checks these expressions against the code on every build**, which is what makes reading them safe. An out-of-date `@return` is a failing gate, not a silent lie.
 
-So the success body now comes from three sources, most specific first:
+So the success body now comes from three sources, most specific first. Three methods of one of the package' own response fixtures show what each of them carries:
 
 <!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
@@ -510,6 +514,8 @@ public function shipments(#[PathVariable] string $reference): array
 }
 ```
 
+`index()`'s `@return` expression is the first source, and it produces this schema — `positive-int` carrying its own `minimum`, and `list<Consignment>` resolving the short name through the controller's own imports into a component reference:
+
 ```json
 {
   "type": "object",
@@ -517,12 +523,14 @@ public function shipments(#[PathVariable] string $reference): array
     "page":  { "type": "integer", "minimum": 1 },
     "size":  { "type": "integer", "minimum": 1 },
     "total": { "type": "integer" },
-    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Consignment" } }
   },
   "required": ["page", "size", "total", "items"],
   "additionalProperties": false
 }
 ```
+
+`show()` needs no docblock type at all — its declared return type is already a class, which is the second source — and `shipments()`, whose declared type is a bare `array`, is carried entirely by its `@return list<Shipment>`. In order, then:
 
 1. The **`@return` type expression** — the only place a PHP `array` can say what is in it. Prose written after the type becomes the response `description`, which is the only response description anyone ever actually writes.
 2. The **declared return type** — a class becomes a component `$ref`, a backed enum its value set, a scalar itself.
@@ -557,10 +565,23 @@ Which PHP spells two ways. A class implementing `JsonSerializable` serialises as
 final readonly class Order implements JsonSerializable
 {
     // …
+    /** The order's value, derived from its lines rather than stored beside them. */
+    public function total(): float
+    {
+        return round(array_sum(array_map(static fn (OrderLine $line): float => $line->subtotal(), $this->lines)), 2);
+    }
+
     /** @return array{id: int|null, customer: string, email: string, shipTo: Address, lines: list<OrderLine>, total: float} */
     public function jsonSerialize(): array
     {
-    // …
+        return [
+            'id' => $this->id,
+            'customer' => $this->customer,
+            'email' => $this->email,
+            'shipTo' => $this->shipTo,
+            'lines' => $this->lines,
+            'total' => $this->total(),
+        ];
     }
 }
 ```
@@ -575,21 +596,23 @@ One rule inverts on the way out. **Nullability is not requiredness here.** A res
 
 <!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
-final class ConsignmentController
-{
-    // …
+    /**
+     * Books a consignment.
+     *
+     * @return array<string, mixed>
+     */
     #[PostMapping(status: 201)]
-    // …
+    #[ApiResponse(status: 409, description: 'A consignment with that reference already exists.', type: Consignment::class)]
     #[ApiResponse(status: 202, description: 'Accepted for later booking.', type: 'list<Shipment>')]
     public function book(): array
     {
-    // …
+        return [];
     }
-// …
-}
 ```
 
-`type` is a full expression, not only a class or a scalar name, and a short name resolves through the controller's own imports.
+(The empty body is not an omission: this is one of the package's own response fixtures, and the only things the generator reads are the signature, the docblock and the attributes.)
+
+`type` is a full expression, not only a class or a scalar name, and a short name resolves through the controller's own imports — `Consignment::class` and the string `'list<Shipment>'` are handled by the same parser. Note also what the three statuses do together: `201` from `#[PostMapping]`, plus one `#[ApiResponse]` per alternative outcome, each with its own schema.
 
 ---
 
@@ -599,15 +622,16 @@ Chapter 4 introduced `#[RestController]` alongside its HTML sibling `#[Controlle
 
 <!-- source: packages/openapi/src/Generator/OpenApiGenerator.php -->
 ```php
-final class OpenApiGenerator
-{
-    // …
+    private function excluded(RouteDescriptor $route, ApiDocs $docs): bool
     {
-        // …
         if ($route->html && ! $this->properties->includeHtml) {
             return true;
         }
-        // …
+
+        if ($docs->ignores($route)) {
+            return true;
+        }
+
         foreach ($this->properties->excludePathPrefixes as $prefix) {
             if (str_starts_with($route->path, $prefix)) {
                 return true;
@@ -616,9 +640,9 @@ final class OpenApiGenerator
 
         return false;
     }
-// …
-}
 ```
+
+Read the name before the body: `excluded()` answers *leave this route out*, so every `return true` above is a route that does **not** reach the document. The first arm is the `#[Controller]` rule, the second is `#[ApiIgnore]`, and the third is the configured path-prefix list.
 
 A `#[Controller]` route renders a page. It is part of the application's HTTP surface, but it is not a JSON operation, and describing one as `application/json` would have a generator emit a typed client for a response that is a web page — the framework's own welcome page was in the spec exactly that way before this rule existed. Set `firefly.openapi.include-html` to `true` and the route is documented anyway, but honestly: the operation is then produced with `text/html` content and a `type: string` schema rather than a JSON schema that would be a lie a client generator faithfully acts on.
 
@@ -729,9 +753,9 @@ The viewer fetches the spec from the sibling route rather than having the docume
 
 ## Configuration, and securing the surface
 
-Everything the document and its routes need lives under one config key:
+Everything the document and its routes need lives under one config key. The block below is written as live PHP for readability; `skeleton/config/firefly.php` ships the same keys **commented out**, with each default beside it, because `firefly/openapi` is an optional package and an uncommented block would be a decision made for you:
 
-<!-- illustrative: the deployment's own config/firefly.php; the shipped reference carries every one of these keys with its default -->
+<!-- illustrative: a live-PHP rendering of the `openapi` block that skeleton/config/firefly.php ships commented out, so there is no uncommented copy in the repository to excerpt -->
 ```php
 <?php
 
@@ -760,7 +784,7 @@ return [
 
 A public deployment is secured the way any other route is. Chapter 10's `HttpSecurity` rules — ahead, in Part III — cover the spec and viewer paths with no code edge at all, because `HttpSecurityFilter` is a global middleware and runs for natively-registered routes exactly as it runs for your controllers:
 
-<!-- illustrative: the deployment's own config/firefly.php; the URL rules that protect a docs surface belong to the application -->
+<!-- illustrative: the deployment's own config/firefly.php; the keys are the framework's and are documented in the shipped reference, but every pattern and access expression below is the application's own -->
 ```php
 <?php
 

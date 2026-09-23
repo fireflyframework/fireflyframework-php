@@ -7,8 +7,10 @@ declare(strict_types=1);
 use Composer\Semver\Semver;
 use Composer\Semver\VersionParser;
 use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Actuator\Health\DbHealthIndicator;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Config\Config;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Data\Exception\DriverErrorTable;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\EloquentRepository;
@@ -19,6 +21,7 @@ use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
+use Firefly\Tests\Support\DocsCodeAudit;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
 use Illuminate\Config\Repository as ConfigRepository;
@@ -1367,4 +1370,152 @@ it('pins the contributing guide\'s documentation-gate roster to the test files i
         count($roster),
         implode(', ', $roster),
     ));
+});
+
+it('pins every DbHealthIndicator sentence to the matchIfMissing its own attribute declares', function () {
+    // The eleventh guard, and the first to catch a stale DEFAULT rather than a stale count. `DbHealthIndicator`
+    // shipped opt-in for one release and then became on-by-default, like Spring Boot's DataSourceHealthIndicator
+    // auto-configuration. docs/modules/actuator.md and the CHANGELOG were corrected; five other places were not
+    // — book/src/11-observability-actuator.md's explanation AND its recap row, book/src/94-glossary.md, and both
+    // Spanish mirrors — all still describing the retired behaviour in the present tense. A reader who believed
+    // them would leave a production database unchecked, because the book said the check was off until asked for.
+    //
+    // Nothing could see it. The listing beside the sentence had the real #[ConditionalOnProperty] line elided
+    // out, so the verbatim guard was satisfied by a listing that no longer contained the evidence against the
+    // paragraph it illustrated — which is the exact reason a listing guard is not a documentation guard.
+    //
+    // DERIVED: the attribute is read off the shipped class, and both rules fire only while matchIfMissing is
+    // TRUE. The day the framework makes the indicator opt-in again they go quiet, which is correct — the
+    // sentences they refuse become the true ones, and the opposite pair would be what needs writing.
+    $attributes = (new ReflectionClass(DbHealthIndicator::class))->getAttributes(ConditionalOnProperty::class);
+
+    expect($attributes)->not->toBeEmpty('DbHealthIndicator no longer carries a #[ConditionalOnProperty] at all');
+
+    $onByDefault = $attributes[0]->newInstance()->matchIfMissing;
+
+    $quoting = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (! str_contains($paragraph, 'DbHealthIndicator') || ! $onByDefault) {
+                continue;
+            }
+
+            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+            $namesTheDefault = str_contains($paragraph, 'matchIfMissing: true');
+
+            // A paragraph that QUOTES the condition must quote the value it really carries. "#[ConditionalOnProperty]
+            // with no matchIfMissing" was the sentence that shipped, in two languages, beside the attribute that has it.
+            if (str_contains($paragraph, 'ConditionalOnProperty')) {
+                $quoting++;
+
+                if (! $namesTheDefault) {
+                    $failures[] = $where;
+                }
+            }
+
+            // And a paragraph that calls the indicator optional, in either language, has to be EXPLAINING the
+            // mechanism rather than asserting the retired default — so it must also name one of the two things
+            // that make it on-by-default-and-still-silent-without-a-database. The recap rows said "opt-in
+            // `SELECT 1` DB check" and named neither.
+            $callsItOptional = str_contains($paragraph, 'opt-in') || str_contains($paragraph, 'opcional');
+
+            if ($callsItOptional && ! $namesTheDefault && ! str_contains($paragraph, 'ConditionalHealthIndicator')) {
+                $failures[] = $where;
+            }
+        }
+    }
+
+    expect($quoting)->toBeGreaterThan(0, 'no page quotes DbHealthIndicator\'s #[ConditionalOnProperty] any more, so this canary holds nothing')
+        ->and($failures)->toBe([]);
+});
+
+it('pins every page that explains the book\'s gate to what that gate now really does', function () {
+    // The twelfth, and the one that guards a PROMISE rather than a fact. Wave R put book/src under the
+    // provenance contract and, because a verbatim fragment of a real file cannot parse on its own, stopped
+    // handing a `source:` listing to `php -l`. Five sentences across three pages went on describing the
+    // retired arrangement: docs/contributing.md said the script lints "every fenced `php` listing", that this
+    // "is the whole of the book's gate", that the manuscripts are "**not** under the provenance contract",
+    // that "no chapter carries a `source:` … marker yet", that "DocsCodeAudit::AUDITED names no book path"
+    // and that --require-provenance "is therefore part of no gate"; book/README.md and README.md repeated the
+    // lint claim three more times. A gate that runs green while the page explaining it is false is worse than
+    // no gate, because that page is the reason a contributor trusts the gate at all.
+    //
+    // EACH RETIRED SENTENCE IS PAIRED WITH THE FACT THAT RETIRED IT, and the fact is derived: the script's own
+    // guard clause, the AUDITED list, and a walk of book/src counting how many of its `php` listings carry a
+    // marker. A sentence is only refused while the thing it denies is true, so the day one of these decisions
+    // is reversed the corresponding check goes quiet instead of forcing a lie in the other direction.
+    //
+    // WHAT THIS CANNOT SEE, stated plainly: it knows the sentences that WERE wrong, not every sentence that
+    // COULD be. A newly invented false claim about the gate is not in the list. What the pairing buys is that
+    // these five cannot come back, and that the three pages cannot quietly stop describing the gate at all —
+    // which the presence check below is for.
+    $root = dirname(__DIR__);
+
+    $script = (string) file_get_contents($root.'/book/build/verify_code.py');
+    $exempts = preg_match('/if\s+lst\.origin\s+is\s+None:\s*\n\s*ok,\s*err\s*=\s*lint_php\(/', $script) === 1;
+
+    // Read through reflection rather than as a constant expression: the value is the thing under test, and a
+    // literal `in_array(..., DocsCodeAudit::AUDITED, true)` is folded to `true` at analysis time, which would
+    // make the pairing below a constant rather than a derivation.
+    $surface = (new ReflectionClassConstant(DocsCodeAudit::class, 'AUDITED'))->getValue();
+    $audited = is_array($surface) && in_array('book/src', $surface, true);
+
+    $audit = new DocsCodeAudit($root);
+    $listings = 0;
+    $marked = 0;
+
+    foreach ($audit->markdownFiles() as $file) {
+        if (! str_starts_with($file, 'book/src/')) {
+            continue;
+        }
+
+        foreach ($audit->blocksIn($file) as $block) {
+            if ($block->language !== 'php') {
+                continue;
+            }
+
+            $listings++;
+
+            if ($block->source !== null || $block->illustrative !== null) {
+                $marked++;
+            }
+        }
+    }
+
+    $everyListingDeclaresItsOrigin = $listings > 0 && $marked === $listings;
+
+    /** @var list<array{0: string, 1: string, 2: bool}> $retired  page, the sentence fragment, the derived fact that makes it false */
+    $retired = [
+        ['docs/contributing.md', 'write every fenced', $exempts],
+        ['docs/contributing.md', "That is\nthe whole of the book's gate", $audited],
+        ['docs/contributing.md', 'are **not** under the provenance contract', $audited],
+        ['docs/contributing.md', 'no chapter\ncarries a `source:`', $everyListingDeclaresItsOrigin],
+        ['docs/contributing.md', 'names no book path', $audited],
+        ['docs/contributing.md', 'is therefore part of no gate', $everyListingDeclaresItsOrigin],
+        ['book/README.md', 'block in the manuscript is linted with the real PHP', $exempts],
+        ['book/README.md', 'lints with `php -l`', $exempts],
+        ['book/README.md', 'listing is `php -l`-clean (enforced by', $exempts],
+        ['README.md', 'Every fenced PHP listing is `php -l`-verified', $exempts],
+    ];
+
+    $failures = [];
+
+    foreach ($retired as [$page, $fragment, $isFalseNow]) {
+        if ($isFalseNow && str_contains((string) file_get_contents($root.'/'.$page), $fragment)) {
+            $failures[] = $page.' still says '.var_export($fragment, true);
+        }
+    }
+
+    // And the three pages must still SAY something about the gate: a sentence deleted rather than corrected
+    // would satisfy every check above and leave a contributor with nothing to read.
+    $silent = array_values(array_filter(
+        ['README.md', 'docs/contributing.md', 'book/README.md'],
+        static fn (string $page): bool => ! str_contains((string) file_get_contents(dirname(__DIR__).'/'.$page), 'php -l'),
+    ));
+
+    expect($listings)->toBeGreaterThan(0, 'the walk found no php listing under book/src at all')
+        ->and($failures)->toBe([])
+        ->and($silent)->toBe([], 'a page that explains the book\'s gate no longer mentions `php -l`: '.implode(', ', $silent));
 });

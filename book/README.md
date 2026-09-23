@@ -45,8 +45,12 @@ generated PDF/EPUB.
 
 ## Verifying PHP code listings
 
-Every fenced ` ```php ` block in the manuscript is linted with the real PHP
-CLI (`php -l`, via a temp file — no execution):
+A fenced ` ```php ` block is linted with the real PHP CLI (`php -l`, via a temp
+file — no execution) unless it carries a `<!-- source: … -->` marker. A marked
+block is a verbatim excerpt of the repository file it names — a fragment that
+does not parse on its own — and is checked by line-for-line comparison in
+`DocsCodeIsRealTest` instead. Every listing in `src/` carries one marker or the
+other; `src-es/` carries none yet, so all of it is linted:
 
 ```bash
 book/.venv/bin/python book/build/verify_code.py book/src
@@ -78,7 +82,7 @@ book/
     epub.py            # stdlib-only EPUB3 (OCF) zip assembler
     pdf.py             # WeasyPrint HTML -> PDF
     gen_cover.py        # regenerates art/cover.{svg,png} (firefly/spark motif)
-    verify_code.py      # extracts fenced ```php listings, lints with `php -l`
+    verify_code.py      # fenced ```php listings: `php -l`, except `source:` ones
     run.sh              # sets DYLD_FALLBACK_LIBRARY_PATH, execs build.py
     requirements.txt     # pinned: weasyprint, markdown, pygments, pyyaml, pytest, cairosvg
   theme/
@@ -132,6 +136,9 @@ The manuscript is **complete** in both languages: a five-file front matter, a
   Testing, the CLI & the Zero-Reflection Cache
 
 — plus **Appendix A** (Laravel → LaraFly cheat-sheet) and a **Glossary**. Every
-chapter walks the real `samples/lumen` project, and every fenced ` ```php `
-listing is `php -l`-clean (enforced by `verify_code.py` over both `src/` and
-`src-es/`). Both editions build to `book/dist/` as PDF + EPUB.
+chapter walks the real `samples/lumen` project. Every fenced ` ```php ` listing
+in `src/` carries either a `source:` marker naming the repository file it was
+excerpted from — compared line for line by the repository's own documentation
+guard — or an `illustrative:` marker saying it is the reader's own code, which
+is the kind `php -l` checks; `src-es/` is `php -l`-clean throughout
+(`verify_code.py`). Both editions build to `book/dist/` as PDF + EPUB.

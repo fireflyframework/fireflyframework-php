@@ -39,13 +39,17 @@ final class Authentication
     // …
     public function eraseCredentials(): self
     {
-    // …
+        $principal = $this->principal instanceof CredentialsContainer ? $this->principal->eraseCredentials() : $this->principal;
+
+        return new self($this->name, $principal, null, $this->authorities, $this->authenticated, $this->attributes);
     }
 // …
 }
 ```
 
-The private constructor means the only way to build one is `authenticated()` (credentials always `null`, `authenticated` always `true`) or `unauthenticated()` (authorities always `[]`, `authenticated` always `false`) — there is no path that lets you construct an "authenticated" token with leftover raw credentials still attached. `GrantedAuthority`/`SimpleGrantedAuthority` wrap a bare authority string (`'ROLE_ADMIN'`, `'orders:read'`):
+The private constructor means the only way to build one is `authenticated()` (credentials always `null`, `authenticated` always `true`) or `unauthenticated()` (authorities always `[]`, `authenticated` always `false`) — there is no path that lets you construct an "authenticated" token with leftover raw credentials still attached.
+
+`eraseCredentials()` is the same argument made once more, one level down, and its two lines are worth reading closely. It returns a **new** instance rather than clearing a field, so a reference someone else is already holding can never observe a token that was cleared and then repopulated. And it does not stop at its own `credentials`: a principal that is itself a `CredentialsContainer` — the shipped `User`, whose `getPassword()` is the encoded hash — is asked for its own credential-free copy, because a password hash reachable through `$authentication->getPrincipal()` is a password hash on the wire the moment something serialises the context. This is the form `SessionSecurityContextRepository` writes to the session. Notice what does *not* call it: the authentication manager, on success. The token a filter receives still carries the principal's encoded password, because the remember-me cookie's signature is computed from it — so only a **store** ever needs the erased copy. `GrantedAuthority`/`SimpleGrantedAuthority` wrap a bare authority string (`'ROLE_ADMIN'`, `'orders:read'`):
 
 <!-- source: packages/security/src/Core/GrantedAuthority.php -->
 ```php
@@ -983,7 +987,7 @@ The three enforcement seams give the same pair of answers, because they share th
 
 The bus wraps either one in `CommandProcessingException`, which copies the cause's error code, HTTP status and category — so the wire carries `AUTHENTICATION_FAILED` or `ACCESS_DENIED` rather than the bus's own generic code. And in both tests the balance assertion afterwards is doing real work: it proves the debit genuinely never happened, not merely that the HTTP response looked like a rejection.
 
-Grant the right authority and the same command succeeds:Grant the right authority and the same command succeeds:
+Grant the right authority and the same command succeeds:
 
 <!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
 ```php

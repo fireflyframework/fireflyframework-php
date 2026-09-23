@@ -130,7 +130,18 @@ Read that `fnmatch()` call closely: it matches `$subscriber['pattern']` against 
     #[EventListener(['WalletOpened', 'FundsDeposited', 'FundsWithdrawn', 'TransferCompleted'])]
     public function onWalletEvent(EventEnvelope $envelope): void
     {
-    // …
+        // …
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
+        $amountMinor = $envelope->payload['amountMinor'] ?? 0;
+        $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
+
+        LedgerEntry::query()->create([
+            'wallet_id' => is_string($walletId) ? $walletId : '',
+            'event_type' => $envelope->eventType,
+            'amount_minor' => is_int($amountMinor) ? $amountMinor : 0,
+            'balance_minor' => is_int($balanceMinor) ? $balanceMinor : 0,
+            'occurred_at' => now(),
+        ]);
     }
 }
 ```
@@ -170,7 +181,7 @@ final class OrderService
 }
 ```
 
-Here the destination (`'firefly.events'`) and the event type (`'order.placed'`) are deliberately different strings, and the `'order.*'` pattern matches the **second** one — precisely so this example cannot be mistaken for evidence that patterns ever look at the destination.
+Here the destination (`'orders'`) and the event type (`'order.placed'`) are deliberately different strings, and the `'order.*'` pattern matches the **second** one — precisely so this example cannot be mistaken for evidence that patterns ever look at the destination.
 
 `EventListenerScanner` (`packages/eda/src/Scanner/EventListenerScanner.php`) is the sole reflection site in `firefly/eda`, walking the app's PSR-4 roots once and compiling every `#[EventListener]` method into an `EventListenerDescriptor`; `EventListenerManifest` loads the result with zero reflection, exactly the `HandlerManifest` idiom Chapter 7 just showed you. `firefly:cache` runs this scanner as one of its twelve pairs, writing `bootstrap/cache/firefly/event-listeners.php`; `FireflyCacheServiceProvider` binds it, overriding the empty default an uncached app would otherwise boot with. `EventListenerWiringPass` then walks that manifest at boot — in *every* process, web request and queue worker alike — wraps each target invocation in the retry/DLQ decorator below, and calls `$bus->subscribe($pattern, $wrapped)` per pattern, resolving the target bean **fresh from the container on every dispatch**.
 
@@ -247,7 +258,14 @@ final class InMemoryEventBus implements EventPublisher
     // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
-    // …
+        // Delivery is synchronous, so the consume side is NESTED in the publish side: the PRODUCER span
+        // wraps the CONSUMER span, and the envelope carries the traceparent between them exactly as it
+        // would across a broker.
+        $this->tracing->tracePublish($destination, $eventType, $headers, function (array $headers) use ($destination, $eventType, $payload): void {
+            $envelope = new EventEnvelope($eventType, $destination, $payload, $headers);
+
+            $this->tracing->traceConsume($envelope, fn (EventEnvelope $received) => $this->registry->deliver($received));
+        });
     }
 
     public function start(): void {}
@@ -256,7 +274,9 @@ final class InMemoryEventBus implements EventPublisher
 }
 ```
 
-`publish()` builds the envelope and calls `deliver()` **synchronously** — every matching handler has already run by the time `publish()` returns. `QueueEventBus` (`firefly.eda.provider=queue`) keeps the identical `EventPublisher` contract but makes `publish()` fire-and-forget:
+`publish()` builds the envelope and hands it to `SubscriberRegistry::deliver()` **synchronously** — every matching handler has already run by the time `publish()` returns, and a handler that throws throws into the publishing call. The two `EdaTracing` calls wrapped around it are a no-op until Chapter 11 installs a real tracer; what they buy is that the in-memory bus emits the same producer-then-consumer span pair a broker would, so a trace does not change shape when you change provider.
+
+`QueueEventBus` (`firefly.eda.provider=queue`) keeps the identical `EventPublisher` contract but makes `publish()` fire-and-forget:
 
 <!-- source: packages/eda/src/Bus/QueueEventBus.php -->
 ```php
@@ -265,23 +285,25 @@ final class QueueEventBus implements EventPublisher
     // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
-            // …
+        $this->tracing->tracePublish($destination, $eventType, $headers, function (array $headers) use ($destination, $eventType, $payload): void {
             $job = (new DispatchEventJob(new EventEnvelope($eventType, $destination, $payload, $headers)))
                 ->onConnection($this->connection)
                 ->onQueue($this->queue);
 
             // Resolved EVERY call so Bus::fake() intercepts — never hoist into the constructor.
             $this->container->make(Dispatcher::class)->dispatch($job);
-    // …
+        });
     }
 
     public function deliver(EventEnvelope $envelope): void
     {
-    // …
+        $this->tracing->traceConsume($envelope, fn (EventEnvelope $received) => $this->registry->deliver($received));
     }
 // …
 }
 ```
+
+Same two seams, split across two processes: `publish()` is the producer side in the web request, `deliver()` the consumer side on the worker, and the traceparent riding in the envelope's headers is the only thing joining them.
 
 `publish()` returns before any listener has run — delivery happens on whichever queue worker picks up the `DispatchEventJob`. That worker's own boot repopulates its `SubscriberRegistry` from the same compiled manifest `EventListenerWiringPass` reads everywhere, so a share-nothing worker reconstructs the identical subscriber set every time it starts. Under the `sync` queue driver, delivery collapses to the same synchronous behaviour as `InMemoryEventBus` — which is exactly how a test exercises the async path with no worker actually running.
 
