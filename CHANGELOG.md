@@ -561,9 +561,13 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   bound to the class's `@template` parameters and become components named springdoc's way (`PageOrder`,
   `LengthAwarePaginatorOrder`), `@extends` included; union, nullable and intersection types are documented on
   returns, response members and request members alike (a union-typed request member is also `required` again).
+  A Laravel API resource is its `toArray()` shape inside the envelope its `$wrap` names, and a resource
+  collection the list of what it collects (`#[Collects]`, `$collects` or the naming convention).
   An `#[ApiResponse]` without a `type` no longer erases the body: on the success status it keeps the derived
   schema and only replaces the description, and on an error status it documents the problem+json body the
-  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values.
+  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values. The
+  built-in viewer (`viewer.style: builtin`) draws all of it: components by name, unions and nullable nested
+  objects arm by arm, maps and lists of components — where it used to show `any`, `object[]` or nothing.
 
 - **`packages/web` — a returned paginator was rendered as pagination links instead of written as data.**
   `ResponseFactory` checked `Htmlable` before handing a value to the JSON converter, and `AbstractPaginator` is

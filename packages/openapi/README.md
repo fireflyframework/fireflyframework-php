@@ -67,11 +67,40 @@ checksum, a third-party `ValidationRule`) and ones it can only approximate (a PC
 ECMA-262 has no syntax for) are recorded under the `x-firefly-constraints` specification extension.
 Conforming tools ignore it; a human or a custom generator can read it.
 
-**Responses.** Every operation carries the shared `#/components/responses/Problem` as its `default`, plus a
+**Success responses** document what the action actually sends, and the rule for "actually" is the runtime's
+own: the generator follows `ResponseFactory` and `JsonMessageConverter` branch for branch, in their order, so the
+document and the dispatcher cannot disagree about which path a return takes. The body comes from the `@return`
+line when it says more than the declared type (`@return array{page: int, items: list<Order>}`, with the prose
+after it as the response description), and otherwise from the declared return type — unions, nullables and
+intersections included.
+
+| The action returns | Documented as |
+| --- | --- |
+| a class | a `$ref` to a component built from what `json_encode` writes: its public properties, or `jsonSerialize()`'s `@return` shape |
+| an `Arrayable` | its `toArray()` `@return` shape, then the value type of its `@implements Arrayable<K, V>` — ahead of `JsonSerializable`, never its properties |
+| an Eloquent model | its `@property` tags (columns required, `@property-read` only when appended), or, untagged, its key, `$fillable`, casts, timestamps, `$appends` and relations — minus `$hidden`, within `$visible` |
+| `Page<Order>`, any generic | the class's `@template` parameters bound to the arguments, as a component named springdoc's way: `PageOrder` |
+| a Laravel `Collection` | the list (or, keyed by strings, the map) of its elements |
+| `->paginate()` / `->simplePaginate()` / `->cursorPaginate()` | Laravel's own envelope around the element type: `LengthAwarePaginatorOrder` |
+| a `JsonResource` / `ResourceCollection` | its `toArray()` shape (or the model it `@mixin`s) inside the envelope its `$wrap` names — `data` by default |
+| a `JsonResponse`, a file, a redirect, another `Response` | JSON of unknown shape, a binary download, a `302` with `Location`, or `*/*` |
+| a `ModelAndView`, a View, markup | `text/html` |
+| `void`, or a `204` mapping | no content |
+
+A value that is `Arrayable` or `JsonSerializable` is data even when it could also render itself — a paginator is
+`Htmlable` too — which is the same call `ResponseFactory` makes.
+
+**Error responses.** Every operation carries the shared `#/components/responses/Problem` as its `default`, plus a
 `400` when `ArgumentResolver` has something it can reject before the controller runs, and a `422` when a
 binding carries `#[Valid]`. The problem schema describes what LaraFly actually returns — RFC 9457's members
 *plus* Firefly's `code`, `category`, `severity` and `errors`, with the category and severity enumerations read
 straight off the kernel enums.
+
+**`#[ApiResponse]`** adds what no manifest can know — a `404` the controller's body raises, a `409` — or restates
+a derived status. Its `type` is a PHPDoc type expression resolved in the controller's own imports
+(`'list<Shipment>'`, `'Page<Order>'`). Without a `type`, a status keeps the body it already has: a re-declared
+success status only takes the new description, and an error status is documented with the problem body the
+server sends for it.
 
 ## The viewer
 
