@@ -1735,6 +1735,24 @@ return [
              | Default: [] (the default channel).
             */
             // 'channels' => ['stack', 'stderr'],
+
+            /*
+             | Put the correlation id and the W3C trace ids on EVERY channel, including one created after
+             | boot by `Log::build()`. The per-channel wiring above can only dress the channels
+             | `logging.channels` names; this binds Laravel's own ContextLogProcessor contract to a decorator
+             | that LogManager hands to every channel it builds, on-demand ones included, so an ad-hoc
+             | per-tenant file gets the same `correlation_id` / `trace_id` / `span_id` / `request_id` fields
+             | as the application channel. Laravel's own context processor is preserved inside it, so
+             | `Context::add()` is unaffected — the framework's ids are simply written over an application
+             | context key of the same name rather than under it.
+             |
+             | It does NOT extend the structured FORMATTER to an on-demand channel: a formatter is set on
+             | handlers built from a config array this package never sees, and there is no container seam for
+             | those. Such a channel carries the ids and Monolog's line format.
+             |
+             | Default: true.
+            */
+            'all-channels' => env('FIREFLY_LOGGING_ALL_CHANNELS', true),
         ],
     ],
 
