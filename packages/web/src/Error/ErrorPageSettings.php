@@ -47,6 +47,10 @@ final readonly class ErrorPageSettings
     /**
      * @param  list<string>  $jsonPaths  path patterns that are answered as problem+json whatever the client asked for
      * @param  array<string, string>  $views  status (or `default`) => the Blade view to render instead
+     * @param  string  $home  the "Go home" target; '' offers no link. Guarded: see self::url()
+     * @param  string  $signIn  the 401's sign-in target; '' offers no link. Guarded: see self::url()
+     * @param  string  $support  the "Contact support" target; '' offers no link. Guarded: see self::url()
+     * @param  bool  $actions  whether the page offers any navigation at all
      */
     public function __construct(
         public bool $enabled = true,
@@ -57,6 +61,13 @@ final readonly class ErrorPageSettings
         public array $jsonPaths = ['api/*'],
         public array $views = [],
         public bool $disclose = false,
+        // WHERE A READER CAN GO NEXT. Every one of these reaches an `href`, so every one of them is passed
+        // through url() in fromConfig() before it is stored — see that method for what a 'javascript:' value
+        // out of a templated environment variable does to a page the framework hands itself.
+        public string $home = '/',
+        public string $signIn = '',
+        public string $support = '',
+        public bool $actions = true,
     ) {}
 
     /**
@@ -118,6 +129,12 @@ final readonly class ErrorPageSettings
             // Explicit, and only explicit: no fallback to app.debug, no fallback to `trace`. See the class
             // comment for the leak that a shared gate produced.
             disclose: $config->bool('firefly.web.problem.disclose', false),
+            // A relative path or an http(s) URL, and nothing else — see url(). The default home is the site
+            // root, because a page with no way off it is the state every one of these screenshots was in.
+            home: self::url($config->string('firefly.web.error-page.home', '/')),
+            signIn: self::url($config->string('firefly.web.error-page.sign-in', '')),
+            support: self::url($config->string('firefly.web.error-page.support', '')),
+            actions: $config->bool('firefly.web.error-page.actions', true),
         );
     }
 
@@ -144,5 +161,32 @@ final readonly class ErrorPageSettings
         }
 
         return $views;
+    }
+
+    /**
+     * An operator-supplied URL, or '' when it is not one this page will put in an href.
+     *
+     * THE ATTACK THIS CLOSES. These values arrive from configuration, which in a real deployment means a
+     * templated environment variable — a Helm value, a CI-rendered .env, a tenant-provisioning job. The page
+     * runs them through htmlspecialchars, which escapes quotes and angle brackets and does NOTHING to a
+     * scheme: `javascript:alert(document.cookie)` reaches the DOM intact, on the application's own origin,
+     * on a page a person opens while already confused. That is stored XSS the framework hands itself.
+     *
+     * THE ALLOW-LIST IS THE WHOLE VOCABULARY, and it is deliberately small. An ABSOLUTE PATH (`/login`) is
+     * the normal answer and cannot carry a scheme. An `http(s)://` URL is the other one. Everything else is
+     * dropped: `data:` and `vbscript:` are the other two script-bearing schemes, `file:` is not a link a
+     * browser should follow from here, `mailto:` is a legitimate wish that this page does not serve (put the
+     * address behind an https support URL), and a protocol-relative `//host/…` is refused because it silently
+     * leaves the origin — which on an error page is indistinguishable from a phishing redirect.
+     *
+     * The check is on the RAW value with no trimming and no normalisation. `java\tscript:` is only a
+     * javascript: URL because a browser strips the tab; a guard that stripped it first would be deciding
+     * what the browser means, and the answer here is simply "that is not an absolute path and not http(s)".
+     */
+    private static function url(string $value): string
+    {
+        return $value !== '' && ! str_starts_with($value, '//') && (str_starts_with($value, '/') || preg_match('#^https?://#i', $value) === 1)
+            ? $value
+            : '';
     }
 }
