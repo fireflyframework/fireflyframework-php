@@ -86,6 +86,11 @@ final readonly class ErrorPageSettings
         string $signIn = '',
         string $support = '',
         public bool $actions = true,
+        // HOW MANY FRAMES THE PAGE BUILDS AT ALL. Applied as a trim in ErrorReport, before markup: a page
+        // that renders a hundred frames and hides ninety has still escaped and shipped a hundred.
+        public int $maxFrames = 40,
+        // Whether the production page uses the sentence the problem document publishes as its lede.
+        public bool $authoredDetail = true,
     ) {
         $this->home = self::url($home);
         $this->signIn = self::url($signIn);
@@ -158,6 +163,10 @@ final readonly class ErrorPageSettings
             signIn: $config->string('firefly.web.error-page.sign-in', ''),
             support: $config->string('firefly.web.error-page.support', ''),
             actions: $config->bool('firefly.web.error-page.actions', true),
+            // Clamped rather than trusted, like excerpt-lines above it: 0 would render a trace with no
+            // frames in it, and a million would put the 10,108-pixel page back.
+            maxFrames: max(1, min(500, $config->int('firefly.web.error-page.max-frames', 40))),
+            authoredDetail: $config->bool('firefly.web.error-page.authored-detail', true),
         );
     }
 

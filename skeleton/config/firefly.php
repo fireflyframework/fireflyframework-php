@@ -942,6 +942,33 @@ return [
     //         'excerpt-lines' => 7,
     //
     //         /*
+    //          | How many stack frames the page BUILDS, clamped to 1-500. It is a hard trim taken in the
+    //          | report before any markup exists, not a style rule that hides the tail: a page that renders
+    //          | a hundred frames and hides ninety has still escaped and shipped a hundred, and the DOM a
+    //          | screen reader walks is still a hundred long. The budget is spent on YOUR frames first and
+    //          | filled with dependency frames in stack order, so a controller sixty frames deep under a
+    //          | queue worker is never the one that gets dropped, and the page still says how many frames
+    //          | the untrimmed stack had.
+    //          |
+    //          | Default: 40.
+    //         */
+    //         'max-frames' => 40,
+    //
+    //         /*
+    //          | Whether the page may say the sentence the problem document already publishes — the
+    //          | application's own "Order 42 does not exist." for a sub-500 failure, which is the entire
+    //          | point of the exception taxonomy. With it off the page falls back to the generic sentence
+    //          | for the status, and one failure reads two ways depending on which surface answered.
+    //          |
+    //          | Only sentences that were WRITTEN for a caller are ever used: below 500, from a
+    //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
+    //          | QueryException's message is the failing SQL and its bindings — and nothing is published.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
+    //
+    //         /*
     //          | WHERE A READER CAN GO NEXT. The page offers the action that fits the status — a 401 gets
     //          | `sign-in`, a 5xx gets "Try again" (a plain link to the same path), everything gets `home`
     //          | and `support` when they are set — and offers nothing it was not given: no route name is

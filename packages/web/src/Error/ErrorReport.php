@@ -46,6 +46,7 @@ final readonly class ErrorReport
      *
      * @param  list<ErrorFrame>  $frames
      * @param  list<array{class: string, message: string, location: string}>  $previous
+     * @param  list<string>  $allowed
      */
     private function __construct(
         public int $status,
@@ -64,16 +65,35 @@ final readonly class ErrorReport
         public array $previous = [],
         public string $reference = '',
         public string $correlationId = '',
+        /** @var list<string> */
+        public array $allowed = [],
+        public string $publicDetail = '',
+        public int $frameCount = 0,
+        public int $appFrameCount = 0,
     ) {}
 
     public static function of(Throwable $e, Request $request, ErrorPageSettings $settings, string $basePath, int $status, string $reason, string $timestamp): self
     {
-        $payload = ErrorResponse::fromException(ProblemMapper::toFireflyException($e), instance: $request->path(), timestamp: $timestamp)->toArray();
+        $payload = ErrorResponse::fromException(ProblemMapper::toFireflyException($e), instance: ProblemMapper::instanceFor($request), timestamp: $timestamp)->toArray();
 
         // The reference is the id a person can act on: the W3C trace id when this request has one, the
         // correlation id otherwise. The correlation id is carried beside it, never replaced by it.
         $reference = TraceContext::referenceFor($request);
         $correlationId = CorrelationIdFilter::of($request);
+
+        // The verbs a 405 permits are already parsed, HEAD-filtered and published as an extension member;
+        // the page threw them away and shrugged instead. Read with an explicit is_array + foreach +
+        // is_string loop rather than array_filter, which cannot give PHPStan at level max a list<string>.
+        $allowed = [];
+        if (is_array($payload['allowed'] ?? null)) {
+            foreach ($payload['allowed'] as $method) {
+                if (is_string($method)) {
+                    $allowed[] = $method;
+                }
+            }
+        }
+
+        $publicDetail = $settings->authoredDetail ? ProblemMapper::authoredDetail($e) : '';
 
         $public = new self(
             status: $status,
@@ -87,6 +107,8 @@ final readonly class ErrorReport
             detailed: false,
             reference: $reference,
             correlationId: $correlationId,
+            allowed: $allowed,
+            publicDetail: $publicDetail,
         );
 
         if (! $settings->trace) {
@@ -94,6 +116,17 @@ final readonly class ErrorReport
         }
 
         $roots = SourcePaths::roots($e, $basePath);
+
+        // Built once, counted, then budgeted — three statements rather than one expression, because the
+        // counts describe the UNTRIMMED stack and the page needs both numbers to say "8 of 104 frames · 10
+        // in your code" without lying about either half.
+        $frames = self::frames($e, $roots, $settings->excerptLines);
+        $appFrames = 0;
+        foreach ($frames as $frame) {
+            if (! $frame->vendor) {
+                $appFrames++;
+            }
+        }
 
         return new self(
             status: $public->status,
@@ -108,11 +141,63 @@ final readonly class ErrorReport
             exceptionClass: $e::class,
             message: $e->getMessage(),
             location: SourcePaths::shorten($e->getFile(), $roots).':'.$e->getLine(),
-            frames: self::frames($e, $roots, $settings->excerptLines),
+            frames: self::budget($frames, $settings->maxFrames),
             previous: self::previous($e, $roots),
             reference: $reference,
             correlationId: $correlationId,
+            allowed: $allowed,
+            publicDetail: $publicDetail,
+            frameCount: count($frames),
+            appFrameCount: $appFrames,
         );
+    }
+
+    /**
+     * The frames the page will actually build, in stack order.
+     *
+     * A HARD TRIM, NOT A STYLE. The alternative — render every frame and hide the tail with CSS — keeps a
+     * hundred frames in the DOM that a screen reader still walks and a find-in-page still matches, and
+     * costs the same hundred escapes on a page that renders while the application is already failing.
+     *
+     * YOUR FRAMES ARE NEVER WHAT GETS TRIMMED. Taking the first N would drop an application frame sixty
+     * deep — a controller called from a queue worker, a listener under the event dispatcher — which is
+     * precisely the frame a reader opened this page for. So the budget is spent on application frames
+     * first and filled with vendor frames in stack order, and the result is still in stack order because
+     * both passes walk the same list.
+     *
+     * @param  list<ErrorFrame>  $frames
+     * @return list<ErrorFrame>
+     */
+    private static function budget(array $frames, int $max): array
+    {
+        if (count($frames) <= $max) {
+            return $frames;
+        }
+
+        $keep = [];
+
+        foreach ($frames as $i => $frame) {
+            if (! $frame->vendor && count($keep) < $max) {
+                $keep[$i] = true;
+            }
+        }
+
+        foreach (array_keys($frames) as $i) {
+            if (count($keep) >= $max) {
+                break;
+            }
+
+            $keep[$i] = true;
+        }
+
+        $kept = [];
+        foreach ($frames as $i => $frame) {
+            if (isset($keep[$i])) {
+                $kept[] = $frame;
+            }
+        }
+
+        return $kept;
     }
 
     /**

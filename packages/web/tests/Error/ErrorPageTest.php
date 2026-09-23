@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
@@ -10,7 +11,9 @@ use Firefly\Web\Error\ErrorReport;
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Firefly\Web\Trace\TraceContext;
+use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -392,4 +395,66 @@ it('shortens every frame against the roots the trace reveals, not only against t
     foreach ($packages as $package) {
         expect($package)->toMatch('#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$#');
     }
+});
+
+it('carries the verbs a 405 accepts, which the problem document already had and the page threw away', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $e = new MethodNotAllowedHttpException(['POST', 'HEAD'], 'The GET method is not supported for route orders. Supported methods: POST, HEAD.');
+    $error = ErrorReport::of($e, Request::create('/orders', 'GET'), $settings, dirname(__DIR__, 4), 405, 'Method Not Allowed', '2026-01-01T00:00:00+00:00');
+
+    // HEAD is dropped where the sentence is built, not here: Symfony adds it beside every GET and no person
+    // chooses it. It stays on the Allow header, where the standard wants it.
+    expect($error->allowed)->toBe(['POST'])
+        ->and($error->method)->toBe('GET');
+});
+
+it('carries the authored sentence for a sub-500 failure, so the page and the document say the same words', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $business = new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND');
+    $error = ErrorReport::of($business, Request::create('/orders/42'), $settings, dirname(__DIR__, 4), 404, 'Not Found', '2026-01-01T00:00:00+00:00');
+
+    // An abort(404, '…') raises an HttpException, NOT a FireflyException — the taxonomy is not the test of
+    // whether a sentence was authored, the status and the kind of throwable are.
+    $aborted = ErrorReport::of(new NotFoundHttpException('No such tenant.'), Request::create('/t/9'), $settings, dirname(__DIR__, 4), 404, 'Not Found', '2026-01-01T00:00:00+00:00');
+
+    // And a generic throwable's message is an accident — a table name, a bound value, a path on the server.
+    $accident = ErrorReport::of(new RuntimeException('SQLSTATE[42S02]: no such table'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+
+    expect($error->publicDetail)->toBe('Order 42 does not exist.')
+        ->and($aborted->publicDetail)->toBe('No such tenant.')
+        ->and($accident->publicDetail)->toBe('')
+        // The router's own sentence is replaced by the product's, exactly as it is in problem+json.
+        ->and(ErrorReport::of(new NotFoundHttpException('The route nope could not be found.'), Request::create('/nope'), $settings, dirname(__DIR__, 4), 404, 'Not Found', '2026-01-01T00:00:00+00:00')->publicDetail)
+        ->toBe(ProblemMapper::NOTHING_HERE);
+});
+
+it('trims the stack to the configured budget BEFORE markup, and never trims your own frames away', function () {
+    // The budget is an array_slice in the report, not a CSS trick in the page: a page that renders a hundred
+    // frames and hides ninety of them has still built, escaped and shipped a hundred frames, and the DOM a
+    // screen reader walks is still a hundred long.
+    $settings = new ErrorPageSettings(trace: true, maxFrames: 6);
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+
+    $appKept = count(array_filter($error->frames, static fn ($f): bool => ! $f->vendor));
+    $appTotal = $error->appFrameCount;
+
+    expect($error->frames)->toHaveCount(6)
+        ->and($error->frameCount)->toBeGreaterThan(6)
+        // The counts describe the UNTRIMMED stack, so the page can say "6 of 104" honestly.
+        ->and($appTotal)->toBeGreaterThan(0)
+        ->and($appKept)->toBe(min($appTotal, 6))
+        // Order is the stack's, still: the throw site is first whatever the budget dropped.
+        ->and($error->frames[0]->call)->toBe('throw')
+        ->and($error->frames[0]->index)->toBe(0);
+});
+
+it('clamps an absurd budget rather than trusting it', function () {
+    $config = static fn (int $max): ErrorPageSettings => ErrorPageSettings::fromConfig(
+        new Config(new Repository(['firefly' => ['web' => ['error-page' => ['max-frames' => $max]]]])),
+    );
+
+    expect($config(0)->maxFrames)->toBe(1)
+        ->and($config(-7)->maxFrames)->toBe(1)
+        ->and($config(100000)->maxFrames)->toBe(500)
+        ->and(ErrorPageSettings::fromConfig(new Config(new Repository))->maxFrames)->toBe(40);
 });

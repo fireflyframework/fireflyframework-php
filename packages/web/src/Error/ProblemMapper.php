@@ -9,6 +9,7 @@ use Firefly\Kernel\Error\ErrorCategory;
 use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Kernel\Error\ErrorSeverity;
 use Firefly\Kernel\Exception\FireflyException;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
@@ -92,6 +93,48 @@ final class ProblemMapper
         $texts = Response::$statusTexts;
 
         return $texts[$status] ?? 'HTTP Error';
+    }
+
+    /**
+     * The sentence this failure may say to whoever asked, or '' when it has none.
+     *
+     * ONE RULE, ASKED TWICE. The HTML page and the problem document describe the same failure, and until
+     * this existed they described it differently: the document published "Order 42 does not exist." — the
+     * application's own sentence, which is the entire point of the taxonomy — while the page beside it said
+     * "That page does not exist." A person reading the page and an operator reading the log were looking at
+     * two different errors.
+     *
+     * The gate is the STATUS and the KIND of throwable, not the class hierarchy. Below 500 a
+     * FireflyException's message was written FOR the client, and an HttpExceptionInterface's is the author's
+     * when abort() supplied one — a judge caught that `abort(404, 'No such tenant.')` raises an
+     * HttpException and not a FireflyException, so testing for the taxonomy alone would withhold exactly the
+     * sentences an application took the trouble to write. At 500 and above nothing is authored: a
+     * QueryException's message is the failing SQL and its bindings, and toFireflyException() has already
+     * replaced it with the opaque one. The mapping is reused rather than restated so the router's 404 and
+     * 405 sentences come out here exactly as they go onto the wire.
+     */
+    public static function authoredDetail(Throwable $e): string
+    {
+        if (! $e instanceof FireflyException && ! $e instanceof HttpExceptionInterface) {
+            return '';
+        }
+
+        $mapped = self::toFireflyException($e, disclose: false);
+
+        return $mapped->httpStatus() < 500 ? $mapped->getMessage() : '';
+    }
+
+    /**
+     * The request path as an RFC 9457 `instance`: a ROOT-RELATIVE reference, leading slash and all.
+     *
+     * `$request->path()` answers `orders/42`, and a relative reference is resolved against the document's
+     * base URI — which for a problem served from /api/orders/42 makes `api/orders/42` mean
+     * /api/api/orders/42. One character, and the member stops identifying the occurrence it exists to
+     * identify. Spring's ProblemDetail sets `instance` from the request URI for the same reason.
+     */
+    public static function instanceFor(Request $request): string
+    {
+        return '/'.ltrim($request->path(), '/');
     }
 
     /**
