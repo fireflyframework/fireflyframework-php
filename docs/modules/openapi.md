@@ -736,6 +736,15 @@ nothing when `firefly.security.enabled` is off.
 | `firefly.security.oauth2.resource_server.enabled` | `oauth2ResourceServer` | `{type: http, scheme: bearer, bearerFormat: JWT}` with the issuer and audience named in the `description` |
 | `firefly.security.jwt.enabled` | `bearerAuth` | `{type: http, scheme: bearer, bearerFormat: JWT}` |
 | `firefly.security.http_basic.enabled` | `httpBasic` | `{type: http, scheme: basic}` |
+| `firefly.security.oauth2.server.enabled` | `oauth2AuthorizationCode` | `{type: oauth2}` with a real `authorizationCode` flow — this server's own authorization and token URLs, a `refreshUrl` when a client may refresh, and the scopes its authorization-code clients registered. Contributed by **`firefly/security-oauth2-server`**, not by this package |
+
+The last row is the one that needs a *contributor*: the flow URLs live in `AuthorizationServerSettings` and the
+scopes live in the registered clients, neither of which `firefly.security.*` states in a form this package could
+read. An **enabled server publishes it even with no authorization-code client registered**, with an empty `scopes`
+map — the URLs are facts about the server, not about its client registry, and the operations that name the scheme
+name it from the same `oauth2.server.enabled` flag. Publishing on a narrower fact than the one requirements are
+named on is how a document ends up with a dangling `$ref`-like reference `components.securitySchemes` cannot
+resolve.
 
 The resource server is deliberately **not** `type: oauth2`: it does not issue tokens and has no flow URLs to
 publish, and an `oauth2` scheme with an empty `flows` object renders in Swagger UI as a form nobody can fill in.
@@ -790,9 +799,35 @@ interface SecuritySchemeContributor { /** @return list<SecurityScheme> */ public
 interface SecurityRequirementContributor { /** @return list<SecurityRequirement>|null */ public function requirementsFor(RouteDescriptor $route): ?array; }
 ```
 
-`ConfiguredSecurity` — the config-driven one described above — is the **only implementation that ships today**. The
-interfaces exist so that a package holding facts `firefly.security.*` cannot express (an authorization server's
-`authorizationCode` flow URLs and its registered clients' scopes, say) *can* add them.
+**Three implementations ship**, and the two beyond `ConfiguredSecurity` are exactly the case the interfaces were
+cut for — a package holding facts `firefly.security.*` cannot express, adding them without this package gaining an
+edge to it:
+
+| Implementation | Package | What it adds |
+|---|---|---|
+| `ConfiguredSecurity` | `firefly/openapi` | the config-driven schemes and the URL-rule requirement, described above |
+| `MethodSecurityRequirementContributor` | `firefly/security` | the requirement a controller action's `#[PreAuthorize]`/`#[Secured]`/`#[RolesAllowed]`/`#[PostAuthorize]` really carries, read from the compiled method-security manifest |
+| `AuthorizationServerSchemeContributor` | `firefly/security-oauth2-server` | the `oauth2AuthorizationCode` scheme with this application's own `authorizationCode` flow |
+
+### Method rules become requirements
+
+A controller action's method rules are enforced by the **dispatcher**, not by a URL rule, so
+`firefly.security.http` may be empty and the operation still be protected — the method-security-first setup
+(Spring's `anyRequest().permitAll()` plus rules on the handlers) is precisely the one the URL contributor cannot
+describe. `MethodSecurityRequirementContributor` looks the route's `controllerClass::methodName` up in the manifest
+and names the configured schemes for it.
+
+- It is gated by **`firefly.security.enabled` alone**. `firefly.security.method.enabled` stands down the *proxy
+  link* (the advice on `#[Service]`/`#[Component]`/`#[Repository]` beans) and never the controller dispatcher, so a
+  contributor that fell silent on it would publish a guarded action with **no** `security` member — OpenAPI's
+  positive claim that no authentication is required.
+- A `#[PostAuthorize]` counts: it refuses through the same `deny()` and the same 401/403. A `#[PreFilter]` or
+  `#[PostFilter]` does not — it narrows a result and refuses nobody.
+- A `hasScope()` the rule demands of **every** caller rides on the token-shaped entries. `hasAnyScope()`, an `or`
+  of scopes, a negation — anything where the names are not all required — publishes a **bare** requirement
+  instead, because a Security Requirement Object's scope list is *conjunctive*: a client generated from
+  `{bearerAuth: ['a','b']}` asks its authorization server for both, and an `hasAnyScope('a','b')` rule never
+  demanded that. Roles and authorities stay out for the reason they always did.
 
 Register an implementation as a **`#[Component]`**, not as a `#[Bean]`. Contributors are collected with
 `Container::getAll()`, which reads the `firefly.contract.<interface>` tag, and that tag is written only for
@@ -801,10 +836,21 @@ silently dropped, with a quietly smaller document as the only symptom. `#[Condit
 `#[ConditionalOnProperty]` work on a `#[Component]` (copy `HttpSecurityFilter`'s shape), so gating costs nothing.
 A `#[Bean]` whose *return type is the interface* is picked up as well, as a rescue — not as the documented shape.
 
-Requirements merge as an OR-list with duplicates removed; an empty list from any contributor (`permitAll`) wins
-over everything, because a path the framework lets through unauthenticated is public whatever anyone else believes.
-Scheme names merge first-writer-wins and sort by name, so the document does not reshuffle with container iteration
-order.
+**Requirements merge per scheme name, and an empty list does not win.** The mechanisms behind the contributors
+are *conjunctive at runtime* — a request passes the URL filter **and** the controller dispatcher — so:
+
+- a scheme named by two contributors appears **once**, carrying the **union** of their scope lists. Published
+  twice, the scopeless entry would satisfy the operation on its own under OpenAPI's OR reading and the other's
+  scope would mean nothing at all;
+- an **empty list** (`permitAll`) contributes nothing rather than erasing what another contributor requires. It
+  held while `ConfiguredSecurity` was alone — the one mechanism letting a request through was the whole truth
+  about the path — and became false the moment a second mechanism could refuse independently;
+- the operation is published **public** (no `security` member) only when *no* contributor required anything, which
+  is still the ordinary answer for a path every mechanism opens.
+
+That leaves `null` and `[]` with the same effect on the merged list, which is correct rather than redundant: "I
+have no opinion" and "I require nothing here" are the same contribution to an AND of mechanisms. Scheme names merge
+first-writer-wins and sort by name, so the document does not reshuffle with container iteration order.
 
 **A scheme may carry default scopes.** `SecurityScheme`'s third argument is the scope list a requirement *naming
 that scheme* is published with when it states none of its own:

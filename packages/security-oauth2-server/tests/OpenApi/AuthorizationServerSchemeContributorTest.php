@@ -144,14 +144,45 @@ it('emits nothing when the server is disabled', function (): void {
     expect((new AuthorizationServerSchemeContributor(new AuthorizationServerSettings(enabled: false), new InMemoryRegisteredClientRepository([])))->schemes())->toBe([]);
 });
 
-it('emits nothing when no registered client supports the authorization_code grant', function (): void {
+it('still publishes the flow with an EMPTY scopes map when no registered client supports the authorization_code grant', function (): void {
+    // The flow URLs are facts about the SERVER, not about its client registry, and
+    // MethodSecurityRequirementContributor names `oauth2AuthorizationCode` from the very same
+    // `firefly.security.oauth2.server.enabled`. Emitting nothing here would leave every method-secured
+    // operation of a client_credentials-only issuer — or of a deployment whose `eloquent` client table is
+    // empty when CI generates the document — naming a scheme `components.securitySchemes` does not contain.
     $settings = new AuthorizationServerSettings(enabled: true, issuer: 'https://auth.example.com');
 
     $clients = new InMemoryRegisteredClientRepository([
         authorizationServerSchemeClient('worker', ['orders.read'], [AuthorizationGrantType::ClientCredentials]),
     ]);
 
-    expect((new AuthorizationServerSchemeContributor($settings, $clients))->schemes())->toBe([]);
+    $schemes = (new AuthorizationServerSchemeContributor($settings, $clients))->schemes();
+
+    expect($schemes)->toHaveCount(1)
+        ->and($schemes[0]->name)->toBe('oauth2AuthorizationCode')
+        ->and($schemes[0]->definition['flows'])->toBe([
+            'authorizationCode' => [
+                'authorizationUrl' => 'https://auth.example.com/oauth2/authorize',
+                'tokenUrl' => 'https://auth.example.com/oauth2/token',
+                // A client_credentials client's scopes belong to a flow this scheme does not describe.
+                'scopes' => [],
+            ],
+        ]);
+});
+
+it('publishes the flow with an empty scopes map for a server with no registered client at all', function (): void {
+    $settings = new AuthorizationServerSettings(enabled: true, issuer: 'https://auth.example.com');
+
+    $schemes = (new AuthorizationServerSchemeContributor($settings, new InMemoryRegisteredClientRepository([])))->schemes();
+
+    expect($schemes)->toHaveCount(1)
+        ->and($schemes[0]->definition['flows'])->toBe([
+            'authorizationCode' => [
+                'authorizationUrl' => 'https://auth.example.com/oauth2/authorize',
+                'tokenUrl' => 'https://auth.example.com/oauth2/token',
+                'scopes' => [],
+            ],
+        ]);
 });
 
 it('collects scopes only from the clients that may use the authorizationCode flow', function (): void {

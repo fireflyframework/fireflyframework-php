@@ -234,6 +234,39 @@ so `authorizations.driver = eloquent` is what makes the numbers describe the dep
 **OAuth2 clients** page (`/firefly/oauth2`, group Wiring) renders the endpoint in-process, prints `—` rather than
 `0` for a client a process-local store counted nothing for, and is hidden while the endpoint is absent.
 
+## What this package tells the OpenAPI document
+
+`src/OpenApi` is one class, and it is the only reason `deptrac.yaml` carries a **`SecurityOAuth2Server → OpenApi`**
+edge (the direction matters: `firefly/openapi` names no type of this package, which is what keeps it generating a
+document in an application that issues no tokens). `firefly/openapi` is a `suggest` and never a `require`, and
+`AuthorizationServerSchemeContributor` is `#[ConditionalOnClass(SecuritySchemeContributor::class)]`.
+
+It publishes the **one security fact `firefly.security.*` cannot state**: this application *is* the authorization
+server. `firefly/openapi`'s own config-driven contributor emits `type: http, scheme: bearer` schemes, because a
+resource server has no flow URLs to publish; this one emits a real **`type: oauth2`** scheme named
+`oauth2AuthorizationCode`, with an `authorizationCode` flow built from `AuthorizationServerSettings` — the
+`authorizationUrl` and `tokenUrl` under this server's own issuer — so Swagger UI renders an **Authorize** button
+that completes the flow against it. A `refreshUrl` (the token endpoint, RFC 6749 §6) appears only when a client
+may refresh.
+
+- **The scopes map is the union of what the authorization-code clients registered**, sorted, each described in the
+  consent page's own words (`ConsentPage::describe()`, so the sentence a user approves and the sentence Swagger UI
+  shows cannot drift). A `client_credentials`-only client's scopes stay out: they belong to a flow this scheme
+  does not describe.
+- **An enabled server publishes the scheme even with no authorization-code client registered**, with an empty
+  `scopes` map. The flow URLs are facts about the server, not about its client registry, and
+  [`firefly/security`](security.md#what-this-package-tells-the-openapi-document) names `oauth2AuthorizationCode` on
+  a method-secured operation from the same `firefly.security.oauth2.server.enabled`. An emit-nothing rule would
+  leave that name dangling in `components.securitySchemes` exactly where it costs most — a `client_credentials`
+  token issuer, or an `eloquent` client table that is empty or unreachable when CI generates the document.
+- **The scheme carries no default scopes.** The flow's `scopes` map says which scopes *exist*;
+  `SecurityScheme::$scopes` would say which ones every operation naming the scheme *needs*, and a server whose
+  clients between them registered a dozen would then demand all twelve on every path.
+
+`packages/security-oauth2-server/tests/OpenApi/AuthorizationServerDocumentCapstoneTest.php` boots the generator
+beside this server — with an empty client registry on purpose — and asserts that the document names no scheme it
+did not publish and publishes none nothing names. It is the only place in the tree that can see both halves.
+
 ## Configuration (`firefly.security.oauth2.server.*`, snake_case)
 
 | Key | Default | Meaning |

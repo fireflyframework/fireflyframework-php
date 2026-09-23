@@ -195,14 +195,45 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   is registered as a **`#[Component]`** (a `#[Bean]` under the concrete type is never tagged and would be dropped
   in silence). A contributed scheme may carry **default scopes**, which `SecurityModel` puts on a requirement that
   names that scheme and states none of its own — the split the ports create, since the package holding the scope
-  vocabulary is not the one asked about each route; a requirement that states its own keeps them. The config-driven
-  contributor is the only implementation that ships. Method rules (`#[PreAuthorize]`, `#[Secured]`) are **not** read
-  into requirements. A rule pattern carrying a **route placeholder** (`'/api/orders/{id}'`) is a dead rule for the
-  filter, which never sees a template, and is a dead rule here too — every `{...}` is blanked before the patterns
+  vocabulary is not the one asked about each route; a requirement that states its own keeps them. Requirements merge
+  **per scheme name**, unioning their scope lists, and an empty list from one contributor no longer erases what
+  another requires — the mechanisms are conjunctive at runtime, so an operation is published public only when
+  NOTHING requires anything of it. A rule pattern carrying a **route placeholder** (`'/api/orders/{id}'`) is a dead
+  rule for the filter, which never sees a template, and is a dead rule here too — every `{...}` is blanked before the patterns
   are tried, so `api/orders/*` covers the operation and `api/orders/{id}` leaves it published as protected rather
   than as a path the server does not actually open. Scope lists serialise as JSON **arrays**, empty ones included:
   a Security Requirement Object's value is typed `[string]` by the 3.1 meta-schema, and `{"bearerAuth": {}}` is a
   document Swagger UI cannot read.
+
+- **`packages/security` — the document says what the DISPATCHER enforces, not only what the URL rules do.**
+  `MethodSecurityRequirementContributor` (`src/OpenApi`, a new `Security → OpenApi` deptrac edge; `firefly/openapi`
+  is a `suggest` and the class is `#[ConditionalOnClass]`) fills `firefly/openapi`'s requirement port from the
+  compiled `SecurityMethodManifest` this package already owns — which that package cannot see, and which is what
+  made a `#[PreAuthorize]` action publish **no** `security` member while the dispatcher answered `401`/`403` to
+  every caller of it. The method-security-first shape (permissive URL rules, the rules on the handlers, Spring's
+  `anyRequest().permitAll()`) is exactly the setup that was documented as public. It names **every** configured
+  scheme, because the `security` array is an OR-list and the runtime really accepts either credential; it is gated
+  by **`firefly.security.enabled` alone**, because `firefly.security.method.enabled` stands down the proxy link and
+  never the controller dispatcher; `permitAll()` is **no opinion** rather than "public", while a `#[PostAuthorize]`
+  beside it is a refusal and is published as one (`#[PreFilter]`/`#[PostFilter]` narrow a result and refuse nobody,
+  so they contribute nothing); and a `hasScope()` the rule demands of every caller becomes the requirement's scope
+  list, while `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement — an OpenAPI scope
+  list is conjunctive, and naming both alternatives sends a generated client to ask for a scope it may not be
+  registered for.
+
+- **`packages/security-oauth2-server` — the authorization server contributes its own `authorizationCode` flow.**
+  `AuthorizationServerSchemeContributor` (`src/OpenApi`, a new `SecurityOAuth2Server → OpenApi` deptrac edge, same
+  `suggest` + `#[ConditionalOnClass]` shape) publishes the one security fact configuration cannot state: this
+  application IS the authorization server. It is the only **`type: oauth2`** scheme this framework emits — the
+  `authorizationUrl` and `tokenUrl` from `AuthorizationServerSettings` under the server's own issuer, a
+  `refreshUrl` (the token endpoint) only when a client may refresh, and a scopes map that is the union of what the
+  authorization-code clients registered, described in the consent page's own words — so Swagger UI can render an
+  **Authorize** button that completes the flow. An **enabled server publishes it even with no authorization-code
+  client registered**, with an empty `scopes` map: the URLs are facts about the server rather than about its client
+  registry, and the requirement side names the scheme from the same `firefly.security.oauth2.server.enabled`, so a
+  `client_credentials`-only issuer — or an `eloquent` client table that is empty when CI generates the document —
+  cannot produce a dangling reference. A capstone in each package boots `firefly/openapi` beside the security
+  package and asserts the document against the running dispatcher, and that it names no scheme it did not publish.
 
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under

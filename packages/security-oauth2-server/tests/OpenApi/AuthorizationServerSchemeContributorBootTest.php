@@ -34,8 +34,19 @@ it('reaches openapi through the container tag getAll() reads, and answers with t
 
     expect($contributors)->toHaveCount(1);
 
-    // The default `memory` client store is empty in this boot, so there is no authorization-code client and
-    // therefore nothing to describe — the contributor is registered and silent, which is the honest answer
-    // and the one the unit test pins for an empty store.
-    expect($contributors[0]->schemes())->toBe([]);
+    // The default `memory` client store is empty in this boot, so no client has registered a scope — and the
+    // scheme is published all the same, with an empty `scopes` map, because the flow URLs are the server's
+    // own and MethodSecurityRequirementContributor names this scheme from the same enabled flag. A
+    // contributor that fell silent here would leave that name dangling in the document.
+    $schemes = $contributors[0]->schemes();
+
+    expect($schemes)->toHaveCount(1)
+        ->and($schemes[0]->name)->toBe('oauth2AuthorizationCode')
+        ->and($schemes[0]->definition['flows'])->toBe([
+            'authorizationCode' => [
+                'authorizationUrl' => 'http://localhost/oauth2/authorize',
+                'tokenUrl' => 'http://localhost/oauth2/token',
+                'scopes' => [],
+            ],
+        ]);
 });

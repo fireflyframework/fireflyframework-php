@@ -208,7 +208,7 @@ it('ORs two contributors requirements and de-duplicates an identical one', funct
         ->toBe([['bearerAuth' => []]]);
 });
 
-it('lets a permitAll contributor win over one that would protect the path', function () {
+it('does not let a permitAll contributor erase a requirement another contributor states', function () {
     $public = new class implements SecurityRequirementContributor
     {
         /** @return list<SecurityRequirement> */
@@ -229,11 +229,65 @@ it('lets a permitAll contributor win over one that would protect the path', func
 
     $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
 
-    // A path the framework lets through unauthenticated is public whatever anyone else believes, because
-    // that is what happens at runtime — and the order the container hands the contributors over in must not
+    // THE MECHANISMS ARE CONJUNCTIVE AT RUNTIME: a request passes the URL filter AND the controller
+    // dispatcher, so a permitAll URL rule says nothing about a #[PreAuthorize] on the handler. An empty list
+    // contributes nothing to the merge rather than erasing it — the method-security-first setup (permissive
+    // URL rules, rules on the handlers) is exactly the shape the old permitAll-wins rule published as public
+    // while the dispatcher answered 401. The order the container hands the contributors over in must not
     // change the answer.
-    expect((new SecurityModel([], [$public, $protecting], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([])
-        ->and((new SecurityModel([], [$protecting, $public], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([]);
+    expect((new SecurityModel([], [$public, $protecting], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []]])
+        ->and((new SecurityModel([], [$protecting, $public], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []]]);
+});
+
+it('publishes the operation as public only when NO contributor requires anything', function () {
+    $public = new class implements SecurityRequirementContributor
+    {
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [];
+        }
+    };
+
+    $silent = new class implements SecurityRequirementContributor
+    {
+        public function requirementsFor(RouteDescriptor $route): ?array
+        {
+            return null;
+        }
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    expect((new SecurityModel([], [$public, $silent], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([]);
+});
+
+it('merges two contributors naming the SAME scheme into one entry carrying the union of their scopes', function () {
+    $requiring = function (string $scheme, string ...$scopes): SecurityRequirementContributor {
+        return new class($scheme, array_values($scopes)) implements SecurityRequirementContributor
+        {
+            /** @param list<string> $scopes */
+            public function __construct(private readonly string $scheme, private readonly array $scopes) {}
+
+            /** @return list<SecurityRequirement> */
+            public function requirementsFor(RouteDescriptor $route): array
+            {
+                return [new SecurityRequirement($this->scheme, $this->scopes)];
+            }
+        };
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    // Two entries for one scheme would be an OR over them, and the scopeless one would make the other
+    // meaningless — the URL rule wanting only a principal would satisfy an operation whose #[PreAuthorize]
+    // demands a scope. Both callers must pass both mechanisms, so the union is the honest statement.
+    expect((new SecurityModel([], [$requiring('bearerAuth'), $requiring('bearerAuth', 'orders.read')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => ['orders.read']]])
+        ->and((new SecurityModel([], [$requiring('bearerAuth', 'orders.read'), $requiring('bearerAuth', 'orders.write')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => ['orders.read', 'orders.write']]]);
 });
 
 /**

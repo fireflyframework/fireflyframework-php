@@ -6,10 +6,16 @@ namespace Firefly\OpenApi\Security;
 
 /**
  * A source of `components.securitySchemes` entries. The shipped one (ConfiguredSecurity) reads
- * `firefly.security.*` through the Config port and needs no code edge to firefly/security at all. It is the
- * ONLY implementation in the tree today; the interface exists so that a package holding facts configuration
- * cannot express can add them — an authorization server, whose `authorizationCode` flow URLs live in its own
- * settings and whose scopes live in its registered clients, is the case this seam was cut for.
+ * `firefly.security.*` through the Config port and needs no code edge to firefly/security at all. The
+ * interface exists so that a package holding facts configuration cannot express can add them — an
+ * authorization server, whose `authorizationCode` flow URLs live in its own settings and whose scopes live
+ * in its registered clients, is the case this seam was cut for, and firefly/security-oauth2-server's
+ * AuthorizationServerSchemeContributor is now that second implementation.
+ *
+ * A SCHEME MUST BE PUBLISHED ON THE SAME FACT A REQUIREMENT IS NAMED ON. A requirement naming a scheme no
+ * contributor published is left exactly as written (SecurityModel::resolve()), so it becomes a dangling
+ * reference in an invalid document — which is why the authorization server publishes its flow whenever the
+ * server is enabled rather than whenever its client registry happens to be populated.
  *
  * Contributors are COLLECTED, not chosen: every bean implementing this adds its schemes, later names never
  * silently replacing earlier ones (SecurityModel keeps the first writer and sorts by name, so the document

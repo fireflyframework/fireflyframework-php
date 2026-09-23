@@ -17,11 +17,33 @@ use Firefly\Web\Route\RouteDescriptor;
  * go stale.
  *
  * REQUIREMENTS ARE AN "OR" LIST, which is what OpenAPI's operation-level `security` means: satisfying ANY
- * entry satisfies the operation. Two contributors both requiring something therefore produce two entries,
- * and a caller holding either gets in — the correct reading when a path is covered by both a URL rule and a
- * method rule naming the same scheme, since one credential satisfies both. An EMPTY list from a contributor
- * (`permitAll`) wins over everything: a path the framework lets through unauthenticated is public whatever
- * anyone else believes, because that is what will actually happen at runtime.
+ * entry satisfies the operation. Each entry names a CREDENTIAL, and an application running HTTP Basic
+ * beside a bearer filter really does accept either — so a scheme name appears at most ONCE in the list and
+ * the contributors that named it have their scope lists UNIONED into that one entry.
+ *
+ * WHY UNIONED RATHER THAN LISTED TWICE, which is what a plain concatenation did: the mechanisms behind the
+ * contributors are conjunctive at runtime. A request passes the URL filter AND the controller dispatcher,
+ * so a path whose URL rule needs only a principal while its #[PreAuthorize] needs `hasScope('orders.read')`
+ * really needs the scope. Published as two entries — `[{bearerAuth: []}, {bearerAuth: ['orders.read']}]` —
+ * the OR reading makes the scopeless one satisfy the operation and the scope requirement means nothing at
+ * all. One entry carrying the union is the stricter and truer statement, and it is the only one a generated
+ * client can act on.
+ *
+ * AN EMPTY LIST FROM A CONTRIBUTOR DOES NOT WIN ANY MORE, and that reversal is the same reasoning read
+ * forwards. It held while ConfiguredSecurity was the only contributor: the one mechanism letting a request
+ * through was the whole truth about the path. It is false as soon as a second mechanism can refuse
+ * independently — firefly/security's method-rule contributor is exactly that, and the method-security-first
+ * setup it exists to serve (permissive URL rules, #[PreAuthorize] on the handlers, Spring's
+ * `anyRequest().permitAll()` shape) is precisely the configuration a permitAll-wins rule would publish as
+ * public while the dispatcher answered 401 to every caller. So an empty list contributes NOTHING to the
+ * conjunction rather than erasing it, and the operation is published public only when no contributor
+ * required anything — which is still the ordinary answer for a path every mechanism opens.
+ *
+ * That leaves `null` and `[]` with the same effect on the merged list, which is correct rather than
+ * redundant: "I have no opinion" and "I require nothing here" are the same contribution to an AND of
+ * mechanisms. The distinction stays in the port because it is the difference between a contributor that
+ * examined the route and one that never could, and because reading it as "public" is the failure this
+ * paragraph exists to prevent.
  *
  * A SCHEME'S DEFAULT SCOPES ARE APPLIED HERE, and this is the only place they are read. A requirement that
  * names a scheme and carries NO scopes of its own inherits `SecurityScheme::$scopes` from the scheme it
@@ -85,24 +107,30 @@ final class SecurityModel
             return [];
         }
 
-        $entries = [];
+        // Scheme name => every scope any contributor stated for it, in the order the names were first named.
+        /** @var array<string, list<string>> $stated */
+        $stated = [];
+
         foreach ($this->requirementContributors as $contributor) {
-            $requirements = $contributor->requirementsFor($route);
-
-            if ($requirements === null) {
-                continue;
-            }
-
-            if ($requirements === []) {
-                return []; // a permitAll path is public, whatever anyone else thinks
-            }
-
-            foreach ($requirements as $requirement) {
-                $entries[] = $this->resolve($requirement);
+            // Silence and "nothing required here" are the same contribution to an AND of mechanisms; neither
+            // stands another contributor's requirement down. See the class docblock.
+            foreach ($contributor->requirementsFor($route) ?? [] as $requirement) {
+                $stated[$requirement->scheme] = array_values(array_unique([
+                    ...($stated[$requirement->scheme] ?? []),
+                    ...$requirement->scopes,
+                ]));
             }
         }
 
-        return array_values(array_unique($entries, SORT_REGULAR));
+        $entries = [];
+        foreach ($stated as $scheme => $scopes) {
+            // Resolved AFTER the merge, so a scheme's default scopes fill in only for an entry no
+            // contributor gave scopes to — one contributor's specific statement is never topped up with the
+            // scheme's catalogue.
+            $entries[] = $this->resolve(new SecurityRequirement($scheme, $scopes));
+        }
+
+        return $entries;
     }
 
     /**

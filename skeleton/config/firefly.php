@@ -1329,6 +1329,12 @@ return [
     //      |     jwt.enabled                         -> bearerAuth           {type: http, scheme: bearer}
     //      |     oauth2.resource_server.enabled      -> oauth2ResourceServer {type: http, scheme: bearer},
     //      |                                            with the issuer and audience in its description
+    //      |     oauth2.server.enabled               -> oauth2AuthorizationCode {type: oauth2}, a REAL
+    //      |                                            authorizationCode flow with this server's own
+    //      |                                            authorization and token URLs and the scopes its
+    //      |                                            registered clients asked for (firefly/security-oauth2-server
+    //      |                                            contributes it; an enabled server publishes it even
+    //      |                                            with no client registered yet, with an empty scopes map)
     //      |
     //      | Each operation then carries the requirement its path really has, read from the SAME
     //      | firefly.security.http.rules the filter enforces: a `permitAll` path carries no `security` member
@@ -1336,11 +1342,24 @@ return [
     //      | default — names every scheme above, because the server really does accept any of them. A
     //      | `hasScope:` rule puts its scope on the bearer entry.
     //      |
-    //      | METHOD RULES ARE NOT READ. #[PreAuthorize]/#[Secured] on a handler do not produce a requirement
-    //      | today; only the URL rules do. Two interfaces —  Firefly\OpenApi\Security\SecuritySchemeContributor
-    //      | and SecurityRequirementContributor — exist so a package CAN add what configuration cannot state
-    //      | (an authorization server's `authorizationCode` flow URLs, a method-rule requirement). No package
-    //      | ships an implementation yet: the config-driven contributor above is the only one there is.
+    //      | METHOD RULES ARE READ TOO, by firefly/security: a controller action carrying #[PreAuthorize],
+    //      | #[Secured], #[RolesAllowed] or #[PostAuthorize] is refused by the DISPATCHER rather than by a URL
+    //      | rule, so it names the configured schemes even where http.rules say permitAll — and the scope of a
+    //      | `hasScope()` the rule really demands of every caller rides on the token-shaped entries. It is
+    //      | gated by firefly.security.enabled alone: firefly.security.method.enabled stands down the PROXY
+    //      | link, never the controller dispatcher, so a document that fell silent on it would publish a
+    //      | guarded action as public. #[PreFilter]/#[PostFilter] contribute nothing — they narrow a result,
+    //      | they refuse nobody.
+    //      |
+    //      | Where a path is covered by BOTH a URL rule and a method rule, the two are merged per scheme name
+    //      | with their scope lists UNIONED: a caller passes the filter AND the dispatcher, so the stricter
+    //      | statement is the true one, and an operation is published public only when NOTHING requires
+    //      | anything of it.
+    //      |
+    //      | Two interfaces — Firefly\OpenApi\Security\SecuritySchemeContributor and
+    //      | SecurityRequirementContributor — are how a package adds what configuration cannot state; three
+    //      | implementations ship (the config-driven one above, firefly/security's method-rule contributor and
+    //      | firefly/security-oauth2-server's authorizationCode scheme).
     //      |
     //      | Nothing is emitted when firefly.security.enabled is off, so this key only ever matters to an
     //      | application that HAS security — in which case a document that omitted it was telling every

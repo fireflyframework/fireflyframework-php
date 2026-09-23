@@ -30,6 +30,20 @@ use Firefly\Security\OAuth2\Server\Web\Consent\ConsentPage;
  * this scheme does not describe — and are sorted, so the document does not reshuffle with the client store's
  * iteration order.
  *
+ * AN ENABLED SERVER ALWAYS PUBLISHES THE SCHEME, EVEN WITH NO AUTHORIZATION-CODE CLIENT REGISTERED, and
+ * that is the half of this class that keeps the document valid rather than merely complete. The flow URLs
+ * are facts about the SERVER — its own endpoints under its own issuer — not about its client registry, and
+ * `firefly.security.oauth2.server.enabled` is the very fact
+ * Firefly\Security\OpenApi\MethodSecurityRequirementContributor names `oauth2AuthorizationCode` from. An
+ * emit-nothing rule would make the two disagree exactly where it costs most: a client_credentials-only
+ * token issuer, or an `eloquent` client table that is empty or unreachable when the document is generated
+ * in CI, would publish operations naming a scheme `components.securitySchemes` does not contain —
+ * SecurityModel::resolve() leaves such a name exactly as written on purpose, so the result is a dangling
+ * reference no tooling can resolve and an invalid 3.1 document. The honest answer for a server nobody has
+ * registered a code client with is the flow with an EMPTY `scopes` map, which is valid OpenAPI (the
+ * generator's objectify() writes the empty map as `{}`) and which says what is true: these are the URLs,
+ * and no client has registered a scope for them yet.
+ *
  * A refreshUrl is published only when at least one such client also supports refresh_token, because an
  * OpenAPI `refreshUrl` a client cannot use is an invitation to a failed request. It is the TOKEN endpoint,
  * which is where RFC 6749 §6 puts a refresh: this server has no separate URL for it and inventing one would
@@ -81,10 +95,6 @@ final class AuthorizationServerSchemeContributor implements SecuritySchemeContri
             $this->clients->all(),
             static fn (RegisteredClient $client): bool => $client->supportsGrant(AuthorizationGrantType::AuthorizationCode),
         ));
-
-        if ($clients === []) {
-            return [];
-        }
 
         $flow = [
             'authorizationUrl' => $this->settings->endpointUrl($this->settings->authorizationEndpoint),

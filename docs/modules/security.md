@@ -399,6 +399,46 @@ spelling), and a value that is neither list nor string is one unusable entry —
 rather than `Config::array()` on purpose, because this read runs on every scrape from a path
 `HealthEndpoint`'s fail-safe does not wrap, and a typed mismatch would answer a probe with 500.
 
+## What this package tells the OpenAPI document
+
+`src/OpenApi` is one class, and it is the only reason `deptrac.yaml` carries a **`Security → OpenApi`** edge (the
+direction matters: `firefly/openapi` names no Security type, which is what keeps it generating a document in an
+application with no security at all). `firefly/openapi` is a `suggest` of this package and never a `require`, and
+`MethodSecurityRequirementContributor` is `#[ConditionalOnClass(SecurityRequirementContributor::class)]`, so an
+application without the generator never loads a class implementing an absent interface.
+
+`firefly/openapi` can already read `firefly.security.*` through the Config port and publish what the **URL rules**
+do to a path. What it cannot see is the compiled `SecurityMethodManifest` — that is a code edge `deptrac.yaml`
+forbids in that direction — so an action carrying `#[PreAuthorize]`, `#[Secured]`, `#[RolesAllowed]` or
+`#[PostAuthorize]` was published with **no** `security` member at all while the dispatcher answered `401`/`403` to
+every caller of it. That is fail-**open** documentation, and it is exactly the setup the method-security-first
+shape produces: permissive URL rules, the rules on the handlers, Spring's `anyRequest().permitAll()`.
+
+`MethodSecurityRequirementContributor` fills the `SecurityRequirementContributor` port with the manifest this
+package already owns:
+
+- it looks the route's own `controllerClass::methodName` up, and names **every configured scheme** (an
+  operation's `security` array is an OR-list, and an application running HTTP Basic beside a bearer filter really
+  does accept either credential) — plus `oauth2AuthorizationCode` when `firefly.security.oauth2.server.enabled`,
+  the same flag [`firefly/security-oauth2-server`](security-oauth2-server.md) publishes that scheme from;
+- it is gated by **`firefly.security.enabled` alone**. `firefly.security.method.enabled` stands down the *proxy
+  link* and never the controller dispatcher — `SecurityWiringPass` installs `MethodSecurityControllerGuard` once
+  past the master flag whatever that flag says — so reading it here would publish a guarded action as public;
+- `permitAll()` (the pre expression the scanner compiles for a method whose only rules are post/filter ones) is
+  **no opinion**, not "public": the URL rules may still protect the path. A `#[PostAuthorize]` beside it *is* a
+  refusal — the same `deny()`, the same 401/403 — and is published as one. `#[PreFilter]`/`#[PostFilter]` narrow a
+  result and refuse nobody, so they contribute nothing;
+- a `hasScope()` the rule demands of **every** caller becomes the requirement's scope list, on the token-shaped
+  entries only (HTTP Basic has no scope vocabulary a generated client could ask a token endpoint for). An
+  `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement instead: an OpenAPI scope list
+  is conjunctive, so naming both alternatives would send a generated client to ask for a scope its registration
+  may not include.
+
+`packages/security/tests/OpenApi/MethodSecuredDocumentCapstoneTest.php` boots the generator beside this package and
+asserts the document and the dispatcher against each other on the same routes — the pairing that keeps the two
+from drifting, and the one the `firefly/openapi` capstone cannot make (it has no method-secured fixture, and no
+edge that would let it have one).
+
 ## Configuration (`firefly.security.*`, snake_case)
 
 `firefly.security.enabled` is the **master flag**. It gates the core security stack: the password encoder, user
