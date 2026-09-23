@@ -78,6 +78,6 @@ asks you to register a provider by hand.
 
 </div>
 
-Every configuration key a guide names is written out once, with its default and the reason it has that
-default, in the skeleton's `config/firefly.php` — that file is the reference, and a key the framework reads
-but the reference does not document is a failing test.
+Every configuration key the framework reads is written out once, with its default and the reason it has
+that default, in the skeleton's `config/firefly.php`. That file is the reference, and it is held to being
+one: a key the framework reads that the reference does not document is a failing test.

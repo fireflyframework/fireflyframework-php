@@ -95,9 +95,10 @@ See [Installation](installation.md) for requirements and manual setup, and
 - **An API document that cannot drift** — [`firefly/openapi`](modules/openapi.md) generates OpenAPI 3.1 from the
   same compiled manifests the dispatcher and the validator read, and serves the official Swagger UI from your own
   origin — no annotation dialect, no npm, no CDN.
-- **A first-party test kit** — a boot harness, recording doubles for every port, web/data test-slice builders
-  and a Pest 4 + Playwright browser suite (`composer test:browser`) driving real Chromium over the skeleton,
-  dogfooded across the framework's own test suite.
+- **A first-party test kit** — a boot harness, recording doubles for every port, and `#[WebSlice]`/`#[DataSlice]`
+  test slices, dogfooded across the framework's own suites — which include a Pest 4 + Playwright suite driving
+  real Chromium over the skeleton's own pages; that one is the framework's, and
+  [Contributing](contributing.md) has what it covers and how to run it.
 
 ## The modules
 

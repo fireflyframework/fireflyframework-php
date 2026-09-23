@@ -42,7 +42,6 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
-    - navigation.indexes
     - navigation.top
     - toc.follow
     - search.suggest
@@ -80,10 +79,21 @@ markdown_extensions:
 # five is the number of questions a reader arrives with: what is it (Home), how do I use it (Guide), what is
 # in it (Modules), what is it called (Reference), how do I work on it (Contributing).
 #
-# The bare `- modules.md` under Modules is what `navigation.indexes` binds to the section itself, so the tab
-# opens a real landing page instead of the first module guide underneath it. It is docs/modules.md, NOT
-# docs/modules/index.md, which is why tests/ModuleDocumentationTest.php's glob over docs/modules/*.md never
-# sees it and never demands a README-table row for it.
+# A TAB OPENS ITS SECTION'S FIRST PAGE — that is the entire mechanism, and it is worth writing down because
+# the obvious guess is wrong. Material's `partials/tabs-item.html` links a section's tab to
+# `children | first`, descending while that first child is itself a section; nothing else takes part. So
+# `- Overview: modules.md` at the top of Modules is what makes that tab land on the landing page rather than
+# on Error Handling, and deleting or reordering that one entry silently moves the tab.
+#
+# Material's `navigation.indexes` is a DIFFERENT feature — it binds a page to the section HEADING in the
+# sidebar — and it is deliberately not enabled, because it would do nothing here: it fires only for a page
+# MkDocs calls an index (`Page.is_index`, true only for `index.md` or `README.md`), and this landing page is
+# `docs/modules.md` on purpose, so that tests/ModuleDocumentationTest.php's glob over `docs/modules/*.md`
+# never sees it and never demands a README-table row for it. Listing the feature anyway was measured: with
+# `- navigation.indexes` added, `mkdocs build --strict` emits byte-identical HTML apart from the features
+# array echoed into the page's own JS config. tests/SiteNavigationTest.php holds both halves — where each
+# tab lands, and the rule that `navigation.indexes` may be listed only once a section really has an index
+# page.
 #
 # Every `modules/<name>.md` string below is load-bearing: that same test greps this file for each of the 32
 # module guides and fails if one is missing, so a guide dropped from the navigation is red, not invisible.
@@ -97,7 +107,7 @@ nav:
       - Architecture: architecture.md
       - Laravel Comparison: laravel-comparison.md
   - Modules:
-      - modules.md
+      - Overview: modules.md
       - Foundation:
           - Error Handling: modules/error-handling.md
           - Dependency Injection: modules/dependency-injection.md

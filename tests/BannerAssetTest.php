@@ -4,7 +4,7 @@
 
 declare(strict_types=1);
 
-use Symfony\Component\Yaml\Yaml;
+use Firefly\Tests\Support\MkdocsConfig;
 
 /*
  * The three brand assets — the banner, the header logo and the favicon — and the two properties that
@@ -19,48 +19,6 @@ use Symfony\Component\Yaml\Yaml;
  * The second is that each one is *self-contained*, and that property is identical for all three, so it is
  * stated once over the whole set.
  */
-
-/**
- * `mkdocs.yml`, parsed — so that "the site still names this asset" is a question about a *key* and not about
- * the bytes of the file.
- *
- * That distinction is the whole reason this helper exists. A whole-file `str_contains($mkdocs, 'assets/…')`
- * is satisfied by any line that happens to spell the path, and this file's own voice is comment-heavy: the
- * comment above the `palette:` block already spells `docs/assets/stylesheets/larafly.css` while explaining
- * where the custom colours live, which is enough to keep a substring guard green on a site whose `extra_css`
- * key has been deleted outright — a guard failing open in exactly the scenario it exists to catch. Parsing
- * asks the question that was meant: does `theme.logo` / `theme.favicon` / `extra_css` still point at the file.
- *
- * `!!python/name:` is mkdocs-material's own idiom for handing a Python callable to a Markdown extension (the
- * emoji extension is the usual one), and Symfony's parser rejects it as an unsupported built-in tag — even
- * with `PARSE_CUSTOM_TAGS`, which only covers single-`!` application tags. Nothing here ever reads such a
- * value, so those tags are quoted into ordinary strings before parsing rather than allowed to turn this test
- * red the day somebody turns that extension on.
- *
- * @return array<mixed>
- */
-function mkdocsSiteConfig(): array
-{
-    $raw = (string) file_get_contents(dirname(__DIR__).'/mkdocs.yml');
-
-    return mkdocsArray(Yaml::parse((string) preg_replace('#!!python/\S+#', "'$0'", $raw)), 'the document root');
-}
-
-/**
- * Narrow one `Yaml::parse()` `mixed` — the root, or an offset of it — to an array, naming what was expected
- * when it is not one. A missing `theme:` block and a `theme:` block that is a scalar are the same failure to
- * every assertion below, and both deserve to say so rather than to trip a PHPStan-shaped type error.
- *
- * @return array<mixed>
- */
-function mkdocsArray(mixed $value, string $what): array
-{
-    if (! is_array($value)) {
-        throw new RuntimeException("mkdocs.yml: {$what} is missing or is not a YAML collection.");
-    }
-
-    return $value;
-}
 
 it('ships a well-formed banner embedded in the README and the docs landing', function () {
     $root = dirname(__DIR__);
@@ -92,15 +50,15 @@ it('ships a logo and a favicon drawn from the banner, and wires both into the si
             ->and(simplexml_load_string((string) file_get_contents($path)))->not->toBeFalse("malformed {$asset}");
     }
 
-    $config = mkdocsSiteConfig();
-    $theme = mkdocsArray($config['theme'] ?? null, 'theme');
+    $config = MkdocsConfig::load();
+    $theme = MkdocsConfig::asArray($config['theme'] ?? null, 'theme');
 
     expect($theme['logo'] ?? null)->toBe('assets/larafly-logo.svg', 'theme.logo no longer points at larafly-logo.svg')
         ->and($theme['favicon'] ?? null)->toBe('assets/larafly-favicon.svg', 'theme.favicon no longer points at larafly-favicon.svg');
 
     expect(is_file($root.'/docs/assets/stylesheets/larafly.css'))->toBeTrue('missing larafly.css');
 
-    $extraCss = mkdocsArray($config['extra_css'] ?? null, 'extra_css');
+    $extraCss = MkdocsConfig::asArray($config['extra_css'] ?? null, 'extra_css');
 
     expect(in_array('assets/stylesheets/larafly.css', $extraCss, true))
         ->toBeTrue('larafly.css is not listed in extra_css');
