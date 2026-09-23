@@ -7,7 +7,10 @@ use Firefly\Observability\Method\ObservabilityMethodDescriptor;
 use Firefly\Observability\Scanner\ObservabilityMethodScanner;
 use Firefly\Observability\Tests\Fixtures\AncestorFinalMethod\AncestorTimedService;
 use Firefly\Observability\Tests\Fixtures\BeanWired\BeanWiredGateway;
+use Firefly\Observability\Tests\Fixtures\ClassLevelBase\BaseGateway as ClassLevelBaseGateway;
+use Firefly\Observability\Tests\Fixtures\ClassLevelBase\StripeGateway as ClassLevelStripeGateway;
 use Firefly\Observability\Tests\Fixtures\InheritedBase\StripeGateway;
+use Firefly\Observability\Tests\Fixtures\SiblingSubclass\StripeGateway as SiblingStripeGateway;
 
 it('refuses a metric attribute on a class with no stereotype', function (): void {
     (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\Unstereotyped' => __DIR__.'/../Fixtures/Unstereotyped']);
@@ -41,6 +44,56 @@ it('accepts a metric on a concrete base class whose post-processed child is in t
 
     // Exactly one row, on the class that IS the bean — not two, and not a refusal.
     expect(array_map(fn (ObservabilityMethodDescriptor $d): string => $d->key(), $rules))->toBe([StripeGateway::class.'::charge']);
+});
+
+/*
+ | …but "the child already has its own row" is true of exactly ONE of the two ways an attribute reaches a
+ | method, and dropping the base's rows per CLASS threw the other away in silence — no descriptor, no
+ | exception, no warning, on a #[Timed] somebody wrote. `ReflectionMethod::getAttributes()` reads the DECLARING
+ | class, so the accept above works; `ReflectionClass::getAttributes()` walks no parents, and an override
+ | carries its own empty attribute list. The drop is therefore decided PER METHOD, against the rows the
+ | post-processed subclasses really compiled, and the two shapes where the child compiles nothing are refused.
+ */
+
+it('refuses a CLASS-level metric on a concrete base, which its post-processed child does not inherit', function (): void {
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\ClassLevelBase' => __DIR__.'/../Fixtures/ClassLevelBase']);
+})->throws(ConfigurationException::class, 'a class-level #[Timed]/#[Counted]/#[Observed] is NOT INHERITED');
+
+it('names the base, the child and both remedies when a class-level metric is not inherited', function (): void {
+    try {
+        (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\ClassLevelBase' => __DIR__.'/../Fixtures/ClassLevelBase']);
+        throw new RuntimeException('expected ConfigurationException, none thrown');
+    } catch (ConfigurationException $e) {
+        // The site is the ANNOTATED class, never the child: that is the file with the attribute in it.
+        expect($e->getMessage())
+            ->toContain(ClassLevelBaseGateway::class.'::charge')
+            ->toContain('Move the class-level attribute onto '.ClassLevelStripeGateway::class)
+            ->toContain('write it on charge() instead');
+    }
+});
+
+it('refuses a CLASS-level metric on an ABSTRACT base, which no scan would otherwise reach at all', function (): void {
+    // classes() keeps to instantiable classes, so this base is never walked in its own right: without the
+    // ancestor check the attribute compiles into nothing with nothing said, one step further out of reach than
+    // the concrete base above.
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\AbstractClassLevelBase' => __DIR__.'/../Fixtures/AbstractClassLevelBase']);
+})->throws(ConfigurationException::class, 'the attribute is written at CLASS level on an ABSTRACT class');
+
+it('refuses a metric on a base method the post-processed child overrides without repeating it', function (): void {
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\OverriddenBase' => __DIR__.'/../Fixtures/OverriddenBase']);
+})->throws(ConfigurationException::class, 'OVERRIDES charge() without repeating the attribute');
+
+/*
+ | The other half of the per-method rule: a class is only refused for the rules it is RESPONSIBLE for. A second
+ | subclass of an annotated base — a fake, a test double — compiles rows it never asked for, and refusing it
+ | hard-failed `firefly:cache` naming a class whose author greps it for a metric attribute and finds none, with
+ | the remedy "add a stereotype such as #[Service]" on a class they deliberately left unwired.
+ */
+
+it('drops, in silence, rows an unstereotyped sibling subclass only inherited, and keeps the bean\'s', function (): void {
+    $rules = (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\SiblingSubclass' => __DIR__.'/../Fixtures/SiblingSubclass']);
+
+    expect(array_map(fn (ObservabilityMethodDescriptor $d): string => $d->key(), $rules))->toBe([SiblingStripeGateway::class.'::charge']);
 });
 
 it('refuses a metric attribute on a final class', function (): void {

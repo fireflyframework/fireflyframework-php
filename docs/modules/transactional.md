@@ -249,7 +249,14 @@ is refused at scan time (`UnsupportedTransactionalMethodException::finalClass()`
 still in view, and so is a `final` planned METHOD
 (`UnsupportedTransactionalMethodException::finalMethod()`) — the proxy overrides every method it plans, so
 without that refusal PHP rejects the generated class at load with "Cannot override final method", a fatal that
-names neither the attribute nor the class-level one that fanned onto the method.
+names neither the attribute nor the class-level one that fanned onto the method. That refusal reports the
+class that DECLARES the method: a class-level `#[Transactional]` plans every public method the class exposes,
+inherited ones included, so the `final` is often in a base the reader does not own (the framework's own
+`AutoConfiguration::register()` is one) and the message reads `Base::register() (planned via Leaf)`. It is a
+refusal rather than a skip — observability's metric scan skips the same shape — because a `#[Transactional]`
+method running with no transaction around it leaves half the writes committed on a mid-method failure, where a
+dropped meter only loses a line on a dashboard. Narrow the attribute onto the methods that need it, or run the
+work through `TransactionTemplate`.
 
 **Self-invocation bypasses the proxy** — the same well-known Spring limitation. A method calling
 `$this->otherMethod()` from inside the proxied class calls straight through `parent::`, skipping the

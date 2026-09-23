@@ -47,12 +47,30 @@ use ReflectionNamedType;
  *     watches its transaction roll back. A stereotype-only refusal would reject that wiring while telling its
  *     author something untrue about it, so this one fires only when the scanned roots show NEITHER shape, and
  *     its message says which two it looked for.
- *   - …and it does not fire for a CONCRETE BASE CLASS whose post-processed child is in the same scan. Writing
- *     the attribute on a template-method base and stereotyping the leaf is a mainstream shape, and the metric
- *     does record there: the child exposes the inherited method, so the child already has its own row (see
- *     the fan-out note above) and the child's proxy overrides the inherited body. The base's own rows are
- *     dropped rather than refused — it is not a bean, so a row keyed by it would compile a proxy nothing ever
- *     wraps — and nothing is lost in dropping them, which is why this one is silent where the others are not.
+ *   - …and it does not fire for a CONCRETE BASE CLASS whose post-processed child COMPILES THE SAME ROW.
+ *     Writing the attribute on a template-method base and stereotyping the leaf is a mainstream shape, and
+ *     the metric does record there — but only through the one door PHP leaves open, so the drop is decided
+ *     PER METHOD against the rows the post-processed subclasses really compiled, never per class. That door
+ *     is the METHOD-level attribute on a method the child does not override: `ReflectionMethod::getAttributes()`
+ *     reads the DECLARING class, so the child sees it, compiles its own row for it and the child's proxy
+ *     overrides the inherited body. The base's copy is then dropped rather than refused — the base is not a
+ *     bean, so a row keyed by it would compile a proxy nothing ever wraps — and that is the one case where
+ *     nothing is lost. The two shapes where the child compiles NOTHING are refused like any other
+ *     unenforceable rule, because PHP inherits neither:
+ *       * a CLASS-level attribute on the base — `ReflectionClass::getAttributes()` does not walk the parents,
+ *         so the child returns [] for it and re-derives nothing. Refused at the base; and when that base is
+ *         ABSTRACT, refused from the first concrete descendant scanned, because `classes()` never walks an
+ *         abstract class in its own right and nothing else in the scan would ever mention it;
+ *       * a METHOD-level attribute on a method the child OVERRIDES — an override carries its own, empty,
+ *         attribute list.
+ *     Dropping either compiles the attribute into nothing at all: no descriptor, no exception, no warning, on
+ *     a `#[Timed]` somebody wrote — the exact silent no-op this scan exists to refuse.
+ *   - …and a class is only ever refused for the rules it is RESPONSIBLE for. A rule that reached an
+ *     unstereotyped class purely by inheritance — the attribute is on an ancestor, the class declares neither
+ *     it nor the method — is dropped in silence: a second, hand-written subclass of an annotated base is not
+ *     a site whose author can act on "add a stereotype such as #[Service]" (they would grep it for a metric
+ *     attribute and find none), and the annotated ancestor is where the refusal, if one is owed, already
+ *     fires. Same unactionable-remedy rule as the ancestor-final-method carve-out below.
  *   - A class the advice must proxy while being `final` cannot be extended. Refused, same reason as the first.
  *   - A `final` METHOD cannot be overridden, and the generated proxy overrides every planned method. Without
  *     a refusal the plan compiles and the `require` of the generated class fatals with "Cannot override final
@@ -91,92 +109,157 @@ final class ObservabilityMethodScanner
      */
     public function scan(array $psr4): array
     {
-        $rules = [];
         $classes = $this->classes($psr4);
         $factoryProduced = $this->beanFactoryTypes($classes);
 
+        // FIRST PASS — compile every class's rows, and remember which of them the class must ANSWER for.
+        // Nothing is dropped or refused for being unenforceable yet: whether a base's row may be dropped is a
+        // question about the rows its post-processed subclasses compiled, and those are not known until the
+        // whole scan has been compiled.
+        /** @var array<class-string, list<ObservabilityMethodDescriptor>> $compiled */
+        $compiled = [];
+        /** @var array<class-string, array<string, true>> $responsible */
+        $responsible = [];
+
         foreach ($classes as $class) {
+            [$classRules, $classResponsible] = $this->compile($class);
+
+            if ($classRules !== []) {
+                $compiled[$class] = $classRules;
+                $responsible[$class] = $classResponsible;
+            }
+        }
+
+        // SECOND PASS — keep, drop or refuse, with the whole scan in view.
+        $rules = [];
+
+        foreach ($compiled as $class => $classRules) {
             $reflection = new ReflectionClass($class);
 
-            $classTimed = $this->first($reflection->getAttributes(Timed::class));
-            $classCounted = $this->first($reflection->getAttributes(Counted::class));
-            $classObserved = $this->first($reflection->getAttributes(Observed::class));
+            if ($this->postProcessed($reflection, $factoryProduced)) {
+                // The class IS the enforcement point: its rows are the ones a proxy will apply, wherever the
+                // attribute that produced them was written.
+                $this->refuseUnproxyableClass($reflection);
 
-            /** @var list<ObservabilityMethodDescriptor> $classRules */
-            $classRules = [];
+                $rules = [...$rules, ...$classRules];
 
-            foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-                $site = $class.'::'.$method->getName();
-
-                // The method's OWN attributes are read FIRST, before any skip: what a skip may silently drop
-                // is a rule the class-level attribute fanned onto this method, never one somebody wrote here.
-                $ownTimed = $this->first($method->getAttributes(Timed::class));
-                $ownCounted = $this->first($method->getAttributes(Counted::class));
-                $ownObserved = $this->first($method->getAttributes(Observed::class));
-                $annotated = $ownTimed !== null || $ownCounted !== null || $ownObserved !== null;
-
-                if ($method->isStatic() || $method->isConstructor() || str_starts_with($method->getName(), '__')) {
-                    if ($annotated) {
-                        throw new ConfigurationException($this->uninterceptableMessage($site, $method));
-                    }
-
-                    continue;
-                }
-
-                $timed = $ownTimed ?? $classTimed;
-                $counted = $ownCounted ?? $classCounted;
-                $observed = $ownObserved ?? $classObserved;
-
-                if ($timed === null && $counted === null && $observed === null) {
-                    continue;
-                }
-
-                if ($method->isFinal()) {
-                    if (! $annotated && $method->getDeclaringClass()->getName() !== $class) {
-                        // Fanned onto an ANCESTOR's final method: the remedy the message below offers does
-                        // not exist for its reader, and the method is not part of this class's own surface.
-                        continue;
-                    }
-
-                    throw new ConfigurationException(
-                        "Method metrics on {$site} cannot be recorded: the method is final and a proxy must override "
-                        .'it. Remove `final` from the method (a class-level #[Timed]/#[Counted]/#[Observed] applies to '
-                        .'every public method, this one included), or record the metric through MetricsRecorder at the '
-                        .'call site.'
-                    );
-                }
-
-                if ($timed !== null && $timed->percentiles !== []) {
-                    throw new ConfigurationException(
-                        "#[Timed(percentiles:)] on {$site} cannot be honoured: this package publishes fixed histogram "
-                        .'buckets, not client-side quantile summaries. Configure the meter under '
-                        .'`firefly.observability.metrics.distribution.per-meter` and compute the quantile in the query '
-                        .'(Prometheus histogram_quantile), or drop the parameter.'
-                    );
-                }
-
-                $classRules[] = new ObservabilityMethodDescriptor(
-                    $class,
-                    $method->getName(),
-                    $timed === null ? null : ['name' => $timed->value, 'tags' => $timed->extraTags, 'description' => $timed->description, 'longTask' => $timed->longTask],
-                    $counted === null ? null : ['name' => $counted->value, 'tags' => $counted->extraTags, 'failuresOnly' => $counted->recordFailuresOnly],
-                    $observed === null ? null : ['name' => $observed->name, 'contextualName' => $observed->contextualName, 'tags' => $observed->lowCardinalityKeyValues],
-                );
-            }
-
-            if ($classRules === []) {
                 continue;
             }
 
-            if ($this->enforcedThroughSubclass($reflection, $classes, $factoryProduced)) {
-                continue;
-            }
+            $subclasses = $this->postProcessedSubclasses($class, $classes, $factoryProduced);
+            $covered = $this->coveredMethods($subclasses, $compiled);
 
-            $this->refuseUnenforceable($reflection, $classRules, $factoryProduced);
-            $rules = [...$rules, ...$classRules];
+            foreach ($classRules as $rule) {
+                if (! isset($responsible[$class][$rule->method]) || isset($covered[$rule->method])) {
+                    // Somebody else's rule, or one a post-processed subclass really re-derived: dropping it
+                    // here loses nothing, and refusing it would name a class whose author wrote no attribute.
+                    continue;
+                }
+
+                $this->refuseUnenforceable($reflection, $rule, $subclasses);
+            }
         }
 
         return $rules;
+    }
+
+    /**
+     * One class's rows, and the subset of them the class is RESPONSIBLE for — the two answers the second pass
+     * needs about it. Every refusal that is a property of the SITE alone (an uninterceptable method carrying
+     * an attribute by hand, a `final` method, `#[Timed(percentiles:)]`) fires here; the ones that depend on
+     * what else was scanned wait for the caller.
+     *
+     * "Responsible" is ownership of the attribute, not of the method: a class attribute is always the class's
+     * own (PHP does not inherit them), and a method attribute belongs to the class that DECLARES the method.
+     * A row that reached a class purely by inheritance is the annotated ancestor's to answer for.
+     *
+     * @param  class-string  $class
+     * @return array{0: list<ObservabilityMethodDescriptor>, 1: array<string, true>}
+     */
+    private function compile(string $class): array
+    {
+        $reflection = new ReflectionClass($class);
+
+        $classTimed = $this->first($reflection->getAttributes(Timed::class));
+        $classCounted = $this->first($reflection->getAttributes(Counted::class));
+        $classObserved = $this->first($reflection->getAttributes(Observed::class));
+
+        $classAnnotated = $classTimed !== null || $classCounted !== null || $classObserved !== null;
+
+        $this->refuseAbstractAncestorMetric($reflection);
+
+        /** @var list<ObservabilityMethodDescriptor> $classRules */
+        $classRules = [];
+        /** @var array<string, true> $responsible */
+        $responsible = [];
+
+        foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            $site = $class.'::'.$method->getName();
+
+            // The method's OWN attributes are read FIRST, before any skip: what a skip may silently drop
+            // is a rule the class-level attribute fanned onto this method, never one somebody wrote here.
+            $ownTimed = $this->first($method->getAttributes(Timed::class));
+            $ownCounted = $this->first($method->getAttributes(Counted::class));
+            $ownObserved = $this->first($method->getAttributes(Observed::class));
+            $annotated = $ownTimed !== null || $ownCounted !== null || $ownObserved !== null;
+
+            if ($method->isStatic() || $method->isConstructor() || str_starts_with($method->getName(), '__')) {
+                if ($annotated) {
+                    throw new ConfigurationException($this->uninterceptableMessage($site, $method));
+                }
+
+                continue;
+            }
+
+            $timed = $ownTimed ?? $classTimed;
+            $counted = $ownCounted ?? $classCounted;
+            $observed = $ownObserved ?? $classObserved;
+
+            if ($timed === null && $counted === null && $observed === null) {
+                continue;
+            }
+
+            if ($method->isFinal()) {
+                if (! $annotated && $method->getDeclaringClass()->getName() !== $class) {
+                    // Fanned onto an ANCESTOR's final method: the remedy the message below offers does
+                    // not exist for its reader, and the method is not part of this class's own surface.
+                    continue;
+                }
+
+                throw new ConfigurationException(
+                    "Method metrics on {$site} cannot be recorded: the method is final and a proxy must override "
+                    .'it. Remove `final` from the method (a class-level #[Timed]/#[Counted]/#[Observed] applies to '
+                    .'every public method, this one included), or record the metric through MetricsRecorder at the '
+                    .'call site.'
+                );
+            }
+
+            if ($timed !== null && $timed->percentiles !== []) {
+                throw new ConfigurationException(
+                    "#[Timed(percentiles:)] on {$site} cannot be honoured: this package publishes fixed histogram "
+                    .'buckets, not client-side quantile summaries. Configure the meter under '
+                    .'`firefly.observability.metrics.distribution.per-meter` and compute the quantile in the query '
+                    .'(Prometheus histogram_quantile), or drop the parameter.'
+                );
+            }
+
+            $classRules[] = new ObservabilityMethodDescriptor(
+                $class,
+                $method->getName(),
+                $timed === null ? null : ['name' => $timed->value, 'tags' => $timed->extraTags, 'description' => $timed->description, 'longTask' => $timed->longTask],
+                $counted === null ? null : ['name' => $counted->value, 'tags' => $counted->extraTags, 'failuresOnly' => $counted->recordFailuresOnly],
+                $observed === null ? null : ['name' => $observed->name, 'contextualName' => $observed->contextualName, 'tags' => $observed->lowCardinalityKeyValues],
+            );
+
+            // …and who answers for it. A class attribute is always this class's own; a method attribute is the
+            // DECLARING class's. A row that reached here through neither is one somebody wrote about an
+            // ancestor, and refusing this class for it would name a file with no attribute in it.
+            if ($classAnnotated || $method->getDeclaringClass()->getName() === $class) {
+                $responsible[$method->getName()] = true;
+            }
+        }
+
+        return [$classRules, $responsible];
     }
 
     /**
@@ -223,24 +306,18 @@ final class ObservabilityMethodScanner
     }
 
     /**
-     * Whether the class's rules are already enforced by a POST-PROCESSED SUBCLASS in the same scan — the
-     * template-method shape: a concrete base carries the attribute and a #[Service] leaf is the bean. The
-     * child exposes the inherited method, so `scan()` has already compiled the child's own row for it and the
-     * child's proxy overrides the inherited body; the base's rows are the ones with nowhere to go, and are
-     * dropped by the caller rather than refused. Only the class's OWN wiring is asked about first: a base that
-     * is itself a bean keeps its rows, subclass or no subclass.
+     * The POST-PROCESSED SUBCLASSES of one class in the same scan — the template-method leaves that may be
+     * carrying its rules, and the only classes whose own rows can make a drop safe. Asked only of a class
+     * NOTHING post-processes: a base that is itself a bean keeps its rows, subclass or no subclass.
      *
-     * @param  ReflectionClass<object>  $reflection
+     * @param  class-string  $class
      * @param  list<class-string>  $classes
      * @param  array<string, true>  $factoryProduced
+     * @return list<class-string>
      */
-    private function enforcedThroughSubclass(ReflectionClass $reflection, array $classes, array $factoryProduced): bool
+    private function postProcessedSubclasses(string $class, array $classes, array $factoryProduced): array
     {
-        if ($this->postProcessed($reflection, $factoryProduced)) {
-            return false;
-        }
-
-        $class = $reflection->getName();
+        $subclasses = [];
 
         foreach ($classes as $candidate) {
             if ($candidate === $class || ! is_subclass_of($candidate, $class)) {
@@ -248,11 +325,40 @@ final class ObservabilityMethodScanner
             }
 
             if ($this->postProcessed(new ReflectionClass($candidate), $factoryProduced)) {
-                return true;
+                $subclasses[] = $candidate;
             }
         }
 
-        return false;
+        return $subclasses;
+    }
+
+    /**
+     * The method names those subclasses REALLY COMPILED A ROW FOR — the per-method premise the drop rests on,
+     * read off the first pass rather than re-derived from the shape of the hierarchy.
+     *
+     * Asking it per CLASS ("a post-processed subclass exists, therefore the child already has its own row,
+     * therefore nothing is lost") is true for exactly one of the two ways an attribute reaches a method.
+     * `ReflectionMethod::getAttributes()` reads the DECLARING class, so a METHOD-level attribute on a method
+     * the child does not override IS visible through the child. `ReflectionClass::getAttributes()` walks no
+     * parents, so a CLASS-level attribute on the base is invisible to the child; and an override carries its
+     * own, empty, attribute list. In those two shapes the child compiles nothing, and a per-class drop threw
+     * the author's `#[Timed]` away in silence.
+     *
+     * @param  list<class-string>  $subclasses
+     * @param  array<class-string, list<ObservabilityMethodDescriptor>>  $compiled
+     * @return array<string, true>
+     */
+    private function coveredMethods(array $subclasses, array $compiled): array
+    {
+        $covered = [];
+
+        foreach ($subclasses as $subclass) {
+            foreach ($compiled[$subclass] ?? [] as $rule) {
+                $covered[$rule->method] = true;
+            }
+        }
+
+        return $covered;
     }
 
     /**
@@ -270,17 +376,48 @@ final class ObservabilityMethodScanner
     }
 
     /**
+     * A class the bean-post-processor chain DOES reach, but which a proxy cannot extend. Separate from the
+     * per-rule refusal below because it is a property of the class alone: every row on it is unenforceable,
+     * and which row the message names would be arbitrary.
+     *
      * @param  ReflectionClass<object>  $reflection
-     * @param  list<ObservabilityMethodDescriptor>  $rules
-     * @param  array<string, true>  $factoryProduced  classes a #[Bean] method in the scanned roots returns
      */
-    private function refuseUnenforceable(ReflectionClass $reflection, array $rules, array $factoryProduced): void
+    private function refuseUnproxyableClass(ReflectionClass $reflection): void
     {
-        $class = $reflection->getName();
+        if (! $reflection->isFinal()) {
+            return;
+        }
 
-        if (! $this->postProcessed($reflection, $factoryProduced)) {
+        throw new ConfigurationException(
+            "Method metrics on {$reflection->getName()} cannot be recorded: the class is final and a proxy must "
+            .'extend it. Remove `final`, or record the metric through MetricsRecorder at the call site.'
+        );
+    }
+
+    /**
+     * ONE rule, on a class nothing post-processes, that no post-processed subclass re-derived either — so
+     * there is no seam left for it anywhere in the scan. The message is chosen from the three ways that
+     * happens, because each has a different remedy and only one of them is "add a stereotype":
+     *
+     *   - no post-processed subclass at all: the original wiring refusal, unchanged;
+     *   - the attribute is at CLASS level and a post-processed subclass exists: PHP does not inherit class
+     *     attributes, so the subclass sees nothing to compile. Move the attribute down, or onto the method;
+     *   - the attribute is on a METHOD a post-processed subclass OVERRIDES: PHP does not inherit method
+     *     attributes across an override either. Repeat it on the override.
+     *
+     * Reached only for a rule the class is RESPONSIBLE for, so every message names a class whose author can
+     * open the file and find the attribute the message is about.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @param  list<class-string>  $subclasses  the post-processed subclasses in the same scan
+     */
+    private function refuseUnenforceable(ReflectionClass $reflection, ObservabilityMethodDescriptor $rule, array $subclasses): void
+    {
+        $site = $rule->key();
+
+        if ($subclasses === []) {
             throw new ConfigurationException(
-                "Method metrics on {$rules[0]->key()} cannot be recorded: the class carries no #[Component]-family "
+                "Method metrics on {$site} cannot be recorded: the class carries no #[Component]-family "
                 .'stereotype, no #[Bean] method in the scanned roots returns it and no post-processed subclass of it '
                 .'was scanned, so nothing post-processes it and no proxy would ever run the meter. Add a stereotype '
                 .'such as #[Service], wire it from a #[Bean] factory method, or record the metric through '
@@ -288,12 +425,102 @@ final class ObservabilityMethodScanner
             );
         }
 
-        if ($reflection->isFinal()) {
+        $child = $subclasses[0];
+
+        if ($this->carriesClassLevelMetric($reflection)) {
             throw new ConfigurationException(
-                "Method metrics on {$class} cannot be recorded: the class is final and a proxy must extend it. "
-                .'Remove `final`, or record the metric through MetricsRecorder at the call site.'
+                "Method metrics on {$site} cannot be recorded: the attribute is written at CLASS level on a class "
+                .'nothing post-processes, and a class-level #[Timed]/#[Counted]/#[Observed] is NOT INHERITED — PHP '
+                ."does not inherit class attributes, so the post-processed subclass {$child} carries none of its own "
+                .'and compiles no row, and no proxy would ever run the meter. Move the class-level attribute onto '
+                ."{$child} (the stereotyped subclass), write it on {$rule->method}() instead — a method attribute IS "
+                .'visible through an inherited method the subclass does not override — add a stereotype such as '
+                .'#[Service] here, or record the metric through MetricsRecorder at the call site.'
             );
         }
+
+        $override = $this->overridingSubclass($rule->method, $subclasses);
+
+        if ($override !== null) {
+            throw new ConfigurationException(
+                "Method metrics on {$site} cannot be recorded: nothing post-processes this class, and the "
+                ."post-processed subclass {$override} OVERRIDES {$rule->method}() without repeating the attribute — "
+                .'PHP does not inherit a method attribute across an override, so the subclass compiles no row and no '
+                ."proxy would ever run the meter. Repeat the attribute on {$override}::{$rule->method}(), add a "
+                .'stereotype such as #[Service] here, or record the metric through MetricsRecorder at the call site.'
+            );
+        }
+
+        throw new ConfigurationException(
+            "Method metrics on {$site} cannot be recorded: nothing post-processes this class and no post-processed "
+            ."subclass of it in the scanned roots compiles a row for {$rule->method}(), so no proxy would ever run "
+            .'the meter. Add a stereotype such as #[Service], wire it from a #[Bean] factory method, or record the '
+            .'metric through MetricsRecorder at the call site.'
+        );
+    }
+
+    /**
+     * An ABSTRACT ancestor carrying a CLASS-LEVEL metric attribute is inert in every configuration there is,
+     * and nothing else in this scan would ever say so. `classes()` walks only instantiable classes, because
+     * only those can be beans, so the abstract class is never scanned in its own right; and PHP hands its
+     * class attributes down to nobody, so `getAttributes()` on this class — the first concrete descendant the
+     * scan reached — returns [] for it. The attribute compiles into nothing at all: no descriptor, no
+     * exception, no warning, on a `#[Timed]` somebody wrote, which is the silent no-op this scan exists to
+     * refuse. A CONCRETE annotated ancestor needs none of this: it is scanned in its own right and answers for
+     * itself in the second pass, where the whole scan is in view.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function refuseAbstractAncestorMetric(ReflectionClass $reflection): void
+    {
+        for ($parent = $reflection->getParentClass(); $parent !== false; $parent = $parent->getParentClass()) {
+            if (! $parent->isAbstract() || ! $this->carriesClassLevelMetric($parent)) {
+                continue;
+            }
+
+            throw new ConfigurationException(
+                "Method metrics on {$parent->getName()} cannot be recorded: the attribute is written at CLASS level "
+                .'on an ABSTRACT class, which can never be a bean, and a class-level #[Timed]/#[Counted]/#[Observed] '
+                ."is NOT INHERITED — PHP does not inherit class attributes, so {$reflection->getName()} carries none "
+                .'of its own and compiles no row. Write the attribute on the methods instead — a method attribute IS '
+                .'visible through an inherited method the subclass does not override — move it onto the concrete '
+                ."subclass that is the bean ({$reflection->getName()} is one of them), or record the metric through "
+                .'MetricsRecorder at the call site.'
+            );
+        }
+    }
+
+    /**
+     * Whether the class carries a metric attribute of its OWN at class level — the one provenance question the
+     * refusals above need, and the reason they can say "is NOT INHERITED" rather than guess.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function carriesClassLevelMetric(ReflectionClass $reflection): bool
+    {
+        return $reflection->getAttributes(Timed::class) !== []
+            || $reflection->getAttributes(Counted::class) !== []
+            || $reflection->getAttributes(Observed::class) !== [];
+    }
+
+    /**
+     * The first of those subclasses that RE-DECLARES the method — an override, which is what made the
+     * inherited attribute invisible to it.
+     *
+     * @param  list<class-string>  $subclasses
+     * @return class-string|null
+     */
+    private function overridingSubclass(string $method, array $subclasses): ?string
+    {
+        foreach ($subclasses as $subclass) {
+            $reflection = new ReflectionClass($subclass);
+
+            if ($reflection->hasMethod($method) && $reflection->getMethod($method)->getDeclaringClass()->getName() === $subclass) {
+                return $subclass;
+            }
+        }
+
+        return null;
     }
 
     /**
