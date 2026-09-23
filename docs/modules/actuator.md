@@ -40,22 +40,25 @@ indicators. A throwing indicator degrades to DOWN — never a 500.
 
 Default `firefly.management.endpoints.web.exposure.include = "health,info"`; sensitive endpoints return **404** until
 explicitly exposed. An endpoint body is always a JSON **object**: `/actuator/info` with no `InfoContributor`
-registered answers `{}`, not `[]`, so a typed client deserialising into a map does not break on the default. Lock them down with `firefly.security.http.rules` (no second management port — doesn't fit PHP-FPM):
+registered answers `{}`, not `[]`, so a typed client deserialising into a map does not break on the default. Lock them
+down with `firefly.security.http.rules` (no second management port — doesn't fit PHP-FPM). These are the exact rules the
+framework's own end-to-end lockdown test seeds, written as the settings the test overrides; in an application the same
+three entries are the nested `security.http.rules` array of `config/firefly.php`, which the shipped reference already
+carries commented out:
 
+<!-- source: packages/actuator/tests/Support/SecuredActuatorCapstoneTestCase.php -->
 ```php
-'firefly' => [
-    'security' => [
-        'enabled' => true,
-        'http' => [
-            'enabled' => true,
-            'rules' => [
-                ['pattern' => 'actuator/health', 'access' => 'permitAll'],
-                ['pattern' => 'actuator/info', 'access' => 'permitAll'],
-                ['pattern' => 'actuator/*', 'access' => 'hasRole:ACTUATOR'],
-            ],
-        ],
+return [
+    ...parent::configOverrides(),
+    'firefly.management.endpoints.web.exposure.include' => 'health,info,env',
+    'firefly.security.enabled' => true,
+    'firefly.security.http.enabled' => true,
+    'firefly.security.http.rules' => [
+        ['pattern' => 'actuator/health', 'access' => 'permitAll'],
+        ['pattern' => 'actuator/info', 'access' => 'permitAll'],
+        ['pattern' => 'actuator/*', 'access' => 'hasRole:ACTUATOR'],
     ],
-],
+];
 ```
 
 `firefly/security`'s `HttpSecurityFilter` is a **global** middleware — `FilterChainRegistrar` pushes it onto Laravel's

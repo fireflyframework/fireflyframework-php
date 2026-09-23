@@ -8,6 +8,7 @@ type, by interface, by name, or as ordered lists.
 
 Mark a class as a managed component with a stereotype attribute:
 
+<!-- illustrative: an application's own service class, which by definition is not a file in this repository -->
 ```php
 use Firefly\Container\Attributes\Service;
 
@@ -22,6 +23,7 @@ them via `ReflectionClass::getAttributes(Component::class, ReflectionAttribute::
 
 Every component is a singleton by default. Choose another lifetime with the `scope` argument:
 
+<!-- illustrative: an application's own transient-scoped bean -->
 ```php
 use Firefly\Container\Attributes\Service;
 use Firefly\Container\Scope;
@@ -37,6 +39,7 @@ final class RequestId {}
 When several components implement one interface, the container binds the interface to the `#[Primary]` one, and
 you can fetch any specific implementation by name:
 
+<!-- illustrative: an application's own interface and its two implementations -->
 ```php
 use Firefly\Container\Attributes\{Primary, Qualifier, Service};
 
@@ -49,6 +52,7 @@ final class EnglishGreeter implements Greeter { public function greet(): string 
 final class SpanishGreeter implements Greeter { public function greet(): string { return 'Hola'; } }
 ```
 
+<!-- illustrative: the three calls a reader makes against the container port from their own code -->
 ```php
 $container->get(Greeter::class);         // EnglishGreeter (primary)
 $container->getByName('spanish');        // SpanishGreeter
@@ -58,6 +62,7 @@ $container->getAll(Greeter::class);      // all implementations, sorted by #[Ord
 `#[Qualifier]` also works **on an injected parameter**, which is how you ask for a specific bean without
 going through `getByName()`:
 
+<!-- illustrative: an application bean asking for one named implementation by qualifier -->
 ```php
 final class Notifier
 {
@@ -88,14 +93,19 @@ already resolves bindings lazily by default, so there is nothing extra to defer 
 
 A component exposes `#[Bean]` methods; each is registered under its return type, with parameters injected:
 
+<!-- source: packages/container/tests/Fixtures/AppConfig.php -->
 ```php
-use Firefly\Container\Attributes\{Bean, Configuration};
+use Firefly\Container\Attributes\Bean;
+use Firefly\Container\Attributes\Configuration;
 
 #[Configuration]
 final class AppConfig
 {
     #[Bean('utcClock')]
-    public function clock(): Clock { return new Clock('UTC'); }
+    public function clock(): Clock
+    {
+        return new Clock('UTC');
+    }
 }
 ```
 
@@ -139,20 +149,34 @@ collapsed — both names pointed at the one type key, which held whichever facto
 `getByName('memoryCache')` and `getByName('redisCache')` handed back the identical object. `#[Primary]` could
 not break the tie because it was read nowhere in the bean path at all.
 
-**To migrate**, give each competing method a distinct name and mark one primary:
+**To migrate**, give each competing method a distinct name and mark one primary — which is exactly the shape of
+the package's own regression fixture:
 
+<!-- source: packages/container/tests/Fixtures/CacheConfig.php -->
 ```php
-#[Bean('memoryCache')] #[Primary]
-public function memoryCache(): Cache { /* … */ }
+#[Configuration]
+final class CacheConfig
+{
+    #[Bean('memoryCache')]
+    #[Primary]
+    public function memory(): Cache
+    {
+        return new MemoryCache;
+    }
 
-#[Bean('redisCache')]
-public function redisCache(): Cache { /* … */ }
+    #[Bean('redisCache')]
+    public function redis(): Cache
+    {
+        return new RedisCache;
+    }
+}
 ```
 
 ## `#[Value]` injection
 
 Inject configuration and expressions into constructor parameters:
 
+<!-- illustrative: an application's own bean reading an environment variable and an expression -->
 ```php
 use Firefly\Container\Attributes\Value;
 

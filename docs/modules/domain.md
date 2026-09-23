@@ -8,14 +8,38 @@ keeping this package pure.
 
 ## `Entity` — identity, not value, defines equality
 
+<!-- source: packages/domain/src/Entity.php -->
 ```php
 abstract class Entity
 {
     public function __construct(protected int|string|null $id = null) {}
 
-    public function id(): int|string|null;
-    public function isTransient(): bool;   // true when $id === null
-    public function equals(self $other): bool;
+    public function id(): int|string|null
+    {
+        return $this->id;
+    }
+
+    public function isTransient(): bool
+    {
+        return $this->id === null;
+    }
+
+    public function equals(self $other): bool
+    {
+        if ($this === $other) {
+            return true;
+        }
+
+        if ($this::class !== $other::class) {
+            return false;
+        }
+
+        if ($this->isTransient() || $other->isTransient()) {
+            return false;
+        }
+
+        return $this->id === $other->id;
+    }
 }
 ```
 
@@ -30,17 +54,20 @@ auto-increment and uuid ids alike); a subclass may narrow its return type covari
 `ValueObject` is a marker interface — no identity, immutable by convention (a `readonly` class), equal by
 value:
 
+<!-- source: packages/domain/src/ValueObject.php -->
 ```php
 interface ValueObject {}
 ```
 
 The `ValueObjectEquality` trait supplies structural equality for a flat `readonly` VO:
 
+<!-- source: packages/domain/src/ValueObjectEquality.php -->
 ```php
 trait ValueObjectEquality
 {
     public function equals(self $other): bool
     {
+        // …
         return get_class($this) === get_class($other)
             && get_object_vars($this) == get_object_vars($other);
     }
@@ -57,14 +84,37 @@ implement `equals()` by hand.
 
 `AggregateRoot extends Entity` and is the **only** thing in a domain model that raises events:
 
+<!-- source: packages/domain/src/AggregateRoot.php -->
 ```php
 abstract class AggregateRoot extends Entity implements RecordsDomainEvents
 {
-    protected function raiseEvent(DomainEvent $event): void;  // protected: only the aggregate raises its own events
+    /** @var list<DomainEvent> */
+    private array $pendingEvents = [];
 
-    public function pendingEvents(): array;  // a non-draining snapshot; repeated reads never drain
-    public function pullEvents(): array;     // drains the buffer AND returns it
-    public function clearEvents(): void;     // drops the buffer (e.g. on rollback)
+    protected function raiseEvent(DomainEvent $event): void
+    {
+        $this->pendingEvents[] = $event;
+    }
+
+    /** @return list<DomainEvent> */
+    public function pendingEvents(): array
+    {
+        return $this->pendingEvents;
+    }
+
+    /** @return list<DomainEvent> */
+    public function pullEvents(): array
+    {
+        $events = $this->pendingEvents;
+        $this->pendingEvents = [];
+
+        return $events;
+    }
+
+    public function clearEvents(): void
+    {
+        $this->pendingEvents = [];
+    }
 }
 ```
 
@@ -80,14 +130,21 @@ that the unit-of-work tracker and after-commit dispatcher depend on. A persisten
 `use`s the `HasDomainEvents` trait and `implements RecordsDomainEvents` itself, giving one object that is
 **both** a persisted `Model` **and** an auto-dispatching aggregate:
 
+<!-- source: packages/data/tests/Fixtures/Ordering/Order.php -->
 ```php
 final class Order extends Model implements RecordsDomainEvents
 {
     use HasDomainEvents;
 
+    protected $table = 'orders';
+
+    public $timestamps = false;
+
+    protected $guarded = [];
+
     public function place(): void
     {
-        $this->raiseEvent(new OrderPlaced($this->status));
+        $this->raiseEvent(new OrderPlaced((string) $this->status));
     }
 }
 ```
@@ -97,17 +154,38 @@ final class Order extends Model implements RecordsDomainEvents
 
 ## `DomainEvent` — flat, immutable, reflection-free
 
+<!-- source: packages/domain/src/DomainEvent.php -->
 ```php
 abstract readonly class DomainEvent
 {
-    public string $eventId;              // uuid-v4, generated from random_bytes — no ramsey/uuid dependency
+    public string $eventId;
+
     public DateTimeImmutable $occurredAt;
 
-    public function __construct(?string $eventId = null, ?DateTimeImmutable $occurredAt = null);
+    public function __construct(?string $eventId = null, ?DateTimeImmutable $occurredAt = null)
+    {
+        $this->eventId = $eventId ?? self::uuid4();
+        $this->occurredAt = $occurredAt ?? new DateTimeImmutable;
+    }
 
-    public function eventId(): string;
-    public function occurredAt(): DateTimeImmutable;
-    public function eventType(): string;  // the concrete class's short name, e.g. "OrderPlaced"
+    public function eventId(): string
+    {
+        return $this->eventId;
+    }
+
+    public function occurredAt(): DateTimeImmutable
+    {
+        return $this->occurredAt;
+    }
+
+    public function eventType(): string
+    {
+        $class = static::class;
+        $pos = strrpos($class, '\\');
+
+        return $pos === false ? $class : substr($class, $pos + 1);
+    }
+    // …
 }
 ```
 
@@ -116,6 +194,7 @@ otherwise default to a freshly generated uuid-v4 and "now". `eventType()` strips
 `static::class` with a plain `strrpos`/`substr` — no reflection. A concrete event is `final readonly` and
 calls `parent::__construct()`:
 
+<!-- source: packages/data/tests/Fixtures/Ordering/OrderPlaced.php -->
 ```php
 final readonly class OrderPlaced extends DomainEvent
 {
@@ -141,6 +220,12 @@ The flow:
    rollback — so a listener only ever observes an event from a unit of work that actually succeeded, never
    from one that rolled back.
 
+The framework's own fixture for this is the service below: `placeOrder()` raises `OrderPlaced` into the pending
+buffer, saves (which persists the row **and** tracks the aggregate) and commits, at which point the event is
+drained and published; `placeOrderAndFail()` does the same and then throws, so the unit of work rolls back and
+there is neither a row nor an event for a listener to see.
+
+<!-- source: packages/data/tests/Fixtures/Ordering/PlaceOrderService.php -->
 ```php
 #[Service]
 #[Transactional]
@@ -150,23 +235,22 @@ class PlaceOrderService
 
     public function placeOrder(string $status): Order
     {
-        $order = new Order(['status' => $status]);
-        $order->place();          // raises OrderPlaced into the pending buffer
-        $this->orders->save($order); // persists the row AND tracks the aggregate
+        $order = new Order(['status' => $status, 'created_at' => self::nextCreatedAt()]);
+        $order->place();
+        $this->orders->save($order);
 
         return $order;
-        // commit here -> OrderPlaced is drained and published
     }
 
     public function placeOrderAndFail(string $status): void
     {
-        $order = new Order(['status' => $status]);
+        $order = new Order(['status' => $status, 'created_at' => self::nextCreatedAt()]);
         $order->place();
         $this->orders->save($order);
 
         throw new RuntimeException('rollback');
-        // rollback here -> no row, no event: the listener never runs
     }
+    // …
 }
 ```
 

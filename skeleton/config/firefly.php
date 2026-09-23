@@ -1240,6 +1240,33 @@ return [
     //     'terms-of-service' => 'https://example.test/terms',
     //
     //     /*
+    //      | The Info Object's `contact`. Any of `name`, `url` and `email`, each blank by default; the
+    //      | object is emitted only when at least one of them is set, and then carries only the ones that
+    //      | are — so a contact with an email and nothing else is a legal one-member object, not a stub
+    //      | with two empty strings in it.
+    //      |
+    //      | Defaults: '' each (no contact object).
+    //     */
+    //     'contact' => [
+    //         'name' => 'The API team',
+    //         'url' => 'https://example.test/support',
+    //         'email' => 'api@example.test',
+    //     ],
+    //
+    //     /*
+    //      | The Info Object's `license`. `name` IS THE GATE: with it blank nothing is emitted at all,
+    //      | because a 3.1 License Object without a name is invalid and half a license is worse than none.
+    //      | `identifier` (an SPDX expression) and `url` are mutually exclusive in 3.1, so `identifier`
+    //      | wins where both are set and `url` is dropped rather than emitting an invalid object.
+    //      |
+    //      | Defaults: '' each (no license object).
+    //     */
+    //     'license' => [
+    //         'name' => 'Apache-2.0',
+    //         'identifier' => 'Apache-2.0',
+    //     ],
+    //
+    //     /*
     //      | Server Objects. Both spellings a real config file uses are accepted — a bare URL string, and
     //      | OpenAPI's own object form with a `description`. An entry that is neither is DROPPED rather than
     //      | emitted, because a Server Object with no `url` is invalid under the 3.1 schema.

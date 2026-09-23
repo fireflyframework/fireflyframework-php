@@ -64,6 +64,7 @@ lives, and a graph built from constructors alone draws almost nothing.
 Nothing is reflected at request time to work any of this out. `ComponentScanner` records the types at **scan** time
 and they ride the compiled manifest exactly like every other scanned fact:
 
+<!-- source: packages/container/src/Descriptor/ComponentDescriptor.php -->
 ```php
 /**
  * The class types this component's constructor asks for — the edges of the bean graph.
@@ -72,6 +73,10 @@ and they ride the compiled manifest exactly like every other scanned fact:
  * reflecting at request time to answer "what depends on what", which the reflection-free boot
  * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is configuration,
  * not a wiring edge, and putting it in the graph would drown the edges that matter.
+ *
+ * Last, with a default, so a manifest compiled before this field existed still rehydrates.
+ *
+ * @var list<string>
  */
 public array $dependencies = [],
 ```

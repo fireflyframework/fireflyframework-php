@@ -109,14 +109,18 @@ failing gate, not a silent lie. (It is also no different in kind from the input 
 
 Three sources, in order:
 
+<!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
 /**
- * A page of orders.
+ * A page of consignments.
  *
- * @return array{page: positive-int, size: positive-int, total: int, items: list<Order>}
+ * @return array{page: positive-int, size: positive-int, total: int, items: list<Consignment>}
  */
 #[GetMapping]
-public function index(): array { /* … */ }
+public function index(): array
+{
+    return ['page' => 1, 'size' => 20, 'total' => 0, 'items' => []];
+}
 ```
 
 1. **The `@return` type expression.** The only place a PHP `array` can say what is *in* it. Prose after the type
@@ -171,11 +175,15 @@ would have told every client to expect an absence that never happens.
 
 ### `#[ApiResponse]` takes a type expression
 
+<!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
 #[PostMapping(status: 201)]
-#[ApiResponse(status: 409, description: 'That reference already exists.', type: Consignment::class)]
+#[ApiResponse(status: 409, description: 'A consignment with that reference already exists.', type: Consignment::class)]
 #[ApiResponse(status: 202, description: 'Accepted for later booking.', type: 'list<Shipment>')]
-public function book(): array { /* … */ }
+public function book(): array
+{
+    return [];
+}
 ```
 
 `type` is a full expression, not only a class or scalar name, and a short name resolves through the controller's own
@@ -248,6 +256,7 @@ constrains it — would have documented an unbounded string.
 
 `MemberType::required()` is deliberately broader than the constraint-derived answer:
 
+<!-- source: packages/openapi/src/Schema/MemberType.php -->
 ```php
 public function required(): bool
 {
@@ -416,17 +425,21 @@ answer the hydrator uses. A document generated from it cannot describe a shape t
 
 Three spellings are recognised, and they all mean the same payload:
 
+<!-- illustrative: an application's own request DTO written three ways at once; the package's NestedFixture\CreateOrderRequest carries the first and third spellings on real members -->
 ```php
 /**
  * @param  list<OrderLineRequest>  $lines       The lines to order, at least one.
  * @param  OrderLineRequest[]      $legacy      The same thing, the older way.
  * @param  array<int, Fulfilment>  $channels    A keyed array works too; the key type is ignored.
  */
-public function __construct(
-    #[Valid] public readonly array $lines = [],
-    public readonly array $legacy = [],
-    public readonly array $channels = [],
-) {}
+final class CreateOrderRequest
+{
+    public function __construct(
+        #[Valid] public readonly array $lines = [],
+        public readonly array $legacy = [],
+        public readonly array $channels = [],
+    ) {}
+}
 ```
 
 A short name is resolved the way PHP would resolve it: an already-qualified name as-is, then the declaring class's
@@ -625,8 +638,9 @@ ETag; composer changes the bytes only when the pinned version changes.
 
 ### What `cdn` costs
 
+<!-- illustrative: the one key a deployment sets in its own config/firefly.php to choose the CDN console -->
 ```php
-'openapi' => ['viewer' => ['style' => 'cdn']],
+return ['openapi' => ['viewer' => ['style' => 'cdn']]];
 ```
 
 Every page view then loads Swagger UI from `cdn.jsdelivr.net`. The version is pinned exactly; **no Subresource
@@ -698,8 +712,9 @@ pushed onto Laravel's HTTP-kernel stack, so it runs for them exactly as it runs 
 documentation down is therefore pure configuration, with no code edge — the same story as
 [Actuator](actuator.md):
 
+<!-- illustrative: the deployment's own config/firefly.php; which role may read the documentation is the application's decision -->
 ```php
-'firefly' => [
+return [
     'security' => [
         'enabled' => true,
         'http' => [
@@ -711,7 +726,7 @@ documentation down is therefore pure configuration, with no code edge — the sa
             ],
         ],
     ],
-],
+];
 ```
 
 Note the three patterns: `openapi` alone does not match `openapi/assets/swagger-ui.css`, and `openapi.json` is a
@@ -726,6 +741,7 @@ The alternative, for a deployment that wants no documentation surface in product
 Every collaborator is a `#[Bean]` behind `#[ConditionalOnMissingBean]`, so replacing one is a short
 `#[Configuration]` in the application and never a fork:
 
+<!-- illustrative: an application's own #[Configuration] replacing one collaborator of the pipeline -->
 ```php
 #[Configuration]
 final class ApiDocsConfiguration

@@ -11,32 +11,33 @@ HTTP-kernel middleware pipeline.
 
 `#[RestController]` is a `#[Component]` stereotype (it extends `Firefly\Container\Attributes\Component`),
 so a controller is discovered by the same component scan as any other bean and gets constructor
-dependency injection for free — no separate controller-registration mechanism:
+dependency injection for free — no separate controller-registration mechanism. This is the package's own
+dispatch fixture — every binding attribute on one controller, with the imports and the local
+`#[ExceptionHandler]` cut:
 
+<!-- source: packages/web/tests/Fixtures/AccountsController.php -->
 ```php
-use Firefly\Web\Attributes\{RestController, RequestMapping, GetMapping, PostMapping, PathVariable, QueryParam, RequestHeader, RequestBody};
-use Firefly\Validation\Valid;
-
 #[RestController]
 #[RequestMapping('/accounts')]
 final class AccountsController
 {
-    public function __construct(private readonly AccountService $accounts) {}
-
+    /** @return array<string,mixed> */
     #[GetMapping('/{id}', name: 'accounts.show')]
     public function show(
         #[PathVariable] int $id,
         #[QueryParam(default: 'summary')] string $view,
         #[RequestHeader('X-Trace')] ?string $trace = null,
     ): array {
-        return $this->accounts->summarize($id, $view);
+        return ['id' => $id, 'view' => $view, 'trace' => $trace];
     }
 
+    /** @return array<string,mixed> */
     #[PostMapping(status: 201)]
     public function create(#[Valid] #[RequestBody] CreateAccountRequest $body): array
     {
-        return $this->accounts->open($body);
+        return ['iban' => $body->iban, 'owner' => $body->owner];
     }
+    // …
 }
 ```
 
@@ -50,6 +51,7 @@ different intent. It **extends** `#[RestController]`, so `RouteScanner`'s `IS_IN
 no scanner change, its routes compile into the same `RouteManifest`, and constructor DI is identical. What
 differs is what the method returns and how the response is built.
 
+<!-- illustrative: an application's own HTML controller; the skeleton ships a real #[Controller] at skeleton/app/Http/WelcomeController.php, but its index() renders the whole welcome page rather than these two teaching lines -->
 ```php
 use Firefly\Web\Attributes\{Controller, GetMapping};
 use Firefly\Web\View\ModelAndView;
@@ -151,6 +153,7 @@ from — with a cycle guard against self-referential DTOs. Each field error is w
 (`must not be blank`) and names it (`"constraint": "NotBlank"`). See [Validation](validation.md) for the full
 constraint catalogue, the sentences, and the underlying `Rule` objects.
 
+<!-- source: packages/web/tests/Fixtures/CreateAccountRequest.php -->
 ```php
 final class CreateAccountRequest
 {

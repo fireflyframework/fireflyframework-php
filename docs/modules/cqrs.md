@@ -28,18 +28,24 @@ severity for RFC-7807 rendering — the wrapper never masks an expected fault to
 
 Annotate a class with `#[CommandHandler]` or `#[QueryHandler]` (both specialise `#[Component]`, so the
 handler is a constructor-injected DI bean automatically — no separate `#[Service]`). The handler exposes
-one public `handle()` method taking the message and returning the result:
+one public `handle()` method taking the message and returning the result. This is the handler the package's own
+banking capstone dispatches, imports cut — and it is deliberately **not `final`**: a `#[Transactional]` method makes
+`TransactionalBeanPostProcessor` swap the bean for a generated `final class …Proxy extends \{Target}`, which cannot
+extend a final class, so marking the handler final would fatal at boot:
 
+<!-- source: packages/cqrs/tests/CapstoneFixtures/Banking/OpenAccountHandler.php -->
 ```php
+// …
 #[CommandHandler]
-final class OpenAccountHandler
+class OpenAccountHandler
 {
     public function __construct(private readonly AccountRepository $accounts) {}
 
     #[Transactional]
     public function handle(OpenAccount $command): int
     {
-        $account = Account::open($command->owner, $command->balance);
+        $account = new Account(['owner' => $command->owner, 'balance' => $command->balance]);
+        $account->open();
         $this->accounts->save($account);
 
         return $account->id;

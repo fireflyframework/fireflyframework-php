@@ -91,6 +91,7 @@ transaction, on the aggregate's own connection, so it commits or rolls back atom
 `firefly/data`'s `Domain\DomainEventDispatcher` (non-frozen — this is the one authorized non-`Version.php`
 edit SP-4 makes) gained an optional constructor seam:
 
+<!-- source: packages/data/src/Domain/PreCommitEventHook.php -->
 ```php
 interface PreCommitEventHook
 {
@@ -329,18 +330,30 @@ M9's `EventPublisher` port had `start()`/`stop()` but no poll loop — there was
 neither in-memory nor queue delivery needs one. A real broker does, so `firefly/eda` gained a small,
 broker-agnostic SPI every adapter (and `firefly:eda:consume`) is built on:
 
+<!-- source: packages/eda/src/Consumer/EventConsumer.php -->
 ```php
 interface EventConsumer
 {
-    /** @param list<string> $destinations */
+    // …
     public function subscribe(array $destinations): void;
+
     public function start(): void;
-    public function poll(int $timeoutMs): ?ReceivedEnvelope; // null on timeout
+
+    /** Block up to $timeoutMs for one message; null on timeout (no message). */
+    public function poll(int $timeoutMs): ?ReceivedEnvelope;
+
     public function ack(ReceivedEnvelope $received): void;
+
     public function nack(ReceivedEnvelope $received, bool $requeue = true): void;
+
     public function stop(): void;
 }
 ```
+
+Every element of `subscribe()`'s `$destinations` is a **destination** — `publish()`'s first argument, or an
+fnmatch glob over such values — never an event type. Over-subscribing at the broker is safe, because
+`SubscriberRegistry` applies each listener's fnmatch on the envelope's `eventType` after receipt;
+under-subscribing is not, because the message never reaches the process at all.
 
 `ReceivedEnvelope` pairs the decoded `EventEnvelope` with an opaque `deliveryTag` (an AMQP delivery tag,
 an outbox row id, or a Kafka `TopicPartition`+offset handle, depending on the adapter) that the *same*
@@ -375,16 +388,23 @@ FIREFLY_PG_DSN="host=127.0.0.1;port=5432;dbname=firefly;user=postgres;password=p
 
 ## Example: switching an app to the Postgres outbox
 
+Set the provider, and uncomment the `postgres` block the reference already ships at its defaults — `relay` is
+optional and only read by `firefly:outbox:relay`, so leave it out for terminal in-process delivery:
+
+<!-- source: skeleton/config/firefly.php -->
 ```php
-// config/firefly.php
-'eda' => [
-    'provider' => 'postgres',
-    'postgres' => [
-        'channel' => 'firefly_eda_events',
-        'max_attempts' => 3,
-        // 'relay' => ['downstream_provider' => 'kafka'], // OPTIONAL — omit for terminal in-process delivery
-    ],
-],
+    'eda' => [
+
+        'provider' => env('FIREFLY_EDA_PROVIDER', 'memory'),
+// …
+        // 'postgres' => [
+        //     'connection' => 'pgsql',
+        //     'channel' => 'firefly_eda_events',
+        //     'max_attempts' => 3,
+        //     'relay' => [
+        //         'downstream_provider' => 'rabbitmq',
+        //     ],
+        // ],
 ```
 
 ```bash

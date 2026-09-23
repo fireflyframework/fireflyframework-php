@@ -13,11 +13,15 @@ span ids reach Laravel `Context` (`firefly.trace_id`,
 
 ## The port
 
+<!-- source: packages/observability/src/Tracing/Tracer.php -->
 ```php
 interface Tracer
 {
+    // …
     public function startSpan(string $name, SpanKind $kind = SpanKind::Internal, array $attributes = [], ?SpanContext $parent = null): Span;
+
     public function currentSpan(): ?Span;
+    // …
     public function trace(string $name, callable $callback, SpanKind $kind = SpanKind::Internal, array $attributes = []): mixed;
 }
 ```
@@ -33,6 +37,7 @@ calls `deactivate()` as soon as its synchronous part is over: it stops being cur
 sibling, not a child) while staying open for the attributes, status and `end()` that arrive with the result.
 That is what keeps every request of an `Http::pool()` a sibling under the span that issued it.
 
+<!-- illustrative: an application's own handler asking the tracer for one span of its own -->
 ```php
 final class ShipOrderHandler
 {

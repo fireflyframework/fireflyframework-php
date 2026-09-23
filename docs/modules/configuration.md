@@ -9,6 +9,7 @@ typed **config accessor**, `#[ConfigProperties]` **DTO binding**, and a config-b
 Active profiles come from `FIREFLY_PROFILES_ACTIVE` (comma-separated), falling back to `APP_ENV`, then
 `default`:
 
+<!-- illustrative: the calls a reader makes from their own code against the resolver; the framework resolves profiles inside its own boot, so no file in the repository contains this trio -->
 ```php
 use Firefly\Config\Profile\ProfileResolver;
 
@@ -42,15 +43,19 @@ time — profiles switched themselves off in production the moment an app follow
 `#[Profile('prod')]` on a `#[ConfigProperties]` DTO means the DTO is bound **only** when one of the named
 profiles is active. Multiple names are OR, never AND:
 
+<!-- source: packages/config/tests/Fixtures/AuditProperties.php -->
 ```php
 use Firefly\Config\Attributes\ConfigProperties;
 use Firefly\Config\Profile\Profile;
-
+// …
+#[ConfigProperties('audit')]
 #[Profile('prod', 'staging')]
-#[ConfigProperties('payments')]
-final readonly class PaymentsProperties
+final readonly class AuditProperties
 {
-    public function __construct(public string $gatewayUrl) {}
+    public function __construct(
+        public bool $enabled = false,
+        public string $sink = 'stderr',
+    ) {}
 }
 ```
 
@@ -75,6 +80,7 @@ up to do it.
 `Config` wraps the repository with fail-fast typed getters — a missing required key or a type mismatch throws
 `ConfigurationException` instead of returning `null`:
 
+<!-- illustrative: the four calls a reader makes against the injected Config port from their own bean -->
 ```php
 $config->string('mail.host');          // required — throws if absent
 $config->int('mail.port', 25);         // default when absent
@@ -84,8 +90,9 @@ $config->array('mail.recipients', []);
 
 ## `#[ConfigProperties]` binding
 
-Bind a config subtree onto a plain readonly DTO:
+Bind a config subtree onto a plain readonly DTO — this one is the package's own binding fixture:
 
+<!-- source: packages/config/tests/Fixtures/MailProperties.php -->
 ```php
 use Firefly\Config\Attributes\ConfigProperties;
 
@@ -147,6 +154,7 @@ the property, the class, and every key that was tried.
 With `firefly/config` installed, `#[Value]` injection resolves against config first, then the environment,
 then the default:
 
+<!-- illustrative: an application's own bean asking for one configured value; the framework ships no Mailer -->
 ```php
 final class Mailer
 {

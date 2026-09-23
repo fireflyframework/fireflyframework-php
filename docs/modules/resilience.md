@@ -9,6 +9,7 @@ config-driven `ResilienceRegistry`.
 
 Inject `ResilienceRegistry` and pull a named, typed pattern instance from it:
 
+<!-- illustrative: an application's own gateway bean pulling one named breaker out of the registry -->
 ```php
 final class PaymentGateway
 {
@@ -38,38 +39,44 @@ recovery value/closure and an exception list), so it is constructed directly at 
 
 Every registry-backed pattern reads a `firefly.resilience.<pattern>.<name>.*` section, where `<pattern>` is
 one of `retry`, `circuit-breaker`, `rate-limiter`, `bulkhead`, `time-limiter` (kebab-case) and `<name>` is
-whatever name your code passes to the accessor:
+whatever name your code passes to the accessor. A pattern instance is named by *your* code, so there is no
+default instance to ship: the reference writes
+`store.lock-block-timeout` at its real default and every named section beside it as a commented example, and
+several of those example values are deliberately not the framework default (the real defaults are `retry`
+`wait-duration` 0 and `backoff-multiplier` 1.0, `circuit-breaker` `minimum-number-of-calls` 0, `time-limiter`
+`timeout` 30s):
 
+<!-- source: skeleton/config/firefly.php -->
 ```php
-// config/firefly.php
-return [
-    'resilience' => [
-        'retry' => [
-            'default' => ['max-attempts' => 3],
-            'aggressive' => ['max-attempts' => 5, 'wait-duration' => '250ms', 'backoff-multiplier' => 2.0],
-        ],
-        'circuit-breaker' => [
-            'payments' => [
-                'failure-threshold' => 5,
-                'minimum-number-of-calls' => 5,
-                'wait-duration-in-open' => '30s',
-                'half-open-probe-timeout' => '30s',
-            ],
-        ],
-        'rate-limiter' => [
-            'api' => ['max-tokens' => 10, 'refill-rate' => 10.0, 'timeout' => '100ms'],
-        ],
-        'bulkhead' => [
-            'db' => ['max-concurrent' => 20, 'max-wait' => '50ms', 'permit-ttl' => '30s'],
-        ],
-        'time-limiter' => [
-            'payments' => ['timeout' => '2s'],
-        ],
-
-        // Not a pattern: how long any cache-backed pattern waits for the shared-state mutex.
-        'store' => ['lock-block-timeout' => '500ms'],
+'resilience' => [
+    // …
+    'store' => [
+        'lock-block-timeout' => '500ms',
     ],
-];
+
+    // 'retry' => [
+    //     'payments' => ['max-attempts' => 3, 'wait-duration' => '250ms', 'backoff-multiplier' => 2.0],
+    // ],
+    // 'circuit-breaker' => [
+    //     'payments' => [
+    //         'failure-threshold' => 5,
+    //         'window-size' => 10,
+    //         'minimum-number-of-calls' => 5,
+    //         'wait-duration-in-open' => '30s',
+    //         'half-open-max-calls' => 1,
+    //         'half-open-probe-timeout' => '30s',
+    //     ],
+    // ],
+    // 'rate-limiter' => [
+    //     'api' => ['max-tokens' => 10, 'refill-rate' => 10.0, 'timeout' => 0],
+    // ],
+    // 'bulkhead' => [
+    //     'db' => ['max-concurrent' => 10, 'max-wait' => 0, 'permit-ttl' => '60s'],
+    // ],
+    // 'time-limiter' => [
+    //     'payments' => ['timeout' => '2s'],
+    // ],
+],
 ```
 
 Duration-shaped keys (`wait-duration`, `max-wait`, `wait-duration-in-open`, `timeout`, …) accept either a
@@ -194,6 +201,7 @@ actual preemption behaviour depends on whether the PHP process has `pcntl`.
 Not registry-driven: constructed directly with the recovery value (or a `Closure` given the caught
 exception) and the exception list to catch, at the call site:
 
+<!-- illustrative: the call site in an application's own method; Fallback is constructed where it is used -->
 ```php
 $result = (new Fallback(fallback: fn (Throwable $e) => Receipt::declined($e), on: [PaymentGatewayException::class]))
     ->call(fn (): Receipt => $this->client->charge($order));
@@ -208,6 +216,7 @@ no fluent chain in M7 (see [Known-latent](#known-latent)). A typical outside-in 
 caller's perspective, mirrors Resilience4j's convention — outermost catches/observes the most, innermost sits
 closest to the real call:
 
+<!-- illustrative: an application's own composition of five patterns around one call -->
 ```php
 $fallback = new Fallback(fn (Throwable $e) => Receipt::declined($e));
 

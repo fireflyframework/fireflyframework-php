@@ -74,15 +74,16 @@ customer-record disclosure the moment a browser is wired to `app.debug`.
 So the gate is **separate, explicit, and off**. `app.debug` cannot switch it on, and neither can
 `firefly.admin.enabled`. Both of those must already be true **and** this key must be set:
 
+<!-- illustrative: the deployment's own config/firefly.php; the shipped reference carries both keys commented out at their env-backed defaults, and turning them on is the deployment's decision -->
 ```php
-'firefly' => [
+return [
     'admin' => [
         'enabled' => true,          // the dashboard itself
         'data' => [
             'enabled' => true,      // ...and, separately, the data browser
         ],
     ],
-],
+];
 ```
 
 Disabled means **empty, everywhere**. The resource registry returns nothing when the key is off, even though
@@ -251,10 +252,22 @@ method announcing `: HasMany` is a relation definition by construction, the same
 and `with()` validation rely on, and one an accessor cannot claim without lying about its signature. Anything
 without that annotation is left alone. The call itself executes no query: Eloquent defers until `get()`.
 
+The skeleton's own entity is the example — the `: HasMany` on `lines()` is the entire signal:
+
+<!-- source: skeleton/app/Orders/OrderEntity.php -->
 ```php
 class OrderEntity extends Model
 {
-    /** @return HasMany<OrderLineEntity, $this> */
+    // …
+    /**
+     * The order's lines.
+     *
+     * The declared `: HasMany` return type is what firefly/admin's data browser reads to offer "browse the
+     * lines of this order" — it discovers a relation by its return type rather than by its name, because a
+     * name says nothing and a type says exactly what this is.
+     *
+     * @return HasMany<OrderLineEntity, $this>
+     */
     public function lines(): HasMany
     {
         return $this->hasMany(OrderLineEntity::class, 'order_id');

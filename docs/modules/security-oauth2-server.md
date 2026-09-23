@@ -16,43 +16,61 @@ as a hash; every error is the RFC 6749 JSON document or the redirect-with-error.
    Keep the file out of version control; an existing file is never overwritten without `--force`.
 2. **Sign-in.** The authorization endpoint needs a session-held user, so turn on the framework's form login (or
    `session.enabled` with a sign-in mechanism of your own) and a user store:
+   <!-- illustrative: the deployment's own config/firefly.php; the model class and the user store are the application's -->
    ```php
-   'security' => [
-       'enabled' => true,
-       'form_login' => ['enabled' => true],
-       'csrf' => ['enabled' => true],
-       'users' => ['driver' => 'eloquent', 'model' => App\Models\User::class, 'authorities' => ''],
+   return [
+       'security' => [
+           'enabled' => true,
+           'form_login' => ['enabled' => true],
+           'csrf' => ['enabled' => true],
+           'users' => ['driver' => 'eloquent', 'model' => App\Models\User::class, 'authorities' => ''],
+       ],
+   ];
    ```
 3. **The server and one client.** The secret is the ENCODED form (`password_hash()` with the `{bcrypt}` prefix;
    `{noop}` only in development):
+   <!-- illustrative: the deployment's own config/firefly.php; a client id, its encoded secret and its redirect URIs belong to the application, not to the framework -->
    ```php
-       'oauth2' => [
-           'server' => [
-               'enabled' => true,
-               'jwt' => ['signing_key' => env('FIREFLY_OAUTH2_SERVER_SIGNING_KEY')],
-               'clients' => [
-                   'web-app' => [
-                       'client_secret' => '{bcrypt}$2y$10$…',
-                       'client_name' => 'The web application',
-                       'authorization_grant_types' => ['authorization_code', 'refresh_token'],
-                       'redirect_uris' => ['https://app.example.com/login/oauth2/code/web-app'],
-                       'scopes' => ['openid', 'profile', 'email'],
+   return [
+       'security' => [
+           // …the keys from step 2…
+           'oauth2' => [
+               'server' => [
+                   'enabled' => true,
+                   'jwt' => ['signing_key' => env('FIREFLY_OAUTH2_SERVER_SIGNING_KEY')],
+                   'clients' => [
+                       'web-app' => [
+                           'client_secret' => '{bcrypt}$2y$10$…',
+                           'client_name' => 'The web application',
+                           'authorization_grant_types' => ['authorization_code', 'refresh_token'],
+                           'redirect_uris' => ['https://app.example.com/login/oauth2/code/web-app'],
+                           'scopes' => ['openid', 'profile', 'email'],
+                       ],
                    ],
                ],
            ],
+       ],
+   ];
    ```
 4. **Be your own resource server.** Point the security core's resource-server filter at the local key set and at
    yourself — the server binds the `JwksDocumentSource` the filter reads, so no HTTP self-fetch ever happens:
+   <!-- illustrative: the deployment's own config/firefly.php, pointing the resource-server filter at this very application -->
    ```php
-           'resource_server' => [
-               'enabled' => true,
-               'jwks_source' => 'local',
-               'jwks_uri' => env('APP_URL').'/oauth2/jwks',
-               'issuer' => env('APP_URL'),
-               'audience' => 'web-app',
+   return [
+       'security' => [
+           // …the keys from steps 2 and 3…
+           'oauth2' => [
+               // …the server block from step 3…
+               'resource_server' => [
+                   'enabled' => true,
+                   'jwks_source' => 'local',
+                   'jwks_uri' => env('APP_URL').'/oauth2/jwks',
+                   'issuer' => env('APP_URL'),
+                   'audience' => 'web-app',
+               ],
            ],
        ],
-   ],
+   ];
    ```
    (`jwks_source: auto` recognises only `/.well-known/jwks.json` as "own"; the server publishes at
    `/oauth2/jwks`, so say `local`.) Now a bearer minted by `/oauth2/token` authenticates on every route
@@ -147,6 +165,7 @@ Three of those rows — `/oauth2/authorize`, `/oauth2/token` and `/oauth2/jwks` 
   (`tokenType`, `registeredClient`, `principalName`, `authorizedScopes`, `authorizationGrantType`, the signed-in
   `Authentication` when there is one, `claim()`/`removeClaim()`). The shipped access token carries no
   authorities; a customizer that wants the resource-server filter to see roles adds the `roles` claim:
+  <!-- illustrative: an application's own token customizer, which by definition is not a file in this repository -->
   ```php
   #[Component]
   final class RolesClaimCustomizer implements OAuth2TokenCustomizer
@@ -284,6 +303,7 @@ principal in `SecurityContextHolder` for one request, while the endpoint demands
 `SecurityContextRepository` holds *between* requests, so that no bearer and no test double can be a resource
 owner without a session behind it. The machine helpers (token, introspection, revocation, userinfo) need no
 sign-in at all.
+<!-- illustrative: the five calls a reader makes from their own test against their own server -->
 ```php
 $oauth2 = new OAuth2ServerTestClient($this);
 $code = $oauth2->obtainCode('web-app', 'https://app.test/cb', 'openid profile');   // authorize, consent if shown, the code off Location

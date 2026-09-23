@@ -11,22 +11,31 @@ this page's surface touches reflection.
 
 ## The ports: `CrudRepository` / `PagingAndSortingRepository`
 
+The port itself, with the class's `@template` docblock and each method's `@param`/`@return` tags cut:
+
+<!-- source: packages/data/src/Repository/CrudRepository.php -->
 ```php
-/**
- * @template TEntity of object
- * @template TId
- */
 interface CrudRepository
 {
+    // …
     public function save(object $entity): object;
+    // …
     public function saveAll(iterable $entities): array;
+    // …
     public function findById(mixed $id): ?object;
+    // …
     public function findAll(): array;
+    // …
     public function findAllById(iterable $ids): array;
+    // …
     public function existsById(mixed $id): bool;
+
     public function count(): int;
+    // …
     public function delete(object $entity): void;
+    // …
     public function deleteById(mixed $id): void;
+
     public function deleteAll(): void;
 }
 ```
@@ -39,14 +48,20 @@ give PHPStan the precise entity and id types back.
 `findAll(Pageable)`/`findAll(Sort)`; PHP has no method overloading, so the two are distinct, cleanly-typed
 methods instead:
 
+<!-- source: packages/data/src/Repository/PagingAndSortingRepository.php -->
 ```php
 interface PagingAndSortingRepository extends CrudRepository
 {
+    // …
     public function findPaged(Pageable $pageable): Page;
-    public function findSlice(Pageable $pageable): Slice;   // no count query — see Slices below
+    // …
+    public function findSlice(Pageable $pageable): Slice;
+    // …
     public function findSorted(Sort $sort): array;
 }
 ```
+
+`findSlice()` runs no count query — see [Slices](#slices) below.
 
 `EloquentRepository` (see [Relational Data](data-relational.md)) is the Eloquent-backed implementation of
 both ports; an application repository extends `EloquentRepository`, not these interfaces directly.
@@ -98,10 +113,17 @@ is untrusted input reachable through the public `__call`, and the `IgnoreCase` p
 into a raw `LOWER(col)` fragment, so this validation is what keeps that fragment injection-free. Arguments
 bind to predicates **in declaration order**, left to right, advancing a cursor by however many values each
 operator consumes (`Between` consumes two, `IsNull`/`True`/`False` consume none, everything else consumes
-one):
+one). The package's own derived-query fixture is the shape, with its declared methods cut away so that only the
+class header and the `@method` tags that type them remain:
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
 /**
+ * A concrete #[Repository] over Record with derived-query methods (resolved by __call, typed for PHPStan via the
+ * method-tag hints below), one explicit #[Query] method, and one DECLARED method per repository attribute the
+ * scanner records — every declared body is the one-line dispatchQuery() delegation, so what differs between
+ * them is only the attribute.
+ *
  * @extends EloquentRepository<Record>
  *
  * @method list<Record> findByStatusAndAmountGreaterThan(string $status, int $amount)
@@ -109,13 +131,20 @@ one):
  * @method bool existsByEmailIgnoreCase(string $email)
  * @method int countByStatus(string $status)
  * @method int deleteByStatus(string $status)
+ * @method Page<Record> findByStatus(string $status, Pageable $pageable)
  */
 #[Repository]
 class RecordRepository extends EloquentRepository
 {
     protected string $model = Record::class;
+    // …
 }
+```
 
+Calling those methods is what the grammar buys:
+
+<!-- illustrative: the calls a reader makes against their own repository; a derived method has no body to point at -->
+```php
 $repo->findByStatusAndAmountGreaterThan('open', 100);        // WHERE status = ? AND amount > ?
 $repo->findTop2ByStatusOrderByAmountDesc('open');             // WHERE status = ? ORDER BY amount desc LIMIT 2
 $repo->existsByEmailIgnoreCase('b@x.test');                   // WHERE LOWER(email) = LOWER(?)
@@ -128,7 +157,9 @@ runtime, dynamic `__call` dispatch.
 
 A method can instead declare its SQL directly, bypassing the derived-query grammar entirely:
 
+<!-- source: packages/data/src/Repository/Attributes/Query.php -->
 ```php
+#[Attribute(Attribute::TARGET_METHOD)]
 final class Query
 {
     public function __construct(
@@ -138,11 +169,16 @@ final class Query
 }
 ```
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
 #[Query('select * from records where email = :email order by amount asc')]
 public function findByEmailRaw(string $email): array
 {
-    return $this->dispatchQuery(__FUNCTION__, func_get_args());
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
+
+    /** @var list<array<string, mixed>> $rows */
+    return $rows;
 }
 ```
 
@@ -158,16 +194,18 @@ both would otherwise apply to the same method name.
 
 A `Specification<TModel>` is a composable predicate over an Eloquent `Builder`:
 
+<!-- source: packages/data/src/Repository/Specification/Specification.php -->
 ```php
-/** @template TModel of Model */
 interface Specification
 {
+    // …
     public function toBuilder(Builder $query): Builder;
 }
 ```
 
 `Specifications` is the static factory (interfaces can't carry static factory bodies in PHP):
 
+<!-- illustrative: the four factory calls a reader makes from their own code -->
 ```php
 Specifications::allOf(...$specifications); // AND-folds left-to-right; zero-arg = match-all
 Specifications::anyOf(...$specifications); // OR-folds left-to-right; zero-arg = match-all
@@ -180,9 +218,21 @@ Each combinator groups its side in a nested closure so precedence survives furth
 `->where(...)->orWhere(...)`, and `NotSpecification` wraps its inner specification in `->whereNot(...)`.
 Apply a built specification with:
 
+<!-- source: packages/data/src/Repository/EloquentRepository.php -->
 ```php
-public function findBySpecification(Specification $specification): array;
-public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page;
+public function findBySpecification(Specification $specification): array
+{
+    $query = $this->reading(__FUNCTION__);
+
+    return $this->translating(fn (): array => $this->narrow($specification->toBuilder($query)->get()->all()));
+}
+// …
+public function findBySpecificationPaged(Specification $specification, Pageable $pageable): Page
+{
+    $query = $this->reading(__FUNCTION__);
+
+    return $this->translating(fn (): Page => $this->pageOf($specification->toBuilder($query), $pageable));
+}
 ```
 
 ## Query by example
@@ -193,6 +243,7 @@ Eloquent model with some attributes set (only what was set, not every column —
 is a one-property probe), a plain object (its public properties) or a plain `column => value` array; the
 `ExampleMatcher` carries the rules:
 
+<!-- illustrative: the probe, the matcher and the six calls a reader writes against their own repository -->
 ```php
 $repo->findByExample(Example::of(['status' => 'open']));                       // WHERE status = ?
 $repo->findByExample(Example::of(new Order(['status' => 'open', 'customer' => 'Ada'])));
@@ -230,10 +281,23 @@ there too.
 
 ### `#[Modifying]`
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
+/** A statement that needs a transaction: returns the affected-row count. */
 #[Modifying]
-#[Query('update orders set status = :status where placed_at < :before')]
-public function closeOlderThan(string $status, string $before): int
+#[Query('update records set status = :status where amount < :amount')]
+public function closeSmall(string $status, int $amount): int
+{
+    $affected = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_int($affected));
+
+    return $affected;
+}
+
+/** A statement that may run without a transaction. */
+#[Modifying(requiresTransaction: false)]
+#[Query('delete from records where status = :status')]
+public function purgeStatus(string $status): int
 {
     $affected = $this->dispatchQuery(__FUNCTION__, func_get_args());
     assert(is_int($affected));
@@ -252,17 +316,52 @@ context to clear.
 
 ### `#[Projection]`
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
-final readonly class OrderSummary
+/**
+ * A derived query hydrated into a DTO; the SELECT list is inferred from RecordSummary's constructor.
+ *
+ * @return list<RecordSummary>
+ */
+#[Projection(RecordSummary::class)]
+public function findByStatusOrderByAmountAsc(string $status): array
 {
-    public function __construct(public int $id, public string $customer, public ?int $total = null) {}
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
+
+    /** @var list<RecordSummary> $rows */
+    return $rows;
 }
 
-/** @return list<OrderSummary> */
-#[Projection(OrderSummary::class)]
-public function findByStatusOrderByPlacedAtDesc(string $status): array
+/**
+ * Explicit SQL hydrated into the same DTO; the SQL owns the select list.
+ *
+ * @return list<RecordSummary>
+ */
+#[Projection(RecordSummary::class)]
+#[Query('select id, email, amount from records where status = :status order by amount asc')]
+public function summariesByStatusRaw(string $status): array
 {
-    return $this->dispatchQuery(__FUNCTION__, func_get_args());
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
+
+    /** @var list<RecordSummary> $rows */
+    return $rows;
+}
+```
+
+The DTO those two hydrate into is a plain `final readonly` class whose constructor names the columns:
+
+<!-- source: packages/data/tests/Fixtures/Repository/RecordSummary.php -->
+```php
+/** A class-based projection over three `records` columns; `email` is nullable in the table and here. */
+final readonly class RecordSummary
+{
+    public function __construct(
+        public int $id,
+        public ?string $email,
+        public int $amount,
+    ) {}
 }
 ```
 
@@ -272,26 +371,44 @@ Each row is hydrated through the DTO's constructor: snake_case column → camelC
 **lossless** or refused: `'150.75'` into an `int`, a backing value the enum has no case for, a string that is
 not a date — each is a `ConfigurationException` naming the DTO, the column, the value and the parameter, never
 a bare `ValueError` or `TypeError`. On a derived method the `SELECT` list is `columns:`
-(`#[Projection(OrderSummary::class, columns: ['id', 'customer'])]`) or the parameters' columns; on a `#[Query]`
+(`#[Projection(RecordSummary::class, columns: ['id', 'email'])]`) or the parameters' columns; on a `#[Query]`
 method the SQL owns its select list. A missing required column and a `NULL` into a non-nullable parameter are
 `ConfigurationException`s at first use, naming both the column and the parameter (the columns are checked
 against the table before the query runs — sqlite would otherwise read an unknown double-quoted identifier as a
 string literal). `findFirst…` returns one DTO or null; `count`/`exists`/`delete` ignore a projection.
-Interface-style projections (Spring's `interface OrderSummary { String getCustomer(); }`) are not offered —
+Interface-style projections (Spring's `interface RecordSummary { String getEmail(); }`) are not offered —
 PHP has no proxy that could implement an interface by column name at runtime; declare the DTO.
 
 ### `#[Lock]`
 
+`PESSIMISTIC_WRITE` compiles to `lockForUpdate()`, `PESSIMISTIC_READ` to `sharedLock()`:
+
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
-/** @return list<Order> */
-#[Lock(LockMode::PESSIMISTIC_WRITE)]     // lockForUpdate(); PESSIMISTIC_READ is sharedLock()
-public function findByCustomer(string $customer): array
+/** @return list<Record> */
+#[Lock(LockMode::PESSIMISTIC_WRITE)]
+public function findByEmail(string $email): array
 {
-    return $this->dispatchQuery(__FUNCTION__, func_get_args());
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
+
+    /** @var list<Record> $rows */
+    return $rows;
 }
 
-$repo->findByIdForUpdate($id);           // findById() under FOR UPDATE — the programmatic twin
+/** @return list<Record> */
+#[Lock(LockMode::PESSIMISTIC_READ)]
+public function findByAmountBetween(int $low, int $high): array
+{
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
+
+    /** @var list<Record> $rows */
+    return $rows;
+}
 ```
+
+`$repo->findByIdForUpdate($id)` is the programmatic twin: `findById()` under `FOR UPDATE`.
 
 Both refuse to run outside an active transaction on the model's connection (`TransactionRequiredException`,
 Spring's behaviour): a row lock is released when the transaction ends, so outside one it guards nothing. Refused
@@ -301,16 +418,32 @@ compiles it to nothing, so the read simply succeeds there.
 
 ### `#[EntityGraph]`
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
-protected array $entityGraphs = ['Order.full' => ['lines', 'lines.product']];
+/** @var array<string, list<string>> */
+protected array $entityGraphs = ['Record.full' => ['entries']];
+// …
+/** @return list<Record> */
+#[EntityGraph(attributePaths: ['entries'])]
+public function findByStatusOrderByIdDesc(string $status): array
+{
+    $rows = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert(is_array($rows));
 
-/** @return list<Order> */
-#[EntityGraph(attributePaths: ['lines'])]
-public function findByStatus(string $status): array { return $this->dispatchQuery(__FUNCTION__, func_get_args()); }
+    /** @var list<Record> $rows */
+    return $rows;
+}
 
-/** @return list<Order> */
-#[EntityGraph('Order.full')]
-public function findAll(): array { return parent::findAll(); }
+/**
+ * The inherited read under a NAMED graph — the Spring shape of annotating an overridden findAll().
+ *
+ * @return list<Record>
+ */
+#[EntityGraph('Record.full')]
+public function findAll(): array
+{
+    return parent::findAll();
+}
 ```
 
 Mapped to Eloquent's `with()`. Every inherited read (`findById`, `findAll`, `findAllById`, `findPaged`,
@@ -325,24 +458,37 @@ A derived method whose **last argument is a `Pageable`** pages its result: a `Sl
 type is `Slice`, a `Page` otherwise — so an undeclared `@method` derived query with a `Pageable` is always a
 `Page` (it has no declared type to read).
 
+<!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 ```php
-/** @return Slice<Order> */
+/**
+ * A derived query that pages as a Slice: the trailing Pageable is what makes it page, the declared return
+ * type is what makes it a Slice rather than a Page.
+ *
+ * @return Slice<Record>
+ */
+#[EntityGraph(attributePaths: ['entries'])]
 public function findByStatusOrderByIdAsc(string $status, Pageable $pageable): Slice
 {
-    return $this->dispatchQuery(__FUNCTION__, func_get_args());
-}
+    $slice = $this->dispatchQuery(__FUNCTION__, func_get_args());
+    assert($slice instanceof Slice);
 
-$repo->findSlice(Pageable::of(3, 20, Sort::by('id')));   // the port's own count-free page
+    /** @var Slice<Record> $slice */
+    return $slice;
+}
 ```
+
+`$repo->findSlice(Pageable::of(3, 20, Sort::by('id')))` is the port's own count-free page.
 
 ## Pagination value objects
 
 `Page<T>` — one page of results plus the grand total, built at the Eloquent edge from a sliced fetch plus a
 count query:
 
+<!-- source: packages/data/src/Repository/Page.php -->
 ```php
 final readonly class Page
 {
+    // …
     public function __construct(
         public array $items,
         public int $total,
@@ -350,67 +496,189 @@ final readonly class Page
         public int $size = 20,
     ) {}
 
-    public function totalPages(): int;      // ceil(total / size)
-    public function hasNext(): bool;
-    public function hasPrevious(): bool;
-    public function numberOfElements(): int;
-    public function map(callable $mapper): self;  // transforms items, preserves paging metadata
+    public function totalPages(): int
+    {
+        return $this->size > 0 ? (int) ceil($this->total / $this->size) : 0;
+    }
+
+    public function hasNext(): bool
+    {
+        return $this->page < $this->totalPages();
+    }
+
+    public function hasPrevious(): bool
+    {
+        return $this->page > 1;
+    }
+
+    public function numberOfElements(): int
+    {
+        return count($this->items);
+    }
+    // …
+    public function map(callable $mapper): self
+    {
+        return new self(array_map($mapper, $this->items), $this->total, $this->page, $this->size);
+    }
 }
 ```
 
 `Slice<T>` — a page without a total, built by fetching one row past the page size; no count query ever runs
 (Spring's `content`/`number` are `items`/`page` here, the names `Page` already uses):
 
+<!-- source: packages/data/src/Repository/Slice.php -->
 ```php
 final readonly class Slice
 {
-    public function __construct(public array $items, public bool $hasNext, public int $page = 1, public int $size = 20) {}
+    // …
+    public function __construct(
+        public array $items,
+        public bool $hasNext,
+        public int $page = 1,
+        public int $size = 20,
+    ) {}
 
-    public function hasNext(): bool;
-    public function hasPrevious(): bool;
-    public function numberOfElements(): int;
-    public function nextPageable(): Pageable;
-    public function map(callable $mapper): self;
+    public function hasNext(): bool
+    {
+        return $this->hasNext;
+    }
+
+    public function hasPrevious(): bool
+    {
+        return $this->page > 1;
+    }
+
+    public function numberOfElements(): int
+    {
+        return count($this->items);
+    }
+
+    public function nextPageable(): Pageable
+    {
+        return Pageable::of($this->page + 1, $this->size);
+    }
+    // …
 }
 ```
 
 `Pageable` — a page request (1-based page number, size, optional `Sort`):
 
+<!-- source: packages/data/src/Repository/Pageable.php -->
 ```php
 final readonly class Pageable
 {
-    public function __construct(public int $page = 1, public int $size = 20, public ?Sort $sort = null) {}
+    public function __construct(
+        public int $page = 1,
+        public int $size = 20,
+        public ?Sort $sort = null,
+    ) {
+        if ($page < 1) {
+            throw new InvalidArgumentException('Page number is 1-based and must be >= 1.');
+        }
 
-    public static function of(int $page, int $size, ?Sort $sort = null): self;
-    public static function unpaged(?Sort $sort = null): self;  // PHP_INT_MAX size sentinel; isPaged() reports false
+        if ($size < 1) {
+            throw new InvalidArgumentException('Page size must be >= 1.');
+        }
+    }
 
-    public function offset(): int;    // zero-based row offset, (page - 1) * size
-    public function next(): self;
-    public function previous(): self; // clamps to page 1
+    public static function of(int $page, int $size, ?Sort $sort = null): self
+    {
+        return new self($page, $size, $sort);
+    }
+
+    public static function unpaged(?Sort $sort = null): self
+    {
+        return new self(1, PHP_INT_MAX, $sort);
+    }
+
+    public function offset(): int
+    {
+        return ($this->page - 1) * $this->size;
+    }
+
+    public function next(): self
+    {
+        return new self($this->page + 1, $this->size, $this->sort);
+    }
+
+    public function previous(): self
+    {
+        return new self(max(1, $this->page - 1), $this->size, $this->sort);
+    }
+
+    public function isPaged(): bool
+    {
+        return $this->size !== PHP_INT_MAX;
+    }
 }
 ```
 
 `Sort`/`Order`/`Direction` — an immutable, composable ordering:
 
+<!-- source: packages/data/src/Repository/Sort.php -->
 ```php
 final readonly class Sort
 {
-    public static function unsorted(): self;
-    public static function by(string ...$properties): self;  // ascending over each property
+    // …
+    public function __construct(public array $orders = []) {}
 
-    public function and(self $other): self;         // concatenates
-    public function ascending(): self;               // rewrites every order to Asc
-    public function descending(): self;              // rewrites every order to Desc
+    public static function unsorted(): self
+    {
+        return new self([]);
+    }
+
+    public static function by(string ...$properties): self
+    {
+        return new self(array_map(
+            static fn (string $property): Order => Order::asc($property),
+            array_values($properties),
+        ));
+    }
+
+    public function and(self $other): self
+    {
+        return new self([...$this->orders, ...$other->orders]);
+    }
+    // …
+    public function isSorted(): bool
+    {
+        return $this->orders !== [];
+    }
 }
+```
 
+`ascending()` and `descending()` are the two combinators cut from the middle: each rewrites every order's
+direction and returns a new `Sort`. An `Order` is a property plus a `Direction`, and the enum's backing value
+*is* the `orderBy` direction string, so there is no translation table anywhere:
+
+<!-- source: packages/data/src/Repository/Order.php -->
+```php
 final readonly class Order
 {
-    public function __construct(public string $property, public Direction $direction = Direction::Asc) {}
+    public function __construct(
+        public string $property,
+        public Direction $direction = Direction::Asc,
+    ) {}
 
-    public static function asc(string $property): self;
-    public static function desc(string $property): self;
+    public static function asc(string $property): self
+    {
+        return new self($property, Direction::Asc);
+    }
+
+    public static function desc(string $property): self
+    {
+        return new self($property, Direction::Desc);
+    }
+
+    public function isAscending(): bool
+    {
+        return $this->direction === Direction::Asc;
+    }
 }
+```
 
+<!-- source: packages/data/src/Repository/Direction.php -->
+```php
 enum Direction: string
 {
     case Asc = 'asc';

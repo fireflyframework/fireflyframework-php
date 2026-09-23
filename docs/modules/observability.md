@@ -45,14 +45,26 @@ Naming a cache store swaps in `CacheMeterRegistry`, which writes through to that
   costs one read rather than a key scan — which not every cache driver supports.
 - Tag order never splits a meter in two; identities sort their tags.
 
+The whole registry is three keys and one nested block in `config/firefly.php`, printed here at the defaults the
+reference ships — `store` empty is the in-process `SimpleMeterRegistry`, `ttl` in seconds with `0` meaning no
+expiry, and `distribution.buckets` empty keeping every timer a summary:
+
+<!-- source: skeleton/config/firefly.php -->
 ```php
-// config/firefly.php
 'observability' => [
     'metrics' => [
-        'store' => env('FIREFLY_METRICS_STORE', ''),   // '' = in-process SimpleMeterRegistry
-        'ttl' => 0,                                     // seconds; 0 = no expiry
+        // …
+        'enabled' => true,
+        // …
+        'store' => env('FIREFLY_METRICS_STORE', ''),
+        // …
+        'ttl' => (int) env('FIREFLY_METRICS_TTL', 0),
+        // …
+        'distribution' => [
+            // …
+            'buckets' => [],
+        ],
     ],
-],
 ```
 
 It is **opt-in** rather than the default on purpose: a metrics registry that silently starts writing to whatever

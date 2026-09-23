@@ -6,12 +6,16 @@ against a Docker-less CI unless explicitly requested.
 
 ## The `@group integration` gate
 
-`phpunit.xml.dist` excludes the `integration` group from the default test run:
+`phpunit.xml.dist` excludes the `integration` group from the default test run — alongside `createproject` and
+`installer`, the two other groups that reach outside the repository:
 
+<!-- source: phpunit.xml.dist -->
 ```xml
 <groups>
     <exclude>
         <group>integration</group>
+        <group>createproject</group>
+        <group>installer</group>
     </exclude>
 </groups>
 ```
@@ -20,6 +24,7 @@ So `vendor/bin/pest` (the whole-branch gate, `composer test`) never touches an i
 Docker-backed test with Pest's `@group` annotation (a PHPDoc-style docblock above the test, exactly as PHPUnit
 reads it):
 
+<!-- illustrative: a test a reader writes in their own package; the framework's own integration tests live under packages/*/tests -->
 ```php
 <?php
 
@@ -35,16 +40,23 @@ it('reads from a real Postgres container', function () {
 skipped — rather than erroring — when Docker isn't available, so a Docker-less environment that does run the
 `integration` group (e.g. by explicit request) degrades to a skip instead of a hard failure:
 
+<!-- source: packages/testing/src/Integration/RequiresDocker.php -->
 ```php
 trait RequiresDocker
 {
-    protected function skipUnlessDocker(): void { /* ... */ }
+    protected function skipUnlessDocker(): void
+    {
+        if (! is_docker_available()) {
+            $this->markTestSkipped('Docker is not available; skipping @group integration test.');
+        }
+    }
 }
 ```
 
 Call `skipUnlessDocker()` at the top of `setUp()` (or the top of the test) in any `FireflyTestCase` subclass that
 needs Docker:
 
+<!-- illustrative: a test case a reader writes in their own package -->
 ```php
 <?php
 
@@ -78,10 +90,12 @@ duck-typed: it reads whichever of `getHost()`/`getMappedPort()`/`getUsername()`/
 the container object actually exposes, so it works with any testcontainers-php container class without a hard
 dependency on the library's types:
 
+<!-- source: packages/testing/src/functions.php -->
 ```php
-function fireflyConfigFor(object $container, string $prefix = 'database.connections.testing'): array
+    function fireflyConfigFor(object $container, string $prefix = 'database.connections.testing'): array
 ```
 
+<!-- illustrative: the call a reader makes in their own test, and the array it hands back -->
 ```php
 <?php
 
@@ -105,6 +119,7 @@ repository from `defineFireflyEnvironment()`.
 @group integration tests (fireflyConfigFor())."`). Require it yourself, in your own package's `require-dev`, to
 write tests like this:
 
+<!-- illustrative: an application's own integration test against a container it starts; testcontainers is a suggest-only dependency, so no file here can contain this -->
 ```php
 <?php
 

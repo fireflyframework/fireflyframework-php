@@ -192,6 +192,7 @@ to the log**, at warning, with the principal and its authorities — they used t
 ("Access is denied for [App\Ctrl::admin].") and a PHP class name is not something a person should read on a
 panel. A rule can carry its own product code and sentence:
 
+<!-- source: packages/security/tests/Fixtures/SecuredController.php -->
 ```php
 #[PreAuthorize("hasAnyRole('MANAGER', 'TENANT_ADMIN')", code: 'RUN_ROLE_REQUIRED', message: 'Only a manager may start a run.')]
 public function start(): void {}
@@ -446,11 +447,13 @@ each depends on master-gated beans.
 
 `firefly/testing` adds three things to `FireflyTestCase`:
 
+<!-- illustrative: the three lines a reader writes in their own test case; the helpers themselves live in firefly/testing -->
 ```php
 $this->actingAsPrincipal('ada', ['ROLE_USER', 'orders:read']);   // direct calls AND every HTTP request
 $this->withoutSecurity();                                         // filters, dispatcher guard, bus authorizers and proxy link off
 
 #[WithMockUser(name: 'admin', roles: ['ADMIN'], authorities: ['orders:write'])]   // on a class or a method
+final class AdminOrdersTest extends FireflyTestCase {}
 ```
 
 `actingAsPrincipal()` sets the holder now and prepends `ActingPrincipalMiddleware` to the kernel, so URL rules, the

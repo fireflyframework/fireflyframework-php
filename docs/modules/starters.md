@@ -23,12 +23,16 @@ while your own beans always take precedence. This is the job of `firefly/autocon
 
 ## Writing an auto-configuration
 
-A `#[Configuration]` class with `#[Order(1000)]` (so it runs after user configuration) and a gated `#[Bean]`:
+A `#[Configuration]` class with `#[Order(1000)]` (so it runs after user configuration) and a gated `#[Bean]`. This
+is the framework's own end-to-end fixture — the one `packages/autoconfigure/tests` boots to prove that a user bean
+for `CachePort` makes this default back off — with its imports cut:
 
+<!-- source: packages/autoconfigure/tests/E2EFixtures/Cache/DefaultCacheAutoConfig.php -->
 ```php
+// …
 #[Configuration]
 #[Order(1000)]
-final class CacheAutoConfiguration
+final class DefaultCacheAutoConfig
 {
     #[Bean]
     #[ConditionalOnMissingBean(CachePort::class)]

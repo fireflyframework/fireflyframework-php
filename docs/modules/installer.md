@@ -64,6 +64,7 @@ layer reflects this — it depends on no other layer in `deptrac.yaml`, and is d
 
 ## The `ProcessRunner` seam
 
+<!-- source: packages/installer/src/ProcessRunner.php -->
 ```php
 interface ProcessRunner
 {

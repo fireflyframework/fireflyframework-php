@@ -15,6 +15,7 @@ application contribute `BootPass` instances via `FireflyKernel::addPass()` — b
 The kernel is never edited to add a new capability; a later package always extends the pipeline
 through `addPass()`.
 
+<!-- illustrative: a BootPass a reader contributes from their own application or package; the kernel only orders passes, it never contains them -->
 ```php
 use Firefly\Context\Boot\{BootContext, BootPass, BootPhase};
 
@@ -44,6 +45,7 @@ final class WarmReportCachePass implements BootPass
 A package contributes its passes by extending `FireflyServiceProvider` and overriding `passes()` —
 never by touching `FireflyKernel` itself:
 
+<!-- illustrative: the reader's own service provider, which by definition is not a file in this repository -->
 ```php
 use Firefly\Context\Boot\FireflyServiceProvider;
 
@@ -158,6 +160,7 @@ application. Each is `INSTANCEOF`-partitioned into one of two evaluation passes,
 
 **Pass one — registry-independent** (`ConditionAttribute`, evaluated over config/classpath/profiles):
 
+<!-- illustrative: an application component gated on a feature flag of its own choosing -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
@@ -167,6 +170,7 @@ use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 final class NewBillingGateway {}
 ```
 
+<!-- illustrative: application components gated on the classpath and on profiles, which this repository does not contain -->
 ```php
 use Firefly\Context\Condition\Attributes\{ConditionalOnClass, ConditionalOnMissingClass, ConditionalOnProfile};
 
@@ -190,6 +194,7 @@ property must be present and truthy; a present-but-`null` value counts as **miss
 **Pass two — bean conditions** (`BeanConditionAttribute`, evaluated against the `BeanDefinitionRegistry`,
 never against resolved instances — matching Spring):
 
+<!-- illustrative: a starter's own default bean, written by whoever ships the starter -->
 ```php
 use Firefly\Context\Condition\Attributes\{ConditionalOnBean, ConditionalOnMissingBean};
 
@@ -207,6 +212,7 @@ Either kind of attribute may also be placed on ONE `#[Bean]` method rather than 
 `beans` `firefly/container` sees for the class — never the whole definition, and never any other
 `#[Bean]` method declared alongside it:
 
+<!-- illustrative: a starter's own #[Configuration] class with one gated and one ungated #[Bean] method -->
 ```php
 use Firefly\Container\Attributes\{Bean, Configuration};
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
@@ -262,6 +268,7 @@ tested seam to build on.
 Every bean — component or `#[Bean]` factory output — passes through the same two-pass pipeline as it
 initializes:
 
+<!-- source: packages/context/src/Processor/BeanPostProcessor.php -->
 ```php
 interface BeanPostProcessor
 {
@@ -299,6 +306,7 @@ are load-bearing:
   every declared method — including any future `#[PreDestroy]` — reflectable exactly as it would be on
   the plain instance.
 
+<!-- illustrative: the application bean the processor below substitutes for; the framework ships no ReportGenerator -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Lifecycle\PostConstruct;
@@ -311,6 +319,7 @@ class ReportGenerator                       // NOT final — the proxy below mus
 }
 ```
 
+<!-- illustrative: an application's own BeanPostProcessor and the proxy subclass it returns -->
 ```php
 use Firefly\Container\Attributes\{Component, Order};
 use Firefly\Context\Processor\BeanPostProcessor;
@@ -373,6 +382,7 @@ and against Octane's `WorkerStopping` event only when this process **is** an Oct
 (see "The boot pipeline", above, and "Octane", below, for why the hook must differ by runtime, and for
 why that split is decided by a runtime marker rather than merely whether the package is installed).
 
+<!-- illustrative: an application bean with both lifecycle callbacks, which the framework cannot contain -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Lifecycle\{PostConstruct, PreDestroy};
@@ -440,6 +450,7 @@ candidate direction (`afterResolving()`) a later milestone could investigate.
 Application code publishes and listens for events through one hexagonal port, never through Laravel's
 dispatcher directly:
 
+<!-- source: packages/context/src/Event/ApplicationEventPublisher.php -->
 ```php
 interface ApplicationEventPublisher
 {
@@ -459,6 +470,7 @@ shape: a plain `#[Component]` with no constructor at all, whose methods are wire
 via `#[AsEventListener]` — publishing and listening are independent, and a class is free to do only
 one of them.
 
+<!-- illustrative: an application listener bean wired purely by #[AsEventListener] -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Event\{ApplicationReadyEvent, AsEventListener, ContextRefreshedEvent};

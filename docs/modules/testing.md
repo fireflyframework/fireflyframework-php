@@ -23,11 +23,8 @@ There are two families, matching the milestone's Family A / Family B split:
     - `defineFireflyEnvironment(Application $app): void` — bindings/manifests set **after** config, e.g.
       `$app->instance(SomeManifest::class, ...)` or a port fake for the whole test class.
 
+  <!-- illustrative: a test case a reader writes in their own application, over their own scan path -->
   ```php
-  <?php
-
-  declare(strict_types=1);
-
   use Firefly\Testing\FireflyTestCase;
 
   final class WidgetProbeTest extends FireflyTestCase
@@ -49,8 +46,10 @@ There are two families, matching the milestone's Family A / Family B split:
 - **`bootFireflyApp()` / `fireflyApplication()`** (`Firefly\Testing\functions.php`, autoloaded via
   Composer's `files` autoload) — the Family B analogue for bare, no-Testbench boots:
 
+  <!-- source: packages/testing/src/functions.php -->
   ```php
   function fireflyApplication(array $config = [], array $providers = [], array $bindings = [], array $needs = []): Application
+  // …
   function bootFireflyApp(array $config = [], array $providers = [], array $bindings = [], array $needs = []): ApplicationContext
   ```
 
@@ -65,15 +64,8 @@ There are two families, matching the milestone's Family A / Family B split:
 
   `bootFireflyApp()` is the same call, but returns the booted `ApplicationContext` instead of the raw `Application`:
 
+  <!-- source: packages/testing/tests/BootFireflyAppTest.php -->
   ```php
-  <?php
-
-  declare(strict_types=1);
-
-  use Firefly\Cqrs\CqrsServiceProvider;
-  use Firefly\Cqrs\CqrsWiringProvider;
-  use Firefly\Cqrs\Handler\HandlerManifest;
-
   it('boots a bare cqrs app with AutoConfigure first and an explicit binding', function () {
       $context = bootFireflyApp(
           config: ['firefly' => ['cqrs' => []]],
@@ -81,7 +73,8 @@ There are two families, matching the milestone's Family A / Family B split:
           bindings: [HandlerManifest::class => new HandlerManifest([], [])],
       );
 
-      expect($context->has(HandlerManifest::class))->toBeTrue();
+      expect($context)->toBeInstanceOf(ApplicationContext::class)
+          ->and($context->has(HandlerManifest::class))->toBeTrue();
   });
   ```
 
@@ -90,17 +83,11 @@ There are two families, matching the milestone's Family A / Family B split:
 - **`FireflyDatabaseTestCase`** (`Firefly\Testing\FireflyDatabaseTestCase`) — a `FireflyTestCase` that binds a
   shared sqlite `:memory:` connection as the `testing` default and adds `createSchema(string $table, Closure(Blueprint): void $blueprint): void`, a thin wrapper over `Schema::create()`:
 
+  <!-- source: packages/testing/tests/Support/WidgetFireflyDatabaseTestCase.php -->
   ```php
-  <?php
-
-  declare(strict_types=1);
-
-  use Firefly\Testing\FireflyDatabaseTestCase;
-  use Illuminate\Database\Schema\Blueprint;
-  use Illuminate\Foundation\Application;
-
-  final class WidgetRepositoryTest extends FireflyDatabaseTestCase
+  class WidgetFireflyDatabaseTestCase extends FireflyDatabaseTestCase
   {
+      // …
       protected function defineFireflyEnvironment(Application $app): void
       {
           $this->createSchema('widgets', function (Blueprint $table): void {
@@ -134,16 +121,18 @@ Laravel's `Event::fake()`/`Bus::fake()` (which don't see Firefly's own ports):
 | `Firefly\Actuator\Health\HealthIndicator` | `FakeHealthIndicator` | Defaults `Status::Up`; constructor takes a `Health`, `setHealth(Health $health)` reprograms it for DOWN/OUT_OF_SERVICE scenarios |
 | `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | The whole port in memory with real W3C-shaped ids: `recorded()` (list of `RecordedSpan` — `name`, `kind`, `attributes`, `events`, `status`, `exception`, `parent`, `ended`), `find(name)`, `ofKind(kind)`, `reset()`; `$spans` — every span name, in start order |
 
+<!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
 ```php
-<?php
+it('records publishes in the FakeEventPublisher-compatible shape', function () {
+    $publisher = new RecordingEventPublisher;
+    $publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice'], ['x' => '1']);
 
-use Firefly\Testing\Double\RecordingEventPublisher;
-
-$publisher = new RecordingEventPublisher;
-$publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice'], ['x' => '1']);
-
-expect($publisher->published)->toHaveCount(1)
-    ->and($publisher->published[0]['eventType'])->toBe('AccountOpened');
+    expect($publisher->published)->toHaveCount(1)
+        ->and($publisher->published[0]['destination'])->toBe('accounts.events')
+        ->and($publisher->published[0]['eventType'])->toBe('AccountOpened')
+        ->and($publisher->published[0]['payload']['owner'])->toBe('alice')
+        ->and($publisher->published[0]['headers']['x'])->toBe('1');
+});
 ```
 
 ## Security test support
@@ -172,10 +161,10 @@ machine endpoints and need no sign-in.
 Registered once, at monorepo boot, by `Firefly\Testing\Pest\FireflyExpectations::register()` — called from the
 root `tests/Pest.php`, the only Pest bootstrap file the monorepo loads:
 
+<!-- source: tests/Pest.php -->
 ```php
-// tests/Pest.php
 use Firefly\Testing\Pest\FireflyExpectations;
-
+// …
 FireflyExpectations::register();
 ```
 
@@ -191,18 +180,20 @@ FireflyExpectations::register();
   and decodes the JSON body) or a plain array; asserts the RFC-7807 shape has `type`/`title`/`status` keys and that
   `status` matches.
 
+The package's own suite is where each of them is exercised; this is `toHavePublished()` with a payload subset:
+
+<!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
 ```php
-<?php
+it('supports the toHavePublished expectation with a payload subset', function () {
+    $publisher = new RecordingEventPublisher;
+    $publisher->publish('accounts.events', 'AccountOpened', ['owner' => 'alice', 'balance' => 500]);
 
-use Firefly\Testing\Double\RecordingCommandBus;
-use Firefly\Testing\Double\RecordingEventPublisher;
-
-// @phpstan-ignore method.notFound
-expect($commandBus)->toHaveHandledCommand(PlaceOrder::class);
-// @phpstan-ignore method.notFound
-expect($publisher)->toHavePublished('order.placed', payloadContains: ['id' => 'o-1']);
-// @phpstan-ignore method.notFound
-expect($healthIndicator->health())->toBeUp();
+    // toHavePublished() is registered at runtime by FireflyExpectations::register() (tests/Pest.php),
+    // invisible to PHPStan's static reflection of the vendor Pest\Expectation class — see the matching
+    // note in functions.php's assertEventPublished().
+    // @phpstan-ignore method.notFound
+    expect($publisher)->toHavePublished('AccountOpened', payloadContains: ['owner' => 'alice']);
+});
 ```
 
 > **Note on the `@phpstan-ignore method.notFound` comments:** Pest registers `expect()->extend(...)` custom
@@ -215,19 +206,22 @@ expect($healthIndicator->health())->toBeUp();
 For plain PHPUnit-style assertions instead of the fluent expectations, two procedural helpers are available
 alongside `bootFireflyApp()`/`fireflyApplication()` in `Firefly\Testing\functions.php`:
 
+<!-- source: packages/testing/src/functions.php -->
 ```php
 function assertEventPublished(object $publisher, string $eventType, array $payloadContains = []): void
+// …
 function assertNoEventsPublished(object $publisher): void
 ```
 
+<!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
 ```php
-<?php
+it('supports the procedural assertions', function () {
+    $publisher = new RecordingEventPublisher;
+    assertNoEventsPublished($publisher);
 
-$publisher = new RecordingEventPublisher;
-assertNoEventsPublished($publisher);
-
-$publisher->publish('d', 'Thing', ['id' => 7]);
-assertEventPublished($publisher, 'Thing', ['id' => 7]);
+    $publisher->publish('d', 'Thing', ['id' => 7]);
+    assertEventPublished($publisher, 'Thing', ['id' => 7]);
+});
 ```
 
 ## Slice builders
@@ -244,43 +238,57 @@ Two "slice" bases boot **only** the beans a PSR-4 scan discovers, plus explicit 
 
 Both expose a **method**, callable from a Pest closure test:
 
+<!-- source: packages/testing/src/Slice/WebSliceTestCase.php -->
 ```php
 public function webSlice(array $scan = [], array $overrides = []): ApplicationContext
+```
+
+<!-- source: packages/testing/src/Slice/DataSliceTestCase.php -->
+```php
 public function dataSlice(array $scan = [], array $overrides = []): ApplicationContext
 ```
 
+<!-- source: packages/testing/tests/Slice/WebSliceTest.php -->
 ```php
-<?php
-
 use Firefly\Testing\Slice\WebSliceTestCase;
 
 uses(WebSliceTestCase::class);
 
 it('boots a web slice and serves a sliced controller route', function () {
+    /** @var WebSliceTestCase $this */
     $this->webSlice(scan: [
-        'App\\Http\\Slice\\' => base_path('tests/Fixtures/Slice'),
+        'Firefly\\Testing\\Tests\\Fixtures\\Slice\\' => dirname(__DIR__).'/Fixtures/Slice',
     ]);
 
     $response = $this->get('/slice/ping');
 
-    expect($response->status())->toBe(200);
+    expect($response->status())->toBe(200)
+        ->and($response->json('pong'))->toBeTrue();
 });
 ```
 
+<!-- source: packages/testing/tests/Slice/DataSliceTest.php -->
 ```php
-<?php
-
-use Firefly\Testing\Slice\DataSliceTestCase;
-
 uses(DataSliceTestCase::class);
 
 it('boots ONLY the sliced data beans and resolves them', function () {
+    /** @var DataSliceTestCase $this */
     $context = $this->dataSlice(
-        scan: ['App\\Domain\\Widgets\\' => base_path('tests/Fixtures/Widgets')],
-        overrides: [PricingPort::class => new FakePricingPort],
+        scan: [
+            'Firefly\\Testing\\Tests\\Fixtures\\Slice\\' => dirname(__DIR__).'/Fixtures/Slice',
+            'Firefly\\Testing\\Tests\\Fixtures\\SliceData\\' => dirname(__DIR__).'/Fixtures/SliceData',
+        ],
+        overrides: [
+            PricingPort::class => new class implements PricingPort
+            {
+                public function price(): int
+                {
+                    return 42;
+                }
+            },
+        ],
     );
-
-    expect($context->get(WidgetRepository::class))->toBeInstanceOf(WidgetRepository::class);
+    // …
 });
 ```
 
@@ -293,34 +301,38 @@ a `LogicException`.
 analog of the three bases/methods above for **hand-written, class-style tests** (a PHPUnit-style test class, not a
 Pest closure file):
 
+<!-- source: packages/testing/src/Attributes/FireflyTest.php -->
 ```php
-public function __construct(
-    public array $providers = [],
-    public array $config = [],
-) {}                                    // #[FireflyTest]
-
-public function __construct(
-    public array $scan = [],
-    public array $overrides = [],
-) {}                                    // #[WebSlice] and #[DataSlice] share this shape
+    public function __construct(
+        public array $providers = [],
+        public array $config = [],
+    ) {}
 ```
 
+`#[WebSlice]` and `#[DataSlice]` share the other shape:
+
+<!-- source: packages/testing/src/Attributes/WebSlice.php -->
 ```php
-<?php
+    public function __construct(
+        public array $scan = [],
+        public array $overrides = [],
+    ) {}
+```
 
-declare(strict_types=1);
+The monorepo's one class-style test is exactly this shape:
 
-use Firefly\Testing\Attributes\WebSlice;
-use Firefly\Testing\Slice\WebSliceTestCase;
-
-#[WebSlice(scan: ['App\\Http\\Slice\\' => __DIR__.'/Fixtures/Slice'])]
-final class SliceControllerTest extends WebSliceTestCase
+<!-- source: packages/testing/tests/Attributes/SliceAttributesTest.php -->
+```php
+#[WebSlice(scan: ['Firefly\\Testing\\Tests\\Fixtures\\Slice\\' => __DIR__.'/../Fixtures/Slice'])]
+final class SliceAttributesTest extends WebSliceTestCase
 {
     public function test_web_slice_attribute_boots_the_sliced_route(): void
     {
         $response = $this->get('/slice/ping');
 
         $this->assertSame(200, $response->status());
+        $this->assertTrue($response->json('pong'));
+        $this->assertInstanceOf(SliceController::class, $this->fireflyContext()->get(SliceController::class));
     }
 }
 ```
@@ -338,66 +350,74 @@ final class SliceControllerTest extends WebSliceTestCase
 - **`FixtureRegistry`** (`Firefly\Testing\Fixture\FixtureRegistry`) — a thin named-fixture registry over plain
   factory closures, the Firefly convenience atop Eloquent factories:
 
+  <!-- source: packages/testing/src/Fixture/FixtureRegistry.php -->
   ```php
-  public function register(string $name, Closure $factory): self   // Closure(array<string,mixed>): object
-  public function has(string $name): bool
-  public function make(string $name, array $overrides = []): object
-  public function load(string ...$names): array                    // list<object>
+      public function register(string $name, Closure $factory): self
+      // …
+      public function has(string $name): bool
+      // …
+      public function make(string $name, array $overrides = []): object
+      // …
+      public function load(string ...$names): array
   ```
 
+  <!-- source: packages/testing/tests/Fixture/FixtureLayerTest.php -->
   ```php
-  <?php
+  it('registers, makes with overrides, and loads named fixtures', function () {
+      $registry = (new FixtureRegistry)
+          ->register('widget', function (array $overrides): Widget {
+              $name = $overrides['name'] ?? 'default';
+              $qty = $overrides['qty'] ?? 1;
 
-  use Firefly\Testing\Fixture\FixtureRegistry;
-
-  $registry = (new FixtureRegistry)->register('widget', function (array $overrides): Widget {
-      return new Widget(
-          $overrides['name'] ?? 'default',
-          $overrides['qty'] ?? 1,
-      );
+              return new Widget(
+                  is_string($name) ? $name : 'default',
+                  is_int($qty) ? $qty : 1,
+              );
+          });
+      // …
+      expect($registry->has('widget'))->toBeTrue()
+          ->and($default->name)->toBe('default')
+          ->and($bolt->qty)->toBe(5)
+          ->and($registry->load('widget', 'widget'))->toHaveCount(2);
   });
-
-  $bolt = $registry->make('widget', ['name' => 'bolt', 'qty' => 5]);
-  $two = $registry->load('widget', 'widget'); // list<Widget>, 2 entries
   ```
 
 - **`AggregateSeeder`** (`Firefly\Testing\Fixture\AggregateSeeder`) — replays an aggregate's domain events through
   an `ApplicationEventPublisher` port:
 
+  <!-- source: packages/testing/src/Fixture/AggregateSeeder.php -->
   ```php
-  public function publishEvents(ApplicationEventPublisher $publisher, object ...$events): void
+      public function publishEvents(ApplicationEventPublisher $publisher, object ...$events): void
   ```
 
+  <!-- source: packages/testing/tests/Fixture/FixtureLayerTest.php -->
   ```php
-  <?php
+      $publisher = new RecordingApplicationEventPublisher;
+      (new AggregateSeeder)->publishEvents($publisher, new Widget('a'), new Widget('b'));
 
-  use Firefly\Testing\Double\RecordingApplicationEventPublisher;
-  use Firefly\Testing\Fixture\AggregateSeeder;
-
-  $publisher = new RecordingApplicationEventPublisher;
-  (new AggregateSeeder)->publishEvents($publisher, new WidgetCreated('a'), new WidgetCreated('b'));
-
-  expect($publisher->events)->toHaveCount(2);
+      expect($publisher->events)->toHaveCount(2);
   ```
 
 - **`ListenerSpy`** (`Firefly\Testing\Fixture\ListenerSpy`) — records arbitrary string values a listener/handler
   fixture saw, in order. Replaces the per-package hand-rolled `Spy` classes:
 
+  <!-- source: packages/testing/src/Fixture/ListenerSpy.php -->
   ```php
-  public array $seen = [];
-  public function record(string $value): void
+      public array $seen = [];
+      // …
+      public function record(string $value): void
   ```
 
+  <!-- source: packages/testing/tests/Fixture/ListenerSpyTest.php -->
   ```php
-  <?php
+  it('appends every recorded value to $seen, in order', function () {
+      $spy = new ListenerSpy;
 
-  use Firefly\Testing\Fixture\ListenerSpy;
+      $spy->record('order.placed');
+      $spy->record('order.shipped');
 
-  $spy = new ListenerSpy;
-  $spy->record('order.placed');
-  $spy->record('order.shipped');
-
-  expect($spy->seen)->toBe(['order.placed', 'order.shipped']);
+      expect($spy->seen)->toBe(['order.placed', 'order.shipped']);
+  });
   ```
 
 ## Boot-time footgun-killers: `FireflyBoot`
@@ -405,9 +425,11 @@ final class SliceControllerTest extends WebSliceTestCase
 `Firefly\Testing\Boot\FireflyBoot` centralizes two boot-time gotchas the hand-rolled test bases used to
 re-derive by hand:
 
+<!-- source: packages/testing/src/Boot/FireflyBoot.php -->
 ```php
-public static function makeConditionEvaluator(Config $config, Profiles $profiles = new Profiles([])): ConditionEvaluator
-public static function stubScheduledManifest(Application $app): ScheduledManifest
+    public static function makeConditionEvaluator(Config $config, Profiles $profiles = new Profiles([])): ConditionEvaluator
+    // …
+    public static function stubScheduledManifest(Application $app): ScheduledManifest
 ```
 
 - **`makeConditionEvaluator()`** — `ConditionEvaluator`'s constructor is arity-2 (`Config` + `Profiles`), but tests
@@ -417,9 +439,8 @@ public static function stubScheduledManifest(Application $app): ScheduledManifes
   `ScheduledManifest` eagerly during container boot, even in slices that never touch scheduling. This binds +
   returns the canonical empty `new ScheduledManifest([])` stub so such a slice can still boot.
 
+<!-- illustrative: the two calls a reader makes from their own test's setUp -->
 ```php
-<?php
-
 use Firefly\Config\Config;
 use Firefly\Testing\Boot\FireflyBoot;
 use Illuminate\Config\Repository;

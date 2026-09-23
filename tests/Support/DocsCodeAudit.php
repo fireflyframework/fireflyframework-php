@@ -96,6 +96,7 @@ final class DocsCodeAudit
         'docs/index.md',
         'docs/installation.md',
         'docs/laravel-comparison.md',
+        'docs/modules',
         'docs/modules.md',
         'docs/publishing.md',
         'docs/tutorial.es.md',
