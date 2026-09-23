@@ -2,7 +2,7 @@
 
 # Probar Aplicaciones LaraFly {.chtitle}
 
-Al terminar este capítulo conocerás las dos familias de arnés de arranque de `firefly/testing` — `FireflyTestCase`/`FireflyDatabaseTestCase` para pruebas de clase al estilo de Testbench, y `bootFireflyApp()`/`fireflyApplication()` para arranques desnudos sin ninguna cola de framework de pruebas — los diez dobles de grabación que permiten a una prueba afirmar sobre lo que un puerto de Firefly realmente vio (algo que los propios `Event::fake()`/`Bus::fake()` de Laravel no pueden hacer, porque nunca han oído hablar de los puertos de Firefly), las cinco expectativas de Pest con sabor a Firefly, el par `WebSliceTestCase`/`DataSliceTestCase` que arranca solo los beans que una prueba necesita, y — porque este libro solo enseña lo que realmente se entrega — una limitación real y honesta con la que se toparon las propias pruebas de `samples/lumen` y cómo la sortearon.
+Al terminar este capítulo conocerás las dos familias de arnés de arranque de `firefly/testing` — `FireflyTestCase`/`FireflyDatabaseTestCase` para pruebas de clase al estilo de Testbench, y `bootFireflyApp()`/`fireflyApplication()` para arranques desnudos sin ninguna cola de framework de pruebas — los once dobles de grabación que permiten a una prueba afirmar sobre lo que un puerto de Firefly realmente vio (algo que los propios `Event::fake()`/`Bus::fake()` de Laravel no pueden hacer, porque nunca han oído hablar de los puertos de Firefly), las cinco expectativas de Pest con sabor a Firefly, el par `WebSliceTestCase`/`DataSliceTestCase` que arranca solo los beans que una prueba necesita, y — porque este libro solo enseña lo que realmente se entrega — una limitación real y honesta con la que se toparon las propias pruebas de `samples/lumen` y cómo la sortearon.
 
 !!! note "Término nuevo: prueba de rebanada (slice test)"
     Una **prueba de rebanada** arranca solo la estrecha vertical del framework que una prueba realmente ejercita — el pipeline web sobre un controlador, o el pipeline de datos sobre un repositorio — en lugar de toda la aplicación. Es la idea de `@WebMvcTest`/`@DataJpaTest` de Spring Boot: arranques más rápidos, y una rebanada mal cableada falla de inmediato en lugar de funcionar silenciosamente por accidente porque algún bean no relacionado resultó estar presente también.
@@ -153,6 +153,7 @@ Los `Event::fake()`/`Bus::fake()` de Laravel interceptan el despacho de eventos 
 | `Firefly\Scheduling\Lock\DistributedLock` | `RecordingDistributedLock` | `$acquired`/`$released`; constructor `(bool $available = true)`; `setAvailable()` conmuta la concesión del cerrojo |
 | `Firefly\Actuator\Health\HealthIndicator` | `FakeHealthIndicator` | Por defecto `Status::Up`; el constructor toma un `Health`, `setHealth()` lo reprograma |
 | `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | `$spans` — cada nombre de span trazado, en orden de llamada; aún invoca y devuelve fielmente la clausura trazada |
+| `Firefly\Context\Event\ApplicationEventPublisher` | `RecordingAuthenticationEvents` | `$events`, más la familia de eventos de seguridad por nombre: `successes()`, `interactive()`, `failures()`, `logouts()`, `denials()`; un constructor opcional `?ApplicationEventPublisher $forwardTo` vuelve a publicar de verdad cada evento grabado. Enlázalo **antes del arranque**, desde `defineFireflyEnvironment()` |
 
 `RecordingEventPublisher`, al completo, muestra la forma que sigue cada doble de la tabla — una implementación real del puerto, más un array sencillo que solo recuerda lo que ocurrió:
 
@@ -502,7 +503,7 @@ Cada una de las llamadas HTTP de los Capítulos 4 al 11 en este libro — cada `
 | `FireflyTestCase` | Base de Testbench; tres hooks (`fireflyProviders`/`configOverrides`/`defineFireflyEnvironment`); config sembrada antes del arranque |
 | `FireflyDatabaseTestCase` / `UsesSqliteMemory` | Añade una conexión sqlite `:memory:` compartida + `createSchema()` |
 | `bootFireflyApp()` / `fireflyApplication()` | Arranques desnudos, sin Testbench; un menú `$needs` rellena los respaldos faltantes de cache/validation/http |
-| 10 dobles de grabación | Implementaciones reales de puertos que graban lo que vieron — la capa de paridad que `Event::fake()` no puede alcanzar |
+| 11 dobles de grabación | Implementaciones reales de puertos que graban lo que vieron — la capa de paridad que `Event::fake()` no puede alcanzar |
 | 5 expectativas de Pest | `toHavePublished`, `toHaveHandledCommand`, `toBeUp`, `toHaveRecordedMetric`, `toBeProblemDetails` |
 | `WebSliceTestCase` / `DataSliceTestCase` | Arranca solo una rebanada escaneada por PSR-4 + sobrescrituras explícitas; por clase de prueba, fallo rápido en datos |
 | `#[FireflyTest]` / `#[WebSlice]` / `#[DataSlice]` | Análogo de atributo de clase de las mismas tres formas, para clases de prueba escritas a mano |

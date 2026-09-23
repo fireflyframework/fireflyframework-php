@@ -2,7 +2,7 @@
 
 # Security: Authentication and Authorization {.chtitle}
 
-By the end of this chapter you will know `firefly/security`'s immutable principal model (`Authentication`, `SecurityContext`, `SecurityContextHolder`), how `DaoAuthenticationProvider` authenticates a username/password pair while defeating enumeration attacks, how `JwtService` refuses to boot with a weak secret and refuses to accept a token with no expiry, the deny-by-default `HttpSecurity` URL DSL, and — the centrepiece of this chapter — exactly how `#[PreAuthorize]` is evaluated by a hand-rolled, **closed-whitelist** expression grammar that never calls `eval()`, is enforced at the CQRS bus you met in Chapter 7, and normalises `hasRole('X')` to a check against the granted authority `'ROLE_X'`.
+By the end of this chapter you will know `firefly/security`'s immutable principal model (`Authentication`, `SecurityContext`, `SecurityContextHolder`), how `DaoAuthenticationProvider` authenticates a username/password pair while defeating enumeration attacks, how `JwtService` refuses to boot with a weak secret and refuses to accept a token with no expiry, the deny-by-default `HttpSecurity` URL DSL, how a person actually signs in through `SecurityContextPersistenceFilter` and `FormLoginFilter` — including the login page the framework ships and the one it refuses to replace — how logging out and staying logged in work, and why a remember-me request is *marked* rather than freshly authenticated, how `firefly.security.http.entry_point` decides between a login redirect and a bare `401`, how the principal is injected into a controller signature, the security event family a sign-in, a logout and a denial each publish, and — the centrepiece of this chapter — exactly how `#[PreAuthorize]` is evaluated by a hand-rolled, **closed-whitelist** expression grammar that never calls `eval()`, normalises `hasRole('X')` to a check against the granted authority `'ROLE_X'`, is enforced at the CQRS bus you met in Chapter 7, and now holds on *any* stereotyped bean through Chapter 9's proxy rather than only at the bus.
 
 !!! note "New term: authentication vs. authorization"
     **Authentication** answers "who is making this request?" — it produces a principal. **Authorization** answers "is that principal allowed to do *this specific thing*?" `firefly/security` keeps the two strictly separate: `Authentication`/`SecurityContextHolder` carry the answer to the first question; `HttpSecurity`, `#[PreAuthorize]`, and `AuthorizationChecker` all answer the second, by evaluating an expression **against** whatever the first question already settled.
@@ -329,6 +329,9 @@ What is stored never carries a credential: a `CredentialsContainer` principal �
 
 The capstone test walks that whole path, and it is the clearest description of the mechanism there is:
 
+!!! note "`$this->events` in this chapter's listings"
+    Every listing below that reads `$this->events->interactive()`, `->successes()`, `->logouts()` or `->denials()` is holding `Firefly\Testing\Double\RecordingAuthenticationEvents` — the security-aware recording double Chapter 12 catalogues, which answers the five event kinds by name instead of making a test filter a mixed list by class. It replaces the `ApplicationEventPublisher` port and must be bound **before boot**, from `defineFireflyEnvironment()`; Chapter 12 also explains the `$forwardTo` argument that keeps real listeners hearing the event.
+
 <!-- source: packages/security/tests/Web/Login/FormLoginFlowTest.php -->
 ```php
 it('signs in with the right password: a NEW session id, the context in the session, the saved request honoured, the page then accessible', function () {
@@ -370,6 +373,8 @@ The framework renders its own login page, in the error page's design. It is a re
 
 <!-- source: packages/security/src/Web/Login/LoginRouteRegistrar.php -->
 ```php
+/**
+ // …
  * A LOGIN PAGE THE APPLICATION ALREADY OWNS IS LEFT ALONE. Laravel's RouteCollection keeps one route per
  * method and URI and the LAST registration wins, and this pass runs after the application's routes — so
  * mounting unconditionally would replace a Breeze/Fortify-style controller, or any #[GetMapping('/login')],
@@ -378,6 +383,8 @@ The framework renders its own login page, in the error page's design. It is a re
  * login page belongs to the application (formLogin().loginPage() switches the default page generator off),
  * and the framework generates a page only when nobody else answers that address. So when a GET route at
  // …
+ */
+final class LoginRouteRegistrar implements BootPass
 ```
 
 So: if a `GET` route at the configured login path already exists when the pass runs — an attribute route, a routes file, Breeze, Fortify, anything — **nothing is mounted**. Everything else still works: `HttpSecurityFilter` permits the page by path (or the redirect would loop), the entry point redirects to it, and `FormLoginFilter` still answers the POST before routing. Your own form needs only to post the session token to the login processing URL.
@@ -390,6 +397,8 @@ Between those two extremes there is a middle option: point `view` at a Blade tem
 
 <!-- source: packages/security/src/User/EloquentUserDetailsService.php -->
 ```php
+/**
+ // …
  * The expected schema (every name configurable under firefly.security.users):
  *   email       the username (unique)
  *   password    the ENCODED password, `{id}`-prefixed for the delegating encoder (`{bcrypt}$2y$…`)
@@ -397,6 +406,13 @@ Between those two extremes there is a middle option: point `view` at a Blade tem
  *   locked      boolean, optional (locked_column; empty means no account is locked)
  *   authorities a JSON list of strings — `["ROLE_USER", "orders:read"]` — or a relation (`roles.name`);
  *               optional (authorities; empty means the model carries none and every account gets [])
+ // …
+ */
+final class EloquentUserDetailsService implements UserDetailsService
+{
+    public function __construct(private readonly UserStoreSettings $settings) {}
+
+    public function loadUserByUsername(string $username): UserDetails
 ```
 
 One query per lookup, and the row is mapped to the immutable `User` value object rather than handed out as the model — the principal ends up in the session and inside event objects, and a model there would drag its connection, its relations and its attributes along with it.

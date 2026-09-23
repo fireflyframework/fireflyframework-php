@@ -1916,3 +1916,288 @@ it('pins every EloquentRepository helper sentence to the visibility and the cove
     expect($failures)->toBe([])
         ->and($judged)->toBeGreaterThan(0, 'no page explains EloquentRepository\'s read helpers any more, so this canary holds nothing');
 });
+
+it('pins every recording-doubles count to the doubles packages/testing really ships', function () {
+    // The seventeenth. Chapter 12 promised "the ten recording doubles" beside a table of ten rows while
+    // packages/testing/src/Double/ shipped eleven: RecordingAuthenticationEvents, added by the security wave,
+    // was missing from both. That was not a cosmetic omission — six new sections of Chapter 10 call
+    // `$this->events->interactive()`, `->logouts()` and `->denials()` throughout, and with the class unnamed
+    // in either chapter a reader could not reproduce one of those flow tests. The Spanish edition carried the
+    // same "diez" and the same ten rows, which is the second reason this walks both.
+    //
+    // DERIVED: the directory is read, and a class another double INSTANTIATES is that double's output rather
+    // than a double of its own — RecordingTracer hands out RecordedSpan, which is why the directory holds
+    // twelve files and the catalogue eleven entries. The instantiation is looked for in code with comments
+    // stripped, because RecordingAuthenticationEvents' docblock writes `new RecordingAuthenticationEvents(…)`
+    // and a bare grep would read that as a sibling being produced.
+    $directory = dirname(__DIR__).'/packages/testing/src/Double';
+    $sources = [];
+
+    foreach ((array) glob($directory.'/*.php') as $path) {
+        $sources[basename((string) $path, '.php')] = (string) file_get_contents((string) $path);
+    }
+
+    expect($sources)->not->toBe([], 'packages/testing/src/Double is empty, so this canary holds nothing');
+
+    // Comments stripped through the tokenizer: a class named only in a docblock is not instantiated.
+    $code = [];
+    foreach ($sources as $name => $source) {
+        $kept = '';
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token)) {
+                $kept .= in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true) ? ' ' : $token[1];
+
+                continue;
+            }
+            $kept .= $token;
+        }
+        $code[$name] = $kept;
+    }
+
+    $doubles = [];
+    foreach (array_keys($sources) as $name) {
+        $produced = false;
+        foreach ($code as $owner => $body) {
+            if ($owner !== $name && preg_match('/\bnew\s+'.preg_quote($name, '/').'\s*\(/', $body) === 1) {
+                $produced = true;
+
+                break;
+            }
+        }
+
+        if (! $produced) {
+            $doubles[] = $name;
+        }
+    }
+    sort($doubles);
+
+    $judged = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            // "the ten recording doubles", "| 10 recording doubles |", "los diez dobles de grabación".
+            if (preg_match('/([\p{L}\d]+)\s+(?:recording doubles|dobles de grabación)/u', $paragraph, $counted) !== 1) {
+                continue;
+            }
+
+            $written = fireflyWrittenNumber($counted[1]);
+
+            if ($written === null) {
+                continue;
+            }
+
+            $judged++;
+
+            if ($written !== count($doubles)) {
+                $failures[] = $page.': counts '.$written.' recording doubles, packages/testing ships '
+                    .count($doubles).' ('.implode(', ', $doubles).')';
+            }
+        }
+    }
+
+    // And the English chapter — the edition docs/contributing.md names as the reference — must NAME every one
+    // of them. A double the manuscript never spells cannot be reached by a reader who only has the book, and
+    // that is precisely how RecordingAuthenticationEvents went missing while its methods were being used three
+    // sections at a time. The Spanish chapter is deliberately outside this half: book/README.md records that
+    // it trails the English one, and a rule that forced a name in before the section explaining it arrived
+    // would buy its strictness with a page nobody could read.
+    $chapter = (string) file_get_contents(dirname(__DIR__).'/book/src/12-testing.md');
+    $unnamed = array_values(array_filter($doubles, static fn (string $name): bool => ! str_contains($chapter, $name)));
+
+    expect($failures)->toBe([])
+        ->and($unnamed)->toBe([], 'book/src/12-testing.md names no '.implode(', ', $unnamed))
+        ->and($judged)->toBeGreaterThan(0, 'no page counts the recording doubles any more, so this canary holds nothing');
+});
+
+it('pins every derived-method count to the @method tags RecordRepository really carries', function () {
+    // The eighteenth, and the one the wave's own diff created. Chapter 5 prints RecordRepository's docblock
+    // verbatim and then says "Not one of those five methods is declared anywhere in the class" — true until
+    // the same commit added a sixth `@method` tag to the listing above it, at which point the page showed six
+    // derived methods and counted five, two lines apart. Nothing could see it: DocsCodeAudit compares the
+    // listing against the file and never reads the prose, and the sentence names no symbol any existing
+    // trigger watches.
+    //
+    // DERIVED: the tags are counted in the fixture, and the "declared nowhere" half is checked too — a class
+    // that started declaring one of its derived methods would make the sentence false in the other direction,
+    // and the count alone would not notice.
+    $path = dirname(__DIR__).'/packages/data/tests/Fixtures/Repository/RecordRepository.php';
+    $source = (string) file_get_contents($path);
+
+    expect($source)->not->toBe('', 'the RecordRepository fixture is gone, so this canary holds nothing');
+
+    preg_match_all('/^\s*\*\s*@method\s+\S+\s+(\w+)\(/m', $source, $tags);
+    $derived = array_values(array_unique($tags[1]));
+    $count = count($derived);
+
+    // A tag whose method the class also declares is not a derived method at all.
+    $declared = array_values(array_filter(
+        $derived,
+        static fn (string $method): bool => preg_match('/\n    (?:public|protected|private)\s+function\s+'.preg_quote($method, '/').'\s*\(/', $source) === 1,
+    ));
+
+    $judged = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $index => $paragraph) {
+            // Only a sentence sitting beside a RecordRepository listing owes this count: the paragraph two
+            // above it is the one that carries the `source:` marker and the fence.
+            $near = implode("\n", array_slice($paragraphs, max($index - 2, 0), 3));
+
+            if (! str_contains($near, 'RecordRepository')) {
+                continue;
+            }
+
+            if (preg_match('/(?:those|esos|esas)\s+([\p{L}\d]+)\s+(?:methods|métodos)/u', $paragraph, $counted) !== 1) {
+                continue;
+            }
+
+            $written = fireflyWrittenNumber($counted[1]);
+
+            if ($written === null) {
+                continue;
+            }
+
+            $judged++;
+
+            if ($written !== $count) {
+                $failures[] = $page.': counts '.$written.' derived methods, RecordRepository carries '
+                    .$count.' @method tags ('.implode(', ', $derived).')';
+            }
+
+            if (str_contains($paragraph, 'declared anywhere') && $declared !== []) {
+                $failures[] = $page.': says none of them is declared, but the class declares '
+                    .implode(', ', $declared);
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page counts RecordRepository\'s derived methods any more, so this canary holds nothing');
+});
+
+it('pins every "complete in both languages" claim to how far apart the two manuscripts really are', function () {
+    // The nineteenth, and the one that guards a claim a reader acts on by CHOOSING AN EDITION. Until wave R
+    // the two manuscripts were line-for-line the same size, and README.md ("**complete and bilingual (English
+    // + Spanish)**") and book/README.md ("The manuscript is **complete** in both languages") were simply
+    // true. Then five chapters grew in English alone — 05 went 565 -> 1022 lines against 565 in Spanish, 10
+    // went 565 -> 1093 against 578, 12 went 518 -> 701 against 518 — and both sentences went on telling a
+    // reader who picks up the Spanish PDF that it is the same book. docs/contributing.md recorded the lag,
+    // but only for the provenance markers, never for content.
+    //
+    // DERIVED, AND SYMMETRICAL. The gap is measured, never typed: every chapter that exists in both trees is
+    // compared, and a pair counts as diverged when the Spanish file is shorter than THRESHOLD of the English
+    // one. While anything diverges, a completeness claim on either page must carry the caveat; when nothing
+    // does any more, the caveat must GO — a warning that outlives its reason teaches a reader to ignore
+    // warnings. And every chapter the caveat names by number has to be one of the diverged ones, so the list
+    // cannot quietly go stale in either direction.
+    $threshold = 0.9;
+
+    $root = dirname(__DIR__);
+    $behind = [];
+
+    foreach ((array) glob($root.'/book/src/*.md') as $path) {
+        $name = basename((string) $path);
+        $spanish = $root.'/book/src-es/'.$name;
+
+        if (! is_file($spanish)) {
+            continue;
+        }
+
+        $english = count(file((string) $path) ?: []);
+        $translated = count(file($spanish) ?: []);
+
+        if ($english > 0 && $translated < $english * $threshold) {
+            $behind[$name] = $translated.'/'.$english;
+        }
+    }
+
+    // "05-persistence-repositories.md" -> 5, so a caveat writing "chapters 5, 9, 10" can be checked.
+    $numbers = [];
+    foreach (array_keys($behind) as $name) {
+        if (preg_match('/^(\d+)/', $name, $matched) === 1) {
+            $numbers[] = (int) $matched[1];
+        }
+    }
+
+    $failures = [];
+    $judged = 0;
+
+    foreach (['README.md', 'book/README.md'] as $page) {
+        // THE CAVEAT IS READ WHERE THE CLAIM IS MADE, not anywhere on the page. README.md writes "behind" in
+        // four unrelated sentences (a bean wired in behind its port, a dashboard behind a flag) and "Spanish"
+        // in a container fixture's name, so a page-wide grep for both answers true with no caveat written at
+        // all — which is exactly the false green this canary would then hand back. The window is the claiming
+        // paragraph and the few that follow it, stopping at the next heading: far enough to let book/README.md
+        // put the caveat in its own paragraph under the same `## Manuscript status`, near enough that a reader
+        // who reads the claim reads the caveat too.
+        //
+        // The paragraphs are split here rather than taken from fireflyProsePages(), because that walk covers
+        // README.md, docs/ and both manuscripts — and NOT book/README.md, which is one of the two pages this
+        // canary exists for. Reading it through the walk left the book's own page silently unjudged, which the
+        // $judged canary below now makes impossible to repeat.
+        $split = preg_split('/\n\s*\n/', (string) file_get_contents($root.'/'.$page));
+        $paragraphs = $split === false ? [] : $split;
+        $claim = null;
+
+        foreach ($paragraphs as $index => $paragraph) {
+            if (preg_match('/complete\b[^.]{0,80}\bboth languages|complete and bilingual/i', $paragraph) === 1) {
+                $claim = $index;
+
+                break;
+            }
+        }
+
+        $window = '';
+        if ($claim !== null) {
+            foreach (array_slice($paragraphs, $claim, 5) as $offset => $paragraph) {
+                if ($offset > 0 && str_starts_with(ltrim($paragraph), '#')) {
+                    break;
+                }
+
+                $window .= $paragraph."\n\n";
+            }
+        }
+
+        $claimsParity = $claim !== null;
+        $caveat = preg_match('/(trails?|behind|has not received)\b/i', $window) === 1
+            && preg_match('/\bSpanish\b/i', $window) === 1;
+
+        if ($claimsParity) {
+            $judged++;
+        }
+
+        if ($behind !== [] && $claimsParity && ! $caveat) {
+            $failures[] = $page.' claims the book is complete in both languages while the Spanish edition is '
+                .'behind on '.implode(', ', array_map(
+                    static fn (string $name, string $sizes): string => $name.' ('.$sizes.')',
+                    array_keys($behind),
+                    array_values($behind),
+                ));
+        }
+
+        if ($behind === [] && $caveat) {
+            $failures[] = $page.' still warns that the Spanish edition trails the English one, and no chapter '
+                .'pair diverges any more — delete the warning rather than leaving it to be ignored';
+        }
+
+        // Any chapter the caveat names by number must really be one of the diverged ones.
+        if ($caveat && preg_match('/chapters?\s+([\d,\s]*\d)(?:\s+and\s+(\d+))?/i', $window, $listed) === 1) {
+            $named = array_map('intval', preg_split('/[,\s]+/', trim($listed[1])) ?: []);
+            if (isset($listed[2])) {
+                $named[] = (int) $listed[2];
+            }
+
+            $wrong = array_values(array_diff(array_filter($named), $numbers));
+
+            if ($wrong !== []) {
+                $failures[] = $page.' names chapter(s) '.implode(', ', $wrong).' as behind, and they are not: '
+                    .'the diverged chapters are '.implode(', ', $numbers);
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBe(2, 'one of README.md / book/README.md no longer says how complete the book is in each language, so this canary is only half holding');
+});

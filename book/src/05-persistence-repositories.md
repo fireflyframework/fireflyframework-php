@@ -2,7 +2,7 @@
 
 # Persistence & the Repository Pattern {.chtitle}
 
-By the end of this chapter you will know the two ports every LaraFly repository implements, how `EloquentRepository` gives you full CRUD for the price of one `$model` assignment, how a derived-query method name compiles into a real Eloquent query with no body of your own, the `#[Query]` escape hatch for anything a name cannot express cleanly, how `Specification`s compose reusable predicates, the `Page`/`Pageable`/`Sort` value objects that carry pagination end to end, and the domain-event bridge that ties a repository's `save()` call to Chapter 6's aggregate.
+By the end of this chapter you will know the two ports every LaraFly repository implements, how `EloquentRepository` gives you full CRUD for the price of one `$model` assignment, how a derived-query method name compiles into a real Eloquent query with no body of your own, the `#[Query]` escape hatch for anything a name cannot express cleanly, how `Specification`s compose reusable predicates, how **query by example** turns a half-filled entity into a query with no predicate written at all, what the four method attributes (`#[Modifying]`, `#[Projection]`, `#[Lock]`, `#[EntityGraph]`) each say about a method, the `Page`/`Pageable`/`Sort` value objects that carry pagination end to end and the `Slice` that deliberately does not count, the `DataAccessException` family every driver error is translated into — and where that translation deliberately does not happen — and the domain-event bridge that ties a repository's `save()` call to Chapter 6's aggregate.
 
 !!! note "New term: derived query"
     A **derived query** is a repository method with **no body** — just a name like `findByOwnerId` — whose SQL the framework compiles by parsing the method name itself, at the moment it is first called. You write the name; the framework writes the `WHERE` clause.
@@ -275,7 +275,7 @@ class RecordRepository extends EloquentRepository
     protected string $model = Record::class;
 ```
 
-Not one of those five methods is declared anywhere in the class: `__call()` parses each name the first time it is used and the compiled manifest answers from then on.
+Not one of those six methods is declared anywhere in the class: `__call()` parses each name the first time it is used and the compiled manifest answers from then on.
 
 `EloquentWalletRepository::findByOwnerId()` is the real, shipped version of exactly this pattern — the only difference is that it `implements WalletRepository`, so its body calls `dispatchQuery()` explicitly instead of relying on `__call()`, for the variance reason explained above. Either way, `findByOwnerId('alice')` compiles to `WHERE owner_id = ?` with no SQL written by hand.
 

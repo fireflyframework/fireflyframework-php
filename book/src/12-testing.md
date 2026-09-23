@@ -2,7 +2,7 @@
 
 # Testing LaraFly Applications {.chtitle}
 
-By the end of this chapter you will know `firefly/testing`'s two boot-harness families — `FireflyTestCase`/`FireflyDatabaseTestCase` for Testbench-style class tests, and `bootFireflyApp()`/`fireflyApplication()` for bare boots with no test framework glue at all — the ten recording doubles that let a test assert on what a Firefly port actually saw (something Laravel's own `Event::fake()`/`Bus::fake()` cannot do, because they have never heard of Firefly's ports), the five Firefly-flavored Pest expectations, the `WebSliceTestCase`/`DataSliceTestCase` pair that boots only the beans a test needs, and — because this book only teaches what is actually shipped — a real, honest limitation `samples/lumen`'s own tests ran into and how they worked around it.
+By the end of this chapter you will know `firefly/testing`'s two boot-harness families — `FireflyTestCase`/`FireflyDatabaseTestCase` for Testbench-style class tests, and `bootFireflyApp()`/`fireflyApplication()` for bare boots with no test framework glue at all — the eleven recording doubles that let a test assert on what a Firefly port actually saw (something Laravel's own `Event::fake()`/`Bus::fake()` cannot do, because they have never heard of Firefly's ports), the five Firefly-flavored Pest expectations, the `WebSliceTestCase`/`DataSliceTestCase` pair that boots only the beans a test needs, the Pest 4 browser suite that drives the **shipped skeleton** in the same process — same container, same SQLite database, no second server — and why `assertNoJavaScriptErrors()` is the assertion that earns it, the helpers that sign a test in (`actingAsAuthentication()` and the `actingAsPrincipal()`/`actingAsOidcUser()` pair built on it, the declarative `#[WithMockUser]`, and `withoutSecurity()` for the other direction), and — because this book only teaches what is actually shipped — a real, honest limitation `samples/lumen`'s own tests ran into and how they worked around it.
 
 !!! note "New term: slice test"
     A **slice test** boots only the narrow vertical of the framework a test actually exercises — the web pipeline over one controller, or the data pipeline over one repository — rather than the whole application. It is Spring Boot's `@WebMvcTest`/`@DataJpaTest` idea: faster boots, and a mis-wired slice fails immediately instead of quietly working by accident because some unrelated bean happened to be present too.
@@ -157,6 +157,32 @@ Laravel's `Event::fake()`/`Bus::fake()` intercept *Laravel's own* event and job 
 | `Firefly\Scheduling\Lock\DistributedLock` | `RecordingDistributedLock` | `$acquired`/`$released`; constructor `(bool $available = true)`; `setAvailable()` toggles lock grant |
 | `Firefly\Actuator\Health\HealthIndicator` | `FakeHealthIndicator` | Defaults `Status::Up`; constructor takes a `Health`, `setHealth()` reprograms it |
 | `Firefly\Observability\Tracing\Tracer` | `RecordingTracer` | `$spans` — every traced span name, in call order; still faithfully invokes and returns the traced callback |
+| `Firefly\Context\Event\ApplicationEventPublisher` | `RecordingAuthenticationEvents` | `$events`, plus the security family by name: `successes()`, `interactive()`, `failures()`, `logouts()`, `denials()`; an optional constructor `?ApplicationEventPublisher $forwardTo` re-publishes every recorded event for real |
+
+Two rows name the same port, and the difference between them is what a security test needs. `RecordingApplicationEventPublisher` records objects; `RecordingAuthenticationEvents` also knows the five security event kinds by name, so a sign-in flow test reads `$this->events->failures()[0]->username` instead of filtering a mixed list by class. It is the double every listing in Chapter 10's sign-in, logout and denial sections calls `$this->events`.
+
+Its docblock carries the two rules that make it work, and both are easy to get wrong:
+
+<!-- source: packages/testing/src/Double/RecordingAuthenticationEvents.php -->
+```php
+/**
+ // …
+ * Bind it BEFORE boot — `$app->instance(ApplicationEventPublisher::class, $events)` from
+ * defineFireflyEnvironment() — so firefly/security's AuthenticationEventPublisher bean wraps it; the
+ * framework's own default is a bound()-guarded provider binding, which is why an instance() wins there.
+ // …
+ */
+final class RecordingAuthenticationEvents implements ApplicationEventPublisher
+{
+    /** @var list<object> */
+    public array $events = [];
+
+    public function __construct(private readonly ?ApplicationEventPublisher $forwardTo = null) {}
+```
+
+The first rule is the binding moment: an `instance()` registered from `defineFireflyEnvironment()` is already there when the security provider's `bound()`-guarded default would have run, so the spy wins — bind it after boot and the framework's own publisher is what the filters hold.
+
+The second is `$forwardTo`, and it exists because binding the spy **replaces** the port. Nothing registered against the dispatcher hears a security event any more: an `#[AsEventListener]` on `InteractiveAuthenticationSuccessEvent` stays silent for the whole suite, which is how a suite whose pipeline includes such a listener (`firefly/security-oauth2-server` stamps the sign-in instant that way) breaks without an error. Hand the framework's own publisher in — `new RecordingAuthenticationEvents(new DispatcherEventPublisher($app))` — and every event is recorded *and* published for real. The default, `null`, keeps the spy a pure recorder, which is right for a suite that only reads.
 
 `RecordingEventPublisher`, in full, shows the shape every double in the table follows — a real port implementation, plus a plain array that just remembers what happened:
 
@@ -549,6 +575,17 @@ Pest 4 plus `pestphp/pest-plugin-browser` serves the Testbench-booted applicatio
  * The application every browser scenario drives: the shipped skeleton, compiled by the real firefly:cache
  * writer and booted under Testbench with the provider set a created app gets — served to Chromium by the
  * plugin's in-process server, so the test keeps the container and the SQLite connection.
+ // …
+ */
+abstract class BrowserTestCase extends SkeletonExampleTestCase
+{
+    use SeedsOrders;
+
+    /** @return list<class-string<ServiceProvider>> */
+    protected function fireflyProviders(): array
+    {
+        return DiscoveredProviders::forSkeleton();
+    }
 ```
 
 And it is the **skeleton** that gets driven, compiled by the real `firefly:cache` writer — the same project `composer create-project` produces. A browser test failing is therefore evidence about what a new user's application does, not about a fixture built to pass.
@@ -631,7 +668,7 @@ And a browser authenticates the way a person does: `SecuredBrowserTestCase` puts
 
 ## Signing a test in
 
-Which brings us to the helpers the security chapters lean on. Three of them, and each is built on the one below it:
+Which brings us to the helpers the security chapters lean on. Three methods, a fourth attribute beside the three in `Firefly\Testing\Attributes\`, and one switch that turns the whole stack off. The three methods are built one on the next:
 
 <!-- source: packages/testing/src/FireflyTestCase.php -->
 ```php
@@ -655,6 +692,7 @@ public function actingAsAuthentication(Authentication $authentication): static
 
 <!-- source: packages/testing/src/FireflyTestCase.php -->
 ```php
+    /**
      * Run the rest of this test as a person who signed in through OpenID Connect (Spring Security's
      * `oidcLogin()` test support, as a method): the principal is a real DefaultOidcUser over an id token whose
      * claims are `{iss: https://idp.test, sub: user, aud: firefly-app, iat, exp}` overlaid by $claims — and
@@ -665,9 +703,55 @@ public function actingAsAuthentication(Authentication $authentication): static
      * and $registrationId on its attributes, which the authorized-client manager and RP-initiated logout read.
      * The principal is named by $nameAttributeKey read from the claims (`sub` by default), so a claim for it
      * must exist. Nothing here talks to a provider: no registration, no discovery, no token.
+     // …
+     */
+    public function actingAsOidcUser(array $claims = [], array $authorities = [], string $registrationId = 'oidc', array $scopes = ['openid'], string $nameAttributeKey = 'sub'): static
 ```
 
 `actingAsOidcUser()` builds a **real** `DefaultOidcUser`, with the authorities a real login would have granted — `OIDC_USER` plus a `SCOPE_x` per scope — and the registration id on the token's attributes, which is what the authorized-client manager and RP-initiated logout read. Nothing here talks to a provider: no registration, no discovery, no token request. And it deliberately carries **no raw token value**, because that is exactly the shape the session hands a controller after a real sign-in; a test that gets a raw token would be testing something the application never sees.
+
+`#[WithMockUser]` is Spring's `@WithMockUser`, and it is the declarative form of `actingAsPrincipal()` — the fourth attribute in `Firefly\Testing\Attributes\`, beside the three slice attributes above:
+
+<!-- source: packages/testing/src/Attributes/WithMockUser.php -->
+```php
+/**
+ * Spring's @WithMockUser: run the test (or every test of the class) as a signed-in principal. `roles` are
+ * prefixed with `ROLE_` unless already so; `authorities` are taken verbatim. A method-level attribute wins
+ * over a class-level one. Honoured by FireflyTestCase::setUp() through actingAsPrincipal(), so it covers
+ * direct calls, HTTP requests through the filters, the dispatcher guard and proxied beans alike.
+ */
+#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+final readonly class WithMockUser
+{
+    /**
+     * @param  list<string>  $roles
+     * @param  list<string>  $authorities
+     */
+    public function __construct(
+        public string $name = 'user',
+        public array $roles = ['USER'],
+        public array $authorities = [],
+    ) {}
+```
+
+Unlike the three slice attributes, this one is read in `setUp()` on *any* `FireflyTestCase`, method-level beating class-level, so a hand-written test class can sign its whole suite in once and name the exception on the one method that needs a different principal.
+
+And for the other direction there is `withoutSecurity()`:
+
+<!-- source: packages/testing/src/FireflyTestCase.php -->
+```php
+    /**
+     * Switch the security stack off for the rest of this test: the URL filter, the CSRF filter, every
+     * authentication filter, the proxy's method-security link and the CQRS bus authorizers (through
+     * MethodSecurityMessageEnforcer, which DefaultCommandBus/DefaultQueryBus hold by constructor) read their
+     * flags live, and the dispatcher guard is rebound to the no-op default. Beans already built stay built;
+     * only their gates change — so a controller test that dispatches a command whose handler carries a
+     * #[PreAuthorize] gets the handler's answer, not a 401.
+     */
+    public function withoutSecurity(): static
+```
+
+Read the last sentence twice, because it is the reason this method exists at all rather than a config override: the flags are read **live**, on every request, so flipping them mid-test changes the gates on beans that were already built. A test that only wants to exercise the thing *behind* the gate does not have to re-boot the application to get past it.
 
 ---
 
@@ -678,7 +762,7 @@ public function actingAsAuthentication(Authentication $authentication): static
 | `FireflyTestCase` | Testbench base; three hooks (`fireflyProviders`/`configOverrides`/`defineFireflyEnvironment`); config seeded before boot |
 | `FireflyDatabaseTestCase` / `UsesSqliteMemory` | Adds a shared sqlite `:memory:` connection + `createSchema()` |
 | `bootFireflyApp()` / `fireflyApplication()` | Bare, no-Testbench boots; a `$needs` menu fills in missing cache/validation/http fallbacks |
-| 10 recording doubles | Real port implementations that record what they saw — the parity layer `Event::fake()` can't reach |
+| 11 recording doubles | Real port implementations that record what they saw — the parity layer `Event::fake()` can't reach |
 | 5 Pest expectations | `toHavePublished`, `toHaveHandledCommand`, `toBeUp`, `toHaveRecordedMetric`, `toBeProblemDetails` |
 | `WebSliceTestCase` / `DataSliceTestCase` | Boot only a PSR-4-scanned slice + explicit overrides; per-test-class, fail-fast on data |
 | `#[FireflyTest]` / `#[WebSlice]` / `#[DataSlice]` | Class-attribute analog of the same three shapes, for hand-written test classes |
@@ -689,6 +773,9 @@ public function actingAsAuthentication(Authentication $authentication): static
 | `assertNoJavaScriptErrors()` | The assertion that earns the suite: a page that renders and throws in the console looks fine in a screenshot |
 | `actingAsAuthentication()` | The seam under `actingAsPrincipal()` and `actingAsOidcUser()`; middleware prepended once, so a second call swaps the principal |
 | `actingAsOidcUser()` | Spring's `oidcLogin()` as a method: a real `DefaultOidcUser`, real authorities, **no raw token** — the shape a session really hands a controller |
+| `RecordingAuthenticationEvents` | The security-aware double: the security event family by name (`successes`/`interactive`/`failures`/`logouts`/`denials`); bind it before boot, and pass `$forwardTo` when real listeners must still hear |
+| `#[WithMockUser]` | Spring's `@WithMockUser`: the declarative `actingAsPrincipal()`, read in `setUp()`, method-level beating class-level |
+| `withoutSecurity()` | Every security flag off for the rest of the test — read live, so beans already built change gates without a re-boot |
 
 ---
 
@@ -699,3 +786,5 @@ public function actingAsAuthentication(Authentication $authentication): static
 3. **Run the browser suite, then break a page.** Run `composer test:browser` and look at `tests/Browser/Screenshots`. Then add a `<script>` that throws to the welcome view and re-run: confirm the page still renders, still passes every `assertSee`, and that `assertNoJavaScriptErrors()` is the only assertion that catches it.
 4. **Prove the suite split matters.** Time `composer test` and confirm nothing downloads Chromium. Then try `vendor/bin/pest --exclude-group=browser` and watch Playwright boot anyway — the group label filters tests, the suite split is what stops the files being included at all.
 5. **Add a `RequiresDocker`-gated integration test.** Pick a repository backed by Eloquent, write an `@group integration` test against a real Postgres testcontainer using `fireflyConfigFor()`, and confirm `vendor/bin/pest` (no flags) skips it entirely while `vendor/bin/pest --group=integration` runs it for real.
+6. **Watch `$forwardTo` matter.** Bind a `RecordingAuthenticationEvents` with no `$forwardTo` from `defineFireflyEnvironment()`, register an `#[AsEventListener]` on `InteractiveAuthenticationSuccessEvent` that writes a row, and sign in: confirm the spy records the event and the listener never ran. Then re-bind it wrapping the framework's own publisher and confirm both happen. Finally move the `instance()` call to *after* boot and confirm the spy records nothing at all — the binding moment is the whole trick.
+7. **Reach past a gate two ways.** Take a controller test that gets a `401`, and make it pass twice: once with `#[WithMockUser(roles: ['ADMIN'])]` on the method, once with `withoutSecurity()`. Then put `#[WithMockUser]` on the class and a different one on a single method, and confirm which of the two the framework honours.

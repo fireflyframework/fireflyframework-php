@@ -323,9 +323,9 @@ final class DocsCodeAudit
     }
 
     /**
-     * A CUT MAY NOT HIDE WHAT THE LISTING IS SHOWING. The two shapes refused here are the ones a verbatim
-     * comparison happily accepts and a reader cannot use, and both were found in the manuscript the day this
-     * check was written.
+     * A CUT MAY NOT HIDE WHAT THE LISTING IS SHOWING. The three shapes refused here are the ones a verbatim
+     * comparison happily accepts and a reader cannot use, and every one of them was found in the manuscript
+     * the day the rule that refuses it was written.
      *
      * The FIRST is an elision immediately above a line that is only `{`: the declaration the brace belongs to
      * was cut away, so the page prints a class or a method body with nothing saying which class or which
@@ -338,6 +338,18 @@ final class DocsCodeAudit
      * body does; `Authentication::eraseCredentials()`, whose two lines are the entire argument of the section
      * around it, likewise. Where a body really is too long for the page, cut its MIDDLE and keep the first and
      * last statements, so the listing still shows the shape of the work.
+     *
+     * The THIRD is A DOCBLOCK WITHOUT THE THING IT DOCUMENTS. A docblock's every interior line begins with an
+     * asterisk, so an excerpt that starts partway down one opens on a bare ` * ` and is verbatim, parses
+     * nothing, and shows no code at all: six such listings shipped in one wave, and the worst of them printed
+     * ten lines of "Run the rest of this test as a person who signed in through OpenID Connect…" without ever
+     * naming `actingAsOidcUser()`, the method those ten lines describe. A docblock is a claim ABOUT a
+     * declaration and is meaningless detached from it, so a listing that shows one must show the `/**` that
+     * opens it (otherwise the first sentence is missing), the `*` / closing line that ends it, and at least
+     * one line of real code after that closing line — the class, the method or the constant the block belongs
+     * to. Cut the middle with the elision the way every other excerpt does. A listing with no docblock line at
+     * all is not judged here: a bare `// …`-commented file (`skeleton/routes/web.php`) or a commented-out
+     * configuration block is a legitimate thing to quote, and both say what they are on their own.
      *
      * Only `source:` listings are held to this. An `illustrative:` block is the reader's own code, where an
      * empty body legitimately means "your code goes here", and `php -l` already rejects a fragment of it that
@@ -364,7 +376,63 @@ final class DocsCodeAudit
             }
         }
 
-        return null;
+        return $this->verifyDocblockShowsItsSubject($lines);
+    }
+
+    /**
+     * The third rule of verifyExcerpt(), kept apart because it reads the block as a whole rather than one
+     * line at a time: a listing that shows docblock interior has to show the declaration that docblock is
+     * about. See verifyExcerpt()'s docblock for why.
+     *
+     * @param  list<string>  $lines  the block's lines, already trimmed
+     */
+    private function verifyDocblockShowsItsSubject(array $lines): ?string
+    {
+        $isComment = static fn (string $line): bool => $line !== ''
+            && (str_starts_with($line, '*') || str_starts_with($line, '/*') || str_starts_with($line, '//') || str_starts_with($line, '#'));
+
+        $docblock = false;
+        $opened = false;
+        $closed = null;
+
+        foreach ($lines as $index => $line) {
+            if (str_starts_with($line, '*') || str_starts_with($line, '/**')) {
+                $docblock = true;
+            }
+            if (str_starts_with($line, '/**')) {
+                $opened = true;
+            }
+            if ($closed === null && str_ends_with($line, '*/') && $isComment($line)) {
+                $closed = $index;
+            }
+        }
+
+        if (! $docblock) {
+            return null;
+        }
+
+        $advice = ' A docblock describes a declaration and says nothing on its own: open the listing on its '
+            .'`/**`, cut the middle with `'.self::ELISION.'`, and keep the `*/` plus the class, method or '
+            .'constant the block documents.';
+
+        if (! $opened) {
+            return 'shows the inside of a docblock without its `/**` opener, so the page starts mid-sentence '
+                .'on a bare asterisk and prints no code at all.'.$advice;
+        }
+
+        if ($closed === null) {
+            return 'opens a docblock it never closes, so the declaration the docblock documents is not in the '
+                .'listing at all.'.$advice;
+        }
+
+        foreach (array_slice($lines, $closed + 1) as $line) {
+            if ($line !== '' && ! $isComment($line)) {
+                return null;
+            }
+        }
+
+        return 'closes its docblock and then stops, so the page prints a description of a declaration the '
+            .'reader never sees.'.$advice;
     }
 
     private function verifyLints(DocsCodeBlock $block): ?string

@@ -122,8 +122,9 @@ book/
 
 ## Manuscript status
 
-The manuscript is **complete** in both languages: a five-file front matter, a
-"Build Lumen step by step" quick start, fourteen chapters across four parts —
+The manuscript is **structurally complete** in both languages: a five-file front
+matter, a "Build Lumen step by step" quick start, fourteen chapters across four
+parts —
 
 - **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
   Configuration/Profiles/Secrets, Your First HTTP API
@@ -142,3 +143,14 @@ excerpted from — compared line for line by the repository's own documentation
 guard — or an `illustrative:` marker saying it is the reader's own code, which
 is the kind `php -l` checks; `src-es/` is `php -l`-clean throughout
 (`verify_code.py`). Both editions build to `book/dist/` as PDF + EPUB.
+
+**The English edition is the reference, and the Spanish one currently trails it.**
+Every chapter exists in both, but recent waves landed in `src/` first, so
+chapters 4, 5, 9, 10, 11 and 12 carry material in English that `src-es/` has not
+received yet — query by example and the four repository method attributes, the
+transaction timeout and `#[TransactionalEventListener]`, session sign-in, logout
+and the entry point, structured logging and histogram buckets, the browser suite
+and the acting-as helpers. Read the English PDF when the two disagree. The
+repository's own prose guard derives this from the two trees' per-chapter sizes
+and will fail the build if this paragraph outlives the gap — or goes missing
+while it lasts.

@@ -2,7 +2,7 @@
 
 # Observability: Health, Metrics, and the Actuator {.chtitle}
 
-By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — a drawn **bean graph** that resolves every constructor dependency through the interface it is wired by and reports the cycles a boot would otherwise die on with no message. It reads those endpoints **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
+By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, the per-meter histogram buckets that turn a Prometheus summary into something `histogram_quantile()` can answer, the structured log formats (`json`, `ecs`, `logstash`) that `firefly.logging.structured.format` switches a channel to and the four ids every line then carries, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — a drawn **bean graph** that resolves every constructor dependency through the interface it is wired by and reports the cycles a boot would otherwise die on with no message. It reads those endpoints **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
 
 !!! note "New term: actuator"
     An **actuator** is a management endpoint that reports on the *running process itself* — is it healthy, what did it boot with, how fast are its requests — rather than on the business domain the process serves. The term and the shape both come from Spring Boot Actuator; `firefly/actuator` is a first-party, dependency-light PHP analogue: framework endpoints mounted directly on the same Illuminate `Router` your own controllers use, not a separate admin process.
@@ -773,11 +773,20 @@ The ECS shape is worth seeing, because it is the one most likely to land straigh
 
 <!-- source: packages/observability/src/Logging/Formatter/EcsFormatter.php -->
 ```php
+/**
+ * Elastic Common Schema 8 — the JSON shape Elastic's own ecs-logging libraries emit and Spring Boot's
+ * `logging.structured.format=ecs` produces, first-party so the framework adds no logging dependency:
+ *
  *   {"@timestamp":"2026-09-20T10:11:12.345678+00:00","log.level":"info","message":"Order 42 shipped",
  *    "ecs.version":"8.11.0","log":{"logger":"stack"},"service":{"name":"ledger","environment":"production"},
  *    "trace":{"id":"4bf9…"},"span":{"id":"00f0…"},"labels":{"correlation_id":"…","request_id":"…"},
  *    "error":{"type":"RuntimeException","message":"boom","stack_trace":"#0 …"},
  *    "context":{"order":42},"extra":{"memory":12}}
+ // …
+ */
+final class EcsFormatter extends NormalizerFormatter
+{
+    public const string ECS_VERSION = '8.11.0';
 ```
 
 The four framework ids and the two service fields are **lifted** into their ECS homes; everything a processor or a caller added stays nested under `extra`/`context` rather than merged at the top level, so an application's own `message` or `error` context key can never collide with an ECS field.
@@ -786,11 +795,20 @@ The four framework ids and the two service fields are **lifted** into their ECS 
 
 <!-- source: packages/observability/src/Logging/TraceContextLogProcessor.php -->
 ```php
+/**
+ // …
  *   trace_id / span_id       the CURRENT span's ids when a tracer has one (a log line written inside a
  *                            command handler or an event listener names THAT span), else the request's ids
  *                            TracingFilter published in Context; absent when tracing is off.
  // …
  *   request_id               Context firefly.request_id (RequestContextFilter).
+ // …
+ */
+final class TraceContextLogProcessor
+{
+    public const string TRACE_ID = 'trace_id';
+    // …
+    public function __invoke(LogRecord $record): LogRecord
 ```
 
 `correlation_id` is the third: the id `problem+json` and the `X-Correlation-Id` header already carry, read from the Laravel `Context` key `CorrelationIdFilter` seeds. So one log line names the span that wrote it, the request it belonged to, and the correlation id a client can quote back at you.
@@ -1224,3 +1242,5 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 4. **Prove the dashboard's exposure bypass to yourself.** Install `firefly/admin` in the sample, leave `firefly.management.endpoints.web.exposure.include` at its default, and confirm that `GET /actuator/beans` returns a `404` while `/firefly/beans` renders the full bean list in the same process. Then set `firefly.management.endpoint.beans.enabled` to `false` and confirm the Beans entry vanishes from the dashboard's menu — the kill switch is honoured where exposure is not, and the difference between the two keys is the whole design.
 5. **Draw your own wiring, then break it.** Open `/firefly/graph` in the sample and find the arrow from `WalletService` to `EloquentWalletRepository` — note that the *Wired by* column says `WalletRepository`, the port, not `class`. Then introduce a deliberate cycle (have a `#[Service]` take a constructor parameter typed as another `#[Service]` that already depends on it), reload the page, and confirm the **Cycles** stat turns red and names both classes. Now boot the app fresh without opening the dashboard, and compare what PHP tells you about the same cycle.
 6. **Read the access default as a security decision.** Set `app.debug` to `false` in a scratch project with `firefly/admin` installed and confirm `/firefly` is genuinely unrouted rather than merely unlinked (`php artisan route:list` should not list it). Then set `firefly.admin.enabled` to `true` without adding any `HttpSecurity` rule, and look at what an unauthenticated `GET /firefly/env` now discloses — that is precisely the gap this chapter told you to close with your own auth middleware.
+7. **Turn a summary into something you can take a p99 of.** Scrape `GET /actuator/prometheus` in a project with `firefly/observability` installed and find the `http_server_requests_seconds` family: note the `# TYPE … summary` line and that all you have is `_count` and `_sum`. Then set `firefly.observability.metrics.distribution.buckets` to the client default list this chapter prints, re-scrape, and confirm the `# TYPE` line now reads `histogram` and a `_bucket{le=…}` series appeared per bound. Now silence just that one meter again with an **empty** `distribution.per-meter.http_server_requests_seconds` list, and confirm every other timer keeps its buckets. Finally put a `0` — or a `-1`, or a string — into the global list and confirm the boot refuses it by name rather than quietly dropping the bound.
+8. **Make your logs machine-readable, then read one line.** Set `firefly.logging.structured.format` to `ecs`, make a request that writes a log line from inside a command handler, and read the resulting line: find `trace.id`, `span.id` and `labels.correlation_id`, and confirm the span id is the **handler's**, not the request's, by comparing it against a line written from a plain controller in the same request. Then check that your own context keys landed under `context`/`extra` rather than at the top level — try logging a key literally called `message` and confirm it did not overwrite ECS's. Last, set the key to `jsonn` and confirm the application refuses to boot, naming the key, instead of silently falling back to plain text.

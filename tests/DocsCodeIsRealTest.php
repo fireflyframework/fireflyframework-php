@@ -63,7 +63,7 @@ function docsCodeAuditFixture(): array
 {
     $root = sys_get_temp_dir().'/firefly-docs-audit-'.bin2hex(random_bytes(6));
 
-    $directories = [$root, $root.'/src', $root.'/config', $root.'/skeleton'];
+    $directories = [$root, $root.'/src', $root.'/config', $root.'/routes', $root.'/skeleton'];
 
     foreach ($directories as $directory) {
         mkdir($directory, 0o777, true);
@@ -76,6 +76,12 @@ function docsCodeAuditFixture(): array
 
     namespace App;
 
+    /**
+     * Greets a person by name.
+     *
+     * A second paragraph, so an excerpt can start below the opener and still be verbatim — the shape
+     * verifyExcerpt()'s third rule refuses.
+     */
     final class Greeter
     {
         private const GREETING = 'Hello';
@@ -91,6 +97,7 @@ function docsCodeAuditFixture(): array
     $files = [
         $root.'/src/Greeter.php' => $greeter,
         $root.'/config/app.yml' => "service:\n  name: greeter\n  enabled: true\n",
+        $root.'/routes/web.php' => "<?php\n\n// Nothing here yet.\n",
         $root.'/composer.json' => '{"scripts": {"test": "pest"}}',
         $root.'/skeleton/composer.json' => '{"scripts": {}}',
         $root.'/NOTES.md' => "# Notes\n",
@@ -197,6 +204,19 @@ it('refuses a listing that breaks any one of its contracts, and names the promis
         ['an excerpt whose body was cut down to nothing', $fixture,
             docsCodeBlock('php', "public function greet(string \$name): string\n{\n// …\n}", 'src/Greeter.php'),
             'hollows a body out to nothing'],
+        // The third shape, and the one that shipped six times in a single wave: an excerpt that begins
+        // partway down a docblock. Every line is verbatim, nothing parses, and the page prints a paragraph
+        // about a declaration it never shows — the worst of the six described actingAsOidcUser() for ten
+        // lines without naming it. The three cases are the three ways the subject can go missing.
+        ['a docblock excerpted below its opener', $fixture,
+            docsCodeBlock('php', ' * A second paragraph, so an excerpt can start below the opener and still be verbatim — the shape', 'src/Greeter.php'),
+            'without its `/**` opener'],
+        ['a docblock whose closer was cut away with the declaration', $fixture,
+            docsCodeBlock('php', "/**\n * Greets a person by name.", 'src/Greeter.php'),
+            'opens a docblock it never closes'],
+        ['a docblock that stops at its own closer', $fixture,
+            docsCodeBlock('php', "/**\n * Greets a person by name.\n// …\n */", 'src/Greeter.php'),
+            'closes its docblock and then stops'],
 
         // (c) ILLUSTRATIVE — a stated reason, code that parses, and symbols that exist.
         ['an illustrative reason nobody can act on', $repository,
@@ -289,6 +309,15 @@ it('accepts every listing its contracts allow', function () {
     }
     PHP;
 
+    // The legal half of the docblock rule: opener, a cut, closer, and the declaration the docblock is about.
+    $documented = <<<'PHP'
+    /**
+     * Greets a person by name.
+    // …
+     */
+    final class Greeter
+    PHP;
+
     $grouped = <<<'PHP'
     use Firefly\Container\Attributes\{Primary, Qualifier, Service};
 
@@ -301,6 +330,12 @@ it('accepts every listing its contracts allow', function () {
     $cases = [
         ['an excerpt cut with the elision marker', $fixture, docsCodeBlock('php', $elided, 'src/Greeter.php')],
         ['a method lifted out of its class', $fixture, docsCodeBlock('php', $dedented, 'src/Greeter.php')],
+        ['a docblock shown with the declaration it documents', $fixture, docsCodeBlock('php', $documented, 'src/Greeter.php')],
+        // A listing with no docblock line in it is outside the third rule entirely: a file whose whole
+        // content is a `//` comment (skeleton/routes/web.php) and a commented-out configuration block
+        // (the error-page section of skeleton/config/firefly.php) are both legitimate things to quote.
+        ['a listing that is nothing but line comments', $fixture,
+            docsCodeBlock('php', '// Nothing here yet.', 'routes/web.php')],
         ['a yaml excerpt of a real file', $fixture, docsCodeBlock('yaml', "service:\n  name: greeter", 'config/app.yml')],
         ['a yaml excerpt cut with the hash elision', $fixture, docsCodeBlock('yaml', "service:\n# …\n  enabled: true", 'config/app.yml')],
         ['a grouped import of classes that exist', $repository, docsCodeBlock('php', $grouped, null, 'the primary bean an application declares for itself')],

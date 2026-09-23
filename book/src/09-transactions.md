@@ -2,7 +2,7 @@
 
 # Transactions and the `#[Transactional]` Proxy {.chtitle}
 
-By the end of this chapter you will know exactly what `#[Transactional]` does — its seven propagation modes, its isolation/read-only/rollback settings, and the generated proxy that gives it teeth — how self-invocation bypasses that proxy (and what to do instead), how `firefly:cache` and the in-process scan together give every application a working proxy with no wiring of its own, and the single most consequential fact this whole book has been building toward: **a domain event publishes only because `TransactionTemplate` — the machinery behind `#[Transactional]` — is the sole caller of the after-commit dispatch.** No `#[Transactional]`, no publish, no matter how correctly an aggregate raised its event.
+By the end of this chapter you will know exactly what `#[Transactional]` does — its seven propagation modes, its isolation/read-only/rollback settings, and the generated proxy that gives it teeth — how self-invocation bypasses that proxy (and what to do instead), how a `timeout:` is actually enforced — a monotonic wall clock that judges the method after it returns, plus a best-effort driver statement timeout that can interrupt a running query — how `#[TransactionalEventListener]` defers *the listener* rather than the event into one of four transaction phases, of which `BEFORE_COMMIT` can veto the commit outright, how `firefly:cache` and the in-process scan together give every application a working proxy with no wiring of its own, and the single most consequential fact this whole book has been building toward: **a domain event publishes only because `TransactionTemplate` — the machinery behind `#[Transactional]` — is the sole caller of the after-commit dispatch.** No `#[Transactional]`, no publish, no matter how correctly an aggregate raised its event.
 
 !!! note "New term: declarative transaction demarcation"
     Instead of writing `DB::beginTransaction()` / `DB::commit()` / `DB::rollBack()` by hand inside a method body, you *declare* the boundary with an attribute and let a generated proxy enforce it. This is Spring's `@Transactional` model, and it is why Chapters 6 and 7 could already show you `#[Transactional]` on `OpenWalletHandler`, `DepositHandler`, `WithdrawHandler`, and `TransferHandler` without a single explicit `DB::` call inside any of their `handle()` bodies.
@@ -479,10 +479,21 @@ Chain those two facts together and the conclusion is unavoidable: **a method wit
 
 <!-- source: samples/lumen/src/Application/Command/OpenWalletHandler.php -->
 ```php
+/**
+ // …
  * #[Transactional] is LOAD-BEARING, not cosmetic: DefaultCommandBus opens no transaction of its own, and
  * EloquentRepository::save() only tracks the aggregate when transactionLevel() > 0. The generated transactional proxy
  * installs the TransactionTemplate that is the sole caller of DomainEventDispatcher::dispatchAfterCommit(), so without
  * this attribute the WalletOpened domain event would never publish and S5's ledger projector would never fire.
+ // …
+ */
+#[CommandHandler]
+class OpenWalletHandler
+{
+    public function __construct(private readonly WalletRepository $wallets) {}
+
+    #[Transactional]
+    public function handle(OpenWallet $command): string
 ```
 
 Recall from Chapter 7 that `DefaultCommandBus::send()` opens **no** transaction of its own — it correlates, validates, authorizes, and invokes the handler, full stop. Every bit of transactional behaviour you have seen in `OpenWalletHandler`, `DepositHandler`, `WithdrawHandler`, and `TransferHandler` comes *entirely* from the `#[Transactional]` attribute on their `handle()` methods, through the exact proxy mechanism this chapter just walked through. Strip the attribute from any one of them and the command still "succeeds" — the row still gets written by a plain, unproxied `save()` call — but `WalletOpened`/`FundsDeposited`/`FundsWithdrawn` are raised into the aggregate's private event buffer and then **silently discarded**, because nothing ever drains that buffer. `LedgerProjector` (Chapter 6) would simply never fire, with no error, no warning, and a perfectly successful-looking HTTP response.
@@ -553,6 +564,9 @@ The second test is the one that matters. `Wallet::withdraw()` on the source ran 
 | `Propagation` (7 modes) | `TransactionTemplate::execute()` is the one source of truth for all seven, proxy and programmatic caller alike |
 | `Isolation` / `readOnly` | Best-effort `SET TRANSACTION …` statements on the outermost transaction only |
 | `shouldRollBack()` | `noRollbackFor` wins over `rollbackFor`; neither list matching also commits |
+| `#[Transactional(timeout:)]` | A monotonic deadline taken on the **outermost** transaction only and judged when the work returns — overrun rolls back and throws `TransactionTimedOutException` (504, `TRANSACTION_TIMED_OUT`); the attribute beats `firefly.data.transaction.default-timeout`, `0` means none |
+| `StatementTimeoutApplier` | The half that can actually interrupt a running statement: a best-effort per-dialect `SET`, issued after `BEGIN` and undone in `finally` (the mysql variables are session-wide); switched off with `firefly.data.transaction.statement-timeout` |
+| `#[TransactionalEventListener]` | Defers **the listener**, not the event: four phases, `BEFORE_COMMIT` runs inside the transaction so a throw from it aborts the commit; no active transaction means the method is skipped unless `fallbackExecution: true` |
 | The generated proxy | `{Target}__FireflyTransactionalProxy extends {Target}`; routes each call through `TransactionInterceptor::run()` then `parent::` |
 | Self-invocation bypass | `$this->other()` inside the proxied class skips the interceptor entirely — use the injected `TransactionTemplate` instead |
 | `DataAutoConfiguration::transactionalManifest()`/`proxyPlan()` | Compiled artifact first, in-process scan second, empty last — the reason no application needs to bind a manifest by hand |
@@ -566,3 +580,5 @@ The second test is the one that matters. `Wallet::withdraw()` on the source ran 
 1. **Reproduce the silent event loss.** In a scratch copy of the project (not the shipped `samples/lumen` package), remove `#[Transactional]` from a copy of `DepositHandler::handle()`, deposit into a wallet through the HTTP API, and confirm the balance *does* update (the row still gets written) while the ledger (`LedgerProjector`'s `ledger_entries` table) gets **no new row at all** — with no error anywhere.
 2. **Prove `NOT_SUPPORTED` cannot suspend.** Give a method `#[Transactional(propagation: Propagation::NOT_SUPPORTED)]`, call it from inside another `#[Transactional(propagation: Propagation::REQUIRED)]` method on the *same* connection (through `TransactionTemplate`, not self-invocation), and confirm — per this chapter's "Known-latent" description — that the inner work still runs inside the outer transaction rather than truly outside one.
 3. **Read the generated proxy source.** After running `php artisan firefly:cache` in a project with a `#[Transactional]` class, open the emitted file under `bootstrap/cache/firefly/proxies/` and find the four kinds of member `ProxyClassGenerator` renders: the `(new \Firefly\Data\Proxy\MethodInvocation(...))->proceed()` override it writes for every advised method, the private `$__fireflyTxInterceptor` property, the private static `__fireflyTxDescriptor('m')` factory the descriptor literal is baked into, and the public static `__fireflyAdvice()` table `ProxyFactory` reads to know which interceptor bean belongs in which property. Then give a *second* bean a `#[PreAuthorize]` rule and **no** `#[Transactional]` at all, re-run `firefly:cache`, and confirm the plan named it too: it gets a proxy of its own, carrying `$__fireflySecurityInterceptor` and `__fireflySecurityDescriptor('m')` instead. Finally put both advices on one method and read the chain order straight off the generated source — the override's interceptor array is `[$this->__fireflySecurityInterceptor, $this->__fireflyTxInterceptor]`, outermost first, exactly the order Figure 9.1 draws.
+4. **Make a timeout fire, then take the driver half away.** Set `firefly.data.transaction.default-timeout` to `1`, give a `#[Transactional]` method a `sleep(2)` between a `save()` and its return, and confirm you get a `504` with error code `TRANSACTION_TIMED_OUT` and **no** row. Then set `firefly.data.transaction.statement-timeout` to `false` and run it again: the same failure, from the wall clock alone. Finally raise the budget with `#[Transactional(timeout: 10)]` on the method and confirm the attribute beats the configured default — and that calling the method from *inside* another `#[Transactional]` method gives it no deadline of its own at all.
+5. **Veto a commit from `BEFORE_COMMIT`.** Declare a `#[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT)]` that throws whenever an event carries some sentinel value, publish that event from inside a `#[Transactional]` method, and confirm the whole unit of work rolls back. Then change the phase to `AFTER_COMMIT` and confirm the identical throw now leaves the row committed. Last, call the same publishing method with no transaction anywhere and confirm the listener is skipped in silence — then add `fallbackExecution: true` and watch it run immediately.

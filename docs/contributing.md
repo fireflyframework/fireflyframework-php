@@ -119,11 +119,14 @@ assertion or by marking a framework excerpt `illustrative:`.
 
 **The English manuscript is inside that contract.** `book/src` is an entry in `DocsCodeAudit::AUDITED`, every
 one of its `php` listings carries a `source:` or an `illustrative:` marker, and each `source:` one is compared
-line for line against the file it names exactly as a page under `docs/` is. Two further rules apply to a book
-excerpt, because a cut is where a true listing turns useless: a `// …` may not swallow the declaration it
-belongs to — leaving a `{` with nothing above it saying what is being declared — and it may not reduce a body
-to `{`, `// …`, `}`, which prints a method that appears to do no work. `DocsCodeAudit::verifyExcerpt()`
-refuses both, and its docblock carries the regressions that motivated each.
+line for line against the file it names exactly as a page under `docs/` is. Three further rules apply to a
+book excerpt, because a cut is where a true listing turns useless: a `// …` may not swallow the declaration it
+belongs to — leaving a `{` with nothing above it saying what is being declared — it may not reduce a body
+to `{`, `// …`, `}`, which prints a method that appears to do no work, and an excerpt that shows a docblock
+must also show what that docblock documents: its `/**`, its closing line and at least one line of real code
+after it, or the page prints a paragraph about a declaration the reader never sees.
+`DocsCodeAudit::verifyExcerpt()` refuses all three, and its docblock carries the regressions that motivated
+each.
 
 `book/build/verify_code.py book/src` and `book/build/verify_code.py book/src-es` — the two invocations
 `book/README.md` documents — are the lint half, and they have **one exemption**: a listing carrying a
@@ -138,6 +141,14 @@ need it: no file backs them.
 `--require-provenance` still fails there, while `book/src` exits 0 under that switch today. Until the Spanish
 manuscript is converted, a green `verify_code.py` run over it says a listing parses, never that it matches the
 file it shows.
+
+**The Spanish edition also trails on content, not only on markers.** `book/src` is where a wave lands first,
+so several chapters carry English-only material — the size of the gap, per chapter, is what
+`tests/DocsProseIsRealTest.php` measures, and while any pair diverges, `README.md` and `book/README.md` must
+say so beside their "complete in both languages" sentence. A change to a fact both editions state (a count, a
+default, a retired claim) belongs in **both** trees in the same commit: the prose guard walks `src-es` too, and
+a correction that reaches one edition only is the bilingual version of the defect this whole gate exists to
+remove.
 
 **Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
 the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
@@ -155,10 +166,17 @@ line, the pair count, the step count and the artifact count, in both manuscripts
 really fetches — the ones the `firefly/firefly` metapackage does *not* already require — the roster of
 documentation guards this very section names, the registration default `DbHealthIndicator`'s own condition
 attribute really declares (a stale **default** is as dangerous as a stale count, and that one outlived its
-change in five places), and the account these pages give of the book's own gate, pinned to what
-`verify_code.py` really lints. The triggers are deliberately narrow — a page may
-mention `hasRole()` or `/actuator/env` in passing without owing the full enumeration — so **a red run here
-is fixed by correcting the sentence**, never by loosening the trigger that caught it.
+change in five places), the account these pages give of the book's own gate, pinned to what `verify_code.py`
+really lints, the `App\Support\CachedTransactionalConfiguration` workaround no application needs any more, the
+status `samples/lumen` really asserts when a wallet command arrives with no credentials, the header names the
+masker's own regex really covers, the visibility and the coverage `EloquentRepository`'s read helpers really
+have, the recording doubles `packages/testing` really ships (a chapter promised ten beside a directory of
+eleven, and the missing one was the double six new sections were calling), the `@method` tags
+`RecordRepository` really carries beside every paragraph that counts its derived methods, and how far apart the
+two manuscripts really are wherever a page calls the book complete in both languages. The triggers are
+deliberately narrow — a page may mention `hasRole()` or `/actuator/env` in passing without owing the full
+enumeration — so **a red run here is fixed by correcting the sentence**, never by loosening the trigger that
+caught it.
 
 **Diagrams are hand-written SVG.** No Mermaid, no PlantUML, no raster: plain `<rect>`/`<line>`/`<text>` on a
 white rounded panel, `font-family="sans-serif"`, exactly one `<title>` and one `<desc>`, marker ids prefixed
