@@ -10,31 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/cqrs/">
+        <link rel="canonical" href="https://fireflyframework.github.io/fireflyframework-php/modules/">
       
       
-        <link rel="prev" href="../messaging/">
+        <link rel="prev" href="../laravel-comparison/">
       
       
-        <link rel="next" href="../security/">
+        <link rel="next" href="error-handling/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/larafly-favicon.svg">
+      <link rel="icon" href="../assets/larafly-favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>CQRS (Command/Query) - LaraFly — Firefly Framework for PHP</title>
+        <title>Overview - LaraFly — Firefly Framework for PHP</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,9 +53,9 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/larafly.css">
+      <link rel="stylesheet" href="../assets/stylesheets/larafly.css">
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#cqrs-command-query" class="md-skip">
+        <a href="#modules" class="md-skip">
           Skip to content
         </a>
       
@@ -94,9 +94,9 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+    <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
       
-  <img src="../../assets/larafly-logo.svg" alt="logo">
+  <img src="../assets/larafly-logo.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              CQRS (Command/Query)
+              Overview
             
           </span>
         </div>
@@ -226,7 +226,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href=".." class="md-tabs__link">
         
   
   
@@ -247,7 +247,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../installation/" class="md-tabs__link">
+        <a href="../installation/" class="md-tabs__link">
           
   
   
@@ -269,7 +269,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../" class="md-tabs__link">
+        <a href="./" class="md-tabs__link">
           
   
   
@@ -289,7 +289,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../cli/" class="md-tabs__link">
+        <a href="../cli/" class="md-tabs__link">
           
   
   
@@ -309,7 +309,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../contributing/" class="md-tabs__link">
+        <a href="../contributing/" class="md-tabs__link">
           
   
   
@@ -343,9 +343,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
+    <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
       
-  <img src="../../assets/larafly-logo.svg" alt="logo">
+  <img src="../assets/larafly-logo.svg" alt="logo">
 
     </a>
     LaraFly — Firefly Framework for PHP
@@ -372,7 +372,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -451,7 +451,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../installation/" class="md-nav__link">
+      <a href="../installation/" class="md-nav__link">
         
   
   
@@ -479,7 +479,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
@@ -507,7 +507,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial/" class="md-nav__link">
+      <a href="../tutorial/" class="md-nav__link">
         
   
   
@@ -535,7 +535,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial.es/" class="md-nav__link">
+      <a href="../tutorial.es/" class="md-nav__link">
         
   
   
@@ -563,7 +563,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/" class="md-nav__link">
+      <a href="../architecture/" class="md-nav__link">
         
   
   
@@ -591,7 +591,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../laravel-comparison/" class="md-nav__link">
+      <a href="../laravel-comparison/" class="md-nav__link">
         
   
   
@@ -680,10 +680,19 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -699,6 +708,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -766,7 +776,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../error-handling/" class="md-nav__link">
+      <a href="error-handling/" class="md-nav__link">
         
   
   
@@ -794,7 +804,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dependency-injection/" class="md-nav__link">
+      <a href="dependency-injection/" class="md-nav__link">
         
   
   
@@ -822,7 +832,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../configuration/" class="md-nav__link">
+      <a href="configuration/" class="md-nav__link">
         
   
   
@@ -850,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../context/" class="md-nav__link">
+      <a href="context/" class="md-nav__link">
         
   
   
@@ -878,7 +888,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../starters/" class="md-nav__link">
+      <a href="starters/" class="md-nav__link">
         
   
   
@@ -906,7 +916,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../validation/" class="md-nav__link">
+      <a href="validation/" class="md-nav__link">
         
   
   
@@ -997,7 +1007,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../web/" class="md-nav__link">
+      <a href="web/" class="md-nav__link">
         
   
   
@@ -1025,7 +1035,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../web-filters/" class="md-nav__link">
+      <a href="web-filters/" class="md-nav__link">
         
   
   
@@ -1053,7 +1063,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../openapi/" class="md-nav__link">
+      <a href="openapi/" class="md-nav__link">
         
   
   
@@ -1144,7 +1154,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resilience/" class="md-nav__link">
+      <a href="resilience/" class="md-nav__link">
         
   
   
@@ -1172,7 +1182,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../scheduling/" class="md-nav__link">
+      <a href="scheduling/" class="md-nav__link">
         
   
   
@@ -1263,7 +1273,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../domain/" class="md-nav__link">
+      <a href="domain/" class="md-nav__link">
         
   
   
@@ -1291,7 +1301,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data/" class="md-nav__link">
+      <a href="data/" class="md-nav__link">
         
   
   
@@ -1319,7 +1329,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data-relational/" class="md-nav__link">
+      <a href="data-relational/" class="md-nav__link">
         
   
   
@@ -1347,7 +1357,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../transactional/" class="md-nav__link">
+      <a href="transactional/" class="md-nav__link">
         
   
   
@@ -1438,7 +1448,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../eda/" class="md-nav__link">
+      <a href="eda/" class="md-nav__link">
         
   
   
@@ -1466,7 +1476,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../eda-brokers/" class="md-nav__link">
+      <a href="eda-brokers/" class="md-nav__link">
         
   
   
@@ -1494,7 +1504,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../messaging/" class="md-nav__link">
+      <a href="messaging/" class="md-nav__link">
         
   
   
@@ -1527,8 +1537,6 @@
                 
   
   
-    
-  
   
   
     
@@ -1544,11 +1552,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
         
           
           <label class="md-nav__link" for="__nav_3_7" id="__nav_3_7_label" tabindex="">
@@ -1569,7 +1577,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_7">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1584,37 +1592,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CQRS (Command/Query)
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="cqrs/" class="md-nav__link">
         
   
   
@@ -1630,103 +1611,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-buses" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The buses
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#handlers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Handlers
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pipeline-seams" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pipeline seams
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-domain-integration-event-bridge" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The domain → integration-event bridge
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-fireflycqrs-snake_case" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration (firefly.cqrs.*, snake_case)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#laravel-comparison" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Laravel comparison
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#known-latent" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Known-latent
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1802,7 +1686,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security/" class="md-nav__link">
+      <a href="security/" class="md-nav__link">
         
   
   
@@ -1830,7 +1714,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security-oauth2-client/" class="md-nav__link">
+      <a href="security-oauth2-client/" class="md-nav__link">
         
   
   
@@ -1858,7 +1742,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security-oauth2-server/" class="md-nav__link">
+      <a href="security-oauth2-server/" class="md-nav__link">
         
   
   
@@ -1949,7 +1833,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../actuator/" class="md-nav__link">
+      <a href="actuator/" class="md-nav__link">
         
   
   
@@ -1977,7 +1861,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../observability/" class="md-nav__link">
+      <a href="observability/" class="md-nav__link">
         
   
   
@@ -2005,7 +1889,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../tracing/" class="md-nav__link">
+      <a href="tracing/" class="md-nav__link">
         
   
   
@@ -2033,7 +1917,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../logging/" class="md-nav__link">
+      <a href="logging/" class="md-nav__link">
         
   
   
@@ -2061,7 +1945,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../admin/" class="md-nav__link">
+      <a href="admin/" class="md-nav__link">
         
   
   
@@ -2089,7 +1973,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../bean-graph/" class="md-nav__link">
+      <a href="bean-graph/" class="md-nav__link">
         
   
   
@@ -2117,7 +2001,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data-browser/" class="md-nav__link">
+      <a href="data-browser/" class="md-nav__link">
         
   
   
@@ -2208,7 +2092,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../testing/" class="md-nav__link">
+      <a href="testing/" class="md-nav__link">
         
   
   
@@ -2236,7 +2120,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../integration-testing/" class="md-nav__link">
+      <a href="integration-testing/" class="md-nav__link">
         
   
   
@@ -2327,7 +2211,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installer/" class="md-nav__link">
+      <a href="installer/" class="md-nav__link">
         
   
   
@@ -2422,7 +2306,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli/" class="md-nav__link">
+      <a href="../cli/" class="md-nav__link">
         
   
   
@@ -2450,7 +2334,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../versioning/" class="md-nav__link">
+      <a href="../versioning/" class="md-nav__link">
         
   
   
@@ -2537,7 +2421,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -2565,7 +2449,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../publishing/" class="md-nav__link">
+      <a href="../publishing/" class="md-nav__link">
         
   
   
@@ -2613,91 +2497,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-buses" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The buses
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#handlers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Handlers
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pipeline-seams" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pipeline seams
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-domain-integration-event-bridge" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The domain → integration-event bridge
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-fireflycqrs-snake_case" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration (firefly.cqrs.*, snake_case)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#laravel-comparison" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Laravel comparison
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#known-latent" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Known-latent
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -2713,7 +2512,7 @@
 
 
   
-    <a href="https://github.com/fireflyframework/fireflyframework-php/edit/main/docs/modules/cqrs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/fireflyframework/fireflyframework-php/edit/main/docs/modules.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2721,183 +2520,80 @@
   
 
 
-<h1 id="cqrs-command-query">CQRS (Command / Query)<a class="headerlink" href="#cqrs-command-query" title="Permanent link">&para;</a></h1>
-<p><code>firefly/cqrs</code> adds the command/query <strong>dispatch</strong> surface — a synchronous, in-process mediator — on
-top of the shipped seams. It writes no interception code: a <code>#[Transactional]</code> command handler gets
-transaction semantics for free from the firefly/data proxy. Read models / projections are a future
-<code>firefly/eventsourcing</code> package.</p>
-<p><img alt="CQRS / EDA bridge" src="../../assets/diagrams/cqrs-eda-bridge.svg" /></p>
-<h2 id="the-buses">The buses<a class="headerlink" href="#the-buses" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>CommandBus::send(object $command): mixed</code> — the write side.</li>
-<li><code>QueryBus::ask(object $query): mixed</code> — the read side (<code>ask</code>, not <code>query</code>, to avoid colliding with
-  Eloquent's <code>query()</code>).</li>
-</ul>
-<p>Both run a bounded pipeline of injected, no-op-by-default collaborators:</p>
-<ul>
-<li><strong>Command:</strong> correlate → validate → authorize → resolve + invoke handler → metrics.</li>
-<li><strong>Query:</strong> correlate → validate → authorize → cache-get (short-circuit on hit) → resolve + invoke
-  handler → cache-put → metrics.</li>
-</ul>
-<p>Any handler/stage throwable is re-thrown <strong>wrapped</strong> in a category-preserving
-<code>CommandProcessingException</code> / <code>QueryProcessingException</code> (unless it already is one). "Category-preserving"
-means a <code>ValidationException</code> (422) or a not-found (500 framework) keeps its own HTTP status / category /
-severity for RFC-7807 rendering — the wrapper never masks an expected fault to a generic 500.</p>
-<h2 id="handlers">Handlers<a class="headerlink" href="#handlers" title="Permanent link">&para;</a></h2>
-<p>Annotate a class with <code>#[CommandHandler]</code> or <code>#[QueryHandler]</code> (both specialise <code>#[Component]</code>, so the
-handler is a constructor-injected DI bean automatically — no separate <code>#[Service]</code>). The handler exposes
-one public <code>handle()</code> method taking the message and returning the result. This is the handler the package's own
-banking capstone dispatches, imports cut — and it is deliberately <strong>not <code>final</code></strong>: a <code>#[Transactional]</code> method makes
-<code>TransactionalBeanPostProcessor</code> swap the bean for a generated <code>final class …Proxy extends \{Target}</code>, which cannot
-extend a final class, so marking the handler final would fatal at boot:</p>
-<!-- source: packages/cqrs/tests/CapstoneFixtures/Banking/OpenAccountHandler.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">// …</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">#[CommandHandler]</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">class OpenAccountHandler</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">{</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">    public function __construct(private readonly AccountRepository $accounts) {}</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">    #[Transactional]</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">    public function handle(OpenAccount $command): int</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">    {</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">        $account = new Account(['owner' =&gt; $command-&gt;owner, 'balance' =&gt; $command-&gt;balance]);</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">        $account-&gt;open();</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="x">        $this-&gt;accounts-&gt;save($account);</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="x">        return $account-&gt;id;</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="x">    }</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="x">}</span>
-</span></code></pre></div>
-<p>The handled message type is inferred from the <code>handle()</code> parameter at scan time (mirroring
-<code>#[AsEventListener]</code>); pass an explicit class to disambiguate a union/<code>object</code> parameter:
-<code>#[CommandHandler(OpenAccount::class)]</code>. An unresolvable type or a duplicate handler fails loud
-(<code>CqrsConfigurationException</code>) at build/boot, never silently. <code>HandlerScanner</code> (the sole reflection site in
-the package) discovers handlers and compiles them into a <code>HandlerManifest</code>; <code>CqrsHandlerWiringPass</code>
-populates the <code>HandlerRegistry</code> from that manifest at boot with fresh-per-dispatch invokers (so a
-<code>#[Transactional]</code> handler is always observed through its proxy).</p>
-<p>The marker interfaces <code>Command</code>/<code>Query</code>/<code>CommandHandler</code>/<code>QueryHandler</code> are optional documentary
-type-markers — discovery is by attribute, and PHP parameter invariance means the handler interfaces
-declare no <code>handle()</code> method.</p>
-<h2 id="pipeline-seams">Pipeline seams<a class="headerlink" href="#pipeline-seams" title="Permanent link">&para;</a></h2>
-<p>All default to no-ops so the pipeline is a series of skippable collaborators:</p>
-<ul>
-<li><strong>Validation</strong> — reuse the shipped <code>Validator</code>: a message implementing <code>Validatable</code>
-  (<code>validationData()</code> / <code>validationRules()</code>) is validated; others are not.</li>
-<li><strong>Authorization</strong> — interface-only seam (<code>CommandAuthorizer</code> / <code>QueryAuthorizer</code>), allow-all default;
-  real policy evaluation is M11-security.</li>
-<li><strong>Correlation</strong> — <code>CorrelationContext</code> propagates a uuid4 correlation id, restored after each dispatch
-  and stamped into integration-event headers (<code>x-correlation-id</code>).</li>
-<li><strong>Metrics</strong> — <code>CqrsMetrics</code> seam (no-op default); the real recorder is M12-observability.</li>
-<li><strong>Tracing</strong> — <code>CqrsTracing</code> seam (<code>NoOpCqrsTracing</code> default) wrapping validate → authorize → resolve →
-  invoke; observability's <code>TracerCqrsTracing</code> puts an INTERNAL span around every message (see
-  <a href="../tracing/">Tracing</a>).</li>
-<li><strong>Query cache</strong> — <code>QueryCache</code> seam (<code>NoOpQueryCache</code> = always-miss) consulted for a <code>Cacheable</code> query;
-  a real adapter lands with <code>firefly/cache</code>.</li>
-</ul>
-<h2 id="the-domain-integration-event-bridge">The domain → integration-event bridge<a class="headerlink" href="#the-domain-integration-event-bridge" title="Permanent link">&para;</a></h2>
-<p>The bridge re-emits every <strong>committed</strong> in-process <code>DomainEvent</code> onto the firefly/eda <code>EventPublisher</code>
-as an integration event, mapping <code>eventType</code> = the event's short class name, <code>payload</code> = the event's
-public fields, and <code>destination</code> = an explicit argument → the event's <code>#[PublishDomainEvent(destination:)]</code>
-→ <code>firefly.cqrs.default_destination</code> (<code>cqrs.events</code>).</p>
-<p><strong>How it triggers:</strong> firefly/data publishes each committed <code>DomainEvent</code> to the in-process
-<code>ApplicationEventPublisher</code> inside <code>DB::afterCommit</code>. <code>DomainEventBridgeWiringPass</code> registers a single
-<strong>guarded wildcard listener</strong> on the event dispatcher that filters <code>instanceof DomainEvent</code> and delegates
-to <code>DomainEventBridge</code>, which applies the failure strategy and publishes through the resolved
-<code>CommandEventPublisher</code> (<code>NoOpEventPublisher</code> or <code>EdaCommandEventPublisher</code>). (It does NOT use
-<code>#[AsEventListener]</code> typed on <code>DomainEvent</code>: Laravel's dispatcher matches an object event by its concrete
-class plus interfaces — never parent classes — so a base-class listener would never fire for a concrete
-subclass.)</p>
-<p><strong>Semantic scope (read this):</strong> the bridge fires for <strong>any</strong> aggregate committed through a firefly/data
-repository — not only writes originating from a <code>CommandBus</code> command. This is deliberate and correct
-integration-event semantics: an integration event is published because a fact was committed to the write
-model, regardless of whether a CQRS command, a controller, a scheduled job, or a message consumer drove
-the mutation. This is also the deliberate improvement over pyfly, which drains events by inspecting the
-current handler's aggregate (duck-typing on the command-handling call) rather than listening for any
-committed aggregate. An app that wants to emit an integration event WITHOUT an in-process domain event
-injects <code>CommandEventPublisher</code> directly; an app that wants a domain event to stay in-process only does not
-enable the bridge (or scopes destinations via <code>#[PublishDomainEvent]</code>).</p>
-<p><strong>Failure strategy</strong> (<code>firefly.cqrs.event_failure_strategy</code>): the publish runs AFTER the DB commit, inside
-<code>DB::afterCommit</code>, so the write already succeeded. <code>log</code> (default) swallows + logs a publish failure — the
-command result stands, the publish is best-effort; <code>raise</code> re-throws it wrapped in
-<code>CommandProcessingException</code>. Either way, the bridge fires only on a real commit — a rolled-back unit of
-work raises no <code>DomainEvent</code> at all (Laravel discards <code>afterCommit</code> callbacks on rollback), so nothing is
-ever published for it.</p>
-<p><strong>Non-atomic caveat:</strong> the DB commit and the broker publish are two steps with a gap — an honest
-at-least-once-ish, non-atomic guarantee. True exactly-once durability is the SP-4 transactional outbox
-(<code>firefly/eda-postgres</code>), which hangs off the same <code>DB::afterCommit</code> hook + a Postgres advisory lock.</p>
-<p>When no firefly/eda <code>EventPublisher</code> is bound, the bridge falls back to <code>NoOpEventPublisher</code> (drops
-silently), so cqrs installed without eda still boots and simply emits no integration events.</p>
-<p><code>firefly/cqrs</code> is an independent layer that does <strong>not</strong> depend on <code>firefly/data</code> (no <code>Cqrs → Data</code> Deptrac
-edge): the bridge listens for <code>DomainEvent</code>s on the in-process <code>Context</code> dispatcher, never on <code>firefly/data</code>'s
-<code>AggregateTracker</code>/<code>DomainEventDispatcher</code> directly.</p>
-<h2 id="configuration-fireflycqrs-snake_case">Configuration (<code>firefly.cqrs.*</code>, snake_case)<a class="headerlink" href="#configuration-fireflycqrs-snake_case" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>firefly.cqrs.default_destination</code></td>
-<td><code>cqrs.events</code></td>
-<td>Fallback integration-event destination.</td>
-</tr>
-<tr>
-<td><code>firefly.cqrs.event_failure_strategy</code></td>
-<td><code>log</code></td>
-<td><code>log</code> (swallow) or <code>raise</code> (re-throw) on a post-commit publish failure.</td>
-</tr>
-<tr>
-<td><code>firefly.cqrs.query.cache_ttl</code></td>
-<td><em>(unset)</em></td>
-<td>Default TTL in seconds passed to <code>QueryCache::put()</code> for a <code>Cacheable</code> query result. <strong>Unset means "no TTL"</strong>, not zero — so leave the key out unless you want one. The shipped <code>QueryCache</code> is <code>NoOpQueryCache</code>; a real store arrives with <code>firefly/cache</code>.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="laravel-comparison">Laravel comparison<a class="headerlink" href="#laravel-comparison" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Concern</th>
-<th>Plain Laravel</th>
-<th>LaraFly (<code>firefly/cqrs</code>)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Command/query dispatch</td>
-<td><code>dispatch()</code> a job, or call a service directly; no read/write split</td>
-<td><code>CommandBus::send</code> / <code>QueryBus::ask</code> with attribute-discovered handlers + a bounded pipeline</td>
-</tr>
-<tr>
-<td>Handler discovery</td>
-<td>manual binding / <code>$dispatchesJobs</code></td>
-<td><code>#[CommandHandler]</code>/<code>#[QueryHandler]</code> compiled to a manifest, zero boot reflection</td>
-</tr>
-<tr>
-<td>Transactions</td>
-<td><code>DB::transaction(fn () =&gt; …)</code> in the handler body</td>
-<td><code>#[Transactional]</code> on <code>handle()</code> — interception is free (firefly/data proxy)</td>
-</tr>
-<tr>
-<td>Domain → integration events</td>
-<td>hand-rolled (dispatch a job in the model event)</td>
-<td>committed <code>DomainEvent</code>s auto-re-emitted onto the eda <code>EventPublisher</code> after commit</td>
-</tr>
-</tbody>
-</table>
-<h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
-<p>Read-model / projection scaffolding (→ <code>firefly/eventsourcing</code>), real authorization (→ M11), real query
-cache (→ firefly/cache), CQRS metrics + health (→ M12), attribute-driven command validation, the fluent
-builder / distributed-tracing ergonomics, and exactly-once outbox durability (→ SP-4) are deferred and
-documented honestly. The <code>HandlerManifest</code> needs no hand-wiring: like every other
-compiled manifest it resolves to the <code>firefly:cache</code> artifact if present, otherwise an in-process scan of
-<code>firefly.scan.paths</code>, otherwise empty — so an uncached app registers the same handlers a cached one does. A
-handler outside <code>firefly.scan.paths</code> still never registers. Under Octane, <code>CorrelationContext</code> is
-per-request state and the <code>HandlerRegistry</code> is rebuilt per worker boot.</p>
+<h1 id="modules">Modules<a class="headerlink" href="#modules" title="Permanent link">&para;</a></h1>
+<p>LaraFly is one monorepo of <strong>29 installable Composer packages</strong> under <code>packages/*</code> — 28 libraries plus the
+<code>firefly/firefly</code> runtime metapackage — each with its own test suite, and the <strong>32 guides</strong> below are the long
+form of what they do. Several packages carry more than one guide, because the surfaces they ship are read
+separately: <code>firefly/data</code> alone answers for <em>Data &amp; Repositories</em>, <em>Relational Data</em> and <em>Transactions</em>.
+Installing a package is the whole wiring step: its service provider is auto-discovered from the package's own
+<code>composer.json</code>, everything that provider registers is a default, and a bean you declare yourself wins over
+that default — nothing here asks you to register a provider by hand. Two idioms deliver that outcome, and
+which one you are looking at matters the moment you go reading the source. <strong>17 of the 29 packages</strong> carry a
+<code>#[Configuration]</code> class whose <code>#[Bean]</code> methods sit behind <code>#[ConditionalOnMissingBean]</code>, so a bean of yours
+makes the framework's back off silently — <code>packages/data/src/DataAutoConfiguration.php</code> is the model. The
+<strong>other 12</strong> have no such class to go looking for; <code>firefly/web</code>, the one nearly every reader installs, guards
+each binding in <code>WebServiceProvider::register()</code> with a <code>bound()</code> check instead, first-one-wins by hand.</p>
+<div class="lf-cards">
+<div class="lf-card">
+<p><span class="lf-card-title">Foundation</span>
+<a href="error-handling/">Error Handling</a> · <a href="dependency-injection/">Dependency Injection</a> ·
+<a href="configuration/">Configuration</a> · <a href="context/">Application Context</a> ·
+<a href="starters/">Auto-Configuration</a> · <a href="validation/">Validation</a>
+<span class="lf-card-note">Stereotypes and the compiled component scan, profiles and <code>#[ConfigProperties]</code> binding, the phased boot, <code>#[Configuration]</code>/<code>#[Bean]</code> starters with conditions, constraint attributes behind <code>#[Valid]</code>, and the RFC-7807 error model everything else throws into.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Web &amp; API</span>
+<a href="web/">Web Layer</a> · <a href="web-filters/">Web Filters</a> · <a href="openapi/">OpenAPI</a>
+<span class="lf-card-note"><code>#[RestController]</code> routing off a compiled <code>RouteManifest</code>, the ordered <code>WebFilter</code> chain on Laravel's middleware stack, and an OpenAPI 3.1 document generated from those same manifests.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Resilience &amp; Scheduling</span>
+<a href="resilience/">Resilience</a> · <a href="scheduling/">Scheduling</a>
+<span class="lf-card-note">Retry, circuit breaker, bulkhead, time limiter, rate limiter and fallback, each a <code>call(callable)</code> object built from <code>firefly.resilience.*</code>; <code>#[Scheduled]</code> methods held by a cache or Postgres-advisory distributed lock.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Data &amp; Domain</span>
+<a href="domain/">Domain (DDD)</a> · <a href="data/">Data &amp; Repositories</a> ·
+<a href="data-relational/">Relational Data</a> · <a href="transactional/">Transactions</a>
+<span class="lf-card-note">Spring-Data-shaped repositories — derived queries, query by example, <code>#[Modifying]</code>/<code>#[Projection]</code>/<code>#[Lock]</code>/<code>#[EntityGraph]</code>, <code>Page</code>/<code>Slice</code>, the <code>DataAccessException</code> family — over Eloquent, with <code>#[Transactional]</code> demarcating the boundary.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Eventing &amp; Messaging</span>
+<a href="eda/">EDA</a> · <a href="eda-brokers/">EDA Brokers</a> · <a href="messaging/">Messaging</a>
+<span class="lf-card-note">One <code>EventPublisher</code> port with in-memory, queue, RabbitMQ, Postgres and Kafka adapters, a genuine same-transaction outbox, and the lower-level raw-bytes broker layer beneath it.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">CQRS</span>
+<a href="cqrs/">Command/Query</a>
+<span class="lf-card-note">A <code>CommandBus</code>/<code>QueryBus</code> mediator with correlation, validation, authorization, caching and metrics in the pipeline, and a bridge that republishes committed domain events onto the event bus.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Security</span>
+<a href="security/">Security</a> · <a href="security-oauth2-client/">OAuth2 Client</a> ·
+<a href="security-oauth2-server/">OAuth2 Authorization Server</a>
+<span class="lf-card-note">A Spring-Security-6-shaped principal model: session-persisted context, form login, HTTP Basic, JWT, deny-by-default <code>HttpSecurity</code> URL rules, method security on any stereotyped bean, and both halves of OAuth2 — signing in with a provider, and being one.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Operations</span>
+<a href="actuator/">Actuator</a> · <a href="observability/">Observability</a> ·
+<a href="tracing/">Tracing</a> · <a href="logging/">Logging</a> · <a href="admin/">Admin Dashboard</a> ·
+<a href="bean-graph/">Bean Graph</a> · <a href="data-browser/">Data Browser</a>
+<span class="lf-card-note">Health, info and metrics over an actuator surface, OpenTelemetry-shaped tracing with W3C propagation, structured JSON/ECS/Logstash logging, and a server-rendered dashboard with a drawn bean graph and a database browser.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Testing</span>
+<a href="testing/">Testing</a> · <a href="integration-testing/">Integration Testing</a>
+<span class="lf-card-note">A boot harness, recording doubles for every port, and web and data test slices; the real-Chromium suite that drives the skeleton's own pages is the framework's own, not something <code>firefly/testing</code> ships — see <a href="../contributing/">Contributing</a>.</span></p>
+</div>
+<div class="lf-card">
+<p><span class="lf-card-title">Tooling</span>
+<a href="installer/">Installer</a>
+<span class="lf-card-note">The global <code>firefly new</code> installer and the <code>firefly/skeleton</code> create-project template.</span></p>
+</div>
+</div>
+<p>Every configuration key the framework reads is written out once, with its default and the reason it has
+that default, in the skeleton's <code>config/firefly.php</code>. That file is the reference, and it is held to being
+one: a key the framework reads that the reference does not document is a failing test.</p>
 
 
 
@@ -2970,10 +2666,10 @@ per-request state and the <code>HandlerRegistry</code> is rebuilt per worker boo
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

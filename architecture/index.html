@@ -16,13 +16,13 @@
         <link rel="prev" href="../tutorial.es/">
       
       
-        <link rel="next" href="../cli/">
+        <link rel="next" href="../laravel-comparison/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../assets/larafly-favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
@@ -32,6 +32,9 @@
     
     
       <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -50,6 +53,8 @@
       
     
     
+      <link rel="stylesheet" href="../assets/stylesheets/larafly.css">
+    
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -59,7 +64,14 @@
   </head>
   
   
-    <body dir="ltr">
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -80,14 +92,11 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-header__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../assets/larafly-logo.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -110,6 +119,32 @@
         </div>
       </div>
     </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
     
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
@@ -140,6 +175,8 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
       
     </form>
     <div class="md-search__output">
@@ -178,6 +215,116 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../modules/" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../cli/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../contributing/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -191,13 +338,14 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="LaraFly — Firefly Framework for PHP" class="md-nav__button md-logo" aria-label="LaraFly — Firefly Framework for PHP" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="../assets/larafly-logo.svg" alt="logo">
 
     </a>
     LaraFly — Firefly Framework for PHP
@@ -248,6 +396,63 @@
       
   
   
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
   
   
     <li class="md-nav__item">
@@ -270,9 +475,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -297,9 +503,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -324,9 +531,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -351,9 +559,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
     
@@ -441,6 +650,61 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ports-and-adapters-enforced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports and adapters, enforced
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-request-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The request path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interception-one-proxy-many-advices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interception: one proxy, many advices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#async-sync-preview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -458,36 +722,10 @@
     </li>
   
 
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../cli/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -512,84 +750,11 @@
     </li>
   
 
-    
+              
+            
+          </ul>
+        </nav>
       
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../versioning/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Versioning
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../contributing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../publishing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Publishing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -605,19 +770,19 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -635,8 +800,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -652,10 +817,41 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
     
     
+      
+      
+        
       
     
     
@@ -663,10 +859,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_1" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
         
           
-          <label class="md-nav__link" for="__nav_12_1" id="__nav_12_1_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
             
   
   
@@ -684,8 +880,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_1_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_1">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -882,16 +1078,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_12_2" id="__nav_12_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   
@@ -909,8 +1108,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1023,16 +1222,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_12_3" id="__nav_12_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -1050,8 +1252,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1136,16 +1338,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_12_4" id="__nav_12_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -1163,8 +1368,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1305,16 +1510,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_12_5" id="__nav_12_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
             
   
   
@@ -1332,8 +1540,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1446,16 +1654,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
         
           
-          <label class="md-nav__link" for="__nav_12_6" id="__nav_12_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
             
   
   
@@ -1473,8 +1684,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_6">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1531,16 +1742,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_8" >
         
           
-          <label class="md-nav__link" for="__nav_12_7" id="__nav_12_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_8" id="__nav_3_8_label" tabindex="0">
             
   
   
@@ -1558,8 +1772,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1672,16 +1886,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_9" >
         
           
-          <label class="md-nav__link" for="__nav_12_8" id="__nav_12_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_9" id="__nav_3_9_label" tabindex="0">
             
   
   
@@ -1699,8 +1916,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_8">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_9">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1925,16 +2142,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
         
           
-          <label class="md-nav__link" for="__nav_12_9" id="__nav_12_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
             
   
   
@@ -1952,8 +2172,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_9">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2038,16 +2258,19 @@
     
     
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_11" >
         
           
-          <label class="md-nav__link" for="__nav_12_10" id="__nav_12_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_11" id="__nav_3_11_label" tabindex="0">
             
   
   
@@ -2065,8 +2288,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_12_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_12_10">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_11">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2107,6 +2330,236 @@
           </ul>
         </nav>
       
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../publishing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publishing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2168,6 +2621,61 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ports-and-adapters-enforced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports and adapters, enforced
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-request-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The request path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interception-one-proxy-many-advices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interception: one proxy, many advices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#async-sync-preview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2195,6 +2703,11 @@
 
 
   
+    <a href="https://github.com/fireflyframework/fireflyframework-php/edit/main/docs/architecture.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
   
 
 
@@ -2202,19 +2715,239 @@
 <p>LaraFly is <strong>hexagonal</strong>: every subsystem exposes a nominal PHP interface (a <em>port</em>) and one or more
 <em>adapters</em>. Domain and application code depend only on ports. Architectural direction is enforced with
 <strong>Deptrac</strong>.</p>
+<p>Everything below is a description of code in this repository, and every class, attribute, order value and
+configuration key named here is checked by a test — <code>tests/DocsCodeIsRealTest.php</code> holds every listing on this
+page to the file it claims to come from, and <code>tests/DocsDiagramsTest.php</code> holds the diagrams to the
+attributes they draw.</p>
 <h2 id="the-boot-pipeline">The boot pipeline<a class="headerlink" href="#the-boot-pipeline" title="Permanent link">&para;</a></h2>
 <p>Every capability package plugs into one shared <code>FireflyKernel</code> through <code>FireflyServiceProvider</code>: a
 provider's <code>register()</code> only <em>buffers</em> its <code>BootPass</code> contributions (into <code>PendingBootPasses</code>) — it never
 resolves the kernel itself, so Laravel's alphabetical package-discovery order can never affect boot order.
 The kernel drains that buffer and decides the real order, phase by phase:</p>
 <p><img alt="Boot pipeline" src="../assets/diagrams/boot-pipeline.svg" /></p>
+<p>The phases are the contract. A component scan discovers stereotyped classes; auto-configuration candidates
+are <em>discovered</em> at phase 200 and <em>committed</em> at phase 500, tagged <code>DefinitionSource::AutoConfiguration</code>; a
+<code>#[ConditionalOnMissingBean(X)]</code>-guarded <code>#[Bean]</code> survives <em>back-off</em> at phase 600 only if nothing else
+already registered an <code>X</code>; and the wiring passes at phase 1000 turn the compiled manifests into real Laravel
+routes, middleware, listeners and scheduled tasks. Because back-off happens after every definition is on the
+table, your own bean wins regardless of which provider Laravel instantiated first.</p>
 <h2 id="the-kernel-layer">The kernel layer<a class="headerlink" href="#the-kernel-layer" title="Permanent link">&para;</a></h2>
 <p><code>firefly/kernel</code> is the zero-dependency foundation:</p>
 <ul>
 <li><strong><code>Firefly\Kernel\Lifecycle</code></strong> — the <code>start()</code>/<code>stop()</code> contract for infrastructure adapters.</li>
 <li><strong><code>Firefly\Kernel\Exception\*</code></strong> — a product-agnostic typed exception taxonomy.</li>
 <li><strong><code>Firefly\Kernel\Error\*</code></strong> — the RFC-7807 <code>ErrorResponse</code> model.</li>
+<li><strong><code>Firefly\Kernel\Exception\Infrastructure\*</code></strong> — the <code>DataAccessException</code> family, Spring's ported into PHP. This
+  is what <code>firefly/data</code>'s <code>PersistenceExceptionTranslator</code> throws. It reads the driver's own error code first and
+  the SQLSTATE second — <code>DriverErrorTable</code> holds both tables, because the same SQLSTATE hides different failures
+  — and produces exactly eight kinds: <code>DuplicateKeyException</code>, <code>DataIntegrityViolationException</code>,
+  <code>DeadlockLoserDataAccessException</code>, <code>CannotAcquireLockException</code>, <code>QueryTimeoutException</code>,
+  <code>TransientDataAccessResourceException</code>, <code>DataAccessResourceFailureException</code> and <code>BadSqlGrammarException</code>, with a
+  generic <code>DataAccessException</code> for a code neither table classifies. It is applied at three seams and nowhere else
+  — every <code>EloquentRepository</code> method, <code>TransactionTemplate::execute()</code>, and every <code>#[Transactional]</code> proxy, which
+  delegates to that template — so a raw <code>DB::</code> call outside all three still throws Laravel's <code>QueryException</code>
+  exactly as before, and <code>firefly.data.exception-translation.enabled</code> turns the translation off wholesale.
+  Two members of the family never come from a driver code at all: <code>firefly/data</code> raises <code>OptimisticLockException</code>
+  (a subclass of <code>OptimisticLockingFailureException</code>) from the <code>HasOptimisticLock</code> version check when the guarded
+  <code>UPDATE</code> matches zero rows, and <code>EmptyResultDataAccessException</code> from <code>getById()</code>, the <code>orElseThrow</code>-shaped
+  finder. Each member carries the HTTP status its failure implies — a duplicate key is the client's 409, an
+  unreachable database the platform's 503, a missing row its 404 — so <code>problem+json</code> needs no per-controller
+  mapping. The translated message is a <em>fixed sentence</em>; the driver's own text, which has the statement and its
+  bindings interpolated into it, stays on <code>previous</code> for the log and never reaches the wire.</li>
+<li><strong><code>Firefly\Kernel\Version</code></strong> — the CalVer constant every other package agrees with.
+  <code>tests/VersionConsistencyTest.php</code> checks it against the CHANGELOG's latest heading and the README's
+  version badge, so the three cannot drift apart.</li>
 </ul>
+<p>Its <code>composer.json</code> requires nothing but <code>php: ^8.3</code>, and no file under <code>packages/kernel/src</code> imports
+<code>Illuminate\*</code> or <code>Symfony\*</code>. That is what makes it safe for a domain package to reuse the exception
+taxonomy without acquiring a framework dependency — and it is the reason <code>deptrac.yaml</code> can write the
+<code>Kernel</code> layer's rule as <code>~</code>.</p>
+<h2 id="ports-and-adapters-enforced">Ports and adapters, enforced<a class="headerlink" href="#ports-and-adapters-enforced" title="Permanent link">&para;</a></h2>
+<p>The rule that domain code depends only on ports is not a convention here; it is a build step.
+<code>deptrac.yaml</code> declares <strong>one layer per package</strong> — 28 of them, each collecting <code>packages/&lt;name&gt;/src/.*</code> —
+and then a <code>ruleset</code> that gives, for every layer, the <em>complete</em> list of layers it is allowed to reference.
+Anything not on that list is a violation, and <code>composer check</code> runs <code>deptrac analyse</code> as its fourth step, so
+a <code>use</code> statement pointing the wrong way fails the gate rather than a review.</p>
+<!-- source: deptrac.yaml -->
+
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Domain</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">collectors</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">directory</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">packages/domain/src/.*</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># …</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">Domain</span><span class="p">:</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Kernel</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># …</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">Data</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Kernel</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Container</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Config</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Context</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AutoConfigure</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Domain</span>
+</span></code></pre></div>
+<p>Read those two rules together and the direction is unambiguous: <code>Data</code> may see <code>Domain</code>, and <code>Domain</code> may
+see nothing but <code>Kernel</code>. There is no entry anywhere in the ruleset that lets an aggregate reach for a
+repository adapter, an Eloquent model or an HTTP request. Read the ruleset the other way and the leaves fall
+out too: <code>Admin</code>, <code>OpenApi</code>, <code>Cli</code>, <code>Testing</code>, <code>Installer</code> and the three broker adapters (<code>EdaRabbitmq</code>,
+<code>EdaPostgres</code>, <code>EdaKafka</code>) appear in no other layer's list at all, so nothing in the framework depends on
+them and each can be added or dropped without touching the rest. Two layers have <code>~</code> for a rule — <code>Kernel</code>
+and <code>Installer</code> — which is Deptrac for "may depend on no layer whatsoever": the first is what makes the
+kernel's exception taxonomy safe for anyone to reuse, and the second is what keeps a global <code>firefly new</code>
+install from dragging the runtime family onto a developer's machine.</p>
+<p>The comments in <code>deptrac.yaml</code> are part of the design record: each ruleset entry says in prose <em>why</em> each
+edge exists, so adding one is a decision somebody has to write down.</p>
+<p><img alt="Dependency injection and auto-configuration" src="../assets/diagrams/di-autoconfig.svg" /></p>
+<h2 id="the-request-path">The request path<a class="headerlink" href="#the-request-path" title="Permanent link">&para;</a></h2>
+<p>A request enters through Laravel's own HTTP kernel. <code>FilterChainRegistrar</code> is a <code>BootPass</code> that collects
+every <code>WebFilter</code> bean, sorts it, and <strong>pushes the ordered list onto Laravel's global middleware stack</strong> — so
+a LaraFly filter runs in the same pipeline as CORS or secure-headers middleware, not in a parallel one:</p>
+<!-- source: packages/web/src/Filter/FilterChainRegistrar.php -->
+
+<div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">public function orderedFilters(BootContext $context): array</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="x">{</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">    $beans = [];</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">    foreach ($context-&gt;definitions-&gt;all() as $definition) {</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">        if (is_a($definition-&gt;class(), WebFilter::class, true)) {</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">            $beans[] = ['class' =&gt; $definition-&gt;class(), 'order' =&gt; $definition-&gt;descriptor-&gt;order];</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">        }</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">    }</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    usort($beans, static function (array $a, array $b): int {</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">        return $a['order'] &lt;=&gt; $b['order'] ?: strcmp($a['class'], $b['class']);</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    });</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">    return array_merge(</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">        [RequestContextFilter::class, CorrelationIdFilter::class],</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">        array_map(static fn (array $bean): string =&gt; $bean['class'], $beans),</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="x">    );</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="x">}</span>
+</span></code></pre></div>
+<p>Two things in that method matter more than they look. The order comes from <code>$definition-&gt;descriptor-&gt;order</code>
+— the <strong>manifest's</strong> number, read without resolving the bean — which is what keeps the chain reflection-free
+on a cached boot. And ties break with <code>strcmp</code> on the class name, which is why two filters sharing an order
+still have one fixed, reproducible sequence.</p>
+<p>Past the filters, routing is a compiled artefact. <code>RouteScanner</code> reads <code>#[RestController]</code>/<code>#[Controller]</code>
+classes and their verb attributes once, at cache time, into a <code>RouteManifest</code> of <code>RouteDescriptor</code>s;
+<code>RouteWiringPass</code> then registers <strong>a native Laravel route per descriptor</strong> at the wiring phase, so
+<code>route:list</code>, URL generation and route caching all keep working. Each route's action is a closure built by
+<code>ControllerDispatcher</code>, which per request resolves the controller bean, binds arguments, checks
+dispatch-time method security, invokes the handler and content-negotiates the return value.</p>
+<p>Argument binding is <code>ArgumentResolver</code> working from the descriptor's compiled binding plan — a pure array,
+never reflection — hydrating <code>#[PathVariable]</code>, <code>#[QueryParam]</code>, <code>#[RequestHeader]</code> and <code>#[RequestBody]</code>
+parameters, validating a <code>#[Valid]</code> body through <code>BeanValidator</code> <em>before</em> the DTO is constructed, and
+raising <code>InvalidRequestException</code> (400) for a missing or uncoercible input. Before it consults any of its
+own kinds it asks the registered <code>HandlerMethodArgumentResolver</code> beans — the extension point Spring gives
+the same name — so a class-typed parameter another package understands never reaches the container.
+<code>firefly/security</code> registers exactly one, for <code>SecurityContext</code>, <code>Authentication</code>, <code>UserDetails</code>,
+<code>#[AuthenticationPrincipal]</code> and <code>#[CurrentSecurityContext]</code> — and it answers a 401, never a <code>TypeError</code>,
+when a non-nullable principal parameter has nobody to bind.</p>
+<p>A throw is not caught and reshaped locally. <code>ControllerDispatcher</code> offers it to the
+<code>ExceptionHandlerRegistry</code> (a controller-local <code>#[ExceptionHandler]</code> beats a global <code>#[ControllerAdvice]</code>),
+and with no match it propagates to Laravel's exception handler, where the RFC-7807 renderable turns it into
+<code>application/problem+json</code> — or, for a browser, into the framework's error page. A 404, a 422 and a denied
+<code>#[PreAuthorize]</code> therefore all travel the real HTTP pipeline.</p>
+<p><img alt="Request lifecycle" src="../assets/diagrams/request-lifecycle.svg" /></p>
+<h2 id="interception-one-proxy-many-advices">Interception: one proxy, many advices<a class="headerlink" href="#interception-one-proxy-many-advices" title="Permanent link">&para;</a></h2>
+<p><code>#[Transactional]</code> and <code>#[PreAuthorize]</code> do not each own an interception mechanism. There is one, and it is
+a port: <code>AdviceSource</code> in <code>firefly/data</code>, with three methods — <code>advice()</code>, <code>scan($psr4)</code> and <code>render($row)</code>.
+A package contributes a kind of advice by shipping one <code>#[Component]</code> that implements it. <code>firefly/data</code>
+ships <code>TransactionalAdviceSource</code>; <code>firefly/security</code> ships <code>MethodSecurityAdviceSource</code>; the port is open
+for a third.</p>
+<p><code>ProxyPlanner</code> merges every source's <code>scan()</code> rows into a single <code>ProxyPlan</code> — class → method → the ordered
+<code>(advice id, descriptor row)</code> pairs — and <code>ProxyPlanCompiler</code> <code>var_export</code>s that plan into <code>proxy-plan.php</code>,
+a literal the cached boot <code>require</code>s without reflecting. <code>ProxyClassGenerator</code> then writes <strong>one class per
+bean</strong>, <code>final class Foo__FireflyTransactionalProxy extends Foo</code>, carrying one <code>MethodInterceptor</code> property
+and one static descriptor factory <em>per advice kind the class actually uses</em> — <code>__fireflySecurityInterceptor</code>
+and <code>__fireflyTxInterceptor</code>, <code>__fireflySecurityDescriptor()</code> and <code>__fireflyTxDescriptor()</code> — with the
+descriptors baked in as literals so nothing is looked up at run time.</p>
+<p>At run time the container hands out the proxy, and <code>MethodInvocation::proceed()</code> walks the interceptor list
+to a terminal closure that calls <code>parent::</code>. The ordering rule is the whole point: <strong>lower advice order runs
+outer</strong>. Security's advice is order 100, the transaction's is 1000, so <code>MethodSecurityInterceptor</code> evaluates
+<code>#[PreAuthorize]</code> and <code>#[PreFilter]</code> <em>before</em> <code>TransactionInterceptor</code> opens anything — a refusal never
+opens a transaction — and on the way back out the transaction commits or rolls back first, then
+<code>#[PostAuthorize]</code> and <code>#[PostFilter]</code> are applied to the returned value. An advice whose interceptor bean is
+absent fails the boot with a <code>ConfigurationException</code> unless it declared <code>inertWhenUnbound: true</code>, which
+method security does, because "the attributes are inert until <code>firefly.security.enabled</code> is on" is its
+documented state; <code>InterceptorRegistry</code> then hands the proxy a <code>PassThroughInterceptor</code> instead.</p>
+<p><img alt="Interception: one proxy, many advices" src="../assets/diagrams/method-interceptor-chain.svg" /></p>
+<h2 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h2>
+<p><code>firefly/security</code> is deny-by-default and filter-shaped, the same two properties Spring Security has.
+<code>HttpSecurityFilter</code> (<code>-70</code>) evaluates an ordered URL rule list, first match wins, and denies
+anything unmatched. Everything that could have authenticated the request has already run by then:
+<code>SecurityContextPersistenceFilter</code> (<code>-94</code>) loads the context from the session and saves it afterwards, and
+<code>firefly/security</code>'s own five authentication mechanisms — <code>FormLoginFilter</code> (<code>-92</code>),
+<code>HttpBasicFilter</code> (<code>-91</code>), <code>JwtAuthenticationFilter</code> (<code>-90</code>), <code>OAuth2ResourceServerFilter</code> (<code>-85</code>) and
+<code>RememberMeAuthenticationFilter</code> (<code>-83</code>) — each write into the same <code>SecurityContext</code>.</p>
+<p>When <code>HttpSecurityFilter</code> denies an <strong>anonymous</strong> request it does not simply throw. It calls the
+<code>AuthenticationEntryPoint</code>, and the shipped <code>DelegatingAuthenticationEntryPoint</code> chooses between four modes
+under <code>firefly.security.http.entry_point</code>:</p>
+<ul>
+<li><strong><code>auto</code></strong> (the default) — a <em>browser</em> is sent to the login page when form login or OAuth2 login is on;
+  otherwise, when HTTP Basic is on, it gets a <code>WWW-Authenticate: Basic</code> challenge; otherwise the 401. The
+  browser test is <code>ErrorPageRenderer::prefersHtml()</code>: the request names <code>text/html</code> (or
+  <code>application/xhtml+xml</code>), is neither an <code>XMLHttpRequest</code> nor a <code>wantsJson()</code> call, and its path is not
+  under <code>firefly.web.error-page.json-paths</code>. That last clause is the one that is easy to drop and must not
+  be — Laravel's <code>wantsJson()</code> looks only at the <em>first</em> acceptable type, so a client that copies a browser's
+  <code>Accept: text/html, application/json</code> is not a <code>wantsJson()</code> call at all and does name <code>text/html</code>, yet is
+  plainly a machine asking; <code>json-paths</code> is the one clause that says the URL itself is an API surface.</li>
+<li><strong><code>login</code></strong> — always the login page, and the boot is refused when neither login mechanism is enabled.</li>
+<li><strong><code>challenge</code></strong> — always the Basic challenge.</li>
+<li><strong><code>problem</code></strong> — always the exception, rendered by <code>firefly/web</code>.</li>
+</ul>
+<p><code>HttpBasicFilter</code> answers with its own <code>BasicAuthenticationEntryPoint</code> rather than this one, because a caller
+that presented Basic credentials has already chosen its mechanism.</p>
+<p>Method security is not a controller feature. <code>#[PreAuthorize]</code>, <code>#[PostAuthorize]</code>, <code>#[PreFilter]</code>,
+<code>#[PostFilter]</code>, <code>#[Secured]</code> and <code>#[RolesAllowed]</code> are enforced through the shared interceptor chain above, so
+they hold on <strong>any stereotyped bean</strong> — a <code>#[Service]</code>, a <code>#[CommandHandler]</code>, a <code>#[Repository]</code> — wherever
+it is called from, and additionally at the controller dispatcher through <code>MethodSecurityControllerGuard</code>.
+The expression evaluator is a closed, no-<code>eval</code> whitelist tokenizer: <code>hasRole</code>, <code>hasAnyRole</code>, <code>hasAuthority</code>,
+<code>hasAnyAuthority</code>, <code>hasScope</code>, <code>hasAnyScope</code>, <code>hasPermission</code>, <code>isAuthenticated</code>, <code>permitAll</code>, <code>denyAll</code> and
+<code>#param</code> references, and nothing else.</p>
+<p>Both halves of OAuth2 are <strong>separate installs</strong> that light up more filters in the same chain.
+<code>firefly/security-oauth2-client</code> adds <code>OAuth2AuthorizationRequestRedirectFilter</code> (<code>-89</code>) and
+<code>OAuth2LoginAuthenticationFilter</code> (<code>-88</code>) for signing in with a provider;
+<code>firefly/security-oauth2-server</code> adds <code>OAuth2AuthorizationServerFilter</code> (<code>-82</code>) for <em>being</em> one. Neither is
+required by <code>firefly/security</code>, and <code>firefly/security</code> depends on neither — they see it only through ports
+it already owns.</p>
+<p><img alt="The security filter chain" src="../assets/diagrams/security-filter-chain.svg" /></p>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>Tracing is a port, not a vendor. <code>Firefly\Observability\Tracing\Tracer</code> has three methods — <code>startSpan()</code>,
+<code>currentSpan()</code> and <code>trace()</code> — and the <strong>shipped default is <code>NoOpTracer</code></strong>: its spans record nothing, its
+<code>SpanContext</code> is invalid, and every instrumentation site in the framework checks
+<code>$span-&gt;context()-&gt;isValid()</code> before publishing an id. The OpenTelemetry adapter binds itself in front of
+that default only when the SDK is installed and <code>firefly.observability.tracing.enabled</code> is on, and
+<code>firefly/testing</code> supplies an in-memory <code>RecordingTracer</code> for assertions.</p>
+<p><code>W3CTraceContextPropagator</code> speaks <a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a> over a plain
+header map, with no SDK involved. <code>TracingFilter</code> (<code>-110</code>), the outermost ordered filter, calls
+<code>extract()</code> on the inbound headers and starts a <code>SERVER</code> span with whatever came back as its parent — so a
+request arriving with a <code>traceparent</code> continues that trace and one arriving without starts a new root — then
+publishes <code>firefly.trace_id</code> and <code>firefly.span_id</code> onto Laravel's <code>Context</code> and <code>Request::$attributes</code>. From
+there the same trace crosses five boundaries: inbound HTTP, an <code>INTERNAL</code> span per CQRS message, a
+<code>PRODUCER</code> span stamping <code>traceparent</code> into the envelope's headers on the in-memory and queue buses, a
+<code>CONSUMER</code> span on every delivery — a broker's included, through the shared <code>SubscriberRegistrySink</code> — and a
+<code>CLIENT</code> span on every outbound <code>Http</code> call, which injects the header again for the next service's own filter
+to extract. The producer half is the narrower one on purpose: <code>eda-rabbitmq</code>, <code>eda-kafka</code> and <code>eda-postgres</code>
+build their envelopes themselves and do not reach the publish seam yet, so a <code>traceparent</code> reaches a broker
+only when something upstream put it there — see <a href="../modules/tracing/#known-latent">Known-latent</a>.</p>
+<p>The CQRS and EDA seams follow the <code>CqrsMetrics</code> shape: an interface in the owning package with a no-op
+default behind <code>#[ConditionalOnMissingBean]</code>, and observability's <code>#[Order(500)]</code> auto-configuration
+registering the real implementation first. Neither <code>firefly/cqrs</code> nor <code>firefly/eda</code> depends on
+<code>firefly/observability</code>.</p>
+<p>Structured logging carries the same identifiers. <code>TraceContextLogProcessor</code> stamps <code>trace_id</code> and <code>span_id</code>
+onto every record beside the correlation and request ids, and <code>firefly.logging.structured.format</code> —
+<code>json</code>, <code>ecs</code> or <code>logstash</code>, or empty for plain text — decides how a line is rendered, attached per channel
+at resolution time.</p>
+<p>Metrics and introspection are the actuator's. Fifteen <code>ActuatorEndpoint</code> implementations ship, discovered
+into the <code>ActuatorRegistry</code> — health, info, env, beans, conditions, mappings, loggers, scheduledtasks, caches,
+configprops, metrics, prometheus, process, httpexchanges, and oauth2clients when the authorization server is
+installed — and the sensitive ones answer <strong>404</strong> until named in
+<code>firefly.management.endpoints.web.exposure.include</code>. <code>firefly/admin</code> renders those same beans server-side by
+resolving them <strong>in-process from that registry</strong>, never by fetching its own HTTP surface: one data path, and
+pages the JSON surface deliberately keeps unexposed. That is also why the dashboard's own URL is its entire
+security boundary — read <a href="../modules/admin/#access-the-whole-security-boundary">its access model</a> before
+enabling it with <code>app.debug</code> off.</p>
+<p><img alt="Trace context propagation" src="../assets/diagrams/tracing-propagation.svg" /></p>
 <h2 id="async-sync-preview">Async → sync (preview)<a class="headerlink" href="#async-sync-preview" title="Permanent link">&para;</a></h2>
 <p>PyFly (the Python edition) is async-first. LaraFly targets Laravel's synchronous, share-nothing request
 lifecycle by default, with Laravel queues/Horizon for async work and optional Octane (Swoole/RoadRunner)
@@ -2265,6 +2998,19 @@ for long-running/WebSocket/SSE workloads. This section is expanded as those subs
   
 </div>
       
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/fireflyframework/fireflyframework-php" target="_blank" rel="noopener" title="LaraFly on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
     </div>
   </div>
 </footer>
@@ -2278,7 +3024,7 @@ for long-running/WebSocket/SSE workloads. This section is expanded as those subs
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
