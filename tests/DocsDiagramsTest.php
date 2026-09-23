@@ -39,4 +39,43 @@ it('ships six well-formed, referenced SVG diagrams', function () {
         expect($xml->title->count())->toBe(1, "{$name} has no single <title>")
             ->and($xml->desc->count())->toBe(1, "{$name} has no single <desc>");
     }
+
+    // The list above is exhaustive on purpose: a seventh SVG dropped into the directory without a line here
+    // would ship unchecked — no well-formedness, no <title>/<desc>, no page embedding it, and no provenance
+    // row (see the test below). Comparing the two sets is what turns adding a diagram into a deliberate act.
+    $shipped = array_map('basename', glob($root.'/docs/assets/diagrams/*.svg') ?: []);
+    sort($shipped);
+    $expected = $svgs;
+    sort($expected);
+    expect($shipped)->toBe($expected, 'docs/assets/diagrams holds a different set of SVGs than this test names');
+});
+
+/**
+ * docs/assets/README.md is the diagrams' provenance record. Its preamble claims outright that "Each diagram was
+ * drawn directly from the shipped source, not invented — the class/file set it depicts is noted in its own
+ * `<desc>` element and below", and the `Diagram | Depicts | Verified against` table under it is that "below". A
+ * diagram added without its row makes the claim false for the set and leaves a picture nobody can check against
+ * the code it draws, which is the one thing these hand-authored SVGs must stay answerable for.
+ */
+it('records every shipped diagram in the docs/assets/README.md provenance table', function () {
+    $root = dirname(__DIR__);
+    $readme = (string) file_get_contents($root.'/docs/assets/README.md');
+
+    $table = preg_split('/^# Diagrams$/m', $readme)[1] ?? '';
+    expect($table)->not->toBe('', 'docs/assets/README.md has no "# Diagrams" section');
+
+    $rows = [];
+    foreach (explode("\n", $table) as $line) {
+        if (preg_match('/^\|\s*`([a-z0-9-]+\.svg)`\s*\|(.+)\|(.+)\|\s*$/', trim($line), $m) === 1) {
+            $rows[$m[1]] = [trim($m[2]), trim($m[3])];
+        }
+    }
+
+    foreach (glob($root.'/docs/assets/diagrams/*.svg') ?: [] as $svg) {
+        $name = basename($svg);
+        expect(array_key_exists($name, $rows))->toBeTrue("{$name} has no row in the docs/assets/README.md provenance table");
+        expect($rows[$name][0])->not->toBe('', "{$name}'s provenance row says nothing under Depicts")
+            ->and(str_contains($rows[$name][1], 'packages/'))
+            ->toBeTrue("{$name}'s row names no package path under 'Verified against'");
+    }
 });

@@ -339,10 +339,15 @@ Every filter that can ESTABLISH a principal clears `SecurityContextHolder` on ex
 `OAuth2ResourceServerFilter`, `RememberMeAuthenticationFilter` and firefly/security-oauth2-client's
 `OAuth2LoginAuthenticationFilter` — so nothing bleeds into the next request under Octane; the persistence filter is
 the outermost and the last to clear. (`LogoutFilter` clears the holder too, but as a step of signing out inside
-`LogoutHandler`, not in a `finally`; the filters that establish no principal — headers, CSRF, `HttpSecurityFilter`,
-the authorization server — never touch the holder.) The authorization server's filter answers its endpoints ahead
-of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none of its endpoints
-needs an `http.rules` entry.
+`LogoutHandler`, not in a `finally`. Among the filters that establish none, only `SecurityHeadersFilter`,
+`CsrfFilter` and `OAuth2AuthorizationServerFilter` itself never name the holder at all; `HttpSecurityFilter`
+**reads** it — the context is what tells an anonymous denial, which is the entry point's to answer, from an
+authenticated one, which is the 403 — and never writes or clears it; and the authorization server's endpoints,
+which its filter dispatches to, do both: `AuthorizationEndpoint` reads the holder on every `/oauth2/authorize` it
+accepts, the GET and the consent POST alike, and clears it when `prompt=login` or an exceeded `max_age` forces a
+fresh sign-in, while `OidcLogoutEndpoint` reads it and hands it to the same `LogoutHandler` the logout filter
+uses.) The authorization server's filter answers its endpoints ahead of the CSRF and URL-rule filters, so its
+token endpoint needs no `csrf.except` entry and none of its endpoints needs an `http.rules` entry.
 
 `FilterChainRegistrar::orderedFilters()` is what decides all of this: it sorts every `WebFilter` bean by
 `BeanDescriptor::order` — read from the manifest, never from a resolved instance — breaks ties with `strcmp` on the
