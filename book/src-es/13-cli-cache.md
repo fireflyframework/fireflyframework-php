@@ -2,7 +2,7 @@
 
 # La CLI y la Caché Sin Reflexión {.chtitle}
 
-Al terminar este capítulo sabrás exactamente qué hace `php artisan firefly:cache` — los once pasos de escáner-y-compilador que ejecuta, en orden, sobre las propias raíces PSR-4 de tu aplicación, y los manifiestos de `bootstrap/cache/firefly/` y las clases proxy `#[Transactional]` que escribe — cómo `FireflyCacheServiceProvider` vuelve a cargar esa caché en el arranque con cero reflexión, el inverso exacto de `firefly:clear`, los comandos de actuator-sobre-CLI (`firefly:about`/`:routes`/`:health`/`:metrics`) que reutilizan los endpoints del Capítulo 11 en-proceso sin ida y vuelta HTTP, los ocho generadores `make:firefly-*`, y cómo el `firefly new` de `firefly/installer` te lleva de la nada a una aplicación cacheada y en funcionamiento en un solo comando.
+Al terminar este capítulo sabrás exactamente qué hace `php artisan firefly:cache` — los trece pasos de escáner-y-compilador que ejecuta, en orden, sobre las propias raíces PSR-4 de tu aplicación, y los manifiestos de `bootstrap/cache/firefly/` y las clases proxy generadas (una por cada clase que nombra el plan de proxies) que escribe — cómo `FireflyCacheServiceProvider` vuelve a cargar esa caché en el arranque con cero reflexión, el inverso exacto de `firefly:clear`, los comandos de actuator-sobre-CLI (`firefly:about`/`:routes`/`:health`/`:metrics`) que reutilizan los endpoints del Capítulo 11 en-proceso sin ida y vuelta HTTP, los ocho generadores `make:firefly-*`, y cómo el `firefly new` de `firefly/installer` te lleva de la nada a una aplicación cacheada y en funcionamiento en un solo comando.
 
 !!! note "Término nuevo: arranque sin reflexión"
     Cada capítulo anterior a este ha mencionado, de pasada, que un manifiesto compilado reemplaza a "escanea el sistema de archivos con reflexión de PHP en cada arranque". Un **arranque sin reflexión** es lo que obtienes una vez que `firefly:cache` ha ejecutado realmente: `FireflyCacheServiceProvider` carga manifiestos precomputados directamente desde archivos PHP bajo `bootstrap/cache/firefly/`, de modo que ningún atributo, ninguna clase y ningún método se somete jamás a reflexión en tiempo de petición — el escaneo ocurrió una vez, en tiempo de despliegue, no en cada petición.
@@ -464,7 +464,7 @@ Cada aplicación que `firefly new` andamia es por tanto, desde el primerísimo `
 
 | Concepto | Qué hace |
 |---|---|
-| `firefly:cache` | Ejecuta el par escáner→compilador propio de cada capacidad (11 pasos, 12 artefactos) sobre `firefly.scan.paths`; escribe manifiestos + proxies `#[Transactional]` a `bootstrap/cache/firefly/` |
+| `firefly:cache` | Ejecuta el par escáner→compilador propio de cada capacidad (13 pasos, 14 artefactos) sobre `firefly.scan.paths`; escribe manifiestos + un archivo de clase proxy generado por cada clase que nombra el plan de proxies a `bootstrap/cache/firefly/` |
 | `FireflyCacheServiceProvider` | Enlaza cada manifiesto cacheado incondicionalmente (gana sobre todo valor por defecto vacío) + instala el autoloader de classmap de proxies — antes de que se ejecute cualquier resolución de bean |
 | `firefly:clear` | Borra recursivamente solo el directorio de caché; el siguiente arranque recurre al escaneo en-proceso |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renderiza los endpoints de actuator del Capítulo 11 en el terminal, en-proceso, sin ida y vuelta HTTP |

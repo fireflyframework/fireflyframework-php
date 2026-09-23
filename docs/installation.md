@@ -30,10 +30,21 @@ off `NewCommand::configure()`:
 | `-f`, `--force` | **Empties the target directory first**, then scaffolds into it. |
 | `--git` / `--no-git` | Whether to `git init` and make an initial commit. On by default. |
 
-`--with` never decides whether code *exists*: every non-adapter capability is already required by the
-`firefly/firefly` metapackage, so naming one promotes an installed package to an explicit dependency in the
-generated `composer.json` rather than fetching anything new. See [Installer](modules/installer.md) for the
-full catalogue and how the tool is built.
+For most capabilities `--with` does not decide whether code *exists*: every non-adapter, non-dev capability
+is already required by the `firefly/firefly` metapackage — `tests/MetapackageCoverageTest.php` fails the
+build if one of them is not — so naming one promotes an already-installed package to an explicit dependency
+in the generated `composer.json` rather than fetching anything new.
+
+Four capabilities are the exception and really do fetch something. The broker adapters `eda-kafka`,
+`eda-rabbitmq` and `eda-postgres` each bind an application to one transport, and each brings its own
+baggage — `eda-postgres` will not install at all without `ext-pdo_pgsql`, `eda-rabbitmq` pulls
+`php-amqplib/php-amqplib` in with it, and `eda-kafka` is inert until `ext-rdkafka` is present — so the
+metapackage deliberately leaves all three out and `--with=eda-kafka` is what actually installs one. The
+dev-only `testing` kit is the fourth: it requires `orchestra/testbench`, which belongs in `require-dev` or
+nowhere, so `--with=testing` writes `firefly/testing` into **`require-dev`** rather than `require`. The
+catalogue's fourth adapter, `scheduling-postgres`, needs nothing but a Postgres connection and *is* shipped
+by the metapackage, so naming it only makes it explicit like any other capability. See
+[Installer](modules/installer.md) for the full catalogue and how the tool is built.
 
 ## Without the installer
 

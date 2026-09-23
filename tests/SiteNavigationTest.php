@@ -108,7 +108,7 @@ it('lists navigation.indexes only when a section really has an index page', func
  * 32 guides out by concern" is one sentence to a reader and two lines to `str_contains()`, and a guard that
  * depends on where a paragraph happens to wrap would fail the next time somebody reflows it.
  */
-it('quotes package and guide counts that match the tree, on the README, the Modules landing and the front page', function () {
+it('quotes package and guide counts that match the tree, on both READMEs, the Modules landing and the front page', function () {
     $root = MkdocsConfig::root();
     $packages = count(glob($root.'/packages/*/composer.json') ?: []);
     $guides = count(glob($root.'/docs/modules/*.md') ?: []);
@@ -133,6 +133,16 @@ it('quotes package and guide counts that match the tree, on the README, the Modu
             'round out the '.$packages.' packages',
             'is the '.($packages + 1).'th unit',
             'The '.$guides.' [module guides]',
+        ],
+        // `docs/README.md` is the documentation folder's own index — what GitHub renders when somebody opens
+        // `docs/` — and it lists every guide by hand, twice over: the grouped tables under "Module Guides"
+        // and the Reference row that sends people to the landing page. Both quote the total. It was outside
+        // this map while its own prose named tests/ModuleDocumentationTest.php as the thing that would catch
+        // a missing guide, so the page most confident about being guarded was the one page that was not; the
+        // list is held by that test now and the number is held here.
+        'docs/README.md' => [
+            'All '.$guides.' are listed here',
+            'all '.$guides.' module guides',
         ],
     ];
 

@@ -96,7 +96,7 @@ DOM-level regression test beside the existing ones — the browser scenario is t
 
 ## Documentation
 
-Documentation is held to the same gate as code, by five Pest tests and a strict site build.
+Documentation is held to the same gate as code, by seven Pest tests and a strict site build.
 
 **Every code listing names the file it came from.** A fenced `php` block in `README.md` or on any page
 directly under `docs/` — `DocsCodeAudit::AUDITED` is the list, and adding a page to it is how a page joins
@@ -136,9 +136,12 @@ Under guard today: the expression functions `SecurityExpressionEvaluator` really
 inventory and every "404 until exposed" sentence, the exceptions `PersistenceExceptionTranslator` really
 builds, the order in which `ErrorPageRenderer` really reads an `Accept` header, the stereotype hierarchy PHP
 really declares, the Composer constraint tables `composer/semver` really matches, the `make:firefly-*` tables
-the generators really back, and the artifact count `ManifestCacheWriter` really writes. The triggers are deliberately narrow — a page may mention `hasRole()` or `/actuator/env` in passing
-without owing the full enumeration — so **a red run here is fixed by correcting the sentence**, never by
-loosening the trigger that caught it.
+the generators really back, every `firefly:cache` figure `ManifestCacheWriter` really produces (the console
+line, the pair count, the step count and the artifact count, in both manuscripts), the capabilities `--with`
+really fetches — the ones the `firefly/firefly` metapackage does *not* already require — and the roster of
+documentation guards this very section names. The triggers are deliberately narrow — a page may
+mention `hasRole()` or `/actuator/env` in passing without owing the full enumeration — so **a red run here
+is fixed by correcting the sentence**, never by loosening the trigger that caught it.
 
 **Diagrams are hand-written SVG.** No Mermaid, no PlantUML, no raster: plain `<rect>`/`<line>`/`<text>` on a
 white rounded panel, `font-family="sans-serif"`, exactly one `<title>` and one `<desc>`, marker ids prefixed
@@ -162,9 +165,23 @@ python3 -m venv .venv-docs
 .venv-docs/bin/mkdocs build --strict
 ```
 
+**Every link resolves, and every number a page quotes is counted, not typed.** `tests/ReadmeDocLinksTest.php`
+walks every relative Markdown link in `README.md` and fails if one points at a file that is not there — a
+renamed document is otherwise a 404 nobody meets until a reader does. `tests/SiteNavigationTest.php` does
+the same job for the site and three more besides: every tab in `mkdocs.yml` is followed the way Material
+follows it (a section's tab opens its FIRST child, descending while that child is itself a section) and
+required to land on a document that exists; `navigation.indexes` is required to be listed *exactly* when a
+section really has an `index.md`/`README.md` for it to bind, because the feature is inert otherwise and the
+first explanation of the tab row was wrong in precisely that way; the package and guide counts quoted in
+prose — on `README.md`, `docs/README.md`, `docs/index.md` and `docs/modules.md` — are compared against
+`glob()` over `packages/*` and `docs/modules/*.md` rather than proof-read, so a thirty-third guide fails the
+build instead of turning four sentences into lies no diff touched; and the two wiring idioms
+`docs/modules.md` names are held to the split the packages really have, exemplar files included.
+
 `tests/ModuleDocumentationTest.php` closes the last loop: every `docs/modules/*.md` must appear in
-`mkdocs.yml`'s navigation, in the README's module table, in `docs/index.md` and on `docs/modules.md`, and
-every `docs/modules/<name>.md` a package README promises must exist.
+`mkdocs.yml`'s navigation, in the root `README.md`'s module table, in `docs/README.md`'s, in
+`docs/index.md` and on `docs/modules.md`, and every `docs/modules/<name>.md` a package README promises must
+exist.
 
 ## Architecture rules
 

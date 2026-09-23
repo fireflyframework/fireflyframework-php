@@ -28,9 +28,11 @@
 ## Module Guides
 
 Every module guide lives under [`modules/`](modules/), in the ten groups `mkdocs.yml`'s navigation and the
-site's own [Modules](modules.md) landing page use. All 32 are listed here; `tests/ModuleDocumentationTest.php`
-fails the build if a guide is missing from the navigation, from the README's table, from `docs/index.md` or
-from the landing page.
+site's own [Modules](modules.md) landing page use. All 32 are listed here, and neither the list nor the
+number is maintained on trust: `tests/ModuleDocumentationTest.php` fails the build if a guide is missing
+from the navigation, from the table below, from the root `README.md`'s table, from `docs/index.md` or from
+the landing page, and `tests/SiteNavigationTest.php` reads that number off `docs/modules/*.md` itself, so a
+thirty-third guide turns this page red rather than quietly making it wrong.
 
 ### Foundation
 

@@ -2,7 +2,7 @@
 
 # The CLI and the Zero-Reflection Cache {.chtitle}
 
-By the end of this chapter you will know exactly what `php artisan firefly:cache` does — the eleven scanner-and-compiler steps it runs, in order, over your application's own PSR-4 roots, and the `bootstrap/cache/firefly/` manifests and `#[Transactional]` proxy classes it writes — how `FireflyCacheServiceProvider` loads that cache back in at boot with zero reflection, `firefly:clear`'s exact inverse, the actuator-over-CLI commands (`firefly:about`/`:routes`/`:health`/`:metrics`) that reuse Chapter 11's endpoints in-process with no HTTP round trip, the eight `make:firefly-*` generators, and how `firefly/installer`'s `firefly new` gets you from nothing to a cached, running application in one command.
+By the end of this chapter you will know exactly what `php artisan firefly:cache` does — the thirteen scanner-and-compiler steps it runs, in order, over your application's own PSR-4 roots, and the `bootstrap/cache/firefly/` manifests and generated proxy classes (one per class the proxy plan names) it writes — how `FireflyCacheServiceProvider` loads that cache back in at boot with zero reflection, `firefly:clear`'s exact inverse, the actuator-over-CLI commands (`firefly:about`/`:routes`/`:health`/`:metrics`) that reuse Chapter 11's endpoints in-process with no HTTP round trip, the eight `make:firefly-*` generators, and how `firefly/installer`'s `firefly new` gets you from nothing to a cached, running application in one command.
 
 !!! note "New term: zero-reflection boot"
     Every chapter before this one has mentioned, in passing, that a compiled manifest replaces "scan the filesystem with PHP reflection at every boot." A **zero-reflection boot** is what you get once `firefly:cache` has actually run: `FireflyCacheServiceProvider` loads pre-computed manifests straight from PHP files under `bootstrap/cache/firefly/`, so no attribute, no class, and no method is ever reflected on at request time — the scan happened once, at deploy time, not on every request.
@@ -464,7 +464,7 @@ Every application `firefly new` scaffolds is therefore, from the very first `git
 
 | Concept | What it does |
 |---|---|
-| `firefly:cache` | Runs every capability's own scanner→compiler pair (11 steps, 12 artifacts) over `firefly.scan.paths`; writes manifests + `#[Transactional]` proxies to `bootstrap/cache/firefly/` |
+| `firefly:cache` | Runs every capability's own scanner→compiler pair (13 steps, 14 artifacts) over `firefly.scan.paths`; writes manifests + one generated proxy class file per class the proxy plan names to `bootstrap/cache/firefly/` |
 | `FireflyCacheServiceProvider` | Binds each cached manifest unconditionally (wins over every empty default) + installs the proxy classmap autoloader — before any bean resolution runs |
 | `firefly:clear` | Recursively deletes only the cache dir; the next boot falls back to in-process scanning |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renders Chapter 11's actuator endpoints at the terminal, in-process, no HTTP round trip |

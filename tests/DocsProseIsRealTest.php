@@ -14,6 +14,7 @@ use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Locking\HasOptimisticLock;
 use Firefly\Data\Repository\Locking\OptimisticLockException;
+use Firefly\Installer\CapabilityCatalog;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
@@ -1071,6 +1072,15 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
     //
     // The same drift reached the pair count. `writeManifests()` grew the #[ControllerAdvice] handler manifest
     // and the proxy plan, and four chapters went on calling a scanner "one of the ten pairs".
+    //
+    // AND IT REACHED THE STEP COUNT, which the first version of this guard could not see. Chapter 13 states
+    // the same fact three times in three different shapes — a learning objective at the top, a sentence over
+    // the artifact tree, a recap row at the bottom — and only the middle one says "lands N artifacts", the
+    // one shape the patterns below matched. So the chapter was corrected to "Thirteen steps in total land
+    // fourteen artifacts" and went on promising "the eleven scanner-and-compiler steps it runs" in its first
+    // sentence and "(11 steps, 12 artifacts)" in its last table, in BOTH manuscripts: a reader met the wrong
+    // number first and again last, 277 lines after the right one, with nothing red. A guard that only knows
+    // one phrasing of a claim is a guard on that phrasing, not on the claim, so all three are matched here.
     $figures = fireflyCacheFigures();
 
     // Fourteen artifacts out of twelve scanner/compiler calls: the component+context compiler emits two, and
@@ -1078,9 +1088,17 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
     // expectation is the thing to re-derive — but read ManifestCacheWriter first.
     expect($figures)->toBe(['artifacts' => 14, 'pairs' => 12]);
 
+    // A STEP is not a pair: writeManifests() makes twelve scanner-then-compiler calls and writeProxies() is
+    // the thirteenth step, which is why the chapter's own body says "twelve `scan()`-then-`write()` calls ...
+    // plus one more step". Derived as pairs + 1 rather than typed, so adding a capability moves the pair
+    // count, the step count and the sentences that quote either of them together.
+    $steps = $figures['pairs'] + 1;
+
     $consoleLines = 0;
     $pairClaims = 0;
     $artifactClaims = 0;
+    $stepClaims = 0;
+    $recapClaims = 0;
 
     foreach (fireflyProsePages() as $page => $paragraphs) {
         foreach ($paragraphs as $paragraph) {
@@ -1147,12 +1165,202 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
                     ));
                 }
             }
+
+            // "the thirteen scanner-and-compiler steps it runs", "los trece pasos de escáner-y-compilador",
+            // and the sentence over the artifact tree: "Thirteen steps in total", "Trece pasos en total".
+            // `pair` is deliberately NOT an alternative here — chapter 13 calls writeManifests()'s twelve
+            // calls "scanner-and-compiler pair"s one line above, and that count is the pair patterns' job.
+            $stepPatterns = [
+                '/(?:\*\*)?(\p{L}+)(?:\*\*)?\s+(?:scanner-and-compiler\s+steps|pasos\s+de\s+escáner-y-compilador)\b/u',
+                '/(?:\*\*)?(\p{L}+)(?:\*\*)?\s+(?:steps\s+in\s+total|pasos\s+en\s+total)\b/u',
+            ];
+
+            foreach ($stepPatterns as $pattern) {
+                if (preg_match_all($pattern, $paragraph, $matches) < 1) {
+                    continue;
+                }
+
+                foreach ($matches[1] as $token) {
+                    $written = fireflyWrittenNumber($token);
+
+                    if ($written === null) {
+                        continue;
+                    }
+
+                    $stepClaims++;
+
+                    expect($written)->toBe($steps, sprintf(
+                        '%s says firefly:cache runs %s steps; ManifestCacheWriter runs %d — '
+                        .'%d scanner/compiler pairs plus writeProxies().',
+                        $page,
+                        $token,
+                        $steps,
+                        $figures['pairs'],
+                    ));
+                }
+            }
+
+            // The recap row, which states both figures at once in digits: "(13 steps, 14 artifacts)",
+            // "(13 pasos, 14 artefactos)". A chapter's last table is the line a reader copies out.
+            if (preg_match_all('/\((\d+)\s+(?:steps|pasos),\s+(\d+)\s+(?:artifacts|artefactos)\)/u', $paragraph, $matches, PREG_SET_ORDER) > 0) {
+                foreach ($matches as $match) {
+                    $recapClaims++;
+
+                    expect([(int) $match[1], (int) $match[2]])->toBe([$steps, $figures['artifacts']], sprintf(
+                        '%s recaps firefly:cache as (%s steps, %s artifacts); it runs %d steps and lands %d.',
+                        $page,
+                        $match[1],
+                        $match[2],
+                        $steps,
+                        $figures['artifacts'],
+                    ));
+                }
+            }
         }
     }
 
     // docs/cli.md, both tutorials, and the DI and CQRS chapters in both languages; the pair count in chapters
-    // 3, 7 (twice), 8 and 9 of each manuscript; the artifact tree in chapter 13 of each.
+    // 3, 7 (twice), 8 and 9 of each manuscript; the artifact tree in chapter 13 of each. The step count is
+    // stated twice per manuscript — chapter 13's opening objective and the line over the artifact tree — and
+    // the recap row once. These canaries are what turns a REWORDING red: a sentence that stops matching stops
+    // being checked, silently, and that is precisely how "(11 steps, 12 artifacts)" survived the correction
+    // of the paragraph 277 lines above it.
     expect($consoleLines)->toBe(7)
         ->and($pairClaims)->toBe(10)
-        ->and($artifactClaims)->toBe(2);
+        ->and($artifactClaims)->toBe(2)
+        ->and($stepClaims)->toBe(4)
+        ->and($recapClaims)->toBe(2);
+});
+
+it('pins the capabilities `--with` really fetches to the metapackage manifest', function () {
+    // The ninth. `docs/installation.md` explained `--with` with one flat sentence — "every non-adapter
+    // capability is already required by the `firefly/firefly` metapackage, so naming one promotes an
+    // installed package to an explicit dependency rather than fetching anything new" — and a reader who
+    // believed it ran `firefly new --with=testing` expecting nothing to be downloaded. firefly/testing is
+    // deliberately OUTSIDE the metapackage (it pulls orchestra/testbench), so that install fetches a package
+    // and writes it into require-dev. The sentence was inherited from CapabilityCatalog's own docblock, and
+    // `docs/getting-started.md` said the opposite two pages away.
+    //
+    // The real invariant is the one tests/MetapackageCoverageTest.php asserts: every non-adapter, NON-DEV
+    // capability is required by the metapackage. What is left over — the brokers an application chooses for
+    // itself, plus the dev-only test kit — is exactly the set `--with` really installs, and it is computable,
+    // so the page is held to it rather than to a list somebody kept in their head. `scheduling-postgres` is
+    // why this is derived and not typed: it is an `adapter: true` capability that the metapackage DOES ship,
+    // because an advisory-lock backend needs nothing but a Postgres connection, so "adapter" and "fetched"
+    // are not the same set and a hand-written caveat gets that wrong in the obvious direction.
+    /** @var mixed $manifest */
+    $manifest = json_decode(
+        (string) file_get_contents(dirname(__DIR__).'/packages/firefly/composer.json'),
+        true,
+    );
+    $require = is_array($manifest) && is_array($manifest['require'] ?? null) ? $manifest['require'] : [];
+    $shipped = array_map(strval(...), array_keys($require));
+
+    expect($shipped)->not->toBeEmpty('packages/firefly/composer.json requires nothing at all');
+
+    $fetched = [];
+    $shippedAdapters = [];
+
+    foreach (CapabilityCatalog::all() as $capability) {
+        if (! in_array($capability->package, $shipped, true)) {
+            $fetched[$capability->id] = $capability;
+        } elseif ($capability->adapter) {
+            $shippedAdapters[] = $capability->id;
+        }
+    }
+
+    $prose = (string) preg_replace(
+        '/\s+/',
+        ' ',
+        (string) file_get_contents(dirname(__DIR__).'/docs/installation.md'),
+    );
+
+    // The count, as the page writes it: "Four capabilities are the exception".
+    $found = preg_match('/(?:\*\*)?(\p{L}+)(?:\*\*)?\s+capabilities\s+are\s+the\s+exception/u', $prose, $match) === 1;
+
+    expect($found)->toBeTrue('docs/installation.md no longer counts the capabilities --with really fetches');
+
+    $counted = $match[1] ?? '';
+
+    expect(fireflyWrittenNumber($counted))->toBe(count($fetched), sprintf(
+        'docs/installation.md says %s capabilities are fetched by --with; the metapackage leaves %d out of '
+        .'its require block: %s.',
+        $counted,
+        count($fetched),
+        implode(', ', array_keys($fetched)),
+    ));
+
+    $drifted = [];
+
+    foreach ($fetched as $id => $capability) {
+        if (! str_contains($prose, '`'.$id.'`')) {
+            $drifted[] = $id.' is fetched by --with and the page never names it';
+        }
+
+        // A dev-only capability lands somewhere else in the generated manifest, which is the part a reader
+        // acts on: ArchetypeApplier writes it under require-dev, not require.
+        if ($capability->dev && ! str_contains($prose, '**`require-dev`**')) {
+            $drifted[] = $id.' is dev-only and the page no longer says it lands in require-dev';
+        }
+    }
+
+    // The other direction, and the one a hand-written caveat gets wrong: an adapter the metapackage DOES
+    // ship must still be named, or "the adapters are fetched" quietly becomes true of one package too many.
+    foreach ($shippedAdapters as $id) {
+        if (! str_contains($prose, '`'.$id.'`')) {
+            $drifted[] = $id.' is an adapter the metapackage ships, and the page no longer says so';
+        }
+    }
+
+    expect($drifted)->toBe([], implode('; ', $drifted));
+});
+
+it('pins the contributing guide\'s documentation-gate roster to the test files it names', function () {
+    // The tenth, and the one closest to home: it guards the page that explains the guards. The Documentation
+    // section opened "held to the same gate as code, by five Pest tests" and then named five — while seven
+    // ran in the same `composer check`. tests/ReadmeDocLinksTest.php and tests/SiteNavigationTest.php were
+    // documented nowhere, and one of SiteNavigationTest's five tests is itself a prose-count guard, so a
+    // contributor who broke a quoted count met a red run from a test the guide had never mentioned. That is
+    // the defect this whole wave exists to close, reproduced inside the wave's own documentation.
+    //
+    // WHAT THIS CAN AND CANNOT SEE. It derives the roster from the section's own text and pins two things a
+    // human gets wrong for free: the COUNT (a number typed beside a list is a number that stops matching the
+    // list) and the EXISTENCE of every file named (a renamed test leaves a citation pointing at nothing). It
+    // cannot know that an eighth documentation guard was added and left unnamed — nothing in tests/ marks a
+    // file as belonging to this gate, and inventing a marker to make a sentence checkable would be inventing
+    // a mechanism for the documentation's benefit. Adding a guard therefore still means writing a sentence
+    // about it; this is what stops the sentence and the number from drifting apart afterwards.
+    $guide = (string) file_get_contents(dirname(__DIR__).'/docs/contributing.md');
+
+    $found = preg_match('/\n## Documentation\n(.*?)(?=\n## )/s', $guide, $section) === 1;
+
+    expect($found)->toBeTrue('docs/contributing.md no longer has a `## Documentation` section');
+
+    $prose = (string) preg_replace('/\s+/', ' ', $section[1] ?? '');
+
+    preg_match_all('/tests\/[A-Za-z0-9]+Test\.php/', $prose, $named);
+    $roster = array_values(array_unique($named[0]));
+    sort($roster);
+
+    expect($roster)->not->toBeEmpty('the Documentation section names no Pest test at all');
+
+    $missing = array_values(array_filter(
+        $roster,
+        static fn (string $path): bool => ! is_file(dirname(__DIR__).'/'.$path),
+    ));
+
+    expect($missing)->toBe([], 'the Documentation section cites a test that does not exist: '.implode(', ', $missing));
+
+    $counts = preg_match('/by\s+(?:\*\*)?(\p{L}+)(?:\*\*)?\s+Pest\s+tests\b/u', $prose, $match) === 1;
+
+    expect($counts)->toBeTrue('the Documentation section no longer says how many Pest tests hold the gate');
+
+    $quoted = $match[1] ?? '';
+
+    expect(fireflyWrittenNumber($quoted))->toBe(count($roster), sprintf(
+        'docs/contributing.md says the documentation gate is %s Pest tests and then names %d: %s.',
+        $quoted,
+        count($roster),
+        implode(', ', $roster),
+    ));
 });
