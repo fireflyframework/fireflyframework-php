@@ -6,6 +6,7 @@ namespace Firefly\OpenApi\Schema;
 
 use ReflectionNamedType;
 use ReflectionParameter;
+use ReflectionUnionType;
 
 /**
  * The reflected facts about one DTO member that a rule list cannot supply. A tiny local value object rather
@@ -31,6 +32,9 @@ final readonly class MemberType
         public bool $hasDefault,
         public mixed $default,
         public MemberDoc $doc = new MemberDoc,
+        // A union has no single type NAME for $type to hold, so it travels whole. Last and defaulted, like
+        // $doc, so every existing construction keeps compiling.
+        public ?ReflectionUnionType $union = null,
     ) {}
 
     public static function fromParameter(ReflectionParameter $parameter, MemberDoc $doc = new MemberDoc): self
@@ -43,6 +47,7 @@ final readonly class MemberType
             hasDefault: $parameter->isDefaultValueAvailable(),
             default: $parameter->isDefaultValueAvailable() ? self::scalar($parameter->getDefaultValue()) : null,
             doc: $doc,
+            union: $type instanceof ReflectionUnionType ? $type : null,
         );
     }
 
@@ -54,7 +59,7 @@ final readonly class MemberType
 
     public function required(): bool
     {
-        return ! $this->hasDefault && ! $this->nullable && $this->type !== null;
+        return ! $this->hasDefault && ! $this->nullable && ($this->type !== null || $this->union !== null);
     }
 
     /**

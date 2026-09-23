@@ -496,7 +496,7 @@ final class OperationFactory
 
         [$documented, $prose] = $this->documentedReturn($method, $registry);
 
-        $schema = $documented ?? $this->declaredReturnSchema($type, $registry);
+        $schema = $documented ?? $this->declaredReturnSchema($method, $registry);
 
         return [
             'description' => $prose === '' ? 'Successful response.' : $prose,
@@ -551,16 +551,19 @@ final class OperationFactory
     }
 
     /**
+     * The success body the DECLARED return type states, union and nullability included — `?Parcel` answers
+     * with null as well as a Parcel, and `Parcel|Label` with either. An undeclared return is the any-value
+     * schema.
+     *
      * @return array<string, mixed>
      */
-    private function declaredReturnSchema(?string $type, SchemaRegistry $registry): array
+    private function declaredReturnSchema(?ReflectionMethod $method, SchemaRegistry $registry): array
     {
-        return match (true) {
-            $type === null => [],
+        return TypeSchema::reflected($method?->getReturnType(), fn (string $type): array => match (true) {
             $type === 'array', $type === 'iterable' => ['type' => 'object'],
             TypeSchema::isDto($type) => $this->responses->schema($type, $registry),
             default => TypeSchema::for($type) ?? ['type' => 'object'],
-        };
+        });
     }
 
     /**

@@ -5,7 +5,13 @@ declare(strict_types=1);
 namespace Firefly\OpenApi\Schema;
 
 use BackedEnum;
+use Closure;
 use DateTimeInterface;
+use ReflectionIntersectionType;
+use ReflectionNamedType;
+use ReflectionType;
+use ReflectionUnionType;
+use stdClass;
 
 /**
  * The PHP-type half of a property schema: everything derivable from a type NAME alone, with no constraints in
@@ -48,9 +54,62 @@ final class TypeSchema
             'float' => ['type' => 'number'],
             'bool' => ['type' => 'boolean'],
             'array', 'iterable' => ['type' => 'array'],
-            null, 'mixed', 'object', 'null' => [],
+            // `object` promises an object and nothing about its members — which is exactly `type: object`,
+            // and strictly more than the any-value schema it used to share with `mixed`.
+            'object' => ['type' => 'object'],
+            null, 'mixed', 'null' => [],
             default => self::forClass($type),
         };
+    }
+
+    /**
+     * The schema for a DECLARED PHP type, whatever its reflected shape — a named type, a union, an
+     * intersection — with its nullability.
+     *
+     * Every declared-type reader in this package used to ask only `instanceof ReflectionNamedType`, so a
+     * union came back as no type at all: `Parcel|Label` was documented as any value, `int|string` likewise,
+     * and a union-typed request member fell out of `required`. $named decides what ONE type name means in the
+     * caller's position (a response `$ref`, a request `$ref`, the bare-array fallback of a success body); this
+     * decides how the names combine, through the same SchemaUnion a `@return` expression uses, so
+     * `: ?Parcel` and `@return ?Parcel` cannot become two different documents. `null` is an arm like any
+     * other — `Parcel|Label|null` is one flat anyOf — and one arm meaning "any value" makes the whole union
+     * any value, for the reason DocType gives: a union that silently dropped an arm would be a lie.
+     *
+     * @param  Closure(string): array<string, mixed>  $named
+     * @return array<string, mixed>
+     */
+    public static function reflected(?ReflectionType $type, Closure $named): array
+    {
+        if ($type instanceof ReflectionNamedType) {
+            $name = $type->getName();
+
+            if ($name === 'null') {
+                return ['type' => 'null'];
+            }
+
+            $schema = $named($name);
+
+            return $type->allowsNull() && $name !== 'mixed' ? SchemaUnion::nullable($schema) : $schema;
+        }
+
+        if ($type instanceof ReflectionUnionType) {
+            $arms = [];
+            foreach ($type->getTypes() as $arm) {
+                $schema = self::reflected($arm, $named);
+                if ($schema === []) {
+                    return [];
+                }
+                $arms[] = $schema;
+            }
+
+            return SchemaUnion::of($arms);
+        }
+
+        if ($type instanceof ReflectionIntersectionType) {
+            return ['allOf' => array_map(static fn (ReflectionType $part): array => self::reflected($part, $named), $type->getTypes())];
+        }
+
+        return [];
     }
 
     /**
@@ -71,6 +130,13 @@ final class TypeSchema
             // A type this process cannot autoload (a `never`/`static` return, a class from a package the
             // app does not install). Documenting it as an opaque JSON value is honest; guessing is not.
             return [];
+        }
+
+        // An open bag of members: reflecting it finds none, and a component built from that would document
+        // an object with NO members — the opposite of what a stdClass is. Only the exact class; a subclass
+        // that declares properties is a DTO like any other.
+        if (strcasecmp(ltrim($type, '\\'), stdClass::class) === 0) {
+            return ['type' => 'object'];
         }
 
         if (is_a($type, DateTimeInterface::class, true)) {

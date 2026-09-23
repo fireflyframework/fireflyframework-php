@@ -7,7 +7,6 @@ namespace Firefly\OpenApi\Schema;
 use Firefly\OpenApi\Generator\DocBlock;
 use JsonSerializable;
 use ReflectionClass;
-use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionProperty;
 
@@ -199,10 +198,6 @@ final class ResponseSchemaFactory
      */
     private function property(ReflectionProperty $property, ?string $promotedType, ReflectionClass $declaring, SchemaRegistry $registry): array
     {
-        $type = $property->getType();
-        $declared = $type instanceof ReflectionNamedType ? $type->getName() : null;
-        $nullable = $type?->allowsNull() ?? true;
-
         $expression = DocBlock::parse($property->getDocComment())->varType() ?? $promotedType;
 
         $schema = null;
@@ -210,37 +205,13 @@ final class ResponseSchemaFactory
             $schema = DocType::schema($expression, fn (string $c): array => $this->schema($c, $registry), $declaring);
         }
 
-        if (! $this->informative($schema)) {
-            $schema = $declared === null
-                ? []
-                : (TypeSchema::for($declared) ?? ['$ref' => $this->ref($declared, $registry)]);
-
-            if ($nullable) {
-                $schema = $this->nullable($schema);
-            }
+        if ($this->informative($schema)) {
+            return $schema ?? [];
         }
 
-        return $schema ?? [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $schema
-     * @return array<string, mixed>
-     */
-    private function nullable(array $schema): array
-    {
-        if ($schema === []) {
-            return [];
-        }
-
-        if (isset($schema['$ref'])) {
-            return ['anyOf' => [$schema, ['type' => 'null']]];
-        }
-
-        if (isset($schema['type']) && is_string($schema['type'])) {
-            $schema['type'] = [$schema['type'], 'null'];
-        }
-
-        return $schema;
+        return TypeSchema::reflected(
+            $property->getType(),
+            fn (string $type): array => TypeSchema::for($type) ?? ['$ref' => $this->ref($type, $registry)],
+        );
     }
 }
