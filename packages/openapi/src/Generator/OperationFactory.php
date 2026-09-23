@@ -591,7 +591,7 @@ final class OperationFactory
     {
         return TypeSchema::reflected($method?->getReturnType(), fn (string $type): array => match (true) {
             $type === 'array', $type === 'iterable' => ['type' => 'object'],
-            TypeSchema::isDto($type) => $this->responses->schema($type, $registry),
+            class_exists($type) || interface_exists($type) => $this->responses->schema($type, $registry),
             default => TypeSchema::for($type) ?? ['type' => 'object'],
         });
     }

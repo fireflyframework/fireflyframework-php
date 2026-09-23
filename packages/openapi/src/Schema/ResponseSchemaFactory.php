@@ -84,14 +84,22 @@ final class ResponseSchemaFactory
      */
     public function schema(string $class, SchemaRegistry $registry, array $arguments = []): array
     {
+        // The wire shapes that are facts about a CONTRACT come first: TypeSchema answers every interface with
+        // the any-value schema, so a `Contracts\Pagination\LengthAwarePaginator` or an `Enumerable` return
+        // would otherwise never reach them.
+        if (is_a($class, self::ENUMERABLE, true)) {
+            return $this->collection($arguments);
+        }
+
+        $paginator = PaginatorSchema::contract($class);
+        if ($paginator !== null) {
+            return $this->paginator($paginator, $arguments, $registry);
+        }
+
         $inline = TypeSchema::for($class);
 
         if ($inline !== null) {
             return $inline;
-        }
-
-        if (is_a($class, self::ENUMERABLE, true)) {
-            return $this->collection($arguments);
         }
 
         /** @var class-string $class */
@@ -322,8 +330,39 @@ final class ResponseSchemaFactory
 
         return TypeSchema::reflected(
             $property->getType(),
-            fn (string $type): array => TypeSchema::for($type) ?? ['$ref' => $this->ref($type, $registry)],
+            fn (string $type): array => class_exists($type) || interface_exists($type) ? $this->schema($type, $registry) : (TypeSchema::for($type) ?? []),
         );
+    }
+
+    /**
+     * A Laravel paginator's envelope around its elements, named like any generic instantiation — by the element
+     * type, the TValue of `LengthAwarePaginator<int, Order>` — and keyed by the paginator CONTRACT, so the class
+     * and its contract share one component.
+     *
+     * @param  class-string  $contract
+     * @param  list<array<string, mixed>>  $arguments
+     * @return array<string, mixed>
+     */
+    private function paginator(string $contract, array $arguments, SchemaRegistry $registry): array
+    {
+        $element = $arguments[count($arguments) >= 2 ? 1 : 0] ?? [];
+        $short = substr($contract, strrpos($contract, '\\') + 1);
+        $build = static fn (string $title): array => [
+            'title' => $title,
+            'description' => PaginatorSchema::description($contract),
+            ...PaginatorSchema::envelope($contract, $element),
+        ];
+
+        if ($element === []) {
+            return ['$ref' => $registry->ref($contract, static fn (): array => $build($short))];
+        }
+
+        $names = $this->argumentNames(['TValue' => $element]);
+        if ($names === null) {
+            return $build($short);
+        }
+
+        return ['$ref' => $registry->refSpecialised($contract, ucfirst($names[0]), static fn (): array => $build($short.'<'.$names[0].'>'))];
     }
 
     /**
