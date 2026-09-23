@@ -771,13 +771,29 @@ return [
 
             'health' => [
                 /*
-                 | 'always' includes each contributor's component details in the body; anything else
-                 | (including the default) returns the aggregated status only. Details name drivers,
-                 | paths and error messages, so they are off by default.
+                 | `show-details` is never | when-authorized | always (default never). 'always' includes
+                 | each contributor's component details in the body; anything else (including a typo)
+                 | returns the aggregated status only. Details name drivers, paths and error messages, so
+                 | they are off by default.
                  |
-                 | Default: 'never'.
+                 | `when-authorized` is now REAL rather than a synonym for `never`: firefly/actuator asks a
+                 | deny-by-default HealthDetailsAuthorizer, and firefly/security fills that port from the
+                 | session-held principal whenever `firefly.security.enabled` is on. An application without
+                 | firefly/security (or with security off) keeps the old behaviour exactly — details are
+                 | withheld — and an application that wants its own rule binds its own
+                 | HealthDetailsAuthorizer bean.
+                 |
+                 | `roles` is Spring's `management.endpoint.health.roles`: empty means any AUTHENTICATED
+                 | principal may read the details; a non-empty list means one holding at least one of these
+                 | roles. A bare name is read as `ROLE_<name>`, the same spelling `hasRole:` uses, and the
+                 | configured role hierarchy applies.
+                 |
+                 | Defaults: show-details 'never', roles [].
                 */
                 'show-details' => env('FIREFLY_HEALTH_SHOW_DETAILS', 'never'),
+                'roles' => [
+                    // 'ACTUATOR',
+                ],
 
                 /*
                  | The DB indicator is ON BY DEFAULT whenever `database.default` names a connection with a

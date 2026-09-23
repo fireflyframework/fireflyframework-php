@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Actuator\Endpoint\EndpointRequest;
 use Firefly\Actuator\Endpoint\EndpointResponse;
+use Firefly\Actuator\Health\DenyHealthDetailsAuthorizer;
 use Firefly\Actuator\Health\Health;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Actuator\Health\HealthEndpoint;
@@ -68,7 +69,9 @@ function throwingIndicator(): HealthIndicator
  */
 function healthEndpoint(HealthContributorRegistry $registry, array $management = []): HealthEndpoint
 {
-    return new HealthEndpoint($registry, new StatusAggregator, new Config(new Repository(['firefly' => ['management' => $management]])));
+    // The authorizer is only consulted by show-details: when-authorized, which no case here uses; the deny
+    // default therefore preserves every assertion below exactly as it was before the port existed.
+    return new HealthEndpoint($registry, new StatusAggregator, new Config(new Repository(['firefly' => ['management' => $management]])), new DenyHealthDetailsAuthorizer);
 }
 
 it('aggregates UP and answers 200 with no details by default', function () {

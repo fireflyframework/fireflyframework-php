@@ -317,6 +317,14 @@ deptrac:
     # boot/condition attributes, reads Config, extends AutoConfigure's base, adds a no-op ControllerSecurityGuard
     # port to Web and a real impl, supplies Cqrs's Command/QueryAuthorizer + Data's AuditorAware, and may validate
     # over Validation. NOTHING depends on Security.
+    #
+    # The => Actuator edge is ONE class pair (src/Actuator): actuator owns the question
+    # `may this caller read health details` as a deny-by-default HealthDetailsAuthorizer port, and this
+    # package fills it from the session-held principal — the CqrsMetrics/EdaTracing seam shape, and the
+    # reason `management.endpoint.health.show-details: when-authorized` stopped degrading to `never`. The
+    # direction is Security -> Actuator and NEVER the reverse: firefly/actuator must keep working in an
+    # application with no security at all, so it names no principal, no role and no authority.
+    # SecurityOAuth2Server -> Actuator is the precedent.
     Security:
       - Kernel
       - Container
@@ -327,6 +335,7 @@ deptrac:
       - Data
       - Cqrs
       - Validation
+      - Actuator
 
     # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
     # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and

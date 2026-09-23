@@ -16,8 +16,9 @@ use Throwable;
  * members (firefly.management.endpoint.health.group.{name}.include, CSV) — an unknown group returns null (404).
  * Each indicator runs FAIL-SAFE: a thrown health() becomes DOWN with an error detail, never an unhandled 500.
  * show-details (never|when-authorized|always, default never) governs whether per-component details are emitted;
- * when-authorized degrades to never here (actuator has NO code edge to Security — auth-gating the details is a
- * config/lockdown concern, documented in Task 11). The HTTP status is Status::httpStatus() (DOWN/OUT_OF_SERVICE → 503).
+ * `when-authorized` is answered by the HealthDetailsAuthorizer port (deny by default; firefly/security fills it
+ * from the session-held principal and `firefly.management.endpoint.health.roles`).
+ * The HTTP status is Status::httpStatus() (DOWN/OUT_OF_SERVICE → 503).
  *
  * #[Component] (T10 fix — a genuine gap, not a test bug): this class was never discoverable by
  * ActuatorRouteRegistrar without it, so /actuator/health — actuator's flagship endpoint — was unreachable in
@@ -33,6 +34,7 @@ final class HealthEndpoint implements ActuatorEndpoint
         private readonly HealthContributorRegistry $registry,
         private readonly StatusAggregator $aggregator,
         private readonly Config $config,
+        private readonly HealthDetailsAuthorizer $authorizer,
     ) {}
 
     public function endpointId(): string
@@ -100,8 +102,19 @@ final class HealthEndpoint implements ActuatorEndpoint
         ));
     }
 
+    /**
+     * `always` publishes details to every caller; `never` to none; `when-authorized` asks the
+     * HealthDetailsAuthorizer, which is the deny-by-default port firefly/security fills when its master flag
+     * is on (see that interface for why the question lives here and the answer lives there). Anything else —
+     * including a typo — is `never`: the fail-closed reading, because the cost of withholding a detail is a
+     * support question and the cost of publishing one is a disclosure.
+     */
     private function showDetails(): bool
     {
-        return $this->config->string('firefly.management.endpoint.health.show-details', 'never') === 'always';
+        return match ($this->config->string('firefly.management.endpoint.health.show-details', 'never')) {
+            'always' => true,
+            'when-authorized' => $this->authorizer->mayReadDetails(),
+            default => false,
+        };
     }
 }

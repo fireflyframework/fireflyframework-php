@@ -52,6 +52,17 @@ return [
                     0 => 'Firefly\\Actuator\\Server\\ManagementServerSettings',
                 ],
             ],
+            3 => [
+                'method' => 'healthDetailsAuthorizer',
+                'returns' => 'Firefly\\Actuator\\Health\\HealthDetailsAuthorizer',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
@@ -113,6 +124,7 @@ return [
             0 => 'Firefly\\Actuator\\Health\\HealthContributorRegistry',
             1 => 'Firefly\\Actuator\\Health\\StatusAggregator',
             2 => 'Firefly\\Config\\Config',
+            3 => 'Firefly\\Actuator\\Health\\HealthDetailsAuthorizer',
         ],
     ],
     4 => [

@@ -49,6 +49,17 @@ return [
                     ],
                 ],
             ],
+            3 => [
+                'method' => 'healthDetailsAuthorizer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Health\\HealthDetailsAuthorizer',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     1 => [
