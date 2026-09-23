@@ -4,9 +4,11 @@
 `SpanKind`, `SpanStatus`, `SpanContext` — with `NoOpTracer` as the shipped default and an OpenTelemetry
 adapter that binds itself when the SDK is installed and `firefly.observability.tracing.enabled` is on. With it
 on, every request gets a SERVER span continued from an inbound W3C `traceparent`, every Laravel `Http` client
-call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and every
-event carries `traceparent` in its envelope with a PRODUCER span on publish and a CONSUMER span on delivery —
-whichever transport carried it. The trace and span ids reach Laravel `Context` (`firefly.trace_id`,
+call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and an event
+published through the in-memory or queue bus carries `traceparent` in its envelope with a PRODUCER span on
+publish; every delivery gets a CONSUMER span, a broker's included, through the shared `SubscriberRegistrySink`
+(see [Known-latent](#known-latent) for the broker publishers that do not stamp the header yet). The trace and
+span ids reach Laravel `Context` (`firefly.trace_id`,
 `firefly.span_id`), every log line (see [Logging](logging.md)), and `/actuator/httpexchanges`.
 
 ## The port

@@ -14,9 +14,12 @@ use Firefly\Eda\EventEnvelope;
  * the implementation adds — a traceparent), then the adapter builds and sends. traceConsume() wraps the
  * delivery of one received envelope to the subscribers. Called by InMemoryEventBus (publish + the synchronous
  * delivery, nested), QueueEventBus (publish; deliver() on the worker) and SubscriberRegistrySink (the sink
- * every broker consumer feeds), so a PRODUCER span and its CONSUMER span exist whichever transport carried the
- * envelope. NoOpEdaTracing is the shipped default; the real one (spans over the Tracer port) lives in
- * firefly/observability and wins by bean precedence. Nothing in firefly/eda depends on observability.
+ * every broker consumer feeds), so a CONSUMER span exists whichever transport carried the envelope, while the
+ * PRODUCER span and the traceparent it stamps exist for the in-memory and queue buses only: eda-rabbitmq,
+ * eda-kafka and eda-postgres build their envelopes themselves and do not reach tracePublish() yet, which is
+ * the follow-up docs/modules/tracing.md lists under "Known-latent". NoOpEdaTracing is the shipped default; the
+ * real one (spans over the Tracer port) lives in firefly/observability and wins by bean precedence. Nothing in
+ * firefly/eda depends on observability.
  */
 interface EdaTracing
 {

@@ -1331,7 +1331,23 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     // sentences are held out of all three prose documents, because the module page's Laravel-comparison row
     // said "`traceparent` in every `EventEnvelope`" five lines above the Known-latent bullet that says the
     // reverse, and a page arguing with itself teaches the wrong half at random.
-    $overclaims = ['every eda envelope', 'every envelope', 'every bus and consumer', 'every eventenvelope'];
+    //
+    // The last two entries are the module page's OPENING SUMMARY, which is a fourth copy of the claim and the
+    // one that cost the longest to notice: while the table row and the figure were being scoped, the lead
+    // paragraph still said "every event carries `traceparent` in its envelope ... whichever transport carried
+    // it" — the false half stated first, in the position a reader trusts most, and the text MkDocs lifts as
+    // the page summary. None of the four phrasings above is a substring of it, so the guard read straight
+    // past it while its own docblock claimed these sentences were held out of all three documents. A guard
+    // that names only the wordings it has already seen has to grow one entry every time a new wording of the
+    // same false claim is found; these are the two the summary was written with.
+    $overclaims = [
+        'every eda envelope',
+        'every envelope',
+        'every bus and consumer',
+        'every eventenvelope',
+        'every event carries',
+        'whichever transport carried it',
+    ];
 
     foreach (['the drawn text of tracing-propagation.svg' => $svg, 'the <desc> of tracing-propagation.svg' => $description] as $where => $text) {
         foreach ($overclaims as $overclaim) {
