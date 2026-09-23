@@ -21,6 +21,25 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### BREAKING
 
+- **`packages/actuator` + `packages/security` — `when-authorized` health details are real, and no longer a
+  synonym for `never`.** `firefly.management.endpoint.health.show-details: when-authorized` used to degrade to
+  `never` because `firefly/actuator` has no code edge to `firefly/security` and could not say who asked. It now
+  asks a deny-by-default **`Firefly\Actuator\Health\HealthDetailsAuthorizer`** port, which `firefly/security`
+  fills from the session-held principal whenever `firefly.security.enabled` is on (`src/Actuator`, a new
+  `Security → Actuator` deptrac edge; `firefly/actuator` still names no principal). **An application already
+  running `when-authorized` with security on therefore starts disclosing what it used to withhold**: with the
+  new `firefly.management.endpoint.health.roles` at its default `[]` — Spring's "any AUTHENTICATED principal"
+  — every authenticated caller now reads the component details, which name database drivers, disk paths,
+  broker hosts and indicator error messages. An application with `firefly/security` absent or its master flag
+  off is unaffected: the deny default stands and the body is byte for byte what it was.
+  **Migration:** decide, do not inherit. Either set `show-details: never`, or list the roles that may read them
+  in `firefly.management.endpoint.health.roles` (a bare name is read as `ROLE_<name>` and the role hierarchy
+  applies; a list whose entries are all unusable refuses everybody rather than admitting them), or bind your own
+  `HealthDetailsAuthorizer` bean — actuator's and security's are both `#[ConditionalOnMissingBean]` and back off.
+  In the same change the `final` `Firefly\Actuator\Health\HealthEndpoint` gained a required fourth constructor
+  parameter (`HealthDetailsAuthorizer $authorizer`), so an application that constructs it directly rather than
+  resolving the bean must pass one — `new DenyHealthDetailsAuthorizer` reproduces the old behaviour exactly.
+
 - **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
   `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
   names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new

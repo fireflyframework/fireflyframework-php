@@ -130,8 +130,10 @@ and change a config key.
 
 The dashboard reads `HealthContributorRegistry` directly instead, calling each indicator in isolation so one that
 throws is reported `DOWN` with its exception class and message and nothing else is affected — exactly what
-`HealthEndpoint`'s own fail-safe read does. The JSON `/actuator/health` response is unchanged and still withholds
-components until `show-details` is `always`.
+`HealthEndpoint`'s own fail-safe read does. The JSON `/actuator/health` response is untouched by any of this
+and still applies its own disclosure policy: it withholds components unless `show-details` is `always`, or is
+`when-authorized` and the [`HealthDetailsAuthorizer`](actuator.md#who-may-read-the-component-details) admits
+the caller.
 
 ## Access: the whole security boundary
 
@@ -383,8 +385,10 @@ container image, and a web form that edits the file holding your database passwo
 - **No write operations besides the log level, the data browser and the feature switches.** `/caches` is read-only
   for the same reason it is read-only on the JSON surface — `firefly/actuator` carries no code edge to
   `firefly/security` and so cannot say who asked.
-- **`when-authorized` health details** degrade to `never` on the JSON surface (see
-  [Actuator](actuator.md#known-latent)); the dashboard sidesteps it entirely by reading the contributor registry.
+- **The Health panel ignores `show-details` entirely**, reading the contributor registry rather than the JSON
+  surface's disclosure policy (see above). The JSON surface's own `when-authorized` is real and answered by
+  [`HealthDetailsAuthorizer`](actuator.md#who-may-read-the-component-details); the dashboard never consults it,
+  because its URL is already the whole security boundary.
 
 ---
 

@@ -324,6 +324,36 @@ Octane; the persistence filter is the outermost and the last to clear. The autho
 its endpoints ahead of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none
 of its endpoints needs an `http.rules` entry.
 
+## The one bean this package gives the actuator
+
+`src/Actuator` is the whole of it, and it is the only reason `deptrac.yaml` carries a **`Security → Actuator`**
+edge (the direction matters: `firefly/actuator` names no principal, no role and no authority, because a
+diagnostics surface has to work in an application with no security at all — `SecurityOAuth2Server → Actuator`,
+which supplies `/actuator/oauth2clients`, is the precedent). `firefly/actuator` is a `suggest` of this package
+and not a `require`: a secured API with no diagnostics surface is an ordinary deployment.
+
+[`/actuator/health`](actuator.md#who-may-read-the-component-details) asks one question this package can answer
+and it cannot — may the CURRENT caller read the component details — and declares it as a deny-by-default
+`HealthDetailsAuthorizer` port. `SecurityActuatorAutoConfiguration` fills it with
+`PrincipalHealthDetailsAuthorizer`, which is:
+
+- `#[ConditionalOnClass(HealthDetailsAuthorizer::class)]` on the whole `#[Configuration]`, so the class and
+  every reflection of its signatures is skipped when `firefly/actuator` is not installed — the
+  `OpenTelemetryAutoConfiguration` idiom;
+- `#[ConditionalOnProperty('firefly.security.enabled', 'true')]`, so an application with the master flag off
+  keeps actuator's `DenyHealthDetailsAuthorizer` and the behaviour it already had;
+- `#[Order(400)]`, below `ActuatorAutoConfiguration`'s, so this bean registers first and actuator's own
+  `#[ConditionalOnMissingBean]` backs its default off — the precedence `MeterRegistryCqrsMetrics` uses against
+  CQRS's no-op.
+
+The rule itself is Spring's. The principal comes from the same `SecurityContextHolder` every other rule here
+reads (populated by the filters above, so a caller is authenticated by HTTP Basic, a session or a JWT exactly
+as anywhere else), and it is compared against **`firefly.management.endpoint.health.roles`** — a
+`firefly.management.*` key, documented in the [Actuator](actuator.md#configuration-fireflymanagement-kebab-case)
+reference — through the configured `RoleHierarchy`, with a bare name read as `ROLE_<name>`. An empty list
+admits any authenticated principal; a list whose entries are all unusable refuses everybody and logs once,
+rather than being read as the empty one.
+
 ## Configuration (`firefly.security.*`, snake_case)
 
 `firefly.security.enabled` is the **master flag**. It gates the core security stack: the password encoder, user
