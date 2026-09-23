@@ -137,30 +137,29 @@ a listing is held to the comparison instead, and the file it quotes is already a
 own PHPStan and Pint runs. `illustrative:` and unmarked listings are still linted, and they are the ones that
 need it: no file backs them.
 
-`book/src-es` is the surface still to convert, apart from `10a-oauth2.md`: that chapter arrived already
-marked and is named in `DocsCodeAudit::AUDITED`, so its listings are held to the comparison exactly like the
-English ones. Everything else there carries no markers, so `php -l` runs over it and `--require-provenance`
-still fails on `book/src-es` as a whole, while `book/src` exits 0 under that switch today. Until the rest of
-the Spanish manuscript is converted, a green `verify_code.py` run over it says a listing parses, never that
-it matches the file it shows.
+Both manuscripts are now converted: `book/src` and `book/src-es` are each named in
+`DocsCodeAudit::AUDITED`, every `php` listing in either tree carries one of the two markers, and
+`--require-provenance` exits 0 over both. So a green `verify_code.py` run over either edition says every
+unmarked-for-comparison listing parses *and* that every marked one matches the file it shows.
 
-**Converting a Spanish chapter means two edits, not one.** A `source:` marker takes its listing OUT of the
-`php -l` half, so a marked chapter that is not also named in `DocsCodeAudit::AUDITED` is checked by neither
-half — not linted, not compared. Add the file to `AUDITED` in the same commit that adds its markers;
-`DocsCodeIsRealTest` refuses the other order.
+**A new Spanish listing means two edits, not one.** A `source:` marker takes its listing OUT of the
+`php -l` half, so a marked file that is not also reached from `DocsCodeAudit::AUDITED` would be checked by
+neither half — not linted, not compared. `AUDITED` names the two directories rather than individual files
+precisely so a new chapter cannot slip in unaudited; `DocsCodeIsRealTest` refuses a marker on a page it does
+not audit.
 
-**The Spanish edition also trails on content, not only on markers.** `book/src` is where a wave lands first,
-so several chapters carry English-only material — the size of the gap, per chapter, is what
-`tests/DocsProseIsRealTest.php` measures, and while any pair diverges, `README.md` and `book/README.md` must
-say so beside their "complete in both languages" sentence. A change to a fact both editions state (a count, a
-default, a retired claim) belongs in **both** trees in the same commit: the prose guard walks `src-es` too, and
-a correction that reaches one edition only is the bilingual version of the defect this whole gate exists to
+**The two editions must stay level, listing for listing and claim for claim.** `book/src` is where a wave
+lands first, and `tests/DocsProseIsRealTest.php` measures the per-chapter size of both trees: while any pair
+diverges, `README.md` and `book/README.md` must say so beside their "complete in both languages" sentence,
+and when none does, the warning has to go. A change to a fact both editions state (a count, a default, a
+retired claim) belongs in **both** trees in the same commit: the prose guard walks `src-es` too, and a
+correction that reaches one edition only is the bilingual version of the defect this whole gate exists to
 remove.
 
 **Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
 the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
-did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the Spanish edition is inside
-this gate even though it is still outside the one above — and holds any paragraph that makes an exhaustive
+did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the same surface the listing guard
+above now covers — and holds any paragraph that makes an exhaustive
 claim against a value read out of the source at test time, never against a number typed into the test. A
 count is a claim, and the cheapest one to get wrong, so counts are read as words as well as digits, in
 English and in Spanish.

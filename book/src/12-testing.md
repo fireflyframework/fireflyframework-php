@@ -47,7 +47,6 @@ protected function defineFireflyEnvironment(Application $app): void
 
 `configOverrides()` returns eager, dot-keyed configuration seeded **before** boot, so that a `#[ConditionalOnProperty]` or `#[ConditionalOnMissingBean]` pass — which scans at *register* time — actually observes it. That is the seam for `firefly.scan.paths` and for any `firefly.<feature>.*` flag a test needs on. Each of the three hooks also has a class-level form: `#[FireflyTest(providers: […], config: […])]` on the test class does the same job without an override.
 
-
 The base class handles the parts every test used to get subtly wrong: `FireflyAutoConfigureServiceProvider` is *always* registered first (every capability provider's own `register()` assumes the kernel already exists), `configOverrides()` is applied before boot so a `#[ConditionalOnProperty]` scanning at register time actually observes it, and the log channel is switched to `errorlog` so a read-only sandbox never trips over a filesystem-backed logger. A minimal subclass needs nothing more than the one hook it actually uses:
 
 <!-- illustrative: a test the reader writes in their own application, which by definition is not a file in this repository -->

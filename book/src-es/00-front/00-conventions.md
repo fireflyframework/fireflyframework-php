@@ -4,8 +4,21 @@ Esta página explica las convenciones tipográficas y estructurales que se usan 
 
 ### Listados de código
 
-El código real se presenta en un bloque delimitado plano etiquetado `php`. Cada uno de estos bloques se resalta con sintaxis aquí mismo y además se valida con el propio CLI de PHP (`php -l`) mediante las herramientas de compilación propias del libro, de modo que ningún listado que leas deja de ser PHP analizable. La edición inglesa va un paso más allá: cada uno de sus listados declara el fichero del repositorio del que se extrajo y se compara con él línea a línea en cada ejecución de la suite; esa conversión todavía no ha alcanzado a esta edición. Por ejemplo, este fragmento es el objeto de valor `Money` de `samples/lumen`:
+El código real se presenta en un bloque delimitado plano etiquetado `php`, y **cada uno de esos listados dice de dónde viene**. Justo encima de cada delimitador hay un comentario HTML — invisible en la página renderizada, pero la razón por la que puedes fiarte de lo que le sigue — y hay exactamente dos clases:
 
+`<!-- source: <ruta> -->` marca **código del framework**: el bloque es un extracto *literal* de ese fichero del repositorio de LaraFly — las mismas líneas, en el mismo orden, con la misma indentación relativa. `tests/DocsCodeIsRealTest.php` compara cada bloque de esa clase contra el fichero que nombra en cada ejecución, así que un listado no puede desviarse cuando el código se mueve; y el fichero que cita ya está sujeto a las propias puertas del repositorio — PHPStan en nivel máximo, Pint y la suite de Pest del paquete. Nada dentro de uno de estos bloques está parafraseado, aseado para la página ni inventado.
+
+`<!-- illustrative: <por qué> -->` marca **tu** código: la clase que una persona lectora escribe en su propia aplicación, que por definición no puede existir en este repositorio, así que no hay fichero contra el que compararla. Esos bloques son los que se pasan por el CLI real de PHP (`php -l`), y cada `use Firefly\…` que importan y cada `#[Attribute]` que usan se comprueba contra las clases que el framework declara de verdad.
+
+Las dos clases se comprueban además por lo que *afirman*: cada clave de configuración `firefly.*`, cada comando `php artisan firefly:*` y cada `composer <script>` que un listado nombre tiene que ser uno que exista de verdad.
+
+### Elisiones (`// …`)
+
+Un extracto `source:` puede **cortar** líneas enteras que no necesita — una lista de imports, un docblock largo, el centro de un método. Cada corte se marca con una línea que es exactamente `// …` (o `# …` en un fichero, como YAML, cuyos comentarios empiezan por almohadilla), y la comparación se reanuda después de lo que ya ha casado, así que lo que queda sigue siendo, en orden, lo que dice el fichero. Tres cosas que un corte nunca puede hacer, y que la guarda rechaza: tragarse la declaración a la que pertenece — dejando una `{` sin nada encima que diga *qué* se está declarando —, vaciar un método hasta dejarlo con cuerpo vacío, lo que imprimiría un método que parece no hacer nada, o dejar un docblock en pie por su cuenta. Un docblock es una afirmación *sobre* una declaración, así que un extracto que muestre uno muestra su `/**`, su línea de cierre, y al menos una línea de la clase, el método o la constante que describe; empezar a mitad de un docblock imprimiría un párrafo de comentario sobre código que la página nunca enseña.
+
+Por ejemplo, este es el objeto de valor `Money` de `samples/lumen`, entero hasta `zero()` y cortado ahí:
+
+<!-- source: samples/lumen/src/Domain/Money.php -->
 ```php
 <?php
 
@@ -13,14 +26,21 @@ declare(strict_types=1);
 
 namespace Lumen\Domain;
 
-final readonly class Money
+use Firefly\Domain\ValueObject;
+use Firefly\Domain\ValueObjectEquality;
+use Firefly\Kernel\Exception\Business\ConflictException;
+
+final readonly class Money implements ValueObject
 {
+    use ValueObjectEquality;
+
     public function __construct(public int $minorUnits, public Currency $currency) {}
 
     public static function zero(Currency $currency): self
     {
         return new self(0, $currency);
     }
+// …
 }
 ```
 

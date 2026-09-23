@@ -11,6 +11,7 @@ Al terminar este capítulo sabrás exactamente qué hace `#[Transactional]` — 
 
 ## El atributo `#[Transactional]`
 
+<!-- source: packages/data/src/Transaction/Attributes/Transactional.php -->
 ```php
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final class Transactional
@@ -33,6 +34,7 @@ final class Transactional
 
 Sobre una **clase**, fija el valor por defecto para cada método público. Sobre un **método**, *reemplaza* — nunca se fusiona con — el atributo de nivel de clase para ese único método (la misma semántica de Spring). `packages/data/tests/Fixtures/Capstone/AccountService.php` es código de prueba real y distribuido que pone en juego ambas formas a la vez:
 
+<!-- source: packages/data/tests/Fixtures/Capstone/AccountService.php -->
 ```php
 <?php
 
@@ -47,7 +49,7 @@ use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionTemplate;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-
+// …
 #[Service]
 #[Transactional]
 class AccountService
@@ -67,7 +69,7 @@ class AccountService
 
         throw new RuntimeException('boom');
     }
-
+    // …
     #[Transactional(noRollbackFor: [IgnorableException::class])]
     public function logButKeep(): void
     {
@@ -100,6 +102,7 @@ Cada método público aquí hereda el valor por defecto de `#[Transactional]` a 
 
 `Propagation` es un enum sin respaldo con todos los modos de Spring, incluyendo `NESTED` — posible sobre una conexión relacional corriente gracias a los propios savepoints automáticos de Laravel:
 
+<!-- source: packages/data/src/Transaction/Propagation.php -->
 ```php
 enum Propagation
 {
@@ -110,20 +113,21 @@ enum Propagation
     case NOT_SUPPORTED;
     case MANDATORY;
     case NEVER;
+// …
 }
 ```
 
 `TransactionTemplate::execute()` es la única fuente de verdad por la que pasan tanto el proxy generado como cualquier llamador programático directo — no hay un segundo camino de código que mantener sincronizado:
 
+<!-- source: packages/data/src/Transaction/TransactionTemplate.php -->
 ```php
-final class TransactionTemplate
+public function execute(Closure $work, ?TransactionalDescriptor $descriptor = null): mixed
 {
-    public function execute(Closure $work, ?TransactionalDescriptor $descriptor = null): mixed
-    {
-        $d = $descriptor ?? new TransactionalDescriptor;
-        $connection = DB::connection($d->connection);
-        $active = $connection->transactionLevel() > 0;
+    $d = $descriptor ?? new TransactionalDescriptor;
+    $connection = DB::connection($d->connection);
+    $active = $connection->transactionLevel() > 0;
 
+    try {
         return match ($d->propagation) {
             Propagation::MANDATORY => $active ? $work() : throw new TransactionRequiredException,
             Propagation::NEVER => $active ? throw new TransactionNotAllowedException : $work(),
@@ -131,9 +135,13 @@ final class TransactionTemplate
             Propagation::REQUIRED => $active ? $work() : $this->runInTransaction($connection, $work, $d, true),
             Propagation::REQUIRES_NEW, Propagation::NESTED => $this->runInTransaction($connection, $work, $d, ! $active),
         };
+    } catch (Throwable $e) {
+        throw $this->translator->translate($e, $connection->getDriverName());
     }
 }
 ```
+
+El método entero es un solo `match` sobre el modo de propagación y un `catch` que entrega lo que haya salido al traductor de excepciones del Capítulo 5. Todo lo demás — los savepoints, las sentencias de aislamiento, el tiempo límite, el drenaje posterior al commit — está dentro de `runInTransaction()`, al que solo llegan tres de los siete modos.
 
 | Modo | Comportamiento |
 |---|---|
@@ -147,8 +155,10 @@ final class TransactionTemplate
 
 `outerWithNested()` de arriba es `NESTED` en acción: el método externo inserta `'outer'` bajo el valor por defecto `REQUIRED` de nivel de clase, después llama a `$this->template->execute(...)` directamente con `propagation: Propagation::NESTED`, inserta `'inner'`, y lanza. Una prueba capstone real y distribuida demuestra exactamente qué se deshace y qué sobrevive:
 
+<!-- source: packages/data/tests/CapstoneTransactionalIntegrationTest.php -->
 ```php
 it('unwinds a NESTED inner rollback to a savepoint, leaving the outer row intact', function () {
+    // …
     accountService($this->app())->outerWithNested();
 
     expect(DB::table('accounts')->pluck('name')->all())->toBe(['outer']);
@@ -163,6 +173,7 @@ La fila `'inner'` desaparece con el savepoint; `'outer'` — insertada antes siq
 
 `Isolation` es un enum respaldado por cadenas cuyo valor **es** la cláusula SQL:
 
+<!-- source: packages/data/src/Transaction/Isolation.php -->
 ```php
 enum Isolation: string
 {
@@ -176,32 +187,32 @@ enum Isolation: string
 
 En la transacción más externa de una unidad de trabajo, un aislamiento distinto de `DEFAULT` emite `SET TRANSACTION ISOLATION LEVEL {value}`, y `readOnly: true` emite `SET TRANSACTION READ ONLY` — ambos **de mejor esfuerzo**: si cualquiera de las dos sentencias falla (un driver que la ignora, como SQLite) se captura y se ignora en silencio en vez de hacer fallar toda la unidad de trabajo.
 
+<!-- source: packages/data/src/Transaction/TransactionTemplate.php -->
 ```php
-final class TransactionTemplate
+private function shouldRollBack(Throwable $translated, Throwable $original, TransactionalDescriptor $d): bool
 {
-    private function shouldRollBack(Throwable $e, TransactionalDescriptor $d): bool
-    {
-        foreach ($d->noRollbackFor as $type) {
-            if ($e instanceof $type) {
-                return false; // noRollbackFor wins: commit-and-rethrow
-            }
+    foreach ($d->noRollbackFor as $type) {
+        if ($translated instanceof $type || $original instanceof $type) {
+            return false; // noRollbackFor wins: commit-and-rethrow
         }
-
-        foreach ($d->rollbackFor as $type) {
-            if ($e instanceof $type) {
-                return true;
-            }
-        }
-
-        return false; // not listed in rollbackFor: commit-and-rethrow
     }
+
+    foreach ($d->rollbackFor as $type) {
+        if ($translated instanceof $type || $original instanceof $type) {
+            return true;
+        }
+    }
+
+    return false; // not listed in rollbackFor: commit-and-rethrow
 }
 ```
 
 Léelo en orden: una excepción que coincide con `noRollbackFor` siempre **confirma** (se comprueba primero, así que gana incluso sobre una coincidencia en `rollbackFor`); si no, una coincidencia en `rollbackFor` (por defecto, todo) **revierte**; si no — solo alcanzable con un `rollbackFor` deliberadamente reducido — **confirma**. `AccountService::logButKeep()` ejercita exactamente la primera rama, y una prueba capstone real demuestra que la fila sobrevive a la excepción con la que se lanza:
 
+<!-- source: packages/data/tests/CapstoneTransactionalIntegrationTest.php -->
 ```php
 it('commits despite a method-level noRollbackFor exception (override beats class-level)', function () {
+    // …
     try {
         accountService($this->app())->logButKeep();
     } catch (IgnorableException) {
@@ -220,6 +231,7 @@ Nota que `TransactionTemplate` usa `beginTransaction()`/`commit()`/`rollBack()` 
 
 Un bean `#[Transactional]` nunca se llama directamente. `TransactionalBeanPostProcessor` — un `BeanPostProcessor` descubierto exactamente como cualquier otro bean, instalado en la fase 700 — lo intercambia, en su segunda pasada (después de que `#[PostConstruct]` ya haya corrido sobre el bean real), por una instancia de una `final class {Target}__FireflyTransactionalProxy extends {Target}` generada. `ProxyClassGenerator` emite esa clase, sobrescribiendo cada método transaccional con:
 
+<!-- illustrative: the source ProxyClassGenerator emits for an application's own #[Transactional] service; a generated proxy is written to a private temporary file at wrap time and is in no file in this repository -->
 ```php
 final class TransferService__FireflyTransactionalProxy extends TransferService
 {
@@ -242,8 +254,10 @@ final class TransferService__FireflyTransactionalProxy extends TransferService
 
 — entregando la llamada a `MethodInvocation::proceed()`, que recorre los interceptores que el plan compilado nombró para ese método y termina en la closure terminal que llama a `parent::`. Para un bean cuyo único advice es `#[Transactional]` esa lista tiene un solo eslabón: `TransactionInterceptor::invoke()` lee el `TransactionalDescriptor` horneado desde la invocación y le pasa `fn () => $invocation->proceed()` a su inalterado `run()`, que delega directamente en `TransactionTemplate::execute()`. Una prueba capstone real confirma que el intercambio realmente ocurrió — la clase del bean resuelto **no** es en absoluto la clase de servicio plana:
 
+<!-- source: packages/data/tests/CapstoneTransactionalIntegrationTest.php -->
 ```php
 it('proxies the #[Service] and rolls back BOTH inserts when the method throws', function () {
+    // …
     $service = accountService($this->app());
 
     expect($service::class)->not->toBe(AccountService::class); // it is the generated proxy subclass
@@ -273,6 +287,119 @@ Ese proxy ya no va solo de transacciones. Cualquier paquete puede aportar un tip
 
 ---
 
+## El tiempo límite se hace cumplir, no solo se transporta
+
+`#[Transactional(timeout: 5)]` era antes metadato que un lector podía fijar y que nadie leía. Ahora se hace cumplir, y merece la pena entender cómo, porque una mitad puede interrumpir una sentencia en curso y la otra no.
+
+<!-- source: packages/data/src/Transaction/TransactionTemplate.php -->
+```php
+$timeout = $outermost ? $this->effectiveTimeout($d) : 0;
+$restore = $timeout > 0 && $this->settings->statementTimeout ? $this->timeouts->apply($connection, $timeout) : null;
+// (int): hrtime(true) is an int on every 64-bit build; the cast keeps PHPStan's int|float|false union out.
+$deadline = $timeout > 0 ? (int) hrtime(true) + $timeout * 1_000_000_000 : null;
+```
+
+**El reloj de pared** es la mitad que siempre se aplica. Se toma un plazo monótono justo después de `beginTransaction()`, y cuando el trabajo *retorna* la plantilla compara el reloj contra él. Pasarse significa hacer rollback y lanzar `TransactionTimedOutException` — 504, código de error `TRANSACTION_TIMED_OUT`:
+
+<!-- source: packages/data/src/Transaction/TransactionTemplate.php -->
+```php
+if ($deadline !== null && (int) hrtime(true) > $deadline) {
+    // Drain the tracker either way (it must not leak into the next unit of work); the rollback discards
+    // the after-commit callbacks it queued.
+    $this->dispatcher?->dispatchAfterCommit($d->connection);
+    $connection->rollBack();
+
+    throw new TransactionTimedOutException(sprintf(
+        'The transaction ran for longer than its %d second timeout and was rolled back.',
+        $timeout,
+    ));
+}
+```
+
+Fíjate en lo que eso no puede hacer: PHP no va a interrumpir un `SELECT` que sigue dentro del driver. La comprobación del reloj de pared juzga al método *después* de que retorne, lo que atrapa un exceso pero no lo detiene.
+
+**El tiempo límite de sentencia del driver** es la mitad que sí puede. Inmediatamente después del `beginTransaction()` de la transacción más externa, `StatementTimeoutApplier` le dice a la propia base de datos que se rinda, en el dialecto que esa base de datos hable — `SET LOCAL statement_timeout` en pgsql (con ámbito de transacción, que es precisamente por lo que debe emitirse después del `BEGIN`), `max_execution_time` más `innodb_lock_wait_timeout` en mysql, el `max_statement_time` propio de mariadb en mariadb, y el tiempo de espera por ocupado en sqlite, que es el único mando que sqlite tiene. `apply()` devuelve el paso que lo deshace, y la plantilla lo ejecuta en su `finally` — porque las variables de mysql son variables de *sesión*, y en una conexión persistente la petición siguiente heredaría si no el presupuesto de esta.
+
+Cada una de esas sentencias es de mejor esfuerzo, exactamente igual que el `SET` de aislamiento: un driver que rechace una no hace fallar la transacción, y la comprobación del reloj de pared sigue aplicándose. Puedes apagar la mitad del driver por completo con `firefly.data.transaction.statement-timeout=false` y quedarte con el reloj de pared.
+
+Tres reglas deciden el número en sí, y un test fija cada una:
+
+<!-- source: packages/data/tests/Transaction/TransactionTimeoutTest.php -->
+```php
+it('applies firefly.data.transaction.default-timeout when the attribute names none, and the attribute wins when it does', function () {
+    $template = new TransactionTemplate(null, null, new DataSettings(defaultTimeout: 1));
+
+    expect(fn () => $template->execute(overrunOneSecond(...)))->toThrow(TransactionTimedOutException::class)
+        ->and(DB::table('widgets')->count())->toBe(0);
+
+    $template->execute(overrunOneSecond(...), new TransactionalDescriptor(timeout: 10));
+
+    expect(DB::table('widgets')->count())->toBe(1);
+});
+```
+
+`#[Transactional(timeout:)]` gana a `firefly.data.transaction.default-timeout`; `0` en ambos significa que no hay plazo alguno; y una transacción **unida** nunca agota su tiempo por su cuenta — solo la transacción más externa toma un plazo, que es la regla de Spring y la única que tiene sentido cuando el presupuesto de un método interno truncaría si no un trabajo del que el método externo sigue siendo responsable.
+
+---
+
+## `#[TransactionalEventListener]`: oír un evento en una fase
+
+El `#[AsEventListener]` del Capítulo 8 oye un evento cuando se publica. Dentro de un método `#[Transactional]`, «cuando se publica» suele ser el momento equivocado: la fila está escrita pero no confirmada, así que un listener que envía un correo o encola un trabajo puede estar actuando sobre una transacción que está a punto de revertirse.
+
+Hay dos respuestas distintas a eso, y merece la pena ser preciso sobre cuál quieres:
+
+- `DomainEventDispatcher::publishAfterCommit()` — visto antes en este capítulo — aplaza **el evento**. Nadie lo oye en absoluto antes del commit.
+- `#[TransactionalEventListener]` aplaza **el listener**. El evento se publica de inmediato (un `#[AsEventListener]` corriente sobre la misma clase sigue viéndolo dentro de la transacción); *este* método se encola en la transacción actual y se invoca en la fase que pidió.
+
+<!-- source: packages/data/src/Transaction/TransactionPhase.php -->
+```php
+enum TransactionPhase: string
+{
+    case BEFORE_COMMIT = 'BEFORE_COMMIT';
+    case AFTER_COMMIT = 'AFTER_COMMIT';
+    case AFTER_ROLLBACK = 'AFTER_ROLLBACK';
+    case AFTER_COMPLETION = 'AFTER_COMPLETION';
+}
+```
+
+| Fase | Cuándo se ejecuta | Qué ve |
+|---|---|---|
+| `BEFORE_COMMIT` | dentro de la transacción, justo antes del commit | la fila sin confirmar, en nivel de transacción 1 — **un throw aborta el commit** |
+| `AFTER_COMMIT` (la de por defecto) | tras un commit con éxito | la fila confirmada, en nivel 0 |
+| `AFTER_ROLLBACK` | tras un rollback | la fila desaparecida |
+| `AFTER_COMPLETION` | tras cualquiera de los dos | el que de los dos haya ocurrido |
+
+La propia prueba del framework declara un listener por fase, que es la forma más clara de leerlos:
+
+<!-- source: packages/data/tests/Fixtures/Listeners/NoteAudit.php -->
+```php
+#[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT, order: -10)]
+public function beforeCommit(NoteSaved $event): void
+{
+    self::record('before-commit', $event);
+
+    if ($event->title === 'veto') {
+        throw new RuntimeException('vetoed before commit');
+    }
+
+    if ($event->title === 'chain') {
+        $this->events->publish(new NoteIndexed($event->title));
+    }
+}
+```
+
+Cuatro detalles, cada uno de los cuales acabarás necesitando:
+
+- **La clase de evento se infiere** del tipo del primer parámetro del método, exactamente como lo hace `#[AsEventListener]`. `event:` está ahí para el caso en que quieras ser explícito.
+- **`order:` sigue la convención de `#[Order]`** — menor primero — entre listeners transaccionales *de la misma fase*.
+- **Sin transacción, no hay listener.** Sin nada activo el método se omite, en silencio y a propósito: pidió ejecutarse en una fase que no existe. `fallbackExecution: true` dice «ejecútame ya en su lugar», que es lo que quieres para un listener que debe dispararse de todos modos.
+- **El atributo es metadato inerte.** `TransactionalScanner` lo compila en el mapa `listeners` del manifiesto, `TransactionalEventListenerWiringPass` lo registra, y `TransactionSynchronizationRegistry` lo encola contra la transacción en curso — sin reflexión en tiempo de publicación. Todo el mecanismo está detrás de `firefly.data.transactional-event-listeners.enabled`, `true` por defecto.
+
+!!! tip "`BEFORE_COMMIT` es un veto, y esa es la parte útil"
+    Una comprobación de invariante de última hora va aquí: se ejecuta dentro de la transacción, así que lanzar desde ella aborta el commit y se lleva por delante toda la unidad de trabajo. Publicar desde ella también funciona — un segundo evento encolado mientras la cola de `BEFORE_COMMIT` se drena se atiende dentro del mismo commit, no se aplaza al siguiente.
+
+---
+
 ## Cómo una aplicación real consigue de verdad un proxy funcional
 
 El Capítulo 2 te enseñó la forma de una clase `#[Configuration]` y sus métodos fábrica `#[Bean]`. Durante una versión de este framework, toda aplicación LaraFly tuvo que escribir una de ellas a mano — un `#[Configuration]` cuyo único `#[Bean]` cargaba el `TransactionalManifest` cacheado — o `#[Transactional]` no hacía absolutamente nada. **Ya no necesitas esa clase**, y merece una página: el fallo que aquella clase sorteaba fue de los más afilados que ha tenido este framework, y su arreglo es una pequeña lección sobre cómo se resuelve cada artefacto compilado.
@@ -283,27 +410,24 @@ Durante mucho tiempo, nada cargaba el primero de esos tres. `DataAutoConfigurati
 
 Está arreglado en el origen. Los dos beans resuelven ahora su artefacto como se resuelve en este framework todo artefacto de Categoría B — **archivo compilado primero, escaneo en proceso después, vacío al final**:
 
+<!-- source: packages/data/src/DataAutoConfiguration.php -->
 ```php
-final class DataAutoConfiguration
+#[Bean]
+#[ConditionalOnMissingBean(TransactionalManifest::class)]
+public function transactionalManifest(Container $container): TransactionalManifest
 {
-    #[Bean]
-    #[ConditionalOnMissingBean(TransactionalManifest::class)]
-    public function transactionalManifest(Container $container): TransactionalManifest
-    {
-        if (($file = AppScan::cachedFile($container, AppScan::TRANSACTIONAL)) !== null) {
-            ProxyMaterializer::classmap($container);
+    if (($file = AppScan::cachedFile($container, AppScan::TRANSACTIONAL)) !== null) {
+        ProxyMaterializer::classmap($container);
 
-            return TransactionalManifest::load($file);
-        }
-
-        $paths = AppScan::paths($container);
-        if ($paths === []) {
-            return new TransactionalManifest([], []);
-        }
-
-        return (new TransactionalScanner)->scan($paths);
+        return TransactionalManifest::load($file);
     }
-    // …
+
+    $paths = AppScan::paths($container);
+    if ($paths === []) {
+        return new TransactionalManifest([], []);
+    }
+
+    return (new TransactionalScanner)->scan($paths);
 }
 ```
 
@@ -320,58 +444,56 @@ Así que el skeleton **no distribuye** ningún `CachedTransactionalConfiguration
 
 ## La lección clave: los eventos de dominio se publican solo a través de una frontera `#[Transactional]`
 
-Todo en esta sección ha estado construyendo hacia un hecho, y es lo más importante que enseña este capítulo. Mira de nuevo dónde se llama en realidad a `DomainEventDispatcher::dispatchAfterCommit()` desde dentro de `TransactionTemplate`:
+Todo en esta sección ha estado construyendo hacia un hecho, y es lo más importante que enseña este capítulo. Mira de nuevo desde dónde se llama en realidad a `DomainEventDispatcher::dispatchAfterCommit()` dentro de `TransactionTemplate` — el brazo del `catch`, el brazo del tiempo límite y el brazo del éxito de un mismo método:
 
+<!-- source: packages/data/src/Transaction/TransactionTemplate.php -->
 ```php
-final class TransactionTemplate
-{
-    private function runInTransaction(Connection $connection, Closure $work, TransactionalDescriptor $d, bool $outermost): mixed
-    {
-        if ($outermost) {
-            $this->applySessionSettings($connection, $d);
-        }
-
-        $connection->beginTransaction();
-
-        try {
-            $result = $work();
-        } catch (Throwable $e) {
-            if ($outermost) {
-                $this->dispatcher?->dispatchAfterCommit($d->connection);
-            }
-
-            if ($this->shouldRollBack($e, $d)) {
-                $connection->rollBack();
-            } else {
-                $connection->commit();
-            }
-
-            throw $e;
-        }
-
-        if ($outermost) {
-            $this->dispatcher?->dispatchAfterCommit($d->connection);
-        }
-
-        $connection->commit();
-
-        return $result;
-    }
+if ($outermost) {
+    // Queue after-commit events BEFORE resolving the tx, on THIS descriptor's connection: Laravel fires
+    // them on that connection's commit, discards on rollBack.
+    $this->dispatcher?->dispatchAfterCommit($d->connection);
 }
+
+if ($this->shouldRollBack($translated, $e, $d)) {
+    $connection->rollBack();
+} else {
+// …
+if ($deadline !== null && (int) hrtime(true) > $deadline) {
+    // Drain the tracker either way (it must not leak into the next unit of work); the rollback discards
+    // the after-commit callbacks it queued.
+    $this->dispatcher?->dispatchAfterCommit($d->connection);
+    $connection->rollBack();
+// …
+if ($outermost) {
+    $this->dispatcher?->dispatchAfterCommit($d->connection);
+}
+
+$this->commit($connection);
+
+return $result;
 ```
 
-`dispatchAfterCommit()` se llama desde exactamente **dos** lugares, y ambos están dentro de `TransactionTemplate` — no hay un tercer punto de llamada en ningún lugar del framework. Y `dispatchAfterCommit()` en sí solo tiene algo que despachar por un segundo hecho, igual de estructural: `EloquentRepository::save()` (Capítulo 5) solo registra una entidad en `AggregateTracker` cuando `$connection->transactionLevel() > 0` — y el *único* camino de código que alguna vez hace eso cierto es la propia llamada a `beginTransaction()` de `TransactionTemplate::runInTransaction()`, unas líneas más arriba.
+`dispatchAfterCommit()` se llama desde exactamente **tres** lugares, y los tres están dentro de ese único método de `TransactionTemplate` — no hay un cuarto punto de llamada en ningún lugar del framework. Dos de los tres están ahí para que el rastreador se *drene* en los caminos de fallo: drenarlo en un rollback lo vacía sin programar ninguna publicación, y eso es lo que impide que los eventos de una unidad de trabajo se filtren a la siguiente. Y `dispatchAfterCommit()` en sí solo tiene algo que despachar por un segundo hecho, igual de estructural: `EloquentRepository::save()` (Capítulo 5) solo registra una entidad en `AggregateTracker` cuando `$connection->transactionLevel() > 0` — y el *único* camino de código que alguna vez hace eso cierto es la propia llamada a `beginTransaction()` de `TransactionTemplate::runInTransaction()`, unas líneas más arriba.
 
 Encadena esos dos hechos y la conclusión es ineludible: **un método sin `#[Transactional]` nunca eleva su nivel de transacción, así que `save()` nunca rastrea el agregado, así que no hay nada que `dispatchAfterCommit()` pueda drenar aunque de alguna forma se le llamara.** El propio docblock de `OpenWalletHandler` declara esto como la razón por la que el atributo está ahí, y no decoración:
 
+<!-- source: samples/lumen/src/Application/Command/OpenWalletHandler.php -->
 ```php
 /**
+ // …
  * #[Transactional] is LOAD-BEARING, not cosmetic: DefaultCommandBus opens no transaction of its own, and
- * EloquentRepository::save() only tracks the aggregate when transactionLevel() > 0. The generated transactional
- * proxy installs the TransactionTemplate that is the sole caller of DomainEventDispatcher::dispatchAfterCommit(),
- * so without this attribute the WalletOpened domain event would never publish and S5's ledger projector would
- * never fire.
+ * EloquentRepository::save() only tracks the aggregate when transactionLevel() > 0. The generated transactional proxy
+ * installs the TransactionTemplate that is the sole caller of DomainEventDispatcher::dispatchAfterCommit(), so without
+ * this attribute the WalletOpened domain event would never publish and S5's ledger projector would never fire.
+ // …
  */
+#[CommandHandler]
+class OpenWalletHandler
+{
+    public function __construct(private readonly WalletRepository $wallets) {}
+
+    #[Transactional]
+    public function handle(OpenWallet $command): string
 ```
 
 Recuerda del Capítulo 7 que `DefaultCommandBus::send()` no abre **ninguna** transacción propia — correlaciona, valida, autoriza e invoca al manejador, y punto. Cada pizca de comportamiento transaccional que has visto en `OpenWalletHandler`, `DepositHandler`, `WithdrawHandler` y `TransferHandler` proviene *enteramente* del atributo `#[Transactional]` sobre sus métodos `handle()`, a través del mecanismo de proxy exacto que este capítulo acaba de recorrer. Quítale el atributo a cualquiera de ellos y el comando igual "tiene éxito" — la fila igual se escribe mediante una llamada a `save()` plana, sin proxificar — pero `WalletOpened`/`FundsDeposited`/`FundsWithdrawn` se lanzan al búfer privado de eventos del agregado y luego se **descartan en silencio**, porque nada jamás drena ese búfer. `LedgerProjector` (Capítulo 6) simplemente nunca se dispararía, sin error, sin advertencia, y con una respuesta HTTP de apariencia perfectamente exitosa.
@@ -385,12 +507,17 @@ Recuerda del Capítulo 7 que `DefaultCommandBus::send()` no abre **ninguna** tra
 
 El Capítulo 6 ya te mostró el código completo de `TransferHandler` — una única frontera `#[Transactional(propagation: Propagation::REQUIRED)]` envolviendo un débito, un guardado, un crédito, y un segundo guardado. Lo que el Capítulo 6 no te mostró es la prueba rigurosa de que la afirmación de atomicidad realmente se sostiene ante un fallo real. `samples/lumen/tests/Application/TransferSecurityTest.php` despacha a través del `CommandBus`/`QueryBus` reales — los mismos puertos que introdujo el Capítulo 7 — y demuestra ambas direcciones:
 
+<!-- source: samples/lumen/tests/Application/TransferSecurityTest.php -->
 ```php
 it('transfers atomically: money is conserved across debit + credit', function () {
+    // …
     $commands = $this->fireflyContext()->get(CommandBus::class);
+    // …
     $queries = $this->fireflyContext()->get(QueryBus::class);
 
+    // …
     $src = $commands->send(new OpenWallet('owner-A', Currency::EUR));
+    // …
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
@@ -399,26 +526,30 @@ it('transfers atomically: money is conserved across debit + credit', function ()
     // Debit + credit committed as one unit of work: the 10000 that left nowhere reappears split 6000/4000.
     expect($queries->ask(new GetBalance($src)))->toBe(6000);
     expect($queries->ask(new GetBalance($dst)))->toBe(4000);
-});
+})->group('lumen');
 
 it('rolls the whole transfer back when the credit leg fails (money cannot vanish)', function () {
+    // …
     $commands = $this->fireflyContext()->get(CommandBus::class);
+    // …
     $queries = $this->fireflyContext()->get(QueryBus::class);
 
     // Destination in a DIFFERENT currency: the debited EUR amount cannot be credited into a USD wallet, so the
     // credit leg throws currency-mismatch AFTER the debit already ran -> the whole #[Transactional] tx rolls back.
+    // …
     $src = $commands->send(new OpenWallet('owner-A', Currency::EUR));
+    // …
     $dst = $commands->send(new OpenWallet('owner-B', Currency::USD));
     $commands->send(new Deposit($src, 10000));
 
     expect(fn () => $commands->send(new Transfer($src, $dst, 4000)))
         ->toThrow(CommandProcessingException::class);
 
-    // Load-bearing, non-tautological proof that money cannot vanish: the source debit was ROLLED BACK (still
-    // 10000, not 6000) and the destination never received anything (still 0). No value was created or destroyed.
+    // Load-bearing, non-tautological proof that money cannot vanish: the source debit was ROLLED BACK (still 10000,
+    // not 6000) and the destination never received anything (still 0). No value was created or destroyed.
     expect($queries->ask(new GetBalance($src)))->toBe(10000);
     expect($queries->ask(new GetBalance($dst)))->toBe(0);
-});
+})->group('lumen');
 ```
 
 La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corrió con éxito y lanzó `FundsWithdrawn` a su propio búfer; luego `Wallet::deposit()` sobre el destino lanzó un `ConflictException` de moneda no coincidente — *después* de que la llamada `save()` del débito ya se hubiera ejecutado dentro de la misma transacción, todavía abierta. Porque el `rollbackFor` por defecto de `#[Transactional]` captura cualquier `Throwable`, el método entero revierte: el débito del origen se deshace a nivel de base de datos, y — porque el rollback ocurre *antes* de que `dispatchAfterCommit()` fuera a alcanzarse en el camino de éxito, y `TransactionTemplate` también lo llama en la rama `catch` precisamente para que un drenado revertido igual vacíe el rastreador sin llegar jamás a programar una publicación — ni `FundsWithdrawn` ni un `FundsDeposited` que ni siquiera llegó a lanzarse alcanza a ningún listener. El `CommandProcessingException` del Capítulo 7 envuelve el `ConflictException` subyacente, y las dos aserciones de saldo son todo el punto: no "la transferencia falló" en abstracto, sino que el propio `10000` del origen volvió **exactamente**, y el `0` del destino nunca se movió. No se creó valor; no se destruyó ninguno.
@@ -433,6 +564,9 @@ La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corri�
 | `Propagation` (7 modos) | `TransactionTemplate::execute()` es la única fuente de verdad para los siete, tanto para el proxy como para el llamador programático |
 | `Isolation` / `readOnly` | Sentencias `SET TRANSACTION …` de mejor esfuerzo, solo en la transacción más externa |
 | `shouldRollBack()` | `noRollbackFor` gana sobre `rollbackFor`; no coincidir con ninguna de las dos listas también confirma |
+| `#[Transactional(timeout:)]` | Un plazo monótono tomado solo en la transacción **más externa** y juzgado cuando el trabajo retorna — pasarse revierte y lanza `TransactionTimedOutException` (504, `TRANSACTION_TIMED_OUT`); el atributo gana a `firefly.data.transaction.default-timeout`, `0` significa ninguno |
+| `StatementTimeoutApplier` | La mitad que sí puede interrumpir una sentencia en curso: un `SET` de mejor esfuerzo por dialecto, emitido después del `BEGIN` y deshecho en el `finally` (las variables de mysql son de sesión); se apaga con `firefly.data.transaction.statement-timeout` |
+| `#[TransactionalEventListener]` | Aplaza **el listener**, no el evento: cuatro fases, `BEFORE_COMMIT` se ejecuta dentro de la transacción así que un throw desde ella aborta el commit; sin transacción activa el método se omite salvo que lleve `fallbackExecution: true` |
 | El proxy generado | `{Target}__FireflyTransactionalProxy extends {Target}`; enruta cada llamada a través de `TransactionInterceptor::run()` y luego `parent::` |
 | Esquive por auto-invocación | `$this->otro()` dentro de la clase proxificada se salta el interceptor por completo — usa el `TransactionTemplate` inyectado en su lugar |
 | `DataAutoConfiguration::transactionalManifest()`/`proxyPlan()` | Artefacto compilado primero, escaneo en proceso después, vacío al final — la razón por la que ninguna aplicación necesita vincular un manifiesto a mano |
@@ -446,3 +580,5 @@ La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corri�
 1. **Reproduce la pérdida silenciosa de eventos.** En una copia de prueba del proyecto (no el paquete `samples/lumen` distribuido), quita `#[Transactional]` de una copia de `DepositHandler::handle()`, deposita en un monedero a través de la API HTTP, y confirma que el saldo *sí* se actualiza (la fila igual se escribe) mientras que el libro mayor (la tabla `ledger_entries` de `LedgerProjector`) **no recibe ninguna fila nueva en absoluto** — sin error en ningún lado.
 2. **Demuestra que `NOT_SUPPORTED` no puede suspender.** Dale a un método `#[Transactional(propagation: Propagation::NOT_SUPPORTED)]`, llámalo desde dentro de otro método `#[Transactional(propagation: Propagation::REQUIRED)]` en la *misma* conexión (a través de `TransactionTemplate`, no por auto-invocación), y confirma — según la descripción "Known-latent" de este capítulo — que el trabajo interno igual corre dentro de la transacción externa en lugar de estar realmente fuera de una.
 3. **Lee el código fuente del proxy generado.** Después de ejecutar `php artisan firefly:cache` en un proyecto con una clase `#[Transactional]`, abre el archivo emitido bajo `bootstrap/cache/firefly/proxies/` y busca los cuatro tipos de miembro que renderiza `ProxyClassGenerator`: la sobrescritura `(new \Firefly\Data\Proxy\MethodInvocation(...))->proceed()` que escribe para cada método aconsejado, la propiedad privada `$__fireflyTxInterceptor`, la fábrica privada estática `__fireflyTxDescriptor('m')` dentro de la cual se hornea el literal del descriptor, y la tabla pública estática `__fireflyAdvice()` que `ProxyFactory` lee para saber qué bean interceptor va en cada propiedad. Después dale a un *segundo* bean una regla `#[PreAuthorize]` y **ningún** `#[Transactional]`, vuelve a ejecutar `firefly:cache`, y confirma que el plan también lo nombró: recibe un proxy propio, con `$__fireflySecurityInterceptor` y `__fireflySecurityDescriptor('m')` en su lugar. Por último pon ambos advices sobre un mismo método y lee el orden de la cadena directamente del fuente generado — el array de interceptores de la sobrescritura es `[$this->__fireflySecurityInterceptor, $this->__fireflyTxInterceptor]`, de fuera hacia dentro, exactamente el orden que dibuja la Figura 9.1.
+4. **Haz saltar un tiempo límite, y luego quítale la mitad del driver.** Fija `firefly.data.transaction.default-timeout` a `1`, dale a un método `#[Transactional]` un `sleep(2)` entre un `save()` y su retorno, y confirma que obtienes un `504` con código de error `TRANSACTION_TIMED_OUT` y **ninguna** fila. Después fija `firefly.data.transaction.statement-timeout` a `false` y ejecútalo otra vez: el mismo fallo, solo con el reloj de pared. Por último sube el presupuesto con `#[Transactional(timeout: 10)]` sobre el método y confirma que el atributo gana al valor configurado por defecto — y que llamar al método desde *dentro* de otro método `#[Transactional]` no le da plazo propio alguno.
+5. **Veta un commit desde `BEFORE_COMMIT`.** Declara un `#[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT)]` que lance cuando un evento lleve algún valor centinela, publica ese evento desde dentro de un método `#[Transactional]`, y confirma que toda la unidad de trabajo se revierte. Después cambia la fase a `AFTER_COMMIT` y confirma que el mismo throw deja ahora la fila confirmada. Por último, llama al mismo método publicador sin ninguna transacción y confirma que el listener se omite en silencio — luego añade `fallbackExecution: true` y míralo ejecutarse de inmediato.

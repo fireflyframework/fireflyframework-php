@@ -49,18 +49,19 @@ A fenced ` ```php ` block is linted with the real PHP CLI (`php -l`, via a temp
 file — no execution) unless it carries a `<!-- source: … -->` marker. A marked
 block is a verbatim excerpt of the repository file it names — a fragment that
 does not parse on its own — and is checked by line-for-line comparison in
-`DocsCodeIsRealTest` instead. Every listing in `src/` carries one marker or the
-other. In `src-es/` only `10a-oauth2.md` is converted so far — it is named in
-`DocsCodeAudit::AUDITED`, so its marked listings are held to the comparison —
-and the rest of `src-es/` carries no markers, so all of it is linted:
+`DocsCodeIsRealTest` instead. Every listing in `src/` **and** in `src-es/`
+carries one marker or the other, and both directories are named in
+`DocsCodeAudit::AUDITED`, so every marked block in either edition is held to the
+comparison:
 
 ```bash
-book/.venv/bin/python book/build/verify_code.py book/src
-book/.venv/bin/python book/build/verify_code.py book/src-es
+book/.venv/bin/python book/build/verify_code.py book/src --require-provenance
+book/.venv/bin/python book/build/verify_code.py book/src-es --require-provenance
 ```
 
-Exits non-zero and prints `FAIL <file>:<line> ...` for any listing that fails
-to parse.
+Exits non-zero and prints `FAIL <file>:<line> ...` for any listing that fails to
+parse, and — with `--require-provenance` — for any `php` listing carrying
+neither marker.
 
 ## Running the pipeline's own tests
 
@@ -140,21 +141,15 @@ parts —
 
 — plus **Appendix A** (Laravel → LaraFly cheat-sheet) and a **Glossary**. Every
 chapter walks the real `samples/lumen` project. Every fenced ` ```php ` listing
-in `src/` carries either a `source:` marker naming the repository file it was
-excerpted from — compared line for line by the repository's own documentation
-guard — or an `illustrative:` marker saying it is the reader's own code, which
-is the kind `php -l` checks. `src-es/` is `php -l`-clean throughout
-(`verify_code.py`) except `10a-oauth2.md`, whose listings carry the same markers
-and are under the same provenance contract. Both editions build to `book/dist/`
-as PDF + EPUB.
+in `src/` **and** in `src-es/` carries either a `source:` marker naming the
+repository file it was excerpted from — compared line for line by the
+repository's own documentation guard — or an `illustrative:` marker saying it is
+the reader's own code, which is the kind `php -l` checks. Both editions build to
+`book/dist/` as PDF + EPUB.
 
-**The English edition is the reference, and the Spanish one currently trails it.**
-Every chapter exists in both, but recent waves landed in `src/` first, so
-chapters 4, 5, 9, 10, 11 and 12 carry material in English that `src-es/` has not
-received yet — query by example and the four repository method attributes, the
-transaction timeout and `#[TransactionalEventListener]`, session sign-in, logout
-and the entry point, structured logging and histogram buckets, the browser suite
-and the acting-as helpers. Read the English PDF when the two disagree. The
-repository's own prose guard derives this from the two trees' per-chapter sizes
-and will fail the build if this paragraph outlives the gap — or goes missing
-while it lasts.
+**The two editions are the same book, line for line.** Every chapter file has
+the same sections in the same order at the same line numbers, and the Spanish
+edition's listings are the English ones character for character — identifiers,
+config keys, endpoint paths and HTTP transcripts are never translated. The
+repository's own prose guard derives that parity from the two trees' per-chapter
+sizes and fails the build the moment one edition stops matching the other.

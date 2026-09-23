@@ -789,7 +789,6 @@ public function enforce(object $message, HandlerKind $kind): void
 }
 ```
 
-
 Read it as four early returns and one line of work. Security off, no registered handler for this message, or no compiled rule for that handler — each passes through unchecked, because method security here is **additive**, never a second deny-by-default gate (that job belongs entirely to `HttpSecurityFilter`). When a rule *is* found, the last line hands it to `MethodSecurityEvaluator::before()`, the single evaluator every enforcement seam shares, with the message itself bound to the rule's one `#param`.
 
 So when `WithdrawHandler::handle()` carries a rule, this is what runs it, **before** `handle()` itself ever executes. A refusal becomes an `AuthorizationException`, which `DefaultCommandBus::send()` (Chapter 7) wraps in `CommandProcessingException`, exactly like any other handler-side fault.

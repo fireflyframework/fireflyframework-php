@@ -15,6 +15,7 @@ Ya sabes, desde el Capítulo 2, que `#[RestController]` es en sí mismo un ester
 
 Aquí está toda la API de monedero de Lumen — el ejemplo que recorre el resto de este capítulo — en un único listado real y distribuido:
 
+<!-- source: samples/lumen/src/Web/WalletController.php -->
 ```php
 <?php
 
@@ -84,9 +85,10 @@ final class WalletController
     /**
      * Debits `amount_minor` from the wallet. Guarded upstream at the bus: WithdrawHandler carries
      * #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-     * SecurityCommandAuthorizer BEFORE the handler runs. Without an authorized principal in the
-     * SecurityContextHolder, the bus denies the command and the AuthorizationException it wraps renders
-     * as a 403 problem-details response — this endpoint is secured, not broken.
+     * SecurityCommandAuthorizer BEFORE the handler runs. With no principal in the SecurityContextHolder
+     * the bus refuses the command with an AuthenticationException that renders as a 401 problem-details
+     * response (authenticate first); with a principal that is signed in but carries neither role it is an
+     * AuthorizationException rendered as 403 — this endpoint is secured, not broken.
      *
      * @return array{wallet_id: string, balance_minor: int}
      */
@@ -169,6 +171,7 @@ Cada método lleva exactamente un atributo de verbo, y los cinco implementan la 
 
 Cada uno de los cinco acepta los mismos tres argumentos de constructor — una `path` relativa (unida a la base de nivel de clase), un `status` entero (el código de respuesta por defecto: 200 para los verbos de lectura, y `status: 201` en `WalletController::open()` arriba, ya que abrir un monedero es una creación), y un `name` de ruta opcional:
 
+<!-- source: packages/web/src/Attributes/GetMapping.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD)]
 final class GetMapping implements Mapping
@@ -183,6 +186,7 @@ final class GetMapping implements Mapping
     {
         return 'GET';
     }
+// …
 }
 ```
 
@@ -216,6 +220,7 @@ Los valores de ruta y de consulta se convierten al tipo escalar declarado del pa
 
 Cada endpoint de escritura en `WalletController` acepta un DTO pequeño y real — al estilo Pydantic, aquí en PHP puro. Los tres viven en `samples/lumen/src/Web/Dto/` y son clases puras con parámetros promovidos por constructor y restricciones de validación por propiedad:
 
+<!-- source: samples/lumen/src/Web/Dto/OpenWalletRequest.php -->
 ```php
 <?php
 
@@ -243,6 +248,7 @@ final class OpenWalletRequest
 }
 ```
 
+<!-- source: samples/lumen/src/Web/Dto/AmountRequest.php -->
 ```php
 <?php
 
@@ -266,6 +272,7 @@ final class AmountRequest
 }
 ```
 
+<!-- source: samples/lumen/src/Web/Dto/TransferRequest.php -->
 ```php
 <?php
 
@@ -301,31 +308,60 @@ Que `AmountRequest` sirva a la vez para depositar y retirar es una decisión de 
 
 `#[Valid]`, de `firefly/validation`, es lo que convierte esos atributos por propiedad de metadatos inertes en una barrera efectivamente aplicada. Apilarlo sobre un parámetro `#[RequestBody]` — como hace cada método de escritura de `WalletController` — le dice al despachador: valida el *cuerpo decodificado en bruto* contra las reglas de restricción compiladas de esta clase DTO **antes** de siquiera construir el DTO.
 
+<!-- source: packages/validation/src/Valid.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Valid {}
+final class Valid
+{
+    // …
+    public function __construct(public readonly ?string $each = null) {}
+}
 ```
+
+Dos destinos, y los dos importan. Sobre un **parámetro** es la barrera que acabamos de describir. Sobre una **propiedad** de un DTO significa *cascada* — validar el objeto que ese miembro contiene, bajo claves con prefijo de punto, de modo que un `shipTo` de tipo clase reporta sus fallos como `shipTo.postcode`, y un miembro tipado `array` o `iterable` desciende en cascada hasta cada elemento y reporta `lines[0].sku`. Ese segundo caso es el que necesita el parámetro de constructor que el listado conserva: `#[Valid(each: Line::class)]` nombra la clase de elemento de un miembro de lista cuyo docblock no lo dice ya. Sin el argumento del atributo y sin una etiqueta `@var list<Line>` / `@param list<Line> $lines` que `ConstraintScanner` pueda leer, una lista `#[Valid]` se **rechaza en tiempo de escaneo** en vez de omitirse en silencio — una colección sin validar que parece validada es exactamente el fallo que ese rechazo existe para evitar.
 
 La validación en sí corre a través de `Firefly\Validation\Constraint\BeanValidator`, que delega en un puerto `Validator` (`IlluminateValidator` por defecto) usando reglas que un `ConstraintManifest` compiló de antemano a partir del método `toRules()` de cada atributo de restricción:
 
+<!-- source: packages/validation/src/Constraint/NotBlank.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class NotBlank implements Constraint
+final class NotBlank implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     public function toRules(): array
     {
+        // required rejects null/''/[]; string constrains the type; regex:/\S/ requires a non-whitespace
+        // char so an all-whitespace string is rejected (JSR-380 @NotBlank's trimmed-length > 0).
         return ['required', 'string', 'regex:/\S/'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must not be blank');
     }
 }
 ```
 
+<!-- source: packages/validation/src/Constraint/Positive.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Positive implements Constraint
+final class Positive implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     public function toRules(): array
     {
         return ['numeric', 'gt:0'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must be greater than 0');
     }
 }
 ```
@@ -363,6 +399,7 @@ Una API bien diseñada nunca filtra una traza de pila en bruto, y nunca devuelve
 
 `WalletController::balance()` lanza directamente la primera de estas, exactamente como debería hacerlo cualquier manejador:
 
+<!-- illustrative: the one line a reader writes in their own handler -->
 ```php
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 
@@ -375,15 +412,54 @@ El agregado `Wallet` del Capítulo 6 lanza `ConflictException` por un sobregiro 
 
 `Firefly\Web\Exception\ProblemDetailsRenderer` es donde cada una de esas excepciones realmente se convierte en bytes sobre el cable:
 
+<!-- source: packages/web/src/Exception/ProblemDetailsRenderer.php -->
 ```php
 final class ProblemDetailsRenderer
 {
+    // …
     public function render(Throwable $e, Request $request): Response
     {
-        $exception = match (true) {
+        // An absent settings object means the SAFE answer, not the open one — see the constructor.
+        $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
+
+        $correlationId = CorrelationIdFilter::of($request);
+        $exception = ProblemMapper::toFireflyException($e, $disclose, $correlationId);
+
+        $payload = ErrorResponse::fromException(
+            $exception,
+            instance: $request->path(),
+            traceId: $correlationId,
+            timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
+        )->toArray();
+
+        $headers = [
+            'Content-Type' => 'application/problem+json',
+            CorrelationIdFilter::HEADER => $correlationId,
+        ];
+        // …
+        return new Response(
+            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            $exception->httpStatus(),
+            $headers,
+        );
+    }
+}
+```
+
+`application/problem+json` se fija aquí, en cada respuesta que este renderizador produce — ese tipo de medio *es* el contrato del RFC-7807, y un cliente tiene todo el derecho a ramificar sobre él. A su lado va el identificador de correlación de la petición, tanto como cabecera `X-Correlation-Id` como en el `traceId` de la carga útil, de modo que el cuerpo del que alguien hace una captura y la línea de log que un operador filtra con grep comparten un valor.
+
+Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se convierte un throwable cualquiera. Esa regla vive una clase más allá, en `Firefly\Web\Error\ProblemMapper`, porque la página de error HTML del Capítulo 10 necesita la respuesta idéntica y dos copias de ella acabarían dándole a un navegador y a un cliente de API códigos distintos para el mismo fallo:
+
+<!-- source: packages/web/src/Error/ProblemMapper.php -->
+```php
+    public static function toFireflyException(Throwable $e, bool $disclose = true, ?string $reference = null): FireflyException
+    {
+        return match (true) {
             $e instanceof FireflyException => $e,
+            self::isExecutionTimeLimit($e) => self::executionTimeExceeded($e, $reference),
+            $e instanceof MethodNotAllowedHttpException => self::methodNotAllowed($e),
             $e instanceof HttpExceptionInterface => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : self::statusText($e->getStatusCode()),
+                self::httpMessage($e),
                 self::errorCode($e->getStatusCode()),
                 $e->getStatusCode(),
                 ErrorCategory::Framework,
@@ -391,7 +467,7 @@ final class ProblemDetailsRenderer
                 $e,
             ),
             default => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : 'Internal Server Error',
+                $disclose && $e->getMessage() !== '' ? $e->getMessage() : self::opaque($reference),
                 'INTERNAL_ERROR',
                 500,
                 ErrorCategory::Internal,
@@ -399,25 +475,14 @@ final class ProblemDetailsRenderer
                 $e,
             ),
         };
-
-        $payload = ErrorResponse::fromException(
-            $exception,
-            instance: $request->path(),
-            timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
-        )->toArray();
-
-        return new Response(
-            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            $exception->httpStatus(),
-            ['Content-Type' => 'application/problem+json'],
-        );
     }
-}
 ```
 
-Tres casos se pliegan sobre la misma forma de respuesta. Una `FireflyException` (o una de sus subclases tipadas, como `ResourceNotFoundException`) se renderiza tal cual, con su propio `httpStatus()`. Una excepción de enrutamiento de Laravel/Symfony — una URL sin ninguna ruta coincidente — se convierte **preservando su código de estado real**, así que una ruta no coincidente sigue respondiendo 404, nunca un 500 engañoso. Cualquier otra cosa — un `Throwable` genuinamente inesperado — se convierte en una `FireflyException` genérica, de categoría `Internal`, HTTP 500. Cada camino termina en la misma llamada `ErrorResponse::fromException(...)->toArray()`, así que la forma de la carga útil nunca depende de qué rama la produjo.
+Cinco brazos que cubren cuatro casos — el `405` tiene un brazo propio solo para que los verbos que permite puedan sacarse de la frase del enrutador y llevarse a un miembro `allowed` y a la cabecera `Allow` — y todos ellos terminan de vuelta en la misma llamada `ErrorResponse::fromException(...)->toArray()`, así que la forma de la carga útil nunca depende de qué brazo la produjo.
 
-Pedir un monedero que nunca se abrió se renderiza así:
+Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra el identificador de correlación, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
+
+Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: es `$request->path()`, que Laravel devuelve **sin** barra inicial, así que es `api/v1/wallets/wlt-999` y no `/api/v1/wallets/wlt-999` — una cosa pequeña, y exactamente el tipo de cosa pequeña que un cliente que compara cadenas hace mal.
 
 ```json
 {
@@ -427,12 +492,13 @@ Pedir un monedero que nunca se abrió se renderiza así:
   "category": "business",
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
-  "instance": "/api/v1/wallets/wlt-999",
+  "instance": "api/v1/wallets/wlt-999",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
 
-Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id` vacío — lleva además un array `errors`, una entrada por cada campo fallido:
+Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id` vacío — lleva además un array `errors`, una entrada por cada **restricción** fallida:
 
 ```json
 {
@@ -442,12 +508,16 @@ Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id`
   "category": "validation",
   "severity": "warning",
   "detail": "Validation failed",
-  "instance": "/api/v1/wallets",
+  "instance": "api/v1/wallets",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00",
   "errors": [
-    {"field": "owner_id", "message": "is required"}
+    {"field": "owner_id", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": ""}
   ]
 }
 ```
+
+Cuatro miembros, y el emparejamiento es deliberado: `message` es la frase — la redacción que Bean Validation da a la restricción, o la que `#[NotBlank(message: '…')]` haya suministrado — y `constraint` es el **nombre corto del atributo**, que es el miembro sobre el que un cliente ramifica cuando la frase está escrita para una persona y puede traducirse o reformularse. `rejectedValue` es lo que el cliente envió de verdad, devuelto como eco para que un formulario pueda resaltar el campo sin adivinar. Aparece una entrada por restricción fallida, no por regla fallida: `#[NotBlank]` compila a tres reglas de Laravel y aun así reporta una sola vez.
 
 Un intento de retiro se rechaza por dos vías distintas, y las dos **no dan el mismo estado**. Sin ningún principal autenticado, el `#[PreAuthorize]` de `WithdrawHandler` — aplicado en el bus, antes de que el cuerpo del manejador se ejecute — responde `401`: *autentícate primero*.
 
@@ -488,6 +558,7 @@ Los dos se producen sin ningún cambio de código en `WalletController::withdraw
 
 Antes de que una excepción llegue al renderizador genérico, LaraFly le da a tu aplicación la oportunidad de responderla directamente. `#[ExceptionHandler(SomeException::class)]` marca un método como el renderizador de una clase de excepción concreta (o cualquier subclase) — declarado bien **en el propio controlador que la lanzó**, bien en un bean `#[ControllerAdvice]` dedicado para un manejador **global** compartido entre todos los controladores:
 
+<!-- illustrative: the reader's own #[ControllerAdvice] over an exception their domain declares -->
 ```php
 use Firefly\Web\Attributes\ControllerAdvice;
 use Firefly\Web\Attributes\ExceptionHandler;

@@ -34,6 +34,7 @@ Laravel arranca registrando los proveedores de servicio que `bootstrap/providers
 
 El contenedor de Laravel es potente pero explícito — un enlace vive en un proveedor, separado de la clase que enlaza:
 
+<!-- illustrative: the Laravel service provider a reader would have written before LaraFly, shown for contrast -->
 ```php
 final class GreetingServiceProvider extends ServiceProvider
 {
@@ -46,6 +47,7 @@ final class GreetingServiceProvider extends ServiceProvider
 
 El `firefly/container` de LaraFly superpone atributos de PHP 8 sobre `Illuminate\Container` en su lugar — marca la propia clase con `#[Component]` (o `#[Service]`/`#[Repository]`/`#[Configuration]`, todas especializaciones de él) y un escaneo de componentes compilado la registra, resolviendo las dependencias del constructor por tipo:
 
+<!-- illustrative: the LaraFly replacement for the provider above, in the reader's own application -->
 ```php
 #[Service]
 final readonly class GreetingService

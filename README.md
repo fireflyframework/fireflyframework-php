@@ -72,14 +72,12 @@ The book is **structurally complete and bilingual (English + Spanish)**: a quick
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
 Coordinating & Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security, OAuth2 and
 OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache)
-— plus a Laravel→LaraFly cheat-sheet and a glossary. **The English edition is the reference**: every chapter
-exists in both languages, but recent waves landed in `book/src/` first, so chapters 4, 5, 9, 10, 11 and 12
-carry material in English that the Spanish edition has not received yet — read the English PDF when the two
-disagree. Every fenced PHP listing in the English manuscript carries a `source:` marker naming the repository
-file it was excerpted from — compared against it line for line by `tests/DocsCodeIsRealTest.php` — or an
-`illustrative:` marker saying it is the reader's own code, which is what `php -l` checks. The Spanish
-manuscript is `php -l`-verified throughout except chapter 10A, which arrived already marked and is held to
-the same line-for-line comparison as the English edition. The sources live under
+— plus a Laravel→LaraFly cheat-sheet and a glossary. The two editions are line-for-line the same book: every
+chapter file has the same sections, in the same order, at the same line numbers, and every listing in the
+Spanish edition is the English one character for character. Every fenced PHP listing in **both** manuscripts
+carries a `source:` marker naming the repository file it was excerpted from — compared against it line for
+line by `tests/DocsCodeIsRealTest.php` — or an `illustrative:` marker saying it is the reader's own code,
+which is what `php -l` checks. The sources live under
 [`book/`](book/README.md) ([EN manuscript](book/src/) · [ES manuscript](book/src-es/)) and build to PDF + EPUB
 in both languages via [`book/build/run.sh`](book/README.md). `samples/lumen/` is the fastest way to see the
 whole stack fit together end to end, and the [Featured Patterns](#featured-patterns) section below walks

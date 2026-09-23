@@ -13,6 +13,7 @@ Al terminar este capítulo conocerás la forma de los dos buses de `firefly/cqrs
 
 Ambos buses son puertos de un solo método:
 
+<!-- source: packages/cqrs/src/Command/CommandBus.php -->
 ```php
 interface CommandBus
 {
@@ -20,6 +21,7 @@ interface CommandBus
 }
 ```
 
+<!-- source: packages/cqrs/src/Query/QueryBus.php -->
 ```php
 interface QueryBus
 {
@@ -29,12 +31,14 @@ interface QueryBus
 
 `send` es el verbo del lado de escritura; `ask` es el verbo del lado de lectura — elegido deliberadamente en vez del más obvio `query()`, que colisionaría con el propio `Model::query()` de Eloquent en cada punto de llamada dentro de un repositorio. Ninguna de las dos interfaces exige que su mensaje implemente nada: `Firefly\Cqrs\Command\Command` y `Firefly\Cqrs\Query\Query` existen puramente como marcadores documentales *opcionales* —
 
+<!-- source: packages/cqrs/src/Command/Command.php -->
 ```php
 interface Command {}
 ```
 
 — así que un comando es libre de ser exactamente lo que ya es `Lumen\Application\Command\OpenWallet`: un DTO `final readonly` sin clase base ni interfaz alguna:
 
+<!-- source: samples/lumen/src/Application/Command/OpenWallet.php -->
 ```php
 <?php
 
@@ -60,6 +64,7 @@ final readonly class OpenWallet
 
 Despachar uno es una única llamada, ya venga de un controlador, de una prueba o de otro servicio:
 
+<!-- illustrative: the one call a reader makes against the bus from their own code -->
 ```php
 /** @var CommandBus $commands */
 $walletId = $commands->send(new OpenWallet('owner-A', Currency::EUR));
@@ -73,6 +78,7 @@ $walletId = $commands->send(new OpenWallet('owner-A', Currency::EUR));
 
 `#[CommandHandler]` y `#[QueryHandler]` **especializan** ambos `#[Component]` del Capítulo 2 — lo *extienden*, en vez de simplemente parecerse a él:
 
+<!-- source: packages/cqrs/src/Attributes/CommandHandler.php -->
 ```php
 #[Attribute(Attribute::TARGET_CLASS)]
 final class CommandHandler extends Component
@@ -84,6 +90,7 @@ final class CommandHandler extends Component
 }
 ```
 
+<!-- source: packages/cqrs/src/Attributes/QueryHandler.php -->
 ```php
 #[Attribute(Attribute::TARGET_CLASS)]
 final class QueryHandler extends Component
@@ -97,6 +104,7 @@ final class QueryHandler extends Component
 
 Gracias a ese `extends Component`, un solo atributo hace **dos** trabajos independientes a la vez: `ComponentScanner` (Capítulo 2) descubre la clase mediante la coincidencia `ReflectionAttribute::IS_INSTANCEOF`, exactamente como lo haría con un `#[Service]`, así que el manejador se convierte en un bean singleton inyectado por constructor **sin necesitar un `#[Service]` aparte** — y el propio `HandlerScanner` de `firefly/cqrs` lee ese mismo atributo para construir la tabla de despacho de comandos/consultas. Aquí está el manejador completo y real detrás de `OpenWallet` — `samples/lumen/src/Application/Command/OpenWalletHandler.php`:
 
+<!-- source: samples/lumen/src/Application/Command/OpenWalletHandler.php -->
 ```php
 <?php
 
@@ -140,9 +148,11 @@ class OpenWalletHandler
 
 Fíjate en que aquí `#[CommandHandler]` no lleva **ningún argumento** — `OpenWallet::class` no se escribe en ningún sitio de este archivo. `HandlerScanner` — el único punto de reflexión de todo el paquete — resuelve el tipo de mensaje manejado leyendo el propio parámetro de `handle()`:
 
+<!-- source: packages/cqrs/src/Scanner/HandlerScanner.php -->
 ```php
 final class HandlerScanner
 {
+    // …
     private function messageType(ReflectionClass $reflection, ?string $explicit, string $handlerClass): string
     {
         if ($explicit !== null) {
@@ -165,6 +175,7 @@ final class HandlerScanner
 
         return $type->getName();
     }
+// …
 }
 ```
 
@@ -172,6 +183,7 @@ Es la misma regla que el Capítulo 6 ya te mostró para el escáner gemelo de `#
 
 El lado de consultas es la imagen especular, y lee una consulta sin efecto secundario alguno — `GetBalanceHandler`, código real y distribuido:
 
+<!-- source: samples/lumen/src/Application/Query/GetBalance.php -->
 ```php
 <?php
 
@@ -188,6 +200,7 @@ final readonly class GetBalance
 }
 ```
 
+<!-- source: samples/lumen/src/Application/Query/GetBalanceHandler.php -->
 ```php
 <?php
 
@@ -218,6 +231,7 @@ final class GetBalanceHandler
 
 `GetBalanceHandler` es `final` y no lleva ningún `#[Transactional]` — una consulta nunca muta estado, así que no hay ninguna unidad de trabajo que delimitar y nada que un proxy pueda interceptar. `GetLedgerHandler` (detrás del `WalletController::ledger()` del Capítulo 4) tiene la misma forma, leyendo directamente filas de `LedgerEntry`:
 
+<!-- source: samples/lumen/src/Application/Query/GetLedgerHandler.php -->
 ```php
 <?php
 
@@ -259,29 +273,30 @@ final class GetLedgerHandler
 
 Ninguno de los dos buses es una simple llamada a función sobre el manejador. `DefaultCommandBus::send()` — la implementación distribuida — ejecuta una secuencia pequeña y fija de colaboradores alrededor del despacho:
 
+<!-- source: packages/cqrs/src/Command/DefaultCommandBus.php -->
 ```php
 final class DefaultCommandBus implements CommandBus
 {
+    // …
     public function __construct(
         private readonly HandlerRegistry $registry,
         private readonly MessageValidator $validator,
         private readonly CommandAuthorizer $authorizer,
         private readonly CorrelationContext $correlation,
         private readonly CqrsMetrics $metrics,
-    ) {}
-
+    // …
     public function send(object $command): mixed
     {
         $prior = $this->correlation->begin();
         $startedAt = microtime(true);
 
         try {
-            $this->validator->validate($command);
-            $this->authorizer->authorize($command);
+                // …
+                $this->validator->validate($command);
+                $this->authorizer->authorize($command);
 
-            $handler = $this->registry->findCommandHandler($command::class);
-            $result = $handler($command);
-
+                $handler = $this->registry->findCommandHandler($command::class);
+            // …
             $this->metrics->recordCommandSuccess($command, microtime(true) - $startedAt);
 
             return $result;
@@ -298,36 +313,37 @@ final class DefaultCommandBus implements CommandBus
 
 Léelo como **correlacionar → validar → autorizar → resolver e invocar el manejador → métricas**, envuelto en un `try`/`catch`/`finally` que garantiza que el id de correlación se restaura pase lo que pase. `DefaultQueryBus::ask()` tiene la misma forma con un paso extra — un cortocircuito de caché — insertado entre autorizar e invocar:
 
+<!-- source: packages/cqrs/src/Query/DefaultQueryBus.php -->
 ```php
 final class DefaultQueryBus implements QueryBus
 {
+    // …
     public function ask(object $query): mixed
     {
         $prior = $this->correlation->begin();
         $startedAt = microtime(true);
 
         try {
-            $this->validator->validate($query);
-            $this->authorizer->authorize($query);
+                // …
+                $this->validator->validate($query);
+                $this->authorizer->authorize($query);
 
-            $key = $query instanceof Cacheable ? $query->cacheKey() : null;
+                $key = $query instanceof Cacheable ? $query->cacheKey() : null;
 
-            if ($key !== null) {
-                $cached = $this->cache->get($key);
-                if ($cached !== null) {
-                    $this->metrics->recordQuerySuccess($query, microtime(true) - $startedAt);
-
-                    return $cached;
+                if ($key !== null) {
+                    $cached = $this->cache->get($key);
+                    if ($cached !== null) {
+                        return $cached;
+                    }
                 }
-            }
 
-            $handler = $this->registry->findQueryHandler($query::class);
-            $result = $handler($query);
+                $handler = $this->registry->findQueryHandler($query::class);
+                $result = $handler($query);
 
-            if ($key !== null) {
-                $this->cache->put($key, $result, $this->cacheTtl);
-            }
-
+                if ($key !== null) {
+                    $this->cache->put($key, $result, $this->cacheTtl);
+                }
+            // …
             $this->metrics->recordQuerySuccess($query, microtime(true) - $startedAt);
 
             return $result;
@@ -360,6 +376,7 @@ Ninguno de los dos buses abre una transacción, y ninguno de los dos drena event
 
 El `handle()` de `WithdrawHandler` puede fallar de dos formas muy distintas — puede que el monedero no exista, o que la propia invariante de no-sobregiro del dominio rechace el importe. En cualquier caso, el bloque `catch` de `send()` envuelve lo que se haya lanzado:
 
+<!-- source: packages/cqrs/src/Exception/CommandProcessingException.php -->
 ```php
 final class CommandProcessingException extends CqrsException
 {
@@ -367,7 +384,7 @@ final class CommandProcessingException extends CqrsException
     {
         parent::__construct(
             "Processing command [{$commandClass}] failed: {$cause->getMessage()}",
-            'COMMAND_PROCESSING_ERROR',
+            // …
             $cause instanceof FireflyException ? $cause->httpStatus() : 500,
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
@@ -381,21 +398,26 @@ Tres cosas merecen destacarse. Primero, la causa siempre está disponible en `ge
 
 `HandlerRegistry` lanza sus propias excepciones, más estrechas, para un error de **cableado** en vez de un fallo de negocio — un mensaje sin mapear enviado a través del bus:
 
+<!-- source: packages/cqrs/src/Handler/HandlerRegistry.php -->
 ```php
 final class HandlerRegistry
 {
+    // …
     public function findCommandHandler(string $commandClass): callable
     {
         return $this->commandHandlers[$commandClass] ?? throw new CommandHandlerNotFoundException($commandClass);
     }
+// …
 }
 ```
 
 `CommandHandlerNotFoundException`/`QueryHandlerNotFoundException` son ambas `ErrorCategory::Framework`, `500` — una señal genuinamente distinta de un `409` de `ConflictException`: la primera significa "nunca se registró ningún manejador para este mensaje", la segunda significa "algo *sí* se registró, y correctamente rechazó la petición". El registro también rechaza de plano un **segundo** registro para la misma clase de mensaje:
 
+<!-- source: packages/cqrs/src/Handler/HandlerRegistry.php -->
 ```php
 final class HandlerRegistry
 {
+    // …
     public function registerCommandHandler(string $commandClass, callable $invoker): void
     {
         if (isset($this->commandHandlers[$commandClass])) {
@@ -404,6 +426,7 @@ final class HandlerRegistry
 
         $this->commandHandlers[$commandClass] = $invoker;
     }
+// …
 }
 ```
 
@@ -412,6 +435,7 @@ Un comando, un manejador — aplicado en tiempo de cableado, no dejado a merced 
 !!! tip "Desenvolver la causa en una prueba"
     Una prueba que quiere afirmar *por qué* se rechazó un comando llega directamente más allá del envoltorio con `getPrevious()`. `samples/lumen/tests/Application/TransferSecurityTest.php` hace exactamente esto para un `#[PreAuthorize]` denegado (el Capítulo 10 explica la protección en sí):
 
+<!-- illustrative: the unwrap a reader writes in their own test -->
 ```php
 $denied = null;
 try {

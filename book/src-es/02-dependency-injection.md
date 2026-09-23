@@ -13,12 +13,14 @@ Al terminar este capítulo conocerás los cuatro atributos de estereotipo, cómo
 
 Un **bean** es cualquier objeto que el contenedor gestiona en tu nombre — construido una vez (por defecto) y entregado cuando se solicita. Marcas una clase como bean con un atributo de **estereotipo**. LaraFly distribuye cuatro:
 
+<!-- illustrative: the imports a reader writes at the top of their own stereotyped class -->
 ```php
 use Firefly\Container\Attributes\{Component, Configuration, Repository, Service};
 ```
 
 `#[Component]` es el atributo base; `#[Service]`, `#[Repository]` y `#[Configuration]` son todos especializaciones de él — literalmente, cada uno `extends Firefly\Container\Attributes\Component` en PHP. Un escaneo de componentes encuentra cada uno de ellos con una única llamada de reflexión:
 
+<!-- illustrative: the one reflection call the scanner makes, shown on its own to explain IS_INSTANCEOF -->
 ```php
 $reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF);
 ```
@@ -27,6 +29,7 @@ $reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF)
 
 Ya conociste el estereotipo más sencillo en el Inicio rápido:
 
+<!-- source: skeleton/app/GreetingService.php -->
 ```php
 <?php
 
@@ -58,6 +61,7 @@ final class GreetingService
 
 `#[Repository]` marca un bean orientado a la persistencia, y es donde los estereotipos empiezan a mostrar su valor real: desambiguar entre una interfaz y la clase que la implementa. `samples/lumen` define el *puerto* — la interfaz de la que dependen las capas de dominio y de aplicación — sin ningún atributo del framework encima, porque una interfaz nunca es un bean en sí misma:
 
+<!-- source: samples/lumen/src/Infrastructure/WalletRepository.php -->
 ```php
 <?php
 
@@ -85,6 +89,7 @@ interface WalletRepository
 
 El *adaptador* — la clase que realmente habla con Eloquent — es el que lleva `#[Repository]`:
 
+<!-- source: samples/lumen/src/Infrastructure/EloquentWalletRepository.php -->
 ```php
 <?php
 
@@ -100,10 +105,9 @@ use Lumen\Domain\Wallet;
 /**
  * The Eloquent ADAPTER for the `WalletRepository` port, bound to the `Wallet` aggregate model.
  *
- * (The real file's docblock explains, in full, a PHP parameter-variance constraint this class must respect
- * because it both `extends EloquentRepository` and `implements WalletRepository` — see the shipped source
- * under `samples/lumen/src/Infrastructure/EloquentWalletRepository.php` for the complete rationale.)
+ // …
  *
+ // …
  * @extends EloquentRepository<Wallet>
  */
 #[Repository]
@@ -149,6 +153,7 @@ No todo lo que necesitas inyectar es una clase de tu propiedad. `#[Configuration
 
 Los propios paquetes del framework están construidos con ellas, y la más corta es la que `firefly/validation` usa para ensamblar el validador que el Capítulo 4 pondrá a trabajar:
 
+<!-- source: packages/validation/src/ValidationAutoConfiguration.php -->
 ```php
 #[Configuration]
 #[Order(1000)]
@@ -188,6 +193,7 @@ Nada de la forma cambia cuando la clase es tuya en lugar del framework: un `#[Co
 
 Ya has visto esto dos veces sin una explicación completa. `OpenWalletHandler`, el manejador de comando que abre un nuevo monedero en `samples/lumen`, es el ejemplo más claro — todo su trabajo es recibir el *puerto*, no el adaptador:
 
+<!-- source: samples/lumen/src/Application/Command/OpenWalletHandler.php -->
 ```php
 <?php
 
@@ -203,6 +209,7 @@ use Lumen\Infrastructure\WalletRepository;
 /**
  * Handles OpenWallet: mints a new wallet id, opens the aggregate, and persists it. The handled command type is
  * inferred from the sole handle() parameter (HandlerScanner param inference) — no explicit #[CommandHandler(...)].
+ // …
  */
 #[CommandHandler]
 class OpenWalletHandler
@@ -234,6 +241,7 @@ El constructor de `OpenWalletHandler` pide `WalletRepository` — la *interfaz*,
 
 Todo componente es un **singleton** por defecto: el contenedor lo construye una vez, y cada resolución posterior devuelve la misma instancia. Elige un ciclo de vida distinto con el argumento `scope` que acepta cualquier atributo de estereotipo:
 
+<!-- illustrative: the reader's own transient #[Service] -->
 ```php
 use Firefly\Container\Attributes\Service;
 use Firefly\Container\Scope;
@@ -244,14 +252,22 @@ final class RequestId {}
 
 `Scope` es un enum de PHP corriente con tres casos:
 
+<!-- source: packages/container/src/Scope.php -->
 ```php
 enum Scope
 {
-    case Singleton;  // one instance for the life of the application (the default)
-    case Transient;  // a new instance every resolution
-    case Scoped;     // one instance per Laravel request/scope
-}
+    case Singleton;
+    case Transient;
+    case Scoped;
 ```
+
+| Caso | Tiempo de vida |
+|---|---|
+| `Singleton` | una instancia durante toda la vida de la aplicación — el valor por defecto |
+| `Transient` | una instancia nueva en cada resolución |
+| `Scoped` | una instancia por petición o ámbito de Laravel |
+
+El ámbito de sesión está deliberadamente ausente: pertenece a `firefly/session`, no al contenedor.
 
 Usa `Scope::Transient` para cualquier cosa que nunca deba compartirse — un id de correlación por operación, un constructor mutable. Usa el `Scope::Singleton` por defecto para todo lo demás, que es casi todo: los servicios, los repositorios y los DTO de configuración son todos naturalmente compartibles, y un singleton es más barato de resolver.
 
@@ -264,37 +280,17 @@ Usa `Scope::Transient` para cualquier cosa que nunca deba compartirse — un id 
 
 La auto-conexión de interfaces, descrita antes en este capítulo, tiene una regla sencilla para el caso común: exactamente una implementación escaneada de una interfaz se vincula a ella automáticamente. Pero las aplicaciones reales a menudo tienen *más* de una implementación de la misma interfaz — un adaptador de producción y uno de prueba, o dos estrategias genuinamente distintas. `#[Primary]` y `#[Qualifier]` son la manera de decirle al contenedor cuál quieres:
 
+<!-- source: packages/container/tests/Fixtures/Greeter.php -->
 ```php
-use Firefly\Container\Attributes\{Primary, Qualifier, Service};
-
 interface Greeter
 {
     public function greet(): string;
-}
-
-#[Service]
-#[Primary]
-final class EnglishGreeter implements Greeter
-{
-    public function greet(): string
-    {
-        return 'Hello';
-    }
-}
-
-#[Service('spanish')]
-#[Qualifier('spanish')]
-final class SpanishGreeter implements Greeter
-{
-    public function greet(): string
-    {
-        return 'Hola';
-    }
 }
 ```
 
 Con ambos beans registrados, el contenedor resuelve la interfaz de tres maneras distintas según lo que le pidas:
 
+<!-- illustrative: the three calls a reader makes against the container port from their own code -->
 ```php
 $container->get(Greeter::class);      // EnglishGreeter — the #[Primary] one
 $container->getByName('spanish');     // SpanishGreeter — resolved by its bean name
@@ -310,16 +306,13 @@ $container->getAll(Greeter::class);   // [EnglishGreeter, SpanishGreeter] — ev
 
 `getAll(Greeter::class)`, arriba, devuelve todas las implementaciones — y las devuelve **ordenadas por `#[Order]`**, la más baja primero, exactamente como la convención `@Order` de Spring:
 
+<!-- source: packages/container/tests/Fixtures/EnglishGreeter.php -->
 ```php
 use Firefly\Container\Attributes\Order;
-
+// …
 #[Service]
+// …
 #[Order(10)]
-final class EnglishGreeter implements Greeter { /* ... */ }
-
-#[Service]
-#[Order(20)]
-final class SpanishGreeter implements Greeter { /* ... */ }
 ```
 
 El orden por defecto es `0` cuando se omite el atributo, así que cualquier cosa que ordenes explícitamente con un número positivo se ordena después de cualquier bean sin ordenar, y cualquier cosa que ordenes con un número negativo se ordena antes que ellos. `#[Order]` también se aplica a métodos fábrica `#[Bean]`, no solo a clases — el atributo funciona de forma idéntica allí donde una lista de beans necesite una secuencia determinista.
@@ -330,6 +323,7 @@ El orden por defecto es `0` cuando se omite el atributo, así que cualquier cosa
 
 A veces lo que necesitas inyectar no es un bean en absoluto, sino un único escalar — un valor de configuración o una pequeña expresión calculada. `#[Value]` apunta directamente a un parámetro de constructor:
 
+<!-- illustrative: the reader's own #[Value]-injected configuration class -->
 ```php
 use Firefly\Container\Attributes\Value;
 
@@ -357,6 +351,7 @@ Cada estereotipo, cada `#[Bean]`, cada `#[Primary]`/`#[Qualifier]`/`#[Order]` qu
 
 `ManifestCompiler` toma ese array y lo escribe a disco sin nada más exótico que el propio `var_export()` de PHP:
 
+<!-- illustrative: the shape of the file firefly/container writes at cache time, quoted as a PHP string rather than excerpted from a generated artifact no repository holds -->
 ```php
 "<?php\n\ndeclare(strict_types=1);\n\n// Generated by firefly/container. Do not edit.\n\nreturn "
     .var_export($rows, true)

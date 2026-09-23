@@ -91,7 +91,7 @@ final class DocsCodeAudit
     public const array AUDITED = [
         'README.md',
         'book/src',
-        'book/src-es/10a-oauth2.md',
+        'book/src-es',
         'docs/README.md',
         'docs/architecture.md',
         'docs/cli.md',

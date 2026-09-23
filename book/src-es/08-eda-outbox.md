@@ -26,6 +26,7 @@ LaraFly distribuye dos mecanismos de eventos sin relación entre sí que resulta
 
 Todo en este capítulo pasa por un único puerto pequeño:
 
+<!-- source: packages/eda/src/EventPublisher.php -->
 ```php
 interface EventPublisher
 {
@@ -45,9 +46,11 @@ interface EventPublisher
 
 `subscribe()` toma un patrón al estilo fnmatch (`'user.*'`, `'order.created'`, un `'*'` desnudo); `publish()` toma una cadena de destino, una cadena de tipo de evento, una carga útil y encabezados opcionales, y construye el envoltorio que recibe cada suscriptor que coincida:
 
+<!-- source: packages/eda/src/EventEnvelope.php -->
 ```php
 final readonly class EventEnvelope
 {
+    // …
     public function __construct(
         public string $eventType,
         public string $destination,
@@ -55,10 +58,9 @@ final readonly class EventEnvelope
         public array $headers = [],
         ?string $eventId = null,
         ?DateTimeImmutable $timestamp = null,
-    ) {}
-
-    public string $eventId;          // uuid4, random_bytes-derived — no ramsey/uuid, no reflection
+    // …
     public DateTimeImmutable $timestamp;
+// …
 }
 ```
 
@@ -70,25 +72,27 @@ final readonly class EventEnvelope
 
 ## `#[EventListener]` y el tropiezo de la coincidencia por eventType
 
+<!-- source: packages/eda/src/Attributes/EventListener.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD | Attribute::IS_REPEATABLE)]
 final class EventListener
 {
     /** @var list<string> */
     public readonly array $patterns;
-
+    // …
     /**
-     * @param  string|array<int, string>  $patterns
+     // …
      */
-    public function __construct(string|array $patterns = [], public readonly int $order = 0)
-    {
+        // …
         $this->patterns = is_string($patterns) ? [$patterns] : array_values($patterns);
+    // …
     }
 }
 ```
 
 `#[EventListener]` es **metadato inerte y nada más**, la misma regla que todo atributo de Firefly — un único patrón de cadena se normaliza a una lista de un elemento, y `IS_REPEATABLE` permite que un método lleve varias suscripciones, cada una con su propio orden. La suscripción en sí ocurre dentro del registro compartido que componen ambos adaptadores distribuidos:
 
+<!-- source: packages/eda/src/Bus/SubscriberRegistry.php -->
 ```php
 final class SubscriberRegistry
 {
@@ -113,20 +117,31 @@ final class SubscriberRegistry
 
 Lee con atención esa llamada a `fnmatch()`: compara `$subscriber['pattern']` contra `$envelope->eventType` — **nunca** contra `$envelope->destination`. Este es exactamente el tropiezo que sufrió la construcción de `samples/lumen` al conectar `LedgerProjector` en el Capítulo 6, y merece la pena repetirlo aquí en su totalidad porque es la forma más fácil de conectar un listener que jamás se dispara en silencio. Todo evento de dominio del monedero lleva `#[PublishDomainEvent('wallet.events')]` — esa cadena es el **destino** al que se enruta el evento una vez que cruza al mundo de los eventos de integración. El propio docblock de `LedgerProjector` enuncia la regla como una advertencia exactamente por este motivo:
 
+<!-- source: samples/lumen/src/Application/Listener/LedgerProjector.php -->
 ```php
-#[Component]
-final class LedgerProjector
-{
-    /**
-     * The #[EventListener] MUST enumerate the event TYPE names, not the #[PublishDomainEvent('wallet.events')] DESTINATION:
-     * SubscriberRegistry::deliver() calls fnmatch($pattern, $envelope->eventType), matching the pattern against the
-     * eventType (the short class name, e.g. 'FundsDeposited') and NEVER against the destination. A 'wallet.*'-style pattern
-     * would therefore never match any wallet event and this projector would silently never fire.
-     */
+/**
+ // …
+ * The #[EventListener] MUST enumerate the event TYPE names, not the #[PublishDomainEvent('wallet.events')] DESTINATION:
+ * SubscriberRegistry::deliver() calls fnmatch($pattern, $envelope->eventType), matching the pattern against the
+ * eventType (the short class name, e.g. 'FundsDeposited') and NEVER against the destination. A 'wallet.*'-style pattern
+ * would therefore never match any wallet event and this projector would silently never fire.
+ */
+    // …
     #[EventListener(['WalletOpened', 'FundsDeposited', 'FundsWithdrawn', 'TransferCompleted'])]
     public function onWalletEvent(EventEnvelope $envelope): void
     {
-        // ...
+        // …
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
+        $amountMinor = $envelope->payload['amountMinor'] ?? 0;
+        $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
+
+        LedgerEntry::query()->create([
+            'wallet_id' => is_string($walletId) ? $walletId : '',
+            'event_type' => $envelope->eventType,
+            'amount_minor' => is_int($amountMinor) ? $amountMinor : 0,
+            'balance_minor' => is_int($balanceMinor) ? $balanceMinor : 0,
+            'occurred_at' => now(),
+        ]);
     }
 }
 ```
@@ -138,6 +153,7 @@ Un tentador `#[EventListener(['wallet.*'])]` — razonando por analogía con la 
 
 Una segunda ilustración mínima, tomada de la propia documentación de `firefly/eda`, concreta el sitio de llamada, patrón y publicación imperativa juntos:
 
+<!-- illustrative: the reader's own #[EventListener] over an event their application publishes -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Eda\Attributes\EventListener;
@@ -175,9 +191,11 @@ Aquí el destino (`'orders'`) y el tipo de evento (`'order.placed'`) son cadenas
 
 `RetryingEventHandler::wrap()` decora *todo* manejador suscrito — deliberadamente no hay una ruta rápida sin envolver:
 
+<!-- source: packages/eda/src/DeadLetter/RetryingEventHandler.php -->
 ```php
 final class RetryingEventHandler
 {
+    // …
     public static function wrap(callable $handler, int $retries, float $retryDelay, ?DeadLetterStore $dlq): Closure
     {
         return static function (EventEnvelope $envelope) use ($handler, $retries, $retryDelay, $dlq): void {
@@ -228,19 +246,26 @@ Un lanzamiento se reintenta hasta `firefly.eda.retries` veces más con retroceso
 
 `InMemoryEventBus` es el valor por defecto del esqueleto (`firefly.eda.provider` sin fijar, o `memory`) — síncrono, cero servicios externos:
 
+<!-- source: packages/eda/src/Bus/InMemoryEventBus.php -->
 ```php
 final class InMemoryEventBus implements EventPublisher
 {
-    public function __construct(private readonly SubscriberRegistry $registry) {}
-
+    // …
     public function subscribe(string $eventTypePattern, callable $handler): void
     {
         $this->registry->subscribe($eventTypePattern, $handler);
     }
-
+    // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
-        $this->registry->deliver(new EventEnvelope($eventType, $destination, $payload, $headers));
+        // Delivery is synchronous, so the consume side is NESTED in the publish side: the PRODUCER span
+        // wraps the CONSUMER span, and the envelope carries the traceparent between them exactly as it
+        // would across a broker.
+        $this->tracing->tracePublish($destination, $eventType, $headers, function (array $headers) use ($destination, $eventType, $payload): void {
+            $envelope = new EventEnvelope($eventType, $destination, $payload, $headers);
+
+            $this->tracing->traceConsume($envelope, fn (EventEnvelope $received) => $this->registry->deliver($received));
+        });
     }
 
     public function start(): void {}
@@ -249,27 +274,36 @@ final class InMemoryEventBus implements EventPublisher
 }
 ```
 
-`publish()` construye el envoltorio y llama a `deliver()` **de forma síncrona** — todo manejador que coincida ya se ha ejecutado para cuando `publish()` retorna. `QueueEventBus` (`firefly.eda.provider=queue`) mantiene el mismo contrato `EventPublisher` idéntico pero hace que `publish()` sea de disparar-y-olvidar:
+`publish()` construye el envoltorio y se lo entrega a `SubscriberRegistry::deliver()` **de forma síncrona** — todo manejador que coincida ya se ha ejecutado para cuando `publish()` retorna, y un manejador que lance, lanza dentro de la llamada que publicó. Las dos llamadas a `EdaTracing` que lo envuelven son un no-op hasta que el Capítulo 11 instale un tracer real; lo que compran es que el bus en memoria emita el mismo par de spans productor-luego-consumidor que emitiría un broker, así que una traza no cambia de forma cuando cambias de proveedor.
 
+`QueueEventBus` (`firefly.eda.provider=queue`) mantiene el contrato `EventPublisher` idéntico pero hace que `publish()` sea de disparar-y-olvidar:
+
+<!-- source: packages/eda/src/Bus/QueueEventBus.php -->
 ```php
 final class QueueEventBus implements EventPublisher
 {
+    // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
-        $job = (new DispatchEventJob(new EventEnvelope($eventType, $destination, $payload, $headers)))
-            ->onConnection($this->connection)
-            ->onQueue($this->queue);
+        $this->tracing->tracePublish($destination, $eventType, $headers, function (array $headers) use ($destination, $eventType, $payload): void {
+            $job = (new DispatchEventJob(new EventEnvelope($eventType, $destination, $payload, $headers)))
+                ->onConnection($this->connection)
+                ->onQueue($this->queue);
 
-        // Resolved EVERY call so Bus::fake() intercepts — never hoist into the constructor.
-        $this->container->make(Dispatcher::class)->dispatch($job);
+            // Resolved EVERY call so Bus::fake() intercepts — never hoist into the constructor.
+            $this->container->make(Dispatcher::class)->dispatch($job);
+        });
     }
 
     public function deliver(EventEnvelope $envelope): void
     {
-        $this->registry->deliver($envelope);
+        $this->tracing->traceConsume($envelope, fn (EventEnvelope $received) => $this->registry->deliver($received));
     }
+// …
 }
 ```
+
+Las mismas dos costuras, repartidas entre dos procesos: `publish()` es el lado productor en la petición web, `deliver()` el lado consumidor en el worker, y el traceparent que viaja en las cabeceras del envoltorio es lo único que los une.
 
 `publish()` retorna antes de que ningún listener se haya ejecutado — la entrega ocurre en el worker de cola que sea que recoja el `DispatchEventJob`. El propio arranque de ese worker vuelve a poblar su `SubscriberRegistry` a partir del mismo manifiesto compilado que lee `EventListenerWiringPass` en todas partes, así que un worker que no comparte nada reconstruye el conjunto idéntico de suscriptores cada vez que arranca. Bajo el driver de cola `sync`, la entrega colapsa al mismo comportamiento síncrono que `InMemoryEventBus` — que es exactamente cómo una prueba ejerce la ruta asíncrona sin que haya ningún worker realmente en ejecución.
 
@@ -279,15 +313,19 @@ final class QueueEventBus implements EventPublisher
 
 El Capítulo 6 te mostró el *efecto* del puente — un `WalletOpened` confirmado llegando a `LedgerProjector` como un `EventEnvelope`. Aquí está el mecanismo. Todo `DomainEvent` confirmado a través del despacho post-confirmación de `firefly/data` (la sección de cierre del Capítulo 6) se publica también, en proceso, a `ApplicationEventPublisher` — la propia superficie `#[AsEventListener]` con la que este capítulo abrió al contrastarla con `#[EventListener]`. Como el propio dispatcher de Illuminate compara un evento objeto solo por su **clase concreta** (más las interfaces, nunca las clases padre), un único `#[AsEventListener]` tipado sobre la clase base abstracta `DomainEvent` nunca podría dispararse para ninguna subclase concreta. `DomainEventBridgeWiringPass` esquiva exactamente esta limitación con un único listener comodín (*wildcard*) protegido:
 
+<!-- source: packages/cqrs/src/Boot/DomainEventBridgeWiringPass.php -->
 ```php
 final class DomainEventBridgeWiringPass implements BootPass
 {
+    // …
     public function run(BootContext $context): void
     {
         $container = $context->container;
+        // …
         $dispatcher = $container->make('events');
 
         $dispatcher->listen('*', DispatcherEventPublisher::guardListener(
+            // …
             static function (string $eventName, array $payload) use ($container): void {
                 $event = $payload[0] ?? null;
                 if ($event instanceof DomainEvent) {
@@ -301,9 +339,11 @@ final class DomainEventBridgeWiringPass implements BootPass
 
 `DomainEventBridge::publish()` mapea el `DomainEvent` sobre el puerto `EventPublisher` de eda a través de `EdaCommandEventPublisher`: `eventType` = `$event->eventType()` (el nombre corto de la clase — la misma cadena contra la que comparan los patrones de `#[EventListener]`), `payload` = los campos públicos del evento vía `get_object_vars()`, y `destination` = una anulación explícita, si no el `#[PublishDomainEvent(destination:)]` del evento (`'wallet.events'` para todo evento del monedero), si no `firefly.cqrs.default_destination` (`'cqrs.events'`). El id de correlación activo (el `CorrelationContext` del Capítulo 7) se estampa en el encabezado `x-correlation-id` del envoltorio.
 
+<!-- source: packages/cqrs/src/Event/DomainEventBridge.php -->
 ```php
 final class DomainEventBridge
 {
+    // …
     public function publish(DomainEvent $event): void
     {
         $eventClass = $event::class;
@@ -344,48 +384,29 @@ Cuando no hay ningún `EventPublisher` de `firefly/eda` vinculado en absoluto, `
 
 El Capítulo 6 mostró a `DomainEventDispatcher::dispatchAfterCommit()` drenando el `AggregateTracker` y planificando cada evento vía `DB::afterCommit()`. Lleva un colaborador más, opcional — un hook que se ejecuta **antes** de esa planificación, mientras la transacción sigue abierta:
 
+<!-- source: packages/data/src/Domain/PreCommitEventHook.php -->
 ```php
 interface PreCommitEventHook
 {
     public function handle(object $event, ?string $connection = null): void;
 }
-
-final class DomainEventDispatcher
-{
-    public function __construct(
-        private readonly AggregateTracker $tracker,
-        private readonly ApplicationEventPublisher $publisher,
-        private readonly ?PreCommitEventHook $preCommitHook = null,
-    ) {}
-
-    private function afterCommit(object $event, ?string $connection): void
-    {
-        // SP-4 same-tx seam: when bound, write the event to the outbox WITHIN the still-open tx (this method runs
-        // during TransactionTemplate's pre-commit drain), so it commits/rolls back atomically with the aggregate.
-        $this->preCommitHook?->handle($event, $connection);
-
-        DB::connection($connection)->afterCommit(function () use ($event): void {
-            $this->publisher->publish($event);
-        });
-    }
-}
 ```
 
 Sin ningún hook vinculado — sin `firefly/eda-postgres`, o con cualquier proveedor que no sea `postgres` — esto es un no-op completo y `DomainEventDispatcher` se comporta exactamente como describió el Capítulo 6. `OutboxPreCommitHook` de `firefly/eda-postgres` es la implementación que lo activa:
 
+<!-- source: packages/eda-postgres/src/Outbox/OutboxPreCommitHook.php -->
 ```php
 final class OutboxPreCommitHook implements PreCommitEventHook
 {
+    // …
     public function handle(object $event, ?string $connection = null): void
     {
         if (! $event instanceof DomainEvent) {
             return;
         }
-
-        $conn = $this->connections->connection($connection); // the aggregate's OWN connection — carries the open tx
+        // …
         $emitNotify = $conn instanceof Connection && $conn->getDriverName() === 'pgsql';
-        $publisher = new PostgresEventPublisher($conn, $this->channel, $emitNotify);
-
+        // …
         (new EdaCommandEventPublisher($publisher, $this->defaultDestination, $this->destinations, $this->correlation))
             ->publish($event);
     }
@@ -396,9 +417,11 @@ final class OutboxPreCommitHook implements PreCommitEventHook
 
 ### El INSERT, y `pg_notify` en la misma transacción
 
+<!-- source: packages/eda-postgres/src/PostgresEventPublisher.php -->
 ```php
 final class PostgresEventPublisher implements EventPublisher
 {
+    // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
         $id = $this->connection->table(OutboxSchema::TABLE)->insertGetId([
@@ -415,10 +438,11 @@ final class PostgresEventPublisher implements EventPublisher
 
         if ($this->emitNotify) {
             // In-tx pg_notify: Postgres queues it and delivers on COMMIT, so the consumer's LISTEN wakes exactly
-            // when the PENDING row becomes visible. (sqlite: emitNotify=false.)
+            // …
             $this->connection->statement('SELECT pg_notify(?, ?)', [$this->channel, (string) $id]);
         }
     }
+// …
 }
 ```
 
@@ -428,23 +452,22 @@ La tabla del outbox (`firefly_eda_outbox`, un único esquema compartido por la m
 
 Una prueba genuina y distribuida demuestra ambas mitades de la garantía directamente contra una transacción real:
 
+<!-- source: packages/eda-postgres/tests/OutboxSameTransactionTest.php -->
 ```php
 it('writes the outbox row INSIDE the caller transaction (present after commit)', function () {
-    $publisher = new PostgresEventPublisher(DB::connection(), 'firefly_eda_events');
-
+    // …
     DB::transaction(function () use ($publisher): void {
         $publisher->publish('users', 'user.created', ['id' => 1], ['x-a' => 'b']);
     });
-
+    // …
     expect(DB::table(OutboxSchema::TABLE)
         ->where('event_type', 'user.created')
         ->where('status', OutboxSchema::STATUS_PENDING)
-        ->count())->toBe(1);
+// …
 });
 
 it('rolls the outbox row back WITH the aggregate (absent after rollback)', function () {
-    $publisher = new PostgresEventPublisher(DB::connection(), 'firefly_eda_events');
-
+    // …
     try {
         DB::transaction(function () use ($publisher): void {
             $publisher->publish('users', 'user.created', ['id' => 2]);
@@ -474,22 +497,24 @@ El resultado: un evento de dominio se escribe en el outbox **exactamente una vez
 
 Una vez que una fila es `PENDING`, `PostgresEventConsumer` es la ruta de entrega en proceso terminal, siempre disponible — `php artisan firefly:eda:consume` lo conduce como un worker de larga duración:
 
+<!-- source: packages/eda-postgres/src/PostgresEventConsumer.php -->
 ```php
 final class PostgresEventConsumer implements EventConsumer
 {
+    // …
     public function subscribe(array $destinations): void
     {
         if ($this->connection->getDriverName() === 'pgsql') {
             $this->connection->getPdo()->exec('LISTEN '.$this->channel);
         }
     }
-
+    // …
     public function poll(int $timeoutMs): ?ReceivedEnvelope
     {
         try {
             ($this->awaitNotification)($timeoutMs);
         } catch (\Throwable) {
-            // NOTIFY is a low-latency optimization; on ANY failure, fall through to the durable claim below.
+        // …
         }
 
         $pgsql = $this->connection->getDriverName() === 'pgsql';
@@ -497,7 +522,7 @@ final class PostgresEventConsumer implements EventConsumer
             ->where('status', OutboxSchema::STATUS_PENDING)
             ->orderBy('id');
         if ($pgsql) {
-            $query->lock('for update skip locked'); // claim — Laravel has no skipLocked() helper
+        // …
         }
         $row = $query->first();
 
@@ -518,8 +543,9 @@ final class PostgresEventConsumer implements EventConsumer
         $this->connection->table(OutboxSchema::TABLE)
             ->where('id', $received->deliveryTag)
             ->where('status', OutboxSchema::STATUS_PENDING)
-            ->update(['status' => OutboxSchema::STATUS_PUBLISHED, 'processed_at' => $this->connection->raw('CURRENT_TIMESTAMP')]);
+    // …
     }
+// …
 }
 ```
 
