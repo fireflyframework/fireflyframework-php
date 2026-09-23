@@ -92,9 +92,11 @@ it('lists navigation.indexes only when a section really has an index page', func
  * repeats the guide count when it sends people there. Every one of those was hand-counted, and a hand-counted
  * number is the one kind of documentation that goes wrong with no edit at all: it rots when somebody adds a
  * package, which is the moment nobody is reading the introduction. This release exists partly because of that
- * failure, and it is not hypothetical here: `README.md`'s own module table still says "27 packages under
- * `packages/*`" while that directory holds 29. The first sentence of the page that introduces the framework is
- * the highest-visibility place left for the same drift, so it is the one place worth spending a test on.
+ * failure, and it was not hypothetical here: when this test was written, `README.md`'s own module section said
+ * "27 packages under `packages/*`" while that directory already held 29. Naming it was not enough — the README
+ * was corrected by hand in the same wave and then left outside `$claims`, which is how the number had got
+ * wrong in the first place. Its three counts are now held to the tree like the other two pages', so the file
+ * that introduces the framework cannot be the one file that goes stale unnoticed.
  *
  * So the prose is asserted against `glob()` rather than proof-read. `tests/ReleaseWorkflowTest.php` already
  * does this for the publish matrix and says why at its `toHaveCount(30)`: the number is spelled out so that
@@ -106,7 +108,7 @@ it('lists navigation.indexes only when a section really has an index page', func
  * 32 guides out by concern" is one sentence to a reader and two lines to `str_contains()`, and a guard that
  * depends on where a paragraph happens to wrap would fail the next time somebody reflows it.
  */
-it('quotes package and guide counts that match the tree, on the Modules landing and the front page', function () {
+it('quotes package and guide counts that match the tree, on the README, the Modules landing and the front page', function () {
     $root = MkdocsConfig::root();
     $packages = count(glob($root.'/packages/*/composer.json') ?: []);
     $guides = count(glob($root.'/docs/modules/*.md') ?: []);
@@ -119,6 +121,18 @@ it('quotes package and guide counts that match the tree, on the Modules landing 
         ],
         'docs/index.md' => [
             'lays all '.$guides.' guides out by concern',
+        ],
+        // The README says it three times — the section's opening sentence, the closing sentence under the
+        // table, and the guide count that introduces the table itself — and all three are the same two
+        // glob()s. `$packages + 1` is the skeleton: a `type: project` template at the top level rather than
+        // under `packages/*`, which is exactly why it has to be counted separately and exactly why a
+        // hand-counted total forgets it.
+        'README.md' => [
+            $packages.' packages under `packages/*`',
+            ($packages + 1).' shippable units in total',
+            'round out the '.$packages.' packages',
+            'is the '.($packages + 1).'th unit',
+            'The '.$guides.' [module guides]',
         ],
     ];
 
