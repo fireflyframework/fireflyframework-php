@@ -6,6 +6,7 @@ namespace Firefly\Data\Repository;
 
 use BadMethodCallException;
 use Closure;
+use Firefly\Data\DataSettings;
 use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\Example\Example;
@@ -72,12 +73,23 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
     private readonly PersistenceExceptionTranslator $translator;
 
+    /**
+     * The firefly.data.* settings, for the one repository behaviour that is a documented switch rather than a
+     * fact of the contract (firefly.data.projection.pageable). Optional and defaulted exactly as the translator
+     * above and TransactionTemplate's own $settings are: a repository built by hand — every test in this
+     * package, every `new XRepository` in an auto-configuration — gets the shipped defaults, while a
+     * container-built #[Repository] is handed DataAutoConfiguration's config-driven bean by type.
+     */
+    private readonly DataSettings $settings;
+
     public function __construct(
         protected readonly ?TransactionalManifest $manifest = null,
         protected readonly ?AggregateTracker $tracker = null,
         ?PersistenceExceptionTranslator $translator = null,
+        ?DataSettings $settings = null,
     ) {
         $this->translator = $translator ?? new PersistenceExceptionTranslator;
+        $this->settings = $settings ?? new DataSettings;
     }
 
     /** @var array<string, ParsedQuery> */
@@ -286,7 +298,18 @@ abstract class EloquentRepository implements PagingAndSortingRepository
 
         $projection = $row['projection'] ?? null;
         if ($projection !== null && $parsed->prefix === 'find') {
-            return $this->projectDerived($query, $parsed, new ProjectionHydrator($projection));
+            $hydrator = new ProjectionHydrator($projection);
+
+            // A PROJECTION AND A PAGEABLE NOW COMBINE. They used not to: this arm returned before the pageable
+            // arm below, so `findByStatus(string $status, Pageable $pageable): Page` selected the DTO's columns
+            // and then handed back every matching row, unpaged — the documented limitation, and a genuinely
+            // dangerous one, because the shape a projection is FOR is a wide list screen and the table it reads
+            // is the one big enough to need paging. The caller's declared return type said Page; what it got was
+            // a list, so the failure surfaced as a TypeError at best and as an out-of-memory on the row count
+            // that mattered at worst.
+            return $pageable instanceof Pageable && $this->settings->pagedProjections
+                ? $this->projectPaged($query, $hydrator, $pageable, ($row['returns'] ?? null) === 'slice')
+                : $this->projectDerived($query, $parsed, $hydrator);
         }
 
         if ($pageable instanceof Pageable && $parsed->prefix === 'find') {
@@ -335,6 +358,58 @@ abstract class EloquentRepository implements PagingAndSortingRepository
         }
 
         return $projected;
+    }
+
+    /**
+     * A paged projection: the SAME database-side paging pageOf()/sliceOf() do — a COUNT for the total, a sorted
+     * LIMIT/OFFSET for the window — over the base query with the DTO's select list, with the fetched rows
+     * hydrated one by one. It deliberately does NOT reuse pageOf()/sliceOf(): those return models through
+     * narrow(), and the whole point of a projection is that no model is ever constructed.
+     *
+     * The columns are checked against the table first, exactly as the unpaged path does, so a DTO naming a
+     * column the table lacks is the same ConfigurationException whether or not a Pageable was passed — sqlite
+     * would otherwise hand back a page full of the column's own name as a string.
+     *
+     * THE SORT IS APPLIED BY HAND rather than through applySort(), which is the two orderBy calls below and
+     * nothing else. applySort() is a `protected` seam typed to `Builder<Model>` that a repository is invited to
+     * override; widening it to accept the base query builder as well would silently invalidate every such
+     * override (a subclass may not narrow a parameter type), and feeding it the Eloquent builder instead would
+     * not reach $base anyway, because toBase() returns the query builder of a CLONE whenever the model carries a
+     * global scope — a soft-deleting model's window would then come back unsorted. The count runs BEFORE the
+     * orders land, exactly as pageOf() counts before it sorts: `select count(*) … order by amount` is tolerated
+     * by sqlite and MySQL and rejected by Postgres.
+     *
+     * @param  Builder<Model>  $query
+     * @return Page<object>|Slice<object>
+     */
+    private function projectPaged(Builder $query, ProjectionHydrator $hydrator, Pageable $pageable, bool $slice): Page|Slice
+    {
+        $this->assertProjectable($hydrator);
+
+        $base = $query->select($hydrator->columns())->toBase();
+
+        $total = $slice ? 0 : (clone $base)->count();
+
+        foreach ($pageable->sort->orders ?? [] as $order) {
+            $base->orderBy($order->property, $order->direction->value);
+        }
+
+        // A Slice over-fetches ONE row to learn whether there is a next page; an unpaged Pageable (size
+        // PHP_INT_MAX) cannot add one without overflowing to a float, so it fetches everything and has no next.
+        $take = $slice && $pageable->isPaged() ? $pageable->size + 1 : $pageable->size;
+
+        $hydrated = [];
+        foreach ($base->skip($pageable->offset())->take($take)->get() as $row) {
+            $hydrated[] = $hydrator->hydrate(self::rowToArray($row));
+        }
+
+        if (! $slice) {
+            return new Page($hydrated, $total, $pageable->page, $pageable->size);
+        }
+
+        $hasNext = $pageable->isPaged() && count($hydrated) > $pageable->size;
+
+        return new Slice($hasNext ? array_slice($hydrated, 0, $pageable->size) : $hydrated, $hasNext, $pageable->page, $pageable->size);
     }
 
     /**

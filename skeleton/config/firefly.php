@@ -1909,6 +1909,22 @@ return [
         'transactional-event-listeners' => [
             'enabled' => env('FIREFLY_DATA_TRANSACTIONAL_LISTENERS', true),
         ],
+
+        /*
+         | A #[Projection] and a trailing Pageable now COMBINE: `findByStatus(string $status, Pageable $p):
+         | Page` selects the DTO's columns and pages IN THE DATABASE, hydrating one DTO per row of the
+         | window. Declaring `Slice` gets a slice (size + 1 fetched, the extra one dropped, no count query).
+         | Until this key existed the projection won and the whole unpaged result came back, which was the
+         | documented limitation and also the wrong answer on exactly the wide list screens a projection is
+         | for — and a wrong answer the method's own declared return type contradicted.
+         |
+         | Set to false for one release if call sites relied on the old list-shaped return.
+         |
+         | Default: true.
+        */
+        'projection' => [
+            'pageable' => env('FIREFLY_DATA_PAGED_PROJECTIONS', true),
+        ],
     ],
 
     /*
