@@ -28,9 +28,11 @@ it('resolves $ref pointers client-side so a reader sees members, not pointers', 
     expect($html)->toContain('function deref')
         // The JSON Pointer walk itself: a local "#/a/b" pointer split and followed into the loaded document.
         ->and($html)->toContain("ref.slice(2).split('/')")
-        // deref() is applied wherever a schema can be a pointer, so a reader never sees one.
+        // deref() is applied wherever a schema can be a pointer, so a reader never sees one. A property keeps its
+        // raw node as well, because a `$ref` is also the component NAME its type label shows (what the member
+        // types actually render as is proven in Chromium by tests/Browser/BuiltinApiViewerTest.php).
         ->and($html)->toContain('typeof node.$ref')
-        ->and($html)->toContain('deref(schema.properties[name])')
+        ->and($html)->toContain('var child = deref(raw)')
         ->and($html)->toContain('deref(content[type].schema)');
 });
 
