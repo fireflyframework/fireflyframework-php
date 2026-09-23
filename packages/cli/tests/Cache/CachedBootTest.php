@@ -16,6 +16,7 @@ use Firefly\Data\Proxy\Advice;
 use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
+use Firefly\Resilience\Method\ResilienceAdviceSource;
 use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\Route\RouteDescriptor;
@@ -102,11 +103,18 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
  | The chain, on the compiled artifact. ObservabilityAdviceSource's order 50 is the constant every claim about
  | #[Timed] rests on — "a refusal is still counted", "the commit is inside the timer" — and a class carrying
  | ONE advice can never contradict it, which is what every other fixture here carries. DemoLayeredService
- | carries all three on one method, so ProxyPlanner's sort and ProxyPlan::adviceFor()'s sort both have to
- | agree that metrics is outermost before this passes. Changing 50 to 150 leaves every other test in the
+ | carries all four on one method, so ProxyPlanner's sort and ProxyPlan::adviceFor()'s sort both have to
+ | agree on the whole sequence before this passes. Changing 50 to 150 leaves every other test in the
  | monorepo green and turns method metrics into a meter that goes quiet exactly when an operator needs it.
+ |
+ | ResilienceAdviceSource's 200 is the fourth link and the same kind of constant: INSIDE security, so a call
+ | a #[PreAuthorize] refuses never spends a retry budget or trips a breaker, and OUTSIDE the transaction, so
+ | each retry attempt gets a transaction of its own. Until this fixture carried #[Retry], deleting
+ | `new ResilienceAdviceSource` from planner() left the monorepo green while every `firefly:cache`d
+ | application lost all six resilience attributes — the proxies still generated, just with no resilience
+ | advice in them at all.
  */
-it('chains the metric advice OUTSIDE security and the transaction on a method carrying all three', function () {
+it('chains metrics OUTSIDE security, security outside resilience and resilience outside the transaction', function () {
     $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
 
     (new ManifestCacheWriter)->write(cachedBootPsr4(), $dir);
@@ -115,15 +123,28 @@ it('chains the metric advice OUTSIDE security and the transaction on a method ca
     $advice = $plan->adviceFor(DemoLayeredService::class);
 
     // The advice set on the class, outermost first, and the orders that put it in that sequence.
-    expect(array_keys($advice))->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, Advice::TRANSACTIONAL])
+    expect(array_keys($advice))->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL])
         ->and($advice[ObservabilityAdviceSource::ID]->order)->toBe(50)
+        ->and($advice[ResilienceAdviceSource::ID]->order)->toBe(200)
         ->and($advice[ObservabilityAdviceSource::ID]->order)->toBeLessThan($advice[MethodSecurityAdviceSource::ID]->order)
-        ->and($advice[MethodSecurityAdviceSource::ID]->order)->toBeLessThan($advice[Advice::TRANSACTIONAL]->order);
+        ->and($advice[MethodSecurityAdviceSource::ID]->order)->toBeLessThan($advice[ResilienceAdviceSource::ID]->order)
+        ->and($advice[ResilienceAdviceSource::ID]->order)->toBeLessThan($advice[Advice::TRANSACTIONAL]->order);
 
     // …and the per-method rows, which are what ProxyPlanner::proxyMethods() turns into the generated chain:
     // the same sequence, so the emitted proceed() really does reach the metric link first.
     expect(array_column($plan->methodsFor(DemoLayeredService::class)['all'], 'advice'))
-        ->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, Advice::TRANSACTIONAL]);
+        ->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL]);
+
+    // ResilienceAdviceSource::render() runs on the CACHED path alone — the resilience capstones take the
+    // scan branch by design — so this is the only place the emitted descriptor literal is proved to parse
+    // and to name the right class. Same argument as the ObservabilityMethodDescriptor assertion above.
+    /** @var array<string,string> $map */
+    $map = require $dir.'/'.FireflyCachePaths::PROXY_MAP;
+    $layeredProxy = (string) file_get_contents($map[DemoLayeredService::class.ProxyPlan::PROXY_SUFFIX]);
+
+    expect($layeredProxy)->toContain('__fireflyResilienceInterceptor')
+        ->and($layeredProxy)->toContain('\\Firefly\\Resilience\\Method\\ResilienceMethodDescriptor::fromArray(')
+        ->and($plan->methodsFor(DemoLayeredService::class)['all'][2]['row']['retry'])->toBe('demo');
 });
 
 it('boots the fixture app on the CACHED zero-reflection path with a working #[Transactional] proxy', function () {

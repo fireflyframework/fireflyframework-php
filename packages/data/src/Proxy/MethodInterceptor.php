@@ -15,6 +15,13 @@ namespace Firefly\Data\Proxy;
  * (a transaction), one that calls setArguments() first narrows what the method receives (a pre-filter). The
  * invocation is single-use: proceed() advances a cursor, so a second call from the same link reaches the NEXT
  * link, never this one again — the same contract as Spring's ReflectiveMethodInvocation.
+ *
+ * A REPEATING link — one that must run the rest of the chain more than once, which in this framework means a
+ * retry and nothing else — therefore does NOT call proceed() twice. It takes `$invocation->invocableClone()`
+ * per repetition and proceeds on that, so every repetition walks the same remainder: the transaction, the
+ * inner advice and the real method. Calling proceed() twice instead silently drops one inner link per extra
+ * call, which for `#[Retry]` beside `#[Transactional]` means attempts after the first run untransacted. The
+ * clone is the one sanctioned way around the single-use rule; see MethodInvocation::invocableClone().
  */
 interface MethodInterceptor
 {

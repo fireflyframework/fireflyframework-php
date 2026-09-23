@@ -51,8 +51,10 @@ use Throwable;
  * a caller's mistake, not a downstream failure, and counting it as one is how a permissions bug trips a
  * production breaker. And a retry must open a NEW transaction per attempt rather than re-running inside a
  * transaction that is already doomed — which is only true while this link sits outside the transactional
- * one. Metrics (50) sit outside all of it, so a timer measures every attempt and the wait between them:
- * the latency the caller experienced, not the last attempt's.
+ * one AND every attempt re-enters the chain below it (see invoke(), and the transcript
+ * ResilienceCompositionOrderTest records for a retry over a recording inner link). Metrics (50) sit outside
+ * all of it, so a timer measures every attempt and the wait between them: the latency the caller
+ * experienced, not the last attempt's.
  *
  * The master key is read LIVE on every call, like MethodSecurityInterceptor's, because a test flips it after
  * boot and the proxy already holds this instance.
@@ -76,7 +78,15 @@ final class ResilienceMethodInterceptor implements MethodInterceptor
 
         // Built INNERMOST FIRST, each wrapper closing over the one before it — the Decorators idiom. The
         // resulting call order is the reverse, which is self::ORDER.
-        $call = static fn (): mixed => $invocation->proceed();
+        //
+        // invocableClone() PER ATTEMPT, never a bare proceed(). This is the only re-entrant link in the
+        // framework: a retry runs what is inside it up to max-attempts times, and the invocation is
+        // single-use — proceed() advances a cursor, so a second call would skip the transactional link and
+        // attempt 2 would write outside a transaction with nothing left to roll it back. The clone is taken
+        // here, while the cursor still points at the link that FOLLOWS this one, so every attempt walks the
+        // same remainder from the same place. A fresh clone per call also keeps an inner setArguments()
+        // scoped to its own attempt.
+        $call = static fn (): mixed => $invocation->invocableClone()->proceed();
 
         if ($rule->bulkhead !== null) {
             $bulkhead = $this->registry->bulkhead($rule->bulkhead);
