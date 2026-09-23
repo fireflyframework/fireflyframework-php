@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Admin\Tests\Support\AdminTableCapstoneTestCase;
+use Illuminate\Support\Str;
 
 uses(AdminTableCapstoneTestCase::class);
 
@@ -43,14 +44,49 @@ it('sorts on the server, from a link that carries the rest of the state', functi
 // response. It is a GET form now, and the narrowing is a fact about the application rather than the DOM.
 it('searches on the server and says how many rows matched', function () {
     /** @var AdminTableCapstoneTestCase $this */
+    // The unnarrowed reading first, so the narrowed one below is a CHANGE and not a number that happens to
+    // be right. `_panel-head` prints this label out of `$count`, which mappings.blade.php feeds from
+    // `$slice->total` — the size of the whole result set, not of the page. Seven rows fit on one page, so
+    // the two are the same number here and this pair cannot tell a total from a row count; the fixture that
+    // can is in AdminTablePagerTest, under "counts the whole result set in the header".
+    $this->get('/firefly/mappings')->assertStatus(200)->assertSee('7 total', false);
+
     $this->get('/firefly/mappings?q=orders')
         ->assertStatus(200)
         ->assertSee('name="q"', false)
+        ->assertSee('5 total', false)
         ->assertDontSee('data-filter="map-body"', false)
         // The absent row is named by its HANDLER, not by its path: the sheet is inline on this page and
         // the comment above `.wrap` quotes `/greetings/{name}` as the bug it exists to fix, so asserting
         // the raw path absent would be asserting something about a CSS comment.
         ->assertDontSee('GreetingController', false);
+});
+
+/**
+ * Both GET forms on a listing, and the state neither of their own controls owns.
+ *
+ * The search box owns `q` and the rows-per-page select owns `size`; everything else — the ordering, and for
+ * the search form the size too — rides along as a hidden input or is lost the moment either form is
+ * submitted. The ordering is the one that reads as a broken feature rather than a reset: sort by path, then
+ * type a term, and the matching rows come back in the order they were in before the sort link was ever
+ * clicked, which looks like sorting does not work. It is the same class of bug as a link that drops `q`,
+ * one mechanism over, and deleting the `hiddenFields()` loop out of either form passes every other
+ * assertion in this suite — so it is asserted here against both of them at once.
+ */
+it('carries the ordering through the search form and the rows-per-page form', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/mappings?sort=path&dir=desc')->assertStatus(200)->getContent();
+
+    expect(Str::betweenFirst($body, 'role="search"', '</form>'))
+        ->toContain('<input type="hidden" name="sort" value="path">')
+        ->toContain('<input type="hidden" name="dir" value="desc">')
+        // `q` is NOT hidden here — the search input is the control that owns it, and a hidden field of the
+        // same name would submit ahead of whatever the reader typed.
+        ->toContain('type="search" name="q"');
+
+    expect(Str::betweenFirst($body, '<div class="pager">', '</form>'))
+        ->toContain('<input type="hidden" name="sort" value="path">')
+        ->toContain('<input type="hidden" name="dir" value="desc">');
 });
 
 it('renders one page at a time and a pager that carries the search', function () {

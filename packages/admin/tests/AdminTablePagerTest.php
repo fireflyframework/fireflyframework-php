@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Admin\Tests\Support\AdminTablePagedCapstoneTestCase;
+use Illuminate\Support\Str;
 
 uses(AdminTablePagedCapstoneTestCase::class);
 
@@ -89,4 +90,52 @@ it('clamps a page past the end onto the last page, not back onto the first', fun
         ->not->toContain('No routes mapped')
         // Previous points one back from the page that was RENDERED — 10, never 9998.
         ->toMatch('~<a class="act"\s+href="/firefly/mappings\?size=2&amp;page=10"\s*>Previous</a>~');
+});
+
+/**
+ * The OTHER state-carrying control in the pager, and the one that carries its state by hand.
+ *
+ * The first test in this file asserts the search survives every LINK; this one asserts it survives the
+ * FORM, a separate mechanism with a separate way of going wrong. `ListingQuery::hiddenFields()` omits
+ * `q`, because the form it was written for is the search form, whose own <input> supplies it — so the
+ * rows-per-page form, which has no such input, has to re-add it itself. Delete that one line and an
+ * operator who narrows a listing and then asks for more rows gets all twenty-one back with no search box
+ * to explain it, and, before this test existed, with nothing failing either.
+ *
+ * `size` is the mirror image: hiddenFields() DOES offer it whenever it is not the default, and the <select>
+ * owns it — two controls with the same name in one form submit the hidden one, so the select would be
+ * decorative. Counting the name inside the form is what tells "the select owns it" from "a hidden input
+ * shadows it", which no assertion about the select alone can see.
+ */
+it('carries the search into the rows-per-page form, and lets the select own the size alone', function () {
+    /** @var AdminTablePagedCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/mappings?q=orders&size=2&page=2')->assertStatus(200)->getContent();
+
+    $form = Str::betweenFirst($body, '<div class="pager">', '</form>');
+
+    expect($form)->toContain('<input type="hidden" name="q" value="orders">')
+        ->toContain('<select name="size"')
+        // `page` is absent on purpose: a listing resized from page 2 opens at the top, because page 2 of a
+        // re-sliced result set is not the rows the reader was looking at.
+        ->not->toContain('name="page"');
+
+    expect(substr_count($form, 'name="size"'))->toBe(1);
+});
+
+/**
+ * `N total` is the size of the RESULT SET, and only a listing that pages can tell that from the size of the
+ * response.
+ *
+ * AdminTableListingTest pins the same label at `7 total` and `5 total`, but its fixture has one page, so
+ * `$slice->total` and `count($slice->rows)` are the same number there and a header that started counting
+ * the rows in front of it would still read correctly. Here they differ: page 2 of `?q=orders&size=2` holds
+ * two rows out of five matches, so the header says five while the table shows two, and that disagreement is
+ * the point — it is what tells a reader on page 2 how much more there is.
+ */
+it('counts the whole result set in the header, not the rows on the page', function () {
+    /** @var AdminTablePagedCapstoneTestCase $this */
+    $this->get('/firefly/mappings?q=orders&size=2&page=2')
+        ->assertStatus(200)
+        ->assertSee('5 total', false)
+        ->assertSee('3–4 of 5', false);
 });

@@ -15,6 +15,13 @@
     environment with no build step. The onchange stays as a convenience; the button is what makes it a
     control.
 
+    THE ROWS FORM CARRIES THE SEARCH BY HAND, which is the one place in this partial where a parameter is
+    named in the markup rather than emitted by `hiddenFields()`. hiddenFields() omits `q` because the form
+    it was written for is the search form, whose own <input> owns that name; this form has no such input,
+    so it re-adds the hidden field itself — and it @continues past `size` for the mirror reason, since two
+    controls with one name submit the hidden one and would leave the <select> decorative. Both halves are
+    asserted by AdminTablePagerTest, against a listing that is narrowed AND resized at once.
+
     THE PAGED BRANCH AT THE BOTTOM IS THE STATE-CARRYING ONE, and it renders only when there is more than
     one page — so a seven-row fixture cannot see it at all, and a page link that silently dropped `q` or
     `sort` would widen the listing back to every row with nothing failing. Every link it draws goes through

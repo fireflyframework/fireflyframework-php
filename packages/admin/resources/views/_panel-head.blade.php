@@ -8,9 +8,22 @@
     the resource index, the health indicators, the settings console. With neither it renders the count
     alone, which is what overview's four panels, graph's three and five other views ask for.
 
-    `{{ number_format($count) }} total` IS A PINNED STRING. tests/Browser/AdminDataBrowserTest.php asserts
-    `assertSee('3 total')` and `assertSee('1 total')` against the data browser's listing, which hand-rolled
-    exactly this label before it moved here.
+    THE SEARCH FORM RE-SUBMITS THE STATE ITS OWN INPUT DOES NOT CARRY. `hiddenFields()` emits the sort, the
+    direction, the size and anything the page asked the listing to carry; without them, searching from a
+    sorted page hands back the matching rows in the ORIGINAL order, which reads as "sorting is broken"
+    rather than as a form that lost a parameter. `q` is not among them on purpose — the input below owns
+    that name, and a hidden field sharing it would submit ahead of whatever was typed. Asserted by
+    AdminTableListingTest's "carries the ordering through the search form and the rows-per-page form".
+
+    `{{ number_format($count) }} total` IS THE GRAND TOTAL, not the row count of the response: on page 2 of
+    a narrowed listing it still reads the size of the whole result set. AdminTableListingTest pins both
+    readings of it — `7 total` unnarrowed and `5 total` under `?q=orders` — and AdminTablePagerTest pins the
+    one reading a single-page fixture cannot: five matches behind a page of two.
+
+    The wording is not free, though: data-list.blade.php still hand-rolls the same words in its own
+    <header>, and that is what tests/Browser/AdminDataBrowserTest.php's `assertSee('3 total')` hits today —
+    nothing in that file touches this branch. Keeping the literal identical is what lets the data browser
+    move onto this partial without rewriting a browser assertion.
 --}}
 <header>
     <h2>{{ $title }}</h2>
