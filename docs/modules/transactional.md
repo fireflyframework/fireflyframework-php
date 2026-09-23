@@ -246,7 +246,10 @@ declaring class's scope alone; two privates under one name in a parent and a chi
 *is-a* `{Target}`, so container calls and `#[PreDestroy]` resolve against it exactly as they would the
 original bean. A `final` target
 is refused at scan time (`UnsupportedTransactionalMethodException::finalClass()`), where the manifest row is
-still in view.
+still in view, and so is a `final` planned METHOD
+(`UnsupportedTransactionalMethodException::finalMethod()`) — the proxy overrides every method it plans, so
+without that refusal PHP rejects the generated class at load with "Cannot override final method", a fatal that
+names neither the attribute nor the class-level one that fanned onto the method.
 
 **Self-invocation bypasses the proxy** — the same well-known Spring limitation. A method calling
 `$this->otherMethod()` from inside the proxied class calls straight through `parent::`, skipping the

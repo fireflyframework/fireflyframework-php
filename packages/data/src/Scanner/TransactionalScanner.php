@@ -146,9 +146,12 @@ final class TransactionalScanner
      * The rendered signatures of the named public methods of one class — the ONLY place signatures are
      * reflected, keeping ProxyClassGenerator and ProxyPlanner free of the reflection substrings.
      *
-     * Two things fail loud here rather than inside a generated class: a `final` target (the proxy must extend
-     * it, and PHP would fatal at require time with no hint of which manifest row caused it) and a by-reference
-     * parameter (`&$out`: the terminal closure spreads a copied list, so the writeback would be silently lost).
+     * Three things fail loud here rather than inside a generated class: a `final` target (the proxy must extend
+     * it, and PHP would fatal at require time with no hint of which manifest row caused it), a `final` METHOD
+     * (the proxy overrides every planned method, so the same fatal arrives one level down — and for a
+     * class-level attribute that fanned onto the method, nothing in it points back at what planned it) and a
+     * by-reference parameter (`&$out`: the terminal closure spreads a copied list, so the writeback would be
+     * silently lost).
      *
      * @param  class-string  $class
      * @param  list<string>  $methods
@@ -164,6 +167,10 @@ final class TransactionalScanner
         $signatures = [];
         foreach ($methods as $name) {
             $method = $reflection->getMethod($name);
+            if ($method->isFinal()) {
+                throw UnsupportedTransactionalMethodException::finalMethod($class, $name);
+            }
+
             [$paramSource, $argSource] = $this->renderParameters($method, $class);
             $signatures[$name] = new ProxySignature($paramSource, $argSource, $this->renderReturnType($method));
         }
