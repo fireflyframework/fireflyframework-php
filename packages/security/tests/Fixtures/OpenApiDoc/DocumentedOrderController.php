@@ -53,8 +53,23 @@ final class DocumentedOrderController
     }
 
     /**
+     * The scope written as the AUTHORITY the evaluator normalises a bare one to — the spelling
+     * SecurityExpressionRoot::hasScope() documents, and an identical rule to `hasScope('orders.write')`. The
+     * document has to publish the OAUTH2 SCOPE, `orders.write`: a requirement's scope list is what a client
+     * asks the authorization server for, and no registration holds a scope named `SCOPE_orders.write`.
+     *
+     * @return list<string>
+     */
+    #[PreAuthorize("hasScope('SCOPE_orders.write')")]
+    #[GetMapping('/api/doc-orders/drafts')]
+    public function drafts(): array
+    {
+        return [];
+    }
+
+    /**
      * Declared LAST because the router matches in registration order and `{id}` would otherwise swallow the
-     * two literal paths above.
+     * three literal paths above.
      *
      * @return array{id: string}
      */

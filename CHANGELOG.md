@@ -219,7 +219,11 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   so they contribute nothing); and a `hasScope()` the rule demands of every caller becomes the requirement's scope
   list, while `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement — an OpenAPI scope
   list is conjunctive, and naming both alternatives sends a generated client to ask for a scope it may not be
-  registered for.
+  registered for. The name published is the **OAuth2 scope**, never the granted authority:
+  `hasScope('SCOPE_orders.read')` and `hasScope('orders.read')` are one rule, since `SecurityExpressionRoot`
+  normalises the bare form before testing it, and only `orders.read` is a name a client registration can hold —
+  the prefixed spelling would be declared in the authorization server's flow scopes as well and the Authorize
+  dialog would ask for a scope that does not exist. A `hasScope:` URL rule is normalised the same way.
 
 - **`packages/security-oauth2-server` — the authorization server contributes its own `authorizationCode` flow.**
   `AuthorizationServerSchemeContributor` (`src/OpenApi`, a new `SecurityOAuth2Server → OpenApi` deptrac edge, same
@@ -595,7 +599,11 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   `exception` and a `ResponseHeaderBag`; a Laravel paginator as `onEachSide`; `@return Page<Order>` as one bare
   `Page` whose `items` were anything; `Parcel|Label` and `int|string` as any value, and `?Parcel` without its
   null. The document now follows `ResponseFactory` and `JsonMessageConverter` in their own order: a returned
-  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`), markup as
+  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`) however that
+  class reaches the generator — a declared type, an arm of a `JsonResponse|RedirectResponse` union (`*/*`, since
+  the action picks at runtime and no arm's media type or status is the one sent), a `@return` line on an action
+  with no declared type, or an `#[ApiResponse(type:)]` — and never as a component built from its internals, a rule
+  the schema factory now enforces at its own door rather than at one caller. Markup is documented as
   `text/html`, an `Arrayable` from `toArray()` — an Eloquent model from its `@property` tags or, untagged, from
   its key, `$fillable`, casts, timestamps, `$appends` and relations, minus `$hidden` — before a
   `JsonSerializable`, and Laravel's three paginators as the envelopes they write. Generic instantiations are

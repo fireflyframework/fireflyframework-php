@@ -111,6 +111,36 @@ it('carries the scope as the requirement\'s scope list for a hasScope rule', fun
     expect(($requirements[0] ?? null)?->scopes)->toBe(['orders.read']);
 });
 
+it('publishes the OAuth2 scope a SCOPE_-prefixed rule demands, not the authority name the rule spells', function (): void {
+    // The rule's argument reaches the same evaluator a `#[PreAuthorize("hasScope('…')")]` does, and that
+    // evaluator normalises a bare scope to the `SCOPE_x` authority a token grants — so these two rules are
+    // the same rule, and only the unprefixed name is a scope any client registration can hold.
+    $requirementsFor = static fn (string $access): array => (new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'oauth2' => ['resource_server' => ['enabled' => true, 'jwks_uri' => 'https://idp.example.com/jwks']],
+        'http' => ['enabled' => true, 'rules' => [['pattern' => 'orders/*', 'access' => $access]]],
+    ])))->requirementsFor(openApiSecurityRoute('orders/{id}')) ?? [];
+
+    $prefixed = $requirementsFor('hasScope:SCOPE_orders.read');
+
+    expect(($prefixed[0] ?? null)?->scopes)->toBe(['orders.read'])
+        ->and(($prefixed[0] ?? null)?->toArray())->toBe(($requirementsFor('hasScope:orders.read')[0] ?? null)?->toArray());
+});
+
+it('names no scope at all for a rule whose name is empty once the authority prefix is off', function (): void {
+    $security = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'oauth2' => ['resource_server' => ['enabled' => true, 'jwks_uri' => 'https://idp.example.com/jwks']],
+        'http' => ['enabled' => true, 'rules' => [['pattern' => 'orders/*', 'access' => 'hasScope:SCOPE_']]],
+    ]));
+
+    $requirements = $security->requirementsFor(openApiSecurityRoute('orders/{id}')) ?? [];
+
+    // The path still needs the credential — that is the whole of what can be said about it.
+    expect($requirements)->toHaveCount(1)
+        ->and($requirements[0]->scopes)->toBe([]);
+});
+
 it('has NO opinion at all when URL authorization is off', function (): void {
     $security = new ConfiguredSecurity(openApiSecurityConfig(['enabled' => true, 'jwt' => ['enabled' => true]]));
 

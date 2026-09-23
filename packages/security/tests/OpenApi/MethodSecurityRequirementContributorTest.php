@@ -173,6 +173,36 @@ it('carries a hasScope rule\'s scope as the requirement\'s scope list', function
         ->and($requirements[0]->toArray())->toBe(['oauth2ResourceServer' => ['orders.read']]);
 });
 
+it('publishes the OAuth2 scope a SCOPE_-prefixed rule demands, not the authority name the rule spells', function (): void {
+    // SecurityExpressionRoot::hasScope() normalises a bare scope to the `SCOPE_x` AUTHORITY a token grants,
+    // and documents the prefixed spelling, so these two expressions are the SAME enforced rule. The
+    // requirement's scope list is not an authority list: it is what a generated client asks the
+    // authorization server for, and no client registration holds a scope called `SCOPE_orders.read`.
+    $prefixed = methodSecurityOpenApiRequirements(
+        ['enabled' => true, 'oauth2' => ['resource_server' => ['enabled' => true]]],
+        [methodSecurityOpenApiRule("hasScope('SCOPE_orders.read')")],
+    );
+
+    $bare = methodSecurityOpenApiRequirements(
+        ['enabled' => true, 'oauth2' => ['resource_server' => ['enabled' => true]]],
+        [methodSecurityOpenApiRule("hasScope('orders.read')")],
+    );
+
+    expect($prefixed[0]->scopes)->toBe(['orders.read'])
+        ->and($prefixed[0]->toArray())->toBe($bare[0]->toArray());
+});
+
+it('names no scope at all for a rule whose literal is empty once the authority prefix is off', function (): void {
+    // `hasScope('SCOPE_')` demands the authority `SCOPE_` and names no scope; publishing `''` would send a
+    // generated client to the token endpoint asking for a scope spelled as the empty string.
+    $requirements = methodSecurityOpenApiRequirements(
+        ['enabled' => true, 'jwt' => ['enabled' => true]],
+        [methodSecurityOpenApiRule("hasScope('SCOPE_') and hasScope('orders.read')")],
+    );
+
+    expect($requirements[0]->scopes)->toBe(['orders.read']);
+});
+
 it('publishes a bare requirement for a hasAnyScope rule, because a requirement\'s scope list is conjunctive', function (): void {
     // A Security Requirement Object's scopes are ALL required; `hasAnyScope('a', 'b')` accepts either. Naming
     // both would send a generated client to the authorization server asking for a scope its registration may

@@ -432,7 +432,9 @@ package already owns:
   entries only (HTTP Basic has no scope vocabulary a generated client could ask a token endpoint for). An
   `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement instead: an OpenAPI scope list
   is conjunctive, so naming both alternatives would send a generated client to ask for a scope its registration
-  may not include.
+  may not include. The name published is the **OAuth2 scope**, never the authority: `hasScope('SCOPE_orders.read')`
+  and `hasScope('orders.read')` are one rule (`SecurityExpressionRoot::hasScope()` normalises the bare form), and
+  only `orders.read` is a scope a client registration can hold.
 
 `packages/security/tests/OpenApi/MethodSecuredDocumentCapstoneTest.php` boots the generator beside this package and
 asserts the document and the dispatcher against each other on the same routes — the pairing that keeps the two

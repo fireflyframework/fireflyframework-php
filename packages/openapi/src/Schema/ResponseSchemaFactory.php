@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\OpenApi\Schema;
 
 use Firefly\OpenApi\Generator\DocBlock;
+use Firefly\OpenApi\Generator\RenderedResponse;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Resources\Json\JsonResource;
 use JsonSerializable;
@@ -85,6 +86,19 @@ final class ResponseSchemaFactory
      */
     public function schema(string $class, SchemaRegistry $registry, array $arguments = []): array
     {
+        // A class the JSON converter never sees — a Response the action built itself, a Responsable, markup
+        // — is not a payload and has no members to document. Reflecting one mints a component out of its
+        // INTERNALS: a JsonResponse becomes `original`, `exception` and a `headers` member pointing at a
+        // ResponseHeaderBag component, all required, a type the server never sends. RenderedResponse states
+        // what such a return DOES send, and the rule lives here, at the one door every path goes through —
+        // a declared return type, an arm of a union, a `@return` line, an `#[ApiResponse(type:)]` — rather
+        // than at the single call site that used to pre-filter for it and covered only the first. The
+        // any-value schema is what is left when a class says nothing about a body, and is what the caller
+        // falls back to; the caller that can say more asks RenderedResponse directly.
+        if (RenderedResponse::isRendered($class)) {
+            return [];
+        }
+
         // The wire shapes that are facts about a CONTRACT come first: TypeSchema answers every interface with
         // the any-value schema, so a `Contracts\Pagination\LengthAwarePaginator` or an `Enumerable` return
         // would otherwise never reach them.

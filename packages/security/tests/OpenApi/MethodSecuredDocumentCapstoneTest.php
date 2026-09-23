@@ -44,6 +44,17 @@ it('leaves the security member off an action whose only rule is a #[PostFilter],
     $this->get('/api/doc-orders/feed')->assertStatus(200);
 });
 
+it('publishes the OAuth2 scope a SCOPE_-prefixed rule demands, which is the name a client can actually ask for', function () {
+    /** @var MethodSecuredDocumentCapstoneTestCase $this */
+    // `hasScope('SCOPE_orders.write')` and `hasScope('orders.write')` are ONE rule — the evaluator
+    // normalises the bare form to the prefixed authority before testing it — so the dispatcher refuses the
+    // same callers either way. Only the unprefixed name is a scope a token endpoint issues, and publishing
+    // the authority verbatim would send a generated client after one that does not exist.
+    expect($this->operation('/api/doc-orders/drafts')['security'])->toBe([['bearerAuth' => ['orders.write']]]);
+
+    $this->get('/api/doc-orders/drafts')->assertStatus(401);
+});
+
 it('leaves no published scheme unreferenced and names no scheme it did not publish', function () {
     /** @var MethodSecuredDocumentCapstoneTestCase $this */
     /** @var array<string, array<string, mixed>> $components */

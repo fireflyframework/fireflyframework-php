@@ -56,6 +56,13 @@ use ReflectionNamedType;
 final class OperationFactory
 {
     /**
+     * The prefix documentedReturnClass() marks a class pointer with while it parses a `@return` line without
+     * resolving anything. A NUL byte opens it because no `$ref` this package ever writes can begin with one,
+     * so a marked pointer is unmistakably the parser's answer and never a schema that came from elsewhere.
+     */
+    private const string CLASS_MARK = "\0return-class:";
+
+    /**
      * $security is last and nullable for the reason $resolvers is: every existing construction of this
      * factory — the #[Bean] below, an application's own override, the fixtures — keeps compiling, and one
      * built without it publishes the document this package published before there was anything to say about
@@ -488,6 +495,17 @@ final class OperationFactory
      * internals is exactly the thing that must not appear. Such a return can also carry its own status (a
      * redirect's 302), which is why the status comes back beside the response.
      *
+     * THE DECLARED TYPE IS READ AS PHP DECLARED IT, through RenderedResponse::forType(), not as the one
+     * class name returnType() can offer. That distinction is the whole of a bug this branch shipped: a
+     * `: JsonResponse|RedirectResponse` reflects as a union, returnType() answered null for it, and the
+     * declared-type schema reader — which learned to read unions in the same wave — documented `anyOf` of
+     * the two classes' internals, components and all, for a pair of returns neither of which is a payload.
+     * An action with NO declared type and a `@return RedirectResponse` is the other half of the same hole,
+     * and is decided from the `@return` line's own class, found without resolving it. ResponseSchemaFactory
+     * refuses such a class at its entry point whatever reaches it, so the document cannot regrow those
+     * components from a path nobody thought of here; what this method adds is the RIGHT answer — the media
+     * type, and the status a redirect carries — where the factory alone would only manage to say nothing.
+     *
      * @return array{0: int, 1: array<string, mixed>}
      */
     private function successResponse(RouteDescriptor $route, SchemaRegistry $registry): array
@@ -509,12 +527,16 @@ final class OperationFactory
             ]];
         }
 
-        if ($type !== null && (class_exists($type) || interface_exists($type))) {
-            $rendered = RenderedResponse::for($type, $this->returnProse($method));
+        $declared = $method?->getReturnType();
+        $rendered = RenderedResponse::forType($declared, $this->returnProse($method));
 
-            if ($rendered !== null) {
-                return [$rendered->status ?? $route->status, $rendered->response];
-            }
+        if ($rendered === null && $declared === null) {
+            $documentedClass = $this->documentedReturnClass($method);
+            $rendered = $documentedClass === null ? null : RenderedResponse::for($documentedClass, $this->returnProse($method));
+        }
+
+        if ($rendered !== null) {
+            return [$rendered->status ?? $route->status, $rendered->response];
         }
 
         [$documented, $prose] = $this->documentedReturn($method, $registry);
@@ -544,6 +566,41 @@ final class OperationFactory
         }
 
         return DocType::split($line, static fn (string $class): array => [])[1];
+    }
+
+    /**
+     * The ONE class an action's `@return` line names, when the line names exactly that class and nothing
+     * around it — `@return RedirectResponse where to go instead`, never `list<RedirectResponse>` and never
+     * `Parcel|RedirectResponse`, where no single class is what is sent.
+     *
+     * It is asked only of an action with NO declared return type, because that is the one case where the
+     * comment is all there is to decide a returned Response by; where PHP states a type, PHP wins and a
+     * disagreeing comment is a comment that has drifted.
+     *
+     * NOTHING IS RESOLVED TO FIND IT. The parser is handed a resolver that answers every class with a MARKED
+     * pointer and never touches the registry, so a line that turns out to name a JsonResponse has not
+     * already minted the component this whole branch exists to keep out of the document — the same care
+     * returnProse() takes, for the same reason. A marked pointer that survives as the WHOLE schema is the
+     * proof that the expression was that one class: wrap it in a `list<>` and an `items` appears around it,
+     * union it with anything and it becomes an `anyOf`, and neither is a single class any more.
+     */
+    private function documentedReturnClass(?ReflectionMethod $method): ?string
+    {
+        $line = DocBlock::parse($method?->getDocComment())->returnLine();
+
+        if ($line === null || $method === null) {
+            return null;
+        }
+
+        [$schema] = DocType::split(
+            $line,
+            static fn (string $class, array $arguments = []): array => $arguments === [] ? ['$ref' => self::CLASS_MARK.$class] : [],
+            new ReflectionClass($method->getDeclaringClass()->getName()),
+        );
+
+        $ref = $schema !== null && count($schema) === 1 ? ($schema['$ref'] ?? null) : null;
+
+        return is_string($ref) && str_starts_with($ref, self::CLASS_MARK) ? substr($ref, strlen(self::CLASS_MARK)) : null;
     }
 
     /**

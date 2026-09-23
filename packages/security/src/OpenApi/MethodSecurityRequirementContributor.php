@@ -104,6 +104,12 @@ final class MethodSecurityRequirementContributor implements SecurityRequirementC
      */
     private const string LITERAL = "/'[^']*'|\"[^\"]*\"/";
 
+    /**
+     * The prefix an OAuth2 scope wears as a GRANTED AUTHORITY, which an expression may spell and a document
+     * may not. See scopeName().
+     */
+    private const string SCOPE_AUTHORITY = 'SCOPE_';
+
     public function __construct(
         private readonly SecurityMethodManifest $manifest,
         private readonly Config $config,
@@ -245,11 +251,44 @@ final class MethodSecurityRequirementContributor implements SecurityRequirementC
 
         $scopes = [];
         foreach ($matches[2] as $scope) {
-            if ($scope !== '') {
+            $scope = self::scopeName($scope);
+
+            if ($scope !== null) {
                 $scopes[] = $scope;
             }
         }
 
         return $scopes;
+    }
+
+    /**
+     * The OAUTH2 SCOPE a captured `hasScope()` literal names, which is not always the literal itself.
+     *
+     * SecurityExpressionRoot::hasScope() normalises a bare scope to the `SCOPE_x` AUTHORITY a bearer token or
+     * an OAuth2 login grants, exactly as hasRole() normalises `ADMIN` to `ROLE_ADMIN`, and its own docblock
+     * documents the prefixed spelling — so `hasScope('SCOPE_orders.read')` and `hasScope('orders.read')` are
+     * the SAME enforced rule and the evaluator cannot tell them apart. A Security Requirement Object's scope
+     * list is not an authority list: it is what a generated client asks the authorization server for, and no
+     * client registration holds a scope called `SCOPE_orders.read`. Publishing the prefixed spelling
+     * verbatim sends Swagger UI's Authorize dialog after a scope that does not exist, and with the
+     * authorization server beside it SecurityModel unions that name into the authorizationCode flow's scopes
+     * map, so `components.securitySchemes` declares it too and the authorization request is refused — the
+     * exact over-statement scopesOf() rules out for hasAnyScope(), arriving by a different door.
+     *
+     * The prefix is therefore stripped here, the one place the captured literal becomes a published name. An
+     * empty scope — `hasScope('')`, or a bare `hasScope('SCOPE_')` whose remainder is nothing — names no
+     * scope at all and is dropped rather than published as `''`.
+     *
+     * ConfiguredSecurity carries the same rule for a `hasScope:` URL rule, spelled there rather than shared:
+     * packages/openapi cannot see this package (deptrac forbids that edge, as the class docblock explains),
+     * and what keeps the two agreeing is a test that sees both halves — the capstone suites named there.
+     */
+    private static function scopeName(string $literal): ?string
+    {
+        $scope = str_starts_with($literal, self::SCOPE_AUTHORITY)
+            ? substr($literal, strlen(self::SCOPE_AUTHORITY))
+            : $literal;
+
+        return $scope === '' ? null : $scope;
     }
 }

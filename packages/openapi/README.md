@@ -83,7 +83,8 @@ intersections included.
 | a Laravel `Collection` | the list (or, keyed by strings, the map) of its elements |
 | `->paginate()` / `->simplePaginate()` / `->cursorPaginate()` | Laravel's own envelope around the element type: `LengthAwarePaginatorOrder` |
 | a `JsonResource` / `ResourceCollection` | its `toArray()` shape (or the model it `@mixin`s) inside the envelope its `$wrap` names — `data` by default |
-| a `JsonResponse`, a file, a redirect, another `Response` | JSON of unknown shape, a binary download, a `302` with `Location`, or `*/*` |
+| a `JsonResponse`, a file, a redirect, another `Response` | JSON of unknown shape, a binary download, a `302` with `Location`, or `*/*` — from a declared type, a `@return` line, or an `#[ApiResponse(type:)]`, and never as a component built from the class |
+| a union of responses — `JsonResponse\|RedirectResponse` | `*/*`: the action picks at runtime, and no arm's media type or status is the one sent |
 | a `ModelAndView`, a View, markup | `text/html` |
 | `void`, or a `204` mapping | no content |
 

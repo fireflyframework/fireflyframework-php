@@ -169,7 +169,12 @@ never sends. It used to reflect every class's public properties, which documente
   `Location` (and no `200` — the `#[Mapping]`'s status never reaches the wire), anything else `*/*`. A `Responsable`
   builds its own response, so it is `*/*` too — except an API resource, below. A `ModelAndView`, or a View /
   Renderable / Htmlable that is not also data, is `text/html`. State the body of a `JsonResponse` with
-  `#[ApiResponse(200, type: …)]`.
+  `#[ApiResponse(200, type: …)]`. A **union** — `: JsonResponse|RedirectResponse` — is `*/*` at the mapping's
+  status: the action picks at runtime and no arm's media type or status is the one sent. An action with **no
+  declared type** is read from its `@return` line, so `@return RedirectResponse` documents the `302` exactly as
+  the declared type would. Whichever way a response class arrives — a declared type, a union arm, a `@return`, an
+  `#[ApiResponse(type:)]` — it never becomes a component: the schema factory refuses it at its own door, so there
+  is no path that regrows the `original`/`exception`/`ResponseHeaderBag` shape above.
 - **An `Arrayable`** is written through `toArray()`, ahead of `JsonSerializable`: its `toArray()` `@return` shape, then
   the value type of its `@implements Arrayable<K, V>`, and otherwise "an object" — never its properties.
 - **An Eloquent model** is read from its `@property` tags when it has them — `@property` a column, always present;
@@ -826,6 +831,12 @@ authority is something a client can ask a token endpoint for, and HTTP Basic has
 and `hasAuthority:` contribute a bare requirement: publishing `['ROLE_ADMIN']` as a scope would name a vocabulary
 no token endpoint has heard of.
 
+**The scope published is the OAuth2 scope, not the authority.** `hasScope:SCOPE_orders.read` and
+`hasScope:orders.read` are the **same** rule — the evaluator normalises the bare form to the `SCOPE_x` authority
+before testing it, exactly as it normalises `ADMIN` to `ROLE_ADMIN` — so the `SCOPE_` prefix is stripped before the
+name is published. A requirement's scope list is what a generated client asks the authorization server for, and no
+client registration holds a scope called `SCOPE_orders.read`.
+
 With `http.enabled` **off** the contributor has *no opinion* — not "public". The absence of URL rules says nothing
 about whether a method rule protects the handler, and `security: []` in OpenAPI is the positive claim that no
 authentication is required.
@@ -885,7 +896,9 @@ and names the configured schemes for it.
   of scopes, a negation — anything where the names are not all required — publishes a **bare** requirement
   instead, because a Security Requirement Object's scope list is *conjunctive*: a client generated from
   `{bearerAuth: ['a','b']}` asks its authorization server for both, and an `hasAnyScope('a','b')` rule never
-  demanded that. Roles and authorities stay out for the reason they always did.
+  demanded that. Roles and authorities stay out for the reason they always did. A scope written as the authority —
+  `hasScope('SCOPE_orders.read')`, the spelling `SecurityExpressionRoot` documents — publishes as `orders.read`:
+  the two are one rule at runtime, and only the unprefixed name is one a client registration can hold.
 
 Register an implementation as a **`#[Component]`**, not as a `#[Bean]`. Contributors are collected with
 `Container::getAll()`, which reads the `firefly.contract.<interface>` tag, and that tag is written only for

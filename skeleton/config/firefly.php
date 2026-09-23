@@ -1342,12 +1342,16 @@ return [
     //      | firefly.security.http.rules the filter enforces: a `permitAll` path carries no `security` member
     //      | at all, and every other path — including one no rule matches, since the rules are deny by
     //      | default — names every scheme above, because the server really does accept any of them. A
-    //      | `hasScope:` rule puts its scope on the bearer entry.
+    //      | `hasScope:` rule puts its scope on the bearer entry — the OAUTH2 SCOPE, never the authority:
+    //      | `hasScope:SCOPE_orders.read` and `hasScope:orders.read` are one rule (the evaluator normalises
+    //      | the bare form to the `SCOPE_x` authority before testing it, as it normalises ADMIN to
+    //      | ROLE_ADMIN), and only `orders.read` is a scope a client registration can hold.
     //      |
     //      | METHOD RULES ARE READ TOO, by firefly/security: a controller action carrying #[PreAuthorize],
     //      | #[Secured], #[RolesAllowed] or #[PostAuthorize] is refused by the DISPATCHER rather than by a URL
     //      | rule, so it names the configured schemes even where http.rules say permitAll — and the scope of a
-    //      | `hasScope()` the rule really demands of every caller rides on the token-shaped entries. It is
+    //      | `hasScope()` the rule really demands of every caller rides on the token-shaped entries, with the
+    //      | same SCOPE_ normalisation a URL rule gets. It is
     //      | gated by firefly.security.enabled alone: firefly.security.method.enabled stands down the PROXY
     //      | link, never the controller dispatcher, so a document that fell silent on it would publish a
     //      | guarded action as public. #[PreFilter]/#[PostFilter] contribute nothing — they narrow a result,

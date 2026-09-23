@@ -71,6 +71,39 @@ it('documents markup and a ModelAndView as text/html', function () use ($documen
         ->and(rawResponses($doc, '/page')[200])->toBe($html);
 });
 
+it('documents a union of two responses as a body decided at runtime, not as an anyOf of their internals', function () use ($document) {
+    // `JsonResponse|RedirectResponse` reflects as a union, so the single-named-type test the factory used to
+    // make answered no and the declared-type reader documented `anyOf: [$ref JsonResponse, $ref
+    // RedirectResponse]` — two components built from `original`, `exception` and a ResponseHeaderBag. No arm
+    // is THE answer either: a redirect carries 302 and no body where the JsonResponse carries 200 and JSON,
+    // which is exactly what `*/*` with the any-value schema says.
+    expect(rawResponses($document(), '/either')[200])->toBe([
+        'description' => 'Successful response.',
+        'content' => ['*/*' => ['schema' => []]],
+    ]);
+});
+
+it('documents a response an action names only in its `@return`, with no declared type to read', function () use ($document) {
+    $responses = rawResponses($document(), '/documented-redirect');
+
+    // The comment is the only thing that names what is sent, and it names a redirect — status and all,
+    // exactly as a declared `: RedirectResponse` is documented.
+    expect($responses)->not->toHaveKey(200)
+        ->and($responses[302])->toBe([
+            'description' => 'the page that replaced this one',
+            'headers' => ['Location' => ['description' => 'Where to go instead.', 'schema' => ['type' => 'string', 'format' => 'uri-reference']]],
+        ]);
+});
+
+it('builds no component for a response class an #[ApiResponse] names', function () use ($document) {
+    // The rule is at the schema factory's door rather than at the one caller that used to pre-filter for it,
+    // so a class reaching it through the attribute is refused exactly as a declared return type is.
+    expect(rawResponses($document(), '/attributed')[200])->toBe([
+        'description' => 'A body the action built itself.',
+        'content' => ['application/json' => ['schema' => []]],
+    ]);
+});
+
 it('mints no component out of a response object\'s internals', function () use ($document) {
     /** @var array{schemas: array<string, mixed>} $components */
     $components = $document()['components'];

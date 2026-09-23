@@ -38,7 +38,13 @@ it('publishes the authorizationCode flow this server really serves, declaring th
                 'tokenUrl' => 'http://localhost/oauth2/token',
                 // Described with the name itself: the model has no vocabulary of its own, and a scope a
                 // client DID register would carry the consent page's sentence instead.
-                'scopes' => ['orders.read' => 'orders.read'],
+                //
+                // `orders.write` arrives from a rule SPELLED `hasScope('SCOPE_orders.write')`, the authority
+                // form the evaluator normalises a bare scope to. Declared as written it would put
+                // `SCOPE_orders.write` in this very map, and the Authorize dialog would ask this server for a
+                // scope no client registration can hold — the over-statement that costs the authorization
+                // request, arriving through the scheme the document itself publishes.
+                'scopes' => ['orders.read' => 'orders.read', 'orders.write' => 'orders.write'],
             ],
         ]);
 });

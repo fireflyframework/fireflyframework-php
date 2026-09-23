@@ -77,6 +77,15 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
      */
     private const string PLACEHOLDER = "\0";
 
+    /** The `access` spelling of a URL rule that demands one OAuth2 scope — see scopeName(). */
+    private const string SCOPE_RULE = 'hasScope:';
+
+    /**
+     * The prefix an OAuth2 scope wears as a GRANTED AUTHORITY, which a rule may spell and a document may
+     * not. See scopeName().
+     */
+    private const string SCOPE_AUTHORITY = 'SCOPE_';
+
     public function __construct(private readonly Config $config) {}
 
     /**
@@ -110,7 +119,7 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
             return [];
         }
 
-        $scopes = str_starts_with($access, 'hasScope:') ? [substr($access, 9)] : [];
+        $scopes = str_starts_with($access, self::SCOPE_RULE) ? $this->scopeName(substr($access, strlen(self::SCOPE_RULE))) : [];
 
         return array_map(
             // The scope list rides on the TOKEN-shaped schemes only. A `hasScope:` rule tests for a `SCOPE_x`
@@ -123,6 +132,40 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
             ),
             $schemes,
         );
+    }
+
+    /**
+     * The OAUTH2 SCOPE a `hasScope:` rule demands, as a scope list — which is not always the name the rule
+     * spells.
+     *
+     * The rule's argument reaches the SAME evaluator a `#[PreAuthorize("hasScope('…')")]` does, and that
+     * evaluator normalises a bare scope to the `SCOPE_x` AUTHORITY a bearer token grants, exactly as it
+     * normalises `ADMIN` to `ROLE_ADMIN`. So `hasScope:SCOPE_orders.read` and `hasScope:orders.read` are the
+     * same enforced rule, and the prefixed spelling is a documented one. A Security Requirement Object's
+     * scope list is not an authority list: it is what a generated client asks the authorization server for,
+     * and no client registration holds a scope called `SCOPE_orders.read`. Publishing the prefix verbatim
+     * sends Swagger UI's Authorize dialog after a scope that does not exist — and, where an authorization
+     * server publishes a `type: oauth2` scheme beside this one, SecurityModel unions the stated name into
+     * that scheme's flow scopes, so the document DECLARES the impossible scope as well and the authorization
+     * request is refused.
+     *
+     * An empty scope — a rule of exactly `hasScope:`, or `hasScope:SCOPE_` whose remainder is nothing —
+     * names none, and an empty list is what "this path needs the credential, and nothing more can be said"
+     * already means everywhere else here.
+     *
+     * The method-rule contributor in firefly/security carries the same rule for the expression spelling; the
+     * two cannot share it, because packages/openapi may not see that package, and what keeps them agreeing
+     * is a capstone that generates a document with both contributors on it.
+     *
+     * @return list<string>
+     */
+    private function scopeName(string $access): array
+    {
+        $scope = str_starts_with($access, self::SCOPE_AUTHORITY)
+            ? substr($access, strlen(self::SCOPE_AUTHORITY))
+            : $access;
+
+        return $scope === '' ? [] : [$scope];
     }
 
     /**
