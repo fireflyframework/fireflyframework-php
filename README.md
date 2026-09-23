@@ -916,10 +916,9 @@ $span = $this->tracer->startSpan($request->getMethod(), SpanKind::Server, [
 ```
 
 The last attribute is the correlation id `CorrelationIdFilter` minted or accepted a moment earlier, so a span
-and a `problem+json` body can always be tied to each other. The fourth argument is the
-whole trick: `W3CTraceContextPropagator::extract()` reads the inbound
-`traceparent` and hands back the remote parent, so a request that arrives with a trace *continues* it and one
-that arrives without starts a new root. The span is renamed to `GET /orders/{id}` once the router has matched,
+and a `problem+json` body can always be tied to each other. The fourth argument is the whole trick:
+`W3CTraceContextPropagator::extract()` reads the inbound `traceparent` and hands back the remote parent, so a
+request that arrives with a trace *continues* it and one that arrives without starts a new root. The span is renamed to `GET /orders/{id}` once the router has matched,
 its ids are published onto Laravel's `Context` and `Request::$attributes` as `firefly.trace_id` and
 `firefly.span_id`, and from there the same trace crosses five boundaries — inbound HTTP, the CQRS buses, an
 in-memory or queued EDA envelope on the way out, every delivery on the way in (a broker's included, through

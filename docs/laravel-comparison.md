@@ -142,9 +142,8 @@ Route::middleware('auth')->group(function () {
 ```
 
 **In LaraFly**, login is filters that already exist plus a configuration block.
-`SecurityContextPersistenceFilter` (`-94`) loads the `SecurityContext` from the session and saves it after
-the response;
-`FormLoginFilter` (`-92`) handles `POST /login` — CSRF first, then the `AuthenticationManager`;
+`SecurityContextPersistenceFilter` (`-94`) loads the `SecurityContext` from the session and saves it after the
+response; `FormLoginFilter` (`-92`) handles `POST /login` — CSRF first, then the `AuthenticationManager`;
 `LogoutFilter` (`-93`) handles `POST /logout`; `RememberMeAuthenticationFilter` (`-83`) restores a session
 from the cookie. The login *page* is the framework's own Blade view unless you point `view` at yours, and
 the reference configuration ships the whole block commented out at its defaults:
