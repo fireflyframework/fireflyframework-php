@@ -15,7 +15,9 @@ use Firefly\Observability\Scanner\ObservabilityMethodScanner;
  * proxy as `ObservabilityMethodDescriptor::fromArray([...])` literals and run by
  * ObservabilityMethodInterceptor at advice order 50 — OUTSIDE security (100) and outside the transaction
  * (1000), so a timer measures the refusal and the commit as well as the method. That ordering is argued in
- * full in ObservabilityMethodInterceptor's docblock.
+ * full in ObservabilityMethodInterceptor's docblock, including why it is a deliberate DIVERGENCE from
+ * Micrometer's own aspects — which are unordered and therefore run innermost, inside Spring Security's
+ * interceptors — rather than the parity the rest of this package is.
  *
  * An unconditional #[Component], exactly as security's is and for the same reason: the PLAN is a compiled
  * artifact and must not differ between the machine that ran `firefly:cache` and the machine that boots. What

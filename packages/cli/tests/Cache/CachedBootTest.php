@@ -6,11 +6,13 @@ use Firefly\Cli\Boot\FireflyCacheServiceProvider;
 use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Cli\Tests\Fixtures\App\DemoConfigProperties;
+use Firefly\Cli\Tests\Fixtures\App\DemoLayeredService;
 use Firefly\Cli\Tests\Fixtures\App\DemoSecuredService;
 use Firefly\Cli\Tests\Fixtures\App\DemoTimedService;
 use Firefly\Cli\Tests\Fixtures\App\DemoTransactionalService;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\DataServiceProvider;
+use Firefly\Data\Proxy\Advice;
 use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
@@ -94,6 +96,34 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
     expect($map)->toHaveKey(DemoTimedService::class.ProxyPlan::PROXY_SUFFIX)
         ->and($timedProxy)->toContain('__fireflyMetricsInterceptor')
         ->and($timedProxy)->toContain('\\Firefly\\Observability\\Method\\ObservabilityMethodDescriptor::fromArray(');
+});
+
+/*
+ | The chain, on the compiled artifact. ObservabilityAdviceSource's order 50 is the constant every claim about
+ | #[Timed] rests on — "a refusal is still counted", "the commit is inside the timer" — and a class carrying
+ | ONE advice can never contradict it, which is what every other fixture here carries. DemoLayeredService
+ | carries all three on one method, so ProxyPlanner's sort and ProxyPlan::adviceFor()'s sort both have to
+ | agree that metrics is outermost before this passes. Changing 50 to 150 leaves every other test in the
+ | monorepo green and turns method metrics into a meter that goes quiet exactly when an operator needs it.
+ */
+it('chains the metric advice OUTSIDE security and the transaction on a method carrying all three', function () {
+    $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
+
+    (new ManifestCacheWriter)->write(cachedBootPsr4(), $dir);
+
+    $plan = ProxyPlan::load($dir.'/'.FireflyCachePaths::PROXY_PLAN);
+    $advice = $plan->adviceFor(DemoLayeredService::class);
+
+    // The advice set on the class, outermost first, and the orders that put it in that sequence.
+    expect(array_keys($advice))->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, Advice::TRANSACTIONAL])
+        ->and($advice[ObservabilityAdviceSource::ID]->order)->toBe(50)
+        ->and($advice[ObservabilityAdviceSource::ID]->order)->toBeLessThan($advice[MethodSecurityAdviceSource::ID]->order)
+        ->and($advice[MethodSecurityAdviceSource::ID]->order)->toBeLessThan($advice[Advice::TRANSACTIONAL]->order);
+
+    // …and the per-method rows, which are what ProxyPlanner::proxyMethods() turns into the generated chain:
+    // the same sequence, so the emitted proceed() really does reach the metric link first.
+    expect(array_column($plan->methodsFor(DemoLayeredService::class)['all'], 'advice'))
+        ->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, Advice::TRANSACTIONAL]);
 });
 
 it('boots the fixture app on the CACHED zero-reflection path with a working #[Transactional] proxy', function () {

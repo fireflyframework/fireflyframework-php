@@ -34,9 +34,21 @@ use Throwable;
  *     deadlock thrown by COMMIT is recorded with `exception=QueryException` on `orders.place`; inside the
  *     transactional link it would be invisible, because the method body had already returned.
  *
- * Spring makes the same call: Boot's observation advisors run outside both `@EnableMethodSecurity`'s
- * interceptors and `@EnableTransactionManagement`'s, and `management.observations` documents the span as
- * covering "the method invocation including its cross-cutting concerns".
+ * THE ORDER IS A DELIBERATE DIVERGENCE FROM SPRING, not parity with it — the one place in this package
+ * where the precedent is the thing being rejected, so nobody re-derives it from Micrometer and "corrects"
+ * the number. Micrometer's TimedAspect, CountedAspect and ObservedAspect are plain `@Aspect` classes: not
+ * one of them implements `Ordered` or carries `@Order`, and Spring AOP gives an unordered advisor
+ * `Ordered.LOWEST_PRECEDENCE`, so all three run INNERMOST. That places them INSIDE Spring Security's method
+ * interceptors — `AuthorizationInterceptorsOrder` runs PRE_FILTER 100, PRE_AUTHORIZE 200, SECURED 300,
+ * JSR250 400, POST_AUTHORIZE 500, POST_FILTER 600, the highest precedence of the three concerns and
+ * therefore the outermost — and level with the transaction advisor, whose
+ * `@EnableTransactionManagement(order = …)` also defaults to `Ordered.LOWEST_PRECEDENCE`. The consequence
+ * is the first two silences the bullets above describe, in Spring, today: a `@Timed` method whose
+ * `@PreAuthorize` denies is neither timed nor counted. LaraFly reads that placement as the defect rather
+ * than the authority — the three arguments above are the whole justification for 50, and no Spring constant
+ * is being ported into it. The chain the number produces (metrics 50, then security 100, then the
+ * transaction 1000) is asserted on the compiled plan by CachedBootTest's layered fixture, so the ordering
+ * is a test rather than only a paragraph.
  *
  * `inertWhenUnbound` is TRUE on the advice (see ObservabilityAdviceSource): the interceptor bean exists only
  * while `firefly.observability.method.enabled` and the metrics master switch are on, and an application that
