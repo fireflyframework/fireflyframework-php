@@ -17,7 +17,13 @@ declare(strict_types=1);
  * `Firefly\Cli\Command\OAuth2KeysCommand` had promised `docs/modules/security-oauth2-server.md` for twelve
  * commits before it existed. The assertion is deliberately about REACHABILITY and not about content: a
  * module document's own quality is not something a test can hold, but "the file a package promises exists"
- * and "every module document is in the navigation and both tables" are.
+ * and "every module document is in the navigation, both tables and the Modules landing page" are.
+ *
+ * `docs/modules.md` — the page the site's **Modules** tab opens, and the one `docs/index.md` calls the module
+ * index — joined that list when it was written, and it is the surface with the most to lose from being left
+ * out: the two tables are each a row in a larger page, while the landing page's ENTIRE job is to be the
+ * complete, grouped index. A thirty-third guide that reaches the navigation and both tables but not the
+ * landing page would be green here and invisible on the one page built to list everything.
  */
 it('ships the module document every package README points at', function () {
     $root = dirname(__DIR__);
@@ -36,11 +42,12 @@ it('ships the module document every package README points at', function () {
     expect($missing)->toBe([]);
 });
 
-it('links every module document from the navigation, the README table and the documentation index', function () {
+it('links every module document from the navigation, the README table, the documentation index and the Modules landing page', function () {
     $root = dirname(__DIR__);
     $nav = (string) file_get_contents($root.'/mkdocs.yml');
     $readme = (string) file_get_contents($root.'/README.md');
     $index = (string) file_get_contents($root.'/docs/index.md');
+    $landing = (string) file_get_contents($root.'/docs/modules.md');
 
     $unreachable = [];
 
@@ -55,6 +62,9 @@ it('links every module document from the navigation, the README table and the do
         }
         if (! str_contains($index, 'modules/'.$name)) {
             $unreachable[] = $name.' is not in docs/index.md';
+        }
+        if (! str_contains($landing, 'modules/'.$name)) {
+            $unreachable[] = $name.' is not in the Modules landing page';
         }
     }
 

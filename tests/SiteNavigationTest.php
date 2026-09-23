@@ -83,3 +83,60 @@ it('lists navigation.indexes only when a section really has an index page', func
                 .'theme.features does not list navigation.indexes: '.implode(', ', array_unique($sections)),
     );
 });
+
+/**
+ * The numbers the pages quote, against the tree they claim to count.
+ *
+ * `docs/modules.md` opens by telling a reader how big the framework is — "29 installable Composer packages",
+ * "28 libraries plus the `firefly/firefly` runtime metapackage", "the 32 guides below" — and `docs/index.md`
+ * repeats the guide count when it sends people there. Every one of those was hand-counted, and a hand-counted
+ * number is the one kind of documentation that goes wrong with no edit at all: it rots when somebody adds a
+ * package, which is the moment nobody is reading the introduction. This release exists partly because of that
+ * failure, and it is not hypothetical here: `README.md`'s own module table still says "27 packages under
+ * `packages/*`" while that directory holds 29. The first sentence of the page that introduces the framework is
+ * the highest-visibility place left for the same drift, so it is the one place worth spending a test on.
+ *
+ * So the prose is asserted against `glob()` rather than proof-read. `tests/ReleaseWorkflowTest.php` already
+ * does this for the publish matrix and says why at its `toHaveCount(30)`: the number is spelled out so that
+ * ADDING a unit fails loudly rather than shipping something silently uncounted. The same bargain is made here,
+ * and it cuts both ways on purpose — a thirty-third guide turns this red, and the fix is to write the true
+ * number, which is the edit that was being forgotten.
+ *
+ * Whitespace is collapsed before matching because these files are hard-wrapped at about 110 columns: "lays all
+ * 32 guides out by concern" is one sentence to a reader and two lines to `str_contains()`, and a guard that
+ * depends on where a paragraph happens to wrap would fail the next time somebody reflows it.
+ */
+it('quotes package and guide counts that match the tree, on the Modules landing and the front page', function () {
+    $root = MkdocsConfig::root();
+    $packages = count(glob($root.'/packages/*/composer.json') ?: []);
+    $guides = count(glob($root.'/docs/modules/*.md') ?: []);
+
+    $claims = [
+        'docs/modules.md' => [
+            '**'.$packages.' installable Composer packages**',
+            ($packages - 1).' libraries plus the `firefly/firefly` runtime metapackage',
+            '**'.$guides.' guides**',
+        ],
+        'docs/index.md' => [
+            'lays all '.$guides.' guides out by concern',
+        ],
+    ];
+
+    $drifted = [];
+
+    foreach ($claims as $document => $needles) {
+        $prose = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root.'/'.$document));
+
+        foreach ($needles as $needle) {
+            if (! str_contains($prose, $needle)) {
+                $drifted[] = $document.' no longer says "'.$needle.'"';
+            }
+        }
+    }
+
+    expect($drifted)->toBe(
+        [],
+        'the tree now holds '.$packages.' packages and '.$guides.' module guides, and a page still quotes the '
+        .'old number: '.implode('; ', $drifted),
+    );
+});

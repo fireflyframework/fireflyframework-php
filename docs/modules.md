@@ -1,12 +1,12 @@
 # Modules
 
-LaraFly is one monorepo of **29 installable Composer packages** under `packages/*` — twenty-eight libraries
-plus the `firefly/firefly` runtime metapackage — each with its own test suite, and the **32 guides** below
-are the long form of what they do. Several packages carry more than one guide, because the surfaces they
-ship are read separately: `firefly/data` alone answers for *Data & Repositories*, *Relational Data* and
-*Transactions*. Installing a package is the whole wiring step — its `#[Configuration]` class registers the
-defaults behind `#[ConditionalOnMissingBean]`, so a bean you declare yourself always wins, and nothing here
-asks you to register a provider by hand.
+LaraFly is one monorepo of **29 installable Composer packages** under `packages/*` — 28 libraries plus the
+`firefly/firefly` runtime metapackage — each with its own test suite, and the **32 guides** below are the long
+form of what they do. Several packages carry more than one guide, because the surfaces they ship are read
+separately: `firefly/data` alone answers for *Data & Repositories*, *Relational Data* and *Transactions*.
+Installing a package is the whole wiring step — its `#[Configuration]` class registers the defaults behind
+`#[ConditionalOnMissingBean]`, so a bean you declare yourself always wins, and nothing here asks you to
+register a provider by hand.
 
 <div class="lf-cards" markdown>
 
@@ -67,7 +67,7 @@ asks you to register a provider by hand.
 <div class="lf-card" markdown>
 <span class="lf-card-title">Testing</span>
 [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md)
-<span class="lf-card-note">A boot harness, recording doubles for every port, web and data test slices, and a real-Chromium browser suite over the skeleton.</span>
+<span class="lf-card-note">A boot harness, recording doubles for every port, and web and data test slices; the real-Chromium suite that drives the skeleton's own pages is the framework's own, not something `firefly/testing` ships — see [Contributing](contributing.md).</span>
 </div>
 
 <div class="lf-card" markdown>

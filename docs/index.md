@@ -19,13 +19,13 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 <div class="lf-card" markdown>
 <span class="lf-card-title">Install</span>
 [Installation](installation.md)
-<span class="lf-card-note">Requirements, `composer create-project`, and the manual setup for adding LaraFly to an app you already have.</span>
+<span class="lf-card-note">Requirements, the `firefly new` quick install, and `composer create-project` on its own when you would rather not install a global binary.</span>
 </div>
 
 <div class="lf-card" markdown>
 <span class="lf-card-title">First run</span>
 [Getting Started](getting-started.md)
-<span class="lf-card-note">Boot the skeleton, read what it generated, and write your first `#[RestController]` and `#[Service]`.</span>
+<span class="lf-card-note">Boot the skeleton, read the `#[Controller]`/`#[RestController]`/`#[Service]` slice it generated, and — if you are starting from an app you already have — pull the whole family in with one `composer require`.</span>
 </div>
 
 <div class="lf-card" markdown>
@@ -102,9 +102,9 @@ See [Installation](installation.md) for requirements and manual setup, and
 
 ## The modules
 
-Every capability above ships as a package you install on its own. The [module index](modules.md) lays all
-thirty-two guides out by concern, with a line on each saying what it is for, and the same grouping is the
-site's **Modules** tab.
+Every capability above ships as a package you install on its own. The [module index](modules.md) lays all 32
+guides out by concern, with a line on each saying what it is for, and the same grouping is the site's
+**Modules** tab.
 
 | Group | Guides |
 |---|---|

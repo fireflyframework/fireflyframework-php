@@ -95,8 +95,11 @@ markdown_extensions:
 # tab lands, and the rule that `navigation.indexes` may be listed only once a section really has an index
 # page.
 #
-# Every `modules/<name>.md` string below is load-bearing: that same test greps this file for each of the 32
-# module guides and fails if one is missing, so a guide dropped from the navigation is red, not invisible.
+# Every `modules/<name>.md` string below is load-bearing: tests/ModuleDocumentationTest.php greps this file
+# for every guide its `docs/modules/*.md` glob turns up and fails if one is missing, so a guide dropped from
+# the navigation is red, not invisible. How many that is is deliberately not written down here — a count in a
+# comment nobody runs is exactly the rot this release is repairing, and the counts the *pages* quote are
+# pinned against the tree by tests/SiteNavigationTest.php instead.
 nav:
   - Home: index.md
   - Guide:
