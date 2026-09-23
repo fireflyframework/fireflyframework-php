@@ -21,10 +21,15 @@ use Throwable;
  *
  * THREE ANSWERS, CHEAPEST FIRST. The literal prefix (a normal deployment: no syscall at all). The prefix
  * normalised through realpath(), computed ONCE for the base rather than once per frame (the symlink, the
- * bind mount). And the roots the trace reveals about ITSELF: everything before a `/vendor/` segment is a
- * Composer project root whatever the application believes its base path to be, which rescues the harness
- * case with no configuration and no filesystem access. Whatever survives all three is cut at the last
- * `/vendor/`, because from there on a path IS the dependency's identity.
+ * bind mount). And the roots the trace reveals about ITSELF: everything before the FIRST `/vendor/` segment
+ * is a Composer project root whatever the application believes its base path to be, which rescues the
+ * harness case with no configuration and no filesystem access. Whatever survives all three is cut at the
+ * LAST `/vendor/`, because from there on a path IS the dependency's identity.
+ *
+ * FIRST FOR A ROOT, LAST FOR A NAME — the two `/vendor/` rules point in opposite directions on purpose, and
+ * a dependency that ships its own nested `vendor/` is what separates them. Deriving a root from the last
+ * segment would make `…/vendor/symplify/monorepo-builder/` a root, and that root is not shared by the rows
+ * around it.
  *
  * NOTHING HERE HIDES ANYTHING. Every answer is a PREFIX removal: the path printed is the same path with the
  * part every row shares taken off the front. A reader who needs the absolute name puts the project root
@@ -43,7 +48,9 @@ final class SourcePaths
      *
      * Longest first is the behaviour, not a detail: in a monorepo a frame lives under both the repository
      * and the package, and describing `src/X.php` as `packages/web/src/X.php` buries the part that varies
-     * under the part that does not.
+     * under the part that does not. It is also why a root derived from a frame has to be the OUTERMOST
+     * project root the frame names and not the innermost: longest-wins hands the whole page to whatever
+     * root this function returns longest, so a wrong long root is not a near miss, it is the answer.
      *
      * @return list<string>
      */
@@ -65,7 +72,17 @@ final class SourcePaths
 
         foreach (self::files($e) as $file) {
             foreach (self::VENDOR_MARKERS as $marker) {
-                $at = strrpos($file, $marker);
+                // The OUTERMOST vendor segment — strpos here, strrpos in shorten()'s fallback, and the
+                // difference is not a taste. A dependency that ships its own nested `vendor/` is ordinary
+                // (this repository vendors one: symplify/monorepo-builder), and reading the LAST segment
+                // would derive `<project>/vendor/symplify/monorepo-builder/` as a root. Because shorten()
+                // deliberately prefers the LONGEST matching root, that root then beats the real project
+                // root, and the package's own `src/Builder.php` prints as a bare `src/Builder.php`: a
+                // dimmed vendor row wearing an application path, naming a prefix no other row shares and
+                // no reader can put back. The markers carry a leading separator, so strpos cannot be fooled
+                // by a directory merely NAMED `my-vendor` — the lookalike that makes strrpos right for
+                // naming a dependency does not argue for it when deriving a project root.
+                $at = strpos($file, $marker);
                 if ($at !== false) {
                     $roots[] = substr($file, 0, $at + 1);
                 }
