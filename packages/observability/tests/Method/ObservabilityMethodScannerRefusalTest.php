@@ -10,6 +10,8 @@ use Firefly\Observability\Tests\Fixtures\BeanWired\BeanWiredGateway;
 use Firefly\Observability\Tests\Fixtures\ClassLevelBase\BaseGateway as ClassLevelBaseGateway;
 use Firefly\Observability\Tests\Fixtures\ClassLevelBase\StripeGateway as ClassLevelStripeGateway;
 use Firefly\Observability\Tests\Fixtures\InheritedBase\StripeGateway;
+use Firefly\Observability\Tests\Fixtures\MeterTypeCollision\CollidingMeterService;
+use Firefly\Observability\Tests\Fixtures\SharedTimerName\SharedTimerNameService;
 use Firefly\Observability\Tests\Fixtures\SiblingSubclass\StripeGateway as SiblingStripeGateway;
 
 it('refuses a metric attribute on a class with no stereotype', function (): void {
@@ -161,3 +163,30 @@ it('refuses a metric attribute written by hand on __invoke(), rather than compil
 it('refuses a metric attribute written by hand on a public static method', function (): void {
     (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\StaticMethod' => __DIR__.'/../Fixtures/StaticMethod']);
 })->throws(ConfigurationException::class, 'StaticTimedService::bulk cannot be recorded: a static call has no instance');
+
+/*
+ | A metric NAME has exactly one type, and nothing downstream can soften that: SimpleMeterRegistry::guardType()
+ | refuses the second registration for the life of the process, and CacheMeterRegistry stores both so the
+ | exposition carries two conflicting `# TYPE` lines for one name. Either way one of the two meters the author
+ | wrote never reaches a dashboard, which is the same silent no-op every other refusal in this file prevents —
+ | and this is the only seam that can refuse it, because the interceptor's per-meter guards keep the failure
+ | from spreading but cannot invent the missing meter back.
+ */
+
+it('refuses a #[Timed] and a #[Counted] that name ONE meter, and names both attributes', function (): void {
+    try {
+        (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\MeterTypeCollision' => __DIR__.'/../Fixtures/MeterTypeCollision']);
+        throw new RuntimeException('expected ConfigurationException, none thrown');
+    } catch (ConfigurationException $e) {
+        expect($e->getMessage())
+            ->toContain('#[Timed] and #[Counted] on '.CollidingMeterService::class.'::place')
+            ->toContain("both name the meter 'orders.place'")
+            ->toContain("'orders.place' cannot be a timer and a counter at once");
+    }
+});
+
+it('leaves a #[Timed] and an #[Observed] sharing one name alone, because both register timers', function (): void {
+    $rules = (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\SharedTimerName' => __DIR__.'/../Fixtures/SharedTimerName']);
+
+    expect(array_map(fn (ObservabilityMethodDescriptor $d): string => $d->key(), $rules))->toBe([SharedTimerNameService::class.'::ship']);
+});

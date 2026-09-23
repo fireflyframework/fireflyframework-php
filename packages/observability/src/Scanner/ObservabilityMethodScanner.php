@@ -90,6 +90,13 @@ use ReflectionNamedType;
  *   - #[Timed(percentiles:)] — see the attribute's own docblock. Percentile summaries are a documented
  *     Known-latent of this package; the message names `firefly.observability.metrics.distribution.per-meter`,
  *     which is where a percentile actually comes from here.
+ *   - Two attributes on ONE method that spell out the SAME meter name for two different meter TYPES —
+ *     #[Timed('orders.place')] beside #[Counted('orders.place')], the mainstream one. A Prometheus name has
+ *     exactly one type, so the in-process registry refuses the second registration for the life of the
+ *     process and the cache-backed one emits two conflicting `# TYPE` lines: either way one of the two
+ *     meters the author wrote never reaches a dashboard. Refused here because this is the only place it
+ *     CAN be refused — the interceptor's guards keep the failure from spreading, but they cannot invent the
+ *     meter back. #[Timed] beside #[Observed] under one name is left alone: both register timers.
  *
  * Unlike security's scanner this one has no controller carve-out: a controller action carrying #[Timed] IS
  * proxied like any other stereotyped bean, because a metric has no dispatch-seam equivalent to fall back on
@@ -243,6 +250,8 @@ final class ObservabilityMethodScanner
                 );
             }
 
+            $this->refuseMeterTypeCollision($site, $timed, $counted, $observed);
+
             $classRules[] = new ObservabilityMethodDescriptor(
                 $class,
                 $method->getName(),
@@ -303,6 +312,87 @@ final class ObservabilityMethodScanner
         return "Method metrics on {$site} cannot be recorded: {$why}. Move the attribute to a public instance "
             .'method — a single-action service can keep `__invoke()` as a one-line delegate to a `handle()` that '
             .'carries the meter — or record the metric through MetricsRecorder at the call site.';
+    }
+
+    /**
+     * Two attributes on ONE method that claim ONE meter name for two different meter TYPES — the last shape
+     * this scan refuses, and the only one whose victim is a meter the author never wrote anything wrong
+     * about.
+     *
+     * A Prometheus metric name has exactly one type globally, and neither registry can make that untrue.
+     * SimpleMeterRegistry — the default, in-process one — fails fast in guardType(): a name already registered
+     * as a timer answers "Metric 'orders.place' already registered as timer; cannot re-register as counter",
+     * and it remembers the type for the life of the process, so #[Timed('orders.place')] beside
+     * #[Counted('orders.place')] is not a meter recorded twice but a meter recorded once and a refusal on every
+     * invocation afterwards. CacheMeterRegistry keys its index by type AND name, so it raises nothing and
+     * stores both — and PrometheusTextFormat groups families the same way, which puts two `# TYPE` lines for
+     * one name in the exposition and makes the whole scrape invalid. Neither outcome is the one the author
+     * meant. The interceptor guards each record*() separately so a refusal costs only its own sample, but a
+     * counter that can never register is exactly the flat line the rest of this scan exists to prevent — and
+     * here, unlike a store outage, the person reading the message can act on it.
+     *
+     * Only a name the ATTRIBUTE spells out is compared. An empty `value` falls back to
+     * `firefly.observability.method.<kind>.name` at RUNTIME, which this scanner has no Config to read, and the
+     * three defaults (`method.timed`, `method.counted`, `method.observed`) do not collide — so a refusal there
+     * would either be a guess or a duplicate of a default this file does not own. The pairs that can collide
+     * are the ones whose types differ: #[Timed] and #[Observed] both register TIMERS and may legitimately share
+     * a name, while a #[Counted] beside either, or a `longTask` gauge (`<meter>.active`) beside any of them, is
+     * a type conflict.
+     */
+    private function refuseMeterTypeCollision(string $site, ?Timed $timed, ?Counted $counted, ?Observed $observed): void
+    {
+        /** @var array<string, array{0: string, 1: string, 2: string}> $claimed */
+        $claimed = [];
+
+        foreach ($this->meterClaims($timed, $counted, $observed) as $claim) {
+            [$name, $type, $attribute] = $claim;
+            $existing = $claimed[$name] ?? null;
+
+            if ($existing !== null && $existing[1] !== $type) {
+                throw new ConfigurationException(
+                    "{$existing[2]} and {$attribute} on {$site} both name the meter '{$name}', but a metric name "
+                    ."has exactly ONE type: '{$name}' cannot be a {$existing[1]} and a {$type} at once. The "
+                    .'in-process registry refuses the second registration outright, so that meter never records '
+                    .'at all; the cache-backed one writes both and the exposition carries two conflicting '
+                    .'`# TYPE` lines for one name. Give the two meters different names — a timer already '
+                    .'publishes its own `_count`, so a counter beside one is usually redundant — or drop one '
+                    .'of the attributes.'
+                );
+            }
+
+            $claimed[$name] = $claim;
+        }
+    }
+
+    /**
+     * Every meter the three attributes name OUTRIGHT, as [name, meter type, the attribute that claims it] —
+     * the scan-time half of what the interceptor will ask the registry for. `longTask` is included because it
+     * publishes a second meter of a third type under a name derived from the timer's, and a collision on
+     * `<meter>.active` is the same fail-fast as a collision on `<meter>`.
+     *
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    private function meterClaims(?Timed $timed, ?Counted $counted, ?Observed $observed): array
+    {
+        $claims = [];
+
+        if ($timed !== null && $timed->value !== '') {
+            $claims[] = [$timed->value, 'timer', '#[Timed]'];
+
+            if ($timed->longTask) {
+                $claims[] = [$timed->value.'.active', 'gauge', '#[Timed(longTask:)]'];
+            }
+        }
+
+        if ($counted !== null && $counted->value !== '') {
+            $claims[] = [$counted->value, 'counter', '#[Counted]'];
+        }
+
+        if ($observed !== null && $observed->name !== '') {
+            $claims[] = [$observed->name, 'timer', '#[Observed]'];
+        }
+
+        return $claims;
     }
 
     /**

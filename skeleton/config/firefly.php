@@ -1352,7 +1352,10 @@ return [
          |
          | #[Timed(percentiles:)] is REFUSED at scan time: this package publishes fixed histogram buckets,
          | not client-side quantile summaries. Configure `metrics.distribution.per-meter` above and compute
-         | the quantile in the query instead.
+         | the quantile in the query instead. So is a #[Timed] and a #[Counted] on ONE method that spell out
+         | the SAME meter name — a Prometheus name has exactly one type, so the registry would record the
+         | first and refuse the second for the life of the process. Name the two meters apart (the timer
+         | already publishes its own `_count`); #[Timed] and #[Observed] may share a name, both being timers.
          |
          | Turning `enabled` off makes every one of the three inert (the proxies run a pass-through link);
          | it never leaves them half-enforced. The three `name` keys are the meter names used when an

@@ -83,6 +83,35 @@ final class ExplodingMethodMetricsRecorder implements MetricsRecorder
     }
 }
 
+/**
+ * One port, one failure: a registry that records timers and gauges normally and refuses only the counter —
+ * which is what SimpleMeterRegistry itself does to a #[Counted] whose name is already a timer's. It stands in
+ * for every partial registry failure (a collision, one unreachable cache key) that a guard shared by all three
+ * record*() calls would have turned into the loss of the meters behind it.
+ */
+final class FailingCounterMetricsRecorder implements MetricsRecorder
+{
+    public function __construct(private readonly MetricsRecorder $delegate) {}
+
+    /** @param array<string, string> $tags */
+    public function increment(string $name, array $tags = [], float $amount = 1.0): void
+    {
+        throw new InvalidArgumentException("Metric '{$name}' already registered as timer; cannot re-register as counter.");
+    }
+
+    /** @param array<string, string> $tags */
+    public function record(string $name, array $tags = [], float $seconds = 0.0): void
+    {
+        $this->delegate->record($name, $tags, $seconds);
+    }
+
+    /** @param array<string, string> $tags */
+    public function setGauge(string $name, array $tags, float $value): void
+    {
+        $this->delegate->setGauge($name, $tags, $value);
+    }
+}
+
 /** The tracer half of the same hazard: an exporter that cannot start a span. */
 final class ExplodingMethodMetricsTracer implements Tracer
 {
@@ -332,4 +361,52 @@ it('runs the method even when the tracer cannot start a span', function (): void
     // …and the timer half still recorded: a tracing failure costs the span, nothing else.
     expect($result)->toBe('shipped')
         ->and($registry->timer('orders.ship', ['class' => 'OrderService', 'method' => 'ship', 'exception' => 'none'])->count())->toBe(1);
+});
+
+/*
+ | …and a guard PER METER, not one around all three. The three share a registry but not a fate: a registry
+ | rejects a single meter identity and goes on answering for every other, and SimpleMeterRegistry does exactly
+ | that on purpose — guardType() refuses a name already registered under another type, because a Prometheus
+ | name carries one `# TYPE`. Under one shared guard the FIRST such refusal discarded the record calls behind
+ | it, so an #[Observed] with a name of its own and no collision of its own silently never existed either.
+ */
+
+it('records the timer and the observation even when the counter\'s write throws', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $descriptor = new ObservabilityMethodDescriptor(
+        'App\\Orders\\OrderService',
+        'place',
+        ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false],
+        ['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false],
+        ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []],
+    );
+
+    $result = metricsInterceptor(new FailingCounterMetricsRecorder($registry))->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
+
+    // The counter is the one lost sample; the timer BEFORE it and the observation AFTER it both recorded.
+    expect($result)->toBe('ok')
+        ->and($registry->timer('orders.place', ['class' => 'OrderService', 'method' => 'place', 'exception' => 'none'])->count())->toBe(1)
+        ->and($registry->timer('orders.ship', ['class' => 'OrderService', 'method' => 'place', 'exception' => 'none'])->count())->toBe(1);
+});
+
+it('keeps the observation when the registry refuses a REAL #[Timed]/#[Counted] name collision', function (): void {
+    $registry = new SimpleMeterRegistry;
+
+    // The shape the scanner now refuses at `firefly:cache` — reproduced here from a hand-built descriptor,
+    // because a plan compiled before that refusal existed can still load and must not cost `orders.ship`.
+    $descriptor = new ObservabilityMethodDescriptor(
+        'App\\Orders\\OrderService',
+        'place',
+        ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false],
+        ['name' => 'orders.place', 'tags' => [], 'failuresOnly' => false],
+        ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []],
+    );
+
+    metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
+
+    $names = array_map(static fn ($meter): string => $meter->name(), $registry->meters());
+    sort($names);
+
+    // Two meters, not one: the counter is the only casualty of its own collision.
+    expect($names)->toBe(['orders.place', 'orders.ship']);
 });

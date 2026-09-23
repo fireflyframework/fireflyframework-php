@@ -56,12 +56,13 @@ use Throwable;
  * ALSO read live on every call, because a test flips it after boot and the proxy already holds this
  * instance (the reason MethodSecurityInterceptor reads its two flags live).
  *
- * TELEMETRY NEVER CHANGES THE CALL. Every recorder and tracer touch here goes through bestEffort(): the
- * three record*() calls in the `finally`, the in-flight gauge on the way in and on the way out, and the
- * span's start, its exception and its end. HttpExchangeFilter::record() carries the same guard and gives the
- * reason in full — with a cache-backed registry (`firefly.observability.metrics.store`) every one of those
- * touches is cache I/O, so one Redis blip would otherwise turn every successful #[Timed] method into a
- * throw. It would be worse than that in a `finally`: an exception raised there DISCARDS the exception
+ * TELEMETRY NEVER CHANGES THE CALL. Every recorder and tracer touch here goes through bestEffort(), and each
+ * one through a guard OF ITS OWN: the three record*() calls in the `finally` (a registry refuses one meter
+ * identity, not all of them — see the comment there), the in-flight gauge on the way in and on the way out,
+ * and the span's start, its exception and its end. HttpExchangeFilter::record() carries the same guard and
+ * gives the reason in full — with a cache-backed registry (`firefly.observability.metrics.store`) every one
+ * of those touches is cache I/O, so one Redis blip would otherwise turn every successful #[Timed] method
+ * into a throw. It would be worse than that in a `finally`: an exception raised there DISCARDS the exception
  * already in flight, leaving it only as $previous, so the OutOfStockException a caller wrote a `catch` for
  * would arrive as a metrics failure no `catch` in the application matches. This link sits outside EVERY
  * annotated method, so the blast radius is the whole application rather than one filter's. A lost sample is
@@ -139,15 +140,32 @@ final class ObservabilityMethodInterceptor implements MethodInterceptor
                 $this->leaveLongTask($inFlight);
             }
 
-            // The three meters share one registry, so they share one guard — if it is down they are all
-            // down. The span is a different port and gets its own: a tracer failure must not cost the
-            // meters, and a registry failure must not leave a span open.
-            $this->bestEffort(function () use ($rule, $base, $elapsed, $exception, $thrown): void {
+            // ONE GUARD PER METER, because the three share a registry but not a fate. A registry rejects a
+            // SINGLE meter identity and goes on answering for every other: SimpleMeterRegistry::guardType()
+            // raises "Metric 'orders.place' already registered as timer; cannot re-register as counter" on a
+            // method carrying #[Timed('orders.place')] and #[Counted('orders.place')] — deliberately, because
+            // a Prometheus name has exactly one type — and a cache-backed registry can fail one key's write
+            // and serve the next. A guard shared by all three turns any such refusal into the silent loss of
+            // every meter QUEUED BEHIND it: the #[Observed] recorded last, with a name of its own and no
+            // collision of its own, would never exist either, for the life of the process, unlogged. That is
+            // the flat line the scanner refuses attributes to prevent, so one failure costs one sample here —
+            // the same per-port isolation the span and the long-task gauge already get. The collision itself
+            // is refused at scan time, where its author can act on it (ObservabilityMethodScanner); this
+            // guard is what keeps the runtime honest about the failures a scan cannot see.
+            $this->bestEffort(function () use ($rule, $base, $elapsed, $exception): void {
                 $this->recordTimed($rule, $base, $elapsed, $exception);
+            });
+
+            $this->bestEffort(function () use ($rule, $base, $exception, $thrown): void {
                 $this->recordCounted($rule, $base, $exception, $thrown !== null);
+            });
+
+            $this->bestEffort(function () use ($rule, $base, $elapsed, $exception): void {
                 $this->recordObserved($rule, $base, $elapsed, $exception);
             });
 
+            // The span is a different PORT again: a tracer failure must not cost the meters, and a registry
+            // failure must not leave a span open.
             $this->bestEffort(static function () use ($span): void {
                 $span?->end();
             });
