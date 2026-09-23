@@ -56,6 +56,16 @@
             --rail:224px;
             --top:52px;
             --r:10px;
+            /*
+             | THE TABLE METRICS, published as custom properties because a <col> has to do arithmetic with
+             | them. `--row-x` is the horizontal cell padding, and every rigid column width is emitted as
+             | `calc(<n>ch + 2 * var(--row-x))` — box-sizing is border-box below, so a bare `<n>ch` would be
+             | <n> characters MINUS both paddings, which is about 28px of a pill column and is where the
+             | verb DELETE was being clipped. `--table-vh` is the height of the scroll box a table lives in.
+            */
+            --row-x:{{ $settings->table->rowPaddingX() }};
+            --row-y:{{ $settings->table->rowPaddingY() }};
+            --table-vh:{{ $settings->table->maxHeight }};
             --shadow:0 1px 2px rgba(24,20,12,.05), 0 6px 18px -12px rgba(24,20,12,.25);
         }
         html[data-theme="dark"], html[data-theme="auto"] .dark-probe { }
@@ -251,36 +261,99 @@
         .stat a{color:inherit}
 
         /* ── tables ──────────────────────────────────────────────────────── */
-        .tw{overflow-x:auto}
+        .tw{overflow:auto}
         table{border-collapse:collapse;width:100%;font-size:13px}
         thead th{
-            position:sticky;top:0;z-index:1;text-align:left;padding:8px 14px;background:var(--panel-2);
-            border-bottom:1px solid var(--line);color:var(--ink-3);
+            position:sticky;top:0;z-index:1;text-align:left;padding:var(--row-y) var(--row-x);background:var(--panel-2);
+            color:var(--ink-3);
             font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
         }
-        tbody td{padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+        /*
+           A BOX-SHADOW, NOT A BORDER. Under `border-collapse:collapse` the border of a sticky <th> belongs
+           to the TABLE's border grid rather than to the cell, so it stays behind with the rows and the
+           header scrolls out from under its own underline — the one visual cue that the header is a header.
+           An inset shadow is painted by the cell and travels with it.
+        */
+        thead th{box-shadow:inset 0 -1px 0 var(--line)}
+        tbody td{padding:var(--row-y) var(--row-x);border-bottom:1px solid var(--line);vertical-align:top}
         tbody tr:last-child td{border-bottom:0}
         tbody tr:hover{background:var(--hover)}
         td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
         td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
         td.tight{width:1%;white-space:nowrap}
         .dim{color:var(--ink-3)}
-        .wrap{overflow-wrap:anywhere}
         /* Long free-text cells stop growing past a readable measure instead of stretching the row to the
-           full window width, which on a 1920 screen put a label at x=270 and its value at x=1855. */
+           full window width, which on a 1920 screen put a label at x=270 and its value at x=1855. Both of
+           these belong to the AUTO-layout tables the overview and the record page still draw — a listing
+           declares its widths from PHP instead, and neither class appears on a `table.ftable`. */
         td.text{max-width:64ch}
         td.num.pin{width:1%}
+        /*
+           `break-word`, NOT `anywhere`, AND THE DIFFERENCE IS THE WHOLE ROUTES BUG. Per CSS Text 3 both
+           break an unbreakable token at render time, but `anywhere` also CONTRIBUTES its break
+           opportunities to min-content sizing — so under auto layout a path's minimum width became one
+           glyph, the layout engine gave it three characters, and `/greetings/{name}` rendered as six
+           stacked lines beside 1100px of empty column. `break-word` breaks the same token and leaves
+           intrinsic sizing alone, which is exactly the distinction the code wanted.
+        */
+        .wrap{overflow-wrap:break-word}
 
-        /* A fully-qualified class name has no spaces, so overflow-wrap:anywhere breaks it mid-word —
-           "SecurityHeadersFilte / r". Showing the short name on its own line and eliding the namespace under
-           it keeps the column scannable: you read class names down the page instead of decoding wraps. */
-        /* max-width:0 with width:100% is the standard way to make ONE table cell absorb the slack and
-           truncate, instead of the longest class name widening the table until the columns beside it are
-           pushed off the panel — which is what clipped the condition column. */
-        .cls{max-width:0;width:100%}
-        .cls .nm,.cls .ns{display:block;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .cls .nm{font-size:12.5px}
-        .cls .ns{font-size:11px;color:var(--ink-3)}
+        /*
+           THE TWO-LINE QUALIFIED CELL. A fully-qualified class name has no spaces, so any wrap breaks it
+           mid-word — "SecurityHeadersFilte / r". Showing the short name on its own line and eliding the
+           namespace under it keeps the column scannable: you read class names down the page instead of
+           decoding wraps.
+
+           WHAT WAS WRONG WAS THE WIDTH MECHANISM, NOT THE IDEA. This used to be `.cls{max-width:0;width:100%}`
+           under a ten-line comment claiming it truncated the namespace with an ellipsis. It never fired:
+           min/max-width on a table cell is undefined in CSS 2.1 and Chrome ignores it under auto layout, so
+           the cell computed `max-width:0px` while rendering 853px wide with `scrollWidth === clientWidth` —
+           nothing was ever clipped, and all the declaration actually did was absorb every pixel of slack and
+           fling the neighbouring column to the far edge. The truncation now lives on the inner spans, where
+           it resolves against the definite width the <colgroup> gives the column.
+        */
+        .cls .nm,.cls .ns,td.t-qual .nm,td.t-qual .ns{display:block;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cls .nm,td.t-qual .nm{font-size:12.5px}
+        .cls .ns,td.t-qual .ns{font-size:11px;color:var(--ink-3)}
+        /*
+           A STEM ELIDES FROM THE LEFT. `App\Http\Controllers\Api\V1` is located by its TAIL — `Api\V1` is
+           the part that distinguishes it from its neighbours — so clipping the end would remove the only
+           informative half. An RTL container anchors the overflow at the start; `unicode-bidi:plaintext`
+           then takes each line's own direction from its first strong character, which for a Latin class
+           name is LTR, so the text reads normally and only the ellipsis moves.
+        */
+        .ns.stem{direction:rtl;unicode-bidi:plaintext;text-align:left}
+
+        /* ── the listing table ───────────────────────────────────────────────
+           ONE MECHANISM. This generalises `table.datatable`, which was already the only real column system
+           in this sheet — typed classes, widths from the type — into something every listing declares from
+           PHP. `table-layout:fixed` plus a <colgroup> computed by TableView is what makes it hold: with
+           `auto` the browser sizes from content and no amount of CSS wins that argument.
+        */
+        table.ftable{table-layout:fixed}
+        /* `ch` on a <col> resolves against the <col>'s OWN font, which inherits from <table> — 13px sans —
+           while the cells these widths size are 12.5px mono. Declaring the colgroup's font is what makes
+           every number in TableColumn mean the character it was counting. */
+        table.ftable colgroup{font:12.5px var(--mono)}
+        table.ftable td,table.ftable th{overflow:hidden}
+        table.ftable thead th a{display:inline-flex;align-items:center;gap:3px;color:inherit}
+        table.ftable thead th a:hover{color:var(--accent);text-decoration:none}
+        table.ftable td.t-pill,table.ftable th.t-pill{white-space:nowrap}
+        table.ftable td.t-num,table.ftable th.t-num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+        table.ftable th.t-num a{justify-content:flex-end}
+        table.ftable td.t-stamp{font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+        table.ftable td.t-meter{vertical-align:middle}
+        table.ftable td.t-actions{white-space:nowrap}
+        /* Clipped to one line with the full value on the title: a table whose row height depends on its
+           longest json blob is not a table. */
+        table.ftable td.t-token,table.ftable td.t-path,table.ftable td.t-line{
+            font-family:var(--mono);font-size:12.5px;white-space:nowrap;text-overflow:ellipsis;
+        }
+        table.ftable td.t-line{color:var(--ink-2)}
+        table.ftable td.t-text{overflow-wrap:break-word}
+        table.ftable td.t-qual{font-family:var(--mono)}
+        /* A sorted header's arrow. One per table: ListingQuery::indicator() returns '' for every other column. */
+        th .ord{display:inline-block;width:10px;color:var(--brand)}
 
         /* ── verb + status pills ─────────────────────────────────────────── */
         .verb{
@@ -360,7 +433,6 @@
         table.datatable td.secret .v{color:var(--ink-3);letter-spacing:.08em}
         .nul{color:var(--ink-3)}
         .idv{font-weight:650}
-        th .ord{display:inline-block;width:10px;color:var(--brand)}
 
         /* Two states read faster as a shape than as a word. */
         .bool{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600}

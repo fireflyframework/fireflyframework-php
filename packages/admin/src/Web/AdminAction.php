@@ -17,6 +17,11 @@ use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
 use Firefly\Admin\Settings\FeatureToggle;
 use Firefly\Admin\Settings\SettingsConsole;
+use Firefly\Admin\Table\InMemoryListing;
+use Firefly\Admin\Table\ListingPage;
+use Firefly\Admin\Table\ListingQuery;
+use Firefly\Admin\Table\TableColumn;
+use Firefly\Admin\Table\TableView;
 use Firefly\Context\Scan\AppScan;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
@@ -104,7 +109,7 @@ final readonly class AdminAction
                 : $this->html($this->render('data-disabled', []), 404);
         }
 
-        return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($slug), $current), 200);
+        return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($request, $slug), $current), 200);
     }
 
     private function settingsPage(AdminPage $current): SymfonyResponse
@@ -407,8 +412,16 @@ final readonly class AdminAction
             : [];
     }
 
-    /** @return array<string,mixed> */
-    private function data(string $slug): array
+    /**
+     * The model for one page.
+     *
+     * IT TAKES THE REQUEST, AND UNTIL THIS WAVE IT DID NOT. `__invoke` had one and this method did not, so
+     * no page in the dashboard could read a query parameter — which is why every listing rendered its whole
+     * payload into the response and narrowed it with a keyup handler. It is private with one caller.
+     *
+     * @return array<string,mixed>
+     */
+    private function data(Request $request, string $slug): array
     {
         return match ($slug) {
             '' => $this->overview(),
@@ -424,7 +437,19 @@ final readonly class AdminAction
                 $this->subArray($this->payload('configprops'), 'beans'),
             )],
             'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
-            'mappings' => ['mappings' => $this->listOf('mappings', 'mappings')],
+            'mappings' => $this->listing(
+                $request,
+                'mappings',
+                $this->mappingRows(),
+                TableView::of(
+                    TableColumn::pill('httpMethod', 'Method'),
+                    TableColumn::path('path', 'Path', weight: 5),
+                    TableColumn::qualified('handler', 'Handler', weight: 4),
+                    TableColumn::token('name', 'Name', weight: 3),
+                ),
+                ['path', 'handler', 'name'],
+                'path',
+            ),
             'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
             'oauth2' => $this->oauth2(),
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
@@ -440,6 +465,87 @@ final readonly class AdminAction
             'loggers' => $this->payload('loggers') + ['levels' => [], 'loggers' => []],
             default => [],
         };
+    }
+
+    /**
+     * One page of an actuator payload, plus the query that produced it.
+     *
+     * The view is handed the TableView as well, because the columns decide THREE things at once and they
+     * must not be able to disagree: the widths in the <colgroup>, the headers, and which keys `?sort=` will
+     * accept. Passing `$view->sortable()` into the query is what stops a hand-edited `?sort=password`
+     * ordering by something the page does not draw.
+     *
+     * `$defaultSort` is left null for a listing whose natural order IS its tiebreak: InMemoryListing falls
+     * back to the tiebreak column when no sort was asked for, so declaring the same key as the default sort
+     * would change nothing about the rows and a great deal about the URLs — `meaningful()` omits a
+     * parameter that is already at its default, so every header link would lose its own `?sort=` and a
+     * reader could not tell the sorted column from the rest by looking at where the link goes.
+     *
+     * GENERIC OVER THE ROW, the way ListingPage is: a caller that hands in a precisely-shaped
+     * `list<array{...}>` gets that shape back in `$slice->rows`, so the view draws `$route['path']` without
+     * re-asserting that it is a string and PHPStan at level max has nothing to complain about.
+     *
+     * @template TRow of array<string, mixed>
+     *
+     * @param  list<TRow>  $rows
+     * @param  list<string>  $searchable
+     * @return array{query: ListingQuery, slice: ListingPage<TRow>, view: TableView}
+     */
+    private function listing(
+        Request $request,
+        string $slug,
+        array $rows,
+        TableView $view,
+        array $searchable,
+        string $tiebreak,
+        ?string $defaultSort = null,
+        string $defaultDirection = 'asc',
+        string $qualifier = '',
+    ): array {
+        $query = ListingQuery::fromRequest(
+            $request,
+            $this->settings->table,
+            $this->settings->url($slug),
+            $view->sortable(),
+            defaultSort: $defaultSort,
+            defaultDirection: $defaultDirection,
+            qualifier: $qualifier,
+        );
+
+        return [
+            'query' => $query,
+            'slice' => InMemoryListing::page($rows, $query, $searchable, $tiebreak),
+            'view' => $view,
+        ];
+    }
+
+    /**
+     * The route table as rows the listing engine can sort and search.
+     *
+     * Normalised here rather than in the view for two reasons: an actuator payload is `array<mixed>` and
+     * PHPStan at level max is right to insist somebody say otherwise, and a sort over `$route['path']` has
+     * to compare strings rather than "whatever the endpoint put there" — one int in that column and
+     * strnatcasecmp is comparing a number to a name.
+     *
+     * @return list<array{httpMethod: string, path: string, handler: string, name: string}>
+     */
+    private function mappingRows(): array
+    {
+        $rows = [];
+        foreach ($this->listOf('mappings', 'mappings') as $route) {
+            if (! is_array($route)) {
+                continue;
+            }
+
+            $rows[] = [
+                'httpMethod' => is_string($route['httpMethod'] ?? null) ? $route['httpMethod'] : '',
+                'path' => is_string($route['path'] ?? null) ? $route['path'] : '',
+                'handler' => is_string($route['handler'] ?? null) ? $route['handler'] : '',
+                'name' => is_string($route['name'] ?? null) ? $route['name'] : '',
+            ];
+        }
+
+        return $rows;
     }
 
     /**

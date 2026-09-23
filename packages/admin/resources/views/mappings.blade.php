@@ -11,31 +11,33 @@
 
     <div class="panel">
         @include('firefly-admin::_panel-head', [
-            'title' => 'Mappings', 'count' => count($mappings),
-            'filter' => 'map-body', 'placeholder' => 'Filter by path or handler…',
+            'title' => 'Mappings', 'count' => $slice->total, 'query' => $query,
+            'placeholder' => 'Search by path or handler…',
         ])
-        @if ($mappings === [])
-            @include('firefly-admin::_empty', [
-                'title' => 'No routes mapped',
-                'body' => 'Create one with <code>php artisan make:firefly-controller</code>, then re-run <code>firefly:cache</code> if this application boots compiled.',
-            ])
+        @if ($slice->isEmpty())
+            @include('firefly-admin::_empty', $query->isFiltered()
+                ? ['title' => 'Nothing matches', 'body' => 'No route\'s path, handler or name contains that. <a href="'.e($query->link(['q' => null, 'page' => null])).'">Show them all</a>.']
+                : ['title' => 'No routes mapped', 'body' => 'Create one with <code>php artisan make:firefly-controller</code>, then re-run <code>firefly:cache</code> if this application boots compiled.'])
         @else
             <div class="tw">
-                <table>
-                    <thead><tr><th>Method</th><th>Path</th><th>Handler</th><th>Name</th></tr></thead>
-                    <tbody id="map-body">
-                    @foreach ($mappings as $route)
-                        @php $handler = is_string($route['handler'] ?? null) ? $route['handler'] : ''; @endphp
+                <table class="ftable">
+                    @include('firefly-admin::_table-head', ['view' => $view, 'query' => $query])
+                    <tbody>
+                    @foreach ($slice->rows as $route)
                         <tr>
-                            <td class="tight"><span class="verb">{{ $route['httpMethod'] ?? '' }}</span></td>
-                            <td class="mono wrap">{{ $route['path'] ?? '' }}</td>
-                            <td class="cls"><span class="nm">{{ Format::shortClass($handler) }}</span><span class="ns">{{ rtrim(Format::namespaceOf($handler), '\\') }}</span></td>
-                            <td class="mono dim tight">{{ $route['name'] ?: '—' }}</td>
+                            <td class="t-pill"><span class="verb">{{ $route['httpMethod'] }}</span></td>
+                            <td class="t-path" title="{{ $route['path'] }}">{{ $route['path'] }}</td>
+                            <td class="t-qual" title="{{ $route['handler'] }}">
+                                <span class="nm">{{ Format::leafOf($route['handler']) }}</span>
+                                <span class="ns stem">{{ Format::stemOf($route['handler']) }}</span>
+                            </td>
+                            <td class="t-token" title="{{ $route['name'] }}">{{ $route['name'] ?: '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+            @include('firefly-admin::_pager', ['slice' => $slice, 'query' => $query])
         @endif
     </div>
 @endsection
