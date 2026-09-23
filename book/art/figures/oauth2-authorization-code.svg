@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 990" font-family="sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1070" font-family="sans-serif">
   <title>OAuth2 authorization code with PKCE</title>
-  <desc>The full authorization-code round trip across three parties — the browser, a LaraFly relying party running firefly/security-oauth2-client and a LaraFly authorization server running firefly/security-oauth2-server — naming the real endpoint paths, the entry point's redirect to the login page, the single-use state, the nonce, the S256 code challenge and verifier, the authorization server's own login and consent pages, the single-use code, the back-channel token exchange and the JWKS verification of the id token.</desc>
+  <desc>The full authorization-code round trip across three parties — the browser, a LaraFly relying party running firefly/security-oauth2-client and a LaraFly authorization server running firefly/security-oauth2-server — naming the real endpoint paths, the entry point's redirect to the login page, the 302 the browser follows out to the authorization endpoint, the single-use state, the nonce, the S256 code challenge and verifier, the authorization server's own login and consent pages, the single-use code, the back-channel token exchange and the JWKS verification of the id token.</desc>
   <defs>
     <marker id="oac-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
     </marker>
   </defs>
 
-  <rect x="1" y="1" width="1238" height="988" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1238" height="1068" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 
   <text x="620" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">Authorization code + PKCE: signing in, end to end</text>
   <text x="620" y="48" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/security-oauth2-client/src/{OAuth2ClientSettings.php, Web/OAuth2AuthorizationRequestRedirectFilter.php, Web/OAuth2LoginAuthenticationFilter.php}</text>
@@ -15,9 +15,9 @@
   <text x="620" y="74" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/security/src/Web/{HttpSecurityFilter.php, EntryPoint/LoginUrlAuthenticationEntryPoint.php, Login/FormLoginFilter.php, Settings/FormLoginSettings.php}</text>
 
   <!-- Lanes -->
-  <rect x="24" y="89" width="364" height="822" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
-  <rect x="400" y="89" width="404" height="822" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
-  <rect x="816" y="89" width="400" height="822" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
+  <rect x="24" y="89" width="364" height="882" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
+  <rect x="400" y="89" width="404" height="882" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
+  <rect x="816" y="89" width="400" height="882" rx="8" fill="#f8fafc" stroke="#d1d5db" stroke-width="1"/>
 
   <text x="206" y="109" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">Browser</text>
   <text x="602" y="109" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">Relying party · firefly/security-oauth2-client</text>
@@ -42,78 +42,85 @@
     <rect x="412" y="311" width="380" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="432" cy="335" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="339" text-anchor="middle" font-size="11" fill="#1f2937">4</text>
     <text x="452" y="331" font-size="11.5" fill="#1f2937">OAuth2AuthorizationRequestRedirectFilter (-89)</text>
-    <text x="452" y="348">state, nonce and verifier kept in the session; S256 sent</text>
+    <text x="452" y="348">state, nonce and verifier in the session; 302 to the browser</text>
 
-    <rect x="828" y="371" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-    <circle cx="848" cy="395" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="848" y="399" text-anchor="middle" font-size="11" fill="#1f2937">5</text>
-    <text x="868" y="391" font-size="11.5" fill="#1f2937">OAuth2AuthorizationServerFilter (-82) matches the GET</text>
-    <text x="868" y="408">/oauth2/authorize · state · nonce · code_challenge (S256)</text>
+    <rect x="36" y="371" width="340" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <circle cx="56" cy="395" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="56" y="399" text-anchor="middle" font-size="11" fill="#1f2937">5</text>
+    <text x="76" y="391" font-size="11.5" fill="#1f2937">the browser follows the 302 out</text>
+    <text x="76" y="408">GET /oauth2/authorize?…&amp;code_challenge_method=S256</text>
 
     <rect x="828" y="431" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="848" cy="455" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="848" y="459" text-anchor="middle" font-size="11" fill="#1f2937">6</text>
-    <text x="868" y="451" font-size="11.5" fill="#1f2937">no session here either → the server's own /login</text>
-    <text x="868" y="468">FormLoginFilter (-92) signs them in; the instant is stamped</text>
+    <text x="868" y="451" font-size="11.5" fill="#1f2937">OAuth2AuthorizationServerFilter (-82) matches the GET</text>
+    <text x="868" y="468">/oauth2/authorize · state · nonce · code_challenge (S256)</text>
 
     <rect x="828" y="491" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="848" cy="515" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="848" y="519" text-anchor="middle" font-size="11" fill="#1f2937">7</text>
-    <text x="868" y="511" font-size="11.5" fill="#1f2937">ConsentPage — a checkbox per scope, Allow or Deny</text>
-    <text x="868" y="528">skipped when the client requires none, or consent is stored</text>
+    <text x="868" y="511" font-size="11.5" fill="#1f2937">no session here either → the server's own /login</text>
+    <text x="868" y="528">FormLoginFilter (-92) signs them in; the instant is stamped</text>
 
-    <rect x="828" y="551" width="376" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <rect x="828" y="551" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="848" cy="575" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="848" y="579" text-anchor="middle" font-size="11" fill="#1f2937">8</text>
-    <text x="868" y="571" font-size="11.5" fill="#1f2937">AuthorizationEndpoint mints a SINGLE-USE code</text>
-    <text x="868" y="588">302 → redirect_uri?code=…&amp;state=… — the registered URI</text>
+    <text x="868" y="571" font-size="11.5" fill="#1f2937">ConsentPage — a checkbox per scope, Allow or Deny</text>
+    <text x="868" y="588">skipped when the client requires none, or consent is stored</text>
 
-    <rect x="36" y="611" width="340" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-    <circle cx="56" cy="635" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="56" y="639" text-anchor="middle" font-size="11" fill="#1f2937">9</text>
-    <text x="76" y="631" font-size="11.5" fill="#1f2937">the browser follows the redirect back</text>
-    <text x="76" y="648">GET /login/oauth2/code/{id}?code=…&amp;state=…</text>
+    <rect x="828" y="611" width="376" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <circle cx="848" cy="635" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="848" y="639" text-anchor="middle" font-size="11" fill="#1f2937">9</text>
+    <text x="868" y="631" font-size="11.5" fill="#1f2937">AuthorizationEndpoint mints a SINGLE-USE code</text>
+    <text x="868" y="648">302 → redirect_uri?code=…&amp;state=… — the registered URI</text>
 
-    <rect x="412" y="671" width="380" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-    <circle cx="432" cy="695" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="699" text-anchor="middle" font-size="11" fill="#1f2937">10</text>
-    <text x="452" y="691" font-size="11.5" fill="#1f2937">OAuth2LoginAuthenticationFilter (-88)</text>
-    <text x="452" y="708">state spent and compared with hash_equals; redirect_uri exact</text>
+    <rect x="36" y="671" width="340" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <circle cx="56" cy="695" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="56" y="699" text-anchor="middle" font-size="11" fill="#1f2937">10</text>
+    <text x="76" y="691" font-size="11.5" fill="#1f2937">the browser follows the redirect back</text>
+    <text x="76" y="708">GET /login/oauth2/code/{id}?code=…&amp;state=…</text>
 
-    <rect x="412" y="731" width="380" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="412" y="731" width="380" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
     <circle cx="432" cy="755" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="759" text-anchor="middle" font-size="11" fill="#1f2937">11</text>
-    <text x="452" y="751" font-size="11.5" fill="#1f2937">back channel: POST /oauth2/token</text>
-    <text x="452" y="768">grant_type=authorization_code · code · code_verifier</text>
-
-    <rect x="828" y="731" width="376" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-    <text x="838" y="751" font-size="11.5" fill="#1f2937">TokenEndpoint → AuthorizationCodeGrant</text>
-    <text x="838" y="768">verifier hashed and compared, code burned, tokens minted</text>
+    <text x="452" y="751" font-size="11.5" fill="#1f2937">OAuth2LoginAuthenticationFilter (-88)</text>
+    <text x="452" y="768">state spent and compared with hash_equals; redirect_uri exact</text>
 
     <rect x="412" y="791" width="380" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="432" cy="815" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="819" text-anchor="middle" font-size="11" fill="#1f2937">12</text>
-    <text x="452" y="811" font-size="11.5" fill="#1f2937">id_token validated: iss · aud · exp · nonce</text>
-    <text x="452" y="828">the signature checked against the provider's published keys</text>
+    <text x="452" y="811" font-size="11.5" fill="#1f2937">back channel: POST /oauth2/token</text>
+    <text x="452" y="828">grant_type=authorization_code · code · code_verifier</text>
 
-    <rect x="828" y="791" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-    <text x="838" y="811" font-size="11.5" fill="#1f2937">GET /oauth2/jwks — JwkSetEndpoint</text>
-    <text x="838" y="828">the public half of the key firefly:oauth2:keys made, by kid</text>
+    <rect x="828" y="791" width="376" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <text x="838" y="811" font-size="11.5" fill="#1f2937">TokenEndpoint → AuthorizationCodeGrant</text>
+    <text x="838" y="828">verifier hashed and compared, code burned, tokens minted</text>
 
-    <rect x="412" y="851" width="380" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <rect x="412" y="851" width="380" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
     <circle cx="432" cy="875" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="879" text-anchor="middle" font-size="11" fill="#1f2937">13</text>
-    <text x="452" y="871" font-size="11.5" fill="#1f2937">OidcUser built; the session id is regenerated</text>
-    <text x="452" y="888">context saved; success events fire; 302 to the saved request</text>
+    <text x="452" y="871" font-size="11.5" fill="#1f2937">id_token validated: iss · aud · exp · nonce</text>
+    <text x="452" y="888">the signature checked against the provider's published keys</text>
+
+    <rect x="828" y="851" width="376" height="48" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <text x="838" y="871" font-size="11.5" fill="#1f2937">GET /oauth2/jwks — JwkSetEndpoint</text>
+    <text x="838" y="888">the public half of the key firefly:oauth2:keys made, by kid</text>
+
+    <rect x="412" y="911" width="380" height="48" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <circle cx="432" cy="935" r="11" fill="#f3f4f6" stroke="#9ca3af"/><text x="432" y="939" text-anchor="middle" font-size="11" fill="#1f2937">14</text>
+    <text x="452" y="931" font-size="11.5" fill="#1f2937">OidcUser built; the session id is regenerated</text>
+    <text x="452" y="948">context saved; success events fire; 302 to the saved request</text>
   </g>
 
   <line x1="206" y1="179" x2="470" y2="189" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="520" y1="239" x2="270" y2="249" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="250" y1="299" x2="500" y2="309" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="700" y1="359" x2="900" y2="369" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="1016" y1="419" x2="1016" y2="429" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="520" y1="359" x2="270" y2="369" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="250" y1="419" x2="900" y2="429" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="1016" y1="479" x2="1016" y2="489" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="1016" y1="539" x2="1016" y2="549" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="900" y1="599" x2="230" y2="609" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="290" y1="659" x2="520" y2="669" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="602" y1="719" x2="602" y2="729" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
-  <line x1="792" y1="755" x2="826" y2="755" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="1016" y1="599" x2="1016" y2="609" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="900" y1="659" x2="230" y2="669" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="290" y1="719" x2="520" y2="729" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="602" y1="779" x2="602" y2="789" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="792" y1="815" x2="826" y2="815" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
   <line x1="602" y1="839" x2="602" y2="849" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="792" y1="875" x2="826" y2="875" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
+  <line x1="602" y1="899" x2="602" y2="909" stroke="#4b5563" stroke-width="1.5" marker-end="url(#oac-arrow)"/>
 
-  <text x="620" y="931" text-anchor="middle" font-size="11.5" fill="#374151">Steps 1-4 and 9-13 run in the relying party (firefly/security-oauth2-client); steps 5-8 in the authorization server (firefly/security-oauth2-server),</text>
-  <text x="620" y="948" text-anchor="middle" font-size="11.5" fill="#374151">whose /login is firefly/security's and whose consent page is its own. Either half stands alone — the relying party against Google, Okta or Keycloak through a preset.</text>
-  <text x="620" y="969" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">Steps 11 and 12 are back-channel calls the browser never sees: the code alone is worthless without the verifier only the relying party kept — that is PKCE.</text>
+  <text x="620" y="991" text-anchor="middle" font-size="11.5" fill="#374151">Steps 1, 3, 5 and 10 are the browser; 2, 4 and 11-14 the relying party (firefly/security-oauth2-client); 6-9 the authorization server (firefly/security-oauth2-server),</text>
+  <text x="620" y="1008" text-anchor="middle" font-size="11.5" fill="#374151">whose /login is firefly/security's and whose consent page is its own. Either half stands alone — the relying party against Google, Okta or Keycloak through a preset.</text>
+  <text x="620" y="1029" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">Steps 5 and 10 are the front channel: the browser itself carries state, nonce and the S256 challenge out, and the code back.</text>
+  <text x="620" y="1046" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">Steps 12 and 13 are back-channel calls the browser never sees: the code alone is worthless without the verifier only the relying party kept — that is PKCE.</text>
 </svg>

@@ -482,3 +482,157 @@ it('pins both diagrams, the security table and the OAuth2 prose to the real #[Or
         );
     }
 });
+
+/**
+ * oauth2-authorization-code.svg exists to teach ONE distinction — which legs of a sign-in the user agent carries
+ * and which two it never sees — and its own footer says so outright. In a three-lane picture that distinction is
+ * not carried by any word: it is carried by where the arrows GO. A front-channel hop drawn as a straight
+ * relying-party → authorization-server line reads as a back-channel call however the boxes are labelled, and
+ * tells the reader that `state`, the `nonce` and the S256 `code_challenge` never traverse the browser. That is
+ * the inverse of the property the figure is for, and it is also a factual claim about the code:
+ * `OAuth2AuthorizationRequestRedirectFilter::doFilter()` ends in `new RedirectResponse(...)` — a 302 answered to
+ * whoever asked, which on the start URL is the browser — exactly as `AuthorizationEndpoint` ends in the 302 the
+ * return leg already draws through the browser lane.
+ *
+ * So the routing is asserted geometrically, against the lanes the file itself declares. Every arrow must either
+ * stay inside one lane, or touch the Browser lane at one end; the only exceptions are the two back-channel calls,
+ * and even those must be drawn the way a back-channel call is drawn here — horizontally, between two boxes that
+ * sit on the same row — rather than as a diagonal hop between consecutive steps. Nothing below types a coordinate:
+ * the lane bounds come from the `<rect>`s, the steps from the circled numbers, the sentence from the footer.
+ *
+ * The circled numbers are checked as a sequence for the same reason. A step inserted in the middle of the picture
+ * renumbers every box after it AND the two sentences underneath, and a renumbering that stops halfway is the
+ * quietest way this figure goes wrong — the arrows stay right and the prose starts pointing at the wrong boxes.
+ */
+it('routes every front-channel leg of the authorization-code figure through the browser lane', function () {
+    $root = dirname(__DIR__);
+    $raw = (string) file_get_contents($root.'/docs/assets/diagrams/oauth2-authorization-code.svg');
+    $xml = simplexml_load_string($raw);
+
+    if (! $xml instanceof SimpleXMLElement) {
+        throw new RuntimeException('malformed SVG oauth2-authorization-code.svg');
+    }
+
+    $attribute = static function (SimpleXMLElement $node, string $name): string {
+        $value = $node[$name];
+        if ($value === null) {
+            throw new RuntimeException("<{$node->getName()}> in oauth2-authorization-code.svg has no {$name} attribute");
+        }
+
+        return (string) $value;
+    };
+
+    // The swimlanes are the direct <rect> children painted in the lane fill; the remaining direct <rect> is the
+    // white page behind them. Sorted left to right they are Browser, Relying party, Authorization server — the
+    // order the three <text> headings above them are written in, and the order every assertion below assumes.
+    $lanes = [];
+    foreach ($xml->rect as $rect) {
+        $fill = $rect['fill'];
+        if ($fill === null || (string) $fill !== '#f8fafc') {
+            continue;
+        }
+
+        $left = (float) $attribute($rect, 'x');
+        $lanes[] = [$left, $left + (float) $attribute($rect, 'width')];
+    }
+
+    usort($lanes, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+    expect($lanes)->toHaveCount(3, 'oauth2-authorization-code.svg no longer draws exactly three swimlanes');
+
+    $browserLane = 0;
+    $laneNames = ['the Browser lane', 'the Relying party lane', 'the Authorization server lane'];
+
+    $laneOf = static function (float $x) use ($lanes): int {
+        foreach ($lanes as $index => [$from, $to]) {
+            if ($x >= $from && $x <= $to) {
+                return $index;
+            }
+        }
+
+        throw new RuntimeException("an arrow endpoint at x={$x} lands in no swimlane at all");
+    };
+
+    // The circled step numbers, in document order — which for this figure is top to bottom. Each one is the
+    // <text text-anchor="middle"> drawn at its circle's centre; the two counterpart boxes in the authorization
+    // server's lane carry no circle, because they are the far end of a call rather than a step of their own.
+    $numbered = [];
+    foreach ($xml->g->text as $text) {
+        if ($text['text-anchor'] === null) {
+            continue;
+        }
+
+        $numbered[(float) $attribute($text, 'x').'|'.(float) $attribute($text, 'y')] = trim((string) $text);
+    }
+
+    $steps = [];
+    foreach ($xml->g->circle as $circle) {
+        $cx = (float) $attribute($circle, 'cx');
+        $cy = (float) $attribute($circle, 'cy');
+        $key = $cx.'|'.($cy + 4);
+
+        expect(array_key_exists($key, $numbered))->toBeTrue(
+            "the step circle at ({$cx}, {$cy}) in oauth2-authorization-code.svg has no number drawn in it",
+        );
+
+        $steps[] = ['number' => $numbered[$key], 'x' => $cx, 'y' => $cy];
+    }
+
+    expect(array_column($steps, 'number'))->toBe(
+        array_map(strval(...), range(1, count($steps))),
+        'oauth2-authorization-code.svg numbers its steps out of sequence — a box was inserted or removed and the '
+        .'renumbering stopped halfway, which leaves the two sentences under the figure pointing at the wrong boxes',
+    );
+
+    // ── The routing itself ──────────────────────────────────────────────────────────────────────────────────
+    $backChannel = [];
+    foreach ($xml->line as $line) {
+        $from = $laneOf((float) $attribute($line, 'x1'));
+        $to = $laneOf((float) $attribute($line, 'x2'));
+
+        if ($from === $to || $from === $browserLane || $to === $browserLane) {
+            continue; // inside one lane, or with the user agent at one end: a front channel drawn honestly
+        }
+
+        $y1 = (float) $attribute($line, 'y1');
+        $y2 = (float) $attribute($line, 'y2');
+
+        expect($y1)->toBe($y2, sprintf(
+            'oauth2-authorization-code.svg draws a DIAGONAL arrow from %s to %s, skipping %s. Consecutive steps '
+            .'sit on consecutive rows, so a sloped line between those two lanes is a front-channel hop drawn as '
+            .'if it were server-to-server — it tells the reader that state, the nonce and the S256 code_challenge '
+            .'never traverse the user agent. They do: the relying party answers a 302 and the BROWSER follows it.',
+            $laneNames[$from],
+            $laneNames[$to],
+            $laneNames[$browserLane],
+        ));
+
+        $backChannel[] = $y1;
+    }
+
+    expect($backChannel)->toHaveCount(2, sprintf(
+        'oauth2-authorization-code.svg joins the relying party to the authorization server directly %d time(s); '
+        .'exactly two legs of this flow may skip the Browser lane — the token exchange and the JWKS fetch — and '
+        .'the figure says so in its own footer.',
+        count($backChannel),
+    ));
+
+    // And the footer's sentence names those two by number, so the renumbering above cannot leave it stale.
+    $named = [];
+    foreach ($backChannel as $y) {
+        foreach ($steps as $step) {
+            if (abs($step['y'] - $y) < 0.5 && $step['x'] >= $lanes[1][0] && $step['x'] <= $lanes[1][1]) {
+                $named[] = (int) $step['number'];
+
+                break;
+            }
+        }
+    }
+
+    sort($named);
+    expect($named)->toHaveCount(2, 'a back-channel arrow in oauth2-authorization-code.svg leaves no numbered step');
+    expect(str_contains($raw, "Steps {$named[0]} and {$named[1]} are back-channel calls"))->toBeTrue(
+        "oauth2-authorization-code.svg's footer no longer names steps {$named[0]} and {$named[1]} as the "
+        .'back-channel pair, but those are the two arrows it draws straight between the relying party and the '
+        .'authorization server',
+    );
+});
