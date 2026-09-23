@@ -8,9 +8,11 @@ use Firefly\Container\Attributes\Order;
 use Firefly\Observability\Web\HttpExchangeFilter;
 use Firefly\Observability\Web\MetricsFilter;
 use Firefly\Observability\Web\TracingFilter;
+use Firefly\Security\OAuth2\Client\OAuth2ClientSettings;
 use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequestRedirectFilter;
 use Firefly\Security\OAuth2\Client\Web\OAuth2LoginAuthenticationFilter;
 use Firefly\Security\OAuth2\OAuth2ResourceServerFilter;
+use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Web\OAuth2AuthorizationServerFilter;
 use Firefly\Security\Session\SecurityContextPersistenceFilter;
 use Firefly\Security\Web\Basic\HttpBasicFilter;
@@ -21,6 +23,7 @@ use Firefly\Security\Web\Login\FormLoginFilter;
 use Firefly\Security\Web\Logout\LogoutFilter;
 use Firefly\Security\Web\RememberMe\RememberMeAuthenticationFilter;
 use Firefly\Security\Web\SecurityHeadersFilter;
+use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Filter\RequestContextFilter;
 
@@ -174,6 +177,12 @@ it('mirrors every docs diagram into book/art/figures and references it from both
  * framework filters prepended), and asserts the SVG's rows and the module doc's table are that same sequence,
  * value for value.
  *
+ * The SECOND half of this test carries the same claim to the second picture. oauth2-authorization-code.svg
+ * draws five of these integers, docs/modules/security-oauth2-{client,server}.md and both book chapters repeat
+ * four of them in sentences, and it draws six endpoint PATHS besides — a default moved in a constructor is
+ * exactly as silent as a moved `#[Order]`. Every one of those copies is checked against the attributes and the
+ * settings objects themselves, never against a number or a path typed into this file.
+ *
  * The two lists below are themselves PINNED TO THE TREE, and that is what makes "a filter added to the chain"
  * part of the claim true rather than aspirational. A hand-typed roster is precisely the thing this file exists
  * to distrust: the SVG set is globbed and compared, the provenance rows are globbed and compared,
@@ -182,7 +191,7 @@ it('mirrors every docs diagram into book/art/figures and references it from both
  * naming it, not a diagram that quietly stopped being the whole chain. So: a moved `#[Order]`, a filter added to the
  * chain, or a row transcribed wrongly is now a red test rather than a picture that lies.
  */
-it('pins the filter-chain diagram and the security table to the real #[Order] attributes', function () {
+it('pins both diagrams, the security table and the OAuth2 prose to the real #[Order] attributes and endpoint defaults', function () {
     $root = dirname(__DIR__);
 
     // Prepended by FilterChainRegistrar itself, never sorted: they carry no #[Order] and no stereotype.
@@ -360,4 +369,116 @@ it('pins the filter-chain diagram and the security table to the real #[Order] at
         $expectedTable,
         "docs/modules/security.md's filter-order table no longer matches the #[Order] attributes",
     );
+
+    // ── The authorization-code figure, and the sentences that repeat it ─────────────────────────────────────
+    //
+    // security-filter-chain.svg is no longer the only picture whose load-bearing content is #[Order] integers
+    // transcribed by hand: oauth2-authorization-code.svg draws five of them, and the two OAuth2 module pages
+    // and both book chapters repeat four in prose. What makes those copies checkable is the SPELLING RULE the
+    // docs already follow — an order is written immediately after the class that declares it, in parentheses,
+    // `FormLoginFilter` (`-92`), never as a bare number a reader cannot attribute to anything. So the PAIR is
+    // what is asserted: containment of `(-92)` on its own would survive two filters trading orders, which is
+    // the likeliest way a hand-transcribed set of five goes wrong, and it would leave the diagram's unattributed
+    // integers — the ones a reader has no way to check — looking pinned when they are not.
+    $pairs = [];
+    foreach ($orders as $class => $order) {
+        $pairs[$shortNames[$class]] = $order;
+    }
+
+    // Every file that spells one of these pairs out, with the pairs it MUST spell out. The figure is listed
+    // once: the book's byte-identical copy of it is the previous test's business. docs/modules/security.md
+    // demands nothing here — its table is checked above — but it is scanned like the rest, because the second
+    // assertion in the loop holds every file to every pair it happens to write, listed or not.
+    $repeats = [
+        'docs/assets/diagrams/oauth2-authorization-code.svg' => [
+            FormLoginFilter::class,
+            HttpSecurityFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2AuthorizationServerFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
+        'docs/modules/security-oauth2-client.md' => [
+            HttpSecurityFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
+        'docs/modules/security-oauth2-server.md' => [OAuth2AuthorizationServerFilter::class],
+        'book/src/10-security.md' => [
+            HttpSecurityFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2AuthorizationServerFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
+        'book/src-es/10-security.md' => [
+            HttpSecurityFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2AuthorizationServerFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
+        'docs/modules/security.md' => [],
+    ];
+
+    foreach ($repeats as $relative => $classes) {
+        // One normalised form to look for in six places: prose wraps the pair in backticks and sometimes bold,
+        // an image's alt text carries no markup at all, and `#[Order(-82)]` is the same claim spelled as the
+        // attribute. All three become `Name (-82)` before anything is asserted.
+        $plain = str_replace(['`', '**'], '', (string) file_get_contents($root.'/'.$relative));
+        $plain = (string) preg_replace('/#\[Order\((-?\d+)\)\]/', '($1)', $plain);
+
+        foreach ($classes as $class) {
+            expect(str_contains($plain, $shortNames[$class].' ('.$orders[$class].')'))->toBeTrue(
+                "{$relative} no longer pairs {$shortNames[$class]} with the order it declares "
+                ."({$orders[$class]}) — write the number next to the class, as `{$shortNames[$class]}` "
+                ."(`{$orders[$class]}`), so a reader can attribute it and this test can pin it",
+            );
+        }
+
+        // And every pair the file DOES write — including ones no list above demands — has to be the real one.
+        preg_match_all('/(\w+Filter) \((-?\d+)\)/', $plain, $written, PREG_SET_ORDER);
+        foreach ($written as $pair) {
+            $name = (string) $pair[1];
+            if (! array_key_exists($name, $pairs)) {
+                continue; // a parenthesised number after something that is not one of our filters
+            }
+
+            expect((int) $pair[2])->toBe(
+                $pairs[$name],
+                "{$relative} writes {$name} ({$pair[2]}), but that filter's #[Order] is {$pairs[$name]}",
+            );
+        }
+    }
+
+    // The same figure also draws six endpoint PATHS, and those are defaults too. `new` with no arguments IS
+    // the documented default for all three settings objects — the constructor signature is where every
+    // `firefly.security.*` endpoint key's fallback is written — so `/oauth2/authorize` renamed in
+    // AuthorizationServerSettings, a base URI moved in OAuth2ClientSettings, or `login_page` moved in
+    // FormLoginSettings turns the picture red here instead of leaving a reader typing a path the framework
+    // stopped answering on.
+    $client = new OAuth2ClientSettings;
+    $server = new AuthorizationServerSettings;
+    $formLogin = new FormLoginSettings;
+    $figure = (string) file_get_contents($root.'/docs/assets/diagrams/oauth2-authorization-code.svg');
+
+    // Each one is looked for WITH the neighbour the figure draws next to it — the `/{id}` segment, the verb,
+    // the trailing space before the query parameters — so that no path can pass by being a prefix of another:
+    // `/oauth2/authorize` is not `/oauth2/authorization/{id}`, and a default renamed into the other's shape
+    // would otherwise satisfy a bare `str_contains`.
+    $drawnPaths = [
+        $client->authorizationEndpointBaseUri.'/{id}' => 'OAuth2ClientSettings::$authorizationEndpointBaseUri',
+        $client->redirectionEndpointBaseUri.'/{id}?code=' => 'OAuth2ClientSettings::$redirectionEndpointBaseUri',
+        $server->authorizationEndpoint.' ' => 'AuthorizationServerSettings::$authorizationEndpoint',
+        'POST '.$server->tokenEndpoint => 'AuthorizationServerSettings::$tokenEndpoint',
+        'GET '.$server->jwkSetEndpoint => 'AuthorizationServerSettings::$jwkSetEndpoint',
+        // Drawn TWICE — the entry point's 302 in the relying party's lane, and the authorization server's own
+        // sign-in in the far lane — because the one default serves both halves. Both draws are pinned, so a
+        // rename that updates one picture-half and forgets the other is still red.
+        '302 → '.$formLogin->loginPage => 'FormLoginSettings::$loginPage',
+        "the server's own ".$formLogin->loginPage => 'FormLoginSettings::$loginPage',
+    ];
+
+    foreach ($drawnPaths as $drawn => $source) {
+        expect(str_contains($figure, (string) $drawn))->toBeTrue(
+            "oauth2-authorization-code.svg no longer draws '{$drawn}', the default {$source} declares",
+        );
+    }
 });
