@@ -113,7 +113,12 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   `firefly.resilience.*`, and `#[Fallback]` names a recovery method on the same class; each is applied to a
   `#[Service]`/`#[Component]`/`#[Repository]` method through the same proxy chain `#[Transactional]` already
   uses. The five registry-backed attributes take a method or a class (class-level applies to every public
-  method, method-level replaces it). Every attribute **wraps the programmatic component this package already
+  method, method-level replaces it) — with one exception: **the class-level fan-out stops at a method a
+  `#[Fallback]` names**, Resilience4j's own treatment of `fallbackMethod`. The recovery is invoked on the
+  bean, which is the proxy, so a guard fanned onto it would be applied by the very link that is unwinding and
+  the class breaker that just opened on the failure would refuse the recovery — "degrade" turned into "fail
+  twice". A pattern written on the recovery by hand is still honoured. Every attribute **wraps the
+  programmatic component this package already
   ships** — there is one `Retry`, one `CircuitBreaker`, one of each, and the attribute is a second door to
   it, so the two call styles cannot diverge. Within the link the composition is Resilience4j's and is fixed:
   `Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )`, pinned on

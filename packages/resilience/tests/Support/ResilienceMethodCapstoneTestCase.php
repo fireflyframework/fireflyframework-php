@@ -41,7 +41,7 @@ abstract class ResilienceMethodCapstoneTestCase extends FireflyTestCase
     {
         return [
             'cache.default' => 'array',
-            'firefly.scan.paths' => ['Firefly\\Resilience\\Tests\\Fixtures\\Method\\' => dirname(__DIR__).'/Fixtures/Method'],
+            'firefly.scan.paths' => ['Firefly\\Resilience\\Tests\\Fixtures\\'.$this->resilienceFixtureDir().'\\' => dirname(__DIR__).'/Fixtures/'.$this->resilienceFixtureDir()],
             'firefly.cache.path' => sys_get_temp_dir().'/firefly-resilience-method-uncached-'.bin2hex(random_bytes(6)),
             'firefly.resilience.method.enabled' => $this->resilienceMethodEnabled(),
             'firefly.resilience.retry.payments' => ['max-attempts' => 2, 'wait-duration' => '0s'],
@@ -50,6 +50,17 @@ abstract class ResilienceMethodCapstoneTestCase extends FireflyTestCase
             'firefly.resilience.bulkhead.payments' => ['max-concurrent' => 5],
             'firefly.resilience.time-limiter.payments' => ['timeout' => 30.0],
         ];
+    }
+
+    /**
+     * The one fixture directory this boot scans, relative to tests/Fixtures — a hook rather than a literal
+     * because every well-formed shape in this package lives in a directory of its own (so a happy-path boot
+     * never walks into a refusal), and the capstone machinery around it is the same whichever one is under
+     * test. Subclasses name theirs; nothing else about the boot changes.
+     */
+    protected function resilienceFixtureDir(): string
+    {
+        return 'Method';
     }
 
     /**

@@ -189,6 +189,18 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
         needs: ['cache', 'http'],
     );
     $app->instance('db', $capsule->getDatabaseManager());
+
+    // CLEAR BEFORE SET, which is the pairing Laravel itself writes (Testbench's CreatesApplication does the
+    // two lines in exactly this order, and Illuminate's own test lifecycle clears on setUp). Facade::$app is
+    // a static and so is Facade::$resolvedInstance: swapping the application does NOT invalidate the
+    // instances resolved out of the PREVIOUS one, so without this line `DB::connection()` inside the
+    // #[Transactional] proxy below reuses whatever DatabaseManager the last Testbench test in this process
+    // left behind — one bound to a container that has since been flushed, which resolves 'config' out of
+    // nothing and dies with `Target class [config] does not exist` from inside TransactionTemplate.
+    // It is not a hypothetical: every suite that boots a database-backed Testbench case before this file
+    // (packages/data's proxy tests, packages/resilience's transactional capstone) is such a predecessor, and
+    // clearing here makes this test robust against ALL of them rather than against the one that found it.
+    Facade::clearResolvedInstances();
     Facade::setFacadeApplication($app);
 
     /** @var ApplicationContext $context */

@@ -6,6 +6,8 @@ use Firefly\Resilience\Exception\BulkheadFullException;
 use Firefly\Resilience\Method\ResilienceMethodDescriptor;
 use Firefly\Resilience\Scanner\ResilienceMethodScanner;
 use Firefly\Resilience\Tests\Fixtures\CauseSlotFallback\PaymentGateway as CauseSlotPaymentGateway;
+use Firefly\Resilience\Tests\Fixtures\ClassLevelFallback\AuditedPaymentGateway as ClassLevelFallbackAuditedGateway;
+use Firefly\Resilience\Tests\Fixtures\ClassLevelFallback\PaymentGateway as ClassLevelFallbackGateway;
 use Firefly\Resilience\Tests\Fixtures\ClassLevelPayments\PaymentGateway as ClassLevelPaymentGateway;
 use Firefly\Resilience\Tests\Fixtures\Method\PaymentService;
 use Firefly\Resilience\Tests\Fixtures\NarrowedFallback\PaymentGateway as NarrowedPaymentGateway;
@@ -183,6 +185,40 @@ it('never fans a class-level guard onto a static or a magic method', function ()
     expect(resilienceRules('ClassLevelPayments'))
         ->not->toHaveKey(ClassLevelPaymentGateway::class.'::reconcileAll')
         ->not->toHaveKey(ClassLevelPaymentGateway::class.'::__invoke');
+});
+
+/*
+ | …and the fan-out STOPS AT A RECOVERY, which is Resilience4j's own treatment of `fallbackMethod`. This is
+ | the one exception to the paragraph above, and it exists because the two rules meet at runtime in the worst
+ | possible place: the recovery is invoked on the bean, which IS the proxy, so a row fanned onto it is applied
+ | by the same link that is unwinding — the class breaker that has just opened on the failure the fallback
+ | exists to absorb refuses the recovery, and the degraded answer becomes a second exception raised from
+ | inside the catch that was handling the first. ResilienceClassLevelFallbackCapstoneTest watches that
+ | through the real proxy; this pins the row the plan is built from.
+ */
+
+it('stops the class-level fan-out at the method a #[Fallback] names', function (): void {
+    $rules = resilienceRules('ClassLevelFallback');
+
+    // The GUARDED method is fanned onto as usual — nothing about #[Fallback] shields the method that carries it.
+    expect($rules[ClassLevelFallbackGateway::class.'::charge']->circuitBreaker)->toBe('payments')
+        ->and($rules[ClassLevelFallbackGateway::class.'::charge']->fallbackMethod)->toBe('chargeUnavailable')
+        // …and the RECOVERY compiles no row at all: it carries nothing of its own, so with the class's breaker
+        // withheld there is nothing left to guard it with and the plan never names it. That is the assertion
+        // that fails if the shield is removed — with it removed the key exists and carries 'payments'.
+        ->and($rules)->not->toHaveKey(ClassLevelFallbackGateway::class.'::chargeUnavailable');
+});
+
+it('keeps a pattern written on the recovery BY HAND, and still withholds the class-level one', function (): void {
+    $rules = resilienceRules('ClassLevelFallback');
+
+    // An attribute on the recovery is an author naming that method on purpose, with an instance of their own
+    // choosing, so it survives — the shield is over the IMPLICIT fan-out alone.
+    expect($rules[ClassLevelFallbackAuditedGateway::class.'::chargeUnavailable']->retry)->toBe('payments')
+        // …and it survives ALONE. Were the shield written as "skip the recovery unless it carries something",
+        // the class's breaker would come back through the side door and the recovery would be refused by it
+        // exactly as before, with a green test above saying otherwise.
+        ->and($rules[ClassLevelFallbackAuditedGateway::class.'::chargeUnavailable']->circuitBreaker)->toBeNull();
 });
 
 it('carries a narrowed #[Fallback(on:)] list into the row verbatim', function (): void {

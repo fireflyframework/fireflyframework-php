@@ -44,6 +44,14 @@ use Throwable;
  * form: a recovery method is a statement about ONE signature, and fanning one name across every public
  * method of a class could not be right for more than one of them.
  *
+ * …AND IT STOPS AT A RECOVERY. A method a #[Fallback] on this class NAMES is shielded from the class-level
+ * fan-out — Resilience4j's own treatment of `fallbackMethod`, and the rule compile() implements. The
+ * recovery is invoked on the bean, which is the proxy, so a row fanned onto it would be applied by the very
+ * link that is unwinding: the class-level breaker that just opened on the failure would refuse the recovery,
+ * and the degraded answer #[Fallback] exists to return would be replaced by a second exception. An attribute
+ * written ON the recovery BY HAND is still honoured — that is an author naming the method on purpose — and a
+ * #[Fallback] naming its OWN method is refused rather than shielded (see assertFallback()).
+ *
  * WHAT IS REFUSED, AND WHY EACH ONE IS A REFUSAL RATHER THAN A SKIP:
  *
  *   - A class NOTHING POST-PROCESSES is never wrapped, so no proxy runs the guard. An unenforced #[Retry] is
@@ -216,6 +224,9 @@ final class ResilienceMethodScanner
 
         $this->refuseAbstractAncestorRule($reflection);
 
+        // The recoveries this class's #[Fallback]s name, which the class-level fan-out must NOT reach.
+        $recoveries = $this->recoveryMethods($reflection);
+
         /** @var list<ResilienceMethodDescriptor> $classRules */
         $classRules = [];
         /** @var array<string, true> $responsible */
@@ -244,11 +255,27 @@ final class ResilienceMethodScanner
                 continue;
             }
 
-            $bulkhead = $ownBulkhead ?? $classBulkhead;
-            $timeLimiter = $ownTimeLimiter ?? $classTimeLimiter;
-            $rateLimiter = $ownRateLimiter ?? $classRateLimiter;
-            $circuitBreaker = $ownCircuitBreaker ?? $classCircuitBreaker;
-            $retry = $ownRetry ?? $classRetry;
+            // A RECOVERY IS NOT AN ADVICE TARGET, so the class-level fan-out stops at it — Resilience4j's own
+            // treatment of `fallbackMethod`, and the only reading under which #[Fallback] means what its own
+            // docblock says. The recovery is invoked on the bean, which IS the proxy, so a row compiled for it
+            // would be applied by the same link that is already unwinding: a class-level #[CircuitBreaker]
+            // would open on the failure the fallback exists to absorb and then refuse the recovery with
+            // CircuitBreakerOpenException, turning "degrade" into "fail twice" — and a class-level #[Retry]
+            // would re-run the degraded answer, a class-level #[Bulkhead] would ask for a second permit while
+            // holding one. None of those is what somebody writing one attribute on a class asked for.
+            //
+            // A pattern written ON the recovery BY HAND still wins, because that is an author naming this
+            // method on purpose, with an instance of their own choosing. Only the implicit fan-out is shielded,
+            // and only for the recoveries a #[Fallback] on THIS class names: a self-reference is excluded when
+            // the set is built, so assertFallback()'s own refusal for it still fires with its own message
+            // instead of the lonely-#[Fallback] one.
+            $fannedOut = ! isset($recoveries[$method->getName()]);
+
+            $bulkhead = $ownBulkhead ?? ($fannedOut ? $classBulkhead : null);
+            $timeLimiter = $ownTimeLimiter ?? ($fannedOut ? $classTimeLimiter : null);
+            $rateLimiter = $ownRateLimiter ?? ($fannedOut ? $classRateLimiter : null);
+            $circuitBreaker = $ownCircuitBreaker ?? ($fannedOut ? $classCircuitBreaker : null);
+            $retry = $ownRetry ?? ($fannedOut ? $classRetry : null);
 
             $hasPattern = $bulkhead !== null || $timeLimiter !== null || $rateLimiter !== null
                 || $circuitBreaker !== null || $retry !== null;
@@ -301,6 +328,46 @@ final class ResilienceMethodScanner
         }
 
         return [$classRules, $responsible];
+    }
+
+    /**
+     * The names every #[Fallback] on this class points AT — the methods compile() must shield from the
+     * class-level fan-out.
+     *
+     * It is a whole-class question answered before the per-method loop, because `getMethods()` walks in
+     * declaration order and a recovery is as often written ABOVE the method that names it as below: deciding
+     * "is this a recovery?" from what the loop has passed so far would make the answer depend on the order
+     * the methods happen to appear in the file, which is the kind of rule that holds in the fixture and fails
+     * in the application.
+     *
+     * A SELF-REFERENCE IS NOT COLLECTED. `#[Fallback(method: 'charge')]` on `charge()` is refused outright by
+     * assertFallback() — it is the unbounded-recursion shape — and that refusal needs the method to still
+     * look guarded when it is reached, or the earlier "carries no other resilience attribute" arm would fire
+     * first and send its author to add a pattern to a method that already has one.
+     *
+     * The set is names, not ReflectionMethods, and deliberately unvalidated: whether the name resolves to
+     * anything, and to something callable, is assertFallback()'s subject. A #[Fallback] naming a method that
+     * does not exist shields nothing that exists, which is exactly the right amount of nothing to do here.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     * @return array<string, true>
+     */
+    private function recoveryMethods(ReflectionClass $reflection): array
+    {
+        /** @var array<string, true> $recoveries */
+        $recoveries = [];
+
+        foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            $fallback = $this->first($method->getAttributes(Fallback::class));
+
+            if ($fallback === null || $fallback->method === $method->getName()) {
+                continue;
+            }
+
+            $recoveries[$fallback->method] = true;
+        }
+
+        return $recoveries;
     }
 
     /**

@@ -271,6 +271,15 @@ split Resilience4j makes. The five registry-backed attributes target a **method 
 attribute applies to every public method; a method-level one replaces it); `#[Fallback]` is method-only,
 because a recovery method is a property of one signature.
 
+**The class-level fan-out stops at a recovery.** A method named by a `#[Fallback]` on the same class does
+*not* inherit the class-level `#[CircuitBreaker]` / `#[Retry]` / `#[RateLimiter]` / `#[Bulkhead]` /
+`#[TimeLimiter]` — Resilience4j's own treatment of `fallbackMethod`. The recovery is invoked on the bean,
+which *is* the proxy, so a guard fanned onto it would be applied by the very link that is unwinding: the
+class breaker that just opened on the failure would refuse the recovery, and the degraded answer would be
+replaced by a `CircuitBreakerOpenException` raised from inside the catch that was handling the outage. A
+pattern written **on** the recovery by hand is still honoured — that is naming the method on purpose — and
+it picks up nothing the class fanned out.
+
 The beans are wrapped by the same machinery `#[Transactional]` uses, so the same limits apply: the guarded
 method must be a non-`final` public method of a non-`final` class reached **through the container** —
 `$this->charge(...)` from inside the same object bypasses the proxy, exactly as in Spring.

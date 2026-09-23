@@ -125,11 +125,17 @@ final class ResilienceMethodInterceptor implements MethodInterceptor
      * The recovery closure the shipped Fallback component invokes: the named method on the bean itself, with
      * the ORIGINAL arguments, plus the caught Throwable when the fallback's last parameter can accept one.
      *
-     * `getThis()` is the PROXY, which extends the bean, so calling the fallback through it reaches the
-     * subclass's inherited method — and, crucially, does NOT re-enter this interceptor, because only the
-     * methods the plan names are overridden and a fallback that carried resilience attributes of its own
-     * would have its own row. A fallback calling the guarded method again is therefore a genuine second
-     * guarded call, which is what the author asked for.
+     * `getThis()` is the PROXY, which extends the bean, so calling the recovery through it reaches an
+     * overridden method whenever the plan names one — and the plan is why that is safe. THE SCAN SHIELDS A
+     * RECOVERY FROM THE CLASS-LEVEL FAN-OUT (ResilienceMethodScanner::recoveryMethods(), Resilience4j's own
+     * treatment of `fallbackMethod`), so a method a #[Fallback] names is planned only when its author wrote a
+     * pattern attribute ON IT by hand. Without that rule the commonest class-level shape breaks in the worst
+     * possible place: `#[CircuitBreaker('payments')]` on the CLASS fans onto every public method, the
+     * recovery included, and the breaker that has just opened on the failure being absorbed refuses the
+     * recovery with CircuitBreakerOpenException — "degrade" turned into "fail twice", inside the catch that
+     * was handling the outage. A recovery that DOES carry an attribute of its own re-enters this interceptor
+     * with its own row, which is what naming it there asks for; and a recovery calling the guarded method
+     * again is a genuine second guarded call, which is what THAT asks for.
      *
      * WHETHER TO APPEND THE CAUSE IS READ OFF THE ROW, not re-derived. `ResilienceMethodScanner` proved it
      * while it was proving the recovery's arity — the two are one implementation there, which is why a
