@@ -5,9 +5,11 @@ declare(strict_types=1);
 use Firefly\Resilience\Exception\BulkheadFullException;
 use Firefly\Resilience\Method\ResilienceMethodDescriptor;
 use Firefly\Resilience\Scanner\ResilienceMethodScanner;
+use Firefly\Resilience\Tests\Fixtures\CauseSlotFallback\PaymentGateway as CauseSlotPaymentGateway;
 use Firefly\Resilience\Tests\Fixtures\ClassLevelPayments\PaymentGateway as ClassLevelPaymentGateway;
 use Firefly\Resilience\Tests\Fixtures\Method\PaymentService;
 use Firefly\Resilience\Tests\Fixtures\NarrowedFallback\PaymentGateway as NarrowedPaymentGateway;
+use Firefly\Resilience\Tests\Fixtures\UnprovableCauseFallback\PaymentGateway as UnprovablePaymentGateway;
 
 /**
  * The PSR-4 root the well-formed fixtures live under. Each offender lives in its OWN directory beside it, so
@@ -50,22 +52,62 @@ it('compiles all six attributes on one method into one descriptor', function ():
 });
 
 /*
- | The tenth field is the only one that is not a NAME: whether the recovery's last parameter accepts the
- | caught Throwable. The interceptor needs it to decide whether to append the cause, and compiling it here is
- | what keeps that interceptor free of `new ReflectionMethod(...)` on every recovery — the exact-set pin in
- | ReflectionFreeResilienceTest is the other half of the same claim. Both answers are asserted, because a
- | field that is only ever proved true would pass just as well hard-coded.
+ | The tenth field is the only one that is not a NAME: whether the parameter in the APPENDED SLOT — the
+ | recovery's parameter at the guarded method's parameter count, which is where `[...$arguments, $cause]`
+ | really puts the cause — accepts the caught Throwable. The interceptor needs it to decide whether to append
+ | the cause, and compiling it here is what keeps that interceptor free of `new ReflectionMethod(...)` on
+ | every recovery — the exact-set pin in ReflectionFreeResilienceTest is the other half of the same claim.
+ | Both answers are asserted, because a field that is only ever proved true would pass just as well
+ | hard-coded — and both are asserted against a recovery whose LAST parameter says the opposite, because the
+ | slot and the last parameter coincide only when the recovery is exactly one parameter wider than the
+ | guarded method, and reading the last one there was an off-by-one that appended the cause into a slot
+ | declared for something else.
  */
 
-it('compiles whether the fallback\'s last parameter accepts the Throwable, both ways', function (): void {
-    // `chargeUnavailable(string, int, ?Throwable = null)` — the cause is appended, so the capacity the arity
-    // proof allowed and the call the interceptor makes are the same width.
+it('compiles whether the slot after the guarded arguments accepts the Throwable, both ways', function (): void {
+    // `chargeUnavailable(string, int, ?Throwable = null)` for a two-argument call — the cause is appended,
+    // so the capacity the arity proof allowed and the call the interceptor makes are the same width.
     expect(resilienceRules()[PaymentService::class.'::charge']->fallbackAcceptsThrowable)->toBeTrue()
-        // `chargeUnavailable(string $account)` — no trailing Throwable, so the row says so and the original
-        // arguments are passed unchanged.
+        // `chargeUnavailable(string $account)` — nothing in the appended slot, so the row says so and the
+        // original arguments are passed unchanged.
         ->and(resilienceRules('NarrowedFallback')[NarrowedPaymentGateway::class.'::charge']->fallbackAcceptsThrowable)->toBeFalse()
         // …and a method with no fallback at all carries the conservative default rather than a stale true.
         ->and(resilienceRules()[PaymentService::class.'::refund']->fallbackAcceptsThrowable)->toBeFalse();
+});
+
+it('answers the flag from the appended slot, not from the recovery\'s first or last parameter', function (): void {
+    $rules = resilienceRules('CauseSlotFallback');
+
+    // `queued(string $account, ?string $note = null, ?Throwable $cause = null)` for a ONE-argument call: the
+    // Throwable is the recovery's LAST parameter and the answer is still FALSE, because the slot the
+    // interceptor fills is `$note`. Reading the last parameter answered true here and produced
+    // `queued('acct', $cause)` — a TypeError, raised from inside the catch that was absorbing the outage.
+    expect($rules[CauseSlotPaymentGateway::class.'::charge']->fallbackAcceptsThrowable)->toBeFalse()
+        // `reconcileQueued(Throwable $cause)` for a NO-argument call: the Throwable is the recovery's FIRST
+        // parameter and the answer is TRUE, because with nothing to append it after, the slot IS parameter
+        // one. Position alone proves neither answer; the slot proves both.
+        ->and($rules[CauseSlotPaymentGateway::class.'::reconcile']->fallbackAcceptsThrowable)->toBeTrue();
+});
+
+/*
+ | …and the other half of a refusal that names a misplaced cause: it must never fire on a signature that
+ | works. The position proof abstains wherever reflection would have to guess — a `mixed` argument holds an
+ | exception as happily as anything else, a VARIADIC guarded method has no fixed argument count for a
+ | position to be measured against, and a union type in the slot is not a single named type — so all three
+ | compile, and a later tightening that refuses one of them has to come past this test first.
+ */
+
+it('refuses none of the shapes whose cause position reflection cannot settle', function (): void {
+    $rules = resilienceRules('UnprovableCauseFallback');
+
+    expect(array_keys($rules))->toBe([
+        UnprovablePaymentGateway::class.'::mixedArgument',
+        UnprovablePaymentGateway::class.'::variadic',
+        UnprovablePaymentGateway::class.'::union',
+    ])
+        // The union in the appended slot keeps the conservative answer: the cause is not appended, so the
+        // recovery is called with the guarded arguments alone and its default fills the rest.
+        ->and($rules[UnprovablePaymentGateway::class.'::union']->fallbackAcceptsThrowable)->toBeFalse();
 });
 
 it('compiles a method that carries only #[Retry]', function (): void {

@@ -20,6 +20,7 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionType;
 use Throwable;
 
 /**
@@ -58,7 +59,9 @@ use Throwable;
  *   - …and it does not fire for a CONCRETE BASE CLASS whose post-processed child COMPILES THE SAME ROW.
  *     Writing the attribute on a template-method base and stereotyping the leaf is a mainstream shape, and
  *     the guard does run there — but only through the one door PHP leaves open, so the drop is decided PER
- *     METHOD against the rows the post-processed subclasses really compiled, never per class. That door is
+ *     METHOD against the rows the post-processed subclasses really compiled, never per class, and against
+ *     ALL of them: one child that merely inherits the annotated method does not vouch for a sibling that
+ *     overrides it, which would leave that sibling's bean running unguarded with nothing said. That door is
  *     the METHOD-level attribute on a method the child does not override: `ReflectionMethod::getAttributes()`
  *     reads the DECLARING class, so the child sees it, compiles its own row for it and the child's proxy
  *     overrides the inherited body. The base's copy is then dropped rather than refused — the base is not a
@@ -88,7 +91,7 @@ use Throwable;
  *     declares make the magic methods its own. Reached by the class-level fan-out these are skipped in
  *     silence; written EXPLICITLY on `__invoke()` — the single-action-service shape — or on a `public
  *     static`, they are the exact "compiles and is then honoured by nothing" this scan exists to refuse.
- *   - The six #[Fallback] refusals — five about the recovery METHOD and one about the `on:` LIST — see
+ *   - The eight #[Fallback] refusals — six about the recovery METHOD and two about the `on:` LIST — see
  *     assertFallback(), which is the reason this scanner exists at all rather than being a copy of the
  *     observability one with different attribute names.
  *
@@ -301,8 +304,8 @@ final class ResilienceMethodScanner
     }
 
     /**
-     * The SIX refusals that make #[Fallback] a compile-time contract rather than a runtime hope — five about
-     * the recovery METHOD and one about the `on:` LIST — and the one FACT the scan hands back about it.
+     * The EIGHT refusals that make #[Fallback] a compile-time contract rather than a runtime hope — six about
+     * the recovery METHOD and two about the `on:` LIST — and the one FACT the scan hands back about it.
      *
      *   - A #[Fallback] with no other resilience attribute on the method guards nothing: the method would be
      *     proxied only to install a try/catch, which is a `try` the author can write themselves and which
@@ -321,13 +324,30 @@ final class ResilienceMethodScanner
      *     so a `protected` or `private` recovery fatals with `Error: Call to protected method` raised, again,
      *     from inside the catch that was absorbing the outage. `hasMethod()` answers true for both, which is
      *     why the check above is not enough on its own; `isPublic()` proves it without running anything.
+     *   - The CAUSE MUST LAND IN A SLOT DECLARED FOR IT. The interceptor appends the Throwable AFTER the
+     *     guarded arguments — at position `count($arguments)`, which is the guarded method's parameter count
+     *     — so a recovery that declares a Throwable EARLIER than that is handed a guarded argument in that
+     *     slot instead and fatals with a `TypeError` raised from inside the catch that was absorbing the
+     *     outage. That shape is Spring's `@Recover` order (the cause FIRST, then the arguments), which the
+     *     users of a Spring-shaped framework write before they read anything, and reflection settles it
+     *     without running a line: PHP lets nothing implement Throwable outside the Exception/Error hierarchy,
+     *     so a guarded parameter declared `string`, `int`, `array` — or any CLASS that is not itself a
+     *     Throwable, since no subclass of it could be one either — can never carry the cause. An INTERFACE
+     *     and a union type are waved through instead of guessed at: an exception class may implement any
+     *     interface, so that one is not provable here.
      *   - The named method must be able to RECEIVE the guarded call: its required-parameter count cannot
-     *     exceed the guarded method's parameter count, PLUS ONE only when the recovery's own last parameter
+     *     exceed the guarded method's parameter count, PLUS ONE only when the parameter IN THE APPENDED SLOT
      *     accepts a Throwable — because that is the single condition under which the interceptor appends the
      *     cause, so an unconditional `+ 1` would wave through a recovery that then fatals with
      *     `ArgumentCountError` from inside the very catch this refusal exists to keep quiet. Anything looser
-     *     than a required-parameter count cannot be proven without running it — a union type, a variadic —
-     *     and is left to PHP.
+     *     than a required-parameter count cannot be proven without running it — a union type, or a VARIADIC
+     *     guarded method, whose argument count is a property of the CALL rather than of the signature — and
+     *     is left to PHP.
+     *   - `on:` must not be EMPTY. `$cause instanceof` no entry at all is false for every throwable there is,
+     *     so an empty list recovers nothing: the guarded call fails exactly as though no #[Fallback] had been
+     *     written, which is the same silent no-op as a misspelt entry reached by narrowing the list to
+     *     nothing rather than to the wrong thing. The attribute's own default is `[Throwable::class]`, so
+     *     dropping the parameter is the remedy whenever the author meant "recover everything".
      *   - Every entry of `on:` must be a LOADABLE THROWABLE. `$cause instanceof [a name nothing declares]` is
      *     false without autoloading and without erroring, and `instanceof stdClass` is false for everything a
      *     `catch` can ever hold, so a typo or a moved exception compiles verbatim into the row and the
@@ -339,17 +359,24 @@ final class ResilienceMethodScanner
      * because a lonely #[Fallback] is wrong whatever it names and answering it with a paragraph about
      * parameter counts would send its author to fix the wrong thing; the self-reference is asked next,
      * because a method is always its own compatible signature and every later check would pass; existence
-     * precedes visibility, which precedes arity, because each one is the premise of the next; and the `on:`
-     * list is asked last, because a list narrowing a recovery that cannot be called at all is the second
-     * thing its author needs to hear.
+     * precedes visibility, which precedes the cause's POSITION, which precedes the arity, because each one is
+     * the premise of the next — and because a recovery written in Spring's order is usually the wrong WIDTH
+     * as well, where "the cause sits at position 1" is a sentence its author can act on and "it requires 2
+     * parameters and the call can supply 1" sends them to widen a signature that would still be wrong; and
+     * the `on:` list is asked last, because a list narrowing a recovery that cannot be called at all is the
+     * second thing its author needs to hear.
      *
-     * THE RETURN VALUE is whether the recovery's LAST parameter accepts the Throwable — the fact the
-     * interceptor needs in order to decide whether to append the cause to the original arguments. It is
-     * answered here, from the ReflectionMethod the arity proof already opened, and compiled into the row; see
+     * THE RETURN VALUE is whether the parameter IN THE APPENDED SLOT — the recovery's parameter at the
+     * guarded method's parameter count — accepts the Throwable, which is the fact the interceptor needs in
+     * order to decide whether to append the cause to the original arguments. It is asked of that slot rather
+     * than of the recovery's last parameter because the slot is the question the CALL asks: the two coincide
+     * only when the recovery is exactly one parameter wider than the guarded method, and at any other width
+     * asking the last one answers about a parameter the interceptor never fills. It is answered here, from
+     * the ReflectionMethod the arity proof already opened, and compiled into the row; see
      * ResilienceMethodDescriptor for why that belongs in the plan rather than in a call-time reflection.
      *
      * @param  ReflectionClass<object>  $reflection
-     * @return bool whether the recovery's last parameter accepts the caught Throwable
+     * @return bool whether the recovery's parameter in the appended slot accepts the caught Throwable
      */
     private function assertFallback(ReflectionClass $reflection, ReflectionMethod $guarded, Fallback $fallback, bool $hasPattern): bool
     {
@@ -394,19 +421,33 @@ final class ResilienceMethodScanner
             );
         }
 
-        $acceptsThrowable = $this->acceptsThrowable($recovery);
-        $capacity = $guarded->getNumberOfParameters() + ($acceptsThrowable ? 1 : 0);
+        $this->assertCausePosition($recovery, $guarded, $site, $fallback->method);
+
+        $guardedArity = $guarded->getNumberOfParameters();
+        $acceptsThrowable = $this->acceptsThrowable($recovery, $guardedArity);
+        $capacity = $guardedArity + ($acceptsThrowable ? 1 : 0);
 
         if ($recovery->getNumberOfRequiredParameters() > $capacity) {
             throw new ConfigurationException(
                 "#[Fallback] on {$site} names [{$fallback->method}], which cannot receive the guarded call: it requires "
                 .$recovery->getNumberOfRequiredParameters().' parameters and the call can supply at most '.$capacity
-                .' (the guarded method\'s '.$guarded->getNumberOfParameters().' arguments'
+                .' (the guarded method\'s '.$guardedArity.' arguments'
                 .($acceptsThrowable
-                    ? ', plus the Throwable its last parameter accepts'
-                    : ' — the interceptor appends the Throwable only when the fallback\'s LAST parameter accepts one, '
-                        .'and this one\'s does not')
+                    ? ', plus the Throwable the parameter AFTER them accepts'
+                    : ' — the interceptor appends the Throwable only when the parameter AFTER them accepts one, and '
+                        .'this fallback\'s does not')
                 .'). Give the fallback the guarded signature, with defaults for anything it does not need.'
+            );
+        }
+
+        if ($fallback->on === []) {
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} narrows `on:` to an EMPTY list, which recovers nothing: `\$cause instanceof` "
+                .'no entry at all is false for every throwable a `catch` can hold, so the fallback never fires and the '
+                .'outage propagates as though no #[Fallback] had been written — the same silent no-op as a misspelt '
+                .'entry, reached by narrowing the list to nothing rather than to the wrong thing. Drop the parameter '
+                .'to keep the default (Throwable, which recovers everything), or name the exceptions the guarded call '
+                .'really throws.'
             );
         }
 
@@ -453,27 +494,128 @@ final class ResilienceMethodScanner
     }
 
     /**
-     * Whether a method's LAST parameter accepts a Throwable — the rule #[Fallback] states in its own
-     * docblock, asked once at scan time and compiled into the row, so the interceptor decides whether to
-     * append the cause by reading a boolean rather than by reflecting on every recovery.
+     * The cause's POSITION, proved against the slot the interceptor really appends it to.
      *
-     * It answers the ARITY proof and the compiled flag with one implementation on purpose: the two disagreeing
-     * is precisely the defect where a recovery with one extra non-Throwable parameter is waved through and
-     * then fatals with `ArgumentCountError` inside the catch. A union type (`Throwable|string`) is not a
-     * ReflectionNamedType and falls to false, which is the conservative answer: the cause is not appended, and
-     * the arity proof treats the parameter as one the call cannot fill.
+     * A recovery that types one of its LEADING parameters as a Throwable has written Spring's `@Recover`
+     * signature — `recover(Throwable $cause, …$arguments)` — which this advice does not make: the interceptor
+     * appends the cause AFTER the guarded arguments, so that leading slot is filled with a guarded argument
+     * and the recovery fatals with a `TypeError` raised from inside the catch that was absorbing the outage.
+     * The arity proof below cannot see it, because the two signatures are frequently the same WIDTH.
+     *
+     * It is provable without running anything, and only because of a PHP rule: nothing may implement
+     * Throwable outside the Exception/Error hierarchy, so an argument whose declared type is a scalar, an
+     * array or a class that is not itself a Throwable can never be one, however the application subclasses
+     * it — see neverThrowable(), which is where that proof and its careful abstentions live. An interface, a
+     * union and an untyped parameter are left alone: an exception class may implement any interface, so
+     * those cases are a guess rather than a proof, and a guess belongs at runtime where the real value is.
+     *
+     * A VARIADIC guarded method returns early: `count($arguments)` is then a property of the CALL (`charge()`
+     * and `charge($a, $b)` are the same signature), so no position in the recovery is provably wrong — the
+     * same "left to PHP" the arity proof states for the same reason.
      */
-    private function acceptsThrowable(ReflectionMethod $method): bool
+    private function assertCausePosition(ReflectionMethod $recovery, ReflectionMethod $guarded, string $site, string $method): void
     {
-        $parameters = $method->getParameters();
+        $guardedParameters = $guarded->getParameters();
 
-        if ($parameters === []) {
-            return false;
+        foreach ($guardedParameters as $parameter) {
+            if ($parameter->isVariadic()) {
+                return;
+            }
         }
 
-        $type = $parameters[count($parameters) - 1]->getType();
+        foreach ($recovery->getParameters() as $position => $parameter) {
+            if ($position >= count($guardedParameters)) {
+                return;
+            }
 
+            $filledBy = $guardedParameters[$position];
+            $declared = $this->neverThrowable($filledBy->getType());
+
+            if (! $this->isThrowable($parameter->getType()) || $declared === null) {
+                continue;
+            }
+
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} names [{$method}], whose \${$parameter->getName()} parameter is typed as a "
+                .'Throwable but sits at position '.($position + 1).' — and the interceptor appends the cause AFTER '
+                ."the guarded method's ".count($guardedParameters).' arguments, as parameter #'
+                .(count($guardedParameters) + 1).'. Position '.($position + 1).' is therefore filled with the guarded '
+                ."call's \${$filledBy->getName()} argument, declared [{$declared}]"
+                .' and so never a Throwable, and the recovery fatals with a TypeError raised from inside the catch '
+                .'that was absorbing the outage — the one moment it must not. Give the fallback the guarded signature '
+                .'with the Throwable LAST (Resilience4j\'s order; Spring\'s @Recover takes the cause first), or drop '
+                .'the parameter.'
+            );
+        }
+    }
+
+    /**
+     * Whether the parameter IN THE APPENDED SLOT accepts a Throwable — the recovery's parameter at index
+     * `count($arguments)`, which is where the interceptor really puts the cause — asked once at scan time and
+     * compiled into the row, so the interceptor decides whether to append it by reading a boolean rather than
+     * by reflecting on every recovery.
+     *
+     * It answers the ARITY proof and the compiled flag with one implementation on purpose: the two
+     * disagreeing is precisely the defect where a recovery with one extra non-Throwable parameter is waved
+     * through and then fatals with `ArgumentCountError` inside the catch. Asking the recovery's LAST
+     * parameter instead was the same defect one step to the right — the two coincide only when the recovery
+     * is exactly `guarded + 1` wide, and at any other width the flag was proved TRUE about a parameter the
+     * interceptor never fills, so the cause was appended into a slot declared for something else and the
+     * TypeError arrived from inside the catch. The slot is the question the call asks, so the slot is the
+     * question asked here.
+     *
+     * A union type (`Throwable|string`) is not a ReflectionNamedType and falls to false, which is the
+     * conservative answer: the cause is not appended, and the arity proof treats the parameter as one the
+     * call cannot fill.
+     */
+    private function acceptsThrowable(ReflectionMethod $recovery, int $guardedArity): bool
+    {
+        $parameter = $recovery->getParameters()[$guardedArity] ?? null;
+
+        return $parameter !== null && $this->isThrowable($parameter->getType());
+    }
+
+    /**
+     * Whether a declared type IS a Throwable — the recovery side of both questions above, and deliberately
+     * conservative about everything reflection cannot settle: a union or an intersection is not a
+     * ReflectionNamedType and answers false, so the cause is not appended and no position is refused for it.
+     */
+    private function isThrowable(?ReflectionType $type): bool
+    {
         return $type instanceof ReflectionNamedType && is_a($type->getName(), Throwable::class, true);
+    }
+
+    /**
+     * The NAME of a declared type that can never hold a throwable, or null when reflection cannot say so —
+     * the guarded side of the position proof, and the half of it that has to be certain, because it is what
+     * turns a misplaced parameter into a refusal. It hands back the name so the message can quote the
+     * declaration the reader has to change.
+     *
+     * `string`, `int`, `float`, `bool`, `array` and the standalone `false`/`true`/`null` types hold nothing a
+     * `catch` can ever produce. Neither does a CLASS that is not a Throwable: PHP refuses `implements
+     * Throwable` outside the Exception/Error hierarchy, so no subclass of such a class can be one either,
+     * which is what makes a class name provable where an INTERFACE name is not — any exception may implement
+     * any interface. `mixed`, `object`, `iterable` and `callable` all hold an exception object happily (an
+     * exception can be Traversable, and one with `__invoke()` is callable), and `self`/`static`/`parent` name
+     * a class this proof would have to resolve, so all of them answer null: not provable, not refused.
+     */
+    private function neverThrowable(?ReflectionType $type): ?string
+    {
+        if (! $type instanceof ReflectionNamedType) {
+            return null;
+        }
+
+        $name = $type->getName();
+
+        if (in_array(strtolower($name), ['self', 'static', 'parent'], true)) {
+            return null;
+        }
+
+        if ($type->isBuiltin()) {
+            return in_array($name, ['mixed', 'object', 'iterable', 'callable'], true) ? null : $name;
+        }
+
+        return class_exists($name) && ! is_a($name, Throwable::class, true) ? $name : null;
     }
 
     /**
@@ -521,8 +663,8 @@ final class ResilienceMethodScanner
     }
 
     /**
-     * The method names those subclasses REALLY COMPILED A ROW FOR — the per-method premise the drop rests on,
-     * read off the first pass rather than re-derived from the shape of the hierarchy.
+     * The method names EVERY ONE of those subclasses REALLY COMPILED A ROW FOR — the per-method premise the
+     * drop rests on, read off the first pass rather than re-derived from the shape of the hierarchy.
      *
      * Asking it per CLASS ("a post-processed subclass exists, therefore the child already has its own row,
      * therefore nothing is lost") is true for exactly one of the two ways an attribute reaches a method.
@@ -532,21 +674,35 @@ final class ResilienceMethodScanner
      * own, empty, attribute list. In those two shapes the child compiles nothing, and a per-class drop threw
      * the author's #[Retry] away in silence.
      *
+     * And it is an INTERSECTION over the subclasses rather than a union, for the same reason it is per method
+     * rather than per class: a flat set of names unioned over them let ONE child that merely inherits the
+     * annotated method vouch for a SIBLING that overrides it without repeating the attribute. The base's row
+     * was dropped as losing nothing, the overriding bean ran unguarded — no row, no exception, no warning, on
+     * a #[Retry] somebody wrote — and refuseUnenforceable()'s "OVERRIDES … without repeating the attribute"
+     * was never reached, although it is exactly the sentence that case needs. A method is covered only when
+     * EVERY post-processed subclass compiled a row for it; the first one that did not sends the base's row to
+     * the refusal, which names that subclass.
+     *
      * @param  list<class-string>  $subclasses
      * @param  array<class-string, list<ResilienceMethodDescriptor>>  $compiled
      * @return array<string, true>
      */
     private function coveredMethods(array $subclasses, array $compiled): array
     {
-        $covered = [];
+        /** @var array<string, true>|null $covered */
+        $covered = null;
 
         foreach ($subclasses as $subclass) {
+            /** @var array<string, true> $own */
+            $own = [];
             foreach ($compiled[$subclass] ?? [] as $rule) {
-                $covered[$rule->method] = true;
+                $own[$rule->method] = true;
             }
+
+            $covered = $covered === null ? $own : array_intersect_key($covered, $own);
         }
 
-        return $covered;
+        return $covered ?? [];
     }
 
     /**

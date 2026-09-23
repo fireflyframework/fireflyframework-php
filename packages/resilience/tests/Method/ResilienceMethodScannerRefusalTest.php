@@ -10,6 +10,7 @@ use Firefly\Resilience\Tests\Fixtures\BeanWired\BeanWiredGateway;
 use Firefly\Resilience\Tests\Fixtures\ClassLevelBase\BaseGateway as ClassLevelBaseGateway;
 use Firefly\Resilience\Tests\Fixtures\ClassLevelBase\StripeGateway as ClassLevelStripeGateway;
 use Firefly\Resilience\Tests\Fixtures\InheritedBase\StripeGateway as InheritedStripeGateway;
+use Firefly\Resilience\Tests\Fixtures\MixedSubclasses\OverridingGateway as MixedOverridingGateway;
 use Firefly\Resilience\Tests\Fixtures\SiblingSubclass\StripeGateway as SiblingStripeGateway;
 
 /**
@@ -108,6 +109,18 @@ it('refuses a guard on a base method the post-processed child overrides without 
 })->throws(ConfigurationException::class, 'OVERRIDES charge() without repeating the attribute');
 
 /*
+ | …and the drop has to hold for EVERY post-processed child, not for one of them. With two — one that merely
+ | INHERITS the annotated method and one that OVERRIDES it — a covered-methods set unioned over the children
+ | let the inheriting one vouch for the sibling: the base's row was dropped as losing nothing, the overriding
+ | bean ran unguarded, and the refusal above was never reached. No other fixture has two post-processed
+ | subclasses, which is exactly why the union survived the rest of this file.
+ */
+
+it('refuses when one post-processed child inherits the guarded method and a sibling overrides it', function (): void {
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('MixedSubclasses'));
+})->throws(ConfigurationException::class, MixedOverridingGateway::class.' OVERRIDES charge() without repeating the attribute');
+
+/*
  | The other half of the per-method rule: a class is only refused for the rules it is RESPONSIBLE for. A
  | second subclass of an annotated base — a fake, a test double — compiles rows it never asked for, and
  | refusing it would hard-fail `firefly:cache` naming a class whose author greps it for a resilience
@@ -178,12 +191,12 @@ it('refuses a guard written by hand on a public static method', function (): voi
 })->throws(ConfigurationException::class, 'StaticRetryGateway::chargeAll cannot be applied: a static call has no instance');
 
 /*
- | The six #[Fallback] refusals — five about the recovery METHOD, one about the `on:` LIST — which are the
+ | The eight #[Fallback] refusals — six about the recovery METHOD, two about the `on:` LIST — which are the
  | reason this scanner exists at all rather than being the observability one with different attribute names.
- | Each of them is a `Call to …` fatal, an `ArgumentCountError`, an unbounded recursion or a recovery that
- | never fires, and every one of those happens INSIDE the catch block that was absorbing the outage the
- | fallback was written for — the single worst moment to find out — while being provable by reflection
- | without running anything.
+ | Each of them is a `Call to …` fatal, a `TypeError`, an `ArgumentCountError`, an unbounded recursion or a
+ | recovery that never fires, and every one of those happens INSIDE the catch block that was absorbing the
+ | outage the fallback was written for — the single worst moment to find out — while being provable by
+ | reflection without running anything.
  */
 
 it('refuses a #[Fallback] with nothing to fall back from', function (): void {
@@ -208,28 +221,58 @@ it('refuses a #[Fallback] the interceptor could not call, because the method is 
     (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('NonPublicFallback'));
 })->throws(ConfigurationException::class, 'which is protected. The interceptor calls the recovery on the bean from OUTSIDE the class');
 
-it('refuses a #[Fallback] whose signature cannot receive the guarded call', function (): void {
-    // Three required parameters for one argument plus the cause. The recovery's last parameter IS a
-    // Throwable here, so the capacity really is guarded + 1 and the refusal is about width alone.
-    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('IncompatibleFallback'));
-})->throws(ConfigurationException::class, 'the call can supply at most 2 (the guarded method\'s 1 arguments, plus the Throwable its last parameter accepts)');
+/*
+ | …and before the width, the POSITION. The interceptor appends the cause AFTER the guarded arguments, so a
+ | recovery that declares the Throwable anywhere earlier is handed a guarded argument in that slot — the
+ | `@Recover` order a Spring-shaped framework's users write first, and a TypeError raised from inside the
+ | catch that was absorbing the outage. The count cannot see it: the narrow shape below is exactly as wide as
+ | the guarded call, and the misplaced one is the same width to the parameter.
+ */
 
-it('counts the trailing Throwable in the capacity only when the fallback\'s last parameter accepts one', function (): void {
+it('refuses a #[Fallback] that takes only the cause, the Spring @Recover shape', function (): void {
+    // `queued(Throwable $cause)` for `charge(string $account)`: one required parameter for one argument, so
+    // every count agrees — and the call the interceptor makes is `queued('acct')`, which puts the account
+    // number in a parameter declared Throwable.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('NarrowThrowableFallback'));
+})->throws(ConfigurationException::class, '$cause parameter is typed as a Throwable but sits at position 1 — and the interceptor appends the cause AFTER the guarded method\'s 1 arguments, as parameter #2');
+
+it('refuses a #[Fallback] that declares the cause before the guarded arguments', function (): void {
+    // The same misplacement at full width: `queued(Throwable $cause, string $account)` for
+    // `charge(string $account, int $cents)`. Only the position tells the two signatures apart.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('MisplacedThrowableFallback'));
+})->throws(ConfigurationException::class, 'Position 1 is therefore filled with the guarded call\'s $account argument, declared [string]');
+
+it('refuses a #[Fallback] whose signature cannot receive the guarded call', function (): void {
+    // Three required parameters for one argument plus the cause. The Throwable IS in the appended slot here
+    // — the parameter right after the guarded argument — so the capacity really is guarded + 1 and the
+    // refusal is about width alone.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('IncompatibleFallback'));
+})->throws(ConfigurationException::class, 'the call can supply at most 2 (the guarded method\'s 1 arguments, plus the Throwable the parameter AFTER them accepts)');
+
+it('counts the appended Throwable in the capacity only when the slot after the guarded arguments accepts one', function (): void {
     // The off-by-one an unconditional `+ 1` waved through: the recovery requires exactly guarded + 1, and
-    // its last parameter is an `int`. The interceptor appends the cause only when that parameter accepts a
-    // Throwable, so the call it really makes is `queued('acct')` — ArgumentCountError, raised from inside
-    // the catch. The capacity and the interceptor's rule are one implementation for exactly this reason.
+    // the slot after the guarded argument is an `int`. The interceptor appends the cause only when that
+    // parameter accepts a Throwable, so the call it really makes is `queued('acct')` — ArgumentCountError,
+    // raised from inside the catch. The capacity and the interceptor's rule are one implementation for
+    // exactly this reason.
     (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('ExtraParameterFallback'));
-})->throws(ConfigurationException::class, 'the interceptor appends the Throwable only when the fallback\'s LAST parameter accepts one, and this one\'s does not');
+})->throws(ConfigurationException::class, 'the interceptor appends the Throwable only when the parameter AFTER them accepts one, and this fallback\'s does not');
 
 /*
- | …and the sixth is about the OTHER half of the attribute. Five things are proved about the recovery method
- | and, until this one, nothing at all about `on:` — yet a class-string in that list is honoured by
+ | …and the last two are about the OTHER half of the attribute. Six things are proved about the recovery
+ | method and, until these, nothing at all about `on:` — yet a class-string in that list is honoured by
  | `$cause instanceof $class`, which answers FALSE for a name nothing declares without autoloading and
- | without erroring. A typo, or an exception somebody moved, therefore compiles into the row verbatim and the
- | fallback silently never fires. Both halves are provable here: the entry must LOAD, and it must BE a
- | Throwable, and each half gets its own sentence because each has its own remedy.
+ | without erroring, and an EMPTY list is honoured by nothing at all. A typo, an exception somebody moved, or
+ | a list narrowed to nothing therefore compiles into the row verbatim and the fallback silently never fires.
+ | All three are provable here: the list must be non-empty, and each entry must LOAD and BE a Throwable, and
+ | each gets its own sentence because each has its own remedy.
  */
+
+it('refuses a #[Fallback(on:)] narrowed to an empty list, which recovers nothing', function (): void {
+    // The one shape the per-entry proof cannot see: iterating an empty list validates it by refusing
+    // nothing, and `Firefly\Resilience\Fallback::matches()` then answers false for every throwable there is.
+    (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('EmptyOnFallback'));
+})->throws(ConfigurationException::class, 'narrows `on:` to an EMPTY list, which recovers nothing');
 
 it('refuses a #[Fallback(on:)] entry naming a class nothing in the application declares', function (): void {
     (new ResilienceMethodScanner)->scan(resilienceOffenderPsr4('UnknownThrowableFallback'));

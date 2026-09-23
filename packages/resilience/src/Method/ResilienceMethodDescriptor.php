@@ -31,6 +31,16 @@ use Throwable;
  * Every optional key is read with a null — or, for the booleans and lists, an empty — default in fromArray()
  * for the reason SecurityMethodDescriptor gives: a plan compiled before a key existed must still load.
  *
+ * `$fallbackOn` is the one default that is not simply "empty", because for that field the empty list is not
+ * an absence: it is the statement "recover NOTHING", which is what `$cause instanceof` against no entry at
+ * all means to the interceptor and to Firefly\Resilience\Fallback::matches() alike. A row that names a
+ * RECOVERY and reached fromArray() without the key is a plan compiled before the key existed, and the
+ * attribute's own default for it is `[Throwable::class]` — recover everything — so that is what such a row
+ * degrades to, rather than to a fallback that loads, composes and then never fires. A row with no recovery
+ * keeps the empty list it has always had, because nothing reads it. The scan refuses an empty `on:` outright
+ * (see ResilienceMethodScanner::assertFallback()), so the two values can never be confused in a plan
+ * compiled by this version.
+ *
  * @phpstan-type ResilienceMethodRow array{class: string, method: string, bulkhead?: string|null, timeLimiter?: string|null, rateLimiter?: string|null, circuitBreaker?: string|null, retry?: string|null, fallbackMethod?: string|null, fallbackOn?: list<class-string<Throwable>>, fallbackAcceptsThrowable?: bool}
  */
 final readonly class ResilienceMethodDescriptor
@@ -78,6 +88,8 @@ final readonly class ResilienceMethodDescriptor
      */
     public static function fromArray(array $data): self
     {
+        $fallbackMethod = $data['fallbackMethod'] ?? null;
+
         return new self(
             $data['class'],
             $data['method'],
@@ -86,8 +98,8 @@ final readonly class ResilienceMethodDescriptor
             $data['rateLimiter'] ?? null,
             $data['circuitBreaker'] ?? null,
             $data['retry'] ?? null,
-            $data['fallbackMethod'] ?? null,
-            $data['fallbackOn'] ?? [],
+            $fallbackMethod,
+            $data['fallbackOn'] ?? ($fallbackMethod === null ? [] : [Throwable::class]),
             $data['fallbackAcceptsThrowable'] ?? false,
         );
     }
