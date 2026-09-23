@@ -269,13 +269,23 @@ final class SecurityExpressionEvaluator
 {
     private function dispatch(string $name, array $args): bool
     {
+        // parse()-only mode has no root: validate the whitelist but return a placeholder bool.
         $root = $this->root;
+        if ($root === null) {
+            return match ($name) {
+                'hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority', 'hasScope', 'hasAnyScope', 'hasPermission',
+                'isAuthenticated', 'permitAll', 'denyAll' => true,
+                default => throw new ExpressionParseException("Unknown function '{$name}'."),
+            };
+        }
 
         return match ($name) {
             'hasRole' => $root->hasRole($this->str($args, 0, $name)),
             'hasAnyRole' => $root->hasAnyRole(...$this->strings($args, $name)),
             'hasAuthority' => $root->hasAuthority($this->str($args, 0, $name)),
             'hasAnyAuthority' => $root->hasAnyAuthority(...$this->strings($args, $name)),
+            'hasScope' => $root->hasScope($this->str($args, 0, $name)),
+            'hasAnyScope' => $root->hasAnyScope(...$this->strings($args, $name)),
             'hasPermission' => $root->hasPermission($args[0] ?? null, $this->str($args, 1, $name)),
             'isAuthenticated' => $root->isAuthenticated(),
             'permitAll' => $root->permitAll(),
@@ -286,7 +296,7 @@ final class SecurityExpressionEvaluator
 }
 ```
 
-Ocho nombres de función, en total, y no hay nada más alcanzable. La gramática que acepta el tokenizador es booleana `and`/`or`/`not` (escrita `&&`/`||`/`!` a nivel de carácter), paréntesis, literales de cadena entre comillas simples y referencias a parámetros `#identificador` — y nada más:
+Diez nombres de función, en total — `hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`, más las referencias `#param` — y no hay nada más alcanzable. Los mismos diez se escriben dos veces a propósito: el primer `match` es el modo de solo análisis del tokenizador de lista blanca, el que `HttpSecurity` y `MethodSecurityScanner` usan para rechazar una expresión inválida en el ARRANQUE y no en la petición que da la casualidad de alcanzarla, y el segundo es la evaluación propiamente dicha. La gramática que acepta el tokenizador es booleana `and`/`or`/`not` (escrita `&&`/`||`/`!` a nivel de carácter), paréntesis, literales de cadena entre comillas simples y referencias a parámetros `#identificador` — y nada más:
 
 ```php
 final class SecurityExpressionEvaluator
@@ -541,7 +551,7 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 | `DaoAuthenticationProvider` | Comprobación de usuario/contraseña equivalente en tiempo, con mitigación de enumeración |
 | `JwtService` | Se niega a arrancar con un secreto débil/marcador de posición; rechaza un token sin claim `exp` |
 | `HttpSecurity` | Reglas de URL que deniegan por defecto, primera-coincidencia-gana, compilando hacia la misma gramática de expresiones que la seguridad de método |
-| `SecurityExpressionEvaluator` | Un tokenizador/analizador hecho a mano, de lista blanca cerrada — sin `eval`, sin `==`, sin navegación `.propiedad`, 8 funciones en total |
+| `SecurityExpressionEvaluator` | Un tokenizador/analizador hecho a mano, de lista blanca cerrada — sin `eval`, sin `==`, sin navegación `.propiedad`; diez funciones en total (`hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`) más las referencias `#param` |
 | `hasRole('X')` | Normaliza a `hasAuthority('ROLE_X')` — las formas desnuda y con prefijo `ROLE_` son equivalentes |
 | `SecurityCommandAuthorizer` / `SecurityQueryAuthorizer` | Las implementaciones reales en `#[Order(500)]` que reemplazan al `AllowAllAuthorizer` del Capítulo 7, solo cuando `firefly.security.enabled=true` |
 | `MethodSecurityMessageEnforcer` | Une el `HandlerManifest` de CQRS con el `SecurityMethodManifest` compilado; hace cumplir la regla antes de que `handle()` llegue a ejecutarse |

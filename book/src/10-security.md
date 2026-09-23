@@ -269,13 +269,23 @@ final class SecurityExpressionEvaluator
 {
     private function dispatch(string $name, array $args): bool
     {
+        // parse()-only mode has no root: validate the whitelist but return a placeholder bool.
         $root = $this->root;
+        if ($root === null) {
+            return match ($name) {
+                'hasRole', 'hasAnyRole', 'hasAuthority', 'hasAnyAuthority', 'hasScope', 'hasAnyScope', 'hasPermission',
+                'isAuthenticated', 'permitAll', 'denyAll' => true,
+                default => throw new ExpressionParseException("Unknown function '{$name}'."),
+            };
+        }
 
         return match ($name) {
             'hasRole' => $root->hasRole($this->str($args, 0, $name)),
             'hasAnyRole' => $root->hasAnyRole(...$this->strings($args, $name)),
             'hasAuthority' => $root->hasAuthority($this->str($args, 0, $name)),
             'hasAnyAuthority' => $root->hasAnyAuthority(...$this->strings($args, $name)),
+            'hasScope' => $root->hasScope($this->str($args, 0, $name)),
+            'hasAnyScope' => $root->hasAnyScope(...$this->strings($args, $name)),
             'hasPermission' => $root->hasPermission($args[0] ?? null, $this->str($args, 1, $name)),
             'isAuthenticated' => $root->isAuthenticated(),
             'permitAll' => $root->permitAll(),
@@ -286,7 +296,7 @@ final class SecurityExpressionEvaluator
 }
 ```
 
-Eight function names, total, and nothing else is reachable. The grammar the tokenizer accepts is boolean `and`/`or`/`not` (spelled `&&`/`||`/`!` at the character level), parentheses, string literals in single quotes, and `#identifier` parameter references — and nothing else:
+Ten function names, total — `hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`, plus `#param` references — and nothing else is reachable. The same ten are spelled twice on purpose: the first `match` is the whitelist tokenizer's parse-only mode, which `HttpSecurity` and `MethodSecurityScanner` use to reject a bad expression at BOOT rather than on the request that happens to hit it, and the second is the evaluation proper. The grammar the tokenizer accepts is boolean `and`/`or`/`not` (spelled `&&`/`||`/`!` at the character level), parentheses, string literals in single quotes, and `#identifier` parameter references — and nothing else:
 
 ```php
 final class SecurityExpressionEvaluator
@@ -541,7 +551,7 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 | `DaoAuthenticationProvider` | Constant-time-equivalent, enumeration-mitigated username/password check |
 | `JwtService` | Refuses to boot with a weak/placeholder secret; refuses a token with no `exp` claim |
 | `HttpSecurity` | Deny-by-default URL rules, first-match-wins, compiling to the same expression grammar as method security |
-| `SecurityExpressionEvaluator` | A hand-rolled, closed-whitelist tokenizer/parser — no `eval`, no `==`, no `.property` navigation, 8 functions total |
+| `SecurityExpressionEvaluator` | A hand-rolled, closed-whitelist tokenizer/parser — no `eval`, no `==`, no `.property` navigation; ten functions total (`hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`) plus `#param` references |
 | `hasRole('X')` | Normalises to `hasAuthority('ROLE_X')` — bare and `ROLE_`-prefixed spellings are equivalent |
 | `SecurityCommandAuthorizer` / `SecurityQueryAuthorizer` | The real `#[Order(500)]` implementations that replace Chapter 7's `AllowAllAuthorizer`, only when `firefly.security.enabled=true` |
 | `MethodSecurityMessageEnforcer` | Joins the CQRS `HandlerManifest` to the compiled `SecurityMethodManifest`; enforces before `handle()` ever runs |

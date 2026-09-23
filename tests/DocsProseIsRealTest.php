@@ -35,15 +35,26 @@ use Illuminate\Http\Request;
  * and the documents are then held against that. Nothing here types out an answer that the source could
  * contradict, so the day the code changes, the failure names the sentence that has to change with it.
  *
- * Scope: every `docs/**.md` plus `README.md`. The triggers are deliberately narrow — a paragraph is only
- * checked when it makes the kind of exhaustive claim that can be false — so a page is free to mention
- * `hasRole()` or `/actuator/env` in passing without owing the full enumeration.
+ * Scope: every `docs/**.md`, every `book/src/**.md` and `book/src-es/**.md`, plus `README.md` — see
+ * fireflyProsePages(), which says what the book cost while it was outside. The triggers are deliberately
+ * narrow — a paragraph is only checked when it makes the kind of exhaustive claim that can be false — so a
+ * page is free to mention `hasRole()` or `/actuator/env` in passing without owing the full enumeration.
  */
 
 /**
  * Every Markdown page the framework publishes, split into blank-line-separated paragraphs.
  *
  * `docs/superpowers/**` is git-ignored working material, never shipped, and is skipped.
+ *
+ * THE BOOK IS PART OF THE SURFACE, and leaving it out cost something real. The expression whitelist grew
+ * `hasScope`/`hasAnyScope` and the correction reached `README.md`, `docs/architecture.md`,
+ * `docs/modules/security.md` and the evaluator's own docblock — but not `book/src/10-security.md`, which went
+ * on telling a reader that eight function names are all the tokenizer can reach, beside a `dispatch()`
+ * listing that had neither of the two new ones in it. A reader writing `hasScope('orders:read')` was being
+ * told by the manuscript that it could not work. Nothing could see that: this file walked `docs/` only, and
+ * the book is not in DocsCodeAudit::AUDITED either. The sibling guard in tests/DocsDiagramsTest.php had
+ * already reached the same conclusion and walks these three trees; this one now walks them too, so a fact
+ * corrected in the documentation cannot stay wrong in the manuscript.
  *
  * @return array<string, list<string>> repo-relative path => paragraphs
  */
@@ -52,12 +63,14 @@ function fireflyProsePages(): array
     $root = dirname(__DIR__);
 
     $paths = [$root.'/README.md'];
-    $walk = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($root.'/docs', FilesystemIterator::SKIP_DOTS)
-    );
-    foreach ($walk as $file) {
-        if ($file instanceof SplFileInfo && $file->getExtension() === 'md' && ! str_contains($file->getPathname(), '/docs/superpowers/')) {
-            $paths[] = $file->getPathname();
+    foreach (['docs', 'book/src', 'book/src-es'] as $directory) {
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/'.$directory, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($walk as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'md' && ! str_contains($file->getPathname(), '/docs/superpowers/')) {
+                $paths[] = $file->getPathname();
+            }
         }
     }
     sort($paths);
@@ -69,6 +82,43 @@ function fireflyProsePages(): array
     }
 
     return $pages;
+}
+
+/**
+ * The number a sentence writes, as an integer — or null when the token is not a number at all.
+ *
+ * Documentation counts things in words, not digits: "Fifteen ship today", "Ten function names, total",
+ * "Diez nombres de función". A guard that only understood `15` would be blind to every sentence a person
+ * would actually write, which is how "Eight function names, total" survived two functions being added to the
+ * whitelist and how an actuator inventory can go stale without a diff. Both languages the project publishes
+ * in are here for the same reason the page walk covers `book/src-es`: a fact corrected in one must not stay
+ * wrong in the other.
+ *
+ * One to twenty is the whole range, deliberately. These are counts of endpoints, filters and whitelist
+ * entries — sets a person enumerates in a sentence — and a set large enough to need "twenty-three" is one no
+ * document spells out by hand. A number outside the range reads as "not a count" and the caller skips it, so
+ * the failure mode is a check that does not fire rather than one that fires wrongly; the test that cares
+ * carries a canary on how many counts it found, which is what turns that silence red.
+ */
+function fireflyWrittenNumber(string $token): ?int
+{
+    /** @var array<string, int> $words */
+    static $words = [
+        'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6, 'seven' => 7,
+        'eight' => 8, 'nine' => 9, 'ten' => 10, 'eleven' => 11, 'twelve' => 12, 'thirteen' => 13,
+        'fourteen' => 14, 'fifteen' => 15, 'sixteen' => 16, 'seventeen' => 17, 'eighteen' => 18,
+        'nineteen' => 19, 'twenty' => 20,
+        'uno' => 1, 'una' => 1, 'dos' => 2, 'tres' => 3, 'cuatro' => 4, 'cinco' => 5, 'seis' => 6,
+        'siete' => 7, 'ocho' => 8, 'nueve' => 9, 'diez' => 10, 'once' => 11, 'doce' => 12, 'trece' => 13,
+        'catorce' => 14, 'quince' => 15, 'dieciséis' => 16, 'diecisiete' => 17, 'dieciocho' => 18,
+        'diecinueve' => 19, 'veinte' => 20,
+    ];
+
+    if (preg_match('/^\d+$/', $token) === 1) {
+        return (int) $token;
+    }
+
+    return $words[mb_strtolower($token)] ?? null;
 }
 
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
@@ -113,11 +163,50 @@ it('pins every whitelist enumeration to the functions SecurityExpressionEvaluato
     // every one of these enumerations closes with "and nothing else" / "only", so a short list is a false
     // one. A page that merely says the evaluator is a closed whitelist (docs/laravel-comparison.md) names no
     // function and owes none.
+    //
+    // THE TRIGGER IS BILINGUAL, because the manuscript is. `book/src-es/10-security.md` makes the identical
+    // claim in Spanish and carries the identical list — the function names are code either way — so a trigger
+    // that only knew the English phrase would walk the Spanish chapter and check nothing in it, which is the
+    // shape of the bug this whole test exists to stop rather than to repeat.
+    $triggers = ['whitelist tokenizer', 'tokenizador de lista blanca', 'lista blanca cerrada'];
+
     $enumerations = 0;
+    $counted = 0;
     foreach (fireflyProsePages() as $page => $paragraphs) {
         foreach ($paragraphs as $paragraph) {
-            if (stripos($paragraph, 'whitelist tokenizer') === false) {
+            $triggered = array_filter($triggers, static fn (string $phrase): bool => stripos($paragraph, $phrase) !== false);
+            if ($triggered === []) {
                 continue;
+            }
+
+            // THE COUNT IS ITS OWN CLAIM, and it is the one that actually went wrong. Both book chapters said
+            // "Eight function names, total" / "Ocho nombres de función, en total" and "8 functions total" in
+            // their recap tables, months after `hasScope`/`hasAnyScope` landed — a number a reader can act on
+            // (do not bother writing hasScope, the tokenizer cannot reach it) with nothing anywhere holding it
+            // to the match it describes. A list can be checked by diffing it; a number has to be read, so it
+            // is read here: any "<n> function(s)" / "<n> nombres de función" / "<n> funciones" in a paragraph
+            // that has already claimed the whitelist is closed must be count($whitelist), spelled as a digit
+            // or as the word for it in either language.
+            preg_match_all(
+                '/([\p{L}0-9]+)\s+(?:function names|functions?|nombres de función|funciones)\b/iu',
+                $paragraph,
+                $written,
+            );
+            foreach ($written[1] as $quantity) {
+                $value = fireflyWrittenNumber($quantity);
+                if ($value === null) {
+                    continue; // "these functions", "the ten functions" — not a count being asserted.
+                }
+
+                $counted++;
+                expect($value)->toBe(count($whitelist), sprintf(
+                    '%s counts the closed whitelist at %s, and SecurityExpressionEvaluator::dispatch() '
+                    .'reaches %d: %s.',
+                    $page,
+                    $quantity,
+                    count($whitelist),
+                    implode(', ', $whitelist),
+                ));
             }
 
             $named = array_values(array_filter(
@@ -151,9 +240,14 @@ it('pins every whitelist enumeration to the functions SecurityExpressionEvaluato
         }
     }
 
-    // README.md, docs/architecture.md and docs/modules/security.md. If a rewrite drops one, this test would
-    // otherwise pass by checking nothing at all.
-    expect($enumerations)->toBe(3);
+    // README.md, docs/architecture.md, docs/modules/security.md and, since this guard learned to read the
+    // manuscript, each book chapter's prose and its recap table in both languages. If a rewrite drops one,
+    // this test would otherwise pass by checking nothing at all.
+    expect($enumerations)->toBe(7);
+
+    // And the four counts those chapters write — the two that said eight. A rewrite that drops the number
+    // instead of correcting it is a rewrite this canary makes visible.
+    expect($counted)->toBe(4);
 });
 
 it('pins every 404-until-exposed claim to the endpoints ExposureModel really ships exposed', function () {
@@ -192,14 +286,28 @@ it('pins every 404-until-exposed claim to the endpoints ExposureModel really shi
     }
 
     // A paragraph that reaches for the exposure key and says 404 must scope that 404, because it is false of
-    // the default pair. Two of the four accepted scopings are BUILT from $defaults, so the day the default
+    // the default pair. Two of the accepted scopings are BUILT from $defaults, so the day the default
     // include list changes, the documents that spell it out fail here instead of quietly going stale.
+    //
+    // The last one is built from the OTHER side of the same list, and the book is why it exists: chapter 11's
+    // exercise 4 tells a reader to leave the exposure list alone and confirm that `GET /actuator/beans`
+    // returns a 404. That sentence is true and it is already scoped — to `beans`, by name — and demanding it
+    // also recite "sensitive" or "health,info" would be asking a correct instruction to carry a hedge it does
+    // not need. So naming a specific endpoint that really is unexposed by default counts as scoping it, and
+    // the set of those is read off the tree rather than typed: promote one into the default include list and
+    // every paragraph that leaned on its name to make the claim stops being scoped by it.
     $scopings = [
         'sensitive',
         'every other endpoint',
         '`'.implode('` and `', $defaults).'`',   // "`health` and `info`"
         implode(',', $defaults),                 // "health,info"
     ];
+
+    foreach ($ids as $id) {
+        if (! in_array($id, $defaults, true)) {
+            $scopings[] = '/actuator/'.$id;
+        }
+    }
 
     $claims = 0;
     foreach (fireflyProsePages() as $page => $paragraphs) {
