@@ -379,7 +379,7 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 8 manifest(s) + 0 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 14 manifest(s) + 0 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
 Ya ejecutaste esto una vez, de forma indirecta — `composer create-project firefly/skeleton` lo llama por ti en su script `post-create-project-cmd`, que es la razón por la que la aplicación del Inicio rápido arrancó correctamente sin que ejecutaras el comando a mano ni una sola vez. De aquí en adelante, cada vez que añadas o cambies un `#[Service]`, `#[Repository]`, `#[Configuration]` o cualquier otro atributo de Firefly, vuelve a ejecutar `firefly:cache` para recompilar el manifiesto; `php artisan firefly:clear` elimina la caché compilada y vuelve a la ruta de escaneo de desarrollo (más lenta, basada en reflexión).

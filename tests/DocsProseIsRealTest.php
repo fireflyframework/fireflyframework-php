@@ -7,6 +7,7 @@ declare(strict_types=1);
 use Composer\Semver\Semver;
 use Composer\Semver\VersionParser;
 use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Config\Config;
 use Firefly\Data\Exception\DriverErrorTable;
 use Firefly\Data\Exception\PersistenceExceptionTranslator;
@@ -277,6 +278,73 @@ function fireflyGenerators(): array
     ksort($found);
 
     return $generators = $found;
+}
+
+/**
+ * The two numbers `firefly:cache` decides, derived by RUNNING it.
+ *
+ * `artifacts` is what the command prints as its manifest count — `count($report->files)` — and `pairs` is how
+ * many scanner/compiler calls `writeManifests()` makes to produce them. Both are read from the writer itself,
+ * because both are the kind of figure a chapter freezes into a console block and then never revisits: the
+ * manuscripts printed `wrote 8 manifest(s)` and `wrote 12 manifest(s)` in two different chapters while the
+ * command had long since settled at fourteen, and a reader comparing the page against their own terminal
+ * found the book wrong with nothing going red.
+ *
+ * The count is taken by invoking the real writer over an EMPTY PSR-4 map into a throwaway directory, which is
+ * exactly the claim the prose makes — `ManifestCacheWriter` writes every artifact unconditionally, so an
+ * application with no `#[Scheduled]` method still gets an empty `scheduled.php` — and so the figure is
+ * independent of whatever the repository happens to contain. If that ever stops being true, the number moves
+ * and every sentence quoting it turns red, which is the point.
+ *
+ * @return array{artifacts: int, pairs: int}
+ */
+function fireflyCacheFigures(): array
+{
+    /** @var array{artifacts: int, pairs: int}|null $figures */
+    static $figures = null;
+
+    if ($figures !== null) {
+        return $figures;
+    }
+
+    $dir = sys_get_temp_dir().'/firefly-docs-cache-'.bin2hex(random_bytes(6));
+
+    try {
+        $artifacts = count((new ManifestCacheWriter)->write([], $dir)->files);
+    } finally {
+        fireflyRemoveDirectory($dir);
+    }
+
+    $source = (string) file_get_contents(dirname(__DIR__).'/packages/cli/src/Cache/ManifestCacheWriter.php');
+
+    return $figures = [
+        'artifacts' => $artifacts,
+        'pairs' => (int) preg_match_all('/\(new \w+Compiler\)->write\(/', $source),
+    ];
+}
+
+/**
+ * Deletes a throwaway directory and everything under it.
+ *
+ * Only ever called with a path this file just created under the system temp directory.
+ */
+function fireflyRemoveDirectory(string $dir): void
+{
+    if (! is_dir($dir)) {
+        return;
+    }
+
+    /** @var iterable<SplFileInfo> $entries */
+    $entries = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+
+    foreach ($entries as $entry) {
+        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+    }
+
+    rmdir($dir);
 }
 
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
@@ -991,4 +1059,100 @@ it('pins every make:firefly-* table to the flags and the file count the generato
 
     // docs/cli.md, book/src/13-cli-cache.md and book/src-es/13-cli-cache.md, eight generators each.
     expect($checked)->toBe(24);
+});
+
+it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really writes', function () {
+    // The eighth, and the first one a reader checks against their own terminal. `firefly:cache` prints the
+    // number of artifacts it wrote, and three documents quote that line as a worked example. Two of them
+    // quoted it from a tree that no longer exists — `wrote 8 manifest(s)` in the DI chapter, `wrote 12` in
+    // the CQRS chapter — while the command writes fourteen for EVERY application, unconditionally, which is
+    // the whole reason the figure is quotable at all. A console block is a promise about what the reader will
+    // see; these two were promising output the command cannot produce.
+    //
+    // The same drift reached the pair count. `writeManifests()` grew the #[ControllerAdvice] handler manifest
+    // and the proxy plan, and four chapters went on calling a scanner "one of the ten pairs".
+    $figures = fireflyCacheFigures();
+
+    // Fourteen artifacts out of twelve scanner/compiler calls: the component+context compiler emits two, and
+    // writeProxies() appends the proxies.php classmap. If this fails, the documents below are right and this
+    // expectation is the thing to re-derive — but read ManifestCacheWriter first.
+    expect($figures)->toBe(['artifacts' => 14, 'pairs' => 12]);
+
+    $consoleLines = 0;
+    $pairClaims = 0;
+    $artifactClaims = 0;
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (preg_match_all('/\bwrote\s+(\d+)\s+manifest\(s\)/u', $paragraph, $matches) > 0) {
+                foreach ($matches[1] as $written) {
+                    $consoleLines++;
+
+                    expect((int) $written)->toBe($figures['artifacts'], sprintf(
+                        '%s prints `firefly:cache — wrote %s manifest(s)`, which the command cannot produce: '
+                        .'ManifestCacheWriter writes %d artifacts for every application, unconditionally.',
+                        $page,
+                        $written,
+                        $figures['artifacts'],
+                    ));
+                }
+            }
+
+            // "one of the **twelve** scanner/compiler pairs", "uno de los doce pares escáner/compilador",
+            // and the short form a chapter uses once it has named them: "one of its twelve pairs".
+            $patterns = [
+                '/(?:\*\*)?(\p{L}+)(?:\*\*)?\s+(?:scanner\/compiler\s+pairs|pares\s+(?:escáner|scanner)\/(?:compilador|compiler))/u',
+                '/\b(?:its|sus)\s+(?:\*\*)?(\p{L}+)(?:\*\*)?\s+(?:pairs|pares)\b/u',
+            ];
+
+            foreach ($patterns as $pattern) {
+                if (preg_match_all($pattern, $paragraph, $matches) < 1) {
+                    continue;
+                }
+
+                foreach ($matches[1] as $token) {
+                    $written = fireflyWrittenNumber($token);
+
+                    if ($written === null) {
+                        continue;
+                    }
+
+                    $pairClaims++;
+
+                    expect($written)->toBe($figures['pairs'], sprintf(
+                        '%s calls it one of %s scanner/compiler pairs; ManifestCacheWriter::writeManifests() '
+                        .'makes %d such calls.',
+                        $page,
+                        $token,
+                        $figures['pairs'],
+                    ));
+                }
+            }
+
+            if (preg_match_all('/\b(?:lands?|dejan?)\s+(?:\*\*)?(\p{L}+)(?:\*\*)?\s+(?:artifacts|artefactos)\b/u', $paragraph, $matches) > 0) {
+                foreach ($matches[1] as $token) {
+                    $written = fireflyWrittenNumber($token);
+
+                    if ($written === null) {
+                        continue;
+                    }
+
+                    $artifactClaims++;
+
+                    expect($written)->toBe($figures['artifacts'], sprintf(
+                        '%s says the run lands %s artifacts under bootstrap/cache/firefly/; it lands %d.',
+                        $page,
+                        $token,
+                        $figures['artifacts'],
+                    ));
+                }
+            }
+        }
+    }
+
+    // docs/cli.md, both tutorials, and the DI and CQRS chapters in both languages; the pair count in chapters
+    // 3, 7 (twice), 8 and 9 of each manuscript; the artifact tree in chapter 13 of each.
+    expect($consoleLines)->toBe(7)
+        ->and($pairClaims)->toBe(10)
+        ->and($artifactClaims)->toBe(2);
 });

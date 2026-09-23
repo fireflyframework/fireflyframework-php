@@ -436,7 +436,7 @@ Nunca ejecutas `HandlerScanner` tú mismo. Es uno de los **doce** pares escáner
 
 ```bash
 $ php artisan firefly:cache
-firefly:cache — wrote 12 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
 El archivo compilado aterriza en `bootstrap/cache/firefly/handlers.php`; `FireflyCacheServiceProvider` lo vincula directamente sobre la entrada del contenedor `HandlerManifest` — sobrescribiendo incondicionalmente el `HandlerManifest` **vacío** por defecto que `CqrsWiringProvider` vincula cuando todavía no existe ninguna caché (el mismo patrón de retirada al estilo `#[ConditionalOnMissingBean]` que el Capítulo 2 te mostró para los beans, aplicado aquí a todo un manifiesto compilado). `CqrsHandlerWiringPass` recorre entonces ese manifiesto en el arranque y llena el `HandlerRegistry` que conociste arriba con un invocador por descriptor — cada invocador resuelve su bean manejador **de nuevo desde el contenedor en cada despacho**, nunca en caché en tiempo de cableado, así que un manejador `#[Transactional]` como `OpenWalletHandler` siempre se observa a través de su proxy generado (Capítulo 9), nunca a través de la clase desnuda, sin proxy.

@@ -78,9 +78,16 @@ final class ManifestCacheWriter
         );
 
         // web
+        $routeScanner = new RouteScanner;
         (new RouteManifestCompiler)->write(
-            (new RouteScanner)->scan($psr4),
+            $routeScanner->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::ROUTES,
+        );
+
+        // web — the #[ControllerAdvice]/#[ExceptionHandler] manifest, off the same scanner.
+        (new ExceptionHandlerManifestCompiler)->write(
+            $routeScanner->scanExceptionHandlers($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::EXCEPTION_HANDLERS,
         );
 
         // validation — compiles from an explicit class list, not a PSR-4 scan.
@@ -127,12 +134,18 @@ final class ManifestCacheWriter
             $files[] = $dir.'/'.FireflyCachePaths::TRANSACTIONAL,
         );
 
+        // data + security — the proxy plan: which beans get a proxy, and which advice each method runs.
+        (new ProxyPlanCompiler)->write(
+            $this->planner()->plan($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::PROXY_PLAN,
+        );
+
         return new CacheReport($files);
     }
 }
 ```
 
-That is ten `scan()`-then-`write()` calls — every capability from Chapter 2's component scan through Chapter 10's method-security manifest, each already introduced in an earlier chapter as an in-process scan — plus one more step, `writeProxies()`, that generates the `#[Transactional]` proxy classes Chapter 9 taught you about, using the exact same reflection-free `ProxyClassGenerator` the runtime itself uses when no cache exists yet:
+That is twelve `scan()`-then-`write()` calls — every capability from Chapter 2's component scan through Chapter 10's method-security manifest, each already introduced in an earlier chapter as an in-process scan — plus one more step, `writeProxies()`, that generates the proxy classes Chapter 9 taught you about, using the exact same reflection-free `ProxyClassGenerator` the runtime itself uses when no cache exists yet:
 
 ```php
 final class ManifestCacheWriter
@@ -144,12 +157,14 @@ final class ManifestCacheWriter
             mkdir($proxyDir, 0o755, true);
         }
 
+        $planner = $this->planner();
+        $plan = $planner->plan($psr4);
         $generator = new ProxyClassGenerator;
         $map = [];
 
-        foreach ((new TransactionalScanner)->scanProxyMethods($psr4) as $targetClass => $methods) {
+        foreach ($planner->proxyMethods($plan) as $targetClass => $methods) {
             $source = $generator->generate($targetClass, $methods);
-            $proxyClass = $targetClass.'__FireflyTransactionalProxy';
+            $proxyClass = $plan->proxyClassFor($targetClass);
             $file = $proxyDir.'/'.str_replace('\\', '_', $targetClass).'.php';
             file_put_contents($file, $source);
             $map[$proxyClass] = $file;
@@ -162,10 +177,17 @@ final class ManifestCacheWriter
 
         return count($map);
     }
+
+    // The advice every proxy runs, in the order the plan will chain it: security (100) outside
+    // transactions (1000) — the same two sources an uncached boot collects as #[Component]s.
+    private function planner(): ProxyPlanner
+    {
+        return new ProxyPlanner([new TransactionalAdviceSource, new MethodSecurityAdviceSource]);
+    }
 }
 ```
 
-Eleven steps in total land twelve artifacts under `bootstrap/cache/firefly/`:
+Thirteen steps in total land fourteen artifacts under `bootstrap/cache/firefly/`:
 
 ```
 bootstrap/cache/firefly/
@@ -173,6 +195,7 @@ bootstrap/cache/firefly/
 ├── context.php            # application-context manifest
 ├── config-properties.php  # #[ConfigProperties] DTOs
 ├── routes.php             # compiled route table
+├── exception-handlers.php # #[ControllerAdvice]/#[ExceptionHandler] manifest
 ├── constraints.php        # validation constraint manifest
 ├── handlers.php           # #[CommandHandler]/#[QueryHandler] manifest
 ├── event-listeners.php    # #[EventListener] manifest
@@ -180,8 +203,9 @@ bootstrap/cache/firefly/
 ├── scheduled.php          # #[Scheduled] manifest
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
+├── proxy-plan.php         # which beans get a proxy, and which advice each method runs
 ├── proxies.php            # FQCN => file classmap for the generated proxies
-└── proxies/               # one generated proxy class file per #[Transactional] target
+└── proxies/               # one generated proxy class file per class the plan names
 ```
 
 ---

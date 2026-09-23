@@ -96,10 +96,11 @@ DOM-level regression test beside the existing ones — the browser scenario is t
 
 ## Documentation
 
-Documentation is held to the same gate as code, by four Pest tests and a strict site build.
+Documentation is held to the same gate as code, by five Pest tests and a strict site build.
 
-**Every code listing names the file it came from.** A fenced `php` block in `README.md`, under `docs/` or in
-either manuscript must carry one of two HTML comments on the line above it:
+**Every code listing names the file it came from.** A fenced `php` block in `README.md` or on any page
+directly under `docs/` — `DocsCodeAudit::AUDITED` is the list, and adding a page to it is how a page joins
+the gate — must carry one of two HTML comments on the line above it:
 
 ```markdown
 <!-- source: packages/web/src/Filter/FilterChainRegistrar.php -->
@@ -116,9 +117,28 @@ names. `tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.
 docblock is the full contract. **A red run is fixed by making the document true**, never by deleting an
 assertion or by marking a framework excerpt `illustrative:`.
 
-The book's own listings are held to the same contract, and are additionally linted by
-`book/build/verify_code.py <dir> --require-provenance`, which runs `php -l` over each one and refuses a `php`
-listing that carries no marker at all.
+The book is linted separately, and less strictly. `book/build/verify_code.py book/src` and
+`book/build/verify_code.py book/src-es` — the two invocations `book/README.md` documents — write every fenced
+`php` listing to a temp file and run `php -l` over it, so a chapter whose code does not parse fails. That is
+the whole of the book's gate. The manuscripts are **not** under the provenance contract above: no chapter
+carries a `source:` or an `illustrative:` marker yet, `DocsCodeAudit::AUDITED` names no book path, and the
+script's own `--require-provenance` switch — the one that would enforce it — fails every `php` listing in
+both languages today and is therefore part of no gate. Converting the chapters is open work; until it is
+done, a green `verify_code.py` run says a listing parses, never that it matches the file it shows.
+
+**Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
+the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
+did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the book is inside this gate
+even though it is outside the one above — and holds any paragraph that makes an exhaustive claim against a
+value read out of the source at test time, never against a number typed into the test. A count is a claim,
+and the cheapest one to get wrong, so counts are read as words as well as digits, in English and in Spanish.
+Under guard today: the expression functions `SecurityExpressionEvaluator` really dispatches, the actuator
+inventory and every "404 until exposed" sentence, the exceptions `PersistenceExceptionTranslator` really
+builds, the order in which `ErrorPageRenderer` really reads an `Accept` header, the stereotype hierarchy PHP
+really declares, the Composer constraint tables `composer/semver` really matches, the `make:firefly-*` tables
+the generators really back, and the artifact count `ManifestCacheWriter` really writes. The triggers are deliberately narrow — a page may mention `hasRole()` or `/actuator/env` in passing
+without owing the full enumeration — so **a red run here is fixed by correcting the sentence**, never by
+loosening the trigger that caught it.
 
 **Diagrams are hand-written SVG.** No Mermaid, no PlantUML, no raster: plain `<rect>`/`<line>`/`<text>` on a
 white rounded panel, `font-family="sans-serif"`, exactly one `<title>` and one `<desc>`, marker ids prefixed
