@@ -272,7 +272,7 @@ quote are rejected outright (expression injection).
 
 `HttpSecurityFilter` (`-70`) keeps deny-by-default. An **unauthenticated** denial is handed to the
 `AuthenticationEntryPoint` chosen by `firefly.security.http.entry_point`: `auto` sends a browser (the request names
-`text/html`, is neither an XMLHttpRequest nor a `wantsJson()` call, and is not under
+`text/html` (or `application/xhtml+xml`), is neither an XMLHttpRequest nor a `wantsJson()` call, and is not under
 `firefly.web.error-page.json-paths` — the error page's own negotiation, `ErrorPageRenderer::prefersHtml()`,
 independent of `firefly.web.error-page.enabled`) to the login page with the request saved when form login **or
 OAuth2 login** is on (`FormLoginSettings::$pageEnabled` is true for either), answers `401` +

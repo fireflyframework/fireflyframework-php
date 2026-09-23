@@ -24,7 +24,7 @@ draws for Python, mapped onto Laravel instead.
 | Interactive login | `Auth::routes()`, Breeze or Fortify — a scaffold copied into your application, which you own and maintain from then on | A `SecurityContextPersistenceFilter` that loads the context from the session, a `FormLoginFilter` on `/login`, the framework's own login page, a `LogoutFilter`, remember-me, and an entry point that negotiates a redirect against a 401 |
 | Signing in with an external provider | Socialite — an OAuth2 client you drive from a controller you write | `firefly/security-oauth2-client`: OIDC login as a filter pair, provider presets, discovery, PKCE, id-token validation, an `OidcUser` injected into your action, RP-initiated logout, client credentials and `Http::oauth2Client()` |
 | Being the provider | Passport for full OAuth2, Sanctum for first-party tokens | `firefly/security-oauth2-server`: registered clients in memory or Eloquent, `/oauth2/authorize` with PKCE and a consent page, `/oauth2/token` with three grants, introspection, revocation, userinfo, JWKS, both `.well-known` documents, RS256/ES256 keys from `firefly:oauth2:keys`, rotated through `jwt.previous_keys` |
-| Distributed tracing | Nothing built in; Telescope is local-only and is not a trace | A `Tracer`/`Span` port with an OpenTelemetry adapter, a W3C `traceparent` continued at the server filter and injected on the `Http` client, both CQRS buses and every EDA envelope |
+| Distributed tracing | Nothing built in; Telescope is local-only and is not a trace | A `Tracer`/`Span` port with an OpenTelemetry adapter, a W3C `traceparent` continued at the server filter and injected on the `Http` client and both CQRS buses; an event published through the in-memory or queue bus carries it in the envelope headers, and every delivery is traced, a broker's included |
 | Structured logging | Monolog, configured per channel by hand | `firefly.logging.structured.format` = `json`/`ecs`/`logstash`, with the correlation, request, trace and span ids attached by processors on every channel the framework resolves |
 | Repository vocabulary | Eloquent query-builder calls, written out per use case | Spring Data's: derived queries, `#[Query]`, query by example, `#[Modifying]`, `#[Projection]`, `#[Lock]`, `#[EntityGraph]`, `Page`/`Slice`/`Pageable`/`Sort`, and a typed `DataAccessException` family instead of a raw `QueryException` |
 | Browser testing | Dusk — a real browser against a separately served application | Pest 4 + Playwright over the Testbench-booted skeleton in-process (`composer test:browser`), with the same SQLite database and the same container |
@@ -288,9 +288,11 @@ final class AddRequestId
 (`#[Order(-110)]`) extracts the inbound W3C `traceparent` and starts a `SERVER` span with it as the parent,
 so a request that arrives inside a trace continues it; the ids are published to Laravel's `Context` and
 `Request::$attributes`; and the same context is carried across five boundaries — inbound HTTP, an `INTERNAL`
-span per CQRS message, a `PRODUCER` span whose header rides in the EDA envelope, the `CONSUMER` span on
-delivery, and a `CLIENT` span on every outbound `Http` call, which injects the header again. Logging is the
-same story told in a second place: `TraceContextLogProcessor` puts `trace_id` and `span_id` on every record
+span per CQRS message, a `PRODUCER` span stamping the header into the envelope on the in-memory and queue
+buses, a `CONSUMER` span on every delivery (a broker's included, through the shared `SubscriberRegistrySink`;
+the broker publishers do not stamp the header yet — see [Known-latent](modules/tracing.md#known-latent)), and
+a `CLIENT` span on every outbound `Http` call, which injects the header again. Logging is the same story told
+in a second place: `TraceContextLogProcessor` puts `trace_id` and `span_id` on every record
 beside the correlation and request ids, and one key chooses the line format:
 
 <!-- source: skeleton/config/firefly.php -->

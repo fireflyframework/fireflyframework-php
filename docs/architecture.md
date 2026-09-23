@@ -204,10 +204,12 @@ under `firefly.security.http.entry_point`:
 
 - **`auto`** (the default) — a *browser* is sent to the login page when form login or OAuth2 login is on;
   otherwise, when HTTP Basic is on, it gets a `WWW-Authenticate: Basic` challenge; otherwise the 401. The
-  browser test is `ErrorPageRenderer::prefersHtml()`: the request names `text/html`, is neither an
-  `XMLHttpRequest` nor a `wantsJson()` call, and its path is not under `firefly.web.error-page.json-paths`.
-  That last clause is the one that is easy to drop and must not be — Laravel tests the *first* acceptable
-  type, so `Accept: application/json, text/html` names `text/html` yet is plainly a machine asking.
+  browser test is `ErrorPageRenderer::prefersHtml()`: the request names `text/html` (or
+  `application/xhtml+xml`), is neither an `XMLHttpRequest` nor a `wantsJson()` call, and its path is not
+  under `firefly.web.error-page.json-paths`. That last clause is the one that is easy to drop and must not
+  be — Laravel's `wantsJson()` looks only at the *first* acceptable type, so a client that copies a browser's
+  `Accept: text/html, application/json` is not a `wantsJson()` call at all and does name `text/html`, yet is
+  plainly a machine asking; `json-paths` is the one clause that says the URL itself is an API surface.
 - **`login`** — always the login page, and the boot is refused when neither login mechanism is enabled.
 - **`challenge`** — always the Basic challenge.
 - **`problem`** — always the exception, rendered by `firefly/web`.
@@ -247,9 +249,12 @@ header map, with no SDK involved. `TracingFilter`, the outermost ordered filter 
 request arriving with a `traceparent` continues that trace and one arriving without starts a new root — then
 publishes `firefly.trace_id` and `firefly.span_id` onto Laravel's `Context` and `Request::$attributes`. From
 there the same trace crosses five boundaries: inbound HTTP, an `INTERNAL` span per CQRS message, a
-`PRODUCER` span whose `traceparent` rides in the EDA envelope's headers, the matching `CONSUMER` span on
-delivery, and a `CLIENT` span on every outbound `Http` call, which injects the header again for the next
-service's own filter to extract.
+`PRODUCER` span stamping `traceparent` into the envelope's headers on the in-memory and queue buses, a
+`CONSUMER` span on every delivery — a broker's included, through the shared `SubscriberRegistrySink` — and a
+`CLIENT` span on every outbound `Http` call, which injects the header again for the next service's own filter
+to extract. The producer half is the narrower one on purpose: `eda-rabbitmq`, `eda-kafka` and `eda-postgres`
+build their envelopes themselves and do not reach the publish seam yet, so a `traceparent` reaches a broker
+only when something upstream put it there — see [Known-latent](modules/tracing.md#known-latent).
 
 The CQRS and EDA seams follow the `CqrsMetrics` shape: an interface in the owning package with a no-op
 default behind `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration

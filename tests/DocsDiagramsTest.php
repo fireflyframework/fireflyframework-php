@@ -1019,8 +1019,11 @@ it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy s
  * around every EDA envelope". Neither the reflection above nor the byte-identical mirror check could see it:
  * the code was read, not the prose, and both files carried the same mistake identically. So the phrasings the
  * panel has actually been written with are asserted ABSENT — from the drawn text, from the `<desc>` on its
- * own, and from all three prose documents, whose Laravel-comparison row carried the same overclaim five lines
- * above the Known-latent bullet that refutes it.
+ * own, and from every shipped Markdown paragraph that names a `traceparent`, which is a DERIVED surface
+ * rather than a list of three files. The list was the last flaw: the module page's Laravel-comparison row
+ * carried the same overclaim five lines above the Known-latent bullet that refutes it, and when README.md,
+ * docs/architecture.md and docs/laravel-comparison.md later grew propagation prose of their own, the
+ * comparison table's most-read row said "both CQRS buses and every EDA envelope" and the suite stayed green.
  */
 it('pins the tracing-propagation figure to the real orders, context keys, log fields and span kinds', function () {
     $root = dirname(__DIR__);
@@ -1328,9 +1331,10 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     // So every overclaim the panel has actually been written with is named here and asserted absent from the
     // whole of the drawn text — $svg is <title>, <desc> and <text> together — and from the <desc> a second
     // time on its own, so that the accessible copy can never drift back past the visible one. The same
-    // sentences are held out of all three prose documents, because the module page's Laravel-comparison row
-    // said "`traceparent` in every `EventEnvelope`" five lines above the Known-latent bullet that says the
-    // reverse, and a page arguing with itself teaches the wrong half at random.
+    // sentences are held out of every shipped paragraph that names a `traceparent` (see the derivation
+    // below), because the module page's Laravel-comparison row said "`traceparent` in every `EventEnvelope`"
+    // five lines above the Known-latent bullet that says the reverse, and a page arguing with itself teaches
+    // the wrong half at random.
     //
     // The last two entries are the module page's OPENING SUMMARY, which is a fourth copy of the claim and the
     // one that cost the longest to notice: while the table row and the figure were being scoped, the lead
@@ -1362,14 +1366,57 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         }
     }
 
-    foreach ($prose as $relative => $text) {
-        $plain = strtolower((string) preg_replace('/\s+/', ' ', str_replace('`', '', $text)));
+    // WHICH DOCUMENTS. Not $prose. Naming three files was the flaw that let the claim come back: the moment
+    // README.md, docs/architecture.md and docs/laravel-comparison.md were filled with propagation prose of
+    // their own, the comparison table's most-read row said "both CQRS buses and every EDA envelope" and the
+    // suite stayed green, because the guard was still looking at the three pages the last regression happened
+    // to live on. $prose cannot simply grow: every assertion above it requires the full treatment — the three
+    // `#[Order]` badges, both Context keys, the gate property, all five span kinds, both span-name templates —
+    // which a one-line comparison row will never carry and should not have to.
+    //
+    // So the surface is DERIVED instead of listed: every Markdown page the project ships, split into
+    // paragraphs, and a paragraph is held to the list exactly when it talks about `traceparent` at all. That
+    // is the trigger because the claim is only ever wrong ABOUT PROPAGATION — docs/modules/eda-brokers.md
+    // says the sink port "delivers every envelope", which is true of a delivery path and names no header.
+    // A new page that describes the EDA hop is covered the day it is written, with no list to remember.
+    $paragraphs = [];
+    $pages = [$root.'/README.md'];
+    foreach (['docs', 'book/src', 'book/src-es'] as $directory) {
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/'.$directory, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($walk as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'md'
+                && ! str_contains($file->getPathname(), '/docs/superpowers/')) {
+                $pages[] = $file->getPathname();
+            }
+        }
+    }
+    sort($pages);
 
+    foreach ($pages as $page) {
+        $relative = substr($page, strlen($root) + 1);
+        foreach (preg_split('/\n\s*\n/', (string) file_get_contents($page)) ?: [] as $index => $paragraph) {
+            $plain = strtolower((string) preg_replace('/\s+/', ' ', str_replace('`', '', $paragraph)));
+            if (str_contains($plain, strtolower(W3CTraceContextPropagator::TRACEPARENT))) {
+                $paragraphs[$relative.' ¶'.($index + 1)] = $plain;
+            }
+        }
+    }
+
+    // Sanity on the derivation itself: the three pages the figure's prose lives on must be among the pages
+    // that matched, or a rename has quietly emptied this guard while it went on reporting success.
+    foreach (array_keys($prose) as $relative) {
+        expect(array_filter(array_keys($paragraphs), static fn (string $key): bool => str_starts_with($key, $relative.' ¶')))
+            ->not->toBe([], "{$relative} matched no paragraph naming traceparent; the scan below reads nothing");
+    }
+
+    foreach ($paragraphs as $relative => $plain) {
         foreach ($overclaims as $overclaim) {
             expect(str_contains($plain, $overclaim))->toBeFalse(
-                "{$relative} says '{$overclaim}' again, which the Known-latent bullet on the same page "
-                .'contradicts: a broker publish opens no PRODUCER span and stamps no traceparent. Scope the '
-                .'sentence to an in-memory or queued envelope, exactly as the figure does',
+                "{$relative} says '{$overclaim}' again, which the Known-latent bullet of "
+                .'docs/modules/tracing.md contradicts: a broker publish opens no PRODUCER span and stamps no '
+                .'traceparent. Scope the sentence to an in-memory or queued envelope, exactly as the figure does',
             );
         }
     }

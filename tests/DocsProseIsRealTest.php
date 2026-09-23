@@ -15,7 +15,10 @@ use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
+use Firefly\Web\Error\ErrorPageRenderer;
+use Firefly\Web\Error\ErrorPageSettings;
 use Illuminate\Config\Repository as ConfigRepository;
+use Illuminate\Http\Request;
 
 /**
  * The guard for documentation PROSE, the half `tests/DocsCodeIsRealTest.php` cannot see.
@@ -341,4 +344,102 @@ it('pins every translator enumeration to the exceptions PersistenceExceptionTran
             $seam,
         ));
     }
+});
+
+it('pins every prefersHtml() paragraph to the order and the media types ErrorPageRenderer really checks', function () {
+    // The fourth kind of wrong sentence, and the most expensive: one that states a fact about the FRAMEWORK
+    // BELOW correctly and then draws the opposite conclusion from it. The shipped architecture bullet read
+    // "Laravel tests the *first* acceptable type, so `Accept: application/json, text/html` names `text/html`
+    // yet is plainly a machine asking" — the premise true, the example its exact inverse. Under that first-
+    // type rule the header's first type is `application/json`, so `wantsJson()` is TRUE, so prefersHtml()
+    // has already answered false two checks before `json-paths` is consulted. The clause the paragraph
+    // existed to defend was being defended by the one header it does nothing for, on the security path that
+    // decides whether an anonymous API call gets a 401 problem document or a `302 /login`.
+    //
+    // DERIVED, so the guard cannot repeat the mistake it catches: the ORDER of the three checks is read off
+    // the method body, the accepted media types are read off its return expression, and the verdicts are
+    // taken from the real method over real requests. Nothing below types out an answer the source could
+    // contradict.
+    $reflected = new ReflectionMethod(ErrorPageRenderer::class, 'prefersHtml');
+    $lines = file((string) $reflected->getFileName());
+    $body = implode('', array_slice($lines === false ? [] : $lines, $reflected->getStartLine() - 1, $reflected->getEndLine() - $reflected->getStartLine() + 1));
+
+    $at = static function (string $needle) use ($body): int {
+        $offset = strpos($body, $needle);
+        if ($offset === false) {
+            throw new RuntimeException(sprintf('ErrorPageRenderer::prefersHtml() no longer contains %s.', $needle));
+        }
+
+        return $offset;
+    };
+    expect($at('wantsJson()'))->toBeLessThan($at('isJsonPath('), 'prefersHtml() now consults json-paths before wantsJson()')
+        ->and($at('isJsonPath('))->toBeLessThan($at("headers->get('Accept'"), 'prefersHtml() now reads Accept before json-paths');
+
+    preg_match_all("/str_contains\(\\\$accept, '([^']+)'\)/", $body, $matches);
+    $accepted = $matches[1];
+    sort($accepted);
+    expect($accepted)->toBe(['application/xhtml+xml', 'text/html'], 'the media types prefersHtml() names have changed');
+
+    // The real method, over real requests. `api/*` is ErrorPageSettings' own default; the empty list is the
+    // control that isolates what `json-paths` contributes and what it does not.
+    $verdict = static function (string $accept, string $path, bool $jsonPaths): bool {
+        $request = Request::create('/'.$path, 'GET');
+        $request->headers->set('Accept', $accept);
+
+        return (new ErrorPageRenderer(new ErrorPageSettings(jsonPaths: $jsonPaths ? ['api/*'] : [])))->prefersHtml($request);
+    };
+
+    // A header whose FIRST acceptable type is JSON is a wantsJson() call, answered before json-paths is
+    // reached — turning the list off changes nothing, which is the proof that the clause did not decide it.
+    expect($verdict('application/json, text/html', 'api/orders', true))->toBeFalse()
+        ->and($verdict('application/json, text/html', 'api/orders', false))->toBeFalse()
+        ->and($verdict('application/json, text/html', 'orders/999999', false))->toBeFalse();
+
+    // The reverse ordering is the one that needs the clause: wantsJson() is false, `text/html` is named, and
+    // only the path says this URL is a machine surface.
+    expect($verdict('text/html, application/json', 'api/orders', false))->toBeTrue()
+        ->and($verdict('text/html, application/json', 'api/orders', true))->toBeFalse();
+
+    // Every Accept header a prefersHtml() paragraph quotes has to be one the clause it illustrates can still
+    // reach. A header wantsJson() already rejects cannot demonstrate anything about json-paths.
+    $paragraphs = 0;
+    foreach (fireflyProsePages() as $page => $pageParagraphs) {
+        foreach ($pageParagraphs as $paragraph) {
+            if (! str_contains($paragraph, 'prefersHtml')) {
+                continue;
+            }
+
+            $paragraphs++;
+
+            foreach ($accepted as $type) {
+                expect(str_contains($paragraph, $type))->toBeTrue(sprintf(
+                    '%s describes the prefersHtml() browser test without naming %s, which the method accepts '
+                    .'exactly as it accepts the other.',
+                    $page,
+                    $type,
+                ));
+            }
+
+            if (! str_contains($paragraph, 'json-paths')) {
+                continue;
+            }
+
+            preg_match_all('/`Accept:\s*([^`]+)`/', $paragraph, $headers);
+            foreach ($headers[1] as $header) {
+                $probe = Request::create('/api/orders', 'GET');
+                $probe->headers->set('Accept', $header);
+                expect($probe->wantsJson())->toBeFalse(sprintf(
+                    '%s offers `Accept: %s` as what json-paths catches, but its first acceptable type is %s, '
+                    .'so wantsJson() is true and prefersHtml() answers false two checks earlier — json-paths '
+                    .'is never consulted. Use a header whose first type is text/html.',
+                    $page,
+                    $header,
+                    $probe->getAcceptableContentTypes()[0] ?? 'nothing',
+                ));
+            }
+        }
+    }
+
+    // docs/architecture.md's entry-point bullet, and docs/modules/security.md's prose and its settings table.
+    expect($paragraphs)->toBe(3);
 });

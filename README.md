@@ -462,16 +462,18 @@ is a property of the compiled plan, not a convention anyone has to remember:
 context as its parent (or a new root when there is none), and publishes the resulting ids onto Laravel's
 `Context` and `Request::$attributes` as `firefly.trace_id` and `firefly.span_id` — the one place everything
 downstream reads them from. That is the first of five boundaries the same trace crosses; the other four are
-an `INTERNAL` span per command and per query at the CQRS seam, a `PRODUCER` span whose `traceparent` rides in
-the EDA envelope's headers, the matching `CONSUMER` span on delivery, and a `CLIENT` span on every outbound
-`Http` call, which injects the header again so the next service's own `TracingFilter` continues the same
-trace. The ids then land in three
-places you can actually read: every log line, `/actuator/httpexchanges`, and the admin dashboard. None of it
-costs anything until you opt in — the shipped default is `NoOpTracer`, and every instrumentation site checks
-`$span->context()->isValid()` before publishing an id:
+an `INTERNAL` span per command and per query at the CQRS seam, a `PRODUCER` span stamping `traceparent` into
+the EDA envelope's headers on the in-memory and queue buses, a `CONSUMER` span on every delivery — a broker's
+included, through the shared `SubscriberRegistrySink`, because the broker publishers build their own envelopes
+and do not reach the publish seam yet ([Known-latent](docs/modules/tracing.md#known-latent)) — and a `CLIENT`
+span on every outbound `Http` call, which injects the header again so the next service's own `TracingFilter`
+continues the same trace. The ids then land in three places you can actually read: every log line,
+`/actuator/httpexchanges`, and the admin dashboard. None of it costs anything until you opt in — the shipped
+default is `NoOpTracer`, and every instrumentation site checks `$span->context()->isValid()` before
+publishing an id:
 
 <p align="center">
-  <img src="docs/assets/diagrams/tracing-propagation.svg" alt="One W3C traceparent entering at the TracingFilter at order -110 and flowing outward across five boundaries — the SERVER span published to Laravel Context, an INTERNAL span per CQRS message, PRODUCER and CONSUMER spans around an EDA envelope that carries the header, and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the admin dashboard." width="100%">
+  <img src="docs/assets/diagrams/tracing-propagation.svg" alt="One W3C traceparent entering at the TracingFilter at order -110 and flowing outward across five boundaries — the SERVER span published to Laravel Context, an INTERNAL span per CQRS message, PRODUCER and CONSUMER spans around an in-memory or queued EDA envelope whose headers carry the traceparent (the broker publishers build their envelopes themselves and do not reach the seam yet; their deliveries still do, through SubscriberRegistrySink), and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the admin dashboard." width="100%">
 </p>
 
 ---
@@ -919,10 +921,11 @@ whole trick: `W3CTraceContextPropagator::extract()` reads the inbound
 `traceparent` and hands back the remote parent, so a request that arrives with a trace *continues* it and one
 that arrives without starts a new root. The span is renamed to `GET /orders/{id}` once the router has matched,
 its ids are published onto Laravel's `Context` and `Request::$attributes` as `firefly.trace_id` and
-`firefly.span_id`, and from there the same trace crosses five boundaries — inbound HTTP, the CQRS buses, the
-EDA envelope on the way out, the same envelope on delivery, and every outbound `Http` call, which injects the
-header again. It is free until you opt in: the shipped default is `NoOpTracer`, whose spans record nothing
-and whose context is invalid, and the OpenTelemetry adapter binds itself only when the SDK is installed and
+`firefly.span_id`, and from there the same trace crosses five boundaries — inbound HTTP, the CQRS buses, an
+in-memory or queued EDA envelope on the way out, every delivery on the way in (a broker's included, through
+`SubscriberRegistrySink`), and every outbound `Http` call, which injects the header again. It is free until
+you opt in: the shipped default is `NoOpTracer`, whose spans record nothing and whose context is invalid, and
+the OpenTelemetry adapter binds itself only when the SDK is installed and
 `firefly.observability.tracing.enabled` is on. **Highlights:** the `Tracer`/`Span` port, the propagation
 table boundary by boundary, and `firefly.logging.structured.format` for putting the same ids on every log
 line — see [Tracing](docs/modules/tracing.md) and [Logging](docs/modules/logging.md).
