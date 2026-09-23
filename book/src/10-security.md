@@ -224,6 +224,8 @@ Every rule compiles to the **exact same expression grammar** `#[PreAuthorize]` u
 
 `assertSafeValue()` rejects any role/authority value containing a single quote, for a reason that matters a great deal once you've read the next section: a legitimate role or authority string never contains one, but a value that did could otherwise splice extra grammar into the fixed expression literal it gets interpolated into.
 
+::: figure art/figures/security-filter-chain.svg | Figure 10.1 — HttpSecurityFilter is the last link of an ordered chain: every filter's real #[Order] value, the two framework filters prepended ahead of all of them, and the DelegatingAuthenticationEntryPoint an anonymous denial reaches — a login redirect, a Basic challenge or a 401.
+
 ---
 
 ## Method security: the closed-whitelist expression grammar

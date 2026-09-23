@@ -224,6 +224,8 @@ Cada regla compila hacia la **exacta misma gramática de expresiones** que usa `
 
 `assertSafeValue()` rechaza cualquier valor de rol/autoridad que contenga una comilla simple, por una razón que importa muchísimo en cuanto leas la siguiente sección: una cadena de rol o autoridad legítima nunca contiene una, pero un valor que sí lo hiciera podría, si no, empalmar gramática adicional dentro del literal de expresión fijo en el que se interpola.
 
+::: figure art/figures/security-filter-chain.svg | Figura 10.1 — HttpSecurityFilter es el último eslabón de una cadena ordenada: el valor #[Order] real de cada filtro, los dos filtros de framework antepuestos a todos ellos, y el DelegatingAuthenticationEntryPoint al que llega una denegación anónima — una redirección al login, un desafío Basic o un 401.
+
 ---
 
 ## Seguridad de método: la gramática de expresiones de lista blanca cerrada
