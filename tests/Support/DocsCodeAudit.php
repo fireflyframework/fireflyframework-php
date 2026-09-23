@@ -83,7 +83,9 @@ final class DocsCodeAudit
      */
     public const array AUDITED = [
         'README.md',
+        'docs/architecture.md',
         'docs/index.md',
+        'docs/laravel-comparison.md',
         'docs/modules.md',
     ];
 
