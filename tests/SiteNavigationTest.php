@@ -140,3 +140,124 @@ it('quotes package and guide counts that match the tree, on the Modules landing 
         .'old number: '.implode('; ', $drifted),
     );
 });
+
+/**
+ * The wiring sentence, against the two idioms the tree really uses.
+ *
+ * The first version of this paragraph said installing a package is the whole wiring step because "its
+ * `#[Configuration]` class registers the defaults behind `#[ConditionalOnMissingBean]`" — one mechanism,
+ * stated of the package set as a whole. The OUTCOME it promised was true everywhere; the mechanism was true
+ * for 17 of the 29. `firefly/web`, the package nearly every reader installs, has no `#[Configuration]` class
+ * at all: it binds its whole default set from `WebServiceProvider::register()` behind `bound()` checks, an
+ * idiom its own comment calls "first-one-wins style, same idiom as every other binding in this method". A
+ * reader who trusted the sentence and went looking for that class found nothing, which is the worst shape a
+ * documentation error takes — not a claim that reads false, a claim that reads true and sends you somewhere
+ * empty.
+ *
+ * That is the same drift the counts guard above exists for, one layer further in: a number rots when somebody
+ * adds a package, and a mechanism named as universal rots when somebody adds a package that wires itself the
+ * other way. So the split is computed rather than proof-read, and both halves are pinned to a file:
+ *
+ *   - THE COUNTS, from `glob()` and the attribute itself, so that adding a package — with a
+ *     `#[Configuration]` class or without one — turns this red rather than quietly making "17 of the 29"
+ *     into a lie no diff touched.
+ *
+ *   - THE TWO EXEMPLARS, because a count says how many and a reader needs somewhere to look. The page sends
+ *     them to `DataAutoConfiguration` for the conditional-bean idiom and to `WebServiceProvider::register()`
+ *     for the guarded-binding one, and those two files are asserted to still show what they are cited for:
+ *     the first `#[Configuration]`-annotated and conditional, the second neither annotated nor unguarded.
+ *     Should `firefly/web` ever grow a `#[Configuration]` class, this fails on the citation before it fails
+ *     on the count, and the fix is to re-pick the example — which is exactly the edit being forgotten.
+ *
+ * Whitespace is collapsed for the same reason as above: the file is hard-wrapped near 110 columns, and a
+ * guard that cared where a paragraph broke would go red on a reflow.
+ */
+it('names both wiring idioms on the Modules landing, split the way the packages really split', function () {
+    $root = MkdocsConfig::root();
+
+    $annotated = static function (string $directory): bool {
+        if (! is_dir($directory)) {
+            return false;
+        }
+
+        /** @var Iterator<string, SplFileInfo> $files */
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            if (preg_match('/^#\[Configuration\b/m', (string) file_get_contents($file->getPathname())) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    $packages = array_map(
+        static fn (string $manifest): string => basename(dirname($manifest)),
+        glob($root.'/packages/*/composer.json') ?: [],
+    );
+
+    $configured = array_values(array_filter(
+        $packages,
+        static fn (string $package): bool => $annotated($root.'/packages/'.$package.'/src'),
+    ));
+
+    expect($packages)->not->toBeEmpty('there are no packages under packages/* at all');
+
+    // The citations, before the counts: the page sends readers to these two files by name.
+    $dataAutoConfiguration = (string) file_get_contents($root.'/packages/data/src/DataAutoConfiguration.php');
+    $webServiceProvider = (string) file_get_contents($root.'/packages/web/src/WebServiceProvider.php');
+
+    expect($dataAutoConfiguration)->toMatch(
+        '/^#\[Configuration\b/m',
+        'packages/data/src/DataAutoConfiguration.php is cited on the Modules landing as the model '
+        .'`#[Configuration]` class and is no longer annotated as one',
+    );
+
+    expect(str_contains($dataAutoConfiguration, 'ConditionalOnMissingBean'))->toBeTrue(
+        'packages/data/src/DataAutoConfiguration.php is cited on the Modules landing for backing off behind '
+        .'`#[ConditionalOnMissingBean]` and no longer uses it',
+    );
+
+    expect($annotated($root.'/packages/web/src'))->toBeFalse(
+        'the Modules landing cites `firefly/web` as the package with NO `#[Configuration]` class, binding its '
+        .'defaults behind `bound()` checks instead — it has one now, so the example has to be re-picked',
+    );
+
+    expect(substr_count($webServiceProvider, '$this->app->bound('))->toBeGreaterThan(
+        0,
+        'the Modules landing cites `WebServiceProvider::register()` for the `bound()`-guarded idiom, and that '
+        .'provider no longer guards anything with `bound()`',
+    );
+
+    $prose = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root.'/docs/modules.md'));
+
+    $claims = [
+        '**'.count($configured).' of the '.count($packages).' packages** carry a `#[Configuration]` class',
+        '**other '.(count($packages) - count($configured)).'** have no such class',
+        '`packages/data/src/DataAutoConfiguration.php`',
+        '`WebServiceProvider::register()`',
+        '`bound()`',
+    ];
+
+    $drifted = [];
+
+    foreach ($claims as $needle) {
+        if (! str_contains($prose, $needle)) {
+            $drifted[] = 'docs/modules.md no longer says "'.$needle.'"';
+        }
+    }
+
+    expect($drifted)->toBe(
+        [],
+        count($configured).' of the '.count($packages).' packages carry a `#[Configuration]` class and the '
+        .'other '.(count($packages) - count($configured)).' do not, and the Modules landing no longer says so: '
+        .implode('; ', $drifted),
+    );
+});
