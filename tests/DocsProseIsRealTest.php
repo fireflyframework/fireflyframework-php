@@ -3116,17 +3116,31 @@ function fireflyCurlTranscriptProse(string $page, array $blocks): array
             continue;
         }
 
+        // BOTH DIRECTIONS, because both are the same defect: a body printed beside a command that
+        // cannot return it. The fence of the transcript below the command says what the reader is
+        // promised, the stereotype that serves the path says what they will really get, and the rule
+        // reads the same either way round — a `json` body needs a `#[RestController]`, an `html` page
+        // needs a `#[Controller]`. Only the first arm existed at first, so the sentence in the comment
+        // below covered a case the code did not: a guard claiming reach it did not have, which is the
+        // failure mode this whole file is written against. A fence that is neither is not a transcript
+        // of the answer at all and is left alone.
         $fence = $blocks[$index + 1]['info'] ?? '';
-        $expected = str_starts_with($fence, 'json') ? 'RestController' : null;
+        $expected = match (true) {
+            str_starts_with($fence, 'json') => 'RestController',
+            str_starts_with($fence, 'html') => 'Controller',
+            default => null,
+        };
 
         if ($expected === null || in_array($expected, array_column($matched, 'stereotype'), true)) {
             continue;
         }
 
-        $failures[] = $page.':'.$block['line'].' shows a `json` transcript for `localhost:8000'
+        $failures[] = $page.':'.$block['line'].' shows a `'
+            .($expected === 'RestController' ? 'json' : 'html').'` transcript for `localhost:8000'
             .$requested.'`, and the skeleton serves that path from '.$matched[0]['class'].', a `#['
-            .$matched[0]['stereotype'].']` — an HTML page, not JSON. Fix the walkthrough rather than '
-            .'the transcript: the reader runs this command.';
+            .$matched[0]['stereotype'].']` — '
+            .($expected === 'RestController' ? 'an HTML page, not JSON' : 'a JSON body, not an HTML page')
+            .'. Fix the walkthrough rather than the transcript: the reader runs this command.';
     }
 
     return ['judged' => $judged, 'failures' => $failures];
@@ -3243,6 +3257,94 @@ it('keeps judging a page after a framework-mounted curl transcript is exempted',
     expect($verdict['judged'])->toBe(2)
         ->and($verdict['failures'])->toHaveCount(1)
         ->and(implode("\n", $verdict['failures']))->toContain('/invoices/42');
+});
+
+it('refuses a transcript printed in the fence the stereotype serving that path cannot produce', function () {
+    // The canary above owes this one its RULE, the way that one owes it the exemption. The guard's comment
+    // promised both directions — "`json` needs a `#[RestController]`, `html` needs a `#[Controller]`" — and
+    // the code derived an expectation for a `json` fence only, short-circuiting on everything else. So the
+    // html half was a sentence, not a check: an `html` page printed under `/orders/42` would have passed, and
+    // the reader who runs that command gets a JSON body. A comment claiming reach the code does not have is
+    // the one defect this file exists to refuse, which makes it the worst place in the tree to carry one.
+    //
+    // BOTH ARMS, DERIVED FROM THE SKELETON, so the fixture cannot drift away from what ships: a JSON route
+    // and an HTML route are taken from the guard's own scan, and each is given the transcript the OTHER one
+    // would print. Two crossed pairs in, two failures out, each naming the fence it was written in.
+    $routes = fireflySkeletonRoutes();
+
+    $json = array_values(array_filter(
+        $routes,
+        static fn (array $route): bool => $route['stereotype'] === 'RestController' && ! str_contains($route['path'], '{'),
+    ));
+    $html = array_values(array_filter(
+        $routes,
+        static fn (array $route): bool => $route['stereotype'] === 'Controller' && ! str_contains($route['path'], '{'),
+    ));
+
+    expect($json)->not->toBe([], 'the skeleton declares no fixed JSON route, so this fixture holds nothing')
+        ->and($html)->not->toBe([], 'the skeleton declares no fixed HTML route, so this fixture holds nothing');
+
+    $dir = sys_get_temp_dir().'/firefly-docs-curl-fence-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+
+    try {
+        // An `html` body under the JSON route, then a `json` body under the HTML route — each transcript
+        // the mirror image of the defect the guard was built for.
+        file_put_contents($dir.'/crossed.md', implode("\n", [
+            '```bash',
+            'curl -s localhost:8000'.$json[0]['path'],
+            '```',
+            '',
+            '```html',
+            '<p>Hello</p>',
+            '```',
+            '',
+            '```bash',
+            'curl -s localhost:8000'.$html[0]['path'],
+            '```',
+            '',
+            '```json',
+            '{"message":"Hello, World!"}',
+            '```',
+            '',
+        ]));
+
+        // The same two routes, each with the transcript it really serves, which must pass untouched.
+        file_put_contents($dir.'/honest.md', implode("\n", [
+            '```bash',
+            'curl -s localhost:8000'.$json[0]['path'],
+            '```',
+            '',
+            '```json',
+            '[]',
+            '```',
+            '',
+            '```bash',
+            'curl -s localhost:8000'.$html[0]['path'],
+            '```',
+            '',
+            '```html',
+            '<p>Hello</p>',
+            '```',
+            '',
+        ]));
+
+        $crossed = fireflyCurlTranscriptProse('crossed.md', fireflyFencedBlocks($dir.'/crossed.md'));
+        $honest = fireflyCurlTranscriptProse('honest.md', fireflyFencedBlocks($dir.'/honest.md'));
+    } finally {
+        fireflyRemoveDirectory($dir);
+    }
+
+    expect($crossed['judged'])->toBe(2)
+        ->and($crossed['failures'])->toHaveCount(2)
+        ->and($crossed['failures'][0])->toContain('`html` transcript')
+        ->and($crossed['failures'][0])->toContain($json[0]['class'])
+        ->and($crossed['failures'][0])->toContain('a JSON body, not an HTML page')
+        ->and($crossed['failures'][1])->toContain('`json` transcript')
+        ->and($crossed['failures'][1])->toContain($html[0]['class'])
+        ->and($crossed['failures'][1])->toContain('an HTML page, not JSON')
+        ->and($honest['judged'])->toBe(2)
+        ->and($honest['failures'])->toBe([]);
 });
 
 it('pins every filter-operator enumeration to the labels DataFilter really declares', function () {
