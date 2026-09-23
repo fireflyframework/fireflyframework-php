@@ -352,10 +352,15 @@ the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entr
 `http.rules` entry.
 
 `FilterChainRegistrar::orderedFilters()` is what decides all of this: it sorts every `WebFilter` bean by
-`BeanDescriptor::order` — read from the manifest, never from a resolved instance — breaks ties with `strcmp` on the
+`ComponentDescriptor::$order` — the number the compiled manifest carries, reached through
+`BeanDefinition::$descriptor`, read there and never off a resolved instance — breaks ties with `strcmp` on the
 class name (which is why `HttpExchangeFilter` precedes `MetricsFilter` at the same `-100`), and only then prepends
-the two framework filters. An `#[Order]` here is therefore a published contract — but a narrow one, because
-`Order::$order` and `BeanDescriptor::order` are both `int` and eight of the thirteen above sit on consecutive
+the two framework filters. What it matches on is `BeanDefinition::class()`, the **component** class, which is why a
+`WebFilter` returned by a `#[Bean]` factory method is never discovered at all: that definition's class is the
+`#[Configuration]` declaring the method, not the filter the method returns. `BeanDescriptor::$order` — the `#[Order]`
+of a `#[Bean]` method, held in `ComponentDescriptor::$beans` — therefore plays no part in this chain; a filter earns
+its link by being a `#[Component]`. An `#[Order]` here is therefore a published contract — but a narrow one, because
+`Order::$order` and `ComponentDescriptor::$order` are both `int` and eight of the thirteen above sit on consecutive
 integers (`-95` through `-88`). A `WebFilter` of your own slots *between* two of these only where an unused integer
 exists: `-88`→`-85`, `-85`→`-83`, `-82`→`-80`, `-80`→`-70`, or outside the range on either side. Declaring an order
 already taken is not refused and is not a position you chose — the `strcmp` tie-break above resolves it by your own
@@ -427,7 +432,7 @@ each depends on master-gated beans.
 | `firefly.security.oauth2.resource_server.authorities_claim` | `roles` | Claim carrying the authority list (distinct from the local-JWT default). |
 | `firefly.security.http.enabled` | `false` | Enables the deny-by-default `HttpSecurityFilter`. **Requires the master flag** (see above). |
 | `firefly.security.http.rules` | `[]` | Ordered `{pattern, access}` URL rules — see [the access vocabulary](#the-config-access-vocabulary-is-fixed-and-fail-closed). With the filter on, an empty list denies **everything** — deny-by-default is the point. |
-| `firefly.security.http.entry_point` | `auto` | What an anonymous request to a protected URL gets: `auto` negotiates (browser + a login page (form or OAuth2 login) → login redirect with the request saved; else HTTP Basic on → `401` + `WWW-Authenticate`; else the 401 problem/page), `login`/`challenge`/`problem` force one. `login` without form login or OAuth2 login is refused at boot. A **browser** is a request that names `text/html` (or `application/xhtml+xml`), is not an `XMLHttpRequest` and is not under `firefly.web.error-page.json-paths` — the error page's own negotiation (`ErrorPageRenderer::prefersHtml`), and independent of `firefly.web.error-page.enabled`: that flag decides how a 401 is drawn, never whether a person is sent to sign in. |
+| `firefly.security.http.entry_point` | `auto` | What an anonymous request to a protected URL gets: `auto` negotiates (browser + a login page (form or OAuth2 login) → login redirect with the request saved; else HTTP Basic on → `401` + `WWW-Authenticate`; else the 401 problem/page), `login`/`challenge`/`problem` force one. `login` without form login or OAuth2 login is refused at boot. A **browser** is a request that names `text/html` (or `application/xhtml+xml`), is neither an `XMLHttpRequest` nor a `wantsJson()` call, and is not under `firefly.web.error-page.json-paths` — the error page's own negotiation (`ErrorPageRenderer::prefersHtml`), and independent of `firefly.web.error-page.enabled`: that flag decides how a 401 is drawn, never whether a person is sent to sign in. |
 | `firefly.security.csrf.enabled` | `false` | Enables `CsrfFilter` (`-80`). Independent of the master flag. Without a session it is the stateless double-submit check: the `XSRF-TOKEN` cookie echoed in `X-XSRF-TOKEN` (or `_token`). With a started session (`session.enabled`, or any mechanism that implies it) it verifies Laravel's session token instead, accepting exactly what Laravel's `PreventRequestForgery` accepts, in the same order: the `_token` field, the `X-CSRF-TOKEN` header, or the `X-XSRF-TOKEN` header carrying the **encrypted** `XSRF-TOKEN` cookie as the browser holds it and Axios sends it (decrypted through the application `Encrypter`; one that does not decrypt is a mismatch). The double-submit cookie value is ignored on that path. Any mismatch is a `403`. |
 | `firefly.security.csrf.except` | `[]` | Path globs exempt from CSRF. |
 | `firefly.security.headers.enabled` | `false` | Enables the security-headers filter. Independent of the master flag. |

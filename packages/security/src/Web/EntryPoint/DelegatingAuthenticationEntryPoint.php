@@ -17,11 +17,14 @@ use Symfony\Component\HttpFoundation\Response;
  * `firefly.security.http.entry_point` (Spring's DelegatingAuthenticationEntryPoint, with the request matchers
  * fixed by the framework):
  *
- *   auto      — a BROWSER (the request names text/html, is not an XMLHttpRequest and is not under a
+ *   auto      — a BROWSER (the request names text/html or application/xhtml+xml, is neither an
+ *               XMLHttpRequest nor a `wantsJson()` call, and is not under a
  *               `firefly.web.error-page.json-paths` path — the same negotiation the error page uses) is sent
  *               to the login page when form login or OAuth2 login is on (`FormLoginSettings::$pageEnabled`);
  *               otherwise, when HTTP Basic is on, a 401 challenge; otherwise the 401 problem/page exactly as
- *               before.
+ *               before. `wantsJson()` is the clause that is easy to drop and must not be: Laravel tests the
+ *               FIRST acceptable type, so `Accept: application/json, text/html` names text/html and is no
+ *               XHR, yet is a machine asking — a 401, not a login redirect.
  *   login     — always the login page (refused at boot when neither login is on).
  *   challenge — always the Basic challenge.
  *   problem   — always the exception, rendered by firefly/web.

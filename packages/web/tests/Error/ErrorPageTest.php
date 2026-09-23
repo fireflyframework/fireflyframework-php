@@ -69,6 +69,13 @@ it('still knows a browser from an API client when the page is switched off', fun
         ->and($renderer->prefersHtml($request('*/*')))->toBeFalse()
         ->and($renderer->prefersHtml($request('application/json')))->toBeFalse()
         ->and($renderer->prefersHtml($request('text/html', ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])))->toBeFalse()
+        // The clause that is easiest to omit when this rule is written down in prose, and the one that makes
+        // the difference between a 302 to /login and a 401. `wantsJson()` tests the FIRST acceptable type, so
+        // a header that PUTS json first is a machine asking even though it also names text/html and carries
+        // no X-Requested-With. Stating the rule as "names text/html and is not an XHR" — as three copies of
+        // the documentation once did — gets this request exactly backwards.
+        ->and($renderer->prefersHtml($request('application/json, text/html')))->toBeFalse()
+        ->and($renderer->prefersHtml($request('text/html, application/json')))->toBeTrue()
         // json-paths says what the URL IS, not what the page does, so it still applies with the page off.
         ->and($renderer->prefersHtml(Request::create('/api/orders/9', 'GET', server: $browserAccept)))->toBeFalse()
         ->and($renderer->prefersHtml(Request::create('/orders/9', 'GET', server: $browserAccept)))->toBeTrue()

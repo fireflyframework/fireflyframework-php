@@ -319,8 +319,10 @@ return [
         'http' => [
             'enabled' => env('FIREFLY_SECURITY_HTTP_ENABLED', false),
             /*
-             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
-             | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
+             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html
+             | or application/xhtml+xml, neither an XMLHttpRequest nor a wantsJson() call — Laravel reads the
+             | FIRST acceptable type, so `application/json, text/html` is NOT a browser — and not under
+             | firefly.web.error-page.json-paths) is redirected to the login
              | page with the request saved when form_login or oauth2.client.login is on; otherwise a 401 with
              | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
              | `login`, `challenge` and `problem` force one of the three (`login` without form_login or OAuth2

@@ -111,6 +111,14 @@ it('records every shipped diagram in the docs/assets/README.md provenance table'
  * BYTE-IDENTICAL contents, and every one of them must actually be referenced by a `::: figure` line in both
  * language trees — an unreferenced figure is a file nobody renders and therefore nobody proofreads, which is
  * how the stale copy gets shipped in the first place.
+ *
+ * THE RULE THIS IMPOSES ON WHOEVER ADDS THE NEXT DIAGRAM: the copy into `book/art/figures/` and the two
+ * `::: figure` lines — one in `book/src/`, one in `book/src-es/` — belong in the SAME commit. A commit that
+ * lands the file and defers the chapters leaves this test red, and the way out is the two figure lines, never
+ * a narrower assertion here: scoping the both-trees check to diagrams "already referenced somewhere" would
+ * licence exactly the unreferenced, unproofread copy the guard exists to prevent. Deferring is not free
+ * either — `docs/assets/README.md` owes the new file a provenance row on the same commit (the test above),
+ * and both copies have to be byte-identical from the first commit, not reconciled later.
  */
 it('mirrors every docs diagram into book/art/figures and references it from both language trees', function () {
     $root = dirname(__DIR__);
@@ -143,7 +151,11 @@ it('mirrors every docs diagram into book/art/figures and references it from both
 
         foreach ($chapters as $tree => $blob) {
             expect(str_contains($blob, '::: figure art/figures/'.$name.' |'))
-                ->toBeTrue("{$name} is in book/art/figures but no ::: figure line in book/{$tree} renders it");
+                ->toBeTrue(
+                    "{$name} is in book/art/figures but no ::: figure line in book/{$tree} renders it — add "
+                    ."`::: figure art/figures/{$name} | <caption>` to the chapter it belongs to, in THIS commit; "
+                    .'a figure the manuscript never renders is one nobody proofreads'
+                );
         }
     }
 });
@@ -159,8 +171,15 @@ it('mirrors every docs diagram into book/art/figures and references it from both
  * each filter's `#[Order]` by reflection, sorts the list exactly as `FilterChainRegistrar::orderedFilters()`
  * does (order ascending, ties broken by `strcmp` on the fully-qualified class name, the two unordered
  * framework filters prepended), and asserts the SVG's rows and the module doc's table are that same sequence,
- * value for value. A moved `#[Order]`, a filter added to the chain, or a row transcribed wrongly is now a red
- * test rather than a picture that lies.
+ * value for value.
+ *
+ * The two lists below are themselves PINNED TO THE TREE, and that is what makes "a filter added to the chain"
+ * part of the claim true rather than aspirational. A hand-typed roster is precisely the thing this file exists
+ * to distrust: the SVG set is globbed and compared, the provenance rows are globbed and compared,
+ * book/art/figures is globbed and compared, and so — in the block right below the two lists — is every
+ * concrete `WebFilter` class under every package's `src`. A new filter landing in any package is a red test
+ * naming it, not a diagram that quietly stopped being the whole chain. So: a moved `#[Order]`, a filter added to the
+ * chain, or a row transcribed wrongly is now a red test rather than a picture that lies.
  */
 it('pins the filter-chain diagram and the security table to the real #[Order] attributes', function () {
     $root = dirname(__DIR__);
@@ -189,6 +208,86 @@ it('pins the filter-chain diagram and the security table to the real #[Order] at
         TracingFilter::class,
     ];
     $observability = [HttpExchangeFilter::class, MetricsFilter::class, TracingFilter::class];
+
+    // Exhaustive by construction, not by care. Every CONCRETE class under packages/*/src that reaches the
+    // WebFilter interface — directly, or through OncePerRequestFilter, or through any base a later package
+    // introduces — must appear in one of the two lists above. The inheritance is resolved from the sources
+    // themselves (a fixed point over `extends`/`implements`) rather than by autoloading each candidate: a
+    // package whose optional dependency is absent must not turn this guard into a fatal error.
+    /** @var array<string, array{parent: string|null, interfaces: list<string>, concrete: bool}> $declared */
+    $declared = [];
+    foreach ((array) glob($root.'/packages/*/src', GLOB_ONLYDIR) as $src) {
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator((string) $src, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($walk as $file) {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $matched = preg_match(
+                '/^(?<mods>(?:final |abstract |readonly )*)class (?<name>\w+)'
+                .'(?: extends (?<parent>[^\s{]+))?(?: implements (?<implements>[^{]+))?/m',
+                (string) file_get_contents($file->getPathname()),
+                $class,
+            );
+            if ($matched !== 1) {
+                continue;
+            }
+
+            $parent = trim($class['parent'] ?? '');
+            $interfaces = [];
+            foreach (explode(',', $class['implements'] ?? '') as $interface) {
+                $interface = trim($interface);
+                if ($interface !== '') {
+                    $interfaces[] = basename(str_replace('\\', '/', $interface));
+                }
+            }
+
+            $declared[$class['name']] = [
+                'parent' => $parent === '' ? null : basename(str_replace('\\', '/', $parent)),
+                'interfaces' => $interfaces,
+                'concrete' => ! str_contains($class['mods'], 'abstract'),
+            ];
+        }
+    }
+
+    /** @var array<string, true> $reachesWebFilter */
+    $reachesWebFilter = [];
+    do {
+        $grew = false;
+        foreach ($declared as $name => $info) {
+            if (isset($reachesWebFilter[$name])) {
+                continue;
+            }
+            $parent = $info['parent'];
+            if (in_array('WebFilter', $info['interfaces'], true) || ($parent !== null && isset($reachesWebFilter[$parent]))) {
+                $reachesWebFilter[$name] = true;
+                $grew = true;
+            }
+        }
+    } while ($grew);
+
+    $inTree = [];
+    foreach ($declared as $name => $info) {
+        if ($info['concrete'] && isset($reachesWebFilter[$name])) {
+            $inTree[] = $name;
+        }
+    }
+    sort($inTree);
+
+    $drawn = array_map(
+        static fn (string $class): string => (new ReflectionClass($class))->getShortName(),
+        array_merge($prepended, $discovered),
+    );
+    sort($drawn);
+
+    expect($inTree)->toBe(
+        $drawn,
+        'packages/*/src holds a different set of concrete WebFilters than security-filter-chain.svg draws: '
+        .'added '.(implode(', ', array_diff($inTree, $drawn)) ?: 'nothing')
+        .'; removed '.(implode(', ', array_diff($drawn, $inTree)) ?: 'nothing'),
+    );
 
     // The attributes themselves, read once: this map — not a number typed into this file — is what the
     // diagram and the table are then checked against.
