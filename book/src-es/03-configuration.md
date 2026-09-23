@@ -15,6 +15,7 @@ LaraFly no sustituye el sistema de configuración de Laravel — se apoya en él
 
 Ya viste el ejemplo más pequeño posible de esto en el Inicio rápido. `app/GreetingProperties.php`, generado por `composer create-project firefly/skeleton`, es un DTO `#[ConfigProperties]` real y distribuido:
 
+<!-- source: skeleton/app/GreetingProperties.php -->
 ```php
 <?php
 
@@ -43,6 +44,7 @@ Este capítulo explica, en profundidad, todo lo que ese pequeño archivo hace si
 
 Antes de recurrir a un DTO, conviene ver la capa que hay justo debajo. `Firefly\Config\Config` envuelve `Illuminate\Contracts\Config\Repository` — el mismo repositorio de configuración del que lee `config()` en una aplicación Laravel corriente — con cuatro getters tipados: `string()`, `int()`, `bool()` y `array()`. Cada uno es de **fallo rápido**: una clave requerida (sin valor por defecto) que falta, o un valor que no se puede convertir al tipo solicitado, lanza `ConfigurationException` de inmediato, en vez de entregarte `null` o un tipo silenciosamente incorrecto tres marcos de llamada después.
 
+<!-- illustrative: the four calls a reader makes against the injected Config port from their own bean -->
 ```php
 $config->string('mail.host');          // required — throws ConfigurationException if absent
 $config->int('mail.port', 25);         // falls back to 25 when the key is absent
@@ -52,6 +54,7 @@ $config->array('mail.recipients', []);
 
 `Config` está registrado como singleton del contenedor, así que se inyecta por constructor en cualquier parte:
 
+<!-- illustrative: the reader's own bean reading the Config port -->
 ```php
 use Firefly\Config\Config;
 use Firefly\Container\Attributes\Service;
@@ -81,18 +84,16 @@ final class MailerBootstrap
 
 Aplicar el mismo patrón a un ajuste de negocio es tan corto como lo fue `GreetingProperties`. Supongamos que Lumen quiere un límite diario de transferencia configurable:
 
+<!-- source: packages/config/tests/Fixtures/WalletProperties.php -->
 ```php
 <?php
 
 declare(strict_types=1);
-
-namespace Lumen\Domain;
-
+// …
 use Firefly\Config\Attributes\ConfigProperties;
 
 /**
- * Binds the `wallet.*` configuration subtree — a per-day transfer ceiling in minor units and the
- * default currency assigned to a wallet opened without one — onto this readonly DTO.
+ // …
  */
 #[ConfigProperties('wallet')]
 final readonly class WalletProperties
@@ -106,6 +107,7 @@ final readonly class WalletProperties
 
 y el archivo de configuración correspondiente, `config/wallet.php`:
 
+<!-- illustrative: the application's own config file, whose keys and env names belong to the application -->
 ```php
 <?php
 
@@ -119,6 +121,7 @@ return [
 
 `TransferHandler` (los Capítulos 4 y 6 construyen el resto) ya puede depender directamente de `WalletProperties`:
 
+<!-- illustrative: the reader's own bean consuming their own #[ConfigProperties] class -->
 ```php
 use Firefly\Container\Attributes\Service;
 use Lumen\Domain\WalletProperties;
@@ -144,14 +147,15 @@ Nada aquí llama a `config('wallet.daily_transfer_limit_minor')`. `WalletPropert
 
 El vinculador por defecto, `Firefly\Config\Binder\ReflectionConfigBinder`, resuelve un parámetro del constructor a la vez a partir del array del subárbol vinculado:
 
+<!-- source: packages/config/src/Binder/ReflectionConfigBinder.php -->
 ```php
 final class ReflectionConfigBinder implements ConfigBinder
 {
+    // …
     private function resolveParameter(string $class, ReflectionParameter $parameter, array $config): mixed
     {
         $name = $parameter->getName();
-        $value = array_key_exists($name, $config) ? $config[$name] : null;
-
+        // …
         if ($value === null) {
             if ($parameter->isDefaultValueAvailable()) {
                 return $parameter->getDefaultValue();
@@ -159,8 +163,7 @@ final class ReflectionConfigBinder implements ConfigBinder
             if ($parameter->allowsNull()) {
                 return null;
             }
-
-            throw new ConfigurationException("Missing required configuration property [{$name}] for {$class}.");
+        // …
         }
 
         $type = $parameter->getType();
@@ -170,6 +173,7 @@ final class ReflectionConfigBinder implements ConfigBinder
 
         return $this->coerce($type, $value);
     }
+// …
 }
 ```
 
@@ -177,9 +181,11 @@ De ese cuerpo de método se desprenden tres reglas directamente. Una clave ausen
 
 La conversión de escalares es igual de mecánica — los campos `int`/`float`/`bool` se convierten a partir de lo que sea que el valor de configuración realmente sea (útil cuando un valor llegó desde una variable de entorno como cadena), y `string` acepta cualquier cosa escalar:
 
+<!-- source: packages/config/src/Binder/ReflectionConfigBinder.php -->
 ```php
 final class ReflectionConfigBinder implements ConfigBinder
 {
+    // …
     private function coerce(ReflectionNamedType $type, mixed $value): mixed
     {
         if ($type->isBuiltin()) {
@@ -188,12 +194,13 @@ final class ReflectionConfigBinder implements ConfigBinder
                 'float' => is_numeric($value) ? (float) $value : $value,
                 'bool' => is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN),
                 'string' => is_scalar($value) ? (string) $value : $value,
-                default => $value,
+            // …
             };
         }
-
+        // …
         $nested = $type->getName();
         if (is_array($value) && class_exists($nested)) {
+            // …
             return $this->bind($nested, $value);
         }
 
@@ -209,6 +216,7 @@ final class ReflectionConfigBinder implements ConfigBinder
 
 `#[ConfigProperties]` sigue exactamente la misma forma "reflexionar una vez, congelar en un manifiesto, arrancar desde la copia congelada" que el Capítulo 2 recorrió para el contenedor. `ConfigPropertiesScanner::scan()` recorre tus raíces PSR-4, reflexiona cada clase no abstracta, y registra un `ConfigPropertiesDescriptor` — solo el nombre de la clase y el prefijo — por cada una que lleve `#[ConfigProperties]`:
 
+<!-- source: packages/config/src/Scanner/ConfigPropertiesScanner.php -->
 ```php
 foreach ($this->classesIn($prefix, $dir) as $class) {
     $reflection = new ReflectionClass($class);
@@ -219,7 +227,7 @@ foreach ($this->classesIn($prefix, $dir) as $class) {
     if ($attrs === []) {
         continue;
     }
-    $descriptors[] = new ConfigPropertiesDescriptor($class, $attrs[0]->newInstance()->prefix);
+// …
 }
 ```
 
@@ -227,12 +235,15 @@ foreach ($this->classesIn($prefix, $dir) as $class) {
 
 En el arranque, `Firefly\Cli\Boot\FireflyCacheServiceProvider` carga ese manifiesto compilado y se lo entrega directamente a `Firefly\Config\Registrar\ConfigRegistrar::register()`, que vincula el DTO de cada descriptor como singleton del contenedor en un solo paso:
 
+<!-- source: packages/config/src/Registrar/ConfigRegistrar.php -->
 ```php
-foreach ($manifest->properties as $descriptor) {
+    foreach ($manifest->properties as $descriptor) {
+    // …
     $class = $descriptor->class;
     $prefix = $descriptor->prefix;
-
+    // …
     $this->container->singleton($class, static function () use ($binder, $class, $prefix, $config): object {
+        // …
         $subtree = $config->array($prefix, []);
 
         return $binder->bind($class, $subtree);
@@ -251,6 +262,7 @@ Esta es la razón completa por la que `GreetingProperties` y `WalletProperties` 
 
 El Capítulo 2 introdujo `#[Value]` sobre un parámetro de constructor desnudo — `#[Value('${MAIL_HOST:localhost}')]` — y mencionó que el propio resolutor de `firefly/container` solo entiende variables de entorno y expresiones pequeñas. Instalar `firefly/config` mejora esa resolución sin tocar un solo sitio `#[Value]` en tu código:
 
+<!-- illustrative: the reader's own class with a #[Value]-injected constructor parameter -->
 ```php
 use Firefly\Container\Attributes\Value;
 
@@ -264,6 +276,7 @@ final class Mailer
 
 `Firefly\Config\Value\ConfigValueResolver` implementa el mismo puerto `ValueResolver` que define `firefly/container`, pero resuelve `${key:default}` contra la **configuración de la aplicación primero**, luego el entorno, luego el valor por defecto literal:
 
+<!-- source: packages/config/src/Value/ConfigValueResolver.php -->
 ```php
 if (preg_match('/^\$\{([^:}]+)(?::([^}]*))?\}$/', $expression, $m) === 1) {
     $key = $m[1];
@@ -283,6 +296,7 @@ if (preg_match('/^\$\{([^:}]+)(?::([^}]*))?\}$/', $expression, $m) === 1) {
 
 `ConfigRegistrar::register()` vincula `ConfigValueResolver` por encima del valor por defecto del contenedor:
 
+<!-- source: packages/config/src/Registrar/ConfigRegistrar.php -->
 ```php
 $this->container->instance(ValueResolver::class, new ConfigValueResolver($this->config));
 ```
@@ -300,6 +314,7 @@ Un **perfil** es un entorno con nombre — `local`, `testing`, `staging`, `prod`
 
 `Firefly\Config\Profile\ProfileResolver::resolve()` devuelve un objeto de valor `Profiles`, usando una precedencia fija: la variable de entorno `FIREFLY_PROFILES_ACTIVE` (separada por comas, para más de un perfil activo) si está definida; si no, el único valor `APP_ENV` de Laravel; si no, el perfil implícito `default`.
 
+<!-- illustrative: the three calls a reader makes against the resolver from their own code; the framework resolves profiles inside its own boot -->
 ```php
 use Firefly\Config\Profile\ProfileResolver;
 
@@ -310,15 +325,18 @@ $profiles->all();              // list<string>
 $profiles->isEmpty();          // bool
 ```
 
+<!-- source: packages/config/src/Profile/Profiles.php -->
 ```php
 final readonly class Profiles
 {
+    // …
     public function __construct(public array $active) {}
 
     public function isActive(string $profile): bool
     {
         return in_array($profile, $this->active, true);
     }
+// …
 }
 ```
 
@@ -329,6 +347,7 @@ final readonly class Profiles
 
 Saber qué perfiles están activos se vuelve genuinamente útil en cuanto la propia presencia de un componente en el contenedor puede depender de ello. `#[ConditionalOnProfile]` — de `firefly/context`, el paquete del motor de arranque que el Capítulo 2 mencionó de pasada — condiciona un `#[Component]` (o un `#[Configuration]`/`#[Bean]`) a uno o más perfiles:
 
+<!-- illustrative: the reader's own profile-gated #[Component] -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Context\Condition\Attributes\ConditionalOnProfile;

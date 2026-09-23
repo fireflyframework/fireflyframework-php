@@ -32,7 +32,7 @@
 
 **Component** — El atributo de estereotipo genérico para un bean gestionado que no encaja en los roles más específicos `#[Service]`/`#[Repository]`/`#[Configuration]`. Todos los estereotipos son equivalentes para el contenedor; la distinción es para los lectores humanos y las herramientas (Capítulo 2).
 
-**Condition (`#[ConditionalOn*]`)** — Un atributo (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluado durante la pasada de condiciones del pipeline de arranque para decidir si una definición de bean sobrevive. El `#[ConditionalOnProperty]` sin `matchIfMissing` de `DbHealthIndicator` es lo que lo mantiene opcional en lugar de activo por defecto (Capítulos 2, 11).
+**Condition (`#[ConditionalOn*]`)** — Un atributo (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluado durante la pasada de condiciones del pipeline de arranque para decidir si una definición de bean sobrevive. El `#[ConditionalOnProperty(matchIfMissing: true)]` de `DbHealthIndicator` es lo que lo mantiene activo por defecto; lo que evita un `DOWN` sorpresa en una aplicación sin base de datos es otra interfaz, `ConditionalHealthIndicator::available()` (Capítulos 2, 11).
 
 **Deptrac** — El linter estático de fronteras de arquitectura (`deptrac/deptrac`) que hace cumplir qué paquete puede depender de cuál, como capas declaradas en `deptrac.yaml`. Un recuento de `0` violaciones es parte de la propia definición de terminado de este libro para el código de cada capítulo (Capítulos 2, 11, 13).
 

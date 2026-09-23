@@ -2,7 +2,7 @@
 
 # Observability: Health, Metrics, and the Actuator {.chtitle}
 
-By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — a drawn **bean graph** that resolves every constructor dependency through the interface it is wired by and reports the cycles a boot would otherwise die on with no message. It reads those endpoints **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
+By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` SPI and the built-in `Ping`/`DiskSpace`/`Db` indicators, how `HealthEndpoint` aggregates them into a single `/actuator/health` response — and how a probe **group** (the mechanism behind "liveness" and "readiness") is nothing more than a named, configured subset of indicators, how the whole management surface is **unexposed by default** so a forgotten endpoint fails closed as a 404 rather than an information leak, and `firefly/observability`'s pure-PHP `MeterRegistry`, its locale-safe Prometheus exporter, the per-meter histogram buckets that turn a Prometheus summary into something `histogram_quantile()` can answer, the structured log formats (`json`, `ecs`, `logstash`) that `firefly.logging.structured.format` switches a channel to and the four ids every line then carries, and the exact `#[Order(500)]` precedence trick — the same one Chapter 10 showed you for security — that lets `MeterRegistryCqrsMetrics` replace the CQRS bus's `NoOpCqrsMetrics` with no code change to `firefly/cqrs` at all. The chapter closes on `firefly/admin`, the server-rendered browser dashboard over those same endpoints — a drawn **bean graph** that resolves every constructor dependency through the interface it is wired by and reports the cycles a boot would otherwise die on with no message. It reads those endpoints **in-process**, so it renders pages the JSON surface deliberately keeps unexposed, which makes its own URL the entire security boundary and its default (`app.debug`) the most important line in the package.
 
 !!! note "New term: actuator"
     An **actuator** is a management endpoint that reports on the *running process itself* — is it healthy, what did it boot with, how fast are its requests — rather than on the business domain the process serves. The term and the shape both come from Spring Boot Actuator; `firefly/actuator` is a first-party, dependency-light PHP analogue: framework endpoints mounted directly on the same Illuminate `Router` your own controllers use, not a separate admin process.
@@ -13,6 +13,7 @@ By the end of this chapter you will know `firefly/actuator`'s `HealthIndicator` 
 
 A health check in LaraFly is any `#[Component]` implementing one method:
 
+<!-- source: packages/actuator/src/Health/HealthIndicator.php -->
 ```php
 interface HealthIndicator
 {
@@ -22,29 +23,31 @@ interface HealthIndicator
 
 `Health` is an immutable status-plus-details reading, built exclusively through four named factories:
 
+<!-- source: packages/actuator/src/Health/Health.php -->
 ```php
 final readonly class Health
 {
+    // …
     public function __construct(
         public Status $status,
         public array $details = [],
     ) {}
-
+    // …
     public static function up(array $details = []): self
     {
         return new self(Status::Up, $details);
     }
-
+    // …
     public static function down(array $details = []): self
     {
         return new self(Status::Down, $details);
     }
-
+    // …
     public static function outOfService(array $details = []): self
     {
         return new self(Status::OutOfService, $details);
     }
-
+    // …
     public static function unknown(array $details = []): self
     {
         return new self(Status::Unknown, $details);
@@ -54,6 +57,7 @@ final readonly class Health
 
 `Status` is a backed enum carrying its own severity ordering and the HTTP status it maps to — DOWN and OUT_OF_SERVICE both render as `503`, so a load balancer needs no special-casing to treat either as "take this instance out of rotation":
 
+<!-- source: packages/actuator/src/Health/Status.php -->
 ```php
 enum Status: string
 {
@@ -90,6 +94,7 @@ Three `HealthIndicator`s ship with `firefly/actuator`, and all three are worth r
 
 `PingHealthIndicator` is the trivial always-up probe, and its own docblock names exactly what it is for:
 
+<!-- source: packages/actuator/src/Health/PingHealthIndicator.php -->
 ```php
 /** The trivial liveness probe — always UP. Discovered by HealthContributorRegistrar under the name 'ping'. */
 #[Component]
@@ -104,6 +109,7 @@ final class PingHealthIndicator implements HealthIndicator
 
 `DiskSpaceHealthIndicator` reads a path and a byte threshold from config, and degrades gracefully — an unreadable path is reported DOWN with an explanatory detail rather than throwing:
 
+<!-- source: packages/actuator/src/Health/DiskSpaceHealthIndicator.php -->
 ```php
 #[Component]
 final class DiskSpaceHealthIndicator implements HealthIndicator
@@ -128,14 +134,26 @@ final class DiskSpaceHealthIndicator implements HealthIndicator
 }
 ```
 
-`DbHealthIndicator` is the one indicator that is **opt-in** rather than on by default — `#[ConditionalOnProperty]` with no `matchIfMissing`, so a skeleton project with no database configured never sees a surprise `DOWN` from a check it never asked for:
+`DbHealthIndicator` is **on by default** — `matchIfMissing: true` on its `#[ConditionalOnProperty]`, exactly as Spring Boot's `DataSourceHealthIndicator` auto-configuration is. It used to be opt-in, and the change is worth understanding, because "on by default" is not what stops a database-less project from seeing a surprise `DOWN`. A second interface is:
 
+<!-- source: packages/actuator/src/Health/DbHealthIndicator.php -->
 ```php
 #[Component]
-#[ConditionalOnProperty(name: 'firefly.management.endpoint.health.db.enabled', havingValue: 'true')]
-final class DbHealthIndicator implements HealthIndicator
+#[ConditionalOnProperty(name: 'firefly.management.endpoint.health.db.enabled', havingValue: 'true', matchIfMissing: true)]
+final class DbHealthIndicator implements ConditionalHealthIndicator
 {
-    public function __construct(private readonly ConnectionResolverInterface $connections) {}
+    // …
+    public function available(): bool
+    {
+        $default = $this->config->get('database.default');
+        if (! is_string($default) || $default === '') {
+            return false;
+        }
+
+        $driver = $this->config->get("database.connections.{$default}.driver");
+
+        return is_string($driver) && $driver !== '';
+    }
 
     public function health(): Health
     {
@@ -154,6 +172,10 @@ final class DbHealthIndicator implements HealthIndicator
 }
 ```
 
+`ConditionalHealthIndicator` adds exactly one method to the SPI, and `available()` is this framework's answer to Spring's `@ConditionalOnBean(DataSource)`. `HealthEndpoint` asks it before running the check, and an indicator that answers `false` contributes **no component at all** — not an `UNKNOWN`, not a `DOWN`, simply no `db` key in the response. Here the answer is read out of Laravel's own configuration: `database.default` has to name a connection, and that connection's entry has to declare a `driver`. So an application that genuinely has no database gets a health document that does not mention one, which is the honest answer; an application that *has* a database and still wants the check gone sets `firefly.management.endpoint.health.db.enabled=false` and the bean is never registered.
+
+That is the distinction worth carrying forward: the **property** decides whether the indicator exists, and `available()` decides whether an existing indicator has anything to say. Any `HealthIndicator` you write may implement the same interface and get the same treatment.
+
 Notice `DbHealthIndicator` depends directly on Illuminate's own `ConnectionResolverInterface` rather than on anything from `firefly/data` — there is no `Actuator → Data` edge in `deptrac.yaml` at all, so a DB health check costs `firefly/actuator` no new dependency. And every indicator here follows the same fail-safe shape: a query, a comparison, or a filesystem call that could throw is always caught and turned into `Health::down()` with a detail explaining why — never an unhandled exception, never a `500` where a `503` belongs.
 
 ---
@@ -162,6 +184,7 @@ Notice `DbHealthIndicator` depends directly on Illuminate's own `ConnectionResol
 
 `HealthEndpoint` is itself a `#[Component]` (not a plain framework internal — it has to be discoverable like any other bean) that reads every registered indicator, runs each one fail-safe, and folds the results down to the single most-severe status:
 
+<!-- source: packages/actuator/src/Health/HealthEndpoint.php -->
 ```php
 #[Component]
 final class HealthEndpoint implements ActuatorEndpoint
@@ -220,7 +243,7 @@ final class HealthEndpoint implements ActuatorEndpoint
             return Health::down(['error' => $e::class.': '.$e->getMessage()]);
         }
     }
-
+    // …
     private function group(string $name): ?array
     {
         $key = "firefly.management.endpoint.health.group.{$name}.include";
@@ -243,6 +266,7 @@ final class HealthEndpoint implements ActuatorEndpoint
 
 Two things are worth pausing on. First, with no request path at all, every registered indicator counts and `StatusAggregator` folds an empty set to `UP` (empty means nothing to be unhealthy about) and otherwise picks the single most-severe `Status` by `severity()` — one `DOWN` indicator is enough to bring the whole aggregate down, whatever the others report. Second, **there is no separate "liveness" or "readiness" endpoint class anywhere in the source** — `/actuator/health/{group}` is a single generic mechanism, and "liveness"/"readiness" are simply *conventional names* you configure, not a hard-coded Kubernetes-shaped feature:
 
+<!-- illustrative: the deployment's own config/firefly.php; which probes a cluster wires and which endpoints it exposes is the application's decision -->
 ```php
 <?php
 
@@ -272,9 +296,11 @@ Configured this way, `GET /actuator/health/liveness` aggregates only `ping` (so 
 
 The single most important operational fact about the actuator is this: **most endpoints are unreachable until you say otherwise.** `ExposureModel` is the whole mechanism, and it is short enough to read in full:
 
+<!-- source: packages/actuator/src/Endpoint/ExposureModel.php -->
 ```php
 final readonly class ExposureModel
 {
+    // …
     public function __construct(
         private array $include,
         private array $exclude,
@@ -289,72 +315,70 @@ final readonly class ExposureModel
 
         return new self($include, $exclude, $base === '' ? 'actuator' : $base);
     }
-
+    // …
     public function isExposed(string $id): bool
     {
-        if (in_array($id, $this->exclude, true)) {
+            // …
             return false;
         }
-
-        if (in_array('*', $this->include, true)) {
-            return true;
-        }
-
-        return in_array($id, $this->include, true);
+    // …
+    }
+    // …
     }
 }
 ```
 
 The default `include` is `"health,info"` — every other endpoint id (`env`, `beans`, `conditions`, `mappings`, `loggers`, `scheduledtasks`, and observability's `metrics`/`prometheus` once that package is installed) is **not exposed** until you explicitly add it, and `ActuatorDispatchAction` renders an unexposed or unknown id as a plain `404` through the same `ProblemDetailsRenderer` Chapter 4 introduced — never a raw framework error, and never a silent `200` with a body an unauthenticated caller shouldn't see. `.exclude` always wins over `.include`, so `include: '*'` plus a short `exclude` list is a legitimate "expose everything except…" policy.
 
-`/actuator/env` layers a second, independent safety net on top of exposure: even once exposed, any key whose name matches `password|secret|token|key|credential|passwd` (case-insensitive, recursive through nested arrays) is masked before the response is built — defense in depth for an endpoint that is reachable at all only once you have opted in:
+`/actuator/env` layers a second, independent safety net on top of exposure: even once exposed, a key whose name looks like a credential is masked before the response is ever built. The endpoint itself is four lines, because the rule lives in one shared class:
 
+<!-- source: packages/actuator/src/Introspection/EnvEndpoint.php -->
 ```php
-#[Component]
-final class EnvEndpoint implements ActuatorEndpoint
+public function handle(EndpointRequest $request): EndpointResponse
 {
-    private const MASK = '******';
+    /** @var array<string, mixed> $firefly */
+    $firefly = (array) $this->config->get('firefly', []);
 
-    private const SENSITIVE = '/password|secret|token|key|credential|passwd/i';
+    return EndpointResponse::json(['firefly' => SensitiveValueMasker::mask($firefly)]);
+}
+```
 
-    public function __construct(private readonly Repository $config) {}
+<!-- source: packages/actuator/src/Introspection/SensitiveValueMasker.php -->
+```php
+final class SensitiveValueMasker
+{
+    public const string MASK = '******';
 
-    public function endpointId(): string
-    {
-        return 'env';
-    }
-
-    public function enabled(): bool
-    {
-        return true;
-    }
-
-    public function handle(EndpointRequest $request): EndpointResponse
-    {
-        $firefly = (array) $this->config->get('firefly', []);
-
-        return EndpointResponse::json(['firefly' => $this->mask($firefly)]);
-    }
-
-    private function mask(array $values): array
+    private const string SENSITIVE = '/password|secret|token|key|credential|passwd|authorization|headers/i';
+    // …
+    public static function mask(array $values): array
     {
         $masked = [];
         foreach ($values as $key => $value) {
-            if (is_array($value)) {
-                $masked[$key] = $this->mask($value);
+            if (self::isSensitive($key)) {
+                $masked[$key] = self::MASK;
 
                 continue;
             }
-            $masked[$key] = preg_match(self::SENSITIVE, (string) $key) === 1 ? self::MASK : $value;
+
+            $masked[$key] = is_array($value) ? self::mask($value) : $value;
         }
 
         return $masked;
     }
-}
 ```
+
+That the rule lives in a class of its own rather than inside the endpoint is not tidiness. `/configprops` needs the *same* rule, and a second copy is how a masking rule rots: the two lists drift on the very next word somebody thinks to add, and the endpoint that missed the addition leaks.
+
+The ordering inside `mask()` is the part worth studying, because it is a bug fix you can read. The rule as it was first written tested the key only on the branch where the value was a **scalar** — an array-valued key was recursed into, and each leaf was then judged on its own key. So `firefly.security.jwt.keys => ['active' => 'PRIVATE…', 'previous' => '…']` rendered both private keys in full: `keys` matched the pattern but was an array, and `active` and `previous` matched nothing. Every real-world shape of a secret — a keyring, a credentials pair, a per-tenant token map — is exactly that shape, so the bypass covered the cases that mattered most. Here the **key decides first**, and a sensitive key masks its whole subtree whatever type the value has.
+
+A sensitive array masks to the scalar `******` rather than to a same-shaped array of masks, and that is deliberate too: the shape of a secret is itself information — how many keys are in the keyring, which tenants have tokens — and a caller who may not see the values has no business counting them.
+
+`authorization` and `headers` are in the list because the framework introduced a key that carries a credential: `firefly.observability.tracing.otlp.headers` documents `authorization=Bearer …` as its intended contents, and none of the six original words appear in `headers`. A bag of headers is where an outbound client's credential travels, whatever the individual header is called — which is exactly why the **bag's** key must decide and not the leaves.
 
 Beyond exposure and masking, `firefly/security`'s `HttpSecurity` (Chapter 10) is what actually locks the surface down for real traffic, and it needs **zero** code changes to do it — `HttpSecurityFilter` is a global middleware, so it runs for the actuator's own directly-registered routes exactly as it runs for your controllers:
 
+<!-- illustrative: the deployment's own config/firefly.php; the URL rules that protect an actuator surface belong to the application -->
 ```php
 <?php
 
@@ -386,6 +410,7 @@ return [
 
 Every framework endpoint — health, info, metrics, or your own — implements the same three-method contract:
 
+<!-- source: packages/actuator/src/Endpoint/ActuatorEndpoint.php -->
 ```php
 interface ActuatorEndpoint
 {
@@ -401,6 +426,7 @@ interface ActuatorEndpoint
 
 `ActuatorRouteRegistrar`, a `BootPass` at `WiringPasses` phase, discovers every `#[Component]` implementing this interface, resolves each one exactly once, and mounts exactly **two** native Illuminate routes — a `GET {base}` index and a catch-all `GET|POST {base}/{path}` dispatcher — under the configured base path, so nothing about the mechanism collides with your own application routes. The index itself, `ActuatorIndexAction`, renders a HAL-style `_links` map filtered to whatever is both enabled **and** exposed:
 
+<!-- source: packages/actuator/src/Web/ActuatorIndexAction.php -->
 ```php
 final class ActuatorIndexAction
 {
@@ -408,12 +434,12 @@ final class ActuatorIndexAction
         private readonly ActuatorRegistry $registry,
         private readonly ExposureModel $exposure,
         private readonly Config $config,
+    // …
     ) {}
 
     public function __invoke(Request $request): Response
     {
-        $base = rtrim($request->getSchemeAndHttpHost().'/'.$this->exposure->basePath, '/');
-
+        // …
         $links = ['self' => ['href' => $base]];
         foreach ($this->registry->all() as $id => $endpoint) {
             if (! $endpoint->enabled() || ! $this->config->bool("firefly.management.endpoint.{$id}.enabled", true) || ! $this->exposure->isExposed($id)) {
@@ -439,6 +465,7 @@ final class ActuatorIndexAction
 
 `firefly/observability` is a second, independent opt-in package layered on top of the actuator — it ships its own `MeterRegistry` (the read-facing factory a consumer queries) and a narrower `MetricsRecorder` (the write-facing port instrumentation actually depends on, so a filter or a metrics recorder never needs the full registry API):
 
+<!-- source: packages/observability/src/Metrics/MeterRegistry.php -->
 ```php
 interface MeterRegistry
 {
@@ -459,6 +486,7 @@ interface MeterRegistry
 }
 ```
 
+<!-- source: packages/observability/src/Metrics/MetricsRecorder.php -->
 ```php
 interface MetricsRecorder
 {
@@ -475,9 +503,11 @@ interface MetricsRecorder
 
 `SimpleMeterRegistry` implements both ports as a first-party, pure-PHP, in-memory store — no `ext-prometheus`, no OpenTelemetry SDK. Registration is idempotent, keyed by `type|name|sorted-tags`, so calling `counter('cqrs_commands_seconds', [...])` twice with the same name and tag set returns the very same `Counter` instance both times. It also fails loud, on purpose, if you try to register one metric name under two different types:
 
+<!-- source: packages/observability/src/Metrics/SimpleMeterRegistry.php -->
 ```php
 final class SimpleMeterRegistry implements MeterRegistry, MetricsRecorder
 {
+    // …
     private function guardType(string $name, MeterType $type): void
     {
         $existing = $this->namesToTypes[$name] ?? null;
@@ -488,6 +518,7 @@ final class SimpleMeterRegistry implements MeterRegistry, MetricsRecorder
         }
         $this->namesToTypes[$name] = $type;
     }
+// …
 }
 ```
 
@@ -499,9 +530,11 @@ This is not pedantry: Prometheus's own text format scopes exactly one `# TYPE` d
 
 `PrometheusTextFormat` renders every registered meter as format-0.0.4 text at `/actuator/prometheus`. The interesting part is a six-line private method most teams get wrong the first time they write one:
 
+<!-- source: packages/observability/src/Prometheus/PrometheusTextFormat.php -->
 ```php
 final class PrometheusTextFormat
 {
+    // …
     private function value(float $value): string
     {
         if (is_nan($value)) {
@@ -519,6 +552,7 @@ final class PrometheusTextFormat
         // de_DE) cannot leak a ',' into the exposition and produce unscrapeable Prometheus output.
         return rtrim(rtrim(number_format($value, 10, '.', ''), '0'), '.');
     }
+// …
 }
 ```
 
@@ -526,12 +560,42 @@ final class PrometheusTextFormat
 
 `/actuator/metrics` (`MetricsEndpoint`) exposes the same registry as Micrometer-flavored JSON instead — no sub-path lists every registered name; a specific name resolves to its measurements and available tags, or a plain `404` if the registry has never seen it.
 
+### Histogram buckets: turning a summary into something you can take a quantile of
+
+A `Timer` exposes as a Prometheus **summary** by default — `_count` and `_sum`, and nothing else. That is enough for an average and useless for a p99, because an average latency is the one number that hides every bad experience the service delivered. `histogram_quantile()` needs buckets, and buckets are a per-meter decision:
+
+<!-- source: packages/observability/src/Metrics/DistributionStatisticConfig.php -->
+```php
+public const string BUCKETS_KEY = 'firefly.observability.metrics.distribution.buckets';
+
+public const string PER_METER_KEY = 'firefly.observability.metrics.distribution.per-meter';
+// …
+/** @return list<float> ascending upper bounds in seconds; [] when the meter is a summary */
+public function bucketsFor(string $meterName): array
+{
+    return $this->perMeter[$meterName] ?? $this->buckets;
+}
+```
+
+`firefly.observability.metrics.distribution.buckets` is the global list of upper bounds in seconds; `distribution.per-meter.<name>` overrides it for one meter, and an **empty** per-meter list turns that one meter back into a summary. A timer that has buckets exposes as a Prometheus `histogram` — `_bucket{le=…}`, `_count`, `_sum` — and one that does not stays a summary.
+
+Two design decisions are visible in that six-line method. Bounds are keyed by meter **name**, never by tag set, because a Prometheus family has exactly one type and one bucket layout; a per-tag layout would produce a family that no scraper could make sense of. And the registries ask for the buckets when a timer is **created**, not on every `record()` — the layout is fixed for the meter's life.
+
+The default is **no buckets**, and not because buckets are dangerous. Turning a summary into a histogram changes a scrape's `# TYPE` line and adds a series per bound, and an upgrade has no business doing that to a running dashboard without being asked. The list to start from is the one Prometheus clients ship:
+
+```
+[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+```
+
+Every bound is validated at configuration time: a non-numeric entry, a zero, a negative, an infinity or a NaN is a `ConfigurationException` naming the key. `+Inf` is implied and must not be listed.
+
 ---
 
 ## Auto-instrumentation: `MetricsFilter` and bounded cardinality
 
 Once `firefly/observability` is installed and enabled, every HTTP request is timed automatically by `MetricsFilter`, a `#[Component]` `WebFilter` discovered by `firefly/web`'s filter chain with no wiring of your own:
 
+<!-- source: packages/observability/src/Web/MetricsFilter.php -->
 ```php
 #[Component]
 #[Order(-100)]
@@ -539,6 +603,7 @@ Once `firefly/observability` is installed and enabled, every HTTP request is tim
 #[Lazy]
 final class MetricsFilter extends OncePerRequestFilter
 {
+    // …
     private const string UNMATCHED_ROUTE_URI = 'UNKNOWN';
 
     public function __construct(private readonly MetricsRecorder $recorder) {}
@@ -567,9 +632,10 @@ final class MetricsFilter extends OncePerRequestFilter
             'uri' => $request->route() !== null ? '/'.ltrim((string) $request->route()->uri(), '/') : self::UNMATCHED_ROUTE_URI,
             'status' => (string) $status,
             'outcome' => $outcome,
-            'exception' => $exception,
+        // …
         ], microtime(true) - $start);
     }
+// …
 }
 ```
 
@@ -583,19 +649,32 @@ Two details make this production-safe rather than merely convenient. `#[Order(-1
 
 Chapter 7 left you with `NoOpCqrsMetrics` bound behind `#[ConditionalOnMissingBean(CqrsMetrics::class)]`, and a docblock promising a real recorder would drop in later. `firefly/observability` is that drop-in, and the winning mechanism is *exactly* the precedence trick Chapter 10 used for `SecurityCommandAuthorizer`:
 
+<!-- source: packages/observability/src/ObservabilityAutoConfiguration.php -->
 ```php
 #[Configuration]
 #[Order(500)]
 final class ObservabilityAutoConfiguration
 {
+    // …
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
     #[ConditionalOnMissingBean(MeterRegistry::class)]
-    public function meterRegistry(): MeterRegistry
+    public function meterRegistry(Container $container, Config $config): MeterRegistry
     {
-        return new SimpleMeterRegistry;
-    }
+        $distribution = DistributionStatisticConfig::fromConfig($config);
 
+        $store = $config->string('firefly.observability.metrics.store', '');
+        if ($store === '' || ! $container->bound('cache')) {
+            return new SimpleMeterRegistry($distribution);
+        }
+
+        /** @var Factory $factory */
+        $factory = $container->make('cache');
+        $ttl = $config->int('firefly.observability.metrics.ttl', 0);
+
+        return new CacheMeterRegistry($factory->store($store), 'firefly:metrics:', $ttl > 0 ? $ttl : null, $distribution);
+    }
+    // …
     #[Bean]
     #[ConditionalOnMissingBean(CqrsMetrics::class)]
     #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
@@ -603,13 +682,17 @@ final class ObservabilityAutoConfiguration
     {
         return new MeterRegistryCqrsMetrics($recorder);
     }
+// …
 }
 ```
 
-`ObservabilityAutoConfiguration` is `#[Order(500)]`, strictly below `CqrsAutoConfiguration`'s `#[Order(1000)]`. The incremental condition pass evaluates low-`#[Order]`-first and registers survivors immediately, so this class's `cqrsMetrics()` bean registers **first**; by the time `CqrsAutoConfiguration` evaluates its own `#[ConditionalOnMissingBean(CqrsMetrics::class)]`, a bean is already bound, and the `NoOp` default backs off. No line inside `firefly/cqrs` changes — the win is pure auto-configuration ordering, the same shape you have now seen twice.
+`meterRegistry()` is shown beside it because the two beans answer different questions with the same machinery. It picks the registry: `SimpleMeterRegistry` by default, in process memory; `CacheMeterRegistry` over a named cache store when `firefly.observability.metrics.store` names one, so counters accumulate across PHP-FPM workers rather than each scrape seeing only its own request. Both are handed the same `DistributionStatisticConfig`, so a timer's histogram buckets do not change when the backing store does.
+
+`cqrsMetrics()` is the one this section is about, and `ObservabilityAutoConfiguration` is `#[Order(500)]`, strictly below `CqrsAutoConfiguration`'s `#[Order(1000)]`. The incremental condition pass evaluates low-`#[Order]`-first and registers survivors immediately, so this class's `cqrsMetrics()` bean registers **first**; by the time `CqrsAutoConfiguration` evaluates its own `#[ConditionalOnMissingBean(CqrsMetrics::class)]`, a bean is already bound, and the `NoOp` default backs off. No line inside `firefly/cqrs` changes — the win is pure auto-configuration ordering, the same shape you have now seen twice.
 
 `MeterRegistryCqrsMetrics` itself is the concrete recorder that ordering installs — a small, direct implementation of the `CqrsMetrics` port, recording each command or query as a timer tagged by message type and outcome:
 
+<!-- source: packages/observability/src/Cqrs/MeterRegistryCqrsMetrics.php -->
 ```php
 final class MeterRegistryCqrsMetrics implements CqrsMetrics
 {
@@ -646,7 +729,106 @@ final class MeterRegistryCqrsMetrics implements CqrsMetrics
 
 Every observability bean gates on the **same** property, `firefly.observability.metrics.enabled` — not on `MeterRegistry`'s presence. That is a deliberate choice, not an oversight: a `#[ConditionalOnBean(MeterRegistry::class)]` on `cqrsMetrics()` or `MetricsFilter` would be evaluated *before* `ObservabilityAutoConfiguration`'s own `#[Order(500)]` has registered `MeterRegistry` at all, wrongly dropping every downstream consumer even with metrics genuinely enabled — an ordering trap, not a logic bug. Gating everything on one flag instead makes survival order-independent: flip `firefly.observability.metrics.enabled` and the registry, the CQRS recorder, the filter, and both endpoints all survive — or all back off — together.
 
-Finally, a `Tracer` port rounds out the package — a minimal `trace(string $name, callable $callback): mixed` span abstraction, shipped today only as `NoOpTracer` (it simply runs the callback), written against the interface so an OpenTelemetry-backed adapter can drop in later with zero call-site changes — the identical "port now, adapter later" shape you have now seen for `CqrsMetrics` itself.
+Finally, a `Tracer` port rounds out the package — and it is no longer the placeholder it started as. The interface is three methods: `startSpan(string $name, SpanKind $kind = SpanKind::Internal, array $attributes = [], ?SpanContext $parent = null): Span`, `currentSpan(): ?Span`, and the `trace(string $name, callable $callback, SpanKind $kind = SpanKind::Internal, array $attributes = []): mixed` convenience that starts a span, runs the callback, records a throwable as an `ERROR` status plus an `exception` event, rethrows, and ends. `NoOpTracer` is still the shipped default — non-recording spans, an invalid `SpanContext`, `currentSpan()` of `null` — and an OpenTelemetry adapter now binds itself over it at `#[Order(400)]`, ahead of `ObservabilityAutoConfiguration`'s `#[Order(500)]`, whenever the SDK is installed and `firefly.observability.tracing.enabled` is on. The identical "port now, adapter later" shape you have just seen for `CqrsMetrics`; what changed is that the adapter arrived, and the instrumentation on both sides of it with it.
+
+---
+
+## Tracing: one `traceparent`, five boundaries
+
+What the port buys is one id that survives every boundary a request crosses. `W3CTraceContextPropagator` speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/) over a plain header map, with no SDK involved — `extract(array $carrier): ?SpanContext` on the way in, `inject(SpanContext): array<string,string>` on the way out — so propagation works identically under an SDK-backed tracer and under a test one.
+
+Five boundaries are instrumented, and the figure is all five at once. `TracingFilter` (`#[Order(-110)]`, outermost of the discovered filters) continues an inbound `traceparent` as a remote parent and opens a `SERVER` span, then publishes its ids to Laravel `Context` and to `Request::$attributes` as `firefly.trace_id` and `firefly.span_id`. `TracerCqrsTracing` opens an `INTERNAL` span around every command and every query — nothing to carry, since the bus is in-process, so the span simply nests under whatever is current. `TracerEdaTracing` opens a `PRODUCER` span named `publish <destination>` on the way out, writing the `traceparent` into the envelope headers, and a `CONSUMER` span named `process <destination>` on delivery, reading it back — which is what joins a queue worker's span to the request that published. Three callers reach that seam today: `InMemoryEventBus`, `QueueEventBus`, and the shared `SubscriberRegistrySink` every broker consumer delivers through. The `eda-rabbitmq`, `eda-kafka` and `eda-postgres` publishers still build their envelopes themselves, so a broker *publish* opens no `PRODUCER` span and stamps no `traceparent` — their consume side is traced all the same, through that sink. And `HttpClientTracingMiddleware`, which `HttpClientTracingPass` installs on Laravel's `Http` factory at boot, opens a `CLIENT` span on every outbound call and injects the header onto the PSR-7 request.
+
+Both seams are the `CqrsMetrics` shape you have just read: `CqrsTracing` lives in `firefly/cqrs` and `EdaTracing` in `firefly/eda`, each with a no-op default behind `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration registers the real implementation first. Neither `firefly/cqrs` nor `firefly/eda` depends on `firefly/observability` — check their `composer.json` files if you want to see it.
+
+::: figure art/figures/tracing-propagation.svg | Figure 11.1 — One traceparent enters at TracingFilter, is published to Laravel Context as firefly.trace_id and firefly.span_id, and rides out again through the CQRS bus, the EDA envelope and the outbound Http client — landing on every log line, on /actuator/httpexchanges and on the dashboard.
+
+The three places it lands are the point of the whole exercise. `TraceContextLogProcessor` stamps `trace_id` and `span_id` onto every log record, beside the correlation and request ids. `HttpExchangeFilter` — `#[Order(-100)]`, so it runs *inside* the tracing filter and the span already exists when it records — reads the trace id back off `Request::$attributes`, which is why every row of `/actuator/httpexchanges` carries the trace it belonged to. And the dashboard renders that same page server-side from the same registries, with no second data path.
+
+---
+
+## Logs a machine can read
+
+The three ids the last section produced are only useful if something can find them. A `LineFormatter` log line with a trace id somewhere inside its message text is not searchable; it is a haystack with a needle in it.
+
+So `firefly.logging.structured.format` — Spring Boot 3.4's `logging.structured.format`, on Laravel's channels — names a formatter, and there are three:
+
+<!-- source: packages/observability/src/Logging/StructuredLogging.php -->
+```php
+public const string FORMAT_KEY = 'firefly.logging.structured.format';
+
+public const string CHANNELS_KEY = 'firefly.logging.structured.channels';
+```
+
+| Value | What each line becomes |
+|---|---|
+| `''` (the default) | off — Laravel's own formatting, untouched |
+| `json` | Monolog's `JsonFormatter` |
+| `ecs` | Elastic Common Schema 8, through the framework's own `EcsFormatter` |
+| `logstash` | Monolog's `LogstashFormatter`, with the framework's fields under `fields` |
+
+Anything else is a `ConfigurationException` **at boot** — `LogChannelWiringPass` asks for the format from `Application::boot()`, before it touches the log service, which is what makes a typo a startup failure rather than a silent fallback to plain text.
+
+The ECS shape is worth seeing, because it is the one most likely to land straight in an existing stack:
+
+<!-- source: packages/observability/src/Logging/Formatter/EcsFormatter.php -->
+```php
+/**
+ * Elastic Common Schema 8 — the JSON shape Elastic's own ecs-logging libraries emit and Spring Boot's
+ * `logging.structured.format=ecs` produces, first-party so the framework adds no logging dependency:
+ *
+ *   {"@timestamp":"2026-09-20T10:11:12.345678+00:00","log.level":"info","message":"Order 42 shipped",
+ *    "ecs.version":"8.11.0","log":{"logger":"stack"},"service":{"name":"ledger","environment":"production"},
+ *    "trace":{"id":"4bf9…"},"span":{"id":"00f0…"},"labels":{"correlation_id":"…","request_id":"…"},
+ *    "error":{"type":"RuntimeException","message":"boom","stack_trace":"#0 …"},
+ *    "context":{"order":42},"extra":{"memory":12}}
+ // …
+ */
+final class EcsFormatter extends NormalizerFormatter
+{
+    public const string ECS_VERSION = '8.11.0';
+```
+
+The four framework ids and the two service fields are **lifted** into their ECS homes; everything a processor or a caller added stays nested under `extra`/`context` rather than merged at the top level, so an application's own `message` or `error` context key can never collide with an ECS field.
+
+### Where the ids come from
+
+<!-- source: packages/observability/src/Logging/TraceContextLogProcessor.php -->
+```php
+/**
+ // …
+ *   trace_id / span_id       the CURRENT span's ids when a tracer has one (a log line written inside a
+ *                            command handler or an event listener names THAT span), else the request's ids
+ *                            TracingFilter published in Context; absent when tracing is off.
+ // …
+ *   request_id               Context firefly.request_id (RequestContextFilter).
+ // …
+ */
+final class TraceContextLogProcessor
+{
+    public const string TRACE_ID = 'trace_id';
+    // …
+    public function __invoke(LogRecord $record): LogRecord
+```
+
+`correlation_id` is the third: the id `problem+json` and the `X-Correlation-Id` header already carry, read from the Laravel `Context` key `CorrelationIdFilter` seeds. So one log line names the span that wrote it, the request it belonged to, and the correlation id a client can quote back at you.
+
+Read the first row twice. A log line written inside a command handler carries **that handler's span id**, not the request's — which is exactly what makes a log search useful, because it tells you which of a request's several spans wrote the line. The processor falls back to the request's ids only when no span is current.
+
+There is one implementation detail with a reason behind it: the tracer is resolved through a closure on **every** record rather than captured at construction. The processor is pushed when the `log` service is first resolved, and that can happen before the container has bound a `Tracer` at all — capturing the null would mean no trace ids for the rest of the process.
+
+### Which channels, and what the formatter does not touch
+
+`firefly.logging.structured.channels` lists channel names; empty — the default — means the default channel. A `stack` channel's Monolog logger holds its *members'* handler instances, so formatting the stack formats the members too, and listing both is harmless because applying is idempotent.
+
+What never changes is the handlers themselves. A `daily` file stays a daily file, a `stack` keeps its members, a `slack` channel keeps posting to Slack; **only what a line looks like changes.** Nothing is replaced, added or removed.
+
+A channel name that does not exist under `logging.channels` is refused, and the reason is a good illustration of why this framework checks things: `LogManager::channel()` never throws for an unknown name — it catches its own *"Log [x] is not defined."* and hands back a throw-away emergency logger. Without the check, a typo would put the processors and the formatter on an object nobody ever writes to, while the real channel quietly kept writing plain text with no ids in it at all.
+
+!!! warning "A channel built after boot gets neither"
+    The processors and the formatter are attached **per channel, at resolution time**. A channel created later through `Log::build()` has neither the ids nor the structured formatter. If you build channels dynamically, apply the formatter yourself — or declare the channel in `logging.channels` and name it in `firefly.logging.structured.channels`, which is the path everything else takes.
+
+    `gelf` and `logfmt` are not offered. Monolog has a `GelfMessageFormatter`, and a channel can still choose it through Laravel's own `formatter` key.
 
 ---
 
@@ -686,6 +868,7 @@ A page whose endpoint is not registered in *this* process — or is switched off
 
 The dashboard holds the `ActuatorRegistry` and invokes each `ActuatorEndpoint` bean directly:
 
+<!-- source: packages/admin/src/AdminEndpointReader.php -->
 ```php
 final readonly class AdminEndpointReader
 {
@@ -694,8 +877,7 @@ final readonly class AdminEndpointReader
         private Config $config,
         private ?Container $container = null,
     ) {}
-
-    /** The endpoint ids that are registered AND not switched off, in registration order. */
+    // …
     public function available(): array
     {
         $ids = [];
@@ -707,7 +889,7 @@ final readonly class AdminEndpointReader
 
         return $ids;
     }
-
+    // …
     public function read(string $id, array $subPath = [], array $query = []): ?array
     {
         $endpoint = $this->registry->get($id);
@@ -723,6 +905,7 @@ final readonly class AdminEndpointReader
 
         return $response === null || is_string($response->body) ? null : $response->body;
     }
+// …
 }
 ```
 
@@ -745,23 +928,27 @@ Most of the pages are tables. Two draw a picture — this one, and the [entity m
 
 Nothing is reflected to build it. `ComponentScanner` already records, at **scan** time, the class and interface types each component's constructor asks for, and that list rides the compiled manifest exactly like every other scanned fact (abridged):
 
+<!-- source: packages/container/src/Descriptor/ComponentDescriptor.php -->
 ```php
-final class ComponentDescriptor
+final readonly class ComponentDescriptor
 {
+    // …
     public function __construct(
         public string $class,
         public string $stereotype,
+        // …
         public array $interfaces,
+        // …
         /**
          * The class types this component's constructor asks for — the edges of the bean graph.
          *
          * Recorded at scan time, where reflection is already sanctioned, because the alternative is
          * reflecting at request time to answer "what depends on what", which the reflection-free boot
-         * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is
-         * configuration, not a wiring edge, and putting it in the graph would drown the edges that matter.
+         // …
          */
         public array $dependencies = [],
     ) {}
+// …
 }
 ```
 
@@ -798,24 +985,31 @@ A constructor asks for a **type**, and that type is very often an interface — 
 
 So every dependency is resolved through an interface index before it becomes an edge:
 
+<!-- source: packages/admin/src/BeanGraphIndex.php -->
 ```php
-foreach ($rows as $class => $row) {
-    foreach ($row['dependencies'] as $dependency) {
-        $target = isset($rows[$dependency]) ? $dependency : ($byInterface[$dependency] ?? null);
+foreach ($entry['dependencies'] as $dependency) {
+    $target = $this->resolve($dependency);
 
-        if ($target === null || $target === $class) {
-            // A type nothing in the container provides: a framework contract satisfied by a binding
-            // rather than a bean, or a class the scan never saw. Reported, not silently dropped —
-            // "why is my bean not in the graph" is exactly the question this page has to answer.
-            if ($target === null) {
-                $unresolved[] = $dependency;
-            }
+    if ($target === null) {
+        $unresolved[] = $dependency;
 
-            continue;
-        }
-
-        $edges[] = ['from' => $class, 'to' => $target, 'via' => $target === $dependency ? null : $dependency];
+        continue;
     }
+    // …
+    $edges[] = [
+        'from' => $entry['from'],
+        'to' => $target,
+        'via' => $target === $dependency ? null : $dependency,
+        'type' => $entry['type'],
+    ];
+}
+```
+
+<!-- source: packages/admin/src/BeanGraphIndex.php -->
+```php
+private function resolve(string $type): ?string
+{
+    return isset($this->nodes[$type]) ? $type : ($this->satisfiedBy[$type] ?? null);
 }
 ```
 
@@ -829,6 +1023,7 @@ Levels come from a **longest-path** walk over the resolved edges: a node's depth
 
 Depth is memoised and the walk carries its own visited set, so a cycle terminates instead of recursing forever — and the edge that closed it is *reported*:
 
+<!-- source: packages/admin/src/BeanGraph.php -->
 ```php
 foreach ($out[$node] ?? [] as $next) {
     if (isset($path[$next])) {
@@ -859,14 +1054,16 @@ Two limits are stated in the page rather than hidden:
 
 Because the dashboard bypasses exposure, its own URL is the only thing standing in front of `beans`, `env` and `conditions`. That is why it must not be on by default in production, and why the enable flag is written the way it is:
 
+<!-- source: packages/admin/src/AdminSettings.php -->
 ```php
 final readonly class AdminSettings
 {
+    // …
     public function __construct(
         public bool $enabled,
         public string $basePath,
         public string $title,
-        // ... plus the presentation options: refreshSeconds, theme, graphMaxNodes, excludedPages.
+    // …
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -877,10 +1074,10 @@ final readonly class AdminSettings
             enabled: $config->bool('firefly.admin.enabled', $config->bool('app.debug', false)),
             basePath: $base === '' ? 'firefly' : $base,
             title: $config->string('firefly.admin.title', $config->string('app.name', 'LaraFly')),
-            // ... firefly.admin.refresh-seconds (10, floored at 2), .theme (auto|light|dark),
-            // .graph.max-nodes (220) and .pages.exclude ('') are read here too.
+        // …
         );
     }
+// …
 }
 ```
 
@@ -891,6 +1088,7 @@ final readonly class AdminSettings
 
 Chapter 10's `HttpSecurity` rules do that as pure configuration, the same way this chapter already secured the actuator — here is a deployment that opts in and locks the route down in one file:
 
+<!-- illustrative: the deployment's own config/firefly.php; turning the dashboard on with app.debug off is the deployment's decision -->
 ```php
 <?php
 
@@ -929,9 +1127,11 @@ It discovers what to browse the same way the rest of the dashboard discovers eve
 
 Now the gate:
 
+<!-- source: packages/admin/src/Data/DataBrowserSettings.php -->
 ```php
 final readonly class DataBrowserSettings
 {
+    // …
     public static function fromConfig(Config $config): self
     {
         $max = min(self::PAGE_SIZE_CEILING, max(1, $config->int('firefly.admin.data.max-page-size', 200)));
@@ -942,14 +1142,15 @@ final readonly class DataBrowserSettings
             pageSize: min($max, max(1, $config->int('firefly.admin.data.page-size', 25))),
             maxPageSize: $max,
             excluded: self::csv($config->string('firefly.admin.data.exclude', '')),
+        // …
         );
     }
-
-    /** Writing requires BOTH gates. */
+    // …
     public function canWrite(): bool
     {
         return $this->enabled && $this->writable;
     }
+// …
 }
 ```
 
@@ -981,7 +1182,7 @@ A listing you can only scroll is a table dump. Three things turn it into somethi
 
 A `belongsTo` opens the one parent record; a `hasMany` opens the child listing **filtered to this row's key**, which is what the record page needs a filter for. A relation whose other end is not a browsable resource is still shown — it tells you the shape of the model — but is not linked, and that distinction lives in the model rather than the template so a view cannot mint a URL that 404s.
 
-**Filtering is eight comparisons over the columns the resource already publishes** — `is`, `is not`, `contains`, `starts with`, `greater`, `less`, `is empty`, `is not empty` — expressed as a GET URL you can bookmark or paste into a ticket. Every comparison binds its value, including the `LIKE` ones, where the wildcards go around an *escaped* value rather than the value going into a pattern. A column the schema does not publish and an operator outside that set are **dropped** rather than passed to the driver: both arrive in a URL an operator can hand-edit, and a query reaching the driver with an arbitrary identifier in it is a column-name oracle at best. Conditions AND with each other and with the search box, so narrowing a relation's listing cannot escape it.
+**Filtering is eight comparisons over the columns the resource already publishes** — `is`, `is not`, `contains`, `starts with`, `greater than`, `less than`, `is empty`, `is not empty` — expressed as a GET URL you can bookmark or paste into a ticket. Every comparison binds its value, including the `LIKE` ones, where the wildcards go around an *escaped* value rather than the value going into a pattern. A column the schema does not publish and an operator outside that set are **dropped** rather than passed to the driver: both arrive in a URL an operator can hand-edit, and a query reaching the driver with an arbitrary identifier in it is a column-name oracle at best. Conditions AND with each other and with the search box, so narrowing a relation's listing cannot escape it.
 
 The same eight are implemented for the in-PHP fallback path, because a repository that cannot page must be filtered by the same rules as one that can. Two implementations of one predicate drift, and the drift shows up as a filter meaning different things on different resources.
 
@@ -1006,12 +1207,15 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 |---|---|
 | `HealthIndicator` | One-method SPI; a `#[Component]` bean discovered and aggregated automatically |
 | `Health` / `Status` | Immutable reading + a severity-ordered enum; DOWN/OUT_OF_SERVICE both map to HTTP 503 |
-| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Always-up liveness probe; threshold-based disk check; opt-in `SELECT 1` DB check |
+| `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Always-up liveness probe; threshold-based disk check; on-by-default `SELECT 1` DB check that declines registration via `ConditionalHealthIndicator::available()` when no default connection is configured |
 | `HealthEndpoint` | Aggregates to the most-severe status; a probe **group** is just a configured, named indicator subset — there is no separate liveness/readiness endpoint class |
 | `ExposureModel` | `include`/`exclude` CSV gate; default `"health,info"`; everything else is a plain 404 until exposed |
-| `EnvEndpoint` | Masks `password\|secret\|token\|key\|credential\|passwd` keys with `******`, independent of exposure |
+| `EnvEndpoint` / `SensitiveValueMasker` | One shared rule masks `password\|secret\|token\|key\|credential\|passwd\|authorization\|headers` keys with `******`, independent of exposure — the **key** decides first, so a sensitive key masks its whole subtree |
 | `MeterRegistry` / `MetricsRecorder` | Read/write metrics ports; `SimpleMeterRegistry` is idempotent per `type\|name\|tags` and fails loud on a type conflict |
 | `PrometheusTextFormat` | Locale-safe exposition — `number_format()`, never `sprintf('%f')` |
+| `DistributionStatisticConfig` | Histogram buckets per meter **name**, fixed when the timer is created; no buckets by default, because adding them changes a scrape's `# TYPE` line |
+| `firefly.logging.structured.format` | `json`, `ecs` or `logstash` on the channels you name — the handlers are never replaced, only what a line looks like changes |
+| `TraceContextLogProcessor` | `trace_id`, `span_id`, `correlation_id` and `request_id` on every record; the **current** span's ids, not just the request's |
 | `MetricsFilter` | `#[Order(-100)]` outermost timing filter; tags by route **template**, never raw path — bounded cardinality |
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | The same precedence trick as Chapter 10's security seam: registers `cqrsMetrics()` before `CqrsAutoConfiguration` evaluates its `#[ConditionalOnMissingBean]` |
 | `firefly/admin` | A server-rendered Blade dashboard at `/firefly`; a page whose endpoint is unregistered or switched off is hidden from the menu rather than linked |
@@ -1038,3 +1242,5 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 4. **Prove the dashboard's exposure bypass to yourself.** Install `firefly/admin` in the sample, leave `firefly.management.endpoints.web.exposure.include` at its default, and confirm that `GET /actuator/beans` returns a `404` while `/firefly/beans` renders the full bean list in the same process. Then set `firefly.management.endpoint.beans.enabled` to `false` and confirm the Beans entry vanishes from the dashboard's menu — the kill switch is honoured where exposure is not, and the difference between the two keys is the whole design.
 5. **Draw your own wiring, then break it.** Open `/firefly/graph` in the sample and find the arrow from `WalletService` to `EloquentWalletRepository` — note that the *Wired by* column says `WalletRepository`, the port, not `class`. Then introduce a deliberate cycle (have a `#[Service]` take a constructor parameter typed as another `#[Service]` that already depends on it), reload the page, and confirm the **Cycles** stat turns red and names both classes. Now boot the app fresh without opening the dashboard, and compare what PHP tells you about the same cycle.
 6. **Read the access default as a security decision.** Set `app.debug` to `false` in a scratch project with `firefly/admin` installed and confirm `/firefly` is genuinely unrouted rather than merely unlinked (`php artisan route:list` should not list it). Then set `firefly.admin.enabled` to `true` without adding any `HttpSecurity` rule, and look at what an unauthenticated `GET /firefly/env` now discloses — that is precisely the gap this chapter told you to close with your own auth middleware.
+7. **Turn a summary into something you can take a p99 of.** Scrape `GET /actuator/prometheus` in a project with `firefly/observability` installed and find the `http_server_requests_seconds` family: note the `# TYPE … summary` line and that all you have is `_count` and `_sum`. Then set `firefly.observability.metrics.distribution.buckets` to the client default list this chapter prints, re-scrape, and confirm the `# TYPE` line now reads `histogram` and a `_bucket{le=…}` series appeared per bound. Now silence just that one meter again with an **empty** `distribution.per-meter.http_server_requests_seconds` list, and confirm every other timer keeps its buckets. Finally put a `0` — or a `-1`, or a string — into the global list and confirm the boot refuses it by name rather than quietly dropping the bound.
+8. **Make your logs machine-readable, then read one line.** Set `firefly.logging.structured.format` to `ecs`, make a request that writes a log line from inside a command handler, and read the resulting line: find `trace.id`, `span.id` and `labels.correlation_id`, and confirm the span id is the **handler's**, not the request's, by comparing it against a line written from a plain controller in the same request. Then check that your own context keys landed under `context`/`extra` rather than at the top level — try logging a key literally called `message` and confirm it did not overwrite ECS's. Last, set the key to `jsonn` and confirm the application refuses to boot, naming the key, instead of silently falling back to plain text.

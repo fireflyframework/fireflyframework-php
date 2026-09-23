@@ -36,6 +36,13 @@ labels:
 # PERTENECE junto a la sección del modelo de acceso contra la que argumenta: todo su punto de diseño es que
 # `firefly.admin.data.enabled` deliberadamente NO hereda el valor por defecto `app.debug` que la sección
 # anterior justifica, y separarlos habría eliminado la comparación que hace legible la decisión.
+# Tarea R12: firefly/security-oauth2-client y firefly/security-oauth2-server añadidos como Capítulo 10A, justo
+# después del capítulo de seguridad sobre cuya sesión, cadena de filtros y seguridad de método se apoyan.
+# Intercalado exactamente igual que el 4A, y por la misma razón: `num` es una etiqueta libre, el orden sale de
+# ESTA lista, y renumerar los Capítulos 11-13 habría invalidado cada referencia cruzada "Capítulo N" de ambos
+# manuscritos y de book/README.md. Un capítulo y no dos porque los dos paquetes son las dos direcciones de un
+# mismo protocolo, y quien instale cualquiera de ellos necesita el viaje completo delante para saber cuál tiene
+# entre manos.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -63,6 +70,7 @@ parts:
       - {id: ch08, file: 08-eda-outbox.md, num: 8, title: "Arquitectura Guiada por Eventos y el Outbox Transaccional"}
       - {id: ch09, file: 09-transactions.md, num: 9, title: "Transacciones y el Proxy #[Transactional]"}
       - {id: ch10, file: 10-security.md, num: 10, title: "Seguridad: Autenticación y Autorización"}
+      - {id: ch10a, file: 10a-oauth2.md, num: "10A", title: "OAuth2 y OpenID Connect: Iniciar Sesión, y Ser el Proveedor"}
   - title: "Parte IV — Observabilidad, Pruebas y Entrega"
     chapters:
       - {id: ch11, file: 11-observability-actuator.md, num: 11, title: "Observabilidad: Salud, Métricas y el Actuator"}

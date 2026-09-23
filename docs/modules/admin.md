@@ -85,6 +85,7 @@ machine-readable numbers — Prometheus scrapes it.
 
 `AdminEndpointReader` holds the `ActuatorRegistry` and invokes each `ActuatorEndpoint` bean directly:
 
+<!-- source: packages/admin/src/AdminEndpointReader.php -->
 ```php
 public function read(string $id, array $subPath = [], array $query = []): ?array
 {
@@ -139,6 +140,7 @@ Because the dashboard bypasses exposure, **its own URL is the only thing standin
 `conditions`.** That is why it must not be on by default in production, and why the enable flag is written the way
 it is:
 
+<!-- source: packages/admin/src/AdminSettings.php -->
 ```php
 enabled: $config->bool('firefly.admin.enabled', $config->bool('app.debug', false)),
 ```
@@ -160,8 +162,9 @@ about itself and must opt in explicitly. **Setting the key always wins over the 
 for the dashboard's natively-registered routes exactly as it runs for your controllers. Locking it down is pure
 configuration:
 
+<!-- illustrative: the deployment's own config/firefly.php — the shipped reference carries every one of these keys with its env-backed default, and choosing these values is the deployment's decision, not the framework's -->
 ```php
-'firefly' => [
+return [
     'admin' => [
         'enabled' => true,          // explicit: this deployment wants the dashboard with app.debug off
         'base-path' => '/firefly',
@@ -176,7 +179,7 @@ configuration:
             ],
         ],
     ],
-],
+];
 ```
 
 Both patterns are needed: `firefly` alone does not match `firefly/env`. Any other middleware works equally well —
@@ -218,11 +221,19 @@ it looks protected. The routes now carry `EncryptCookies`, `AddQueuedCookiesToRe
 ## How it is mounted
 
 `AdminRouteRegistrar` is a `BootPass` at `BootPhase::WiringPasses`, order **60** — one step after
-`ActuatorRouteRegistrar`'s 50, because it reads the registry that pass populates. It mounts two routes:
+`ActuatorRouteRegistrar`'s 50, because it reads the registry that pass populates. It mounts two routes — a `GET` on
+the configured base path named `firefly.admin.index`, and a `GET|POST` one page deeper named `firefly.admin.page`,
+whose `{page}` segment is constrained to `[A-Za-z0-9\-_/]*` so a page name may itself contain slashes:
 
-```
-GET       {base}                     name: firefly.admin.index
-GET|POST  {base}/{page}              name: firefly.admin.page   where page: [A-Za-z0-9\-_/]*
+<!-- source: packages/admin/src/Boot/AdminRouteRegistrar.php -->
+```php
+$router->get($base, static fn (Request $request) => $container->make(AdminAction::class)($request))
+    ->middleware($middleware)
+    ->name('firefly.admin.index');
+$router->match(['GET', 'POST'], $base.'/{page}', static fn (Request $request, string $page) => $container->make(AdminAction::class)($request, $page))
+    ->middleware($middleware)
+    ->where('page', '[A-Za-z0-9\-_/]*')
+    ->name('firefly.admin.page');
 ```
 
 They are registered natively on the illuminate `Router`, not declared with `#[GetMapping]`, for the same reason the

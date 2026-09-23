@@ -9,26 +9,28 @@ login page listing every provider, OIDC RP-initiated logout, an authorized-clien
 and refresh, `Http::oauth2Client()`, and a whole provider in one class for tests. Every key lives under
 `firefly.security.oauth2.client.*` and defaults to off.
 
+<!-- illustrative: the deployment's own config/firefly.php — three registrations an application chooses, whose ids, client ids and secrets the framework cannot contain -->
 ```php
-// config/firefly.php
-'security' => [
-    'enabled' => true,
-    'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
-    'oauth2' => [
-        'client' => [
-            'enabled' => true,
-            'login' => ['enabled' => true],
-            'registration' => [
-                'google' => ['client_id' => env('GOOGLE_CLIENT_ID'), 'client_secret' => env('GOOGLE_CLIENT_SECRET')],
-                'corp' => ['provider' => 'keycloak', 'client_id' => 'portal', 'client_secret' => env('KC_SECRET'), 'client_name' => 'Corporate SSO'],
-                'billing' => ['provider' => 'corp', 'client_id' => 'billing-job', 'client_secret' => env('BILLING_SECRET'), 'authorization_grant_type' => 'client_credentials', 'scope' => ['invoices:read']],
-            ],
-            'provider' => [
-                'corp' => ['issuer_uri' => 'https://sso.example.com/realms/corp'],
+return [
+    'security' => [
+        'enabled' => true,
+        'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
+        'oauth2' => [
+            'client' => [
+                'enabled' => true,
+                'login' => ['enabled' => true],
+                'registration' => [
+                    'google' => ['client_id' => env('GOOGLE_CLIENT_ID'), 'client_secret' => env('GOOGLE_CLIENT_SECRET')],
+                    'corp' => ['provider' => 'keycloak', 'client_id' => 'portal', 'client_secret' => env('KC_SECRET'), 'client_name' => 'Corporate SSO'],
+                    'billing' => ['provider' => 'corp', 'client_id' => 'billing-job', 'client_secret' => env('BILLING_SECRET'), 'authorization_grant_type' => 'client_credentials', 'scope' => ['invoices:read']],
+                ],
+                'provider' => [
+                    'corp' => ['issuer_uri' => 'https://sso.example.com/realms/corp'],
+                ],
             ],
         ],
     ],
-],
+];
 ```
 
 With that, `GET /login` lists "Sign in with Google" and "Sign in with Corporate SSO", `GET /oauth2/authorization/google`
@@ -60,8 +62,11 @@ shape verbatim, read by `OAuth2ClientProperties` and turned into immutable `Clie
 | `user_name_attribute` | `sub` | The claim / userinfo attribute that names the principal (`id` for GitHub). |
 
 **Presets** (`CommonOAuth2Provider`): a `provider` value — or a registration id — of `google`, `github`, `okta`,
-`keycloak` or `microsoft` (alias `entra`) starts from the preset's endpoints, scopes, `client_name` and
-`client_authentication_method`, and your `provider.{id}` keys overlay it. Google and GitHub are complete; Okta, Keycloak
+`keycloak` or `microsoft` (alias `entra`) starts from the preset's endpoints, scopes and `client_name`, and your
+`provider.{id}` keys overlay it. Only `google` and `github` also carry a `client_authentication_method`
+(`client_secret_basic` — neither provider issues a web client without a secret); on the other three the method is
+deduced instead: `client_authentication_method` when the registration sets one, `client_secret_basic` when it carries
+a secret, `none` — a public client, PKCE mandatory — when it does not. Google and GitHub are complete; Okta, Keycloak
 and Microsoft are per-tenant and **require `issuer_uri`**, from which discovery learns the rest.
 
 **Validation happens at boot**, statically and without a request: a missing `client_id`, a secret-less registration
@@ -87,6 +92,10 @@ unless `discovery.eager` is on, in which case every issuer is discovered at boot
 rather than taking every other way in down with it.
 
 ## The login flow
+
+![The authorization-code round trip with PKCE: the browser, a LaraFly relying party and a LaraFly authorization server, with every real endpoint path, the single-use state, the nonce, the S256 challenge and the back-channel token exchange](../assets/diagrams/oauth2-authorization-code.svg)
+
+The trace below picks the flow up at the start URL. What sends a browser there first is the ordinary entry point: `HttpSecurityFilter` (`-70`) denies the anonymous request, `LoginUrlAuthenticationEntryPoint` saves the GET and redirects to `firefly.security.form_login.login_page` (`/login` by default), and the login page carries one "Sign in with {client_name}" button per `authorization_code` registration (see **The login page** below). Nothing in firefly/security redirects straight to a provider — the page is always the hop in between, which is what makes two providers, or a provider plus a password form, one screen rather than a choice made in configuration.
 
 ```
 GET /oauth2/authorization/{id}   OAuth2AuthorizationRequestRedirectFilter (-89)
@@ -245,29 +254,37 @@ registration at all; `logout.oidc_initiated` is refused without `login.enabled`.
 
 ## Testing
 
-`Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` is a whole OpenID Connect provider in one class:
+`Firefly\Testing\Security\OAuth2\FakeAuthorizationServer` is a whole OpenID Connect provider in one class. This
+is the package's own capstone base — install the fake before boot, and seed the registration and provider it
+describes:
 
+<!-- source: packages/security-oauth2-client/tests/Support/OAuth2ClientCapstoneTestCase.php -->
 ```php
-abstract class LoginTestCase extends SecurityCapstoneTestCase   // or any FireflyTestCase
+abstract class OAuth2ClientCapstoneTestCase extends SecurityCapstoneTestCase
 {
-    public FakeAuthorizationServer $idp;
+    public const string ISSUER = 'http://localhost/fake-idp';
 
+    public FakeAuthorizationServer $idp;
+    // …
     protected function configOverrides(): array
     {
         return [
             ...parent::configOverrides(),
+            // …
             'firefly.security.oauth2.client.enabled' => true,
             'firefly.security.oauth2.client.login.enabled' => true,
-            'firefly.security.oauth2.client.registration.fake' => FakeAuthorizationServer::registrationConfig(),
-            'firefly.security.oauth2.client.provider.fake' => FakeAuthorizationServer::providerConfig('http://localhost/fake-idp'),
+            'firefly.security.oauth2.client.registration.fake' => FakeAuthorizationServer::registrationConfig($this->registrationOverrides()),
+            'firefly.security.oauth2.client.provider.fake' => FakeAuthorizationServer::providerConfig(self::ISSUER, $this->providerOverrides()),
+            ...$this->clientOverrides(),
         ];
     }
 
     protected function defineFireflyEnvironment(Application $app): void
     {
-        $this->idp = FakeAuthorizationServer::install($app, 'http://localhost/fake-idp');
+        parent::defineFireflyEnvironment($app);
+
+        $this->idp = FakeAuthorizationServer::install($app, self::ISSUER);
     }
-}
 ```
 
 `install()` mounts the **front channel** as real routes on the application at the issuer's path (`/authorize`,
@@ -287,6 +304,7 @@ expires tokens. Every hop is recorded (`authorizationRequests`, `tokenRequests`,
 `FireflyTestCase::actingAsOidcUser()` signs a real `OidcUser` in for the rest of a test — claims, scopes, extra
 authorities, the registration id — with no provider involved:
 
+<!-- illustrative: the one line a reader writes in their own test -->
 ```php
 $this->actingAsOidcUser(['sub' => 'ada', 'email' => 'ada@example.com'], ['ROLE_ADMIN'], 'okta', ['openid', 'profile']);
 ```

@@ -76,10 +76,13 @@ The skeleton's `composer.json` requires only two Firefly packages directly:
 
 Open the generated project. Two things are worth noticing immediately, because they are the whole idea of this framework in miniature.
 
-First, `bootstrap/providers.php` is empty:
+First, `bootstrap/providers.php` is empty — the whole file, not an excerpt of it:
 
+<!-- source: skeleton/bootstrap/providers.php -->
 ```php
 <?php
+
+declare(strict_types=1);
 
 return [];
 ```
@@ -88,9 +91,8 @@ There is no service provider to register by hand. `firefly/cli` and `firefly/fir
 
 Second, `routes/web.php` is almost empty too:
 
+<!-- source: skeleton/routes/web.php -->
 ```php
-<?php
-
 // Intentionally minimal: Firefly's WebServiceProvider registers the app's #[RestController] routes from
 // the compiled RouteManifest (see skeleton/app/Http/GreetingController.php). This file exists because
 // bootstrap/app.php's withRouting(web: ...) requires the path.
@@ -98,24 +100,28 @@ Second, `routes/web.php` is almost empty too:
 
 Routes are not declared here at all. As the comment says, they come from a **compiled `RouteManifest`** — built from attributes on your controllers, not from a routes file you maintain by hand. You will meet the class that comment points to in a moment.
 
-The one file that does matter right now is `config/firefly.php`:
+The one file that does matter right now is `config/firefly.php`. The copy the skeleton ships is a long annotated **reference** — every `firefly.*` key the framework reads, grouped by the package that reads it, with the real default beside it — so the two blocks that matter today are shown here with the rest of the file cut away. Each `// …` below stands for whole lines removed from the real file; the conventions page explains the marker:
 
+<!-- source: skeleton/config/firefly.php -->
 ```php
 <?php
 
 declare(strict_types=1);
-
+// …
 return [
+// …
     'scan' => [
         'paths' => [
             'App\\' => app_path(),
         ],
     ],
+// …
     'cache' => [
         'path' => base_path('bootstrap/cache/firefly'),
         'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
         'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
     ],
+// …
 ];
 ```
 
@@ -127,6 +133,7 @@ return [
 
 `app/GreetingProperties.php` is a small, typed configuration DTO — LaraFly's answer to Spring's `@ConfigurationProperties`:
 
+<!-- source: skeleton/app/GreetingProperties.php -->
 ```php
 <?php
 
@@ -149,6 +156,7 @@ final readonly class GreetingProperties
 
 `app/GreetingService.php` is a plain PHP class carrying one attribute, `#[Service]`:
 
+<!-- source: skeleton/app/GreetingService.php -->
 ```php
 <?php
 
@@ -182,6 +190,7 @@ Nothing here registers `GreetingService` with a container by hand, and nothing w
 
 `app/Http/GreetingController.php` puts a web edge on the service:
 
+<!-- source: skeleton/app/Http/GreetingController.php -->
 ```php
 <?php
 
@@ -197,18 +206,14 @@ use Firefly\Web\Attributes\RestController;
 /**
  * The sample Firefly slice: a #[RestController] whose routes are discovered by the RouteScanner and served
  * from the compiled RouteManifest. GreetingService is autowired via constructor DI.
+ *
+ * `/` belongs to App\Http\WelcomeController, a #[Controller] that renders HTML — this one returns a value
+ * the ResponseFactory negotiates into JSON, which is the difference between the two stereotypes.
  */
 #[RestController]
 final class GreetingController
 {
     public function __construct(private readonly GreetingService $greetings) {}
-
-    /** @return array<string, string> */
-    #[GetMapping('/')]
-    public function index(): array
-    {
-        return ['message' => $this->greetings->greet('World')];
-    }
 
     /** @return array<string, string> */
     #[GetMapping('/greetings/{name}', name: 'greetings.show')]
@@ -231,15 +236,7 @@ Start the development server:
 php artisan firefly:serve
 ```
 
-`firefly:serve` is a thin wrapper: it calls `artisan serve` (or `octane:start`, if `laravel/octane` happens to be installed) — it does not reimplement anything of its own. In another terminal, hit the two routes you just read:
-
-```bash
-curl -s localhost:8000/
-```
-
-```json
-{"message":"Hello, World!"}
-```
+`firefly:serve` is a thin wrapper: it calls `artisan serve` (or `octane:start`, if `laravel/octane` happens to be installed) — it does not reimplement anything of its own. In another terminal, hit the route you just read:
 
 ```bash
 curl -s localhost:8000/greetings/Ada
@@ -250,6 +247,8 @@ curl -s localhost:8000/greetings/Ada
 ```
 
 `"Hello"` is `GreetingProperties`'s default `$salutation` — nothing in `config/greeting.php` overrides it yet, so the constructor default is what you see. Change that default, or bind `greeting.salutation` in your own config, and every response reflects it — with no code change to either the service or the controller.
+
+`/` is not this controller's route, and the docblock above says which class owns it: `App\Http\WelcomeController`, a `#[Controller]` rather than a `#[RestController]`, whose `index()` returns a view. Open `localhost:8000/` in a browser and what comes back is the skeleton's HTML welcome page, not JSON — that difference between the two stereotypes is exactly what the docblock is there to warn you about.
 
 ::: figure art/figures/request-lifecycle.svg | Figure 0.1 — A request travels through the web filter chain and the controller dispatcher before your handler method ever runs.
 

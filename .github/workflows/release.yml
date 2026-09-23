@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # The split action below exits 0 even when its push fails, so without this gate a release with no
-      # credential produces 28 green jobs and zero published packages. Fail here instead, once, loudly.
+      # credential produces a whole matrix of green jobs and zero published packages. Fail here instead, once,
+      # loudly.
       - name: ACCESS_TOKEN must be present
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}

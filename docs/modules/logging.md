@@ -23,12 +23,18 @@ the wiring passes run already carries the ids; both go through one idempotent `L
 
 ## Structured logging
 
+Two keys in `config/firefly.php`, both shipped at their defaults in the reference — `format` is `''` (Laravel's
+plain text), `json`, `ecs` or `logstash`, and anything else refuses to boot; `channels` is empty, which means the
+`logging.default` channel:
+
+<!-- source: skeleton/config/firefly.php -->
 ```php
-// config/firefly.php
 'logging' => [
     'structured' => [
-        'format' => env('FIREFLY_LOG_FORMAT', ''),   // '' | json | ecs | logstash
-        // 'channels' => ['stack', 'stderr'],       // default: the logging.default channel
+        // …
+        'format' => env('FIREFLY_LOG_FORMAT', ''),
+        // …
+        // 'channels' => ['stack', 'stderr'],
     ],
 ],
 ```

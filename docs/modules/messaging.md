@@ -8,9 +8,11 @@ serializer here — see [Event-Driven Architecture](eda.md) for that higher-leve
 
 ## The `MessageBrokerPort` port
 
+<!-- source: packages/messaging/src/MessageBrokerPort.php -->
 ```php
 interface MessageBrokerPort
 {
+    // …
     public function publish(string $topic, string $value, ?string $key = null, array $headers = []): void;
 
     public function subscribe(string $topic, callable $handler, ?string $group = null): void;
@@ -27,17 +29,26 @@ subscriber into consumer-group round-robin (see below).
 
 ## The `Message` value object
 
+<!-- source: packages/messaging/src/Message.php -->
 ```php
 final readonly class Message
 {
+    // …
     public function __construct(
         public string $topic,
-        public string $value,        // raw bytes
+        public string $value,
         public ?string $key = null,
         public array $headers = [],
     ) {}
+    // …
+    public function withHeaders(array $extra): self
+    {
+        return new self($this->topic, $this->value, $this->key, array_merge($this->headers, $extra));
+    }
 }
 ```
+
+`$value` is raw bytes — nothing here parses or deserialises it.
 
 Lower-level than eda's `EventEnvelope`: no `eventType`, no `eventId`/`timestamp`, no serializer round-trip —
 just a topic, bytes, an optional partition/routing key, and string headers. Immutable;
@@ -83,6 +94,7 @@ Same enqueue-then-worker-deliver shape as eda's `QueueEventBus`, over `illuminat
 
 ## `#[MessageListener]` → scanner → manifest → wiring pass
 
+<!-- source: packages/messaging/src/Attributes/MessageListener.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD)]
 final class MessageListener
@@ -134,12 +146,15 @@ always wraps the handler (no unwrapped fast path):
    (the exception message) — into the bound `DeadLetterStore`, and return (nothing escapes); otherwise
    re-throw the original exception unchanged.
 
+<!-- source: packages/messaging/src/DeadLetter/DeadLetterStore.php -->
 ```php
 interface DeadLetterStore
 {
     public function store(Message $message, Throwable $cause): void;
 
-    /** @return list<DeadLetterEntry> */
+    /**
+     * @return list<DeadLetterEntry>
+     */
     public function all(): array;
 }
 ```
@@ -166,21 +181,33 @@ defaults.
 
 ## Example
 
+The package's own consumer fixture, which the wiring test subscribes and delivers to:
+
+<!-- source: packages/messaging/tests/Fixtures/OrderConsumer.php -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Messaging\Attributes\MessageListener;
 use Firefly\Messaging\Message;
-use Firefly\Messaging\MessageBrokerPort;
-
+// …
 #[Component]
 final class OrderConsumer
 {
-    #[MessageListener(topic: 'orders', retries: 3, deadLetterTopic: 'orders.DLT')]
+    public function __construct(private readonly ListenerSpy $spy) {}
+
+    #[MessageListener(topic: 'orders')]
     public function consume(Message $message): void
     {
-        // $message->value is the raw byte payload published to "orders".
+        $this->spy->record($message->topic);
     }
 }
+```
+
+Add `retries: 3, deadLetterTopic: 'orders.DLT'` to that attribute and the same listener retries three times and
+dead-letters what still fails. Publishing is the other half, and needs nothing but the port:
+
+<!-- illustrative: an application's own publisher bean; the framework injects the port, it does not ship a publisher of yours -->
+```php
+use Firefly\Messaging\MessageBrokerPort;
 
 final class OrderPublisher
 {

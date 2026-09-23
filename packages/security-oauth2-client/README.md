@@ -7,26 +7,30 @@ with a state, a nonce and a PKCE challenge, `GET /login/oauth2/code/{id}` exchan
 token against the provider's JWKS, loads userinfo, maps the claims to an `OidcUser` principal and signs it into
 the session — every step through the same filters, events and entry point form login uses.
 
+<!-- illustrative: the registrations an application declares in its own config/firefly.php; the shipped reference carries them commented out, so there is no file to copy them from -->
+
 ```php
 // config/firefly.php
-'security' => [
-    'enabled' => true,
-    'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
-    'oauth2' => [
-        'client' => [
-            'enabled' => true,
-            'login' => ['enabled' => true],
-            'registration' => [
-                'google' => ['client_id' => env('GOOGLE_CLIENT_ID'), 'client_secret' => env('GOOGLE_CLIENT_SECRET')],
-                'corp' => ['provider' => 'keycloak', 'client_id' => 'portal', 'client_secret' => env('KC_SECRET'), 'client_name' => 'Corporate SSO'],
-                'billing' => ['provider' => 'corp', 'client_id' => 'billing-job', 'client_secret' => env('BILLING_SECRET'), 'authorization_grant_type' => 'client_credentials', 'scope' => ['invoices:read']],
-            ],
-            'provider' => [
-                'corp' => ['issuer_uri' => 'https://sso.example.com/realms/corp'],
+return [
+    'security' => [
+        'enabled' => true,
+        'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
+        'oauth2' => [
+            'client' => [
+                'enabled' => true,
+                'login' => ['enabled' => true],
+                'registration' => [
+                    'google' => ['client_id' => env('GOOGLE_CLIENT_ID'), 'client_secret' => env('GOOGLE_CLIENT_SECRET')],
+                    'corp' => ['provider' => 'keycloak', 'client_id' => 'portal', 'client_secret' => env('KC_SECRET'), 'client_name' => 'Corporate SSO'],
+                    'billing' => ['provider' => 'corp', 'client_id' => 'billing-job', 'client_secret' => env('BILLING_SECRET'), 'authorization_grant_type' => 'client_credentials', 'scope' => ['invoices:read']],
+                ],
+                'provider' => [
+                    'corp' => ['issuer_uri' => 'https://sso.example.com/realms/corp'],
+                ],
             ],
         ],
     ],
-],
+];
 ```
 
 ## What you get

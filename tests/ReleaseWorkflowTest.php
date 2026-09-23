@@ -64,7 +64,7 @@ it('triggers only on a pushed v* tag', function () {
     expect($tags)->toContain('v*');
 });
 
-it('the split matrix covers exactly the 29 publishable units, each mapped to fireflyframework/firefly-<dir>', function () {
+it('the split matrix covers exactly the 30 publishable units, each mapped to fireflyframework/firefly-<dir>', function () {
     $root = dirname(__DIR__);
     $yaml = releaseWorkflowYaml();
 
@@ -175,11 +175,12 @@ it('does not interpolate untrusted github.event.* into a run: step', function ()
     }
 });
 
-// The split action exits 0 even when its push fails. On v26.09.1 that produced 28 green jobs, no mirror
-// repositories, and nothing published — a release run that reported success while shipping nothing. The
-// workflow now carries two guards against that, and these tests exist so neither can be dropped quietly.
+// The split action exits 0 even when its push fails. On v26.09.1 that produced a whole matrix of green
+// jobs, no mirror repositories, and nothing published — a release run that reported success while shipping
+// nothing. The workflow now carries two guards against that, and these tests exist so neither can be
+// dropped quietly.
 
-it('refuses to start the split when ACCESS_TOKEN is absent, instead of running 28 no-op jobs', function () {
+it('refuses to start the split when ACCESS_TOKEN is absent, instead of running a matrix of no-op jobs', function () {
     $yaml = releaseWorkflowYaml();
     $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
 

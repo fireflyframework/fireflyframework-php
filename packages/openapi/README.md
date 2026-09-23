@@ -105,23 +105,27 @@ before `style` existed keeps the behaviour it configured.
 
 ## Configuration
 
+<!-- illustrative: the openapi keys an application writes into its own config/firefly.php; the shipped reference carries this block commented out, so there is no file to copy it from -->
+
 ```php
 // config/firefly.php
-'openapi' => [
-    'enabled' => true,              // master gate: off means both routes are genuinely unrouted
-    'path' => '/openapi.json',      // spec route
-    'viewer' => [
-        'enabled' => true,
-        'path' => '/openapi',
-        'style' => 'swagger',       // swagger (official UI, served locally) | builtin | cdn
-        'cdn' => false,             // legacy spelling; true still forces the cdn style
+return [
+    'openapi' => [
+        'enabled' => true,              // master gate: off means both routes are genuinely unrouted
+        'path' => '/openapi.json',      // spec route
+        'viewer' => [
+            'enabled' => true,
+            'path' => '/openapi',
+            'style' => 'swagger',       // swagger (official UI, served locally) | builtin | cdn
+            'cdn' => false,             // legacy spelling; true still forces the cdn style
+        ],
+        'title' => 'API',
+        'version' => '0.0.0',
+        'description' => '',
+        'servers' => ['https://api.example.test'],  // bare URLs or OpenAPI Server Objects
+        'exclude' => '/internal,/admin',            // CSV of path prefixes to leave out
     ],
-    'title' => 'API',
-    'version' => '0.0.0',
-    'description' => '',
-    'servers' => ['https://api.example.test'],  // bare URLs or OpenAPI Server Objects
-    'exclude' => '/internal,/admin',            // CSV of path prefixes to leave out
-],
+];
 ```
 
 Secure a public deployment the way you secure any other route — `firefly/security`'s `HttpSecurity` config
@@ -132,6 +136,8 @@ covers `/openapi*` with no code edge — or set `enabled` to `false` and generat
 
 Every collaborator is a `#[Bean]` behind `#[ConditionalOnMissingBean]`, so replacing one is a short
 `#[Configuration]` in the application and never a fork:
+
+<!-- illustrative: the #[Configuration] class an application writes to replace one collaborator, returning its own ConstraintSchemaMapper — neither the class nor the mapper is a file in this repository -->
 
 ```php
 #[Configuration]

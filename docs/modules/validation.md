@@ -5,6 +5,7 @@ financial-domain rules — and it is the reference example of an auto-configured
 
 ## The `validate()` primitive
 
+<!-- illustrative: the one call a reader makes against the injected Validator from their own code -->
 ```php
 $validated = $validator->validate(
     ['iban' => $request->input('iban')],
@@ -42,12 +43,30 @@ list the hydrator builds element by element. `list<X>`, `array<int, X>`, `iterab
 the same list. Each element's constraints are compiled under Laravel's wildcard key (`lines.*.sku`); a failure
 is reported as `lines[1].sku` — Spring's spelling, the path the client wrote.
 
+The skeleton's own request DTO is exactly this shape — a scalar, a nested DTO and a list of DTOs, with the
+element class stated once in the `@param` tag that both the validator and the hydrator read:
+
+<!-- source: skeleton/app/Http/OrderRequest.php -->
 ```php
 final readonly class OrderRequest
 {
-    /** @param list<OrderLinePayload> $lines */
+    // …
+    /**
+     * @param  list<OrderLinePayload>  $lines
+     */
     public function __construct(
-        #[NotEmpty] #[Size(min: 1, max: 50)] #[Valid]
+        #[NotBlank]
+        #[Size(max: 120)]
+        public string $customer,
+        #[NotBlank]
+        #[Email]
+        public string $email,
+        #[NotNull]
+        #[Valid]
+        public AddressPayload $shipTo,
+        #[NotEmpty]
+        #[Size(min: 1, max: 50)]
+        #[Valid]
         public array $lines,
     ) {}
 }

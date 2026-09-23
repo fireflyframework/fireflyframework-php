@@ -38,6 +38,7 @@ Stdout mode is written with Symfony's `OUTPUT_RAW` flag, and that detail matters
 
 The HTTP routes — the spec, the console, and the console's own assets — are mounted natively on the Illuminate `Router` from a `BootPass`, not declared with `#[GetMapping]`:
 
+<!-- source: packages/openapi/src/Boot/OpenApiRouteRegistrar.php -->
 ```php
 final class OpenApiRouteRegistrar implements BootPass
 {
@@ -99,11 +100,13 @@ This is the same shape — and the same `BootPass` idiom — Chapter 11 will sho
 
 `OpenApiGenerator::generate()` is the entry point — it memoises a single private `build()` pass (`$this->document ??= $this->build()`), and `toJson()` wraps it for a file or an HTTP body. That pass walks the manifest once, skipping excluded routes, and hands each survivor to `OperationFactory`. Everything about the result is deterministic on purpose:
 
+<!-- source: packages/openapi/src/Generator/OpenApiGenerator.php -->
 ```php
 final class OpenApiGenerator
 {
+    // …
     private const array VERB_ORDER = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
-
+    // …
     private function sortVerbs(array $item): array
     {
         $sorted = [];
@@ -119,6 +122,7 @@ final class OpenApiGenerator
 
         return [...$sorted, ...$item];
     }
+// …
 }
 ```
 
@@ -126,11 +130,12 @@ Paths are sorted, verbs within a path are sorted into the canonical order the Op
 
 Inside an operation, the binding plan does the real work. `OperationFactory` dispatches on the same `kind` discriminator `ArgumentResolver` uses at request time:
 
+<!-- source: packages/openapi/src/Generator/OperationFactory.php -->
 ```php
-final class OperationFactory
-{
-    public function create(RouteDescriptor $route, string $operationId, SchemaRegistry $registry): array
+    public function create(RouteDescriptor $route, string $operationId, SchemaRegistry $registry, ApiDocs $docs): array
     {
+        $doc = $docs->operation($route);
+
         $parameters = [];
         $body = null;
         $files = [];
@@ -138,19 +143,25 @@ final class OperationFactory
         $rejectable = false;
 
         foreach ($route->bindings as $binding) {
+            // Claimed by a resolver: bound from somewhere other than the request, so neither a parameter nor
+            // a reason for a 400 — the same first question ArgumentResolver::resolveOne() asks.
+            if ($this->resolvers?->resolverFor($binding) !== null) {
+                continue;
+            }
+
             $validated = $validated || $binding['valid'];
 
             switch ($binding['kind']) {
                 case 'path':
-                    $parameters[] = $this->parameter($binding, 'path', true);
+                    $parameters[] = $this->parameter($binding, 'path', true, $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $this->coercible($binding);
                     break;
                 case 'query':
-                    $parameters[] = $this->parameter($binding, 'query', $binding['required']);
+                    $parameters[] = $this->parameter($binding, 'query', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'header':
-                    $parameters[] = $this->parameter($binding, 'header', $binding['required']);
+                    $parameters[] = $this->parameter($binding, 'header', $binding['required'], $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $binding['required'] || $this->coercible($binding);
                     break;
                 case 'file':
@@ -163,9 +174,7 @@ final class OperationFactory
                     break;
             }
         }
-
-        // …the operation's own prose (operationId, summary, description, tags) is assembled here…
-
+        // …
         if ($parameters !== []) {
             $operation['parameters'] = $parameters;
         }
@@ -176,14 +185,13 @@ final class OperationFactory
             $operation['requestBody'] = $this->multipartBody($files);
         }
 
-        $operation['responses'] = $this->responses($route, $rejectable, $validated);
+        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
 
         return $operation;
     }
-}
 ```
 
-The one elided block is where the operation's human-facing prose is put together; everything shown is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
+The single `// …` cuts the block that assembles the operation's human-facing prose — its `summary`, `description`, `deprecated` flag and `tags`, all four covered just below. Everything printed is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
 
 Four smaller decisions finish an operation:
 
@@ -198,6 +206,7 @@ Four smaller decisions finish an operation:
 
 Chapter 4's `OpenWalletRequest` is the running example again:
 
+<!-- source: samples/lumen/src/Web/Dto/OpenWalletRequest.php -->
 ```php
 final class OpenWalletRequest
 {
@@ -276,15 +285,18 @@ Three rows in that table repay a closer look.
 
 The one rule that decides the whole merge is **first writer wins**, applied first to the declared type and then to the rules in declaration order — the same order the validator applies them in:
 
+<!-- source: packages/openapi/src/Schema/MapperState.php -->
 ```php
 final class MapperState
 {
+    // …
     public function keyword(string $keyword, mixed $value): void
     {
         if (! array_key_exists($keyword, $this->schema)) {
             $this->schema[$keyword] = $value;
         }
     }
+// …
 }
 ```
 
@@ -292,6 +304,7 @@ Seeding the declared PHP type *before* any rule is seen is why `#[Min(1)] int $q
 
 Here is that whole pipeline on one real DTO. This is the generator's own test fixture, chosen because it deliberately spans every mapping route the generator has — a length-bounded string, a Jakarta null-contract nullable, an int with numeric bounds, a scaled decimal, a backed enum, a nested `#[Valid]` DTO, a PCRE pattern and a rule object:
 
+<!-- source: packages/openapi/tests/Fixture/CreateOrderRequest.php -->
 ```php
 final class CreateOrderRequest
 {
@@ -355,19 +368,22 @@ Lumen's own DTOs show the same machinery at a smaller scale, and one of them sho
 
 Some constraints have no JSON Schema equivalent at all, and a few map only approximately. Dropping those quietly would produce a document that promises *less* validation than the server performs — a client would send a payload the spec calls valid and get a `422` back. The mapper's fall-through says what happens instead:
 
+<!-- source: packages/openapi/src/Schema/ConstraintSchemaMapper.php -->
 ```php
 final class ConstraintSchemaMapper
 {
+    // …
     private function applyObject(MapperState $state, ValidationRule $rule): void
     {
         switch (true) {
-            // ... every recognised first-party rule object is matched above.
+            // …
             default:
                 // A third-party ValidationRule. Its class name is the only thing about it that is knowable
                 // without executing it, so that is what the extension records.
                 $state->unmapped($rule::class);
         }
     }
+// …
 }
 ```
 
@@ -391,11 +407,13 @@ Conforming tools ignore all three extensions and see a valid document. A human, 
 
 Every operation ends at the same error component, and that component describes what LaraFly *actually* returns rather than what RFC 9457 describes in the abstract:
 
+<!-- source: packages/openapi/src/Schema/ProblemSchema.php -->
 ```php
 final class ProblemSchema
 {
+    // …
     public const string MEDIA_TYPE = 'application/problem+json';
-
+    // …
     public static function response(): array
     {
         return [
@@ -403,6 +421,7 @@ final class ProblemSchema
             'content' => [self::MEDIA_TYPE => ['schema' => ['$ref' => self::REF]]],
         ];
     }
+// …
 }
 ```
 
@@ -457,23 +476,45 @@ That was every success response in every document this generator produced, and i
 
 The reasoning had been that a `@return array{...}` is comment text nothing else in the framework treats as binding. That had already stopped being true. `RouteScanner` reads `@param list<X>` to compile the table `ArgumentResolver` **hydrates** from, so a docblock type expression is exactly as binding as a declared type on the way *in*. And there is a stronger argument still: **PHPStan at level max already checks these expressions against the code on every build**, which is what makes reading them safe. An out-of-date `@return` is a failing gate, not a silent lie.
 
-So the success body now comes from three sources, most specific first:
+So the success body now comes from three sources, most specific first. Three methods of one of the package' own response fixtures show what each of them carries:
 
+<!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
-final class OrderController
+/**
+ * A page of consignments.
+ *
+ * @return array{page: positive-int, size: positive-int, total: int, items: list<Consignment>}
+ */
+#[GetMapping]
+public function index(): array
 {
-    /**
-     * A page of orders.
-     *
-     * @return array{page: positive-int, size: positive-int, total: int, items: list<Order>}
-     */
-    #[GetMapping]
-    public function index(int $page, int $size): array
-    {
-        return $this->orders->page($page, $size);
-    }
+    return ['page' => 1, 'size' => 20, 'total' => 0, 'items' => []];
+}
+
+/**
+ * One consignment.
+ *
+ * @param  non-empty-string  $reference
+ */
+#[GetMapping('/{reference}')]
+public function show(#[PathVariable] string $reference): Consignment
+{
+    return new Consignment($reference, new Money(0, Currency::Eur), []);
+}
+
+/**
+ * The shipments on a consignment.
+ *
+ * @return list<Shipment> newest first
+ */
+#[GetMapping('/{reference}/shipments')]
+public function shipments(#[PathVariable] string $reference): array
+{
+    return [];
 }
 ```
+
+`index()`'s `@return` expression is the first source, and it produces this schema — `positive-int` carrying its own `minimum`, and `list<Consignment>` resolving the short name through the controller's own imports into a component reference:
 
 ```json
 {
@@ -482,12 +523,14 @@ final class OrderController
     "page":  { "type": "integer", "minimum": 1 },
     "size":  { "type": "integer", "minimum": 1 },
     "total": { "type": "integer" },
-    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+    "items": { "type": "array", "items": { "$ref": "#/components/schemas/Consignment" } }
   },
   "required": ["page", "size", "total", "items"],
   "additionalProperties": false
 }
 ```
+
+`show()` needs no docblock type at all — its declared return type is already a class, which is the second source — and `shipments()`, whose declared type is a bare `array`, is carried entirely by its `@return list<Shipment>`. In order, then:
 
 1. The **`@return` type expression** — the only place a PHP `array` can say what is in it. Prose written after the type becomes the response `description`, which is the only response description anyone ever actually writes.
 2. The **declared return type** — a class becomes a component `$ref`, a backed enum its value set, a scalar itself.
@@ -517,13 +560,28 @@ A `?` on a shape **key** means "may be absent" and becomes `required`; a `?` on 
 
 Which PHP spells two ways. A class implementing `JsonSerializable` serialises as whatever `jsonSerialize()` **returns**; everything else as its **public properties**. The skeleton's `App\Orders\Order` is the case that decides the design:
 
+<!-- source: skeleton/app/Orders/Order.php -->
 ```php
 final readonly class Order implements JsonSerializable
 {
+    // …
+    /** The order's value, derived from its lines rather than stored beside them. */
+    public function total(): float
+    {
+        return round(array_sum(array_map(static fn (OrderLine $line): float => $line->subtotal(), $this->lines)), 2);
+    }
+
     /** @return array{id: int|null, customer: string, email: string, shipTo: Address, lines: list<OrderLine>, total: float} */
     public function jsonSerialize(): array
     {
-        return [/* … */ 'total' => $this->total()];
+        return [
+            'id' => $this->id,
+            'customer' => $this->customer,
+            'email' => $this->email,
+            'shipTo' => $this->shipTo,
+            'lines' => $this->lines,
+            'total' => $this->total(),
+        ];
     }
 }
 ```
@@ -536,20 +594,25 @@ One rule inverts on the way out. **Nullability is not requiredness here.** A res
 
 ### `#[ApiResponse]` takes a type expression too
 
+<!-- source: packages/openapi/tests/ResponseFixture/ConsignmentController.php -->
 ```php
-final class ConsignmentController
-{
+    /**
+     * Books a consignment.
+     *
+     * @return array<string, mixed>
+     */
     #[PostMapping(status: 201)]
-    #[ApiResponse(status: 409, description: 'That reference already exists.', type: Consignment::class)]
+    #[ApiResponse(status: 409, description: 'A consignment with that reference already exists.', type: Consignment::class)]
     #[ApiResponse(status: 202, description: 'Accepted for later booking.', type: 'list<Shipment>')]
     public function book(): array
     {
-        return $this->consignments->book();
+        return [];
     }
-}
 ```
 
-`type` is a full expression, not only a class or a scalar name, and a short name resolves through the controller's own imports.
+(The empty body is not an omission: this is one of the package's own response fixtures, and the only things the generator reads are the signature, the docblock and the attributes.)
+
+`type` is a full expression, not only a class or a scalar name, and a short name resolves through the controller's own imports — `Consignment::class` and the string `'list<Shipment>'` are handled by the same parser. Note also what the three statuses do together: `201` from `#[PostMapping]`, plus one `#[ApiResponse]` per alternative outcome, each with its own schema.
 
 ---
 
@@ -557,12 +620,15 @@ final class ConsignmentController
 
 Chapter 4 introduced `#[RestController]` alongside its HTML sibling `#[Controller]`, and only the first is a JSON API. The generator honours that distinction by default:
 
+<!-- source: packages/openapi/src/Generator/OpenApiGenerator.php -->
 ```php
-final class OpenApiGenerator
-{
-    private function excluded(RouteDescriptor $route): bool
+    private function excluded(RouteDescriptor $route, ApiDocs $docs): bool
     {
         if ($route->html && ! $this->properties->includeHtml) {
+            return true;
+        }
+
+        if ($docs->ignores($route)) {
             return true;
         }
 
@@ -574,8 +640,9 @@ final class OpenApiGenerator
 
         return false;
     }
-}
 ```
+
+Read the name before the body: `excluded()` answers *leave this route out*, so every `return true` above is a route that does **not** reach the document. The first arm is the `#[Controller]` rule, the second is `#[ApiIgnore]`, and the third is the configured path-prefix list.
 
 A `#[Controller]` route renders a page. It is part of the application's HTTP surface, but it is not a JSON operation, and describing one as `application/json` would have a generator emit a typed client for a response that is a web page — the framework's own welcome page was in the spec exactly that way before this rule existed. Set `firefly.openapi.include-html` to `true` and the route is documented anyway, but honestly: the operation is then produced with `text/html` content and a `type: string` schema rather than a JSON schema that would be a lie a client generator faithfully acts on.
 
@@ -601,6 +668,7 @@ Every off-the-shelf viewer — Swagger UI, Redoc, Elements — is a bundled Java
 
 There is a third option, and this package takes it. `swagger-api/swagger-ui` publishes its `dist` on Packagist under Apache-2.0, so **composer** can fetch and pin it — it is a hard `require` of `firefly/openapi`, so the files are already on disk in `vendor/` by the time you first hit the route — and `SwaggerAssetAction` serves those files from the application's own origin:
 
+<!-- source: packages/openapi/src/Web/SwaggerAssetAction.php -->
 ```php
 final class SwaggerAssetAction
 {
@@ -635,20 +703,21 @@ The dist directory is located by asking **Composer's own installed-versions meta
 
 And if the distribution is genuinely absent — a stripped `vendor/`, a phar, a non-composer runtime — `render()` falls back rather than serving a page whose assets 404:
 
+<!-- source: packages/openapi/src/Web/ViewerPage.php -->
 ```php
 final class ViewerPage
 {
+    // …
     public function render(string $specUrl, string $style, string $assetBase = ''): string
     {
         return match (true) {
             $style === 'cdn' => $this->swaggerUiFromCdn($specUrl),
-            // Falling back rather than rendering a broken page: `swagger` is the DEFAULT, so an
-            // application that has not installed swagger-api/swagger-ui would otherwise get a console
-            // referencing assets that 404. The built-in reference needs nothing and is always available.
+            // …
             $style === 'swagger' && $this->assets->available() => $this->swaggerUi($specUrl, $assetBase),
             default => $this->builtIn($specUrl),
         };
     }
+// …
 }
 ```
 
@@ -663,6 +732,7 @@ Choose it when the deployment's rule is *no third-party JavaScript in the respon
 
 ### What `cdn` costs
 
+<!-- illustrative: the deployment's own config/firefly.php; which viewer style to serve is the application's decision -->
 ```php
 // config/firefly.php
 return [
@@ -683,8 +753,9 @@ The viewer fetches the spec from the sibling route rather than having the docume
 
 ## Configuration, and securing the surface
 
-Everything the document and its routes need lives under one config key:
+Everything the document and its routes need lives under one config key. The block below is written as live PHP for readability; `skeleton/config/firefly.php` ships the same keys **commented out**, with each default beside it, because `firefly/openapi` is an optional package and an uncommented block would be a decision made for you:
 
+<!-- illustrative: a live-PHP rendering of the `openapi` block that skeleton/config/firefly.php ships commented out, so there is no uncommented copy in the repository to excerpt -->
 ```php
 <?php
 
@@ -713,6 +784,7 @@ return [
 
 A public deployment is secured the way any other route is. Chapter 10's `HttpSecurity` rules — ahead, in Part III — cover the spec and viewer paths with no code edge at all, because `HttpSecurityFilter` is a global middleware and runs for natively-registered routes exactly as it runs for your controllers:
 
+<!-- illustrative: the deployment's own config/firefly.php; the keys are the framework's and are documented in the shipped reference, but every pattern and access expression below is the application's own -->
 ```php
 <?php
 
@@ -743,6 +815,7 @@ The alternative, for a deployment that wants no documentation surface at all in 
 
 Every collaborator in the package — `OpenApiProperties`, `ConstraintSchemaMapper`, `DtoSchemaFactory`, `OperationFactory`, `OpenApiGenerator` and `ViewerPage` — is a `#[Bean]` behind `#[ConditionalOnMissingBean]`, the Chapter 2 mechanism. Teaching the generator about your own `ValidationRule` is therefore a short `#[Configuration]` in your application and never a fork:
 
+<!-- illustrative: the reader's own #[Configuration] supplying a house mapper the framework cannot contain -->
 ```php
 #[Configuration]
 final class ApiDocsConfiguration

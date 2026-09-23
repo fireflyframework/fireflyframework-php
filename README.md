@@ -14,15 +14,16 @@
   <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.2-brightgreen" alt="Version: 26.09.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.3-brightgreen" alt="Version: 26.09.3"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
 
 <p align="center">
   <em>Dependency injection with stereotypes, conditional auto-configuration, hexagonal ports &amp; adapters,
-  CQRS, event-driven architecture with a genuine same-transaction outbox, and Spring-Security-shaped method
-  security — wired the moment you install a package, with your own beans always winning.</em>
+  CQRS, event-driven architecture with a genuine same-transaction outbox, Spring-Security-shaped method
+  security on any bean, both halves of OAuth2, and OpenTelemetry-shaped tracing — wired the moment you
+  install a package, with your own beans always winning.</em>
 </p>
 
 <p align="center">
@@ -43,7 +44,7 @@
 - [Why LaraFly?](#why-larafly)
 - [Quickstart](#quickstart)
 - [Philosophy](#philosophy)
-- [Architecture](#architecture) — [Boot Pipeline](#the-boot-pipeline) · [DI &amp; Auto-Configuration](#dependency-injection--auto-configuration) · [Request Lifecycle](#request-lifecycle) · [CQRS ⟷ EDA Bridge](#the-cqrs--eda-bridge) · [Same-Tx Outbox](#the-genuine-same-transaction-outbox)
+- [Architecture](#architecture) — [Boot Pipeline](#the-boot-pipeline) · [DI &amp; Auto-Configuration](#dependency-injection--auto-configuration) · [Request Lifecycle](#request-lifecycle) · [CQRS ⟷ EDA Bridge](#the-cqrs--eda-bridge) · [Same-Tx Outbox](#the-genuine-same-transaction-outbox) · [Security Filter Chain](#the-security-filter-chain) · [Signing in with OAuth2](#signing-in-with-oauth2) · [Interception](#interception-one-proxy-many-advices) · [Trace Context](#trace-context-end-to-end)
 - [Featured Patterns](#featured-patterns)
 - [Installation](#installation)
 - [CLI &amp; Project Scaffolding](#cli--project-scaffolding)
@@ -65,13 +66,20 @@
 [*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
-(it boots and its tests pass against this framework version, `26.09.2`).
+(it boots and its tests pass against this framework version, `26.09.3`).
 
-The book is **complete and bilingual (English + Spanish)**: a quick start, **fourteen chapters** across four
-parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD), Coordinating &
-Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security), and Observability, Testing
-& Delivery (actuator, testing, the CLI + zero-reflection cache) — plus a Laravel→LaraFly cheat-sheet and a
-glossary. Every fenced PHP listing is `php -l`-verified against the real sample. The sources live under
+The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fifteen chapters**
+across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
+Coordinating & Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security, OAuth2 and
+OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache)
+— plus a Laravel→LaraFly cheat-sheet and a glossary. The two editions are line-for-line the same book: every
+chapter file has the same sections, in the same order, at the same line numbers, and every `php` listing and
+every `source:`-marked excerpt in the Spanish edition is the English one character for character — the only
+thing translated inside a fence is a shell or tree comment, which is a sentence the reader reads rather than
+code they run. Every fenced PHP listing in **both** manuscripts carries a `source:` marker naming the
+repository file it was excerpted from — compared against it line for line by `tests/DocsCodeIsRealTest.php` —
+or an `illustrative:` marker saying it is the reader's own code, which is what `php -l` checks. The
+sources live under
 [`book/`](book/README.md) ([EN manuscript](book/src/) · [ES manuscript](book/src-es/)) and build to PDF + EPUB
 in both languages via [`book/build/run.sh`](book/README.md). `samples/lumen/` is the fastest way to see the
 whole stack fit together end to end, and the [Featured Patterns](#featured-patterns) section below walks
@@ -102,8 +110,9 @@ that backs off the moment you supply your own bean, a CQRS command/query bus, ev
 demarcation, deny-by-default method and URL security, and a production-ready actuator/observability surface —
 all compiled ahead of time into `bootstrap/cache/firefly/` for a **zero-reflection boot**.
 
+<!-- source: skeleton/app/GreetingService.php -->
+
 ```php
-// skeleton/app/GreetingService.php — a #[Service] bean, autowired by type
 #[Service]
 final class GreetingService
 {
@@ -114,14 +123,18 @@ final class GreetingService
         return sprintf('%s, %s!', $this->properties->salutation, $name);
     }
 }
+```
 
-// skeleton/app/Http/GreetingController.php — a #[RestController], routes compiled to a manifest
+<!-- source: skeleton/app/Http/GreetingController.php -->
+
+```php
 #[RestController]
 final class GreetingController
 {
     public function __construct(private readonly GreetingService $greetings) {}
 
-    #[GetMapping('/greetings/{name}')]
+    /** @return array<string, string> */
+    #[GetMapping('/greetings/{name}', name: 'greetings.show')]
     public function show(#[PathVariable] string $name): array
     {
         return ['message' => $this->greetings->greet($name)];
@@ -131,14 +144,47 @@ final class GreetingController
 
 No service-provider boilerplate, no manual route registration: the component scanner finds `GreetingService`
 and `GreetingController`, the container autowires `GreetingProperties` into the service by constructor type,
-and the route scanner compiles `#[GetMapping('/greetings/{name}')]` into the route table. `php artisan
-firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it the same scan simply
-runs in-process at boot instead, so the app behaves identically either way. See [Featured Patterns](#featured-patterns) below for the full CQRS, EDA,
-outbox, and security tour, drawn from the runnable `samples/lumen/` wallet-ledger sample.
+and the route scanner compiles `#[GetMapping('/greetings/{name}', name: 'greetings.show')]` into the route
+table. `php artisan firefly:cache` compiles all of that ahead of time for a reflection-free boot; without it
+the same scan simply runs in-process at boot instead, so the app behaves identically either way. See
+[Featured Patterns](#featured-patterns) below for the full CQRS, EDA, outbox, and security tour, drawn from the
+runnable `samples/lumen/` wallet-ledger sample.
 
 LaraFly is not a fork of Laravel and does not hide it — every package layers cleanly on top of
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
 know about Laravel keeps working underneath.
+
+Three capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
+will have — that they are worth naming outright:
+
+- **Both halves of OAuth2, as two packages you install.**
+  [`firefly/security-oauth2-client`](docs/modules/security-oauth2-client.md) turns "Sign in with Google" into
+  a pair of ordered filters and a configuration block — presets for Google, GitHub, Okta, Keycloak and Entra,
+  OpenID Connect discovery for anything else, PKCE, id-token validation against the issuer's JWKS, an
+  `OidcUser` injected straight into your controller action, RP-initiated logout, the client-credentials grant
+  and an `Http::oauth2Client('…')` macro for calling a downstream API as the registration.
+  [`firefly/security-oauth2-server`](docs/modules/security-oauth2-server.md) points the same protocol the
+  other way and makes *your* application the provider: registered clients held in memory or Eloquent,
+  `/oauth2/authorize` with PKCE and a consent page, `/oauth2/token` with three grants, introspection,
+  revocation, userinfo, JWKS, both `.well-known` documents, and RS256/ES256 signing keys generated by
+  `php artisan firefly:oauth2:keys` — rotated by moving the old one to
+  `firefly.security.oauth2.server.jwt.previous_keys`, so tokens in flight keep verifying until they expire.
+- **Traced and logged like a service, not a script.** A `Tracer`/`Span` port whose shipped default is a
+  `NoOpTracer` — nothing is recorded, nothing is paid for — and whose
+  [OpenTelemetry adapter](docs/modules/tracing.md) binds itself the moment the SDK is installed and
+  `firefly.observability.tracing.enabled` is on. One W3C `traceparent` is continued at the server filter and
+  carried across five boundaries from there: inbound HTTP, both CQRS buses, the in-memory and queue event
+  buses on the way out, the same buses on delivery, and every outbound `Http` call. The same trace and span
+  ids land on every log line through a Monolog processor, in plain text or in
+  [`json`, `ecs` or `logstash`](docs/modules/logging.md).
+- **Spring Data's vocabulary on [`firefly/data`](docs/modules/data.md).** Derived query methods, `#[Query]`,
+  query by example, `#[Modifying]`, `#[Projection]`, `#[Lock]`, `#[EntityGraph]`, and
+  `Page`/`Slice`/`Pageable`/`Sort` — plus a `DataAccessException` family under
+  `Firefly\Kernel\Exception\Infrastructure\` that a `PersistenceExceptionTranslator` produces from the
+  driver's own SQLSTATE. A unique-index collision stops being a `QueryException` you have to string-match and
+  becomes a `DuplicateKeyException` carrying a 409 and a fixed sentence, with the driver's message — which
+  has the statement and its bindings interpolated into it — left on `previous`, for the log and never for
+  the wire.
 
 ### Who is LaraFly for?
 
@@ -195,8 +241,9 @@ Business logic should never `use Illuminate\Database\Eloquent\Model` directly if
 enforces **hexagonal architecture** — ports and adapters — across every capability that touches storage or
 transport:
 
+<!-- source: samples/lumen/src/Infrastructure/WalletRepository.php -->
+
 ```php
-// samples/lumen/src/Infrastructure/WalletRepository.php — the PORT the domain depends on
 interface WalletRepository
 {
     public function save(Wallet $wallet): Wallet;
@@ -208,19 +255,23 @@ interface WalletRepository
 }
 ```
 
+<!-- source: samples/lumen/src/Infrastructure/EloquentWalletRepository.php -->
+
 ```php
-// samples/lumen/src/Infrastructure/EloquentWalletRepository.php — the ADAPTER, auto-bound by interface
 #[Repository]
 final class EloquentWalletRepository extends EloquentRepository implements WalletRepository
 {
     protected string $model = Wallet::class;
-    // save()/findById()/findByOwnerId() implement the port over Eloquent — see the file for the full body.
+
+    // …
 }
 ```
 
-Application and command-handler code depends only on `WalletRepository`; the container's nominal
-interface-binding wires `EloquentWalletRepository` in behind it automatically. Deptrac enforces the boundary at
-the monorepo level — a domain package that imports `Illuminate\Database\*` fails the architecture gate.
+`save()`, `findById()` and `findByOwnerId()` each carry an explicit body in the adapter — `implements` does not
+accept `EloquentRepository`'s magic `__call()` dispatch — and application and command-handler code still depends
+only on `WalletRepository`; the container's nominal interface-binding wires `EloquentWalletRepository` in behind
+it automatically. Deptrac enforces the boundary at the monorepo level — a domain package that imports
+`Illuminate\Database\*` fails the architecture gate.
 
 ### Typed and Attribute-Driven
 
@@ -232,7 +283,8 @@ once and compiled to a cached manifest — never re-reflected on a production re
 ### Secure and Production-Ready by Default
 
 `firefly/security`'s HTTP rule chain is **deny-by-default**: an unmatched URL is denied, not silently allowed.
-`firefly/actuator` ships health/info/metrics endpoints that are **unexposed (404) until you opt in**. A cached
+`firefly/actuator` exposes `health` and `info` and **nothing else**: every other endpoint it ships answers
+**404 until you name it** in `firefly.management.endpoints.web.exposure.include`. A cached
 `firefly:cache` boot is the *supported* way to run in production — reflection only ever happens once, at build
 time, never per request.
 
@@ -258,19 +310,49 @@ order. The kernel then drains that buffer and drives the real, phased order:
 ### Dependency Injection & Auto-Configuration
 
 The DI container (`firefly/container`) resolves dependencies from **type hints** discovered by a component
-scan — no XML, no service locators:
+scan — no XML, no service locators. The three classes below are the container package's own test fixtures, so
+every claim made about them is exercised by `packages/container/tests`:
+
+<!-- source: packages/container/tests/Fixtures/Greeter.php -->
 
 ```php
-use Firefly\Container\Attributes\{Primary, Qualifier, Service};
-
-interface Greeter { public function greet(): string; }
-
-#[Service] #[Primary]
-final class EnglishGreeter implements Greeter { public function greet(): string { return 'Hello'; } }
-
-#[Service('spanish')] #[Qualifier('spanish')]
-final class SpanishGreeter implements Greeter { public function greet(): string { return 'Hola'; } }
+interface Greeter
+{
+    public function greet(): string;
+}
 ```
+
+<!-- source: packages/container/tests/Fixtures/EnglishGreeter.php -->
+
+```php
+#[Service]
+#[Primary]
+#[Order(10)]
+final class EnglishGreeter implements Greeter
+{
+    public function greet(): string
+    {
+        return 'Hello';
+    }
+}
+```
+
+<!-- source: packages/container/tests/Fixtures/SpanishGreeter.php -->
+
+```php
+#[Service('spanish')]
+#[Qualifier('spanish')]
+#[Order(20)]
+final class SpanishGreeter implements Greeter
+{
+    public function greet(): string
+    {
+        return 'Hola';
+    }
+}
+```
+
+<!-- illustrative: the calls a reader makes from their own code against the container port; a bean is resolved, never declared, so no file in the repository contains this trio. -->
 
 ```php
 $container->get(Greeter::class);         // EnglishGreeter (the #[Primary] one)
@@ -326,13 +408,104 @@ succeeds":
 See the [same-tx outbox showcase](#same-transaction-outbox--fireflyedaproviderpostgres) below for the config
 and the seam that makes this possible.
 
+### The security filter chain
+
+Everything `firefly/security` does to a request happens in one ordered `WebFilter` chain, sitting on Laravel's
+own global middleware stack. `FilterChainRegistrar::orderedFilters()` prepends `RequestContextFilter` and
+`CorrelationIdFilter` unconditionally, then sorts every other filter bean by the `#[Order]` its
+`ComponentDescriptor` carries — the manifest's number, never a resolved instance's — and breaks ties with
+`strcmp` on the class name, which is why `HttpExchangeFilter` precedes `MetricsFilter` at the same `-100`.
+Authentication is not one filter but five — form login (`-92`), HTTP Basic (`-91`), JWT (`-90`), the OAuth2
+resource server (`-85`) and remember-me (`-83`) — each writing into the same `SecurityContext`, with the two
+OAuth2 packages adding three more filters of their own when installed. `HttpSecurityFilter` (`-70`) has the
+last word, applying the deny-by-default URL rules first-match-wins. When it denies an anonymous request it
+does not simply throw — it asks the `DelegatingAuthenticationEntryPoint`, whose default `auto` mode sends a
+browser to the login page, an HTTP-Basic-configured API a `WWW-Authenticate` challenge, and everything else
+the 401 problem document:
+
+<p align="center">
+  <img src="docs/assets/diagrams/security-filter-chain.svg" alt="The LaraFly security filter chain: two prepended framework filters, then every WebFilter sorted by its real #[Order] value — tracing at -110, HTTP exchanges and metrics at -100, security headers, session context persistence, logout, the five authentication mechanisms, the two OAuth2 packages' filters, CSRF, and the deny-by-default HttpSecurity rules at -70 — ending in the DelegatingAuthenticationEntryPoint that chooses between a login redirect, a Basic challenge and a 401." width="100%">
+</p>
+
+### Signing in with OAuth2
+
+`firefly/security-oauth2-client` and `firefly/security-oauth2-server` are the two ends of the same protocol,
+and only configuration decides whether an application is one, the other, or both. The figure follows a single
+sign-in across all three parties: a protected `GET` is denied by `HttpSecurityFilter`, saved in the session and
+redirected to the login page; the "Sign in with …" button hits
+`OAuth2AuthorizationRequestRedirectFilter` (`-89`), which stores a single-use `state`, a `nonce` and a PKCE
+verifier before redirecting the *browser* out to the authorization server; that server's own
+`OAuth2AuthorizationServerFilter` (`-82`) matches `/oauth2/authorize`, signs the person in on its own login
+page, shows the consent page, and mints a single-use code; and the code comes back through
+`OAuth2LoginAuthenticationFilter` (`-88`) at `/login/oauth2/code/{id}`, which exchanges it on the back channel
+and verifies the id token against the issuer's JWKS. Every path in the picture is a real default read out of
+`OAuth2ClientSettings` and `AuthorizationServerSettings`, not an illustration of the RFC:
+
+<p align="center">
+  <img src="docs/assets/diagrams/oauth2-authorization-code.svg" alt="The OAuth2 authorization-code flow with PKCE across three lanes — a browser, a LaraFly relying party running firefly/security-oauth2-client and a LaraFly authorization server running firefly/security-oauth2-server — naming the real endpoint paths, the single-use state and nonce, the S256 code challenge and verifier, the authorization server's own login and consent pages, the single-use code, the back-channel token exchange and the JWKS verification of the id token." width="100%">
+</p>
+
+### Interception: one proxy, many advices
+
+`#[Transactional]` and `#[PreAuthorize]` do not each get their own interception mechanism — there is exactly
+one, and it is a port. A package contributes a kind of advice by shipping a single `#[Component]` that
+implements `AdviceSource` (`advice()`, `scan($psr4)`, `render($row)`); `firefly/data` ships
+`TransactionalAdviceSource` and `firefly/security` ships `MethodSecurityAdviceSource`. `ProxyPlanner` merges
+every source's rows into one `ProxyPlan`, `ProxyPlanCompiler` `var_export`s that plan into `proxy-plan.php`,
+and `ProxyClassGenerator` emits exactly one `final class Foo__FireflyTransactionalProxy extends Foo` per bean
+— carrying one interceptor property and one descriptor factory *per advice kind the class actually uses*,
+with the descriptors baked in as literals so the runtime never looks anything up. At runtime
+`MethodInvocation::proceed()` walks that list, and because **lower advice order runs outer** — security at
+100, the transaction at 1000 — a refused `#[PreAuthorize]` throws before a transaction has been opened. That
+is a property of the compiled plan, not a convention anyone has to remember:
+
+<p align="center">
+  <img src="docs/assets/diagrams/method-interceptor-chain.svg" alt="The LaraFly method interceptor chain: every AdviceSource contributes scan rows to one compiled ProxyPlan, ProxyClassGenerator emits a single proxy class per bean carrying one interceptor property and one baked descriptor factory per advice kind, and MethodInvocation::proceed() then runs the security interceptor at advice order 100 outside the transaction interceptor at order 1000 before reaching the real method." width="100%">
+</p>
+
+### Trace context, end to end
+
+`TracingFilter` (`-110`) is the outermost ordered filter in the chain. It asks
+`W3CTraceContextPropagator::extract()` for the inbound `traceparent`, starts a `SERVER` span with that remote
+context as its parent (or a new root when there is none), and publishes the resulting ids onto Laravel's
+`Context` and `Request::$attributes` as `firefly.trace_id` and `firefly.span_id` — the one place everything
+downstream reads them from. That is the first of five boundaries the same trace crosses; the other four are
+an `INTERNAL` span per command and per query at the CQRS seam, a `PRODUCER` span stamping `traceparent` into
+the EDA envelope's headers on the in-memory and queue buses, a `CONSUMER` span on every delivery — a broker's
+included, through the shared `SubscriberRegistrySink`, because the broker publishers build their own envelopes
+and do not reach the publish seam yet ([Known-latent](docs/modules/tracing.md#known-latent)) — and a `CLIENT`
+span on every outbound `Http` call, which injects the header again so the next service's own `TracingFilter`
+continues the same trace. The ids then land in three places you can actually read: every log line,
+`/actuator/httpexchanges`, and the admin dashboard. None of it costs anything until you opt in — the shipped
+default is `NoOpTracer`, and every instrumentation site checks `$span->context()->isValid()` before
+publishing an id:
+
+<p align="center">
+  <img src="docs/assets/diagrams/tracing-propagation.svg" alt="One W3C traceparent entering at the TracingFilter at order -110 and flowing outward across five boundaries — the SERVER span published to Laravel Context, an INTERNAL span per CQRS message, PRODUCER and CONSUMER spans around an in-memory or queued EDA envelope whose headers carry the traceparent (the broker publishers build their envelopes themselves and do not reach the seam yet; their deliveries still do, through SubscriberRegistrySink), and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the admin dashboard." width="100%">
+</p>
+
 ---
 
 ## Featured Patterns
 
-Nine showcases below, each an accurate snippet lifted straight from `samples/lumen/` (the wallet-and-ledger
-sample) or the framework itself — no invented API. Every attribute and class shown here compiles against the
-shipped `26.09.2` release.
+Twelve showcases below. The eleven that carry code are each an accurate snippet lifted straight from
+`samples/lumen/` (the wallet-and-ledger sample), the skeleton's own configuration reference, or the framework
+itself — no invented API, and every attribute and class shown in them compiles against the shipped `26.09.3`
+release. The twelfth is the two browser surfaces, which are pages you open rather than code you write, so it
+carries prose and links instead of a listing.
+
+That is a checked claim, not a promise — and here is exactly how far it reaches. Every **PHP** listing below
+carries an HTML comment naming the file it was copied from, and `tests/DocsCodeIsRealTest.php` fails the build
+unless the listing appears **verbatim** in that file. A line that is exactly `// …` is the one permitted cut —
+it means "whole lines omitted here" and nothing else. The handful of listings that show code *you* write,
+which therefore exists in no file of this repository, are marked illustrative instead and are still linted and
+resolved against the real class names.
+
+The shell listings are the exception: there is no file to copy a command line from, so they carry no marker
+and the same test holds them to what they **assert** instead — every `php artisan firefly:*` /
+`make:firefly-*` command must be a `$signature` the framework really declares, every `composer <script>` a
+script `composer.json` or `skeleton/composer.json` really defines, and every `firefly.*` key a key the
+framework really reads.
 
 ### Attribute DI — `#[Service]`
 
@@ -340,6 +513,8 @@ shipped `26.09.2` release.
 
 ```php
 use Firefly\Container\Attributes\Service;
+
+// …
 
 #[Service]
 final class GreetingService
@@ -372,17 +547,23 @@ final class WalletController
         private readonly QueryBus $queries,
     ) {}
 
+    /** @return array{wallet_id: string} */
     #[PostMapping(status: 201)]
     public function open(#[Valid] #[RequestBody] OpenWalletRequest $body): array
     {
+        /** @var string $id */
         $id = $this->commands->send(new OpenWallet($body->owner_id, Currency::from($body->currency)));
 
         return ['wallet_id' => $id];
     }
 
+    // …
+
+    /** @return array{wallet_id: string, balance_minor: int} */
     #[GetMapping('/{id}/balance')]
     public function balance(#[PathVariable] string $id): array
     {
+        /** @var int|null $balance */
         $balance = $this->queries->ask(new GetBalance($id));
         if ($balance === null) {
             throw new ResourceNotFoundException("Wallet {$id} not found");
@@ -390,6 +571,8 @@ final class WalletController
 
         return ['wallet_id' => $id, 'balance_minor' => $balance];
     }
+
+    // …
 }
 ```
 
@@ -429,12 +612,14 @@ wrapping — see [CQRS](docs/modules/cqrs.md).
 
 ### Domain aggregate + repository — `AggregateRoot`-style events, `EloquentRepository`
 
-<!-- source: samples/lumen/src/Domain/Wallet.php, samples/lumen/src/Domain/Event/WalletOpened.php -->
+<!-- source: samples/lumen/src/Domain/Wallet.php -->
 
 ```php
 final class Wallet extends Model implements RecordsDomainEvents
 {
     use HasDomainEvents;
+
+    // …
 
     public static function open(string $id, string $ownerId, Currency $currency): self
     {
@@ -442,13 +627,24 @@ final class Wallet extends Model implements RecordsDomainEvents
             throw new ConflictException('owner_id is required');
         }
 
-        $wallet = new self(['id' => $id, 'owner_id' => $ownerId, 'currency' => $currency->value, 'balance_minor' => 0]);
+        $wallet = new self([
+            'id' => $id,
+            'owner_id' => $ownerId,
+            'currency' => $currency->value,
+            'balance_minor' => 0,
+        ]);
         $wallet->raiseEvent(new WalletOpened($id, $ownerId, $currency->value));
 
         return $wallet;
     }
-}
 
+    // …
+}
+```
+
+<!-- source: samples/lumen/src/Domain/Event/WalletOpened.php -->
+
+```php
 #[PublishDomainEvent('wallet.events')]
 final readonly class WalletOpened extends DomainEvent
 {
@@ -479,7 +675,9 @@ final class LedgerProjector
     #[EventListener(['WalletOpened', 'FundsDeposited', 'FundsWithdrawn', 'TransferCompleted'])]
     public function onWalletEvent(EventEnvelope $envelope): void
     {
-        $walletId = $envelope->payload['walletId'] ?? '';
+        // …
+
+        $walletId = $envelope->payload['walletId'] ?? $envelope->payload['sourceWalletId'] ?? '';
         $amountMinor = $envelope->payload['amountMinor'] ?? 0;
         $balanceMinor = $envelope->payload['balanceMinor'] ?? 0;
 
@@ -495,24 +693,39 @@ final class LedgerProjector
 ```
 
 `#[EventListener]` enumerates event-**type** names (matched with `fnmatch` against `$envelope->eventType`), not
-the `#[PublishDomainEvent]` destination — a common gotcha the sample's own docblock calls out explicitly. This
-projector turns committed wallet events into an append-only `ledger_entries` read model. **Highlights:** the
-in-memory/queue adapters, retry + `DeadLetterStore`, and why `#[AsEventListener]` (in-process) and
-`#[EventListener]` (the broker bus) are two distinct surfaces — see
+the `#[PublishDomainEvent]` destination — a common gotcha the sample's own docblock calls out explicitly. The
+`sourceWalletId` fallback is not defensive padding either: `TransferCompleted` names its wallet
+`sourceWalletId` rather than `walletId`, so without that fallback every completed transfer would project under
+an empty wallet id. This projector turns committed wallet events into an append-only `ledger_entries` read
+model. **Highlights:** the in-memory/queue adapters, retry + `DeadLetterStore`, and why `#[AsEventListener]`
+(in-process) and `#[EventListener]` (the broker bus) are two distinct surfaces — see
 [Event-Driven Architecture](docs/modules/eda.md).
 
 ### Same-transaction outbox — `firefly.eda.provider=postgres`
 
-<!-- source: docs/modules/eda-brokers.md -->
+The reference configuration ships both halves already: the `provider` switch and, commented out, the outbox
+block it turns on. Point the switch at `postgres` (`FIREFLY_EDA_PROVIDER=postgres`, or the literal string) and
+uncomment the `postgres` section:
+
+<!-- source: skeleton/config/firefly.php -->
 
 ```php
-// config/firefly.php
 'eda' => [
-    'provider' => 'postgres',
-    'postgres' => [
-        'channel' => 'firefly_eda_events',
-        'max_attempts' => 3,
-    ],
+
+    'provider' => env('FIREFLY_EDA_PROVIDER', 'memory'),
+
+    // …
+
+    // 'postgres' => [
+    //     'connection' => 'pgsql',
+    //     'channel' => 'firefly_eda_events',
+    //     'max_attempts' => 3,
+    //     'relay' => [
+    //         'downstream_provider' => 'rabbitmq',
+    //     ],
+    // ],
+
+    // …
 ],
 ```
 
@@ -549,11 +762,12 @@ class TransferHandler
 
         $amount = new Money($command->amountMinor, $source->currency());
         $source->withdraw($amount);       // debit (raises FundsWithdrawn)
-        $this->wallets->save($source);    // persist inside the tx, so it can genuinely roll back
+        $this->wallets->save($source);    // persist + track the debit INSIDE the tx, so it can genuinely roll back
         $destination->deposit($amount);   // credit — throws on currency mismatch -> whole tx rolls back
         $this->wallets->save($destination);
         $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
         // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
+        // (recordTransferTo runs only on the success path: a failed credit throws above, the tx rolls back, nothing publishes.)
     }
 }
 ```
@@ -597,9 +811,79 @@ rules hold on the controller dispatcher and on **any stereotyped bean**, through
 `#[Transactional]` already used — so a `#[Service]` method carrying `#[PreAuthorize]`, `#[PostAuthorize]`,
 `#[PreFilter]` or `#[PostFilter]` is guarded wherever it is called from, and a refusal never opens a
 transaction. The expression evaluator is a closed, no-`eval` whitelist tokenizer (`hasRole`, `hasAnyRole`,
-`hasAuthority`, `hasPermission`, `hasScope`, `isAuthenticated`, `permitAll`, `denyAll`, `#param` references
-only). **Highlights:** the deny-by-default `HttpSecurity` URL DSL, form/basic/session login with remember-me,
-`JwtService`/OAuth2 resource server, CSRF + security headers — see [Security](docs/modules/security.md).
+`hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`,
+`denyAll`, `#param` references only). **Highlights:** the deny-by-default `HttpSecurity` URL DSL,
+form/basic/session login with remember-me, `JwtService`/OAuth2 resource server, CSRF + security headers — see
+[Security](docs/modules/security.md).
+
+### OAuth2 — signing in with a provider
+
+`composer require firefly/security-oauth2-client`, then fill in a registration. The reference configuration
+ships the whole block already, commented out — a preset registration needs two lines, and a provider the
+presets do not know needs an `issuer_uri` for discovery to do the rest:
+
+<!-- source: skeleton/config/firefly.php -->
+
+```php
+'client' => [
+    'enabled' => env('FIREFLY_OAUTH2_CLIENT_ENABLED', false),
+
+    'login' => [
+        'enabled' => env('FIREFLY_OAUTH2_LOGIN_ENABLED', false),
+        // 'authorization_endpoint_base_uri' => '/oauth2/authorization',
+        // 'redirection_endpoint_base_uri' => '/login/oauth2/code',
+        // 'default_success_url' => '/',
+        // 'always_use_default_success_url' => false,
+        // 'failure_url' => '/login?error',
+    ],
+
+    // …
+
+    'registration' => [
+        // 'google' => [
+        //     'client_id' => env('GOOGLE_CLIENT_ID'),
+        //     'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        // ],
+        // 'corp' => [
+        //     'provider' => 'keycloak',
+        //     'client_id' => 'portal',
+        //     'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
+        //     'client_authentication_method' => 'client_secret_basic', // client_secret_basic | client_secret_post | none
+        //     'authorization_grant_type' => 'authorization_code',      // authorization_code | client_credentials
+        //     'redirect_uri' => '{baseUrl}/login/oauth2/code/{registrationId}',
+        //     'scope' => ['openid', 'profile', 'email'],
+        //     'client_name' => 'Corporate SSO',
+        //     'pkce' => true,
+        // ],
+    ],
+
+    'provider' => [
+        // 'keycloak' => [
+        //     'issuer_uri' => 'https://sso.example.com/realms/corp',
+        //     'authorization_uri' => null,
+        //     'token_uri' => null,
+        //     'jwk_set_uri' => null,
+        //     'user_info_uri' => null,
+        //     'user_name_attribute' => 'sub',
+        //     'end_session_uri' => null,
+        // ],
+    ],
+],
+```
+
+Two base URIs are all the routing there is: `/oauth2/authorization/{registrationId}` starts a sign-in and
+`/login/oauth2/code/{registrationId}` receives the code, both configurable, both served by ordered filters
+rather than routes you write. A registration on a preset (`google`, `github`, `okta`, `keycloak`, or `entra`,
+which maps to Microsoft) inherits that provider's endpoints, scopes and display name; any other provider is
+discovered from its `issuer_uri`. PKCE is on by default, the `state` and `nonce` are single-use, the id token
+is validated against the issuer's JWKS, and what your action receives is an `OidcUser` — claims, never a
+token, because the tokens stay in the session encrypted with the application key. For calling a downstream
+API rather than signing a person in, `Http::oauth2Client('{id}')` hands back a Laravel HTTP client that
+carries — and refreshes — the access token for you. **Highlights:** the presets and discovery, PKCE,
+id-token validation, RP-initiated logout, client credentials — see
+[OAuth2 Client](docs/modules/security-oauth2-client.md), and
+[OAuth2 Authorization Server](docs/modules/security-oauth2-server.md) for pointing the same protocol the
+other way.
 
 ### Observability — a `HealthIndicator` bean
 
@@ -623,6 +907,37 @@ Any `#[Component]` implementing `HealthIndicator` is discovered by a bean-scan r
 the moment `firefly/observability` is installed. **Highlights:** liveness/readiness groups, `Db`/`DiskSpace`
 built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — see
 [Actuator](docs/modules/actuator.md) and [Observability](docs/modules/observability.md).
+
+### Tracing — a span you did not write
+
+`TracingFilter` (`-110`) is a `#[Component]` web filter, the outermost ordered filter in the chain.
+Nothing in an application asks for it, and nothing in an application has to:
+
+<!-- source: packages/observability/src/Web/TracingFilter.php -->
+
+```php
+$span = $this->tracer->startSpan($request->getMethod(), SpanKind::Server, [
+    'http.request.method' => $request->getMethod(),
+    'url.path' => $request->getPathInfo(),
+    'url.scheme' => $request->getScheme(),
+    'server.address' => $request->getHost(),
+    'firefly.correlation_id' => (string) $request->headers->get(CorrelationIdFilter::HEADER, ''),
+], $this->propagator->extract($request->headers->all()));
+```
+
+The last attribute is the correlation id `CorrelationIdFilter` minted or accepted a moment earlier, so a span
+and a `problem+json` body can always be tied to each other. The fourth argument is the whole trick:
+`W3CTraceContextPropagator::extract()` reads the inbound `traceparent` and hands back the remote parent, so a
+request that arrives with a trace *continues* it and one that arrives without starts a new root. The span is
+renamed to `GET /orders/{id}` once the router has matched, its ids are published onto Laravel's `Context` and
+`Request::$attributes` as `firefly.trace_id` and `firefly.span_id`, and from there the same trace crosses
+five boundaries — inbound HTTP, the CQRS buses, an in-memory or queued EDA envelope on the way out, every
+delivery on the way in (a broker's included, through `SubscriberRegistrySink`), and every outbound `Http`
+call, which injects the header again. It is free until you opt in: the shipped default is `NoOpTracer`, whose
+spans record nothing and whose context is invalid, and the OpenTelemetry adapter binds itself only when the
+SDK is installed and `firefly.observability.tracing.enabled` is on. **Highlights:** the `Tracer`/`Span` port, the propagation
+table boundary by boundary, and `firefly.logging.structured.format` for putting the same ids on every log
+line — see [Tracing](docs/modules/tracing.md) and [Logging](docs/modules/logging.md).
 
 ---
 
@@ -699,8 +1014,9 @@ composer require firefly/openapi   # /openapi.json + /openapi — a spec that ca
 
 Point LaraFly at your app's classes and compile it:
 
+<!-- source: skeleton/config/firefly.php -->
+
 ```php
-// config/firefly.php
 'scan' => [
     'paths' => [
         'App\\' => app_path(),
@@ -739,8 +1055,10 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 ## Modules
 
-27 packages under `packages/*` (plus `firefly/skeleton` at the top level — 28 shippable units in total), each
-its own installable Composer package with its own tests and its own [module guide](docs/modules/):
+29 packages under `packages/*`, plus `firefly/skeleton` at the top level — 30 shippable units in total. Each
+is an independently installable Composer package with its own test suite; the one exception is
+`firefly/firefly`, a `type: metapackage` that carries a dependency list and nothing else. The 32
+[module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
 |---|---|---|
@@ -778,8 +1096,8 @@ its own installable Composer package with its own tests and its own [module guid
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
 
 `firefly/firefly` (the runtime metapackage) and `firefly/cli` (the dev-console — see
-[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 27 packages; `firefly/skeleton`
-is the 28th unit, a `type: project` create-project template at the top level.
+[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 29 packages; `firefly/skeleton`
+is the 30th unit, a `type: project` create-project template at the top level.
 
 ---
 
@@ -795,7 +1113,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*LaraFly by Example*](book/README.md) — the complete bilingual book (14 chapters + appendices, PDF + EPUB).
+- [*LaraFly by Example*](book/README.md) — the complete bilingual book (15 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -817,9 +1135,13 @@ still ahead, accurately:
   round-trip test (RabbitMQ, Postgres, Kafka) gated behind Docker + a live connection string — these run
   on demand, not in the default `vendor/bin/pest`/CI pass; wiring a scheduled/opt-in CI lane for them is
   still open.
-- **More actuator endpoints.** `/httpexchanges`, `/caches`, `/configprops`, `/refresh`, `/threaddump`, and
-  `/shutdown` are not yet implemented; there is also no second management port (an Octane second-listener
-  is one option under consideration).
+- **More actuator endpoints.** Fifteen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
+  `/mappings`, `/loggers`, `/scheduledtasks`, `/caches`, `/configprops`, `/metrics`, `/prometheus`,
+  `/process`, `/httpexchanges`, and `/oauth2clients` when the authorization server is installed — and
+  `firefly.management.server.port` moves the whole surface onto a second listener, with `ManagementPortGuard`
+  making the actuator refuse the application port and `php artisan firefly:management:serve` running that
+  second listener in development. Spring Boot's `/refresh`, `/threaddump` and `/shutdown` are still not
+  implemented.
 - **Deeper security surfaces.** OAuth2 client / OpenID Connect login ships as `firefly/security-oauth2-client`
   (Google, GitHub, Okta, Keycloak and Entra presets plus discovery for any provider), and the authorization
   server as `firefly/security-oauth2-server` (registered clients, auth code + PKCE with consent, client
@@ -830,7 +1152,7 @@ still ahead, accurately:
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
-  [book](book/README.md) (14 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [book](book/README.md) (15 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 

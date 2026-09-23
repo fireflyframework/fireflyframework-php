@@ -319,8 +319,10 @@ return [
         'http' => [
             'enabled' => env('FIREFLY_SECURITY_HTTP_ENABLED', false),
             /*
-             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html,
-             | not an XMLHttpRequest, not under firefly.web.error-page.json-paths) is redirected to the login
+             | What an ANONYMOUS request to a protected URL gets. `auto`: a browser (Accept names text/html
+             | or application/xhtml+xml, neither an XMLHttpRequest nor a wantsJson() call — Laravel reads the
+             | FIRST acceptable type, so `application/json, text/html` is NOT a browser — and not under
+             | firefly.web.error-page.json-paths) is redirected to the login
              | page with the request saved when form_login or oauth2.client.login is on; otherwise a 401 with
              | `WWW-Authenticate: Basic` when http_basic is on; otherwise the 401 problem document / HTML page.
              | `login`, `challenge` and `problem` force one of the three (`login` without form_login or OAuth2
@@ -1236,6 +1238,33 @@ return [
     //     'description' => '',
     //     'summary' => 'Orders, customers and fulfilment.',
     //     'terms-of-service' => 'https://example.test/terms',
+    //
+    //     /*
+    //      | The Info Object's `contact`. Any of `name`, `url` and `email`, each blank by default; the
+    //      | object is emitted only when at least one of them is set, and then carries only the ones that
+    //      | are — so a contact with an email and nothing else is a legal one-member object, not a stub
+    //      | with two empty strings in it.
+    //      |
+    //      | Defaults: '' each (no contact object).
+    //     */
+    //     'contact' => [
+    //         'name' => 'The API team',
+    //         'url' => 'https://example.test/support',
+    //         'email' => 'api@example.test',
+    //     ],
+    //
+    //     /*
+    //      | The Info Object's `license`. `name` IS THE GATE: with it blank nothing is emitted at all,
+    //      | because a 3.1 License Object without a name is invalid and half a license is worse than none.
+    //      | `identifier` (an SPDX expression) and `url` are mutually exclusive in 3.1, so `identifier`
+    //      | wins where both are set and `url` is dropped rather than emitting an invalid object.
+    //      |
+    //      | Defaults: '' each (no license object).
+    //     */
+    //     'license' => [
+    //         'name' => 'Apache-2.0',
+    //         'identifier' => 'Apache-2.0',
+    //     ],
     //
     //     /*
     //      | Server Objects. Both spellings a real config file uses are accepted — a bare URL string, and

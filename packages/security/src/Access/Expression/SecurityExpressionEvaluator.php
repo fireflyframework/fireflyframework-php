@@ -6,7 +6,7 @@ namespace Firefly\Security\Access\Expression;
 
 /**
  * A whitelist-only SpEL-subset evaluator built by hand — a tokenizer plus a recursive-descent parser that walks
- * a fixed grammar (boolean and/or/not over a CLOSED set of eight function calls against the SecurityExpressionRoot,
+ * a fixed grammar (boolean and/or/not over a CLOSED set of ten function calls against the SecurityExpressionRoot,
  * with string-literal and #param arguments). It NEVER uses eval/create_function/call_user_func: function dispatch
  * is a hard-coded match on the name, and an unknown name or any syntax error raises ExpressionParseException, which
  * evaluate() turns into a fail-closed `false`. This is the deliberate, provably-safe alternative to running

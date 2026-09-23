@@ -16,16 +16,21 @@ No `composer.json` in this monorepo — not the aggregator, not any `packages/*/
 
 The single place the current version *is* asserted in code is:
 
+<!-- source: packages/kernel/src/Version.php -->
+
 ```php
-// packages/kernel/src/Version.php
 final class Version
 {
-    public const string VERSION = '26.09.2';
+    public const string VERSION = '26.09.3';
 }
 ```
 
-`Firefly\Kernel\Version::VERSION` is read by `firefly:about` (actuator-over-CLI) and the `/actuator/info`
-endpoint. Consistency across the three human-visible surfaces that *should* always agree with it — the
+`Firefly\Kernel\Version::VERSION` has exactly two readers in the shipped packages, and `grep -rn
+'Version::VERSION' packages` is the whole list: `AboutCommand`, which prints `LaraFly <version>` as the first
+line of `php artisan firefly:about`, and `RuntimeInfoContributor`, which puts it at
+`runtime.firefly.version` in `/actuator/info`.
+
+Consistency across the three human-visible surfaces that *should* always agree with it — the
 `Version::VERSION` constant, the CHANGELOG's latest `## [x.y.z]` heading, and the README version badge — is
 enforced by `tests/VersionConsistencyTest.php`, which fails the build the moment any of the three drifts from
 the others. A release always updates all three together. Work merged between releases therefore accumulates
@@ -33,12 +38,18 @@ under a `## [Unreleased]` heading in the CHANGELOG — the test reads the first 
 unreleased section is invisible to it and the constant stays the single source of truth until the release is
 actually cut.
 
+The listing above is itself held to the constant: it carries a `<!-- source: -->` marker, so
+`tests/DocsCodeIsRealTest.php` compares it line for line against `packages/kernel/src/Version.php` and this
+page cannot quote a version the framework does not ship. See [Contributing](contributing.md#documentation).
+
 ## Reading the version at runtime
+
+<!-- illustrative: the two lines an application writes in its own code to print the framework version -->
 
 ```php
 use Firefly\Kernel\Version;
 
-echo Version::VERSION; // "26.09.2"
+echo Version::VERSION;
 ```
 
 This is the only version string LaraFly itself exposes; there is no runtime version-detection mechanism
@@ -46,20 +57,34 @@ beyond this constant (e.g. no reading it back out of an installed `composer.lock
 
 ## Constraints
 
-Application `composer.json` files should depend on Firefly packages with a caret constraint against the
-current month, e.g.:
+Application `composer.json` files depend on Firefly packages with a constraint against a release line, e.g.:
 
 ```json
 {
     "require": {
-        "firefly/firefly": "^26.07"
+        "firefly/firefly": "^26.09"
     }
 }
 ```
 
-`^26.07` allows any patch release within `26.07.x` but not a `26.08.x` release — the same "pin to the
-release line, accept patches" posture CalVer projects generally recommend, since CalVer numbers don't carry
-semver's guarantee that a bump in the last segment is always backward compatible.
+`^26.09` is the constraint the release runbook writes into every package's sibling requirements
+(`monorepo-builder bump-interdependency`, see [Publishing](publishing.md)) — and it is the **widest** of the
+three shapes below, not the narrowest. Composer normalises `26.09` to `26.09.0.0` and expands a caret to "up
+to the next major", so `^26.09` accepts `26.10.x`, `26.12.x` and every other line released in the `26` year.
+That matters more under CalVer than it would under semver, because a CalVer number carries no promise that a
+bump in anything but the last segment is backward compatible — a month bump is exactly where an incompatible
+change is allowed to land. Pick the row that matches how much you actually mean to accept:
+
+| Constraint | `26.09.3` | `26.10.1` | `27.01.0` |
+|------------|-----------|-----------|-----------|
+| `^26.09` | accepted | accepted | rejected |
+| `~26.09.0` | accepted | rejected | rejected |
+| `26.09.*` | accepted | rejected | rejected |
+
+"Pin to the release line, accept patches" — the posture CalVer projects generally recommend — is the second
+or third row, not the first. Use `^26.09` when you want every release of the `26` year and intend to read
+the CHANGELOG at each month bump; use `~26.09.0` (or `26.09.*`) when you want `26.09` patches and nothing
+else, and to bump the month deliberately.
 
 For anyone tracking the unreleased development branch directly (a path-repo dev dependency, or a
 `dev-main` Packagist requirement) rather than a tagged release, every package's `composer.json` carries:

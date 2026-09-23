@@ -9,10 +9,12 @@ list) instead of unconditionally rolled back.
 
 ## The `#[Transactional]` attribute
 
+<!-- source: packages/data/src/Transaction/Attributes/Transactional.php -->
 ```php
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
 final class Transactional
 {
+    // …
     public function __construct(
         public Propagation $propagation = Propagation::REQUIRED,
         public Isolation $isolation = Isolation::DEFAULT,
@@ -29,14 +31,22 @@ On a **class**, it sets the default for every public method. On a **method**, it
 with — the class-level attribute for that one method (Spring semantics): a method-level `#[Transactional]`
 is the complete, effective configuration for that method, not an override of individual fields.
 
+<!-- source: packages/data/tests/Fixtures/Transactional/TransferService.php -->
 ```php
-#[Transactional(readOnly: true)]        // class default: every public method is read-only REQUIRED
+#[Transactional(readOnly: true)]
 class TransferService
 {
-    #[Transactional(propagation: Propagation::REQUIRES_NEW)]   // replaces the class default entirely for transfer()
-    public function transfer(int $amount): int { /* ... */ }
+    #[Transactional(propagation: Propagation::REQUIRES_NEW)]
+    public function transfer(int $amount): int
+    {
+        return $amount;
+    }
 
-    public function balance(): int { /* ... */ }   // inherits the class-level readOnly default
+    public function balance(): int
+    {
+        return 0;
+    }
+    // …
 }
 ```
 
@@ -67,16 +77,19 @@ caller go through — there is no second code path to keep in sync.
 
 `Isolation` is a string-backed enum whose value **is** the SQL clause:
 
+<!-- source: packages/data/src/Transaction/Isolation.php -->
 ```php
 enum Isolation: string
 {
-    case DEFAULT = 'DEFAULT';                  // no SET at all — leaves the connection's own default
+    case DEFAULT = 'DEFAULT';
     case READ_UNCOMMITTED = 'READ UNCOMMITTED';
     case READ_COMMITTED = 'READ COMMITTED';
     case REPEATABLE_READ = 'REPEATABLE READ';
     case SERIALIZABLE = 'SERIALIZABLE';
 }
 ```
+
+`DEFAULT` issues no `SET` at all, leaving the connection's own level in place.
 
 On the outermost transaction of a unit of work, a non-`DEFAULT` isolation issues `SET TRANSACTION ISOLATION
 LEVEL {value}`; `readOnly: true` issues `SET TRANSACTION READ ONLY`. Both are **best-effort**: either
@@ -98,15 +111,18 @@ lost on the way), the transaction is rolled back instead and a `TransactionSyste
 `previous`, the method's own exception its `$applicationException`. A commit that fails after the method
 *returned* is rolled back the same way and the failure is rethrown on its own.
 
+<!-- source: packages/data/tests/Fixtures/Capstone/AccountService.php -->
 ```php
 #[Transactional(noRollbackFor: [IgnorableException::class])]
 public function logButKeep(): void
 {
     DB::table('accounts')->insert(['name' => 'kept']);
 
-    throw new IgnorableException('ignored');   // insert survives: commit-and-rethrow
+    throw new IgnorableException('ignored');
 }
 ```
+
+The insert survives: the throw is commit-and-rethrow.
 
 Either way — commit or roll back — after-commit domain events queued during the unit of work are drained via
 `DomainEventDispatcher::dispatchAfterCommit()` *before* the transaction is resolved, on the descriptor's own
@@ -133,20 +149,47 @@ method **returns** past that deadline the transaction is rolled back and `Transa
 ## Transactional event listeners
 
 `#[TransactionalEventListener]` is the transaction-aware alternative to `#[AsEventListener]` — Spring's
-`@TransactionalEventListener`:
+`@TransactionalEventListener`. The package's own phase fixture declares one listener per phase — the bare
+attribute is `AFTER_COMMIT`, and `fallbackExecution: true` is what makes a listener run at once when no
+transaction is active:
 
+<!-- source: packages/data/tests/Fixtures/Listeners/NoteAudit.php -->
 ```php
 #[Component]
-final class OrderAudit
+final class NoteAudit
 {
-    #[TransactionalEventListener]                                              // AFTER_COMMIT
-    public function record(OrderPlaced $event): void { /* the row is committed */ }
+    // …
+    #[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT, order: -10)]
+    public function beforeCommit(NoteSaved $event): void
+    {
+        self::record('before-commit', $event);
+        // …
+    }
+    // …
+    #[TransactionalEventListener]
+    public function afterCommit(NoteSaved $event): void
+    {
+        self::record('after-commit', $event);
+    }
 
-    #[TransactionalEventListener(phase: TransactionPhase::BEFORE_COMMIT)]
-    public function check(OrderPlaced $event): void { /* inside the transaction; a throw aborts the commit */ }
+    #[TransactionalEventListener(phase: TransactionPhase::AFTER_ROLLBACK)]
+    public function afterRollback(NoteSaved $event): void
+    {
+        self::record('after-rollback', $event);
+    }
 
-    #[TransactionalEventListener(phase: TransactionPhase::AFTER_ROLLBACK, fallbackExecution: true)]
-    public function undo(OrderPlaced $event): void { /* also runs at once when no transaction is active */ }
+    #[TransactionalEventListener(phase: TransactionPhase::AFTER_COMPLETION)]
+    public function afterCompletion(NoteSaved $event): void
+    {
+        self::record('after-completion', $event);
+    }
+
+    #[TransactionalEventListener(fallbackExecution: true, order: 10)]
+    public function alwaysAfterCommit(NoteSaved $event): void
+    {
+        self::record('fallback-after-commit', $event);
+    }
+    // …
 }
 ```
 
@@ -189,21 +232,33 @@ chain landed, the same proxy carries **every advice** a class runs, not only tra
 `MethodInvocation` over the ORDERED interceptors compiled for that method and the descriptors baked for it, and
 `proceed()` walks the chain outermost-first before reaching `parent::`:
 
+<!-- illustrative: the source ProxyClassGenerator::generate() emits for an application's own #[Transactional] #[PreAuthorize] service; a generated proxy is written to a private temporary file at wrap time and is in no file in this repository -->
 ```php
-public function transfer(int $amount): int
+// Generated by firefly/data. Do not edit.
+
+namespace App;
+
+final class AccountService__FireflyTransactionalProxy extends \App\AccountService
 {
-    return (new \Firefly\Data\Proxy\MethodInvocation(
-        $this,
-        \App\AccountService::class,
-        'transfer',
-        [$amount],
-        [$this->__fireflySecurityInterceptor, $this->__fireflyTxInterceptor],
-        [
-            \Firefly\Security\Access\Method\SecurityMethodDescriptor::class => self::__fireflySecurityDescriptor('transfer'),
-            \Firefly\Data\Transaction\TransactionalDescriptor::class => self::__fireflyTxDescriptor('transfer'),
-        ],
-        fn (array $__fireflyArgs) => parent::transfer(...$__fireflyArgs),
-    ))->proceed();
+    private \Firefly\Data\Proxy\MethodInterceptor $__fireflySecurityInterceptor;
+
+    private \Firefly\Data\Proxy\MethodInterceptor $__fireflyTxInterceptor;
+
+    public function transfer(int $amount): int
+    {
+        return (new \Firefly\Data\Proxy\MethodInvocation(
+            $this,
+            \App\AccountService::class,
+            'transfer',
+            [$amount],
+            [$this->__fireflySecurityInterceptor, $this->__fireflyTxInterceptor],
+            [
+                \Firefly\Security\Access\Method\SecurityMethodDescriptor::class => self::__fireflySecurityDescriptor('transfer'),
+                \Firefly\Data\Transaction\TransactionalDescriptor::class => self::__fireflyTxDescriptor('transfer'),
+            ],
+            fn (array $__fireflyArgs) => parent::transfer(...$__fireflyArgs),
+        ))->proceed();
+    }
 }
 ```
 
@@ -229,6 +284,8 @@ The pieces, all in `Firefly\Data\Proxy`:
   sources and renders the generator's inputs; `InterceptorRegistry` resolves each advice's interceptor bean at wrap
   time, degrading to a `PassThroughInterceptor` when that capability is switched off.
 
+![One proxy per bean: every AdviceSource contributes rows to one compiled ProxyPlan, and a call then runs method security at advice order 100 before the transaction at order 1000](../assets/diagrams/method-interceptor-chain.svg)
+
 The plan is resolved like every manifest: the compiled `proxy-plan.php`; else — a cache from before that file
 existed, holding `transactional.php` and its proxies but no plan — a transactional-only plan bridged from the
 `TransactionalManifest` that loaded it (a cached app trusts its artifacts and never falls back to the scan; an
@@ -253,13 +310,14 @@ still in view.
 interceptor entirely. To get transactional semantics for an inner unit of work from within another method,
 call through the injected `TransactionTemplate` instead:
 
+<!-- source: packages/data/tests/Fixtures/Capstone/AccountService.php -->
 ```php
 #[Service]
 #[Transactional]
 class AccountService
 {
     public function __construct(private readonly TransactionTemplate $template) {}
-
+    // …
     public function outerWithNested(): void
     {
         DB::table('accounts')->insert(['name' => 'outer']);
@@ -267,18 +325,21 @@ class AccountService
         try {
             $this->template->execute(function (): void {
                 DB::table('accounts')->insert(['name' => 'inner']);
+
                 throw new RuntimeException('inner fail');
             }, new TransactionalDescriptor(propagation: Propagation::NESTED));
         } catch (RuntimeException) {
-            // outer commit is unaffected — only the NESTED savepoint unwound
         }
     }
 }
 ```
 
+The outer commit is unaffected — only the `NESTED` savepoint unwinds.
+
 `TransactionTemplate::execute()` is the programmatic twin of `#[Transactional]` for exactly this case (or for
 any transactional unit of work that isn't a whole bean method):
 
+<!-- illustrative: the two programmatic calls a reader writes in their own method body -->
 ```php
 $template->execute(function (): void {
     DB::table('widgets')->insert(['name' => 'a']);

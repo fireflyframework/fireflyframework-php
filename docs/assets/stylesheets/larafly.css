@@ -1,0 +1,212 @@
+/*
+ * LaraFly — the few things mkdocs-material cannot express in mkdocs.yml.
+ *
+ * The palette is not invented here: it is read out of docs/assets/larafly-banner.svg — the slate background
+ * gradient (#0f172a -> #1e293b), the spark's three ambers (#fde68a, #fbbf24, #f59e0b) and the greys the
+ * wordmark, tagline and credit line sit in (#f8fafc, #e2e8f0, #94a3b8, #64748b). Three values in the colour
+ * blocks below are CHOSEN rather than read — the two amber link inks and one slate a step under the banner's
+ * darkest — and each says, where it is defined, what it was taken from and why the banner had nothing to
+ * give. Nothing else in those blocks is a colour the banner does not already contain.
+ *
+ * Material's `primary: custom` / `accent: custom` are exactly the hook for that palette: the theme reads the
+ * variable blocks below, so the colour scheme costs no override of a Material rule at all. The rules after
+ * them are the other kind of thing — density and framing Material has no variable for — and each one says
+ * what it is overriding and why.
+ */
+
+:root {
+  /* Read straight off the banner, and numbered by where each one falls on the ramp it belongs to. */
+  --lf-slate-900: #0f172a;
+  --lf-slate-800: #1e293b;
+  --lf-slate-500: #64748b;
+  --lf-slate-400: #94a3b8;
+  --lf-slate-200: #e2e8f0;
+  --lf-amber: #fbbf24;
+  --lf-amber-soft: #fde68a;
+  --lf-amber-deep: #f59e0b;
+  /*
+   * CHOSEN, not read — two of the three. --lf-amber-deep #f59e0b, the outer stop of the banner's spark
+   * gradient, is hsl(38, 92%, 50%), and 2.15:1 against white is far too little for a link in a paragraph.
+   * (The banner itself never has to answer for that: its amber sits on slate, and the one it actually paints
+   * opaque is --lf-amber #fbbf24 = hsl(43, 96%, 56%), which is lighter still.) These two are #f59e0b's hue
+   * and saturation taken down in lightness until they clear WCAG AA for body text: hsl(38, 92%, 33%) at
+   * 4.6:1 resting, hsl(38, 92%, 27%) at 6.3:1 on hover. Nothing else about them is chosen.
+   */
+  --lf-amber-ink: #a26907;
+  --lf-amber-ink-strong: #845606;
+}
+
+/* Header, tabs and every primary surface: the banner's slate. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--lf-slate-900);
+  --md-primary-fg-color--light: var(--lf-slate-800);
+  /*
+   * CHOSEN, not read — the third. The banner has no slate darker than #0f172a, and Material paints exactly
+   * one thing with this variable: `.md-nav__source`, the repository block the navigation drawer puts
+   * directly under its title — and that title is --md-primary-fg-color, so a value level with it would erase
+   * the seam between the two. #0b1220 is hsl(220, 49%, 8%): the banner's own hsl(222, 47%, 11%) slate three
+   * points of lightness further down, and already the colour of the favicon glyph's head.
+   */
+  --md-primary-fg-color--dark: #0b1220;
+  --md-primary-bg-color: #f8fafc;
+  --md-primary-bg-color--light: rgba(248, 250, 252, 0.72);
+
+  /*
+   * Material derives the link colour from the primary colour, and a primary this dark makes every link the
+   * same near-black as the prose around it (and, on the slate scheme, #0f172a on a #1e2229 page — a 1.1:1
+   * ratio, which is a link nobody can see). So the link colour is stated here instead of inherited: the
+   * deep spark amber at the lightness where it is readable on white.
+   */
+  --md-typeset-a-color: var(--lf-amber-ink);
+}
+
+/*
+ * Hover, focus and the active table-of-contents entry: the same amber, one step further down. Hovering a
+ * link therefore raises its contrast (4.6:1 -> 6.3:1) instead of washing it out, which is the way round a
+ * hover state should work. The transparent wash keeps --lf-amber-deep undarkened, because there it is a
+ * background tint and not text.
+ */
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--lf-amber-ink-strong);
+  --md-accent-fg-color--transparent: rgba(245, 158, 11, 0.12);
+  /* Material draws these ON an accent background (a hovered button, a tag, the back-to-top pill). */
+  --md-accent-bg-color: #f8fafc;
+  --md-accent-bg-color--light: rgba(248, 250, 252, 0.72);
+}
+
+/*
+ * On the dark scheme the readable direction is the other one: the darkened amber disappears into the page,
+ * and the spark colour itself carries 9.6:1. Hover brightens to the banner's pale spark highlight.
+ */
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-typeset-a-color: var(--lf-amber);
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--lf-amber-soft);
+  --md-accent-fg-color--transparent: rgba(251, 191, 36, 0.14);
+  /* The accent is the pale spark here, so what sits on it goes back to the banner's slate. */
+  --md-accent-bg-color: var(--lf-slate-900);
+  --md-accent-bg-color--light: var(--lf-slate-800);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 220;
+}
+
+/* The module landing cards (docs/index.md, docs/modules.md). */
+.md-typeset .lf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+
+.md-typeset .lf-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.35rem;
+  padding: 0.75rem 0.9rem 0.85rem;
+  background: var(--md-default-bg-color);
+  transition: border-color 125ms, box-shadow 125ms;
+}
+
+.md-typeset .lf-card:hover {
+  border-color: var(--lf-amber);
+  box-shadow: 0 1px 10px rgba(15, 23, 42, 0.08);
+}
+
+.md-typeset .lf-card > :first-child {
+  margin-top: 0;
+}
+
+.md-typeset .lf-card > :last-child {
+  margin-bottom: 0;
+}
+
+.md-typeset .lf-card-title {
+  display: block;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--lf-slate-500);
+  margin-bottom: 0.35rem;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .lf-card-title {
+  color: var(--lf-slate-400);
+}
+
+.md-typeset .lf-card-note {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.4rem;
+}
+
+/*
+ * Diagrams. Every SVG under assets/diagrams/ carries its own white panel (see docs/assets/README.md), which
+ * is what makes it safe on GitHub — and what makes it glare on the dark scheme without a frame. A border and
+ * a little padding are the whole fix; the artwork is never recoloured. The #ffffff below is not the banner's
+ * and is not derived from it either: it is the panel's own white, repeated so the padding reads as part of
+ * the drawing rather than as a ring around it.
+ */
+.md-typeset img[src*="assets/diagrams/"] {
+  display: block;
+  width: 100%;
+  max-width: 62rem;
+  margin: 1.1rem auto;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  background: #ffffff;
+  padding: 0.35rem;
+}
+
+.md-typeset figure > img[src*="assets/diagrams/"] {
+  margin-bottom: 0.4rem;
+}
+
+.md-typeset figcaption {
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+  text-align: center;
+  margin: 0 auto 1.2rem;
+  max-width: 48rem;
+}
+
+/*
+ * Material sets these tables at 0.64rem — `.md-typeset table:not([class]){font-size:.64rem}`, two steps under
+ * the 0.8rem of the prose around them — which is small for a page that is mostly config keys, class names and
+ * endpoints. 0.72rem is the compromise: still visibly a table, still legible at a glance. It buys that
+ * legibility with width, which is what the `code` rule below then has to protect.
+ */
+.md-typeset table:not([class]) {
+  font-size: 0.72rem;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--md-default-fg-color--lightest);
+}
+
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  padding: 0.45rem 0.6rem;
+}
+
+/*
+ * A cell is narrow enough that `/firefly/health` wraps into `/firefly/he` + `alth`, and a reader copying a
+ * path out of a table has no way to tell that break from a real one. Material already gives every table a
+ * horizontal scroll container, so keeping the token whole costs a scrollbar on the widest tables and keeps
+ * every endpoint, class name and config key copyable.
+ */
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+}
+
+/* The banner is full-bleed on the landing page — it already carries its own rounded slate background. */
+.md-typeset img[src$="larafly-banner.svg"] {
+  width: 100%;
+  margin: 0 0 1.4rem;
+  border: 0;
+  padding: 0;
+}

@@ -34,6 +34,7 @@ Laravel boots by registering whatever service providers `bootstrap/providers.php
 
 Laravel's container is powerful but explicit — a binding lives in a provider, separate from the class it binds:
 
+<!-- illustrative: the Laravel service provider a reader would have written before LaraFly, shown for contrast -->
 ```php
 final class GreetingServiceProvider extends ServiceProvider
 {
@@ -46,6 +47,7 @@ final class GreetingServiceProvider extends ServiceProvider
 
 LaraFly's `firefly/container` layers PHP 8 attributes onto `Illuminate\Container` instead — mark the class itself with `#[Component]` (or `#[Service]`/`#[Repository]`/`#[Configuration]`, all specializations of it) and a compiled component scan registers it, resolving constructor dependencies by type:
 
+<!-- illustrative: the LaraFly replacement for the provider above, in the reader's own application -->
 ```php
 #[Service]
 final readonly class GreetingService

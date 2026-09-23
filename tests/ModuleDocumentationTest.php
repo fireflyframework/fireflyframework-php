@@ -17,7 +17,22 @@ declare(strict_types=1);
  * `Firefly\Cli\Command\OAuth2KeysCommand` had promised `docs/modules/security-oauth2-server.md` for twelve
  * commits before it existed. The assertion is deliberately about REACHABILITY and not about content: a
  * module document's own quality is not something a test can hold, but "the file a package promises exists"
- * and "every module document is in the navigation and both tables" are.
+ * and "every module document is in the navigation, both tables and the Modules landing page" are.
+ *
+ * `docs/modules.md` — the page the site's **Modules** tab opens, and the one `docs/index.md` calls the module
+ * index — joined that list when it was written, and it is the surface with the most to lose from being left
+ * out: the tables are each a row in a larger page, while the landing page's ENTIRE job is to be the
+ * complete, grouped index. A thirty-third guide that reaches the navigation and the tables but not the
+ * landing page would be green here and invisible on the one page built to list everything.
+ *
+ * `docs/README.md` — the documentation folder's own index, the page GitHub renders when somebody opens
+ * `docs/` in the web UI — joined last, and it joined because it had started claiming this test's coverage
+ * for itself. Its module section says "All 32 are listed here" and then names this file as the guard, which
+ * a reader inside that file reads as a promise about the table right underneath. It was not: the surfaces
+ * below were `mkdocs.yml`, the ROOT `README.md`, `docs/index.md` and `docs/modules.md`, and the one page
+ * asserting it was covered was the one page nothing checked. That is the same "reads true and sends you
+ * somewhere empty" shape tests/SiteNavigationTest.php's own docblock warns about, so the fix was to make
+ * the claim true rather than to soften it — and the count beside it is held to `glob()` over there.
  */
 it('ships the module document every package README points at', function () {
     $root = dirname(__DIR__);
@@ -36,11 +51,13 @@ it('ships the module document every package README points at', function () {
     expect($missing)->toBe([]);
 });
 
-it('links every module document from the navigation, the README table and the documentation index', function () {
+it('links every module document from the navigation, both README tables, the documentation index and the Modules landing page', function () {
     $root = dirname(__DIR__);
     $nav = (string) file_get_contents($root.'/mkdocs.yml');
     $readme = (string) file_get_contents($root.'/README.md');
+    $docsReadme = (string) file_get_contents($root.'/docs/README.md');
     $index = (string) file_get_contents($root.'/docs/index.md');
+    $landing = (string) file_get_contents($root.'/docs/modules.md');
 
     $unreachable = [];
 
@@ -53,8 +70,14 @@ it('links every module document from the navigation, the README table and the do
         if (! str_contains($readme, 'docs/modules/'.$name)) {
             $unreachable[] = $name.' is not in the README module table';
         }
+        if (! str_contains($docsReadme, 'modules/'.$name)) {
+            $unreachable[] = $name.' is not in the docs/README.md module table';
+        }
         if (! str_contains($index, 'modules/'.$name)) {
             $unreachable[] = $name.' is not in docs/index.md';
+        }
+        if (! str_contains($landing, 'modules/'.$name)) {
+            $unreachable[] = $name.' is not in the Modules landing page';
         }
     }
 

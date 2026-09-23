@@ -15,6 +15,7 @@ By the end of this chapter you will know the difference `firefly/domain` draws b
 
 `Entity` draws the first of DDD's two foundational distinctions: identity, not value, decides whether two entities are the same thing.
 
+<!-- source: packages/domain/src/Entity.php -->
 ```php
 abstract class Entity
 {
@@ -53,17 +54,20 @@ Two entities are `equals()` only when they are the same concrete class **and** h
 
 `ValueObject` is the second distinction: no identity at all, immutable by convention, equal purely by the values it holds.
 
+<!-- source: packages/domain/src/ValueObject.php -->
 ```php
 interface ValueObject {}
 ```
 
 It is a bare marker interface on purpose — a value object's *equality* is supplied separately, by a small trait:
 
+<!-- source: packages/domain/src/ValueObjectEquality.php -->
 ```php
 trait ValueObjectEquality
 {
     public function equals(self $other): bool
     {
+        // …
         return get_class($this) === get_class($other)
             && get_object_vars($this) == get_object_vars($other);
     }
@@ -79,6 +83,7 @@ trait ValueObjectEquality
 
 `Money` is `firefly/domain`'s `ValueObject` applied to Lumen's actual currency handling — real, shipped code from `samples/lumen/src/Domain/Money.php`:
 
+<!-- source: samples/lumen/src/Domain/Money.php -->
 ```php
 <?php
 
@@ -154,6 +159,7 @@ Three design choices here repay close reading. `$minorUnits` is stored as an **i
 
 `Money` solves representation. Something still has to *own* the decision of whether a deposit or withdrawal is allowed at all — that is the aggregate root's job. `AggregateRoot` extends `Entity` and adds exactly one thing: a private buffer of pending domain events, and the single protected method that appends to it.
 
+<!-- source: packages/domain/src/AggregateRoot.php -->
 ```php
 abstract class AggregateRoot extends Entity implements RecordsDomainEvents
 {
@@ -191,13 +197,13 @@ abstract class AggregateRoot extends Entity implements RecordsDomainEvents
 
 `RecordsDomainEvents` is the interface that names exactly this drain-side contract, deliberately **without** `raiseEvent()` — because only the aggregate itself may raise its own events, so that method stays `protected` on whichever class implements the interface:
 
+<!-- source: packages/domain/src/RecordsDomainEvents.php -->
 ```php
 interface RecordsDomainEvents
 {
-    /** @return list<DomainEvent> */
+    // …
     public function pendingEvents(): array;
-
-    /** @return list<DomainEvent> */
+    // …
     public function pullEvents(): array;
 
     public function clearEvents(): void;
@@ -208,6 +214,7 @@ interface RecordsDomainEvents
 
 Here is where LaraFly's aggregate story has to solve a problem PyFly and Java never face: PHP has single inheritance, and `Wallet` needs to be a **persisted Eloquent model** as well as an aggregate root. It cannot `extends AggregateRoot` and `extends Model` at the same time. `HasDomainEvents` is the trait that closes this gap — the exact same buffer and the exact same four methods as `AggregateRoot`, but as a trait any class can `use`, regardless of what it already extends:
 
+<!-- source: packages/domain/src/HasDomainEvents.php -->
 ```php
 trait HasDomainEvents
 {
@@ -243,6 +250,7 @@ trait HasDomainEvents
 
 Here is the whole, real `Wallet` aggregate — `samples/lumen/src/Domain/Wallet.php` — combining exactly this trait with `extends Model` and `implements RecordsDomainEvents`:
 
+<!-- source: samples/lumen/src/Domain/Wallet.php -->
 ```php
 <?php
 
@@ -256,6 +264,7 @@ use Firefly\Kernel\Exception\Business\ConflictException;
 use Illuminate\Database\Eloquent\Model;
 use Lumen\Domain\Event\FundsDeposited;
 use Lumen\Domain\Event\FundsWithdrawn;
+// …
 use Lumen\Domain\Event\WalletOpened;
 
 final class Wallet extends Model implements RecordsDomainEvents
@@ -358,7 +367,7 @@ final class Wallet extends Model implements RecordsDomainEvents
             $this->walletId(), $amount->minorUnits, $amount->currency->value, $remaining->minorUnits
         ));
     }
-
+    // …
     private function assertCurrency(Money $amount): void
     {
         if ($amount->currency !== $this->currency()) {
@@ -381,6 +390,7 @@ Three invariants live inside these three methods, and nowhere else. `open()` ref
 
 `DomainEvent` is the flat, immutable base every concrete event extends. It auto-populates two fields you never have to set yourself:
 
+<!-- source: packages/domain/src/DomainEvent.php -->
 ```php
 abstract readonly class DomainEvent
 {
@@ -411,6 +421,7 @@ abstract readonly class DomainEvent
 
         return $pos === false ? $class : substr($class, $pos + 1);
     }
+// …
 }
 ```
 
@@ -418,6 +429,7 @@ abstract readonly class DomainEvent
 
 Lumen ships four such events, one per state transition the wallet or a transfer can produce. Here are the three `Wallet` itself raises — real, shipped code from `samples/lumen/src/Domain/Event/`:
 
+<!-- source: samples/lumen/src/Domain/Event/WalletOpened.php -->
 ```php
 <?php
 
@@ -441,6 +453,7 @@ final readonly class WalletOpened extends DomainEvent
 }
 ```
 
+<!-- source: samples/lumen/src/Domain/Event/FundsDeposited.php -->
 ```php
 <?php
 
@@ -465,6 +478,7 @@ final readonly class FundsDeposited extends DomainEvent
 }
 ```
 
+<!-- source: samples/lumen/src/Domain/Event/FundsWithdrawn.php -->
 ```php
 <?php
 
@@ -509,6 +523,7 @@ Buffering an event is not the same as publishing it — and the gap between the 
 
 `DepositHandler` — the real, shipped command handler behind `WalletController::deposit()` from Chapter 4 — is this whole cycle in five lines:
 
+<!-- source: samples/lumen/src/Application/Command/DepositHandler.php -->
 ```php
 <?php
 
@@ -552,6 +567,7 @@ class DepositHandler
 
 `TransferHandler` shows the same cycle with two aggregates and a genuine all-or-nothing guarantee:
 
+<!-- source: samples/lumen/src/Application/Command/TransferHandler.php -->
 ```php
 <?php
 
@@ -598,6 +614,7 @@ class TransferHandler
         $this->wallets->save($destination);
         $source->recordTransferTo($command->destinationWalletId, $amount); // both legs succeeded -> raise TransferCompleted
         // commit here -> FundsWithdrawn + FundsDeposited + TransferCompleted drain atomically after the unit of work commits.
+    // …
     }
 }
 ```
@@ -615,6 +632,7 @@ If the destination's `deposit()` throws — a currency mismatch — `#[Transacti
 
 The last leg of the journey — a published `FundsDeposited` actually reaching something useful — closes with a real, shipped listener. `LedgerProjector` turns every committed wallet event into an append-only row in `ledger_entries`, the table `GetLedgerHandler` (Chapter 4's `WalletController::ledger()`) reads back:
 
+<!-- source: samples/lumen/src/Application/Listener/LedgerProjector.php -->
 ```php
 <?php
 

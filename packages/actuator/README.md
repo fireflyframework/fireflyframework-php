@@ -16,18 +16,22 @@ See [Actuator](../../docs/modules/actuator.md) for the full endpoint reference.
 
 Spring Boot's `management.server.port` is supported, with one honest caveat spelled out below.
 
+<!-- illustrative: the management keys a deployment writes into its own config/firefly.php; the shipped reference carries this block commented out, so there is no file to copy it from -->
+
 ```php
 // config/firefly.php
-'management' => [
-    'server' => [
-        'port' => env('FIREFLY_MANAGEMENT_PORT'),      // unset = same port as the application (the default)
-        'address' => env('FIREFLY_MANAGEMENT_ADDRESS'), // bind address for the management listener
-        'base-path' => '',                              // optional prefix: '/manage' -> /manage/actuator/health
+return [
+    'management' => [
+        'server' => [
+            'port' => env('FIREFLY_MANAGEMENT_PORT'),       // unset = same port as the application (the default)
+            'address' => env('FIREFLY_MANAGEMENT_ADDRESS'), // bind address for the management listener
+            'base-path' => '',                              // optional prefix: '/manage' -> /manage/actuator/health
+        ],
     ],
-],
-'server' => [
-    'port' => env('FIREFLY_SERVER_PORT'),  // optional: declare the application's own port (see "Validation")
-],
+    'server' => [
+        'port' => env('FIREFLY_SERVER_PORT'),  // optional: declare the application's own port (see "Validation")
+    ],
+];
 ```
 
 With `firefly.management.server.port` set, the actuator answers on that port and **404s everywhere else** — the

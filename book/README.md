@@ -45,16 +45,23 @@ generated PDF/EPUB.
 
 ## Verifying PHP code listings
 
-Every fenced ` ```php ` block in the manuscript is linted with the real PHP
-CLI (`php -l`, via a temp file — no execution):
+A fenced ` ```php ` block is linted with the real PHP CLI (`php -l`, via a temp
+file — no execution) unless it carries a `<!-- source: … -->` marker. A marked
+block is a verbatim excerpt of the repository file it names — a fragment that
+does not parse on its own — and is checked by line-for-line comparison in
+`DocsCodeIsRealTest` instead. Every listing in `src/` **and** in `src-es/`
+carries one marker or the other, and both directories are named in
+`DocsCodeAudit::AUDITED`, so every marked block in either edition is held to the
+comparison:
 
 ```bash
-book/.venv/bin/python book/build/verify_code.py book/src
-book/.venv/bin/python book/build/verify_code.py book/src-es
+book/.venv/bin/python book/build/verify_code.py book/src --require-provenance
+book/.venv/bin/python book/build/verify_code.py book/src-es --require-provenance
 ```
 
-Exits non-zero and prints `FAIL <file>:<line> ...` for any listing that fails
-to parse.
+Exits non-zero and prints `FAIL <file>:<line> ...` for any listing that fails to
+parse, and — with `--require-provenance` — for any `php` listing carrying
+neither marker.
 
 ## Running the pipeline's own tests
 
@@ -78,7 +85,7 @@ book/
     epub.py            # stdlib-only EPUB3 (OCF) zip assembler
     pdf.py             # WeasyPrint HTML -> PDF
     gen_cover.py        # regenerates art/cover.{svg,png} (firefly/spark motif)
-    verify_code.py      # extracts fenced ```php listings, lints with `php -l`
+    verify_code.py      # fenced ```php listings: `php -l`, except `source:` ones
     run.sh              # sets DYLD_FALLBACK_LIBRARY_PATH, execs build.py
     requirements.txt     # pinned: weasyprint, markdown, pygments, pyyaml, pytest, cairosvg
   theme/
@@ -93,7 +100,7 @@ book/
   src/                         # EN manuscript (Markdown)
     00-front/                   # title/copyright/dedication/preface/conventions
     00-quickstart.md             # "Build Lumen step by step" quick start
-    01..13-*.md                  # the fourteen chapters, 4A included (Parts I-IV)
+    01..13-*.md                  # the fifteen chapters, 4A and 10A included (Parts I-IV)
     90-appendix-a-laravel.md      # Laravel -> LaraFly cheat-sheet
     94-glossary.md                # glossary
   src-es/                        # ES manuscript, same structure/filenames
@@ -118,8 +125,9 @@ book/
 
 ## Manuscript status
 
-The manuscript is **complete** in both languages: a five-file front matter, a
-"Build Lumen step by step" quick start, fourteen chapters across four parts —
+The manuscript is **structurally complete** in both languages: a five-file front
+matter, a "Build Lumen step by step" quick start, fifteen chapters across four
+parts —
 
 - **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
   Configuration/Profiles/Secrets, Your First HTTP API
@@ -127,11 +135,25 @@ The manuscript is **complete** in both languages: a five-file front matter, a
   Domain-Driven Design
 - **Part III — Coordinating & Securing the Application**: CQRS, Event-Driven
   Architecture & the Transactional Outbox, Transactions & the `#[Transactional]`
-  proxy, Security
+  proxy, Security, OAuth2 and OpenID Connect
 - **Part IV — Observability, Testing & Delivery**: Observability/Actuator,
   Testing, the CLI & the Zero-Reflection Cache
 
 — plus **Appendix A** (Laravel → LaraFly cheat-sheet) and a **Glossary**. Every
-chapter walks the real `samples/lumen` project, and every fenced ` ```php `
-listing is `php -l`-clean (enforced by `verify_code.py` over both `src/` and
-`src-es/`). Both editions build to `book/dist/` as PDF + EPUB.
+chapter walks the real `samples/lumen` project. Every fenced ` ```php ` listing
+in `src/` **and** in `src-es/` carries either a `source:` marker naming the
+repository file it was excerpted from — compared line for line by the
+repository's own documentation guard — or an `illustrative:` marker saying it is
+the reader's own code, which is the kind `php -l` checks. Both editions build to
+`book/dist/` as PDF + EPUB.
+
+**The two editions are the same book, line for line.** Every chapter file has
+the same sections in the same order at the same line numbers, and every `php`
+listing and every `source:`-marked excerpt in the Spanish edition is the English
+one character for character — identifiers, config keys, endpoint paths and HTTP
+transcripts are never translated. What a Spanish fence does translate is the
+trailing comment on a shell or tree listing: that is prose the reader reads, not
+code they run, and no `php` or `source:` block carries one. The repository's own
+prose guard derives both halves of that parity — the per-chapter sizes, and the
+blocks themselves, byte for byte — and fails the build the moment one edition
+stops matching the other.

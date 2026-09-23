@@ -2,7 +2,7 @@
 
 # The CLI and the Zero-Reflection Cache {.chtitle}
 
-By the end of this chapter you will know exactly what `php artisan firefly:cache` does — the eleven scanner-and-compiler steps it runs, in order, over your application's own PSR-4 roots, and the `bootstrap/cache/firefly/` manifests and `#[Transactional]` proxy classes it writes — how `FireflyCacheServiceProvider` loads that cache back in at boot with zero reflection, `firefly:clear`'s exact inverse, the actuator-over-CLI commands (`firefly:about`/`:routes`/`:health`/`:metrics`) that reuse Chapter 11's endpoints in-process with no HTTP round trip, the eight `make:firefly-*` generators, and how `firefly/installer`'s `firefly new` gets you from nothing to a cached, running application in one command.
+By the end of this chapter you will know exactly what `php artisan firefly:cache` does — the thirteen scanner-and-compiler steps it runs, in order, over your application's own PSR-4 roots, and the `bootstrap/cache/firefly/` manifests and generated proxy classes (one per class the proxy plan names) it writes — how `FireflyCacheServiceProvider` loads that cache back in at boot with zero reflection, `firefly:clear`'s exact inverse, the actuator-over-CLI commands (`firefly:about`/`:routes`/`:health`/`:metrics`) that reuse Chapter 11's endpoints in-process with no HTTP round trip, the eight `make:firefly-*` generators, and how `firefly/installer`'s `firefly new` gets you from nothing to a cached, running application in one command.
 
 !!! note "New term: zero-reflection boot"
     Every chapter before this one has mentioned, in passing, that a compiled manifest replaces "scan the filesystem with PHP reflection at every boot." A **zero-reflection boot** is what you get once `firefly:cache` has actually run: `FireflyCacheServiceProvider` loads pre-computed manifests straight from PHP files under `bootstrap/cache/firefly/`, so no attribute, no class, and no method is ever reflected on at request time — the scan happened once, at deploy time, not on every request.
@@ -13,14 +13,16 @@ By the end of this chapter you will know exactly what `php artisan firefly:cache
 
 `CacheCommand` is a thin wrapper — it reads `firefly.scan.paths` (the same PSR-4 map every earlier chapter's `configOverrides()` seeded) and hands it to `ManifestCacheWriter`:
 
+<!-- source: packages/cli/src/Command/CacheCommand.php -->
 ```php
 final class CacheCommand extends Command
 {
     /** @var string */
     protected $signature = 'firefly:cache';
-
+    // …
     public function handle(): int
     {
+        // …
         $psr4 = $this->laravel->make('config')->get('firefly.scan.paths', []);
         if ($psr4 === []) {
             $this->warn('firefly.scan.paths is empty — nothing to compile.');
@@ -45,9 +47,11 @@ final class CacheCommand extends Command
 
 `ManifestCacheWriter::write()` is the real orchestration, and it is worth reading end to end: it is nothing more than every capability package's *existing* scanner-and-compiler pair, called in sequence, over the same PSR-4 map — no new abstraction, zero edits to any settled package:
 
+<!-- source: packages/cli/src/Cache/ManifestCacheWriter.php -->
 ```php
 final class ManifestCacheWriter
 {
+    // …
     public function write(array $psr4, string $dir): CacheReport
     {
         $report = $this->writeManifests($psr4, $dir);
@@ -55,7 +59,7 @@ final class ManifestCacheWriter
 
         return new CacheReport([...$report->files, $dir.'/'.FireflyCachePaths::PROXY_MAP], $count);
     }
-
+    // …
     public function writeManifests(array $psr4, string $dir): CacheReport
     {
         if (! is_dir($dir)) {
@@ -70,26 +74,29 @@ final class ManifestCacheWriter
             $files[] = $dir.'/'.FireflyCachePaths::COMPONENT,
             $files[] = $dir.'/'.FireflyCachePaths::CONTEXT,
         );
-
-        // config
+        // …
         (new ConfigManifestCompiler)->write(
             (new ConfigPropertiesScanner)->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::CONFIG_PROPERTIES,
         );
 
         // web
+        $routeScanner = new RouteScanner;
         (new RouteManifestCompiler)->write(
-            (new RouteScanner)->scan($psr4),
+            $routeScanner->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::ROUTES,
         );
-
-        // validation — compiles from an explicit class list, not a PSR-4 scan.
+        // …
+        (new ExceptionHandlerManifestCompiler)->write(
+            $routeScanner->scanExceptionHandlers($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::EXCEPTION_HANDLERS,
+        );
+        // …
         (new ConstraintManifestCompiler)->write(
             (new ClassEnumerator)->enumerate($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::CONSTRAINTS,
         );
-
-        // cqrs — 3-arg write (handlers + destinations + path).
+        // …
         $handlers = (new HandlerScanner)->scan($psr4);
         (new HandlerManifestCompiler)->write(
             $handlers['handlers'],
@@ -120,11 +127,15 @@ final class ManifestCacheWriter
             (new MethodSecurityScanner)->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::SECURITY_METHODS,
         );
-
-        // data — transactional manifest data (proxy CLASS files added by writeProxies()).
+        // …
         (new TransactionalManifestCompiler)->write(
             (new TransactionalScanner)->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::TRANSACTIONAL,
+        );
+        // …
+        (new ProxyPlanCompiler)->write(
+            $this->planner()->plan($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::PROXY_PLAN,
         );
 
         return new CacheReport($files);
@@ -132,11 +143,13 @@ final class ManifestCacheWriter
 }
 ```
 
-That is ten `scan()`-then-`write()` calls — every capability from Chapter 2's component scan through Chapter 10's method-security manifest, each already introduced in an earlier chapter as an in-process scan — plus one more step, `writeProxies()`, that generates the `#[Transactional]` proxy classes Chapter 9 taught you about, using the exact same reflection-free `ProxyClassGenerator` the runtime itself uses when no cache exists yet:
+That is twelve `scan()`-then-`write()` calls — every capability from Chapter 2's component scan through Chapter 10's method-security manifest, each already introduced in an earlier chapter as an in-process scan — plus one more step, `writeProxies()`, that generates the proxy classes Chapter 9 taught you about, using the exact same reflection-free `ProxyClassGenerator` the runtime itself uses when no cache exists yet:
 
+<!-- source: packages/cli/src/Cache/ManifestCacheWriter.php -->
 ```php
 final class ManifestCacheWriter
 {
+    // …
     public function writeProxies(array $psr4, string $dir): int
     {
         $proxyDir = $dir.'/'.FireflyCachePaths::PROXY_DIR;
@@ -144,12 +157,14 @@ final class ManifestCacheWriter
             mkdir($proxyDir, 0o755, true);
         }
 
+        $planner = $this->planner();
+        $plan = $planner->plan($psr4);
         $generator = new ProxyClassGenerator;
         $map = [];
 
-        foreach ((new TransactionalScanner)->scanProxyMethods($psr4) as $targetClass => $methods) {
+        foreach ($planner->proxyMethods($plan) as $targetClass => $methods) {
             $source = $generator->generate($targetClass, $methods);
-            $proxyClass = $targetClass.'__FireflyTransactionalProxy';
+            $proxyClass = $plan->proxyClassFor($targetClass);
             $file = $proxyDir.'/'.str_replace('\\', '_', $targetClass).'.php';
             file_put_contents($file, $source);
             $map[$proxyClass] = $file;
@@ -162,10 +177,16 @@ final class ManifestCacheWriter
 
         return count($map);
     }
+    // …
+    private function planner(): ProxyPlanner
+    {
+        return new ProxyPlanner([new TransactionalAdviceSource, new MethodSecurityAdviceSource]);
+    }
+// …
 }
 ```
 
-Eleven steps in total land twelve artifacts under `bootstrap/cache/firefly/`:
+Thirteen steps in total land fourteen artifacts under `bootstrap/cache/firefly/`:
 
 ```
 bootstrap/cache/firefly/
@@ -173,6 +194,7 @@ bootstrap/cache/firefly/
 ├── context.php            # application-context manifest
 ├── config-properties.php  # #[ConfigProperties] DTOs
 ├── routes.php             # compiled route table
+├── exception-handlers.php # #[ControllerAdvice]/#[ExceptionHandler] manifest
 ├── constraints.php        # validation constraint manifest
 ├── handlers.php           # #[CommandHandler]/#[QueryHandler] manifest
 ├── event-listeners.php    # #[EventListener] manifest
@@ -180,8 +202,9 @@ bootstrap/cache/firefly/
 ├── scheduled.php          # #[Scheduled] manifest
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
+├── proxy-plan.php         # which beans get a proxy, and which advice each method runs
 ├── proxies.php            # FQCN => file classmap for the generated proxies
-└── proxies/               # one generated proxy class file per #[Transactional] target
+└── proxies/               # one generated proxy class file per class the plan names
 ```
 
 ---
@@ -190,25 +213,27 @@ bootstrap/cache/firefly/
 
 Writing the manifests is only half the story — something has to notice they exist and bind them *instead of* running the in-process scan. `FireflyCacheServiceProvider` (auto-discovered) is that something, and its `register()` runs before any bean resolution at all:
 
+<!-- source: packages/cli/src/Boot/FireflyCacheServiceProvider.php -->
 ```php
 final class FireflyCacheServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $dir = FireflyCachePaths::dir($this->app);
-
+        // …
         if (is_file($path = $dir.'/'.FireflyCachePaths::ROUTES)) {
             $this->app->instance(RouteManifest::class, RouteManifest::load($path));
         }
+        // …
         if (is_file($path = $dir.'/'.FireflyCachePaths::HANDLERS)) {
             $this->app->instance(HandlerManifest::class, HandlerManifest::load($path));
         }
-        // ... one such block per manifest type ...
-
+        // …
         // Proxies: register a classmap autoloader so TransactionalBeanPostProcessor's class_exists($proxyClass)
         // is satisfied BEFORE it throws. register() runs at provider-register, before any boot-pass bean resolution.
         $proxyMap = $dir.'/'.FireflyCachePaths::PROXY_MAP;
         if (is_file($proxyMap)) {
+            // …
             $map = require $proxyMap;
             spl_autoload_register(static function (string $class) use ($map): void {
                 if (isset($map[$class]) && is_file($map[$class])) {
@@ -230,12 +255,13 @@ None of this is mandatory. An application with no cache directory at all still b
 
 The exact inverse: it recursively deletes `FireflyCachePaths::dir()` — the configured `firefly.cache.path`, or `bootstrap/cache/firefly` by default — and nothing else:
 
+<!-- source: packages/cli/src/Command/ClearCommand.php -->
 ```php
 final class ClearCommand extends Command
 {
     /** @var string */
     protected $signature = 'firefly:clear';
-
+    // …
     public function handle(): int
     {
         $dir = FireflyCachePaths::dir($this->laravel);
@@ -244,7 +270,7 @@ final class ClearCommand extends Command
 
             return self::SUCCESS;
         }
-
+        // …
         $it = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST,
@@ -269,12 +295,13 @@ Safe to run at any time: the very next boot simply falls back to the in-process 
 
 Chapter 11 built a management surface reachable over HTTP. These four commands render the **same** endpoints at the terminal, in-process — no HTTP request is made, and none of them reimplement any actuator logic:
 
+<!-- source: packages/cli/src/Command/AboutCommand.php -->
 ```php
 final class AboutCommand extends Command
 {
     /** @var string */
     protected $signature = 'firefly:about';
-
+    // …
     public function handle(ActuatorCliRenderer $renderer): int
     {
         $this->line('LaraFly '.Version::VERSION);
@@ -299,17 +326,18 @@ Every framework stereotype this book has introduced has a matching Artisan gener
 
 | Command | Generates |
 |---------|-----------|
-| `make:firefly-controller` | A `#[RestController]` with a sample `#[GetMapping]` action, under `app/Http`. |
+| `make:firefly-controller` | **Two files**: a `#[RestController]` REST resource (`index`/`show`/`store`/`update`/`destroy` under one class-level `#[RequestMapping]` whose path is derived from the resource name) *and* the `#[Valid] #[RequestBody]` DTO its `store`/`update` bind — `--plain` gives the single-action shape with no DTO. |
 | `make:firefly-service` | A `#[Service]` bean. |
 | `make:firefly-component` | A `#[Component]` bean. |
-| `make:firefly-handler` | A `#[CommandHandler]` by default, or a `#[QueryHandler]` with `--query`. |
+| `make:firefly-handler` | **Two files**: a `#[CommandHandler]` *and* the command class its `handle()` takes — `#[QueryHandler]` plus its query with `--query`. |
 | `make:firefly-listener` | An `#[EventListener]` method by default, or a `#[MessageListener]` with `--message`. |
 | `make:firefly-entity` | A DDD entity extending `Firefly\Domain\Entity` (there is no `#[Entity]` attribute). |
-| `make:firefly-repository` | A repository interface extending `Firefly\Data\Repository\CrudRepository`. |
+| `make:firefly-repository` | A concrete `#[Repository]` class extending `Firefly\Data\Repository\EloquentRepository`, with a `$model` to repoint. |
 | `make:firefly-config-properties` | A `#[ConfigProperties]`-bound configuration DTO. |
 
 `make:firefly-handler` is representative of the whole family — a `GeneratorCommand` that picks which stub to render off a single flag:
 
+<!-- source: packages/cli/src/Command/Make/MakeHandlerCommand.php -->
 ```php
 final class MakeHandlerCommand extends GeneratorCommand
 {
@@ -317,13 +345,15 @@ final class MakeHandlerCommand extends GeneratorCommand
     protected $name = 'make:firefly-handler';
 
     /** @var string */
+    // …
     protected $type = 'Firefly handler';
-
+    // …
     protected function getStub(): string
     {
+        // …
         return __DIR__.'/../../../stubs/'.($this->option('query') ? 'query-handler.stub' : 'command-handler.stub');
     }
-
+    // …
     protected function getOptions(): array
     {
         return [
@@ -335,6 +365,7 @@ final class MakeHandlerCommand extends GeneratorCommand
 
 and the command-handler stub it renders — with its `{{ namespace }}`/`{{ class }}` placeholders substituted by `GeneratorCommand` the way `php artisan make:firefly-handler RegisterWidget` would — is exactly the shape Chapter 7 taught you to write by hand:
 
+<!-- illustrative: the handler make:firefly-handler writes into the reader's own application -->
 ```php
 namespace App\Handlers;
 
@@ -383,14 +414,20 @@ Delegates to Laravel's own database commands: `migrate` (default), `db:seed` (`f
 
 `firefly/installer` ships the global `firefly new` command — a small Symfony Console binary, not itself a scaffolder. It shells straight out to `composer create-project firefly/skeleton`:
 
+<!-- source: packages/installer/src/NewCommand.php -->
 ```php
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+// …
 #[AsCommand(name: 'new', description: 'Create a new LaraFly application')]
 final class NewCommand extends Command
 {
+    // …
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // ... resolve $name, $directory ...
-
+        $io = new SymfonyStyle($input, $output);
+        $runner = $this->runner ?? new SymfonyProcessRunner($output);
+        // …
         $create = ['composer', 'create-project', 'firefly/skeleton', $directory, '--no-interaction'];
         if ($input->getOption('dev')) {
             $create[] = '--stability=dev';
@@ -400,7 +437,7 @@ final class NewCommand extends Command
 
             return self::FAILURE;
         }
-
+        // …
         if (! $input->getOption('no-git')) {
             $runner->run(['git', 'init', '-q'], $directory);
             $runner->run(['git', 'add', '.'], $directory);
@@ -409,12 +446,16 @@ final class NewCommand extends Command
 
         $io->success("LaraFly application ready at {$directory}");
         $io->writeln("  cd {$name}");
+        // …
         $io->writeln('  php artisan firefly:serve');
 
         return self::SUCCESS;
     }
-}
 ```
+
+`#[AsCommand]` here is **Symfony's**, not Firefly's, and the `use` lines above say so. `firefly new` is a standalone Symfony Console application rather than an artisan command, because it has to run before there is a Laravel application to be a command of.
+
+Every external process goes through the `ProcessRunner` seam — `composer`, `php artisan`, `git` — which is what makes the whole flow assertable without a network or a real `composer create-project`.
 
 `firefly/skeleton` — a genuine, top-level Laravel 13 application template pre-wired with the Firefly family and a sample `#[RestController]`/`#[Service]` pair — is what `composer create-project` actually pulls down. Its own `composer.json` closes the loop this whole chapter has been building toward: `firefly:cache` runs **automatically**, right after install, with no manual step:
 
@@ -440,7 +481,7 @@ Every application `firefly new` scaffolds is therefore, from the very first `git
 
 | Concept | What it does |
 |---|---|
-| `firefly:cache` | Runs every capability's own scanner→compiler pair (11 steps, 12 artifacts) over `firefly.scan.paths`; writes manifests + `#[Transactional]` proxies to `bootstrap/cache/firefly/` |
+| `firefly:cache` | Runs every capability's own scanner→compiler pair (13 steps, 14 artifacts) over `firefly.scan.paths`; writes manifests + one generated proxy class file per class the proxy plan names to `bootstrap/cache/firefly/` |
 | `FireflyCacheServiceProvider` | Binds each cached manifest unconditionally (wins over every empty default) + installs the proxy classmap autoloader — before any bean resolution runs |
 | `firefly:clear` | Recursively deletes only the cache dir; the next boot falls back to in-process scanning |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renders Chapter 11's actuator endpoints at the terminal, in-process, no HTTP round trip |

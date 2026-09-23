@@ -4,18 +4,24 @@
 `SpanKind`, `SpanStatus`, `SpanContext` — with `NoOpTracer` as the shipped default and an OpenTelemetry
 adapter that binds itself when the SDK is installed and `firefly.observability.tracing.enabled` is on. With it
 on, every request gets a SERVER span continued from an inbound W3C `traceparent`, every Laravel `Http` client
-call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and every
-event carries `traceparent` in its envelope with a PRODUCER span on publish and a CONSUMER span on delivery —
-whichever transport carried it. The trace and span ids reach Laravel `Context` (`firefly.trace_id`,
+call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and an event
+published through the in-memory or queue bus carries `traceparent` in its envelope with a PRODUCER span on
+publish; every delivery gets a CONSUMER span, a broker's included, through the shared `SubscriberRegistrySink`
+(see [Known-latent](#known-latent) for the broker publishers that do not stamp the header yet). The trace and
+span ids reach Laravel `Context` (`firefly.trace_id`,
 `firefly.span_id`), every log line (see [Logging](logging.md)), and `/actuator/httpexchanges`.
 
 ## The port
 
+<!-- source: packages/observability/src/Tracing/Tracer.php -->
 ```php
 interface Tracer
 {
+    // …
     public function startSpan(string $name, SpanKind $kind = SpanKind::Internal, array $attributes = [], ?SpanContext $parent = null): Span;
+
     public function currentSpan(): ?Span;
+    // …
     public function trace(string $name, callable $callback, SpanKind $kind = SpanKind::Internal, array $attributes = []): mixed;
 }
 ```
@@ -31,6 +37,7 @@ calls `deactivate()` as soon as its synchronous part is over: it stops being cur
 sibling, not a child) while staying open for the attributes, status and `end()` that arrive with the result.
 That is what keeps every request of an `Http::pool()` a sibling under the span that issued it.
 
+<!-- illustrative: an application's own handler asking the tracer for one span of its own -->
 ```php
 final class ShipOrderHandler
 {
@@ -50,6 +57,8 @@ final class ShipOrderHandler
 instrumentation site can test `$span->context()->isValid()` before publishing ids — and does.
 
 ## Propagation
+
+![One traceparent entering at the TracingFilter and flowing through Laravel Context, the CQRS bus, the EDA envelope and the outbound Http client, landing on every log line, on /actuator/httpexchanges and on the dashboard](../assets/diagrams/tracing-propagation.svg)
 
 `Firefly\Observability\Tracing\W3CTraceContextPropagator` speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/)
 over a plain header map, with no SDK involved: `extract(array $carrier): ?SpanContext` follows the receiver
@@ -140,7 +149,7 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 |---|---|---|
 | Request tracing | third-party packages, each with its own middleware and header format | `TracingFilter`, W3C `traceparent`, one `Tracer` port |
 | Outbound propagation | manual `withHeaders()` at every call site | a Guzzle middleware on the `Http` factory, once, at boot |
-| Async correlation | none first-party | `traceparent` in every `EventEnvelope`, CONSUMER spans on delivery |
+| Async correlation | none first-party | `traceparent` in an in-memory or queued `EventEnvelope`, CONSUMER spans on every delivery |
 | Vendor lock | the tracing package's | OpenTelemetry API/SDK, OTLP to any collector; `RecordingTracer` needs no SDK |
 
 ## Known-latent

@@ -37,10 +37,13 @@ The browser dashboard (`firefly/admin`) and the API-documentation package (`fire
 broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`) and the test kit
 (`firefly/testing`) stay separate — each binds you to an infrastructure choice or belongs in `require-dev`.
 
-Then point LaraFly at your app's classes and compile it:
+Then point LaraFly at your app's classes and compile it. The one key an application must get right is
+`firefly.scan.paths` — the PSR-4 roots every scanner walks; the skeleton's `config/firefly.php` ships it
+pointed at `App\\`:
+
+<!-- source: skeleton/config/firefly.php -->
 
 ```php
-// config/firefly.php
 'scan' => [
     'paths' => [
         'App\\' => app_path(),
@@ -53,20 +56,54 @@ php artisan firefly:cache
 php artisan firefly:serve
 ```
 
-## The three new packages
+## The two packages the skeleton requires
+
+`firefly/skeleton` is itself a `type: project` create-project template rather than something you require, and
+its `composer.json` asks for exactly two Firefly packages beside `php: ^8.3` and `laravel/framework: ^13.0`:
+
+<!-- source: skeleton/composer.json -->
+
+```json
+"require": {
+    "php": "^8.3",
+    "firefly/cli": "*@dev",
+    "firefly/firefly": "*@dev",
+    "laravel/framework": "^13.0"
+},
+```
 
 - **`firefly/cli`** — the developer-experience console: `firefly:cache`/`:clear`, actuator-over-CLI
-  `firefly:about`/`:routes`/`:health`/`:metrics`, the `make:firefly-*` generator family, and thin
-  `firefly:serve`/`:db` passthroughs. See [CLI](cli.md).
-- **`firefly/firefly`** — a `type: metapackage` runtime aggregator; `composer require firefly/firefly` pulls the
-  whole runtime family in one line, `firefly/cli` among them. (It is in the metapackage deliberately: while it
-  was `require-dev`-only, an application that never ran `firefly:cache` booted with empty manifests.)
-- **`firefly/skeleton`** — a `type: project` Laravel 13 create-project template, pre-wired with the Firefly family
-  and a sample `#[Controller]`/`#[RestController]`/`#[Service]` slice, that yields a booting, cached app
-  straight out of `composer create-project`.
+  `firefly:about`/`:routes`/`:health`/`:metrics`, `firefly:oauth2:keys`, the `make:firefly-*` generator
+  family, and thin `firefly:serve`/`:schedule`/`:db` passthroughs. See [CLI](cli.md).
+- **`firefly/firefly`** — a `type: metapackage` runtime aggregator; `composer require firefly/firefly` pulls
+  the whole runtime family in one line, `firefly/cli` among them. (It is in the metapackage deliberately:
+  while it was `require-dev`-only, an application that never ran `firefly:cache` booted with empty manifests —
+  including an empty method-security manifest, which both enforcement sites read as ALLOW.)
+
+The skeleton lists `firefly/cli` explicitly as well as through the metapackage so that the template's own
+`post-create-project-cmd` — which ends in `php artisan firefly:cache` — cannot be broken by a future change
+to what the metapackage aggregates.
 
 ## Where to next
 
 - [Architecture](architecture.md) — how the boot engine, DI, and auto-configuration fit together.
+- [Modules](modules.md) — the complete, grouped index of every module guide.
 - [Auto-Configuration](modules/starters.md) — writing your own `#[Configuration]`/`#[Bean]` starters.
 - [Testing](modules/testing.md) — the `firefly/testing` harness every package (and your app) dogfoods.
+
+### The browser suite
+
+The monorepo also drives the shipped skeleton app in a real Chromium, through `pestphp/pest-plugin-browser`
+(Playwright), and that suite is **not** part of `composer check`. The `check` script composes exactly four
+others — `pint-test`, `stan`, `test`, `deptrac` — and `test` runs the `unit` testsuite, which excludes
+`tests/Browser`. The browser suite is its own testsuite and its own script, because the plugin starts
+Playwright the moment a file under `tests/Browser/` is loaded, and requiring Node for `composer test` would
+be a tax on every contributor who never touches a page:
+
+```bash
+npm ci
+npx playwright install chromium   # once
+composer test:browser
+```
+
+See [Contributing](contributing.md#browser-tests) for what each scenario proves.

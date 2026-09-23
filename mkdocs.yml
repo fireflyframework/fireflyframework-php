@@ -4,6 +4,11 @@ site_description: Spring Boot's cohesion, native to Laravel.
 # gives every page a canonical link and the search index its absolute paths; without it Material emits
 # relative canonicals and a page opened from a search engine can resolve its own links to the wrong host.
 site_url: https://fireflyframework.github.io/fireflyframework-php/
+
+# The canonical home of the source, as every packages/*/composer.json already declares it under
+# `support.source` / `homepage`, and as the README's CI badge links to. `edit_uri` points at the default
+# branch the same files name (`tree/main/...`), which is what makes `content.action.edit` a real link
+# rather than a decorative pencil.
 repo_url: https://github.com/fireflyframework/fireflyframework-php
 repo_name: fireflyframework/fireflyframework-php
 edit_uri: edit/main/docs/
@@ -16,31 +21,102 @@ exclude_docs: |
   README.md
 theme:
   name: material
+  language: en
+  logo: assets/larafly-logo.svg
+  favicon: assets/larafly-favicon.svg
   icon:
     repo: fontawesome/brands/github
+  # The two schemes are the banner's own two halves: slate #0f172a/#1e293b behind an amber #fbbf24 spark.
+  # `custom` is Material's documented hook for a palette that is not one of its named colours — the actual
+  # values live in docs/assets/stylesheets/larafly.css, read out of docs/assets/larafly-banner.svg apart from
+  # the three that file marks as chosen, each with the reason the banner had nothing to give.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
     - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+extra_css:
+  - assets/stylesheets/larafly.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/fireflyframework/fireflyframework-php
+      name: LaraFly on GitHub
+
 markdown_extensions:
   - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.inlinehilite
   - pymdownx.superfences
-  - pymdownx.highlight
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - toc:
       permalink: true
+      toc_depth: 3
+
+# Five tabs, because `navigation.tabs` turns exactly the top level of this list into the header row, and
+# five is the number of questions a reader arrives with: what is it (Home), how do I use it (Guide), what is
+# in it (Modules), what is it called (Reference), how do I work on it (Contributing).
+#
+# A TAB OPENS ITS SECTION'S FIRST PAGE — that is the entire mechanism, and it is worth writing down because
+# the obvious guess is wrong. Material's `partials/tabs-item.html` links a section's tab to
+# `children | first`, descending while that first child is itself a section; nothing else takes part. So
+# `- Overview: modules.md` at the top of Modules is what makes that tab land on the landing page rather than
+# on Error Handling, and deleting or reordering that one entry silently moves the tab.
+#
+# Material's `navigation.indexes` is a DIFFERENT feature — it binds a page to the section HEADING in the
+# sidebar — and it is deliberately not enabled, because it would do nothing here: it fires only for a page
+# MkDocs calls an index (`Page.is_index`, true only for `index.md` or `README.md`), and this landing page is
+# `docs/modules.md` on purpose, so that tests/ModuleDocumentationTest.php's glob over `docs/modules/*.md`
+# never sees it and never demands a README-table row for it. Listing the feature anyway was measured: with
+# `- navigation.indexes` added, `mkdocs build --strict` emits byte-identical HTML apart from the features
+# array echoed into the page's own JS config. tests/SiteNavigationTest.php holds both halves — where each
+# tab lands, and the rule that `navigation.indexes` may be listed only once a section really has an index
+# page.
+#
+# Every `modules/<name>.md` string below is load-bearing: tests/ModuleDocumentationTest.php greps this file
+# for every guide its `docs/modules/*.md` glob turns up and fails if one is missing, so a guide dropped from
+# the navigation is red, not invisible. How many that is is deliberately not written down here — a count in a
+# comment nobody runs is exactly the rot this release is repairing, and the counts the *pages* quote are
+# pinned against the tree by tests/SiteNavigationTest.php instead.
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Getting Started: getting-started.md
-  - Tutorial: tutorial.md
-  - Tutorial (Español): tutorial.es.md
-  - Architecture: architecture.md
-  - CLI Reference: cli.md
-  - Laravel Comparison: laravel-comparison.md
-  - Versioning: versioning.md
-  - Contributing: contributing.md
-  - Publishing: publishing.md
+  - Guide:
+      - Installation: installation.md
+      - Getting Started: getting-started.md
+      - Tutorial: tutorial.md
+      - Tutorial (Español): tutorial.es.md
+      - Architecture: architecture.md
+      - Laravel Comparison: laravel-comparison.md
   - Modules:
+      - Overview: modules.md
       - Foundation:
           - Error Handling: modules/error-handling.md
           - Dependency Injection: modules/dependency-injection.md
@@ -83,3 +159,9 @@ nav:
           - Integration Testing: modules/integration-testing.md
       - Tooling:
           - Installer: modules/installer.md
+  - Reference:
+      - CLI Reference: cli.md
+      - Versioning: versioning.md
+  - Contributing:
+      - Contributing: contributing.md
+      - Publishing: publishing.md

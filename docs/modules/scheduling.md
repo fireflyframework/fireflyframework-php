@@ -9,6 +9,7 @@ deployment needs.
 
 `Firefly\Scheduling\Lock\DistributedLock` is a ShedLock analog:
 
+<!-- source: packages/scheduling/src/Lock/DistributedLock.php -->
 ```php
 interface DistributedLock
 {
@@ -50,6 +51,7 @@ havingValue: 'postgres')]` — installing the package with the property unset is
 
 ## `#[Scheduled]`
 
+<!-- source: packages/scheduling/src/Attributes/Scheduled.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD)]
 final class Scheduled
@@ -62,7 +64,18 @@ final class Scheduled
         public ?string $zone = null,
         public string|bool|null $lock = null,
         public ?string $lockTtl = null,
-    ) {}
+    ) {
+        $triggers = array_filter(
+            [$cron, $fixedRate, $fixedDelay],
+            static fn (?string $trigger): bool => $trigger !== null,
+        );
+
+        if (count($triggers) !== 1) {
+            throw new InvalidArgumentException(
+                '#[Scheduled] requires exactly one of cron, fixedRate or fixedDelay to be set.',
+            );
+        }
+    }
 }
 ```
 
@@ -79,6 +92,7 @@ Exactly one of `cron`, `fixedRate`, or `fixedDelay` must be set (the attribute's
 - **`lockTtl`** — a `Duration`-parsed string bounding how long the lock may be held; defaults to `30.0`
   seconds when the trigger is locked and no `lockTtl` is given.
 
+<!-- illustrative: an application's own bean with two scheduled methods -->
 ```php
 final class Reconciliation
 {
@@ -141,6 +155,7 @@ when) `Schedule` is eventually resolved, the hook walks every `ScheduledManifest
 
 The task closure itself is where the distributed lock actually gates execution:
 
+<!-- source: packages/scheduling/src/Boot/ScheduleWiringPass.php -->
 ```php
 $lockName = $descriptor->lockName;
 if ($lockName !== null && ! $lock->tryAcquire($lockName, $this->lockTtl($descriptor))) {
@@ -148,15 +163,21 @@ if ($lockName !== null && ! $lock->tryAcquire($lockName, $this->lockTtl($descrip
 }
 
 try {
-    $bean->{$descriptor->method}();
+    $bean = $container->make($descriptor->class);
+    if (is_object($bean) && method_exists($bean, $descriptor->method)) {
+        $method = $descriptor->method;
+        $bean->{$method}();
+    }
 } catch (Throwable $exception) {
-    $this->report($container, $descriptor, $exception); // logged, never rethrown
+    $this->report($container, $descriptor, $exception);
 } finally {
     if ($lockName !== null) {
         $lock->release($lockName);
     }
 }
 ```
+
+The `report()` call logs and never rethrows, so one task's failure never stops the tick.
 
 An unlocked task (`lock` unset) always runs — every node that ticks runs it. A locked task's body runs on
 whichever node's `tryAcquire()` wins the race for that tick; every other node silently skips (`return`, no

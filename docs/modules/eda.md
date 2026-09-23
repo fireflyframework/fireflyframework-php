@@ -24,11 +24,12 @@ in-process bus at all.
 
 ## The `EventPublisher` port
 
+<!-- source: packages/eda/src/EventPublisher.php -->
 ```php
 interface EventPublisher
 {
     public function subscribe(string $eventTypePattern, callable $handler): void;
-
+    // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void;
 
     public function start(): void;
@@ -44,9 +45,11 @@ broker adapter (SP-4) to open/close its connection there.
 
 ## The `EventEnvelope`
 
+<!-- source: packages/eda/src/EventEnvelope.php -->
 ```php
 final readonly class EventEnvelope
 {
+    // …
     public function __construct(
         public string $eventType,
         public string $destination,
@@ -54,12 +57,20 @@ final readonly class EventEnvelope
         public array $headers = [],
         ?string $eventId = null,
         ?DateTimeImmutable $timestamp = null,
-    ) {}
+    ) {
+        $this->eventId = $eventId ?? self::uuid4();
+        $this->timestamp = $timestamp ?? new DateTimeImmutable;
+    }
 
-    public string $eventId;          // uuid4, random_bytes-derived — no ramsey/uuid, no reflection
+    public string $eventId;
+
     public DateTimeImmutable $timestamp;
+    // …
 }
 ```
+
+The `eventId` is a uuid-v4 built from `random_bytes` — no `ramsey/uuid` dependency and no reflection, the same
+approach `firefly/domain`'s `DomainEvent` takes.
 
 Immutable; `withHeaders(array $extra): self` returns a copy with merged headers (used internally to stamp
 `x-original-topic`/`x-exception` on a dead-lettered envelope). `toArray()`/`fromArray()` round-trip the
@@ -103,14 +114,30 @@ Built on `illuminate/queue` + `illuminate/bus` (not `illuminate/events` — that
 
 ## `#[EventListener]` → scanner → manifest → wiring pass
 
+<!-- source: packages/eda/src/Attributes/EventListener.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD | Attribute::IS_REPEATABLE)]
 final class EventListener
 {
-    /** @param string|array<int, string> $patterns */
-    public function __construct(string|array $patterns = [], public readonly int $order = 0) { /* ... */ }
+    /** @var list<string> */
+    public readonly array $patterns;
+
+    /** @var list<string> */
+    public readonly array $destinations;
+    // …
+    public function __construct(
+        string|array $patterns = [],
+        public readonly int $order = 0,
+        string|array $destinations = [],
+    ) {
+        $this->patterns = is_string($patterns) ? [$patterns] : array_values($patterns);
+        $this->destinations = is_string($destinations) ? [$destinations] : array_values($destinations);
+    }
 }
 ```
+
+`patterns` are fnmatch globs matched in-process against an envelope's `eventType`; `destinations` are the broker
+routes a long-running consumer binds, and declaring them is optional — see [EDA brokers](eda-brokers.md).
 
 `#[EventListener]` is **inert metadata only** — the same rule as every Firefly attribute. A single string
 pattern is normalised to a one-element list; the attribute `IS_REPEATABLE`, so a method may subscribe to
@@ -154,12 +181,15 @@ once and re-throws unchanged on failure, the same observable result as an unwrap
 **every** `#[EventListener]` in the app — this is a single config-driven policy, not a per-listener one (see
 [Messaging](messaging.md) for the contrasting per-listener model).
 
+<!-- source: packages/eda/src/DeadLetter/DeadLetterStore.php -->
 ```php
 interface DeadLetterStore
 {
     public function store(EventEnvelope $envelope, Throwable $cause): void;
 
-    /** @return list<DeadLetterEntry> */
+    /**
+     * @return list<DeadLetterEntry>
+     */
     public function all(): array;
 }
 ```
@@ -170,6 +200,7 @@ not survive past the process. A durable adapter is SP-4 territory.
 
 ## Serializer seam
 
+<!-- source: packages/eda/src/Serializer.php -->
 ```php
 interface Serializer
 {
@@ -227,21 +258,35 @@ defaults.
 
 ## Example
 
+The package's own listener fixture — the pattern is the whole subscription:
+
+<!-- source: packages/eda/tests/Fixtures/RecordingListener.php -->
 ```php
 use Firefly\Container\Attributes\Component;
 use Firefly\Eda\Attributes\EventListener;
 use Firefly\Eda\EventEnvelope;
-use Firefly\Eda\EventPublisher;
-
+// …
 #[Component]
-final class OrderNotifier
+final class RecordingListener
 {
+    public function __construct(private readonly ListenerSpy $spy) {}
+
     #[EventListener('order.*')]
-    public function onOrderEvent(EventEnvelope $envelope): void
+    public function onOrder(EventEnvelope $envelope): void
     {
-        // $envelope->eventType is e.g. "order.placed"; $envelope->payload carries the data.
+        $this->spy->record($envelope->eventType);
     }
 }
+```
+
+Publishing takes the port and the two names — first the destination the broker routes on, then the event type
+subscribers match. The destination is your route, not a setting: the in-memory and queue adapters carry it on the
+envelope and match only on the event type, and it is the broker adapters that give it meaning (the RabbitMQ one
+publishes into the exchange `firefly.eda.rabbitmq.exchange` names, defaulting to `firefly.events`):
+
+<!-- illustrative: an application's own service publishing one integration event -->
+```php
+use Firefly\Eda\EventPublisher;
 
 final class OrderService
 {
@@ -249,7 +294,7 @@ final class OrderService
 
     public function place(int $orderId): void
     {
-        $this->events->publish('firefly.events', 'order.placed', ['id' => $orderId]);
+        $this->events->publish('orders', 'order.placed', ['id' => $orderId]);
     }
 }
 ```

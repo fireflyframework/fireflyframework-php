@@ -54,6 +54,7 @@ side, not its `DataAccessException` side) — so a handler catches at the granul
 (DataAccessException $e)` does not see a transaction that ran past its deadline; `catch (TimeoutException $e)`
 does. Their messages are fixed sentences; the driver's message, with the statement in it, stays on `previous`.
 
+<!-- illustrative: an application's own throw site; the skeleton's OrderService throws exactly this exception from its own use case -->
 ```php
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 
@@ -66,6 +67,7 @@ RFC 9457 lets a problem document carry *extension members* beside the standard o
 the problem type's own phrase rather than the status's reason phrase. Both live on `FireflyException`, so
 any exception in the taxonomy — or any subclass you write — can carry them without a renderer of its own:
 
+<!-- illustrative: an application's own throw site; firefly/web's renderer test builds the very same exception, and the document below is what it asserts -->
 ```php
 use Firefly\Kernel\Exception\Business\PaymentRequiredException;
 
@@ -100,6 +102,7 @@ The generated OpenAPI problem schema declares `additionalProperties: true` for t
 that describes the constraint, an optional application `code`, the `constraint` that failed by its attribute
 name, and the `rejectedValue`:
 
+<!-- illustrative: an application throwing its own validation failure; #[Valid] builds these for you -->
 ```php
 use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Business\ValidationException;
@@ -131,6 +134,7 @@ page renders the status, code and detail of a 422 and no field list.
 `Firefly\Kernel\Error\ErrorResponse` turns any `FireflyException` into a problem+json payload. The web
 layer (a later package) renders it; here is the shape:
 
+<!-- illustrative: the two calls a renderer or a reader makes to turn an exception into the payload -->
 ```php
 use Firefly\Kernel\Error\ErrorResponse;
 
@@ -241,18 +245,31 @@ ticket quoting it finds the same code in the log — and, when permitted, the ex
 the source around the throwing line, and the stack trace with **your** frames separated from your
 dependencies'.
 
+The reference configuration ships the whole block commented out at its defaults — uncomment the keys this
+deployment wants to change:
+
+<!-- source: skeleton/config/firefly.php -->
 ```php
-// config/firefly.php
-'web' => [
-    'error-page' => [
-        'enabled' => true,                  // false falls back to Laravel's own page
-        'trace' => env('APP_DEBUG', false), // the disclosure gate; follows app.debug
-        'title' => env('APP_NAME', 'LaraFly'),
-        'excerpt-lines' => 7,               // source lines around the throw, clamped 0-40
-        'json-paths' => 'api/*',
-        'views' => ['404' => 'errors.not-found', 'default' => 'errors.generic'],
-    ],
-],
+//     'error-page' => [
+//         // Turn this off to fall back to Laravel's own error page. Default: true.
+//         'enabled' => true,
+// …
+//         'trace' => env('APP_DEBUG', false),
+//
+//         // The name in the page's wordmark and title. Default: `app.name`.
+//         'title' => env('APP_NAME', 'LaraFly'),
+//
+//         // How many source lines to show around a throwing line, clamped to 0-40. 0 shows none.
+//         // Default: 7.
+//         'excerpt-lines' => 7,
+// …
+//         'json-paths' => 'api/*,webhooks/*',
+// …
+//         'views' => [
+//             '404' => 'errors.not-found',
+//             'default' => 'errors.generic',
+//         ],
+//     ],
 ```
 
 **`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never

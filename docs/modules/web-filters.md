@@ -8,6 +8,7 @@ middleware — no bespoke request pipeline of its own.
 
 `Firefly\Web\Filter\WebFilter` is shaped exactly like Laravel middleware:
 
+<!-- source: packages/web/src/Filter/WebFilter.php -->
 ```php
 interface WebFilter
 {
@@ -23,6 +24,7 @@ between the two. `Firefly\Web\Filter\OncePerRequestFilter` is the usual base cla
 subclasses to implement `doFilter()` plus optional `urls()`/`excludes()` glob lists (Laravel's
 `Str::is()` patterns) to scope which paths the filter applies to:
 
+<!-- illustrative: an application's own filter; every filter in this repository is one of the framework's, and this one shows the two hooks a reader overrides -->
 ```php
 final class AuditFilter extends OncePerRequestFilter
 {
