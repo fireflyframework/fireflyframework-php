@@ -23,6 +23,12 @@ use Throwable;
  * ErrorResponse::fromException() the JSON renderer uses, so the page a browser sees and the payload a client
  * sees describe the same error with the same vocabulary. A support ticket quoting the code off the page
  * finds the same code in the log.
+ *
+ * PATHS ARE SHORTENED BY SourcePaths, NOT HERE. Three lines of str_starts_with used to live in this class,
+ * and they were the reason a 500 page measured 10,108 pixels: they miss whenever a deployment names one
+ * directory two ways, and then not one of a hundred rows is shortened. The rule is a collaborator now
+ * because it is worth unit-testing on its own — a symlinked base path is a case no rendered trace can be
+ * asked to produce.
  */
 final readonly class ErrorReport
 {
@@ -87,6 +93,8 @@ final readonly class ErrorReport
             return $public;
         }
 
+        $roots = SourcePaths::roots($e, $basePath);
+
         return new self(
             status: $public->status,
             reason: $public->reason,
@@ -99,9 +107,9 @@ final readonly class ErrorReport
             detailed: true,
             exceptionClass: $e::class,
             message: $e->getMessage(),
-            location: self::shorten($e->getFile(), $basePath).':'.$e->getLine(),
-            frames: self::frames($e, $basePath, $settings->excerptLines),
-            previous: self::previous($e, $basePath),
+            location: SourcePaths::shorten($e->getFile(), $roots).':'.$e->getLine(),
+            frames: self::frames($e, $roots, $settings->excerptLines),
+            previous: self::previous($e, $roots),
             reference: $reference,
             correlationId: $correlationId,
         );
@@ -112,11 +120,12 @@ final readonly class ErrorReport
      * order `getTrace()` returns it in relative to `getFile()`. PHP's trace starts at the CALLER of the
      * throwing frame, so the throwing line itself appears nowhere in it and has to be prepended.
      *
+     * @param  list<string>  $roots
      * @return list<ErrorFrame>
      */
-    private static function frames(Throwable $e, string $basePath, int $excerptLines): array
+    private static function frames(Throwable $e, array $roots, int $excerptLines): array
     {
-        $frames = [self::frame($e->getFile(), $e->getLine(), 'throw', $basePath, $excerptLines)];
+        $frames = [self::frame($e->getFile(), $e->getLine(), 'throw', $roots, $excerptLines, 0)];
 
         foreach ($e->getTrace() as $entry) {
             $file = is_string($entry['file'] ?? null) ? $entry['file'] : '';
@@ -126,23 +135,27 @@ final readonly class ErrorReport
             $type = $entry['type'] ?? '';
             $function = $entry['function'];
 
-            $frames[] = self::frame($file, $line, $class.$type.$function.'()', $basePath, $excerptLines);
+            $frames[] = self::frame($file, $line, $class.$type.$function.'()', $roots, $excerptLines, count($frames));
         }
 
         return $frames;
     }
 
-    private static function frame(string $file, ?int $line, string $call, string $basePath, int $excerptLines): ErrorFrame
+    /**
+     * @param  list<string>  $roots
+     */
+    private static function frame(string $file, ?int $line, string $call, array $roots, int $excerptLines, int $index): ErrorFrame
     {
         $vendor = $file === '' || str_contains($file, '/vendor/') || str_contains($file, '\\vendor\\');
 
         return new ErrorFrame(
             file: $file,
-            shortFile: $file === '' ? '[internal function]' : self::shorten($file, $basePath),
+            shortFile: $file === '' ? '[internal function]' : SourcePaths::shorten($file, $roots),
             line: $line,
             call: $call,
             vendor: $vendor,
             excerpt: $vendor ? [] : self::excerpt($file, $line, $excerptLines),
+            index: $index,
         );
     }
 
@@ -189,9 +202,10 @@ final readonly class ErrorReport
      * an InvalidRequestException, the container wraps a constructor throw, and the message on the outermost
      * exception is the least specific one in the chain.
      *
+     * @param  list<string>  $roots
      * @return list<array{class: string, message: string, location: string}>
      */
-    private static function previous(Throwable $e, string $basePath): array
+    private static function previous(Throwable $e, array $roots): array
     {
         $chain = [];
         $seen = 0;
@@ -201,19 +215,10 @@ final readonly class ErrorReport
             $chain[] = [
                 'class' => $e::class,
                 'message' => $e->getMessage(),
-                'location' => self::shorten($e->getFile(), $basePath).':'.$e->getLine(),
+                'location' => SourcePaths::shorten($e->getFile(), $roots).':'.$e->getLine(),
             ];
         }
 
         return $chain;
-    }
-
-    private static function shorten(string $file, string $basePath): string
-    {
-        if ($basePath !== '' && str_starts_with($file, $basePath)) {
-            return ltrim(substr($file, strlen($basePath)), '/\\');
-        }
-
-        return $file;
     }
 }

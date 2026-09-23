@@ -348,3 +348,48 @@ it('carries both ids on the detailed page too', function () {
     expect($html)->toContain('<dt>Reference</dt><dd>aaaaaaaabbbbbbbbccccccccdddddddd</dd>')
         ->toContain('<dt>Correlation</dt><dd>corr-77</dd>');
 });
+
+it('shortens every frame against the roots the trace reveals, not only against the base path', function () {
+    // THE 10,108-PIXEL BUG, at the level that produced it. With a base path that matches nothing — which is
+    // what a symlinked release, a bind mount and this very harness all look like — the old shorten() left
+    // every one of 104 rows holding an absolute path, and each of them wrapped onto three lines.
+    $settings = new ErrorPageSettings(trace: true);
+    $error = ErrorReport::of(
+        new RuntimeException('boom'),
+        Request::create('/x'),
+        $settings,
+        '/nowhere-at-all',
+        500,
+        'Internal Server Error',
+        '2026-01-01T00:00:00+00:00',
+    );
+
+    // The throw site is this file, under the repository the vendor frames reveal.
+    expect($error->frames[0]->shortFile)->toBe('packages/web/tests/Error/ErrorPageTest.php')
+        ->and($error->frames[0]->index)->toBe(0);
+
+    $vendor = array_values(array_filter($error->frames, static fn ($f): bool => $f->vendor && $f->file !== ''));
+    expect($vendor)->not->toBeEmpty();
+
+    foreach ($vendor as $frame) {
+        expect($frame->shortFile)->toStartWith('vendor/')
+            ->and($frame->base())->not->toContain('/');
+
+        // Dead until shorten() was fixed: package() parses vendor/{a}/{b} out of $shortFile, and every
+        // $shortFile used to start with /Users/, so it answered null for all 104 frames. `vendor/bin/` is
+        // Composer's shim directory and not a package directory — the test runner's own `vendor/bin/pest`
+        // is a frame of this very trace — and answering `bin/pest` for it would name a package that does
+        // not exist.
+        if (! str_starts_with($frame->shortFile, 'vendor/bin/')) {
+            expect($frame->package())->not->toBeNull();
+        }
+    }
+
+    $packages = array_values(array_unique(array_filter(array_map(static fn ($f): ?string => $f->package(), $vendor))));
+
+    expect($packages)->not->toBeEmpty();
+
+    foreach ($packages as $package) {
+        expect($package)->toMatch('#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$#');
+    }
+});
