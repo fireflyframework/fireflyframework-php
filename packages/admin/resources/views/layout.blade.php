@@ -261,7 +261,21 @@
         .stat a{color:inherit}
 
         /* ── tables ──────────────────────────────────────────────────────── */
-        .tw{overflow:auto}
+        /*
+           STICKY HAS NEVER WORKED HERE, AND THIS LINE IS WHY. `thead th` has carried `position:sticky;top:0`
+           for as long as the sheet has existed, and `.tw{overflow-x:auto}` computes `overflow-y` to `auto`
+           as well — which makes `.tw` the nearest scrollport for those headers. But `.tw` had NO height
+           constraint anywhere in the sheet, so it never scrolled: `main` did. A sticky element does not
+           follow an ancestor's scrollport, so the header stayed pinned to a box that was moving, and a
+           reviewer measured the <th> at `top: -360px` after scrolling. Giving the wrapper a height is the
+           entire fix, and `--table-vh` is how a deployment sizes it — or sets `none` and gets the old
+           whole-document scroll back, header and all.
+        */
+        .tw{overflow:auto;max-height:var(--table-vh)}
+        /* Panels whose rows are a fixed handful and must never grow an inner scrollbar. */
+        .tw.free{max-height:none}
+        /* A nested scroller should stop at its own end rather than handing the gesture to the page mid-table. */
+        .tw{overscroll-behavior:contain}
         table{border-collapse:collapse;width:100%;font-size:13px}
         thead th{
             position:sticky;top:0;z-index:1;text-align:left;padding:var(--row-y) var(--row-x);background:var(--panel-2);
@@ -694,6 +708,27 @@
                 if (out) { out.textContent = shown + ' of ' + body.rows.length; }
             });
         });
+
+        // The auto-refresh reloads the whole page, which is the right thing for a server-rendered dashboard
+        // — the URL carries the page, the sort and the search, so a reader on page 7 comes back to page 7.
+        // The one thing a reload does not restore is the scroll position INSIDE a table, because the
+        // scrollport is now the wrapper rather than the document. Keyed by the full URL so page 7's
+        // position is not applied to page 8.
+        (function () {
+            var key = 'firefly-admin-scroll:' + window.location.pathname + window.location.search;
+            var wrappers = document.querySelectorAll('.tw');
+
+            try {
+                var saved = JSON.parse(sessionStorage.getItem(key) || '[]');
+                wrappers.forEach(function (wrapper, index) { wrapper.scrollTop = saved[index] || 0; });
+            } catch (e) { /* private mode, or a stale shape */ }
+
+            window.addEventListener('beforeunload', function () {
+                try {
+                    sessionStorage.setItem(key, JSON.stringify(Array.prototype.map.call(wrappers, function (w) { return w.scrollTop; })));
+                } catch (e) { /* private mode, or the quota */ }
+            });
+        })();
 
         // Bean graph: hovering or clicking a node lights its edges and both endpoints, and dims everything
         // else. Reading a dependency diagram is asking "what touches THIS", and a static picture cannot

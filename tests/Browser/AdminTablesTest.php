@@ -165,3 +165,36 @@ it('keeps a long unbreakable value inside the Environment panel', function (): v
             JS, true)
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * THE ONLY ASSERTION THAT WILL KEEP THIS FIXED. The header has always CARRIED `position:sticky`, so a
+ * markup assertion proves nothing — it proved nothing for as long as the defect existed. This scrolls the
+ * wrapper and measures the <th> against it, and it asserts the wrapper actually moved: before the fix
+ * `scrollTop` stays 0 because the box has no height to overflow, and a test that only compared the two
+ * rectangles would have passed on the broken sheet.
+ */
+it('pins the column headers to the top of the table while its rows scroll', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/beans?size=200')
+        ->assertScript(<<<'JS'
+            (() => {
+                const wrapper = document.querySelector('.tw');
+                const header = document.querySelector('thead th');
+                wrapper.scrollTop = 600;
+                if (wrapper.scrollTop < 100) { return 'the wrapper did not scroll: ' + wrapper.scrollTop; }
+                const offset = header.getBoundingClientRect().top - wrapper.getBoundingClientRect().top;
+                return Math.abs(offset) < 2 ? true : 'header drifted to ' + offset;
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-beans-sticky');
+});
+
+// Under border-collapse the sticky cell's border belongs to the table's border grid and stays behind with
+// the rows, so the header scrolls out from under its own underline. An inset shadow travels with the cell.
+it('keeps the rule under the pinned header', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/beans')
+        ->assertScript("getComputedStyle(document.querySelector('thead th')).boxShadow.includes('inset')", true)
+        ->assertNoJavaScriptErrors();
+});
