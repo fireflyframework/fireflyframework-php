@@ -1133,6 +1133,21 @@ return [
     //         'max-height' => env('FIREFLY_ADMIN_TABLE_MAX_HEIGHT', '68vh'),
     //
     //         /*
+    //          | Whether a table's scroll position survives a reload, saved per URL in `sessionStorage`.
+    //          | This is the other half of `max-height`: the scrollport used to be the page itself and the
+    //          | browser restored ITS offset for free, so the ten-second refresh cost a reader nothing.
+    //          | Moving the scrollport into the panel took that away — a browser restores the document's
+    //          | scroll, never an inner scroller's — and the refresh started returning readers to row 1.
+    //          |
+    //          | It is applied ONLY on a reload or a back/forward, which are exactly the navigations where
+    //          | the browser would have restored it before. Clicking a page in the sidebar is a plain
+    //          | navigation and opens the table at the top. Set to false to store nothing at all.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'remember-scroll' => env('FIREFLY_ADMIN_TABLE_REMEMBER_SCROLL', true),
+    //
+    //         /*
     //          | 'comfortable' (14px/8px cell padding) or 'compact' (10px/5px), which fits roughly a third
     //          | more rows on a screen. Anything unrecognised reads as 'comfortable'. The value also feeds
     //          | the rigid column widths, which are emitted as `calc(<n>ch + 2 * var(--row-x))` because

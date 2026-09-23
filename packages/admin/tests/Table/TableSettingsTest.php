@@ -20,7 +20,16 @@ it('defaults to fifty rows from a closed set of four', function () {
         ->and($settings->pageSizes)->toBe([25, 50, 100, 200])
         ->and($settings->maxPageSize)->toBe(200)
         ->and($settings->maxHeight)->toBe('68vh')
-        ->and($settings->density)->toBe(TableSettings::DENSITY_COMFORTABLE);
+        ->and($settings->density)->toBe(TableSettings::DENSITY_COMFORTABLE)
+        ->and($settings->rememberScroll)->toBeTrue();
+});
+
+// ON by default because it restores parity rather than inventing an affordance: before `.tw` had a height
+// the page itself was the scrollport and the browser brought the offset back across a reload for free.
+it('lets a deployment decline the scroll restore', function () {
+    expect(TableSettings::fromConfig(tableConfig([
+        'firefly' => ['admin' => ['table' => ['remember-scroll' => false]]],
+    ]))->rememberScroll)->toBeFalse();
 });
 
 // The offered set is what the rows-per-page control renders, so the configured default must always be IN

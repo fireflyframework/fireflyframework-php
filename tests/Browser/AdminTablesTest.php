@@ -198,3 +198,85 @@ it('keeps the rule under the pinned header', function (): void {
         ->assertScript("getComputedStyle(document.querySelector('thead th')).boxShadow.includes('inset')", true)
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * THE OPT-OUT, MEASURED ON A REAL ELEMENT. `.tw.free` spent its first commit selecting nothing: no view in
+ * the package put `free` on a wrapper, and the test beside it looked for the rule's TEXT in the stylesheet,
+ * which a rule that can never match still satisfies. This reads the computed `max-height` off the elements
+ * themselves — `none` on the overview's headerless panels, a resolved length on a listing — so the day
+ * somebody drops the class from a view, or the specificity of the two rules flips, the assertion fails.
+ */
+it('frees the overview panels from the scrollport and leaves the listings inside it', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly')
+        ->assertScript(<<<'JS'
+            (() => {
+                const free = [...document.querySelectorAll('.tw')];
+                if (free.length === 0) { return 'the overview drew no table wrappers'; }
+                for (const wrapper of free) {
+                    if (!wrapper.classList.contains('free')) { return 'a headerless overview panel kept the scrollport'; }
+                    const height = getComputedStyle(wrapper).maxHeight;
+                    if (height !== 'none') { return 'the opt-out did not apply: max-height ' + height; }
+                    // And it is not a scroller of its own, which is the point of declining the height.
+                    if (wrapper.scrollHeight - wrapper.clientHeight > 1) { return 'a freed panel still scrolls'; }
+                }
+                return true;
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+
+    visit('/firefly/beans?size=200')
+        ->assertScript(<<<'JS'
+            (() => {
+                const wrapper = document.querySelector('.tw');
+                if (wrapper.classList.contains('free')) { return 'a listing took the opt-out and lost its sticky header'; }
+                const height = getComputedStyle(wrapper).maxHeight;
+                return /^\d+(\.\d+)?px$/.test(height) ? true : 'the listing has no scrollport: max-height ' + height;
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE SCROLL RESTORE, BOTH HALVES. The whole reason it exists is that giving `.tw` a height took the reading
+ * position away from the browser: `main` used to be the scrollport and a reload brought its offset back for
+ * free, so the ten-second auto-refresh cost a reader nothing. This reloads the page and measures that the
+ * offset came back — the first half.
+ */
+it('brings a table back to where it was being read after a reload', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/beans?size=200')
+        ->assertScript(<<<'JS'
+            (() => {
+                const wrapper = document.querySelector('.tw');
+                wrapper.scrollTop = 600;
+                return wrapper.scrollTop > 100 ? true : 'the wrapper did not scroll: ' + wrapper.scrollTop;
+            })()
+            JS, true)
+        ->refresh()
+        ->assertScript(<<<'JS'
+            (() => {
+                const wrapper = document.querySelector('.tw');
+                return wrapper.scrollTop > 100 ? true : 'the reload lost the reading position: ' + wrapper.scrollTop;
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * The second half, and the one the reviewer of the first commit asked for: a plain navigation does NOT
+ * restore. Arriving at Beans from the sidebar an hour later and landing in the middle of a table — with the
+ * document itself at the top, and nothing on screen to say why — is a defect, so the restore is applied only
+ * on the navigation types where the browser would have restored the document's own offset. The saved entry
+ * is still in `sessionStorage` when this runs: the first visit scrolled the same URL and left on `pagehide`.
+ */
+it('opens a table at the top when the reader navigates to it rather than reloading', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/beans?size=200')
+        ->assertScript("document.querySelector('.tw').scrollTop = 600, document.querySelector('.tw').scrollTop > 100", true)
+        ->navigate('/firefly/mappings')
+        ->navigate('/firefly/beans?size=200')
+        ->assertScript("performance.getEntriesByType('navigation')[0].type", 'navigate')
+        ->assertScript("document.querySelector('.tw').scrollTop", 0)
+        ->assertNoJavaScriptErrors();
+});

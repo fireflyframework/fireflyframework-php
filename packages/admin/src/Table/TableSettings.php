@@ -23,6 +23,14 @@ use Firefly\Config\Config;
  * declaration by the time any entity would be decoded. `none` is admitted on purpose: it is how a deployment
  * turns the scrollport, and with it the sticky header, off.
  *
+ * `remember-scroll` is the other half of that move. Giving `.tw` a height took the scrollport away from
+ * `main`, and a browser restores the DOCUMENT's scroll offset across a reload but not an inner scroller's —
+ * so the ten-second auto-refresh, which had cost a reader nothing, started dropping them back to row 1 of
+ * the page they were reading. The dashboard therefore saves each wrapper's offset per URL and puts it back,
+ * and this key is how a deployment declines. It defaults to ON because it restores parity rather than
+ * inventing an affordance: the restore is applied only on a reload or a back/forward, which are precisely
+ * the navigations where the browser would have restored the offset itself before this wave moved it.
+ *
  * The ceiling is `DataBrowserSettings::PAGE_SIZE_CEILING`'s, repeated rather than imported: the browser's
  * cap exists because one request can materialise a table into PHP memory, and this one exists because one
  * page can render a hundred thousand `<tr>`s into a response. Same number, different failure, and a shared
@@ -49,6 +57,7 @@ final readonly class TableSettings
         public int $maxPageSize = 200,
         public string $maxHeight = '68vh',
         public string $density = self::DENSITY_COMFORTABLE,
+        public bool $rememberScroll = true,
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -62,6 +71,7 @@ final readonly class TableSettings
             maxPageSize: $max,
             maxHeight: self::height($config->string('firefly.admin.table.max-height', '68vh')),
             density: self::density($config->string('firefly.admin.table.density', self::DENSITY_COMFORTABLE)),
+            rememberScroll: $config->bool('firefly.admin.table.remember-scroll', true),
         );
     }
 

@@ -272,7 +272,17 @@
            whole-document scroll back, header and all.
         */
         .tw{overflow:auto;max-height:var(--table-vh)}
-        /* Panels whose rows are a fixed handful and must never grow an inner scrollbar. */
+        /*
+           THE OPT-OUT, AND EXACTLY WHO TAKES IT: a wrapper around a table with NO `<thead>`. The scrollport
+           above exists to give `position:sticky` something to stick to, so a headerless summary panel gains
+           nothing from it and pays twice — a second scrollbar inside a page that already has one, and a
+           footer link ("All traffic →") pushed under a box the reader has to scroll past to reach it. The
+           four panels on the overview are the whole of that set and they carry `class="tw free"`; every
+           other `.tw` on the dashboard wraps a table that draws a header and wants the scrollport.
+           Note what this class is NOT for: a table with few rows. `max-height` reserves no space, so a
+           four-row health table is four rows tall either way — the rule only ever bites once the rows
+           overflow, and by then a pinned header is what the reader wants.
+        */
         .tw.free{max-height:none}
         /* A nested scroller should stop at its own end rather than handing the gesture to the page mid-table. */
         .tw{overscroll-behavior:contain}
@@ -709,26 +719,47 @@
             });
         });
 
-        // The auto-refresh reloads the whole page, which is the right thing for a server-rendered dashboard
-        // — the URL carries the page, the sort and the search, so a reader on page 7 comes back to page 7.
-        // The one thing a reload does not restore is the scroll position INSIDE a table, because the
-        // scrollport is now the wrapper rather than the document. Keyed by the full URL so page 7's
-        // position is not applied to page 8.
+        // KEEPING THE READING POSITION WHERE THE BROWSER USED TO KEEP IT ITSELF. The auto-refresh reloads the
+        // whole page, which is the right thing for a server-rendered dashboard — the URL carries the page,
+        // the sort and the search, so a reader on page 7 comes back to page 7. Until this wave the reading
+        // position came back too, for free: `main` was the scrollport and a browser restores the DOCUMENT's
+        // offset across a reload. Giving `.tw` a height moved the scrollport inside the panel, and a browser
+        // does not restore an inner scroller — so the refresh started dropping the reader back to row 1.
+        //
+        // RESTORED ONLY WHERE THE BROWSER WOULD HAVE RESTORED IT — `reload` and `back_forward`, read off the
+        // Navigation Timing entry. A plain `navigate`, which is what clicking Beans in the sidebar an hour
+        // later is, leaves the saved offset alone and opens the table at the top: arriving at a page that is
+        // already scrolled into the middle of a table, with the document itself at the top and nothing on
+        // screen to explain it, is a defect rather than a convenience. An engine with no navigation entry
+        // gets the same treatment, because not restoring is the answer that can only disappoint.
+        //
+        // Keyed by the full URL, so page 7's position is never applied to page 8. Saved on `pagehide` rather
+        // than `beforeunload`: an unconditional `beforeunload` listener makes the page ineligible for the
+        // back/forward cache, which is one of the two navigations this exists to serve.
+        //
+        // `firefly.admin.table.remember-scroll` is the way out; the block is not emitted when it is off.
+        @if ($settings->table->rememberScroll)
         (function () {
             var key = 'firefly-admin-scroll:' + window.location.pathname + window.location.search;
             var wrappers = document.querySelectorAll('.tw');
+            var entry = window.performance && performance.getEntriesByType
+                ? performance.getEntriesByType('navigation')[0]
+                : null;
 
-            try {
-                var saved = JSON.parse(sessionStorage.getItem(key) || '[]');
-                wrappers.forEach(function (wrapper, index) { wrapper.scrollTop = saved[index] || 0; });
-            } catch (e) { /* private mode, or a stale shape */ }
+            if (entry && (entry.type === 'reload' || entry.type === 'back_forward')) {
+                try {
+                    var saved = JSON.parse(sessionStorage.getItem(key) || '[]');
+                    wrappers.forEach(function (wrapper, index) { wrapper.scrollTop = saved[index] || 0; });
+                } catch (e) { /* private mode, or a stale shape */ }
+            }
 
-            window.addEventListener('beforeunload', function () {
+            window.addEventListener('pagehide', function () {
                 try {
                     sessionStorage.setItem(key, JSON.stringify(Array.prototype.map.call(wrappers, function (w) { return w.scrollTop; })));
                 } catch (e) { /* private mode, or the quota */ }
             });
         })();
+        @endif
 
         // Bean graph: hovering or clicking a node lights its edges and both endpoints, and dims everything
         // else. Reading a dependency diagram is asking "what touches THIS", and a static picture cannot
