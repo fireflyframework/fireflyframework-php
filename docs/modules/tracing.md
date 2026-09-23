@@ -142,7 +142,7 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 |---|---|---|
 | Request tracing | third-party packages, each with its own middleware and header format | `TracingFilter`, W3C `traceparent`, one `Tracer` port |
 | Outbound propagation | manual `withHeaders()` at every call site | a Guzzle middleware on the `Http` factory, once, at boot |
-| Async correlation | none first-party | `traceparent` in every `EventEnvelope`, CONSUMER spans on delivery |
+| Async correlation | none first-party | `traceparent` in an in-memory or queued `EventEnvelope`, CONSUMER spans on every delivery |
 | Vendor lock | the tracing package's | OpenTelemetry API/SDK, OTLP to any collector; `RecordingTracer` needs no SDK |
 
 ## Known-latent

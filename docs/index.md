@@ -85,7 +85,7 @@ See [Installation](installation.md) for requirements and manual setup, and
   JWKS and both `.well-known` documents).
 - **Traced and logged like a service, not a script** — a `Tracer`/`Span` port with an
   [OpenTelemetry adapter](modules/tracing.md), a W3C `traceparent` continued at the server filter and carried
-  on through the `Http` client, both CQRS buses and every EDA envelope, and
+  on through the `Http` client, both CQRS buses and the in-memory and queue event buses, and
   [structured logging](modules/logging.md) in `json`, `ecs` or `logstash` carrying the same ids.
 - **Production-ready out of the box** — an Actuator surface (health/info/beans) and a Prometheus/Micrometer-style
   metrics core, both secured by the same config as everything else, plus a server-rendered

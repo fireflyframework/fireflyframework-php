@@ -1011,6 +1011,16 @@ it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy s
  * `traceparent` on the envelope, so the `CONSUMER` span starts a new ROOT instead of joining the request that
  * published — the exact join the panel promises. Both halves of that scoping are pinned below, from the
  * constructors that take the seam and from the starters that still do not.
+ *
+ * And a THIRD half, which the first two did not cover and which cost a commit to learn: the figure says that
+ * claim TWICE. Once in the panel a reader sees and once in the `<desc>` a screen reader is handed, and the
+ * correction landed on the panel alone — so for one commit the two copies inside a single file disagreed, the
+ * sighted reader getting the scoped sentence and the assistive one getting "a PRODUCER and CONSUMER span
+ * around every EDA envelope". Neither the reflection above nor the byte-identical mirror check could see it:
+ * the code was read, not the prose, and both files carried the same mistake identically. So the phrasings the
+ * panel has actually been written with are asserted ABSENT — from the drawn text, from the `<desc>` on its
+ * own, and from all three prose documents, whose Laravel-comparison row carried the same overclaim five lines
+ * above the Known-latent bullet that refutes it.
  */
 it('pins the tracing-propagation figure to the real orders, context keys, log fields and span kinds', function () {
     $root = dirname(__DIR__);
@@ -1033,13 +1043,26 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     expect($document->loadXML((string) file_get_contents($root.'/docs/assets/diagrams/tracing-propagation.svg')))
         ->toBeTrue('tracing-propagation.svg does not parse as XML');
 
+    // The <desc> is kept aside as well as folded into $svg. It is the ONE piece of a figure that is read by
+    // somebody who cannot see the drawing, which makes it the one piece a sighted author never proof-reads —
+    // and the scoping fix below landed once with the panel corrected and the <desc> still saying the sentence
+    // that same commit declared false. Two copies of one claim inside a single file disagreeing with each
+    // other is not something the byte-identical mirror check can see, so it is also checked on its own.
     $drawn = [];
+    $descriptions = [];
     foreach (['title', 'desc', 'text'] as $tag) {
         foreach ($document->getElementsByTagName($tag) as $node) {
             $drawn[] = $node->textContent;
+
+            if ($tag === 'desc') {
+                $descriptions[] = $node->textContent;
+            }
         }
     }
     $svg = implode("\n", $drawn);
+    $description = implode("\n", $descriptions);
+
+    expect($description)->not->toBe('', 'tracing-propagation.svg has no <desc> to read');
 
     // Every `#[Order]` the picture writes, read off the class that declares it — exactly as the filter-chain
     // guard above reads the sixteen it checks.
@@ -1294,4 +1317,44 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         'docs/modules/tracing.md no longer carries the Known-latent section the EDA panel is scoped against; '
         .'the figure and the caveat that makes it true have to move together',
     );
+
+    // And the same scoping held from the READER's side, not the code's — because the two loops above proved
+    // the fact and still let the figure say the opposite. When the panel was first corrected, its drawn lines
+    // were scoped and its <desc> was not: a sighted reader was told the traceparent rides "an in-memory or
+    // queued envelope" while a screen-reader user was handed "every EDA envelope", the exact claim the
+    // reflection above refutes. Nothing caught it. The mirror check compares the two FILES, which were
+    // byte-identical in their shared mistake; the loops above read the framework, not the prose.
+    //
+    // So every overclaim the panel has actually been written with is named here and asserted absent from the
+    // whole of the drawn text — $svg is <title>, <desc> and <text> together — and from the <desc> a second
+    // time on its own, so that the accessible copy can never drift back past the visible one. The same
+    // sentences are held out of all three prose documents, because the module page's Laravel-comparison row
+    // said "`traceparent` in every `EventEnvelope`" five lines above the Known-latent bullet that says the
+    // reverse, and a page arguing with itself teaches the wrong half at random.
+    $overclaims = ['every eda envelope', 'every envelope', 'every bus and consumer', 'every eventenvelope'];
+
+    foreach (['the drawn text of tracing-propagation.svg' => $svg, 'the <desc> of tracing-propagation.svg' => $description] as $where => $text) {
+        foreach ($overclaims as $overclaim) {
+            expect(str_contains(strtolower($text), $overclaim))->toBeFalse(
+                "{$where} says '{$overclaim}' again. Only ".implode(', ', array_map(
+                    static fn (string $class): string => (new ReflectionClass($class))->getShortName(),
+                    [InMemoryEventBus::class, QueueEventBus::class, SubscriberRegistrySink::class],
+                )).' reach the '.$seam.' seam — the two loops above prove it from the constructors and from '
+                .'the broker starters — so the PRODUCER half is scoped to an in-memory or queued envelope. '
+                .'The panel and the <desc> are two copies of one claim and both have to carry the scoping',
+            );
+        }
+    }
+
+    foreach ($prose as $relative => $text) {
+        $plain = strtolower((string) preg_replace('/\s+/', ' ', str_replace('`', '', $text)));
+
+        foreach ($overclaims as $overclaim) {
+            expect(str_contains($plain, $overclaim))->toBeFalse(
+                "{$relative} says '{$overclaim}' again, which the Known-latent bullet on the same page "
+                .'contradicts: a broker publish opens no PRODUCER span and stamps no traceparent. Scope the '
+                .'sentence to an in-memory or queued envelope, exactly as the figure does',
+            );
+        }
+    }
 });
