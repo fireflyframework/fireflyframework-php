@@ -299,6 +299,41 @@ it('refuses a listing that breaks any one of its contracts, and names the promis
     final class Thing {}
     PHP;
 
+    // The three shapes a NESTED configuration block goes wrong in, and not one of them writes a dotted key
+    // for the older scan to find: a misspelt leaf, a block repeated one level down (the copy-paste that
+    // produces `openapi.viewer.viewer.style`), and a misspelt block that holds an application's own ids —
+    // where the ids themselves are unknowable but the block above them is not.
+    $misspeltLeaf = <<<'PHP'
+    return [
+        'openapi' => [
+            'enabled' => true,
+            'viewer' => ['styl' => 'swagger'],
+        ],
+    ];
+    PHP;
+
+    $nestedTwice = <<<'PHP'
+    return [
+        'openapi' => [
+            'viewer' => ['viewer' => ['style' => 'swagger']],
+        ],
+    ];
+    PHP;
+
+    $misspeltBlock = <<<'PHP'
+    return [
+        'security' => [
+            'oauth2' => [
+                'client' => [
+                    'registrations' => [
+                        'google' => ['client_id' => 'id', 'client_secret' => 'secret'],
+                    ],
+                ],
+            ],
+        ],
+    ];
+    PHP;
+
     /** @var list<array{0: string, 1: DocsCodeAudit, 2: DocsCodeBlock, 3: string}> $cases */
     $cases = [
         // (a) PROVENANCE — the marker is a claim about a file, on any fence.
@@ -353,6 +388,19 @@ it('refuses a listing that breaks any one of its contracts, and names the promis
             docsCodeBlock('php', $inventedInGroup, null, $illustrative), 'Firefly\Container\Attributes\TotallyInvented'],
         ['an attribute nothing declares or imports', $repository,
             docsCodeBlock('php', $fabricated, null, $illustrative), 'uses #[Fabricated]'],
+
+        // (c) ILLUSTRATIVE, CONFIGURATION — the shape a reader pastes into config/firefly.php. These are the
+        // listings the dotted scan below is blind to: `'viewer' => ['styl' => …]` names no `firefly.*` token
+        // at all, and three package front pages open on exactly this shape.
+        ['a nested configuration listing whose leaf nothing reads', $repository,
+            docsCodeBlock('php', $misspeltLeaf, null, 'the openapi keys an application writes into its own config/firefly.php'),
+            'writes the configuration key `firefly.openapi.viewer.styl`'],
+        ['a configuration block repeated one level too deep', $repository,
+            docsCodeBlock('php', $nestedTwice, null, 'the openapi keys an application writes into its own config/firefly.php'),
+            'writes the configuration key `firefly.openapi.viewer.viewer`'],
+        ['a misspelt block holding an application\'s own ids', $repository,
+            docsCodeBlock('php', $misspeltBlock, null, 'the registrations an application declares in its own config/firefly.php'),
+            'writes the configuration key `firefly.security.oauth2.client.registrations`'],
 
         // (b) SHAPE — the keys, commands and scripts a listing names must exist.
         ['a configuration key nothing reads', $repository,
@@ -450,6 +498,33 @@ it('accepts every listing its contracts allow', function () {
     final class PrimaryGreeter {}
     PHP;
 
+    // Everything a real configuration listing is allowed to contain, in one block: settings that resolve,
+    // a LIST of rows whose own keys are not settings at all (`rules.0.pattern` is nobody's key), and an
+    // application-keyed block whose ids and whose entries the framework cannot possibly contain.
+    $configuration = <<<'PHP'
+    return [
+        'security' => [
+            'enabled' => true,
+            'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
+            'oauth2' => [
+                'client' => [
+                    'enabled' => true,
+                    'registration' => [
+                        'google' => ['client_id' => 'id', 'client_secret' => 'secret'],
+                    ],
+                ],
+            ],
+        ],
+    ];
+    PHP;
+
+    // The negative half of the same rule: an array whose top-level keys name no section is not configuration
+    // and is not judged as any. Read as settings it would refuse `firefly.name` and `firefly.message`, and
+    // the documents are full of JSON bodies, filters and fixtures written exactly like this.
+    $notConfiguration = <<<'PHP'
+    return ['name' => 'Ada', 'message' => 'Hello, Ada'];
+    PHP;
+
     /** @var list<array{0: string, 1: DocsCodeAudit, 2: DocsCodeBlock}> $cases */
     $cases = [
         ['an excerpt cut with the elision marker', $fixture, docsCodeBlock('php', $elided, 'src/Greeter.php')],
@@ -464,6 +539,10 @@ it('accepts every listing its contracts allow', function () {
         ['a yaml excerpt cut with the hash elision', $fixture, docsCodeBlock('yaml', "service:\n# …\n  enabled: true", 'config/app.yml')],
         ['a grouped import of classes that exist', $repository, docsCodeBlock('php', $grouped, null, 'the primary bean an application declares for itself')],
         ['a shell listing of real commands and keys', $repository, docsCodeBlock('bash', "php artisan firefly:about\ncomposer stan\n# firefly.security.enabled=true")],
+        ['a nested configuration listing whose every key resolves', $repository,
+            docsCodeBlock('php', $configuration, null, 'the registrations an application declares in its own config/firefly.php')],
+        ['an array that is not configuration at all', $repository,
+            docsCodeBlock('php', $notConfiguration, null, 'the JSON body a controller the reader writes returns')],
         // The two shapes literalProvenInSource() exists for, and the reason it exists: the README's
         // TracingFilter showcase is a verbatim excerpt of a call whose span-attribute array carries a Laravel
         // Context key, and the key check used to read that line as configuration and refuse it — which left

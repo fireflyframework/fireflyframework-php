@@ -42,8 +42,11 @@ use SplFileInfo;
  *
  *   (c) ILLUSTRATIVE — a block preceded by `<!-- illustrative: <why> -->`. This is for code that CANNOT exist
  *       in this repository: an application's own class, the one a reader would write. It is still not a free
- *       pass — a `php` listing must parse, every `use Firefly\…;` it writes must name a real class, and every
- *       `#[Attribute]` must be a real framework attribute or one the listing itself imports.
+ *       pass — a `php` listing must parse, every `use Firefly\…;` it writes must name a real class, every
+ *       `#[Attribute]` must be a real framework attribute or one the listing itself imports, and a listing
+ *       shaped like a `config/firefly.php` block is flattened back to dotted keys and checked key by key —
+ *       see verifyConfigurationListing(), which is how a nested array is held to the same contract a dotted
+ *       one is.
  *
  * Rule (b) also runs over (a) and (c), because a config array in a listing is exactly where a stale key hides.
  * Its key half has ONE exemption, and only inside (a): a `firefly.*` literal that the `source:` file itself
@@ -52,14 +55,25 @@ use SplFileInfo;
  * print `'firefly.correlation_id'`, which is a Laravel `Context` key and not a setting at all, without the
  * document having to cut a line out of a call the framework really ships.
  *
- * ONE THING THIS CANNOT SEE, stated so nobody trusts it further than it goes: the key check matches the DOTTED
- * form (`firefly.security.enabled`), so a config listing written as a nested PHP array names no key this class
- * can find. That is not a hole in practice, because a listing showing the framework's configuration is a
- * `source:` block against skeleton/config/firefly.php and is therefore compared verbatim against the reference
- * itself — which is a stronger check than this one. What is genuinely outside the guard is a `firefly.*` key
- * written in PROSE or in a module guide's configuration TABLE; those are checked by hand, once, in wave R's
- * module-docs task. The reference file is likewise NOT a source of truth for what a key is: it is a nested
- * array whose dotted strings are all prose, `firefly.trace_id` among them.
+ * A CONFIGURATION BLOCK IS CHECKED WHICHEVER WAY IT IS WRITTEN, and it took two arms to make that true. The
+ * scan above matches the DOTTED form (`firefly.security.enabled`) and finds nothing at all in the nested
+ * array a reader actually pastes into config/firefly.php. Such a listing is therefore either a `source:`
+ * block against skeleton/config/firefly.php, compared verbatim against the reference itself — stronger than
+ * any key check — or an `illustrative:` one, and then verifyConfigurationListing() flattens it back to dotted
+ * keys and holds every one to keyIsReal(). The second arm is not hypothetical: the front pages Packagist
+ * prints for `firefly/actuator`, `firefly/openapi` and `firefly/security-oauth2-client` each carry exactly
+ * such a block, and not one of them could be an excerpt of the reference, which ships those same settings
+ * COMMENTED OUT — an optional package's whole block is written that way, and so is the management port's,
+ * because both are off until an application asks. Quoting either verbatim would print a page of
+ * `// 'enabled' => true,` lines.
+ *
+ * WHAT IS STILL OUTSIDE, stated so nobody trusts this further than it goes: a `firefly.*` key written in
+ * PROSE or in a module guide's configuration TABLE — those are checked by hand, once, in wave R's module-docs
+ * task — and a setting inside an application-keyed block, which the owning package reads straight out of the
+ * array instead of through a dotted Config call, so nothing in this class can prove it (the three shapes
+ * verifyConfigurationListing() passes over are named in its docblock, with the reason each would otherwise
+ * fail a true listing). The reference file is likewise NOT a source of truth for what a key is: it is a
+ * nested array whose dotted strings are all prose, `firefly.trace_id` among them.
  *
  * The audited surface is written as a list, but it is not JUDGED against one: wave R turned the guard on a
  * surface at a time so that every commit could be green, and `tests/DocsCodeIsRealTest.php` now asks the
@@ -141,10 +155,18 @@ final class DocsCodeAudit
 
     /**
      * Prefixes whose NEXT segment is chosen by the application, not by the framework: a feature switch's own
-     * name, a registration id, a provider id, an in-memory user's name, an actuator endpoint id, a health
-     * group's name. For these the guard checks the TAIL after the user's segment instead — so
-     * `firefly.security.oauth2.client.registration.google.client-id` is accepted because some real key ends
-     * in `.client-id` under that prefix, while a misspelt tail is still caught.
+     * name, a registration id, a provider id, a registered client's id, an in-memory user's name, an actuator
+     * endpoint id, a health group's name. For these the guard checks the TAIL after the user's segment
+     * instead — so `firefly.security.oauth2.client.registration.google.client-id` is accepted because some
+     * real key ends in `.client-id` under that prefix, while a misspelt tail is still caught.
+     *
+     * A NESTED LISTING GETS THE SAME PREFIXES, AND NEEDS ONE MORE THING FROM THEM. verifyConfigurationListing()
+     * flattens a `config/firefly.php` block into dotted keys, and the settings INSIDE an application-keyed
+     * block — `client_id`, `redirect_uris` — are read by the owning package straight out of the array rather
+     * than through a dotted `$config->…()` call, so keyLiterals() cannot see them and the tail rule above
+     * cannot prove them. A key under one of these prefixes that nothing else proves is therefore passed over
+     * by that check, which is the one limit its docblock states; the prefix itself is still required to be a
+     * real key, so a misspelt `registrations` block fails on the line that opens it.
      *
      * @var list<string>
      */
@@ -154,6 +176,7 @@ final class DocsCodeAudit
         'firefly.management.endpoint.health.group.',
         'firefly.security.oauth2.client.provider.',
         'firefly.security.oauth2.client.registration.',
+        'firefly.security.oauth2.server.clients.',
         'firefly.security.users.',
     ];
 
@@ -325,7 +348,11 @@ final class DocsCodeAudit
                 return 'is marked illustrative with no reason a reader could act on: `'.$block->illustrative.'`.';
             }
 
-            return ($php ? ($this->verifyLints($block) ?? $this->verifySymbols($block)) : null)
+            return ($php
+                ? ($this->verifyLints($block)
+                    ?? $this->verifySymbols($block)
+                    ?? $this->verifyConfigurationListing($block))
+                : null)
                 ?? $this->verifyShape($block);
         }
 
@@ -614,6 +641,244 @@ final class DocsCodeAudit
         }
 
         return null;
+    }
+
+    /**
+     * THE OTHER HALF OF THE KEY CHECK, and the one verifyConfigKeys() cannot do: a configuration block
+     * written the way a reader actually writes it — as a NESTED ARRAY, where no dotted key appears anywhere.
+     *
+     * `packages/actuator/README.md`, `packages/openapi/README.md` and
+     * `packages/security-oauth2-client/README.md` each carry one of these blocks, and those three pages are
+     * what Packagist prints as the package's front page. Before this method existed, not one setting in them
+     * was checked by anything: the dotted scan matches `firefly.openapi.viewer.style` and sees nothing at all
+     * in `'openapi' => ['viewer' => ['style' => 'swagger']]`, so a renamed key, a retired default or a
+     * block nested one level too deep could sit on a package front page indefinitely. They cannot be
+     * `source:` excerpts of `skeleton/config/firefly.php` either: the reference ships those settings
+     * COMMENTED OUT — an optional package's whole block, the management port's block — so an excerpt would
+     * print a page of `// 'enabled' => true,` lines.
+     *
+     * WHAT MAKES A LISTING CONFIGURATION IS ITS SHAPE, NOT ITS PROSE. A marker's reason is a sentence a human
+     * wrote, so keying off it would mean a listing escapes the check by not mentioning the file. This reads
+     * the code instead: a top-level `return [ … ];` EVERY ONE of whose top-level keys is a real `firefly.*`
+     * section is the configuration file and nothing else is — `['name' => …, 'message' => …]` is a JSON body,
+     * `['status' => …, 'customer' => …]` is a filter, and neither names a section, so neither is read as
+     * settings. Every pair below that is then flattened back to the dotted form keyIsReal() understands.
+     *
+     * THREE THINGS IT DELIBERATELY DOES NOT JUDGE, each because judging it would produce a false failure:
+     *
+     *   1. ANYTHING UNDER A LIST. `'rules' => [['pattern' => '*', 'access' => 'authenticated']]` holds rows,
+     *      not settings, and `rules.0.pattern` is not a key anyone writes. A path that passes through an
+     *      unkeyed array is dropped whole.
+     *   2. A KEY BELOW THE SEGMENT THE APPLICATION CHOOSES (see USER_KEY_PREFIXES). `client_id` under
+     *      `registration.google` is read out of the array by OAuth2ClientPropertiesMapper, never through a
+     *      dotted Config call, so keyLiterals() cannot contain it and the tail rule cannot prove it. Both
+     *      levels above it still are: the block — `…client.registration`, `…server.clients` — and the
+     *      application's own id under it must resolve, so a misspelt `registrations` fails on the line that
+     *      opens it.
+     *   3. A `source:` LISTING. verify() runs this on the ILLUSTRATIVE arm only, because a provenance excerpt
+     *      is already compared line for line against the file it names and may legally be cut with the
+     *      elision — and a cut that removes the line opening a block leaves the remaining keys nested under
+     *      the wrong parent. Flattening an excerpt would report keys the document never wrote.
+     *
+     * The long `array(…)` syntax is refused rather than mis-parsed: the walk reads `[` and `]`, nothing in
+     * these documents writes the old form, and a wrong nesting would be a failure message nobody could act on.
+     */
+    private function verifyConfigurationListing(DocsCodeBlock $block): ?string
+    {
+        $keys = $this->configurationListing($block->code);
+
+        if ($keys === null) {
+            return null;
+        }
+
+        foreach ($keys as $key => $applicationKeyed) {
+            if ($applicationKeyed || $this->keyIsReal($key)) {
+                continue;
+            }
+
+            return 'writes the configuration key `'.$key.'` as a nested array, and nothing under '
+                .'packages/*/src reads it: no `$config->…(\'firefly.…\')`, no #[ConditionalOnProperty] gate '
+                .'and no key constant handed to a Config read spells it, nor does any key it is the block of. '
+                .'A block a reader copies into config/firefly.php is a claim about every key in it — fix the '
+                .'key, or add its prefix to DocsCodeAudit::USER_KEY_PREFIXES if the next segment is the '
+                .'application\'s to choose.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The walk behind verifyConfigurationListing(): every key a `config/firefly.php` listing writes, in the
+     * dotted form the rest of this class speaks, mapped to whether it sits inside an application-keyed block.
+     *
+     * Returns null when the block is not a configuration listing at all, which is the common case — the
+     * decision is described in verifyConfigurationListing()'s docblock and is made from the top-level keys
+     * alone, so a listing that shows an array of anything else is left to the other contracts.
+     *
+     * @return array<string, bool>|null dotted key => sits under an application-chosen segment
+     */
+    private function configurationListing(string $code): ?array
+    {
+        $tokens = token_get_all(str_starts_with(ltrim($code), '<?php') ? $code : "<?php\n".$code);
+
+        /** @var list<string|null> $path */
+        $path = [];
+        /** @var array<string, bool> $keys */
+        $keys = [];
+        /** @var list<string> $sections */
+        $sections = [];
+
+        $depth = 0;
+        $returning = false;
+        $listing = false;
+        $arrow = false;
+        $key = null;
+
+        foreach ($tokens as $token) {
+            if (is_array($token)) {
+                if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+
+                if ($token[0] === T_ARRAY) {
+                    return null;
+                }
+
+                if ($token[0] === T_RETURN && $depth === 0) {
+                    $returning = true;
+                    $arrow = false;
+                    $key = null;
+
+                    continue;
+                }
+
+                if ($token[0] === T_CONSTANT_ENCAPSED_STRING && ! $arrow) {
+                    $key = trim($token[1], '\'"');
+
+                    continue;
+                }
+
+                if ($token[0] === T_DOUBLE_ARROW) {
+                    $arrow = true;
+
+                    continue;
+                }
+
+                // Any other token after a `=>` is the pair's VALUE — a scalar, a class constant, an env()
+                // call — so the pair is a leaf and is recorded here.
+                if ($arrow && $key !== null && $returning && $depth >= 1) {
+                    $this->recordConfigurationKey($path, $key, $keys, $sections);
+                }
+
+                $arrow = false;
+                $key = null;
+
+                continue;
+            }
+
+            if ($token === '[') {
+                $depth++;
+
+                if ($returning && $depth === 1) {
+                    $listing = true;
+                    $path = [];
+                } elseif ($returning) {
+                    // Depth is at least 2 here: a nested array, so it pushes a segment onto the path.
+                    if ($arrow && $key !== null) {
+                        // A key whose value is an array is a key too: `viewer` is the block `viewer.style`
+                        // lives in, and keyIsReal() proves a block by the keys under it.
+                        $this->recordConfigurationKey($path, $key, $keys, $sections);
+                        $path[] = $key;
+                    } else {
+                        $path[] = null;
+                    }
+                }
+
+                $arrow = false;
+                $key = null;
+
+                continue;
+            }
+
+            if ($token === ']') {
+                if ($returning && $depth >= 2) {
+                    array_pop($path);
+                }
+
+                $depth--;
+
+                if ($depth <= 0) {
+                    $depth = 0;
+                    $returning = false;
+                }
+
+                $arrow = false;
+                $key = null;
+
+                continue;
+            }
+
+            if ($arrow && $key !== null && $returning && $depth >= 1) {
+                $this->recordConfigurationKey($path, $key, $keys, $sections);
+            }
+
+            if ($token === ';' && $depth === 0) {
+                $returning = false;
+            }
+
+            $arrow = false;
+            $key = null;
+        }
+
+        if (! $listing || $sections === []) {
+            return null;
+        }
+
+        foreach (array_unique($sections) as $section) {
+            if (! $this->keyIsReal('firefly.'.$section)) {
+                return null;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * One flattened pair. A path that passes through an unkeyed array is a row inside a list and is dropped;
+     * everything else is recorded with the one fact verifyConfigurationListing() needs about it — whether an
+     * application-chosen segment stands between it and the root.
+     *
+     * @param  list<string|null>  $path
+     * @param  array<string, bool>  $keys
+     * @param  list<string>  $sections
+     */
+    private function recordConfigurationKey(array $path, string $key, array &$keys, array &$sections): void
+    {
+        $prefix = 'firefly';
+        $applicationKeyed = false;
+        $depth = count($path);
+
+        foreach ($path as $index => $segment) {
+            if ($segment === null) {
+                return;
+            }
+
+            $prefix .= '.'.$segment;
+
+            // The segment the application chooses is the one immediately after the prefix, and THAT key is
+            // proven by keyIsReal() on its own (a user prefix is a key literal). Only what sits BELOW the
+            // chosen segment falls back on the tail rule, which is the part keyLiterals() cannot reach — so
+            // that, and only that, is passed over.
+            if ($index + 1 < $depth && in_array($prefix.'.', self::USER_KEY_PREFIXES, true)) {
+                $applicationKeyed = true;
+            }
+        }
+
+        $keys[$prefix.'.'.$key] = $applicationKeyed;
+
+        if ($path === []) {
+            $sections[] = $key;
+        }
     }
 
     /**

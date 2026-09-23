@@ -22,10 +22,12 @@ through a generalised interceptor chain rather than on controllers alone, princi
 and let it be one. Constraint violations are Spring-shaped, each carrying the `constraint` that failed, and
 `#[Valid]` cascades into list elements. Tests reach the browser: a Pest 4 + Playwright harness with a CI job
 of its own. And the documentation caught up with all of it — a guard over every Markdown file this
-repository ships, in three parts: a listing that names a source file is compared **verbatim** against that
+repository ships, in four parts: a listing that names a source file is compared **verbatim** against that
 file, a listing showing code the reader writes in their own application is marked illustrative and is still
-parsed and resolved against real class names, and every listing, marked or not, is held to the `firefly.*`
-keys, artisan signatures and `composer` scripts it names. Four new diagrams drawn from that same source, a
+parsed and resolved against real class names, an illustrative block shaped like `config/firefly.php` is
+flattened back to dotted keys so that the nested configuration a package front page opens on is checked
+setting by setting, and every listing, marked or not, is held to the `firefly.*` keys, artisan signatures and
+`composer` scripts it names. Four new diagrams drawn from that same source, a
 redesigned site, and a fifteenth chapter in both editions.
 
 Eight defects found by building a second real application on `26.09.2`, every one of them a place where the

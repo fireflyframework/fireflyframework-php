@@ -3406,3 +3406,167 @@ it('pins every filter-operator enumeration to the labels DataFilter really decla
     expect($failures)->toBe([])
         ->and($judged)->toBeGreaterThan(0, 'no page enumerates the data browser\'s comparisons any more, so this canary holds nothing');
 });
+
+it('pins the README\'s Featured Patterns count to the showcases the section really holds', function () {
+    // The twenty-seventh, and the one whose defect sat two lines above the README's own "That is a checked
+    // claim, not a promise" paragraph. Wave R's README rewrite added the OAuth2 and tracing showcases and
+    // opened the section with "Eleven showcases below" over TWELVE `###` headings: the eleven that carry a
+    // listing, and the two browser surfaces, which carry none. The sentence had counted the listings it was
+    // promising provenance for and then governed every heading under it, so it was wrong about the section
+    // and would have been wrong about the promise either way. Not one listing was untrue, so
+    // DocsCodeIsRealTest stayed green the whole time: a count written in prose is exactly the claim a listing
+    // guard cannot see, and this one was on the page that asks the reader to trust the listing guard.
+    //
+    // DERIVED FROM THE SECTION ITSELF. A showcase is a `###` heading under `## Featured Patterns` — that is
+    // what the page's own structure makes one — and the split the preamble draws is derived too: a showcase
+    // "carries code" when it holds a fenced block, which the browser-surfaces one does not, because it is
+    // about pages you open rather than code you write. Both numbers are read as words and as digits, so a
+    // thirteenth showcase fails the sentence above it rather than the reader.
+    //
+    // THE LAST RULE IS THE ONE THAT MATTERS MOST: while the two numbers differ, the preamble must SAY so.
+    // Without it "Twelve showcases below, each an accurate snippet" would be as false as the count was, and
+    // in the more dangerous direction — a promise of provenance over a section that does not carry one.
+    $root = dirname(__DIR__);
+    $readme = (string) file_get_contents($root.'/README.md');
+
+    $found = preg_match('/\n## Featured Patterns\n(.*?)(?=\n## )/s', $readme, $section) === 1;
+
+    expect($found)->toBeTrue('README.md no longer has a `## Featured Patterns` section');
+
+    $split = preg_split('/^### .*$/m', $section[1] ?? '');
+    $pieces = $split === false ? [] : $split;
+    $preamble = $pieces[0] ?? '';
+    $showcases = max(count($pieces) - 1, 0);
+    $carrying = count(array_filter(
+        array_slice($pieces, 1),
+        static fn (string $piece): bool => str_contains($piece, '```'),
+    ));
+
+    $failures = [];
+    $judged = 0;
+
+    preg_match_all('/([\p{L}\d]+)\s+showcases\b/u', $preamble, $counted, PREG_SET_ORDER);
+
+    foreach ($counted as $claim) {
+        $written = fireflyWrittenNumber($claim[1]);
+
+        if ($written === null) {
+            continue;
+        }
+
+        $judged++;
+
+        if ($written !== $showcases) {
+            $failures[] = 'README.md opens Featured Patterns with '.$claim[1].' showcases, and the section '
+                .'holds '.$showcases.' `###` headings';
+        }
+    }
+
+    preg_match_all('/([\p{L}\d]+)\s+that\s+carry\s+code\b/u', $preamble, $coded, PREG_SET_ORDER);
+
+    foreach ($coded as $claim) {
+        $written = fireflyWrittenNumber($claim[1]);
+
+        if ($written === null) {
+            continue;
+        }
+
+        $judged++;
+
+        if ($written !== $carrying) {
+            $failures[] = 'README.md says '.$claim[1].' showcases carry code, and '.$carrying.' of the '
+                .$showcases.' hold a fenced listing';
+        }
+    }
+
+    if ($carrying !== $showcases && $coded === []) {
+        $failures[] = 'README.md counts the showcases without saying that '.($showcases - $carrying).' of '
+            .'them carry no listing, so the provenance promise beside the count reads as a claim about all '
+            .$showcases;
+    }
+
+    expect($failures)->toBe([])
+        ->and($showcases)->toBeGreaterThan(0, 'README.md\'s Featured Patterns section holds no `###` showcase at all, so this canary holds nothing')
+        ->and($judged)->toBeGreaterThan(0, 'README.md no longer counts its showcases, so this canary holds nothing');
+});
+
+it('pins the contributing guide\'s account of this file to the surface it really walks', function () {
+    // The twenty-eighth, and the one that guards the paragraph describing THIS FILE. 26.09.3 widened the
+    // listing guard from three trees to every Markdown file the repository tracks; the prose guard did not
+    // move. docs/contributing.md went on calling the two "the same surface" one paragraph below a new
+    // paragraph that described the widened one — so the page contradicted itself, and told a contributor that
+    // a count typed into a package README is held to the derived-facts gate when nothing reads it. The roster
+    // canary above could not see it: it pins the number of tests and that each cited file exists, not what a
+    // test walks.
+    //
+    // DERIVED FROM BOTH GUARDS AT ONCE. The prose surface is this file's own walk, the listing surface is
+    // DocsCodeAudit::markdownFiles(), and the paragraph is judged against the DIFFERENCE between them: every
+    // file the listing guard reaches and this one does not must be named there, by its path or by the tree it
+    // sits in. Containment is asserted rather than assumed — a page this file walks that the listing guard
+    // does not reach would make the whole paragraph wrong in the other direction — and the equality claim is
+    // refused only while the two really differ, so the day the prose guard is widened to everything, the
+    // sentence that says so is the one that passes.
+    $root = dirname(__DIR__);
+    $prose = array_keys(fireflyProsePages());
+    $listing = (new DocsCodeAudit($root))->markdownFiles();
+
+    $unreached = array_values(array_diff($listing, $prose));
+    sort($unreached);
+
+    $guide = (string) file_get_contents($root.'/docs/contributing.md');
+    $paragraphs = preg_split('/\n\s*\n/', $guide);
+    $paragraph = '';
+
+    foreach ($paragraphs === false ? [] : $paragraphs as $candidate) {
+        if (str_contains($candidate, 'tests/DocsProseIsRealTest.php') && str_contains($candidate, 'It walks')) {
+            // Only what the paragraph says about its SURFACE. The roster that follows "Under guard today"
+            // names `packages/testing` and `samples/lumen` in passing, and a mention there is not an account
+            // of what this file walks — reading the whole paragraph would let those two sentences answer for
+            // trees nobody had thought about.
+            $surface = explode('Under guard today', $candidate)[0];
+            $paragraph = (string) preg_replace('/\s+/', ' ', $surface);
+        }
+    }
+
+    expect($paragraph)->not->toBe('', 'docs/contributing.md no longer has a paragraph saying what tests/DocsProseIsRealTest.php walks');
+
+    $failures = [];
+
+    // A file is accounted for by its own path or by any tree above it, spelled as a path prefix
+    // (`packages/`) or as the wildcard a page writes for a per-package file (`packages/*/README.md`).
+    foreach ($unreached as $file) {
+        $segments = explode('/', $file);
+        $labels = [$file];
+
+        for ($i = 1; $i < count($segments); $i++) {
+            $labels[] = implode('/', array_slice($segments, 0, $i)).'/';
+        }
+
+        if (count($segments) > 1) {
+            $labels[] = $segments[0].'/*/'.$segments[count($segments) - 1];
+        }
+
+        $named = false;
+
+        foreach ($labels as $label) {
+            if (str_contains($paragraph, $label)) {
+                $named = true;
+            }
+        }
+
+        if (! $named) {
+            $failures[] = $file.' is audited for listings and never read for claims, and the paragraph names '
+                .'neither it nor a tree it sits in';
+        }
+    }
+
+    // The two surfaces are not equal, so the page may not say they are — whatever wording it reaches for.
+    if ($unreached !== [] && preg_match('/same surface/i', $paragraph) === 1) {
+        $failures[] = 'the paragraph still calls the two surfaces the same, and the listing guard reaches '
+            .count($unreached).' files this one does not';
+    }
+
+    expect($failures)->toBe([])
+        ->and(array_values(array_diff($prose, $listing)))->toBe([], 'this file walks a page the listing guard does not audit, which makes the guide\'s account of the two surfaces wrong in the other direction')
+        ->and($unreached)->not->toBe([], 'the prose guard now walks everything the listing guard does, so the paragraph should say that instead of naming exceptions');
+});

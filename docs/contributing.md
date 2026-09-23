@@ -114,7 +114,12 @@ is exactly `// …` (or `# …` in a file whose comments start with a hash). An 
 that *cannot* exist in this repository — an application's own class — and still has to parse, import only
 framework classes that exist and use only attributes that exist. Every block, marked or not, is additionally
 checked for the `firefly.*` keys, `php artisan firefly:*` commands and `composer <script>` invocations it
-names. `tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.php` is the engine, and its
+names. A listing whose SHAPE is a configuration file — a `return [ … ];` every one of whose top-level keys is
+a real `firefly.*` section — is flattened back to dotted keys on top of that, so the nested block a package
+README carries is checked setting by setting although it spells no dotted key anywhere; what that check
+passes over is a setting below the segment an application chooses for itself (a registration id, a client
+id), because the owning package reads those out of the array rather than through `Config`.
+`tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.php` is the engine, and its
 docblock is the full contract. **A red run is fixed by making the document true**, never by deleting an
 assertion or by marking a framework excerpt `illustrative:`.
 
@@ -172,11 +177,15 @@ is the bilingual version of the defect this whole gate exists to remove.
 
 **Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
 the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
-did. It walks `README.md`, every page under `docs/` and **both manuscripts** — the same surface the listing guard
-above now covers — and holds any paragraph that makes an exhaustive
-claim against a value read out of the source at test time, never against a number typed into the test. A
-count is a claim, and the cheapest one to get wrong, so counts are read as words as well as digits, in
-English and in Spanish.
+did. It walks `README.md`, every page under `docs/` and **both manuscripts**, and holds any paragraph that
+makes an exhaustive claim against a value read out of the source at test time, never against a number typed
+into the test. That surface is a **subset** of the listing guard's, not the same one: the listing guard now
+covers every Markdown file the repository tracks, and this half does not follow it into `CHANGELOG.md`,
+`book/README.md`, the `packages/*/README.md` Packagist prints as a package front page, `skeleton/README.md`
+or `samples/lumen/README.md`. A listing on one of those pages is held to the provenance contract; a *claim*
+on one of them is held to nothing — so a count, a default or an enumeration worth deriving belongs on a page
+this guard walks, with the package README linking to it rather than restating it. A count is a claim, and the
+cheapest one to get wrong, so counts are read as words as well as digits, in English and in Spanish.
 Under guard today: the expression functions `SecurityExpressionEvaluator` really dispatches, the actuator
 inventory and every "404 until exposed" sentence, the exceptions `PersistenceExceptionTranslator` really
 builds, the order in which `ErrorPageRenderer` really reads an `Accept` header, the stereotype hierarchy PHP
@@ -197,7 +206,10 @@ skeleton really serves beside every `curl … localhost:8000/…` transcript —
 `WelcomeController` renders as HTML is a command the reader runs and watches fail — the eight comparison
 labels `DataFilter::operators()` really declares wherever a page enumerates the data browser's filters (the
 dashboard ships no localisation, so a translated label is a label that does not exist), and how far apart the
-two manuscripts really are wherever a page calls the book complete in both languages. The triggers are
+two manuscripts really are wherever a page calls the book complete in both languages, the number of showcases
+`## Featured Patterns` really holds and how many of them carry a listing, and the two surfaces the paragraph
+above compares — read from the prose walk and from `DocsCodeAudit::markdownFiles()` at test time, so the day a
+tree joins one guard and not the other, that paragraph fails rather than a reader. The triggers are
 deliberately narrow — a page may mention `hasRole()` or `/actuator/env` in passing without owing the full
 enumeration — so **a red run here is fixed by correcting the sentence**, never by loosening the trigger that
 caught it.

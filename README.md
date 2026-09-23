@@ -488,9 +488,11 @@ publishing an id:
 
 ## Featured Patterns
 
-Eleven showcases below, each an accurate snippet lifted straight from `samples/lumen/` (the wallet-and-ledger
-sample), the skeleton's own configuration reference, or the framework itself — no invented API. Every
-attribute and class shown here compiles against the shipped `26.09.3` release.
+Twelve showcases below. The eleven that carry code are each an accurate snippet lifted straight from
+`samples/lumen/` (the wallet-and-ledger sample), the skeleton's own configuration reference, or the framework
+itself — no invented API, and every attribute and class shown in them compiles against the shipped `26.09.3`
+release. The twelfth is the two browser surfaces, which are pages you open rather than code you write, so it
+carries prose and links instead of a listing.
 
 That is a checked claim, not a promise — and here is exactly how far it reaches. Every **PHP** listing below
 carries an HTML comment naming the file it was copied from, and `tests/DocsCodeIsRealTest.php` fails the build
