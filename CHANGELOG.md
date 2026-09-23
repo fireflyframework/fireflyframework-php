@@ -249,6 +249,25 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   beside the security package and asserts the document against the running dispatcher, that it names no scheme it
   did not publish, and that no operation requires a scope its own `securitySchemes` does not declare.
 
+- **`packages/observability` — Micrometer's method attributes.** `#[Timed]`, `#[Counted]` and `#[Observed]`
+  on any stereotyped bean, enforced by an `ObservabilityAdviceSource` on the same method-interceptor chain
+  `#[Transactional]` and `#[PreAuthorize]` use, as the **outermost** advice (order 50): a timer measures the
+  authorization refusal and the `COMMIT`, and a refused call is counted as a failure instead of vanishing
+  from the meter. That placement is a deliberate divergence from Micrometer, whose three aspects are
+  unordered and therefore run innermost — inside Spring Security's interceptors — where a `@Timed` method
+  whose `@PreAuthorize` denies is neither timed nor counted. `#[Observed]` is a span and a timer under one
+  name, degrading to the timer alone with tracing off; `#[Timed(longTask: true)]` publishes a `<meter>.active`
+  set-gauge holding this process's in-flight **depth**. The rows are compiled by
+  `ObservabilityMethodScanner` into `ObservabilityMethodDescriptor::fromArray([…])` literals inside the
+  generated proxy, so a cached boot adds no reflection site; the scan REFUSES what would compile and then be
+  honoured by nothing — an attribute on a class nothing post-processes, on a `final` class or a `final` method
+  the class declares, written explicitly on a `static` or `__`-prefixed method, `#[Timed(percentiles:)]`
+  (naming `firefly.observability.metrics.distribution.per-meter` — this registry publishes histogram buckets,
+  not client-side quantiles), and a `#[Timed]` and `#[Counted]` on one method spelling out the same meter
+  name, which a Prometheus name's single type makes unrecordable. Every recorder and tracer touch is
+  best-effort behind a guard of its own: a telemetry failure costs a sample, never a return value or an
+  exception. `firefly.observability.method.*`.
+
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under
   `firefly.resilience.*`, and `#[Fallback]` names a recovery method on the same class; each is applied to a
@@ -565,12 +584,58 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   which now take the same configured path and carry `firefly.eda.rabbitmq.exchange` / the Kafka broker list
   across it alike. A publisher the framework ships no adapter for stays yours to construct and yours to gate.
 
+- **`packages/scheduling` — `initialDelay` is applied.** The parameter has been carried through the compiled
+  descriptor and read by nothing since M7, because Laravel's frequency DSL cannot say "run once after a delay,
+  then resume the cadence". It is now a per-tick `Event::when()` predicate against an **anchor written to the
+  cache** the first time a task is seen — the cache, not process memory, because a cron-driven `schedule:run`
+  is a fresh process every minute whose own start time would restart the window forever and hang the task in
+  silence. The anchor therefore needs a store shared across processes under cron, which `ScheduleWiringPass`
+  **warns** about as the Schedule is built when it is not; the `null` driver, which cannot read back its own
+  write, makes the gate **admit** the tick and say so once rather than hang. The anchor has no expiry, so by
+  default a delay is armed once in the life of its cache key (a one-off warm-up); `initial-delay.release`
+  names the deployment and gives every release its own quiet period. Switching
+  `firefly.scheduling.initial-delay.enabled` off now **REFUSES TO BOOT** an application whose manifest carries
+  an `initialDelay`, and an unparseable duration is refused at boot too — the predicate runs inside
+  `filtersPass()`, which Laravel does not wrap, so a throw there would abort the whole minute's run.
+  `firefly.scheduling.initial-delay.*`.
+
+- **`packages/resilience` — an idle TTL for breaker and limiter records.** `CircuitBreaker` and `RateLimiter`
+  refresh an `idle-ttl` (default `720h`) on **every** store write, admitted or rejected, so a key in use can
+  never expire — the expiry is always further away than the next call, and an OPEN breaker cannot vanish
+  mid-outage — while a key nothing has touched for a month is reclaimed instead of living in the store
+  forever. `Bulkhead` has always worked this way through `permit-ttl`. A non-positive value means never
+  expire; `null` does too, which is the right choice for a `refill-rate: 0` hard quota that must not be handed
+  back.
+
+- **`packages/data` — a `#[Projection]` and a trailing `Pageable` combine**, paging **in the database** and
+  hydrating one DTO per row of the window (`Slice` fetches `size + 1` and reports `hasNext`). The projection
+  arm used to return before the pageable one, so `findByStatus(string $status, Pageable $p): Page` selected
+  the DTO's columns and then handed back every matching row unpaged — a list where the method's own declared
+  return type said `Page`, on exactly the wide list screens a projection is for.
+  `firefly.data.projection.pageable` restores the old shape for one release.
+
+- **`packages/observability` — the log ids reach a channel built after boot.** `LogManager` pushes
+  `Illuminate\Contracts\Log\ContextLogProcessor` onto every channel it creates, `Log::build()` included, so
+  the framework binds that contract to `FireflyContextLogProcessor` — Laravel's own context processor
+  preserved inside it, then the correlation id and the W3C trace ids, resolved per record so the `Tracer` need
+  not be bound when the binding is made. A per-tenant file a job opens is now correlatable. The structured
+  **formatter** still does not reach an on-demand channel — it is set on handlers built from a config array
+  this package never sees — and `docs/modules/logging.md` says so. `firefly.logging.structured.all-channels`.
+
 - **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
   page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
   document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"
   [Pattern]`.
 
 ### Changed
+
+- **`packages/resilience` — `CircuitBreaker::__construct()` and `RateLimiter::__construct()` now default
+  `$idleTtl` to `DEFAULT_IDLE_TTL` (2592000.0 seconds, thirty days) rather than `null`,** so an instance
+  built BY HAND — not only one the registry builds — is bounded. The framework's own
+  `TokenEndpointRateLimiter` is such an instance. **Migration:** an application that constructs either
+  directly and relies on an unbounded record must now pass `idleTtl: null` explicitly. The sharpest case is a
+  `RateLimiter` with `refillRate: 0.0` — a hard quota rather than a rate — whose quota is now handed back
+  after thirty days of silence where before it never was.
 
 - **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
   template invariant and started requiring `view-string` for every `Factory::make()` argument; both are

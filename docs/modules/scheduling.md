@@ -99,12 +99,9 @@ final class Reconciliation
 - **`zone`** — an IANA timezone name (e.g. `'America/New_York'`), applied to the registered `Event` via
   Laravel's own `$event->timezone(...)` (`Illuminate\Console\Scheduling\ManagesFrequencies::timezone()`), so
   the cron/frequency expression is evaluated in that timezone instead of the scheduler's default.
-
-`initialDelay` is accepted by the attribute and carried through the compiled descriptor
-(`ScheduledDescriptor`) for forward compatibility, but **`ScheduleWiringPass` does not yet apply it** to the
-registered Laravel `Event` — Laravel's frequency DSL has no native initial-delay-before-first-run primitive
-to wire it onto. Set it if you like for self-documentation, but it currently has no runtime effect (see
-[Known-latent](#known-latent)).
+- **`initialDelay`** — a `Duration`-parsed string holding the task back before its first run, then leaving
+  the cadence alone. It is applied; see [Initial delay](#initial-delay) for the anchor it is measured from
+  and the cache store a cron-driven scheduler needs to honour it.
 
 ## Discovery: `ScheduledScanner` → `ScheduledManifest`
 
@@ -168,6 +165,55 @@ A thrown exception from the task body is **logged and swallowed**, never propaga
 task must never abort the rest of the scheduler run (pyfly `_invoke` parity). It logs via the bound
 `Psr\Log\LoggerInterface` when one is available, falling back to `error_log()` otherwise.
 
+## Initial delay
+
+Laravel's frequency DSL cannot express "run once after a delay, then resume the cadence". It does have
+`Event::when()` — a per-tick predicate — and an initial delay **is** a predicate: refuse every tick until the
+window has passed. `Firefly\Scheduling\Schedule\InitialDelayGate` is that predicate.
+
+**The anchor is in the cache, not in process memory.** Spring measures `initialDelay` from application start,
+which works because the application is a process that stays up. The baseline deployment here is a cron-driven
+`schedule:run`: a fresh PHP process every minute, whose "application start" is always a second ago, so a
+window measured from boot would never elapse and the task would never run — a silent hang that looks exactly
+like a task nobody scheduled. The gate writes the anchor to the cache
+(`firefly:scheduling:initial-delay:<Class>::<method>`, add-if-absent, no expiry) the first time it sees the
+task, and every later process measures the window from that **first observation**.
+
+**THE ANCHOR STORE MUST BE SHARED ACROSS PROCESSES under cron.** With `array`, every `schedule:run` re-anchors
+at its own `now` and the task NEVER becomes due — it does not run early, it never runs — so `ScheduleWiringPass`
+**warns as the Schedule is built** when a task carries a delay and the resolved anchor store cannot outlive the
+process. A resident scheduler (`schedule:work`, `firefly:schedule`, Octane) keeps one process and honours the
+delay over `array`. The `null` driver stores nothing at all: the gate sees that it cannot read back its own
+write, logs it once per process and **admits** the tick rather than hanging the task in silence — a task that
+runs without its delay is a visible wrong, a task that never runs is an invisible one.
+
+**The window is armed once per cache key, not once per deployment.** The anchor has no expiry and nothing
+forgets it, so by default an `initialDelay` is a one-off warm-up for a newly introduced task: the first
+deployment waits its ten minutes, and every deployment after it reads an anchor from weeks ago, finds the
+window long elapsed and runs on its first tick. That is a defensible default and it is **not** Spring's.
+`firefly.scheduling.initial-delay.release` is how an application asks for the other reading — there is no
+application start to measure from here, so the deployment names itself (a git sha, `APP_VERSION`, the release
+directory), the anchor records which release armed it, and the first process of a different release arms a
+fresh window and says so once. The value must change **once per deployment and never within one**: something
+that varies per process (`uniqid()`, the PID, a boot timestamp) re-anchors every minute and the task never
+runs.
+
+**Switching the gate off refuses the boot.** Setting `firefly.scheduling.initial-delay.enabled` to `false`
+in an application whose manifest carries an `initialDelay` is a `ConfigurationException` rather than a
+parameter silently ignored — which is what happened for two releases and is the behaviour the key exists to
+make impossible. An unparseable duration is refused at boot for the same reason: the predicate runs inside
+`Event::filtersPass()`, which Laravel calls **outside** the try/catch that contains a failing task, so a throw
+there would abort the whole `schedule:run` for that minute rather than skip one task.
+
+### Configuration (`firefly.scheduling.*`, kebab-case)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `firefly.scheduling.lock.provider` | `'none'` | The `DistributedLock` backend a locked task uses: `none`, `cache`, or `postgres` (needs `firefly/scheduling-postgres`) — see [The `DistributedLock` port](#the-distributedlock-port). |
+| `firefly.scheduling.initial-delay.enabled` | `true` | Apply `#[Scheduled(initialDelay:)]`. `false` **refuses to boot** an application whose manifest carries one, rather than accepting the parameter and ignoring it. |
+| `firefly.scheduling.initial-delay.store` | `''` | Cache store the anchor lives in; `''` is the default store. Must be shared across processes (redis/memcached/database) wherever the scheduler is cron-driven. |
+| `firefly.scheduling.initial-delay.release` | `''` | Names this deployment, so every release arms its own window. Empty keeps the permanent anchor — one window per cache key, for the life of the key. |
+
 ## Known-latent
 
 These are carried-forward, documented limitations of the M7 shipment — not bugs:
@@ -184,11 +230,14 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   `everyTenMinutes()`, not every 7 minutes, and `'42s'` runs every minute. Sub-minute rates ARE honoured down
   to one second, but only under a resident scheduler (`schedule:work` / `firefly:schedule`); a cron-driven
   `schedule:run` starts the event once a minute and re-runs it until that minute ends.
-- **`initialDelay` is accepted but not yet applied.** As noted above, the attribute parameter is captured
-  through to the compiled descriptor but `ScheduleWiringPass` does not currently read it when registering the
-  Laravel `Event` — no initial-delay offset is set. Laravel's frequency DSL has no native way to express "run
-  once after an initial delay, then resume the normal cadence", so this is deferred to **SP-5** alongside the
-  cron shims above. (`zone` **is** applied — see `#[Scheduled]` above.)
+- **An `initialDelay` window is armed once per cache key, not once per application start.** The anchor
+  [Initial delay](#initial-delay) describes has no expiry and nothing prunes it, so with no
+  `initial-delay.release` named a redeploy or a restart reads the old anchor and runs the task immediately:
+  the delay is a one-off warm-up for a newly introduced task, which is a reading of the parameter and not
+  Spring's. Naming the release buys Spring's reading; nothing buys "measured from this process's boot",
+  because under cron that process is one minute old. What is genuinely out of reach is a delay honoured
+  without a cross-process cache under a cron-driven scheduler: the framework warns, and cannot do better —
+  there is nowhere else a fresh process per minute could read a first observation from.
 - **A `#[Scheduled]` method outside `firefly.scan.paths` never registers.** The `ScheduledManifest` resolves
   to the `firefly:cache` artifact if present, otherwise an in-process scan of `firefly.scan.paths`, otherwise
   empty — so no hand-wiring is needed, but a task the scan cannot see is silently absent rather than an

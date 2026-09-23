@@ -166,6 +166,10 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 - **The gate does not strip a `traceparent` a row already carries.** Turning the key off stops our publishers
   writing one, so a row written while it was off has none. A row written BEFORE it was turned off keeps its
   `traceparent` and the relay still forwards it, as it forwards a header a foreign producer set.
-- **`#[Timed]`/`#[Counted]`/`#[Observed]` method attributes** wait for the method-interceptor chain the
-  security wave generalises from the transactional proxy.
+- **`#[Timed]`/`#[Counted]`/`#[Observed]` are shipped**, enforced on any stereotyped bean through the
+  method-interceptor chain as the **outermost** advice (order 50, ahead of method security's 100 and the
+  transaction's 1000), so a timer measures the authorization refusal and the `COMMIT` as well as the method
+  body. `#[Observed]` starts a span *and* a timer under one name — Micrometer's Observation API in one
+  attribute — and degrades to the timer alone when tracing is off. Gated by
+  `firefly.observability.method.enabled`; see [Observability](observability.md#method-attributes).
 - **No `traceresponse`**: W3C defines no response header yet; nothing is written on the way out.

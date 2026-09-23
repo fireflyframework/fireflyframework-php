@@ -120,6 +120,95 @@ to start from.
 - `TracingFilter` — a `#[Component]` `WebFilter` at `#[Order(-110)]`, the outermost discovered filter, starting a
   SERVER span per request when tracing is on (see [Tracing](tracing.md)).
 
+## Method attributes
+
+Auto-instrumentation covers the seams the framework owns. `#[Timed]`, `#[Counted]` and `#[Observed]` —
+Micrometer's three, ported — cover the method an application owns, on any stereotyped bean, with no recorder
+injected and no `try`/`finally` written by hand:
+
+```php
+#[Service]
+class OrderService
+{
+    #[Timed('orders.place', extraTags: ['tier' => 'gold'], description: 'Places an order.')]
+    #[Counted('orders.place.calls')]
+    public function place(Basket $basket): Order { /* … */ }
+
+    #[Timed('orders.import', longTask: true)]
+    public function importAll(string $path): int { /* … */ }
+
+    #[Observed('orders.quote', contextualName: 'quote an order')]
+    public function quote(Basket $basket): Money { /* … */ }
+}
+```
+
+| Attribute | What it records | Tags |
+|---|---|---|
+| `#[Timed(value, extraTags, description, longTask, percentiles)]` | a timer around the call, and the same timer on a throw | `class` (short name), `method`, `exception` (short name, `none` on success), plus `extraTags` |
+| `#[Counted(value, extraTags, recordFailuresOnly)]` | one counter increment per invocation | `class`, `method`, `result` = `success`\|`failure`, `exception`, plus `extraTags` |
+| `#[Observed(name, contextualName, lowCardinalityKeyValues)]` | one **span** and one **timer** under one name — Micrometer's Observation API in one attribute | `class`, `method`, `exception` on the timer; `lowCardinalityKeyValues` on **both** |
+
+`value`/`name` empty falls back to the configured default name below. `contextualName` is the span's name
+when the waterfall wants a sentence and the query language wants a meter name. Both targets are allowed, as
+Micrometer allows them: a **class**-level attribute applies to every public instance method the class exposes
+and a **method**-level one of the same kind replaces it for that method — the replacement rule
+`MethodSecurityScanner` applies to `#[PreAuthorize]`.
+
+`longTask: true` is Micrometer's `LongTaskTimer`, reduced to the half this registry can honestly publish: a
+set-gauge `<meter>.active`, carrying the timer's own tags, holding the number of invocations **this process**
+has in flight — a depth, not a flag, so a re-entered or recursive long task reads `2` rather than dropping to
+`0` when the inner call returns. Sampling the duration of a task that has not finished needs a meter type
+`MeterRegistry` does not have, and across processes a gauge is last-writer-wins (see
+[Known-latent](#known-latent)) — read `<meter>.active` as "this meter has work in flight somewhere".
+
+**The advice is the OUTERMOST link of the proxy chain** — order 50, ahead of method security's 100 and the
+transaction's 1000:
+
+```
+#[Timed] ( #[PreAuthorize] ( resilience ( #[Transactional] ( method ) ) ) )
+```
+
+Three consequences, and each one is why the number is 50. A timer measures what the **caller** waited for:
+the expression evaluation and role-hierarchy walk of a refusal, and the `BEGIN`/`COMMIT` of a transactional
+method, are both time a client would measure from outside. A refusal is still **counted**, as a failure —
+inside security the `AccessDeniedException` would be thrown before this link ran and the meter would never
+see the call, so a permissions misconfiguration would read as falling traffic and a flat error rate, which is
+the shape of a silent outage. And a deadlock thrown by `COMMIT` is attributed to `orders.place` with
+`exception=QueryException` rather than disappearing after the body has already returned.
+
+This is a deliberate **divergence** from Micrometer, not parity with it: `TimedAspect`, `CountedAspect` and
+`ObservedAspect` are unordered `@Aspect`s, so Spring AOP runs all three innermost — inside Spring Security's
+interceptors and level with the transaction advisor — and a `@Timed` method whose `@PreAuthorize` denies is,
+in Spring, today, neither timed nor counted. The chain the number produces is asserted on the compiled plan
+by `packages/cli`'s cached-boot fixture, so the ordering is a test rather than a paragraph.
+
+**Telemetry never changes the call.** Every recorder and tracer touch goes through its own best-effort guard
+(`HttpExchangeFilter::record()`'s, for the same reason plus one: most of them run in a `finally`, where a
+throw would *discard* the exception already on its way to the caller). A lost sample is the correct price for
+a telemetry failure; a changed return value or a swapped exception never is.
+
+**Compiled, not reflected.** `ObservabilityMethodScanner` is the one reflection site this adds, run at
+`firefly:cache`; the rows are baked into the generated proxy as `ObservabilityMethodDescriptor::fromArray([…])`
+literals. It **refuses** — loudly, where a person can read the message — anything that would compile and then
+be honoured by nothing: an attribute on a class nothing post-processes, on a `final` class or a `final` method
+the class itself declares, written explicitly on a `static` or a `__`-prefixed method, `#[Timed(percentiles:)]`
+(see [Known-latent](#known-latent)), and a `#[Timed]` and `#[Counted]` on one method spelling out the **same**
+meter name — a Prometheus name has exactly one type, so the registry would record the first and refuse the
+second for the life of the process. `#[Timed]` and `#[Observed]` may share a name, both being timers.
+
+### Key
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `firefly.observability.method.enabled` | bool | `true` | Enforce `#[Timed]`/`#[Counted]`/`#[Observed]`. Off makes them inert — the proxy runs a pass-through link in place of this one — never half-applied. Read live on every call as well as at wrap time. |
+| `firefly.observability.method.timed.name` | string | `method.timed` | Meter name for a `#[Timed]` that names none. |
+| `firefly.observability.method.counted.name` | string | `method.counted` | Meter name for a `#[Counted]` that names none. |
+| `firefly.observability.method.observed.name` | string | `method.observed` | Meter and span name for an `#[Observed]` that names none. |
+
+The advice is compiled either way, so a cached application and a dev application agree on the shape of every
+proxy; only the link's behaviour differs. The whole feature is also inert while the metrics master gate
+(`firefly.observability.metrics.enabled`) is off — there is no registry to record into.
+
 ## The CqrsMetrics drop-in (the M10 seam)
 
 `packages/cqrs/src/Metrics/CqrsMetrics.php` was built in M10 as a deliberate extension point: `CqrsAutoConfiguration`
@@ -195,6 +284,7 @@ rather than answered with a `400`.
 | `firefly.observability.metrics.ttl` | `0` | Expiry in seconds for each cache-backed meter. `0` or less means no expiry. Only consulted when `store` is set. |
 | `firefly.observability.metrics.distribution.buckets` | `[]` | Histogram upper bounds in seconds for every timer. Empty = summaries. |
 | `firefly.observability.metrics.distribution.per-meter` | `[]` | `meter name => list` overrides; an empty list makes that meter a summary. |
+| `firefly.observability.method.*` | see [Method attributes](#method-attributes) | The `#[Timed]`/`#[Counted]`/`#[Observed]` gate and the three fallback meter names. |
 | `firefly.observability.tracing.*` | see [Tracing](tracing.md) | The tracing master gate, exporter, sampler, OTLP and per-instrumentation switches. |
 | `firefly.logging.structured.*` | see [Logging](logging.md) | The structured log format and the channels it applies to. |
 | `firefly.observability.httpexchanges.enabled` | `true` | Gates `HttpExchangeFilter` — i.e. whether anything is recorded. Compared as the literal string `true` by `#[ConditionalOnProperty]`, so `1`/`on`/`yes` count as OFF. The endpoints stay mounted either way and report `"recording": false`. Independent of the metrics gate. |
@@ -219,7 +309,10 @@ rather than answered with a `400`.
 ## Known-latent
 
 - **Percentiles / client-side quantiles** — timers offer fixed buckets (what Prometheus aggregates across
-  processes); there is no sliding-window percentile summary.
+  processes); there is no sliding-window percentile summary. `#[Timed(percentiles:)]` is therefore REFUSED at
+  scan time rather than accepted and honoured by nothing, with a message naming
+  `firefly.observability.metrics.distribution.per-meter` — the histogram buckets a percentile is actually
+  computed from here.
 - **OTLP metrics push** — spans export over OTLP; metrics are pull-only (`/actuator/prometheus`).
 - **Multiprocess aggregation is opt-in, and partial.** `firefly.observability.metrics.store` gives counters,
   timers and set-gauges cross-process totals through the cache (see [Surviving the
