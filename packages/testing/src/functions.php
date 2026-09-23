@@ -15,6 +15,7 @@ use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -72,6 +73,41 @@ if (! function_exists('fireflyApplication')) {
         $app->boot();
 
         return $app;
+    }
+}
+
+if (! function_exists('withFireflyFacadeApplication')) {
+    /**
+     * Run $body with the facade root pointed at $app, and put back whatever was there before.
+     *
+     * Facade::$app and Facade::$resolvedInstance are two INDEPENDENT statics, which makes both ends of the
+     * swap load-bearing. On the way in, pointing the root at a new application does not invalidate the
+     * instances already resolved out of the previous one, so a facade call would keep handing back an object
+     * wired to a container that has since been flushed — `DB::connection()` reaching for a 'config' that is
+     * no longer there. On the way out, a finished application left installed as the root is that same trap
+     * laid for whichever test runs next in the process. Clearing on both sides is the pairing Laravel itself
+     * writes (Testbench's CreatesApplication, Illuminate's own test lifecycle); restoring the previous root
+     * — null included, which is the "no facade root" a bare Pest file starts from — is what keeps a test that
+     * needs the root from deciding the fate of its neighbours.
+     *
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $body
+     * @return TReturn
+     */
+    function withFireflyFacadeApplication(Application $app, Closure $body): mixed
+    {
+        $previous = Facade::getFacadeApplication();
+
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication($app);
+
+        try {
+            return $body();
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previous);
+        }
     }
 }
 

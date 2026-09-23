@@ -24,7 +24,7 @@ use Firefly\Web\Route\RouteManifest;
 use Firefly\Web\WebServiceProvider;
 use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\Capsule\Manager as Capsule;
-use Illuminate\Support\Facades\Facade;
+use Illuminate\Foundation\Application;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory as IlluminateValidationFactory;
@@ -190,19 +190,31 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
     );
     $app->instance('db', $capsule->getDatabaseManager());
 
-    // CLEAR BEFORE SET, which is the pairing Laravel itself writes (Testbench's CreatesApplication does the
-    // two lines in exactly this order, and Illuminate's own test lifecycle clears on setUp). Facade::$app is
-    // a static and so is Facade::$resolvedInstance: swapping the application does NOT invalidate the
-    // instances resolved out of the PREVIOUS one, so without this line `DB::connection()` inside the
-    // #[Transactional] proxy below reuses whatever DatabaseManager the last Testbench test in this process
-    // left behind — one bound to a container that has since been flushed, which resolves 'config' out of
-    // nothing and dies with `Target class [config] does not exist` from inside TransactionTemplate.
-    // It is not a hypothetical: every suite that boots a database-backed Testbench case before this file
-    // (packages/data's proxy tests, packages/resilience's transactional capstone) is such a predecessor, and
-    // clearing here makes this test robust against ALL of them rather than against the one that found it.
-    Facade::clearResolvedInstances();
-    Facade::setFacadeApplication($app);
+    // The #[Transactional] proxy below reaches the database through the DB FACADE, so this test needs the
+    // facade root pointed at its own bare application — and needs that to be the whole of its dealings with
+    // a global. withFireflyFacadeApplication() owns both ends (packages/testing/src/functions.php): it
+    // clears the resolved instances and installs $app on the way in, and clears again and restores the
+    // previous root on the way out, so this test neither inherits a predecessor's facade state nor leaves
+    // its own behind.
+    //
+    // Both ends are load-bearing, and each was a real failure rather than a precaution. INWARD:
+    // Facade::$resolvedInstance survives a change of Facade::$app, so without the clear, `DB::connection()`
+    // inside the proxy reuses whatever DatabaseManager the last Testbench test in the process left behind —
+    // one bound to a container that has since been flushed — and dies with `Target class [config] does not
+    // exist` from inside TransactionTemplate, which is what `pest packages/data packages/cli` and `pest
+    // packages/resilience packages/cli` used to report. OUTWARD: leaving this fixture application installed
+    // as the root made every later test in the process inherit a container this test was done with, so the
+    // trap simply pointed the other way. Neither direction depends on which suites happen to run alongside.
+    withFireflyFacadeApplication($app, function () use ($app): void {
+        cachedBootAssertions($app);
+    });
+});
 
+/**
+ * The body of the cached-boot test, run by withFireflyFacadeApplication() with the facade root installed.
+ */
+function cachedBootAssertions(Application $app): void
+{
     /** @var ApplicationContext $context */
     $context = $app->make(ApplicationContext::class);
 
@@ -270,4 +282,4 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
     /** @var DemoConfigProperties $props */
     $props = $context->get(DemoConfigProperties::class);
     expect($props->greeting)->toBe('from-config-value');
-});
+}
