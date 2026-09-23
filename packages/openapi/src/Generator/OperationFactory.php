@@ -305,7 +305,8 @@ final class OperationFactory
      */
     private function responseSet(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
     {
-        $responses = [(string) $route->status => $this->successResponse($route, $registry)];
+        [$status, $success] = $this->successResponse($route, $registry);
+        $responses = [(string) $status => $success];
 
         if ($rejectable) {
             $responses['400'] = ['$ref' => ProblemSchema::RESPONSE_REF];
@@ -473,7 +474,13 @@ final class OperationFactory
      * a status that carries no body is exactly what a strict client generator turns into a phantom return
      * type, and describing a rendered page as JSON would be a lie a generator would act on.
      *
-     * @return array<string, mixed>
+     * A return that is not DATA — a Response the action built, a Responsable, markup — is documented by
+     * RenderedResponse, which follows ResponseFactory's own branches, and is decided BEFORE the `@return`
+     * type is resolved: resolving it registers a component, and a component built out of a JsonResponse's
+     * internals is exactly the thing that must not appear. Such a return can also carry its own status (a
+     * redirect's 302), which is why the status comes back beside the response.
+     *
+     * @return array{0: int, 1: array<string, mixed>}
      */
     private function successResponse(RouteDescriptor $route, SchemaRegistry $registry): array
     {
@@ -481,27 +488,50 @@ final class OperationFactory
         $type = $this->returnType($route);
 
         if ($route->status === 204 || $type === 'void' || $type === 'never') {
-            return ['description' => 'No content.'];
+            return [$route->status, ['description' => 'No content.']];
         }
 
         // A #[Controller] route renders a page. It reaches this factory only when
         // firefly.openapi.include-html is on, and describing its response as a JSON schema would be a lie
         // that a client generator would faithfully act on.
         if ($route->html) {
-            return [
+            return [$route->status, [
                 'description' => 'An HTML page.',
                 'content' => ['text/html' => ['schema' => ['type' => 'string']]],
-            ];
+            ]];
+        }
+
+        if ($type !== null && (class_exists($type) || interface_exists($type))) {
+            $rendered = RenderedResponse::for($type, $this->returnProse($method));
+
+            if ($rendered !== null) {
+                return [$rendered->status ?? $route->status, $rendered->response];
+            }
         }
 
         [$documented, $prose] = $this->documentedReturn($method, $registry);
 
         $schema = $documented ?? $this->declaredReturnSchema($method, $registry);
 
-        return [
+        return [$route->status, [
             'description' => $prose === '' ? 'Successful response.' : $prose,
             'content' => ['application/json' => ['schema' => $schema]],
-        ];
+        ]];
+    }
+
+    /**
+     * Only the prose half of the `@return` line: the type expression is parsed to find where the prose
+     * starts, but none of the classes in it are resolved — resolving one registers its component.
+     */
+    private function returnProse(?ReflectionMethod $method): string
+    {
+        $line = DocBlock::parse($method?->getDocComment())->returnLine();
+
+        if ($line === null) {
+            return '';
+        }
+
+        return DocType::split($line, static fn (string $class): array => [])[1];
     }
 
     /**
