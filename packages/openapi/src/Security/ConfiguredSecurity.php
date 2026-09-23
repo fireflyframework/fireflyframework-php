@@ -28,8 +28,9 @@ use Illuminate\Support\Str;
  *   - `oauth2ResourceServer` — the same http/bearer shape, with the issuer and audience in the description
  *     so a reader knows WHICH tokens are accepted. Deliberately NOT `type: oauth2`: a resource server does
  *     not issue tokens and has no flow URLs to publish; describing it as an oauth2 scheme with an empty
- *     `flows` object produces a document Swagger UI renders as an un-fillable form. The authorization
- *     server, which DOES have those URLs, contributes a real `type: oauth2` scheme of its own.
+ *     `flows` object produces a document Swagger UI renders as an un-fillable form. A package that DOES
+ *     hold those URLs — an authorization server — can publish a real `type: oauth2` scheme through
+ *     SecuritySchemeContributor; none ships today, and this class never invents one on its behalf.
  *
  * WHAT IT REQUIRES, PER OPERATION. `firefly.security.http.rules` is first-match-wins over `Str::is()`
  * patterns and is DENY BY DEFAULT once `http.enabled` is on — so a path that matches a `permitAll` rule is
@@ -38,6 +39,15 @@ use Illuminate\Support\Str;
  * its scope to the requirement's scope list, which is the one place an OpenAPI requirement can carry more
  * than a name. With `http.enabled` off this class returns null — no opinion — rather than an empty list,
  * because the absence of URL rules says nothing about whether a method rule protects the handler.
+ *
+ * EVERY CONFIGURED SCHEME IS NAMED, NOT JUST ONE. An operation's `security` array is an OR-list — satisfying
+ * any entry satisfies the operation — and an application with `http_basic.enabled` beside `jwt.enabled` will
+ * really accept EITHER credential, because HttpBasicFilter and JwtAuthenticationFilter each skip an
+ * `Authorization` header belonging to the other scheme. Naming only one of them would leave the other as an
+ * orphan in `components.securitySchemes`: published, referenced by nothing, and unusable by a generated
+ * client whose author has no way of knowing the server would have accepted it. Both maps are therefore built
+ * from ONE list of configured schemes — schemes() turns it into the definitions, requirementsFor() into the
+ * names — so a scheme this class publishes and a scheme it requires cannot drift apart.
  *
  * It also returns null when URL rules are on but NOTHING it can name is configured — a surface protected by
  * a session and a form login, which OpenAPI has no scheme for that would mean anything to a generated
@@ -53,34 +63,14 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
     public function __construct(private readonly Config $config) {}
 
     /**
+     * The `components.securitySchemes` entries, which are exactly the schemes requirementsFor() names — see
+     * configuredSchemes(), the single list both read.
+     *
      * @return list<SecurityScheme>
      */
     public function schemes(): array
     {
-        if (! $this->config->bool('firefly.security.enabled', false)) {
-            return [];
-        }
-
-        $schemes = [];
-
-        if ($this->config->bool('firefly.security.http_basic.enabled', false)) {
-            $schemes[] = new SecurityScheme('httpBasic', ['type' => 'http', 'scheme' => 'basic']);
-        }
-
-        if ($this->config->bool('firefly.security.jwt.enabled', false)) {
-            $schemes[] = new SecurityScheme('bearerAuth', ['type' => 'http', 'scheme' => 'bearer', 'bearerFormat' => 'JWT']);
-        }
-
-        if ($this->config->bool('firefly.security.oauth2.resource_server.enabled', false)) {
-            $schemes[] = new SecurityScheme('oauth2ResourceServer', [
-                'type' => 'http',
-                'scheme' => 'bearer',
-                'bearerFormat' => 'JWT',
-                'description' => $this->resourceServerDescription(),
-            ]);
-        }
-
-        return $schemes;
+        return $this->configuredSchemes();
     }
 
     /**
@@ -92,8 +82,8 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
             return null;
         }
 
-        $scheme = $this->primaryScheme();
-        if ($scheme === null) {
+        $schemes = $this->configuredSchemes();
+        if ($schemes === []) {
             return null;
         }
 
@@ -103,20 +93,93 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
             return [];
         }
 
-        return [new SecurityRequirement($scheme, str_starts_with($access, 'hasScope:') ? [substr($access, 9)] : [])];
+        $scopes = str_starts_with($access, 'hasScope:') ? [substr($access, 9)] : [];
+
+        return array_map(
+            // The scope list rides on the TOKEN-shaped schemes only. A `hasScope:` rule tests for a `SCOPE_x`
+            // authority, which a bearer token carries as a claim a client can ask the token endpoint for;
+            // HTTP Basic has no scope vocabulary a generated client could request, so naming one beside it
+            // would publish a parameter nobody can supply.
+            static fn (SecurityScheme $scheme): SecurityRequirement => new SecurityRequirement(
+                $scheme->name,
+                ($scheme->definition['scheme'] ?? null) === 'bearer' ? $scopes : [],
+            ),
+            $schemes,
+        );
+    }
+
+    /**
+     * The schemes `firefly.security.*` actually configures, in the order an operation's OR-list names them:
+     * the bearer ones first, because a bearer token is what an API client holds and what a generated client's
+     * first-listed option should be, then HTTP Basic. This is NOT a precedence and nothing here claims it is
+     * — the entries are alternatives, any one of which gets a caller in.
+     *
+     * WHY NOT PICK ONE "PRIMARY" SCHEME, the obvious shape, and the one to keep rejecting: there is nothing
+     * true to pick it by. Filter order does not say it — HttpBasicFilter is #[Order(-91)],
+     * JwtAuthenticationFilter −90 and OAuth2ResourceServerFilter −85, and Container::getAll() sorts
+     * ascending, so Basic runs FIRST, the opposite of the ordering such a pick would want. Nor does the
+     * challenge a caller gets: DelegatingAuthenticationEntryPoint decides that, not this class. And the
+     * document would still publish the schemes it declined to name, leaving a generated client an option
+     * nothing declares usable while its holder is told to go and get a different credential.
+     *
+     * jwt and resource_server are mutually exclusive at boot — SecurityWiringPass refuses the pair — so this
+     * list holds at most one bearer scheme, beside HTTP Basic at most once.
+     *
+     * @return list<SecurityScheme>
+     */
+    private function configuredSchemes(): array
+    {
+        if (! $this->config->bool('firefly.security.enabled', false)) {
+            return [];
+        }
+
+        $schemes = [];
+
+        if ($this->config->bool('firefly.security.oauth2.resource_server.enabled', false)) {
+            $schemes[] = new SecurityScheme('oauth2ResourceServer', [
+                'type' => 'http',
+                'scheme' => 'bearer',
+                'bearerFormat' => 'JWT',
+                'description' => $this->resourceServerDescription(),
+            ]);
+        }
+
+        if ($this->config->bool('firefly.security.jwt.enabled', false)) {
+            $schemes[] = new SecurityScheme('bearerAuth', ['type' => 'http', 'scheme' => 'bearer', 'bearerFormat' => 'JWT']);
+        }
+
+        if ($this->config->bool('firefly.security.http_basic.enabled', false)) {
+            $schemes[] = new SecurityScheme('httpBasic', ['type' => 'http', 'scheme' => 'basic']);
+        }
+
+        return $schemes;
     }
 
     /**
      * The access verb the first matching rule carries, or 'denyAll' when nothing matches — which is what the
-     * filter does, and therefore what the document must say. The route's path is normalised to the
-     * leading-slash-free form `Str::is()` patterns in `firefly.security.http.rules` are written against,
-     * because HttpSecurityFilter matches them against `$request->path()` and a RouteManifest path carries a
-     * slash `$request->path()` never does. The pattern is normalised the same way, so a rule written either
-     * spelling covers the operation it covers at runtime.
+     * filter does, and therefore what the document must say.
+     *
+     * BOTH SIDES OF THE MATCH ARE PUT IN `$request->path()` FORM, because that is the string
+     * HttpSecurityFilter matches a rule against, and matching anything else would make this document
+     * disagree with the server it describes:
+     *
+     *   - the ROUTE, because a RouteManifest path carries a leading slash and `$request->path()` never does
+     *     (`'/'` for the root, and `'api/orders'` — no slash — for everything else);
+     *   - the PATTERN, because firefly/security normalises it the same way at the point every rule is built
+     *     (HttpSecurity::requestMatcher(), which anyRequest() and fromConfig() both call), so `/api/*` and
+     *     `api/*` are one rule at runtime and must be one rule here too.
+     *
+     * The normalisation is REPEATED rather than shared on purpose: `deptrac.yaml` permits this package no
+     * edge to firefly/security, and reading a config value is not one. Repeating four lines is the price of
+     * that, and the security package's own tests pin the behaviour this copy mirrors — change one and the
+     * other's tests are where the disagreement shows up.
      */
     private function accessFor(string $path): string
     {
         $candidate = ltrim($path, '/');
+        if ($candidate === '') {
+            $candidate = '/'; // the root path, which `$request->path()` answers as '/' and never as ''
+        }
 
         /** @var array<mixed> $rules */
         $rules = $this->config->array('firefly.security.http.rules', []);
@@ -135,32 +198,14 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
                 continue;
             }
 
-            if (Str::is(ltrim($pattern, '/'), $candidate)) {
+            $normalised = ltrim($pattern, '/');
+
+            if (Str::is($normalised === '' ? '/' : $normalised, $candidate)) {
                 return $access;
             }
         }
 
         return 'denyAll';
-    }
-
-    /**
-     * The scheme an operation-level requirement names when several are configured. The order is the order a
-     * request is actually authenticated in — the resource-server filter, then the local jwt filter, then
-     * HTTP Basic — so the document names the mechanism a caller reaching a protected path will really be
-     * challenged by. (jwt and resource_server are mutually exclusive at boot, so at most one of the first
-     * two exists.)
-     */
-    private function primaryScheme(): ?string
-    {
-        if ($this->config->bool('firefly.security.oauth2.resource_server.enabled', false)) {
-            return 'oauth2ResourceServer';
-        }
-
-        if ($this->config->bool('firefly.security.jwt.enabled', false)) {
-            return 'bearerAuth';
-        }
-
-        return $this->config->bool('firefly.security.http_basic.enabled', false) ? 'httpBasic' : null;
     }
 
     private function resourceServerDescription(): string

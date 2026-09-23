@@ -20,6 +20,17 @@ use Firefly\Web\Route\RouteDescriptor;
  * from one asserting the route is open, and the document would publish `security: []` — which in OpenAPI
  * means "no authentication required" — for every path some other contributor protects. Silence and "this is
  * public" are different claims and a generated document must not confuse them.
+ *
+ * REGISTER AN IMPLEMENTATION AS A #[Component], NOT AS A #[Bean], for the reason SecuritySchemeContributor's
+ * docblock spells out: the collection is `Container::getAll(self::class)` over the `firefly.contract.*` tag,
+ * and only SCANNED components carry that tag. A contributor a #[Bean] factory returns under its own concrete
+ * type is built and then silently dropped, and the only symptom is a document that quietly omits its
+ * requirements. #[ConditionalOnClass]/#[ConditionalOnProperty] work on a #[Component] (HttpSecurityFilter is
+ * the shape to copy), so nothing is lost by scanning it.
+ *
+ * The shipped implementation is ConfiguredSecurity, which reads the URL rules. Nothing reads method-security
+ * attributes (#[PreAuthorize], #[Secured]) into a requirement today — a contributor doing that is what this
+ * interface is here to accept, not something the framework already does.
  */
 interface SecurityRequirementContributor
 {

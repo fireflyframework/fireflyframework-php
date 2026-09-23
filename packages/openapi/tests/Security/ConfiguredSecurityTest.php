@@ -117,31 +117,79 @@ it('has NO opinion at all when URL authorization is off', function (): void {
     expect($security->requirementsFor(openApiSecurityRoute('orders')))->toBeNull();
 });
 
-it('reads the leading slash off a manifest path before matching the rule patterns', function (): void {
-    $security = new ConfiguredSecurity(openApiSecurityConfig([
+it('matches a rule pattern exactly as the filter does, whichever spelling it is written in', function (): void {
+    // Both sides are put in `$request->path()` form — the route because a RouteManifest path carries a
+    // leading slash the request never does, the pattern because HttpSecurity::requestMatcher() normalises it
+    // the same way for the filter (see packages/security/tests/Access/HttpSecurityTest.php). So `/x` and `x`
+    // are ONE rule here for the same reason they are one rule at runtime, and the document's answer for
+    // either spelling is the answer the filter will give.
+    $slashed = new ConfiguredSecurity(openApiSecurityConfig([
         'enabled' => true,
         'jwt' => ['enabled' => true],
         'http' => ['enabled' => true, 'rules' => [['pattern' => '/actuator/health', 'access' => 'permitAll']]],
     ]));
 
-    // RouteManifest paths carry a leading slash and HttpSecurityFilter matches against `$request->path()`,
-    // which never does. Both sides are normalised, so a rule written either way covers the same operation
-    // the filter covers.
-    expect($security->requirementsFor(openApiSecurityRoute('/actuator/health')))->toBe([]);
+    $bare = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'jwt' => ['enabled' => true],
+        'http' => ['enabled' => true, 'rules' => [['pattern' => 'actuator/health', 'access' => 'permitAll']]],
+    ]));
+
+    expect($slashed->requirementsFor(openApiSecurityRoute('/actuator/health')))->toBe([])
+        ->and($bare->requirementsFor(openApiSecurityRoute('/actuator/health')))->toBe([])
+        // and neither spelling opens anything it does not name
+        ->and($slashed->requirementsFor(openApiSecurityRoute('/actuator/env')))->toHaveCount(1)
+        ->and($bare->requirementsFor(openApiSecurityRoute('/actuator/env')))->toHaveCount(1);
 });
 
-it('names the resource server ahead of the local filter when both are somehow configured', function (): void {
+it('matches the root path the way `$request->path()` spells it', function (): void {
+    // Laravel answers '/' for the root and never '', so a rule written '/' is the rule that covers it —
+    // normalising that one pattern to an empty string would leave the home page matching nothing.
+    $security = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'jwt' => ['enabled' => true],
+        'http' => ['enabled' => true, 'rules' => [['pattern' => '/', 'access' => 'permitAll']]],
+    ]));
+
+    expect($security->requirementsFor(openApiSecurityRoute('/')))->toBe([]);
+});
+
+it('names EVERY configured scheme in the requirement, because the operation security array is an OR-list', function (): void {
+    // http_basic beside a bearer scheme: the runtime accepts either credential (the two filters skip an
+    // Authorization header belonging to the other), so the document must offer both. Naming one would leave
+    // the other published under components.securitySchemes and referenced by nothing at all.
     $security = new ConfiguredSecurity(openApiSecurityConfig([
         'enabled' => true,
         'jwt' => ['enabled' => true],
         'http_basic' => ['enabled' => true],
-        'oauth2' => ['resource_server' => ['enabled' => true, 'jwks_uri' => 'https://idp.example.com/jwks']],
         'http' => ['enabled' => true, 'rules' => [['pattern' => '*', 'access' => 'authenticated']]],
     ]));
 
     $requirements = $security->requirementsFor(openApiSecurityRoute('/orders')) ?? [];
 
-    expect(($requirements[0] ?? null)?->scheme)->toBe('oauth2ResourceServer');
+    expect(array_map(static fn ($requirement): string => $requirement->scheme, $requirements))
+        ->toBe(['bearerAuth', 'httpBasic'])
+        // and every one of them IS in the schemes map: the two are built from one list, so an orphan entry
+        // cannot be produced.
+        ->and(array_map(static fn ($scheme): string => $scheme->name, $security->schemes()))
+        ->toBe(['bearerAuth', 'httpBasic']);
+});
+
+it('puts a hasScope scope on the bearer entry only', function (): void {
+    // A SCOPE_x authority is something a client asks the token endpoint for. HTTP Basic has no scope
+    // vocabulary a generated client could request, so naming one beside it would publish a parameter
+    // nobody can supply.
+    $security = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'http_basic' => ['enabled' => true],
+        'oauth2' => ['resource_server' => ['enabled' => true, 'jwks_uri' => 'https://idp.example.com/jwks']],
+        'http' => ['enabled' => true, 'rules' => [['pattern' => 'orders/*', 'access' => 'hasScope:orders.read']]],
+    ]));
+
+    $requirements = $security->requirementsFor(openApiSecurityRoute('/orders/{id}')) ?? [];
+
+    expect(array_map(static fn ($requirement): array => $requirement->toArray(), $requirements))
+        ->toBe([['oauth2ResourceServer' => ['orders.read']], ['httpBasic' => []]]);
 });
 
 it('has no opinion when URL rules are on but no authentication scheme is configured at all', function (): void {

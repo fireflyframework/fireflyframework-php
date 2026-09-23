@@ -116,32 +116,81 @@ final class OpenApiAutoConfiguration
      * Every SecuritySchemeContributor and SecurityRequirementContributor bean in the container, plus the
      * config-driven one this package ships. Collected through the Firefly container facade's getAll() — the
      * DataAutoConfiguration::proxyPlan() idiom, and available here for the same reason: the facade is bound
-     * at FlushDefinitions (650), before anything resolves these beans — so firefly/security-oauth2-server's
-     * contributor joins simply by being a #[Component], with no registration list to keep in sync.
+     * at FlushDefinitions (650), before anything resolves these beans — so another package's contributor
+     * joins simply by being a #[Component], with no registration list to keep in sync.
      *
      * The shipped one is seeded FIRST and skipped in the loop, so an application that turns it into a
      * #[Component] of its own does not get it twice, and so its opinion is the first writer for a scheme
      * name two contributors both claim.
+     *
+     * WHY THERE IS A SECOND LOOKUP AFTER THE LOOP. `getAll()` reads the container tag
+     * `firefly.contract.<interface>`, and ContainerRegistrar writes that tag from the SCANNED component
+     * manifest only — an object produced by a #[Bean] factory is bound under its return type and never
+     * tagged. A contributor registered as `#[Bean] public function x(): SecuritySchemeContributor` would
+     * therefore be built and then silently dropped, and the ONLY symptom would be a document quietly missing
+     * its schemes: no error, no failing test, just a smaller `securitySchemes` map than the application has.
+     * A seam whose wrong usage is invisible is a seam that will be used wrongly, so a contributor bound under
+     * the interface itself is picked up here too. The port docblocks still say #[Component] — that is the
+     * registration that always works, including for a #[Bean] returning a CONCRETE contributor type, which
+     * nothing can rescue because no binding under the interface exists to find.
      */
     #[Bean]
     #[ConditionalOnMissingBean(SecurityModel::class)]
     public function securityModel(FireflyContainer $beans, ConfiguredSecurity $configured, Config $config): SecurityModel
     {
+        /** @var list<SecuritySchemeContributor> $schemes */
         $schemes = [$configured];
         foreach ($beans->getAll(SecuritySchemeContributor::class) as $contributor) {
             if ($contributor instanceof SecuritySchemeContributor && ! $contributor instanceof ConfiguredSecurity) {
                 $schemes[] = $contributor;
             }
         }
+        $schemes = self::withTypeBoundContributor($beans, SecuritySchemeContributor::class, $schemes);
 
+        /** @var list<SecurityRequirementContributor> $requirements */
         $requirements = [$configured];
         foreach ($beans->getAll(SecurityRequirementContributor::class) as $contributor) {
             if ($contributor instanceof SecurityRequirementContributor && ! $contributor instanceof ConfiguredSecurity) {
                 $requirements[] = $contributor;
             }
         }
+        $requirements = self::withTypeBoundContributor($beans, SecurityRequirementContributor::class, $requirements);
 
         return new SecurityModel($schemes, $requirements, $config);
+    }
+
+    /**
+     * Append the contributor bound under $interface ITSELF, when there is one and the tagged list did not
+     * already hand it over. Resolving the same object twice is the normal case — a #[Component] is both
+     * tagged and bindable — which is why the identity check matters more than the has() check.
+     *
+     * @template T of object
+     *
+     * @param  class-string<T>  $interface
+     * @param  list<T>  $collected
+     * @return list<T>
+     */
+    private static function withTypeBoundContributor(FireflyContainer $beans, string $interface, array $collected): array
+    {
+        if (! $beans->has($interface)) {
+            return $collected;
+        }
+
+        $bean = $beans->get($interface);
+
+        if (! $bean instanceof $interface || $bean instanceof ConfiguredSecurity) {
+            return $collected;
+        }
+
+        foreach ($collected as $already) {
+            if ($already === $bean) {
+                return $collected;
+            }
+        }
+
+        $collected[] = $bean;
+
+        return $collected;
     }
 
     #[Bean]

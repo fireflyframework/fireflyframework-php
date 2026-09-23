@@ -309,10 +309,14 @@ return [
          |
          | `access` is a FIXED vocabulary, not free expression text — HttpSecurity::fromConfig() maps it:
          |
-         |     permitAll | denyAll | authenticated | hasRole:<ROLE> | hasAuthority:<AUTHORITY>
+         |     permitAll | denyAll | authenticated | hasRole:<ROLE> | hasAuthority:<AUTHORITY> | hasScope:<scope>
          |
          | Anything it does not recognise compiles to denyAll(): the spec is fail-closed, so a typo
          | locks the path down rather than opening it. Write `hasRole:ADMIN`, never `hasRole('ADMIN')`.
+         |
+         | Patterns are matched against `$request->path()`, which never carries a leading slash. A pattern
+         | IS normalised to that spelling when the rule is built, so 'api/*' and '/api/*' are the same rule
+         | and '/' still means the root path — write whichever reads better.
          |
          | Defaults: enabled false, rules [].
         */
@@ -1319,12 +1323,24 @@ return [
     //
     //     /*
     //      | Publish the security the application actually has. `components.securitySchemes` is emitted from
-    //      | what `firefly.security.*` is configured with — HTTP Basic, the local JWT filter, the OAuth2
-    //      | resource server (with its issuer named in the description), and, when
-    //      | firefly/security-oauth2-server is installed and on, a real `authorizationCode` flow whose URLs
-    //      | come from the server's own settings and whose scopes come from the registered clients. Each
-    //      | operation then carries the requirement its path really has: a path a deny-by-default URL rule or
-    //      | a method rule protects names the scheme, and a `permitAll` path names nothing.
+    //      | what `firefly.security.*` is configured with, and nothing else:
+    //      |
+    //      |     http_basic.enabled                  -> httpBasic            {type: http, scheme: basic}
+    //      |     jwt.enabled                         -> bearerAuth           {type: http, scheme: bearer}
+    //      |     oauth2.resource_server.enabled      -> oauth2ResourceServer {type: http, scheme: bearer},
+    //      |                                            with the issuer and audience in its description
+    //      |
+    //      | Each operation then carries the requirement its path really has, read from the SAME
+    //      | firefly.security.http.rules the filter enforces: a `permitAll` path carries no `security` member
+    //      | at all, and every other path — including one no rule matches, since the rules are deny by
+    //      | default — names every scheme above, because the server really does accept any of them. A
+    //      | `hasScope:` rule puts its scope on the bearer entry.
+    //      |
+    //      | METHOD RULES ARE NOT READ. #[PreAuthorize]/#[Secured] on a handler do not produce a requirement
+    //      | today; only the URL rules do. Two interfaces —  Firefly\OpenApi\Security\SecuritySchemeContributor
+    //      | and SecurityRequirementContributor — exist so a package CAN add what configuration cannot state
+    //      | (an authorization server's `authorizationCode` flow URLs, a method-rule requirement). No package
+    //      | ships an implementation yet: the config-driven contributor above is the only one there is.
     //      |
     //      | Nothing is emitted when firefly.security.enabled is off, so this key only ever matters to an
     //      | application that HAS security — in which case a document that omitted it was telling every

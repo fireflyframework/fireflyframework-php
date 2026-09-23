@@ -266,6 +266,21 @@ config access spec, and a rule written that way locks the path down instead of o
 deliberate: an unrecognised spec must fail closed. Interpolated role/authority values containing a single
 quote are rejected outright (expression injection).
 
+### Patterns are matched against `$request->path()`, whichever way you spell them
+
+`HttpSecurityFilter` matches `Str::is($rule->pattern, $request->path())`, and Laravel's `path()` never carries a
+leading slash — it answers `api/orders`, and `/` for the root. A pattern written `/api/orders` would therefore
+match **nothing**: `Str::is('/api/orders', 'api/orders')` is `false`. That is the spelling a route manifest uses
+and the one you get by copying a URL out of a browser, and a rule that matches nothing looks exactly like a rule
+that did not apply — deny-by-default then refuses the one path you meant to open.
+
+So `HttpSecurity` normalises every pattern where the rule is **built** (`requestMatcher()`, which `anyRequest()`
+and `fromConfig()` both call): `/api/*` and `api/*` are one rule, and `/` keeps its slash because that is what
+`path()` answers for the root. Normalising at the single door every rule comes through is also what lets
+`firefly/openapi` publish a truthful `security` member — it reads these same rules to decide which operations are
+public, and a rule meaning one thing to the document and nothing to the filter is a published claim the server
+does not honour.
+
 ## Web
 
 ### The entry point

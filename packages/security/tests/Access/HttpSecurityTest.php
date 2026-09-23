@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Security\Access\HttpSecurity;
+use Illuminate\Support\Str;
 
 it('builds an ordered rule list with expressions', function () {
     $rules = HttpSecurity::create()
@@ -55,4 +56,22 @@ it('accepts hasScope in the builder and the hasScope: access spec', function () 
 
     expect($rules[0]->expression)->toBe("hasScope('orders:read')")
         ->and(HttpSecurity::create()->requestMatcher('api/*')->hasScope('profile')->build()[0]->expression)->toBe("hasScope('profile')");
+});
+
+it('normalises a leading slash off every pattern so a rule written /api/* is the rule api/*', function () {
+    // `$request->path()` never carries a leading slash, so an un-normalised `/api/*` would be a DEAD rule:
+    // Str::is('/api/*', 'api/orders') is false. A dead rule is indistinguishable from an absent one, and
+    // deny-by-default then refuses the very path the operator opened.
+    $rules = HttpSecurity::fromConfig([
+        ['pattern' => '/api/public/*', 'access' => 'permitAll'],
+        ['pattern' => '/', 'access' => 'permitAll'],
+    ])->build();
+
+    expect($rules[0]->pattern)->toBe('api/public/*')
+        ->and(Str::is($rules[0]->pattern, 'api/public/ping'))->toBeTrue()
+        // Root KEEPS its slash: Laravel answers '/' for the root path, never '', so normalising it away
+        // would turn the one pattern that must match into one that never can.
+        ->and($rules[1]->pattern)->toBe('/')
+        ->and(Str::is($rules[1]->pattern, '/'))->toBeTrue()
+        ->and(HttpSecurity::create()->requestMatcher('/admin/*')->hasRole('ADMIN')->build()[0]->pattern)->toBe('admin/*');
 });

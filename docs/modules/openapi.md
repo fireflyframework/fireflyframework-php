@@ -676,6 +676,7 @@ otherwise get a link that 404s from every page but the root.
 | `firefly.openapi.servers` | `[]` | Bare URL strings and/or OpenAPI Server Objects. An entry that is neither — or an object with no `url` — is **dropped**, because it would be invalid under the 3.1 schema and would poison an otherwise-good document. Omitted from the document when empty. |
 | `firefly.openapi.exclude` | `''` | CSV of path **prefixes** left out of the document. Removes them from the spec only; it does not unroute them. |
 | `firefly.openapi.include-html` | `false` | Document `#[Controller]` HTML routes as `text/html` operations. |
+| `firefly.openapi.security.enabled` | `true` | Emit `components.securitySchemes` and each operation's `security` from `firefly.security.*` — see [What the document says about authentication](#what-the-document-says-about-authentication). Nothing is emitted when `firefly.security.enabled` is off, so this key only matters to an application that **has** security. |
 
 The optional Info Object members live on `DocumentInfo` rather than on `OpenApiProperties`, and its constructor
 argument is last and nullable, so every existing three-argument `OpenApiGenerator` construction — the auto-
@@ -720,6 +721,82 @@ separate literal. A rule that covers the console but not its assets produces an 
 
 The alternative, for a deployment that wants no documentation surface in production at all, is
 `firefly.openapi.enabled => false` plus a `firefly:openapi --output=` step in CI.
+
+## What the document says about authentication
+
+`components.securitySchemes` and each operation's `security` are generated from `firefly.security.*`, read through
+the **`Config` port** — no class of `firefly/security` is imported and `deptrac.yaml` gains no edge, which is what
+made this possible at all. It is gated by **`firefly.openapi.security.enabled`** (default `true`) and produces
+nothing when `firefly.security.enabled` is off.
+
+### The schemes
+
+| Emitted when | Name | Security Scheme Object |
+|---|---|---|
+| `firefly.security.oauth2.resource_server.enabled` | `oauth2ResourceServer` | `{type: http, scheme: bearer, bearerFormat: JWT}` with the issuer and audience named in the `description` |
+| `firefly.security.jwt.enabled` | `bearerAuth` | `{type: http, scheme: bearer, bearerFormat: JWT}` |
+| `firefly.security.http_basic.enabled` | `httpBasic` | `{type: http, scheme: basic}` |
+
+The resource server is deliberately **not** `type: oauth2`: it does not issue tokens and has no flow URLs to
+publish, and an `oauth2` scheme with an empty `flows` object renders in Swagger UI as a form nobody can fill in.
+
+The member is **absent rather than empty** when nothing is configured. An empty map is the positive claim "this
+server takes no credentials", which is true of an application without `firefly/security` and a lie about one with it.
+
+### The requirement on each operation
+
+`firefly.security.http.rules` is first-match-wins and **deny-by-default** once `firefly.security.http.enabled` is
+on, and the document says exactly what the filter does:
+
+| The path | The operation |
+|---|---|
+| matches a `permitAll` rule | carries **no** `security` member — public |
+| matches any other rule | requires the configured schemes |
+| matches **no** rule | requires them too, because deny-by-default is what `HttpSecurityFilter` will do to it |
+
+A `hasScope:` rule puts its scope in the requirement's scope list, beside the bearer scheme only — a `SCOPE_x`
+authority is something a client can ask a token endpoint for, and HTTP Basic has no such vocabulary. `hasRole:`
+and `hasAuthority:` contribute a bare requirement: publishing `['ROLE_ADMIN']` as a scope would name a vocabulary
+no token endpoint has heard of.
+
+With `http.enabled` **off** the contributor has *no opinion* — not "public". The absence of URL rules says nothing
+about whether a method rule protects the handler, and `security: []` in OpenAPI is the positive claim that no
+authentication is required.
+
+**Every configured scheme is named, not just one.** The `security` array is an OR-list, and an application running
+HTTP Basic beside a bearer filter really does accept either credential (each filter skips an `Authorization`
+header belonging to the other). Naming one would leave the other published under `securitySchemes` and referenced
+by nothing — an option the document offers a generated client without ever declaring it usable.
+
+**Rule patterns are matched the way the filter matches them.** `HttpSecurity` normalises every pattern to the
+`$request->path()` spelling where the rule is built, so `['pattern' => '/api/*']` and `['pattern' => 'api/*']` are
+one rule for the filter and one rule for the document. This package repeats that normalisation rather than sharing
+it, because `deptrac.yaml` permits it no edge to `firefly/security`.
+
+### Contributing a scheme or a requirement
+
+Two ports let another package add what configuration cannot state:
+
+```php
+interface SecuritySchemeContributor { /** @return list<SecurityScheme> */ public function schemes(): array; }
+interface SecurityRequirementContributor { /** @return list<SecurityRequirement>|null */ public function requirementsFor(RouteDescriptor $route): ?array; }
+```
+
+`ConfiguredSecurity` — the config-driven one described above — is the **only implementation that ships today**. The
+interfaces exist so that a package holding facts `firefly.security.*` cannot express (an authorization server's
+`authorizationCode` flow URLs and its registered clients' scopes, say) *can* add them.
+
+Register an implementation as a **`#[Component]`**, not as a `#[Bean]`. Contributors are collected with
+`Container::getAll()`, which reads the `firefly.contract.<interface>` tag, and that tag is written only for
+scanned components — an object a `#[Bean]` factory returns under its own concrete type would be built and then
+silently dropped, with a quietly smaller document as the only symptom. `#[ConditionalOnClass]` and
+`#[ConditionalOnProperty]` work on a `#[Component]` (copy `HttpSecurityFilter`'s shape), so gating costs nothing.
+A `#[Bean]` whose *return type is the interface* is picked up as well, as a rescue — not as the documented shape.
+
+Requirements merge as an OR-list with duplicates removed; an empty list from any contributor (`permitAll`) wins
+over everything, because a path the framework lets through unauthenticated is public whatever anyone else believes.
+Scheme names merge first-writer-wins and sort by name, so the document does not reshuffle with container iteration
+order.
 
 ## Overriding a piece of the pipeline
 
@@ -773,8 +850,10 @@ compiled route manifest of *every* application for the benefit of one optional p
 - **`x-firefly-constraints` is the escape hatch, not a vocabulary.** Anything JSON Schema cannot state lands there
   verbatim; no attempt is made to translate a checksum rule or a temporal predicate into an approximation that
   would be wrong.
-- **`webhooks`, `security` schemes and `callbacks`** are not emitted — `firefly/security`'s configuration is not
-  reachable from this package without a code edge that `deptrac.yaml` deliberately does not permit.
+- **`webhooks` and `callbacks`** are not emitted. They describe an application's own *outbound* contracts — the
+  requests it sends to somebody else — and no manifest in this framework records those, so a generator that
+  emitted them would be documenting code that does not exist. (`security` schemes **are** emitted now; see
+  [What the document says about authentication](#what-the-document-says-about-authentication).)
 
 ---
 

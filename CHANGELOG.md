@@ -144,6 +144,25 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### Added
 
+- **`packages/openapi` — the document publishes the security the server actually has.** `components.securitySchemes`
+  and each operation's `security` are generated from `firefly.security.*`, read through the **`Config` port**, so
+  no class of `firefly/security` is imported and `deptrac.yaml` gains no edge — which is what the module doc had
+  for two releases given as the reason none of it could be emitted. `http_basic.enabled` publishes `httpBasic`,
+  `jwt.enabled` publishes `bearerAuth`, and `oauth2.resource_server.enabled` publishes `oauth2ResourceServer`
+  (deliberately `type: http`, not `type: oauth2`: a resource server issues no tokens and has no flow URLs, and an
+  `oauth2` scheme with empty `flows` renders as an un-fillable form). Each operation then carries the requirement
+  the **same `firefly.security.http.rules`** give its path: a `permitAll` path carries no `security` member at all,
+  and every other path — including one no rule matches, because the rules are deny-by-default — names **every**
+  configured scheme, since the OR-list is what the running filters really accept. A `hasScope:` rule puts its scope
+  on the bearer entry. `securitySchemes` and `security` are absent rather than empty when there is nothing to say,
+  because an empty `security` array is OpenAPI's positive claim that no authentication is required. Gated by
+  **`firefly.openapi.security.enabled`** (default `true`) and inert while `firefly.security.enabled` is off. Two
+  ports — `SecuritySchemeContributor` and `SecurityRequirementContributor` — let another package add what
+  configuration cannot state; they are collected from the container's tagged-interface list, so an implementation
+  is registered as a **`#[Component]`** (a `#[Bean]` under the concrete type is never tagged and would be dropped
+  in silence). The config-driven contributor is the only implementation that ships. Method rules
+  (`#[PreAuthorize]`, `#[Secured]`) are **not** read into requirements.
+
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under
   `firefly.resilience.*`, and `#[Fallback]` names a recovery method on the same class; each is applied to a
@@ -485,6 +504,20 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   path and the new `constraint` member are the same in both styles.
 
 ### Fixed
+
+- **`packages/security` — a URL rule written `/api/*` is no longer a dead rule.** `HttpSecurityFilter` matches
+  `Str::is($rule->pattern, $request->path())`, and Laravel's `path()` never carries a leading slash, so
+  `['pattern' => '/actuator/health', 'access' => 'permitAll']` matched **nothing**: the request fell through to
+  deny-by-default and 401'd on the one path the operator had explicitly opened, with no error anywhere to say why
+  (a dead rule is indistinguishable from a rule that did not apply). `HttpSecurity::requestMatcher()` — the single
+  door `anyRequest()` and `fromConfig()` both come through — now normalises every pattern to the `$request->path()`
+  spelling, so `/api/*` and `api/*` are one rule; `/` keeps its slash, because that is what `path()` answers for
+  the root. **If you have `/`-prefixed patterns today they were inert and are now live**, which is what they were
+  written to mean — check that a `/`-prefixed rule *ahead* of a broader one is the precedence you want, since a
+  previously-skipped `hasRole:`/`denyAll` rule will now match before a later `permitAll`. The direction is
+  fail-closed either way. This is also what lets `firefly/openapi` publish a truthful `security` member: it reads
+  the same rules, and a rule meaning one thing to the document and nothing to the filter would be a published
+  claim the server does not honour.
 
 - **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
   API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context

@@ -67,3 +67,19 @@ it('allows an admin through the admin path', function () {
     $out = httpFilter()->handle(Request::create('/api/admin/users', 'GET'), fn () => new Response('ok'));
     expect($out)->toBeInstanceOf(Response::class);
 });
+
+it('honours a rule spelled with a leading slash, because the pattern is normalised where it is built', function () {
+    // The spelling a RouteManifest path uses, and the one an operator copying a URL out of a browser writes.
+    // Un-normalised it matches nothing — Str::is('/api/public/*', 'api/public/ping') is false — and this
+    // anonymous request would fall through to deny-by-default and throw instead of being let through.
+    $rules = HttpSecurity::fromConfig([
+        ['pattern' => '/api/public/*', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]);
+    $config = new Config(new Repository(['firefly' => ['security' => ['enabled' => true, 'http' => ['enabled' => true]]]]));
+    $filter = new HttpSecurityFilter($rules, new SecurityExpressionEvaluator, RoleHierarchy::fromRules([]), new DenyAllPermissionEvaluator, $config);
+
+    $out = $filter->handle(Request::create('/api/public/ping', 'GET'), fn () => new Response('ok'));
+
+    expect($out)->toBeInstanceOf(Response::class);
+});
