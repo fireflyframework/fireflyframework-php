@@ -944,6 +944,28 @@ return [
     //         */
     //         'disclose' => false,
     //     ],
+    //
+    //     /*
+    //      | THE REFERENCE A PERSON QUOTES. When tracing is on and the request has a valid W3C trace id, that
+    //      | id — not the correlation id — is what problem+json publishes as `traceId`, what the HTML error
+    //      | page shows in its Reference row, and what the response echoes on `header` below. Paste it into a
+    //      | trace search and the request is there. With tracing off (or on a request no tracing filter
+    //      | touched) every one of those falls back to the correlation id, which is exactly what they carried
+    //      | before this key existed, so switching tracing on is the only thing that changes them.
+    //      |
+    //      | The correlation id is NOT absorbed: `X-Correlation-Id` still echoes it untouched (a caller that
+    //      | sent one gets its own value back) and problem+json carries it as its own `correlationId` member.
+    //      | Two ids, two jobs, side by side.
+    //      |
+    //      | `header` names the response header the trace id is echoed on; '' turns the echo off and leaves the
+    //      | document and the page alone. It is deliberately not W3C `traceresponse`, which is not implemented.
+    //      |
+    //      | Defaults: enabled true, header 'X-Trace-Id'.
+    //     */
+    //     'trace-id' => [
+    //         'enabled' => env('FIREFLY_WEB_TRACE_ID_ENABLED', true),
+    //         'header' => env('FIREFLY_WEB_TRACE_ID_HEADER', 'X-Trace-Id'),
+    //     ],
     // ],
 
     /*

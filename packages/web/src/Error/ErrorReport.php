@@ -6,6 +6,7 @@ namespace Firefly\Web\Error;
 
 use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Web\Filter\CorrelationIdFilter;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -26,11 +27,16 @@ use Throwable;
 final readonly class ErrorReport
 {
     /**
-     * `reference` — the request's correlation id (the same value problem+json publishes as `traceId`), so
-     * a person can quote it; '' only when no request is known. It is the one field the PRODUCTION page adds
-     * beyond the status and the code: it names nothing internal, and it is the single action a reader of
-     * that page can take — report the id — which the JSON document already invites and the HTML page did
-     * not make possible.
+     * `reference` — the id a person quotes (the same value problem+json publishes as `traceId`): the
+     * request's W3C trace id when tracing gave it one, and its correlation id otherwise; '' only when no
+     * request is known. It is the one field the PRODUCTION page adds beyond the status and the code: it
+     * names nothing internal, and it is the single action a reader of that page can take — report the id —
+     * which the JSON document already invites and the HTML page did not make possible.
+     *
+     * `correlationId` is carried BESIDE it, never in place of it, and is what problem+json publishes under
+     * that name. The page shows it as its own row only when it differs from the reference, because two
+     * rows holding one value teach a reader that the ids are interchangeable, which is the confusion the
+     * two members exist to prevent.
      *
      * @param  list<ErrorFrame>  $frames
      * @param  list<array{class: string, message: string, location: string}>  $previous
@@ -51,12 +57,17 @@ final readonly class ErrorReport
         public array $frames = [],
         public array $previous = [],
         public string $reference = '',
+        public string $correlationId = '',
     ) {}
 
     public static function of(Throwable $e, Request $request, ErrorPageSettings $settings, string $basePath, int $status, string $reason, string $timestamp): self
     {
         $payload = ErrorResponse::fromException(ProblemMapper::toFireflyException($e), instance: $request->path(), timestamp: $timestamp)->toArray();
-        $reference = CorrelationIdFilter::of($request);
+
+        // The reference is the id a person can act on: the W3C trace id when this request has one, the
+        // correlation id otherwise. The correlation id is carried beside it, never replaced by it.
+        $reference = TraceContext::referenceFor($request);
+        $correlationId = CorrelationIdFilter::of($request);
 
         $public = new self(
             status: $status,
@@ -69,6 +80,7 @@ final readonly class ErrorReport
             timestamp: $timestamp,
             detailed: false,
             reference: $reference,
+            correlationId: $correlationId,
         );
 
         if (! $settings->trace) {
@@ -91,6 +103,7 @@ final readonly class ErrorReport
             frames: self::frames($e, $basePath, $settings->excerptLines),
             previous: self::previous($e, $basePath),
             reference: $reference,
+            correlationId: $correlationId,
         );
     }
 

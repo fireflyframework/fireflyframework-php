@@ -10,6 +10,7 @@ use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Firefly\Web\Filter\CorrelationIdFilter;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
 use Symfony\Component\ErrorHandler\Error\FatalError;
@@ -221,4 +222,32 @@ it('spreads a FireflyException\'s extension members and title into the document'
         ->and($payload['code'])->toBe('EDITION_LIMIT')
         ->and($payload['field'])->toBe('workers')
         ->and($payload['limit'])->toBe(5);
+});
+
+it('publishes the W3C trace id as traceId and the correlation id as its own member', function () {
+    $request = Request::create('/orders');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-42');
+    $request->attributes->set(TraceContext::TRACE_ID, '4bf92f3577b34da6a3ce929d0e0e4736');
+
+    $response = (new ProblemDetailsRenderer)->render(new RuntimeException('boom'), $request);
+    /** @var array<string,mixed> $body */
+    $body = json_decode((string) $response->getContent(), true);
+
+    expect($body['traceId'])->toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+        ->and($body['correlationId'])->toBe('corr-42')
+        ->and($response->headers->get(CorrelationIdFilter::HEADER))->toBe('corr-42')
+        ->and($response->headers->get('X-Trace-Id'))->toBe('4bf92f3577b34da6a3ce929d0e0e4736');
+});
+
+it('falls back to the correlation id, and writes no trace header, when there is no span', function () {
+    $request = Request::create('/orders');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-42');
+
+    $response = (new ProblemDetailsRenderer)->render(new RuntimeException('boom'), $request);
+    /** @var array<string,mixed> $body */
+    $body = json_decode((string) $response->getContent(), true);
+
+    expect($body['traceId'])->toBe('corr-42')
+        ->and($body['correlationId'])->toBe('corr-42')
+        ->and($response->headers->has('X-Trace-Id'))->toBeFalse();
 });

@@ -9,6 +9,7 @@ use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ErrorReport;
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Exception\ProblemDetailsRenderer;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -294,4 +295,49 @@ it('carries the same reference the problem document does, on the detailed page t
         // where the reference lives on this variant.
         ->not->toContain('quote reference')
         ->toContain('boom');
+});
+
+it('shows the W3C trace id in the Reference row and the correlation id beside it', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'corr-42']);
+    $request->attributes->set(TraceContext::TRACE_ID, '4bf92f3577b34da6a3ce929d0e0e4736');
+
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($error->reference)->toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+        ->and($error->correlationId)->toBe('corr-42')
+        // The fact-row MARKUP, so what is asserted is the table and not a word the page happens to contain.
+        ->and($html)->toContain('<dt>Reference</dt><dd>4bf92f3577b34da6a3ce929d0e0e4736</dd>')
+        ->toContain('<dt>Correlation</dt><dd>corr-42</dd>')
+        // The reference a person is asked to quote is the one a trace search can find.
+        ->toContain('quote reference 4bf92f3577b34da6a3ce929d0e0e4736 if you report it');
+});
+
+it('shows no Correlation row when the reference already IS the correlation id', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'corr-42']);
+
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($error->reference)->toBe('corr-42')
+        ->and($error->correlationId)->toBe('corr-42')
+        ->and($html)->toContain('<dt>Reference</dt><dd>corr-42</dd>')
+        ->not->toContain('<dt>Correlation</dt>')
+        // One id on the page, once: a second row holding the same value teaches a reader they are the same
+        // thing, which is exactly what the two members exist to keep apart.
+        ->and(substr_count($html, 'corr-42'))->toBe(2);
+});
+
+it('carries both ids on the detailed page too', function () {
+    $settings = new ErrorPageSettings(trace: true, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_ACCEPT' => 'text/html', 'HTTP_X_CORRELATION_ID' => 'corr-77']);
+    $request->attributes->set(TraceContext::TRACE_ID, 'aaaaaaaabbbbbbbbccccccccdddddddd');
+    $renderer = new ErrorPageRenderer($settings, dirname(__DIR__, 4));
+
+    $html = (string) $renderer->render(new RuntimeException('boom'), $request)->getContent();
+
+    expect($html)->toContain('<dt>Reference</dt><dd>aaaaaaaabbbbbbbbccccccccdddddddd</dd>')
+        ->toContain('<dt>Correlation</dt><dd>corr-77</dd>');
 });

@@ -81,6 +81,14 @@ final class ErrorPage
             'Reference' => $report->reference,
         ];
 
+        // The correlation id beside the trace id, and only when the two differ: with tracing off the
+        // reference IS the correlation id, and a second row repeating it would teach a reader that the two
+        // ids are interchangeable — which is the confusion keeping them apart exists to prevent. The
+        // Reference row above is untouched, label and markup both; it is what a person is told to quote.
+        if ($report->correlationId !== '' && $report->correlationId !== $report->reference) {
+            $rows['Correlation'] = $report->correlationId;
+        }
+
         if ($report->detailed) {
             $rows['Exception'] = $report->exceptionClass;
             $rows['Thrown at'] = $report->location;

@@ -17,6 +17,7 @@ use Firefly\Observability\Tracing\Tracer;
 use Firefly\Observability\Tracing\W3CTraceContextPropagator;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Filter\OncePerRequestFilter;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as IlluminateResponse;
@@ -75,9 +76,10 @@ use Throwable;
 #[Lazy]
 final class TracingFilter extends OncePerRequestFilter
 {
-    public const string CONTEXT_TRACE_ID = 'firefly.trace_id';
+    /** Owned by firefly/web (TraceContext), aliased here so the filter and its readers share one string. */
+    public const string CONTEXT_TRACE_ID = TraceContext::TRACE_ID;
 
-    public const string CONTEXT_SPAN_ID = 'firefly.span_id';
+    public const string CONTEXT_SPAN_ID = TraceContext::SPAN_ID;
 
     private const string EXCLUDE_KEY = 'firefly.observability.tracing.http-server.exclude';
 
