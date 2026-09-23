@@ -191,7 +191,7 @@ documented state; `InterceptorRegistry` then hands the proxy a `PassThroughInter
 ## Security
 
 `firefly/security` is deny-by-default and filter-shaped, the same two properties Spring Security has.
-`HttpSecurityFilter` at `#[Order(-70)]` evaluates an ordered URL rule list, first match wins, and denies
+`HttpSecurityFilter` (`-70`) evaluates an ordered URL rule list, first match wins, and denies
 anything unmatched. Everything that could have authenticated the request has already run by then:
 `SecurityContextPersistenceFilter` (`-94`) loads the context from the session and saves it afterwards, and
 `firefly/security`'s own five authentication mechanisms — `FormLoginFilter` (`-92`),
@@ -244,7 +244,7 @@ that default only when the SDK is installed and `firefly.observability.tracing.e
 `firefly/testing` supplies an in-memory `RecordingTracer` for assertions.
 
 `W3CTraceContextPropagator` speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/) over a plain
-header map, with no SDK involved. `TracingFilter`, the outermost ordered filter at `#[Order(-110)]`, calls
+header map, with no SDK involved. `TracingFilter` (`-110`), the outermost ordered filter, calls
 `extract()` on the inbound headers and starts a `SERVER` span with whatever came back as its parent — so a
 request arriving with a `traceparent` continues that trace and one arriving without starts a new root — then
 publishes `firefly.trace_id` and `firefly.span_id` onto Laravel's `Context` and `Request::$attributes`. From

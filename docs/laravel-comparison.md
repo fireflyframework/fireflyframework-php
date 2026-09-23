@@ -141,8 +141,9 @@ Route::middleware('auth')->group(function () {
 });
 ```
 
-**In LaraFly**, login is filters that already exist plus a configuration block. `SecurityContextPersistenceFilter`
-(`#[Order(-94)]`) loads the `SecurityContext` from the session and saves it after the response;
+**In LaraFly**, login is filters that already exist plus a configuration block.
+`SecurityContextPersistenceFilter` (`-94`) loads the `SecurityContext` from the session and saves it after
+the response;
 `FormLoginFilter` (`-92`) handles `POST /login` — CSRF first, then the `AuthenticationManager`;
 `LogoutFilter` (`-93`) handles `POST /logout`; `RememberMeAuthenticationFilter` (`-83`) restores a session
 from the cookie. The login *page* is the framework's own Blade view unless you point `view` at yours, and
@@ -285,7 +286,7 @@ final class AddRequestId
 ```
 
 **In LaraFly** that is the framework's job, and it reaches further than one process. `TracingFilter`
-(`#[Order(-110)]`) extracts the inbound W3C `traceparent` and starts a `SERVER` span with it as the parent,
+(`-110`) extracts the inbound W3C `traceparent` and starts a `SERVER` span with it as the parent,
 so a request that arrives inside a trace continues it; the ids are published to Laravel's `Context` and
 `Request::$attributes`; and the same context is carried across five boundaries — inbound HTTP, an `INTERNAL`
 span per CQRS message, a `PRODUCER` span stamping the header into the envelope on the in-memory and queue

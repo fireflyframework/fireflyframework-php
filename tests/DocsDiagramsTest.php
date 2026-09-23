@@ -427,6 +427,14 @@ it('pins both diagrams, the security table and the OAuth2 prose to the real #[Or
     // once: the book's byte-identical copy of it is the previous test's business. docs/modules/security.md
     // demands nothing here — its table is checked above — but it is scanned like the rest, because the second
     // assertion in the loop holds every file to every pair it happens to write, listed or not.
+    //
+    // THE THREE FIRST-IMPRESSION DOCUMENTS ARE ON THIS LIST FOR THAT SECOND ASSERTION. Between them they now
+    // hand-transcribe eighteen of these pairs — README.md writes the three OAuth2 filters, docs/architecture.md
+    // writes nine including the whole authentication row, docs/laravel-comparison.md writes six — and while
+    // they were outside the scan the comment above was simply false: the files most likely to be read first
+    // were the files least likely to be checked. They demand nothing, because which filters a narrative
+    // paragraph names is an editorial choice and a rewrite should not have to visit this test to drop one;
+    // what is not editorial is the NUMBER beside a filter it does name, and that is now pinned in all three.
     $repeats = [
         'docs/assets/diagrams/oauth2-authorization-code.svg' => [
             FormLoginFilter::class,
@@ -454,14 +462,24 @@ it('pins both diagrams, the security table and the OAuth2 prose to the real #[Or
             OAuth2LoginAuthenticationFilter::class,
         ],
         'docs/modules/security.md' => [],
+        'README.md' => [],
+        'docs/architecture.md' => [],
+        'docs/laravel-comparison.md' => [],
     ];
 
     foreach ($repeats as $relative => $classes) {
-        // One normalised form to look for in six places: prose wraps the pair in backticks and sometimes bold,
-        // an image's alt text carries no markup at all, and `#[Order(-82)]` is the same claim spelled as the
-        // attribute. All three become `Name (-82)` before anything is asserted.
+        // One normalised form to look for in nine places: prose wraps the pair in backticks and sometimes
+        // bold, an image's alt text carries no markup at all, and `#[Order(-82)]` is the same claim spelled as
+        // the attribute. All three become `Name (-82)` before anything is asserted.
+        //
+        // Whitespace is collapsed last, for the reason the advice-order loop below gives: these documents are
+        // hard-wrapped near 110 columns, so a pair is regularly split across two lines — which a reader does
+        // not see and this test must not have an opinion about. Before that, `docs/laravel-comparison.md`
+        // wrote `SecurityContextPersistenceFilter` and its order on either side of a line break and the
+        // second assertion below simply did not see the number.
         $plain = str_replace(['`', '**'], '', (string) file_get_contents($root.'/'.$relative));
         $plain = (string) preg_replace('/#\[Order\((-?\d+)\)\]/', '($1)', $plain);
+        $plain = trim((string) preg_replace('/\s+/', ' ', $plain));
 
         foreach ($classes as $class) {
             expect(str_contains($plain, $shortNames[$class].' ('.$orders[$class].')'))->toBeTrue(
@@ -832,6 +850,19 @@ it('pins the interceptor-chain figure and its prose to the Advice each AdviceSou
         'docs/assets/README.md' => [
             "{$securityInterceptor} at advice order {$securityOrder} "
                 ."outside {$transactionalInterceptor} at {$transactionalOrder},",
+        ],
+        // The two first-impression documents make the same claim, and the README makes it twice: once in the
+        // paragraph and once in the figure's alt text, which is the only version a screen-reader user gets.
+        // Both were hand-typed and unread by any guard until this entry existed.
+        'README.md' => [
+            "lower advice order runs outer — security at {$securityOrder}, the transaction at "
+                ."{$transactionalOrder} —",
+            "runs the security interceptor at advice order {$securityOrder} outside the transaction "
+                ."interceptor at order {$transactionalOrder}",
+        ],
+        'docs/architecture.md' => [
+            "Security's advice is order {$securityOrder}, the transaction's is {$transactionalOrder}, "
+                ."so {$securityInterceptor} evaluates",
         ],
     ];
 

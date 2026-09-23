@@ -410,7 +410,7 @@ own global middleware stack. `FilterChainRegistrar::orderedFilters()` prepends `
 `strcmp` on the class name, which is why `HttpExchangeFilter` precedes `MetricsFilter` at the same `-100`.
 Authentication is not one filter but five — form login (`-92`), HTTP Basic (`-91`), JWT (`-90`), the OAuth2
 resource server (`-85`) and remember-me (`-83`) — each writing into the same `SecurityContext`, with the two
-OAuth2 packages adding three more filters of their own when installed. `HttpSecurityFilter` at `-70` has the
+OAuth2 packages adding three more filters of their own when installed. `HttpSecurityFilter` (`-70`) has the
 last word, applying the deny-by-default URL rules first-match-wins. When it denies an anonymous request it does not simply throw — it
 asks the `DelegatingAuthenticationEntryPoint`, whose default `auto` mode sends a browser to the login page, an
 HTTP-Basic-configured API a `WWW-Authenticate` challenge, and everything else the 401 problem document:
@@ -457,7 +457,7 @@ is a property of the compiled plan, not a convention anyone has to remember:
 
 ### Trace context, end to end
 
-`TracingFilter` is the outermost ordered filter in the chain at `#[Order(-110)]`. It asks
+`TracingFilter` (`-110`) is the outermost ordered filter in the chain. It asks
 `W3CTraceContextPropagator::extract()` for the inbound `traceparent`, starts a `SERVER` span with that remote
 context as its parent (or a new root when there is none), and publishes the resulting ids onto Laravel's
 `Context` and `Request::$attributes` as `firefly.trace_id` and `firefly.span_id` — the one place everything
@@ -900,7 +900,7 @@ built-in indicators, `firefly:health`/`firefly:metrics` actuator-over-CLI — se
 
 ### Tracing — a span you did not write
 
-`TracingFilter` is a `#[Component]` web filter at `#[Order(-110)]`, the outermost ordered filter in the chain.
+`TracingFilter` (`-110`) is a `#[Component]` web filter, the outermost ordered filter in the chain.
 Nothing in an application asks for it, and nothing in an application has to:
 
 <!-- source: packages/observability/src/Web/TracingFilter.php -->
