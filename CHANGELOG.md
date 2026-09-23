@@ -232,8 +232,18 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   client registered**, with an empty `scopes` map: the URLs are facts about the server rather than about its client
   registry, and the requirement side names the scheme from the same `firefly.security.oauth2.server.enabled`, so a
   `client_credentials`-only issuer — or an `eloquent` client table that is empty when CI generates the document —
-  cannot produce a dangling reference. A capstone in each package boots `firefly/openapi` beside the security
-  package and asserts the document against the running dispatcher, and that it names no scheme it did not publish.
+  cannot produce a dangling reference. **Generating the document never needs that client store to answer**: an
+  unreadable one — a table CI never migrated, a database a build step cannot reach, a row the `eloquent` driver
+  refuses — falls back to the same empty map, because nothing between the contributor and `OpenApiGenerator`
+  catches and `php artisan firefly:openapi` exists to produce a build artifact. **And every scope the document
+  requires of an `oauth2` scheme is declared by that scheme's flows**: the scopes map is what the clients
+  registered, a `#[PreAuthorize("hasScope('orders.read')")]` states a scope no client may have asked for, and
+  `SecurityModel` — the one place that sees both contributor lists, asked for the schemes after the paths — unions
+  the second into the first (sorted, every flow of the scheme, a description the owning contributor gave left
+  alone). Without it Swagger UI's Authorize dialog could not offer the scope the operation demands and Spectral's
+  `oas3-operation-security-defined` rejected the operation. A capstone in each package boots `firefly/openapi`
+  beside the security package and asserts the document against the running dispatcher, that it names no scheme it
+  did not publish, and that no operation requires a scope its own `securitySchemes` does not declare.
 
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under

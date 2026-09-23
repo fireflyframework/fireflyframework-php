@@ -22,7 +22,10 @@ use Firefly\OpenApi\OpenApiWiringProvider;
  * contributor naming the scheme from `firefly.security.oauth2.server.enabled` alone, left every
  * method-secured operation pointing at a `components.securitySchemes` entry that did not exist. It is not
  * an exotic setup — a client_credentials-only token issuer has no such client, and neither does an
- * `eloquent` client table that is empty or unreachable when CI generates the document.
+ * `eloquent` client table that is empty or unreachable when CI generates the document. The EMPTY half is
+ * this suite, booted whole. The UNREACHABLE half is a store whose READ throws — no configuration produces
+ * one, it takes a stub repository — so it is pinned where the catch that answers it lives, on the
+ * contributor itself in tests/OpenApi/AuthorizationServerSchemeContributorTest.php.
  *
  * The fixture controller is firefly/security's: the rules it carries are that package's attributes, the
  * manifest is compiled by the in-process scan exactly as an uncached application compiles it, and copying

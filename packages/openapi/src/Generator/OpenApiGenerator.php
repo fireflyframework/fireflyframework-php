@@ -189,6 +189,10 @@ final class OpenApiGenerator
         // legal and would also tell a reader the server takes no credentials, which for an application that
         // simply has not installed firefly/security is true and for one that has is a lie — so the member is
         // absent rather than empty, the same rule `servers` and `tags` follow around it.
+        //
+        // ASKED AFTER THE PATHS, and that order is load-bearing rather than incidental: an oauth2 scheme's
+        // flows declare every scope the operations above require of it, so the model has to have been asked
+        // about every surviving route before it can publish the map. See SecurityModel::$statedScopes.
         $schemes = $this->security?->schemes() ?? [];
         if ($schemes !== []) {
             $document['components']['securitySchemes'] = $schemes;

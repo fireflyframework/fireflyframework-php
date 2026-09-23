@@ -789,7 +789,20 @@ read. An **enabled server publishes it even with no authorization-code client re
 map — the URLs are facts about the server, not about its client registry, and the operations that name the scheme
 name it from the same `oauth2.server.enabled` flag. Publishing on a narrower fact than the one requirements are
 named on is how a document ends up with a dangling `$ref`-like reference `components.securitySchemes` cannot
-resolve.
+resolve. Generating the document never needs that client store to answer: an unreadable one falls back to the same
+empty map, because a missing table in CI must not fail `firefly:openapi` or turn `/openapi.json` into a `500`.
+
+**An `oauth2` scheme's flows declare every scope the document requires of it.** That is the same join read
+backwards, and it is `SecurityModel`'s to make for the same reason: the scheme comes from the package that knows
+the flow, the scope comes from the contributor asked about the route, and only the model sees both lists. Without
+it a `#[PreAuthorize("hasScope('orders.read')")]` publishes `security: [{oauth2AuthorizationCode: [orders.read]}]`
+beside `scopes: {}` — Swagger UI's Authorize dialog offers only what the Flow Object declares, so the button the
+scheme exists for cannot complete the flow for exactly those operations, and Spectral's
+`oas3-operation-security-defined` rejects a requirement naming a scope its scheme does not define. The scopes are
+unioned into **every** flow of the scheme (a requirement names a scheme, never a flow), sorted, and a scope the
+contributor already described keeps that description — the model has no vocabulary of its own and writes the
+scope's own name. `openIdConnect` is left alone: its scopes live in the discovery document `openIdConnectUrl`
+points at, not in this one.
 
 The resource server is deliberately **not** `type: oauth2`: it does not issue tokens and has no flow URLs to
 publish, and an `oauth2` scheme with an empty `flows` object renders in Swagger UI as a form nobody can fill in.
@@ -911,6 +924,11 @@ the scope vocabulary (an authorization server, whose registered clients hold it)
 about each route. The list is deliberately **not** part of the Security Scheme Object — a scheme declares which
 scopes *exist*, a requirement declares which ones an operation *needs*. Every scheme this framework ships leaves
 it empty, so nothing inherits anything unless a contributor asks for it.
+
+What *does* travel from the requirements back into the Scheme Object is the scope **name**: whatever the operations
+end up requiring of an `oauth2` scheme is declared by its flows, so the two halves of one fact are never published
+by only one side. `SecurityModel` is asked for the schemes *after* the paths are built, which is what makes that
+possible at all.
 
 ## Overriding a piece of the pipeline
 

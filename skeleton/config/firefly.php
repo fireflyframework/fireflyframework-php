@@ -1334,7 +1334,9 @@ return [
     //      |                                            authorization and token URLs and the scopes its
     //      |                                            registered clients asked for (firefly/security-oauth2-server
     //      |                                            contributes it; an enabled server publishes it even
-    //      |                                            with no client registered yet, with an empty scopes map)
+    //      |                                            with no client registered yet, with an empty scopes map,
+    //      |                                            and a client store that cannot be read falls back to the
+    //      |                                            same map rather than failing the document)
     //      |
     //      | Each operation then carries the requirement its path really has, read from the SAME
     //      | firefly.security.http.rules the filter enforces: a `permitAll` path carries no `security` member
@@ -1354,7 +1356,9 @@ return [
     //      | Where a path is covered by BOTH a URL rule and a method rule, the two are merged per scheme name
     //      | with their scope lists UNIONED: a caller passes the filter AND the dispatcher, so the stricter
     //      | statement is the true one, and an operation is published public only when NOTHING requires
-    //      | anything of it.
+    //      | anything of it. The join runs the other way too: a scope the operations require of an `oauth2`
+    //      | scheme is declared by that scheme's flows, so Swagger UI's Authorize dialog can offer it and no
+    //      | operation names a scope its own securitySchemes entry does not define.
     //      |
     //      | Two interfaces — Firefly\OpenApi\Security\SecuritySchemeContributor and
     //      | SecurityRequirementContributor — are how a package adds what configuration cannot state; three

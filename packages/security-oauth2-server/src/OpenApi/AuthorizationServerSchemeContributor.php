@@ -14,6 +14,7 @@ use Firefly\Security\OAuth2\Server\Client\RegisteredClient;
 use Firefly\Security\OAuth2\Server\Client\RegisteredClientRepository;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Web\Consent\ConsentPage;
+use Throwable;
 
 /**
  * The ONE security fact configuration cannot supply, so the ONE that needs a contributor rather than a
@@ -42,7 +43,9 @@ use Firefly\Security\OAuth2\Server\Web\Consent\ConsentPage;
  * reference no tooling can resolve and an invalid 3.1 document. The honest answer for a server nobody has
  * registered a code client with is the flow with an EMPTY `scopes` map, which is valid OpenAPI (the
  * generator's objectify() writes the empty map as `{}`) and which says what is true: these are the URLs,
- * and no client has registered a scope for them yet.
+ * and no client has registered a scope for them yet. "Empty" and "unreachable" reach that answer by
+ * different roads and both roads are here: an empty registry through scopes(), an unreadable one through
+ * codeClients()'s catch, which is what keeps generating the document off the database entirely.
  *
  * A refreshUrl is published only when at least one such client also supports refresh_token, because an
  * OpenAPI `refreshUrl` a client cannot use is an invitation to a failed request. It is the TOKEN endpoint,
@@ -91,10 +94,7 @@ final class AuthorizationServerSchemeContributor implements SecuritySchemeContri
             return [];
         }
 
-        $clients = array_values(array_filter(
-            $this->clients->all(),
-            static fn (RegisteredClient $client): bool => $client->supportsGrant(AuthorizationGrantType::AuthorizationCode),
-        ));
+        $clients = $this->codeClients();
 
         $flow = [
             'authorizationUrl' => $this->settings->endpointUrl($this->settings->authorizationEndpoint),
@@ -111,6 +111,45 @@ final class AuthorizationServerSchemeContributor implements SecuritySchemeContri
             'description' => 'This application is the authorization server: '.$this->settings->issuer,
             'flows' => ['authorizationCode' => $flow],
         ])];
+    }
+
+    /**
+     * The registered clients that may use this flow — and NONE of them when the store cannot be read, which
+     * is the second half of the paragraph above and the one that keeps DOCUMENT GENERATION OFF THE DATABASE.
+     *
+     * `clients.driver: eloquent` makes this a SELECT, and the two documented ways of generating a document
+     * are the two places that SELECT is least likely to succeed: `php artisan firefly:openapi` runs in a CI
+     * container whose `oauth2_registered_clients` table may never have been migrated, and `/openapi.json`
+     * may be scraped by a build step long before the deployment's database is reachable. Unguarded, the
+     * driver's QueryException would travel out of schemes() through SecurityModel::schemeIndex() into
+     * OpenApiGenerator, which catches nothing: the artisan command that exists to produce a build artifact
+     * would fail outright and the route would answer 500 — on an application whose document, before this
+     * contributor existed, touched no database at all. A missing table is not a reason to stop describing
+     * the API.
+     *
+     * An unreadable store lands on exactly the answer an EMPTY one already gets, which is why this is a
+     * fallback rather than a second shape to reason about: the flow URLs with an empty `scopes` map, the
+     * honest statement for a server nobody has registered a code client with. The same catch covers the
+     * `eloquent` driver's OTHER refusal — a hand-edited row with an unknown grant or a plain-text secret,
+     * which all() rejects by design — and that is deliberate too: the document is a report, not an
+     * admission gate, and the refusal still reaches every runtime read (findByClientId() on the
+     * authorization endpoint, the boot-time validation of the `memory` map) where it actually protects
+     * somebody. What it must not do is take the API reference down with it.
+     *
+     * @return list<RegisteredClient>
+     */
+    private function codeClients(): array
+    {
+        try {
+            $clients = $this->clients->all();
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $clients,
+            static fn (RegisteredClient $client): bool => $client->supportsGrant(AuthorizationGrantType::AuthorizationCode),
+        ));
     }
 
     /**

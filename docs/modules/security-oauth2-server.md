@@ -259,6 +259,20 @@ may refresh.
   a method-secured operation from the same `firefly.security.oauth2.server.enabled`. An emit-nothing rule would
   leave that name dangling in `components.securitySchemes` exactly where it costs most — a `client_credentials`
   token issuer, or an `eloquent` client table that is empty or unreachable when CI generates the document.
+- **Generating the document never needs the client store to answer.** With `clients.driver: eloquent` the scopes
+  map is a `SELECT`, and the two documented ways of producing a document are the two places it is least likely to
+  succeed: `php artisan firefly:openapi` in a CI container whose `oauth2_registered_clients` table was never
+  migrated, and a `/openapi.json` scrape from a build step with no database behind it. A store that cannot be read
+  — or that refuses a hand-edited row, which the driver does by design — falls back to **no clients**, which is the
+  empty-registry answer above; nothing on the path to `OpenApiGenerator` catches, so without it the command would
+  fail outright and the route would answer `500`. The refusal still reaches every runtime read, where it protects
+  somebody: the document is a report, not an admission gate.
+- **A scope an operation requires is declared by the flow.** The map above is what the *clients* registered, and a
+  `#[PreAuthorize("hasScope('orders.read')")]` elsewhere in the same application states a scope no client may have
+  asked for yet. `firefly/openapi`'s `SecurityModel` — the one place that sees both contributor lists — unions
+  every scope the document states for this scheme into its flows, so the Authorize dialog can offer them and a
+  strict linter (Spectral's `oas3-operation-security-defined`) has nothing to reject. A scope this package already
+  described keeps the consent page's sentence; one only an operation named is described with its own name.
 - **The scheme carries no default scopes.** The flow's `scopes` map says which scopes *exist*;
   `SecurityScheme::$scopes` would say which ones every operation naming the scheme *needs*, and a server whose
   clients between them registered a dozen would then demand all twelve on every path.
