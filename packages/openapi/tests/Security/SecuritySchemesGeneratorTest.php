@@ -86,8 +86,10 @@ it('leaves the security member OFF the operation a permitAll rule covers', funct
 });
 
 it('round-trips both through toJson with the requirement as a JSON array of objects', function () {
+    $json = schemesGenerator()->toJson();
+
     /** @var array<string, mixed> $document */
-    $document = json_decode(schemesGenerator()->toJson(), true, flags: JSON_THROW_ON_ERROR);
+    $document = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
     /** @var array<string, array<string, mixed>> $components */
     $components = $document['components'];
@@ -95,6 +97,40 @@ it('round-trips both through toJson with the requirement as a JSON array of obje
     expect($components['securitySchemes'])->toHaveKey('bearerAuth')
         ->and(FixtureDocument::operation($document, '/api/orders/{id}', 'get')['security'])->toBe([['bearerAuth' => []]])
         ->and(array_key_exists('security', FixtureDocument::operation($document, '/api/orders', 'post')))->toBeFalse();
+
+    // THIS ASSERTION IS THE POINT OF THE TEST, and the assoc-mode decode above cannot make it: `json_decode`
+    // maps `{}` back to `[]` when $assoc is true, so `toBe([['bearerAuth' => []]])` passes just as happily
+    // against `{"bearerAuth": {}}` — which is what the serialiser emitted until the empty-array-to-object
+    // rewrite learned to leave a Security Requirement Object's scope list alone. A requirement whose scopes
+    // are an OBJECT is invalid under the 3.1 meta-schema (the patterned field is typed `[string]`) and
+    // Swagger UI cannot read it, so the shape has to be observed in the bytes that are actually served.
+    expect($json)->toContain('"bearerAuth": []')
+        ->and($json)->not->toContain('"bearerAuth": {}');
+});
+
+it('serialises an EMPTY scope list as a JSON array and the requirement itself as an object', function () {
+    // The same fact read off the raw decode rather than out of the string: `security` is a LIST, its entries
+    // are OBJECTS, and the scope list under a scheme name is an ARRAY even when it is empty. Decoding without
+    // $assoc is what makes the last of those three observable at all — see FixtureDocument::rawValue().
+    $json = schemesGenerator()->toJson();
+
+    expect(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security'))
+        ->toBeArray()->toHaveCount(1)
+        ->and(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security', 0))
+        ->toBeInstanceOf(stdClass::class)
+        ->and(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security', 0, 'bearerAuth'))
+        ->toBeArray()->toBe([]);
+});
+
+it('still writes an unconstrained DTO member NAMED security as an empty object', function () {
+    // The exemption is keyed on the SHAPE of the value, not on the name `security` alone, and this is why.
+    // `security` is an ordinary PHP property name, so it is an ordinary key of a `properties` map — where an
+    // unconstrained member's `[]` is a Schema Object and must still be `{}`. A Schema Object is a map and a
+    // Security Requirement list is a list, so the two readings cannot collide; this pins that they do not.
+    $json = FixtureDocument::generatorFor('KeywordFixture')->toJson();
+
+    expect($json)->toContain('"security": {}')
+        ->and($json)->not->toContain('"security": []');
 });
 
 it('emits neither member when firefly.openapi.security.enabled is off', function () {

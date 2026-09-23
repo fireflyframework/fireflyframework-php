@@ -773,6 +773,14 @@ by nothing — an option the document offers a generated client without ever dec
 one rule for the filter and one rule for the document. This package repeats that normalisation rather than sharing
 it, because `deptrac.yaml` permits it no edge to `firefly/security`.
 
+**A pattern carrying a route placeholder matches nothing — here too.** The generator is asked about a route
+*template* (`/api/orders/{id}`); the filter only ever sees a *request path* (`api/orders/7`). So
+`['pattern' => '/api/orders/{id}', 'access' => 'permitAll']` is a **dead rule**, and the document treats it as one:
+every `{...}` in the template is replaced with a byte no literal can match before the patterns are tried, so
+`api/orders/*` still covers the operation and `api/orders/{id}` does not. Without that, the document would call the
+operation public while the filter answered `401` to every caller of it — fail-**open** documentation, the one
+failure mode this whole section exists to rule out. Write `api/orders/*`.
+
 ### Contributing a scheme or a requirement
 
 Two ports let another package add what configuration cannot state:

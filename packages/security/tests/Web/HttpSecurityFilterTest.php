@@ -119,3 +119,16 @@ it('refuses a path a later permitAll used to open once a /-prefixed denyAll rule
         ['pattern' => '*', 'access' => 'permitAll'],
     ]))->handle(Request::create('/admin/secret', 'GET'), fn () => new Response('ok'));
 })->throws(AuthenticationException::class);
+
+it('refuses a request a rule spelled with a route placeholder appears to open, because it matches nothing', function () {
+    // The runtime half of the pair the OpenAPI contributor is written against (see
+    // packages/openapi/tests/Security/ConfiguredSecurityTest.php). A pattern is matched against
+    // `$request->path()` — `api/orders/7` — and never against the route template it was copied from, so
+    // `api/orders/{id}` matches nothing at all and the `*` rule takes the request. Normalisation removes a
+    // leading slash and deliberately does NOT invent a wildcard for the placeholder: a matcher that guessed
+    // at the segment's shape would open paths nobody wrote. `api/orders/*` is the spelling that works.
+    filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/api/orders/{id}', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]))->handle(Request::create('/api/orders/7', 'GET'), fn () => new Response('ok'));
+})->throws(AuthenticationException::class);

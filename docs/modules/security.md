@@ -302,6 +302,12 @@ does not honour.
 > upgrading. A `/`-prefixed `permitAll` sitting ahead of a broader rule is the shape to fix — narrow it, move it
 > after the broader rule, or delete it. Rule sets with no leading slashes behave exactly as they did.
 
+**A leading slash is the only thing normalised — a route placeholder is not.** The pattern is matched against a
+request path, so `['pattern' => '/api/orders/{id}']` normalises to `api/orders/{id}` and still matches nothing:
+`Str::is('api/orders/{id}', 'api/orders/7')` is `false`. Copy the route's shape, not its text — write
+`api/orders/*`. `firefly/openapi` reads these rules the same way and treats a placeholder pattern as the dead rule
+it is, so a document generated beside such a rule reports the path as protected rather than claiming it is public.
+
 ## Web
 
 ### The entry point

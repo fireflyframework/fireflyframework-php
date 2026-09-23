@@ -169,6 +169,12 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   `security` member: it reads these same rules, and a rule meaning one thing to the document and nothing to
   the filter would be a published claim the server does not honour.
 
+  **The leading slash is the only thing normalised.** A pattern is matched against a request path, so one
+  carrying a route placeholder — `['pattern' => '/api/orders/{id}']` — is still a dead rule afterwards
+  (`Str::is('api/orders/{id}', 'api/orders/7')` is `false`), and nothing rewrites it into `api/orders/*` on
+  your behalf: a placeholder stands for a segment only the route knows the shape of, and a matcher that
+  guessed would open paths nobody wrote. Copy the route's shape rather than its text.
+
 ### Added
 
 - **`packages/openapi` — the document publishes the security the server actually has.** `components.securitySchemes`
@@ -191,7 +197,12 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   names that scheme and states none of its own — the split the ports create, since the package holding the scope
   vocabulary is not the one asked about each route; a requirement that states its own keeps them. The config-driven
   contributor is the only implementation that ships. Method rules (`#[PreAuthorize]`, `#[Secured]`) are **not** read
-  into requirements.
+  into requirements. A rule pattern carrying a **route placeholder** (`'/api/orders/{id}'`) is a dead rule for the
+  filter, which never sees a template, and is a dead rule here too — every `{...}` is blanked before the patterns
+  are tried, so `api/orders/*` covers the operation and `api/orders/{id}` leaves it published as protected rather
+  than as a path the server does not actually open. Scope lists serialise as JSON **arrays**, empty ones included:
+  a Security Requirement Object's value is typed `[string]` by the 3.1 meta-schema, and `{"bearerAuth": {}}` is a
+  document Swagger UI cannot read.
 
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under

@@ -40,6 +40,12 @@ use Illuminate\Support\Str;
  * than a name. With `http.enabled` off this class returns null — no opinion — rather than an empty list,
  * because the absence of URL rules says nothing about whether a method rule protects the handler.
  *
+ * A RULE THE FILTER CANNOT MATCH DOES NOT OPEN A PATH HERE EITHER. The generator is asked about route
+ * TEMPLATES and the filter only ever sees request paths, so a pattern spelled `/api/orders/{id}` matches
+ * nothing at runtime — and is made to match nothing here as well, rather than publishing the operation as
+ * public because its text happens to equal the template's. See accessFor(): fail-open documentation is the
+ * single failure this class must not have.
+ *
  * EVERY CONFIGURED SCHEME IS NAMED, NOT JUST ONE. An operation's `security` array is an OR-list — satisfying
  * any entry satisfies the operation — and an application with `http_basic.enabled` beside `jwt.enabled` will
  * really accept EITHER credential, because HttpBasicFilter and JwtAuthenticationFilter each skip an
@@ -60,6 +66,17 @@ use Illuminate\Support\Str;
  */
 final class ConfiguredSecurity implements SecurityRequirementContributor, SecuritySchemeContributor
 {
+    /**
+     * What every `{placeholder}` in a route template is replaced with before a rule pattern is matched
+     * against it — see accessFor(), which is where the reason lives.
+     *
+     * A NUL byte, because the requirement is precisely "a string no literal pattern segment can match": a URL
+     * cannot carry one, a rule pattern written by a human does not contain one, and `Str::is()` compiles a
+     * pattern's `*` to `.*`, which matches it. So a wildcard covering the placeholder position still matches
+     * and anything else — including the placeholder spelled out literally — does not.
+     */
+    private const string PLACEHOLDER = "\0";
+
     public function __construct(private readonly Config $config) {}
 
     /**
@@ -173,6 +190,25 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
      * edge to firefly/security, and reading a config value is not one. Repeating four lines is the price of
      * that, and the security package's own tests pin the behaviour this copy mirrors — change one and the
      * other's tests are where the disagreement shows up.
+     *
+     * A ROUTE TEMPLATE IS NOT A PATH, and that difference is the one way this method could publish a lie.
+     * `$route->path` is `/api/orders/{id}`; the filter will only ever see `api/orders/7`. A rule spelled
+     * `['pattern' => '/api/orders/{id}', 'access' => 'permitAll']` therefore matches the TEMPLATE literally
+     * while matching no request the route can ever receive: the document would call the operation public and
+     * the filter would answer 401 to every caller of it — fail-OPEN documentation, which is exactly the lie
+     * this class exists to prevent, and a spelling operators reach for precisely because the leading-slash
+     * form they are now told to write is the RouteManifest's form, placeholders and all.
+     *
+     * So every placeholder is replaced with PLACEHOLDER — a byte no literal pattern can match — before the
+     * match runs. `api/orders/*` still covers the operation, because a wildcard covering the placeholder
+     * position covers every path the route produces; `api/orders/{id}` and `api/orders/1*` no longer do,
+     * because neither covers all of them. A rule that is dead for the filter is now dead for the document,
+     * which is the only relationship between the two that cannot mislead: an operation the rules do not
+     * really open falls through to deny-by-default here just as the request will at runtime.
+     *
+     * The replacement is per TOKEN rather than per segment, so a templated file extension (`files/{name}.json`)
+     * is still covered by `files/*.json`. Soundness does not depend on the granularity — a literal cannot
+     * match PLACEHOLDER wherever it is put — only the strictness does.
      */
     private function accessFor(string $path): string
     {
@@ -180,6 +216,8 @@ final class ConfiguredSecurity implements SecurityRequirementContributor, Securi
         if ($candidate === '') {
             $candidate = '/'; // the root path, which `$request->path()` answers as '/' and never as ''
         }
+
+        $candidate = (string) preg_replace('/\{[^}]*\}/', self::PLACEHOLDER, $candidate);
 
         /** @var array<mixed> $rules */
         $rules = $this->config->array('firefly.security.http.rules', []);

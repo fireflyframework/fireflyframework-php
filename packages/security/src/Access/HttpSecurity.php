@@ -122,6 +122,15 @@ final class HttpSecurity
      * Root is the one path that KEEPS its slash: `$request->path()` answers `'/'` for it, never `''`, so a
      * `'/'` pattern must stay `'/'` rather than normalising to an empty string that matches nothing.
      *
+     * THE SLASH IS THE ONLY THING THIS FIXES, and the rest of a RouteManifest path is not a request path: a
+     * pattern is matched against `api/orders/7`, never against the template `api/orders/{id}`, so a pattern
+     * that carries a placeholder is a dead rule that no normalisation can rescue — `api/orders/*` is the
+     * spelling that covers it. Nothing here rewrites one into the other, because a placeholder stands for a
+     * segment whose shape only the route knows and a matcher that guessed at it would be opening paths the
+     * operator did not write. firefly/openapi's ConfiguredSecurity mirrors that reading — it blanks every
+     * placeholder before trying the patterns — so a rule dead for this filter is dead for the document too
+     * rather than being published as a path the server lets through.
+     *
      * Normalising here rather than in the filter is deliberate — this is the ONE door every rule comes
      * through (`anyRequest()` and `fromConfig()` both call it), so a rule is in canonical form from the
      * moment it exists, and anything that reads `UrlAuthorizationRule::$pattern` afterwards — the filter, a

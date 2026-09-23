@@ -43,6 +43,28 @@ it('requires it on the path the filter protects and not on the one it lets throu
         ->and(array_key_exists('security', $create))->toBeFalse();
 });
 
+it('serves scope lists as JSON arrays, so the requirement is valid 3.1 on the wire', function () {
+    /** @var SecuredSchemesCapstoneTestCase $this */
+    $body = $this->responseBody($this->get('/openapi.json')->assertStatus(200));
+
+    // The assertion above cannot see this and neither can any assoc-mode decode: `json_decode($body, true)`
+    // maps `{}` to `[]`, so a requirement served as `{"bearerAuth": {}}` — invalid under the 3.1 meta-schema,
+    // which types the patterned field `[string]`, and unreadable by Swagger UI — decodes to exactly what a
+    // correct one does. The bytes are therefore checked as bytes, on the document the route really serves.
+    expect($body)->toContain('"bearerAuth": []')
+        ->and($body)->toContain('"httpBasic": []')
+        ->and($body)->not->toContain('"bearerAuth": {}')
+        ->and($body)->not->toContain('"httpBasic": {}');
+
+    expect(FixtureDocument::rawValue($body, 'paths', '/api/orders/{id}', 'get', 'security'))->toBeArray()
+        ->and(FixtureDocument::rawValue($body, 'paths', '/api/orders/{id}', 'get', 'security', 0))
+        ->toBeInstanceOf(stdClass::class)
+        ->and(FixtureDocument::rawValue($body, 'paths', '/api/orders/{id}', 'get', 'security', 0, 'bearerAuth'))
+        ->toBeArray()
+        ->and(FixtureDocument::rawValue($body, 'paths', '/api/orders/{id}', 'get', 'security', 1, 'httpBasic'))
+        ->toBeArray();
+});
+
 it('leaves no published scheme unreferenced and names no scheme it did not publish', function () {
     /** @var SecuredSchemesCapstoneTestCase $this */
     $document = securedSchemesDocument($this);

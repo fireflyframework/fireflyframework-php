@@ -142,6 +142,50 @@ it('matches a rule pattern exactly as the filter does, whichever spelling it is 
         ->and($bare->requirementsFor(openApiSecurityRoute('/actuator/env')))->toHaveCount(1);
 });
 
+it('treats a rule pattern spelled with a route placeholder as the dead rule the filter treats it as', function (): void {
+    // THE FAIL-OPEN CASE, and the reason accessFor() blanks placeholders. The generator is asked about a
+    // route TEMPLATE — `/api/orders/{id}` — while the filter only ever matches a request PATH. Matching the
+    // pattern against the template literally would make `['pattern' => '/api/orders/{id}', 'access' =>
+    // 'permitAll']` open the operation in the document, while `Str::is('api/orders/{id}', 'api/orders/7')` is
+    // false at runtime, deny-by-default takes the request and the caller reads a 401. The document would be
+    // claiming a path is public that the server refuses, which is the single lie this contributor exists to
+    // prevent. See packages/security/tests/Web/HttpSecurityFilterTest.php for the runtime half of the pair.
+    $security = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'jwt' => ['enabled' => true],
+        'http' => ['enabled' => true, 'rules' => [
+            ['pattern' => '/api/orders/{id}', 'access' => 'permitAll'],
+            ['pattern' => '*', 'access' => 'authenticated'],
+        ]],
+    ]));
+
+    expect($security->requirementsFor(openApiSecurityRoute('/api/orders/{id}')))->toHaveCount(1);
+});
+
+it('still lets a wildcard rule cover a templated path, because a wildcard really does match every request', function (): void {
+    // The other side of the line: `api/orders/*` covers EVERY path the route can produce, so it is the rule
+    // the document must honour — blanking the placeholder must not make a live rule unreadable, only a dead
+    // one. The templated file-extension case is here too: the replacement is per token rather than per
+    // segment, so `files/*.json` still covers `files/{name}.json`.
+    $security = new ConfiguredSecurity(openApiSecurityConfig([
+        'enabled' => true,
+        'jwt' => ['enabled' => true],
+        'http' => ['enabled' => true, 'rules' => [
+            ['pattern' => '/api/orders/*', 'access' => 'permitAll'],
+            ['pattern' => '/files/*.json', 'access' => 'permitAll'],
+            ['pattern' => '/api/items/1*', 'access' => 'permitAll'],
+            ['pattern' => '*', 'access' => 'authenticated'],
+        ]],
+    ]));
+
+    expect($security->requirementsFor(openApiSecurityRoute('/api/orders/{id}')))->toBe([])
+        ->and($security->requirementsFor(openApiSecurityRoute('/files/{name}.json')))->toBe([])
+        // A pattern that covers only SOME of the paths the template produces covers none of them here:
+        // `api/items/1*` matches `api/items/17` and not `api/items/abc`, so publishing the operation as
+        // public would be a lie to every caller of the second kind. Deny-by-default is the honest answer.
+        ->and($security->requirementsFor(openApiSecurityRoute('/api/items/{id}')))->toHaveCount(1);
+});
+
 it('matches the root path the way `$request->path()` spells it', function (): void {
     // Laravel answers '/' for the root and never '', so a rule written '/' is the rule that covers it —
     // normalising that one pattern to an empty string would leave the home page matching nothing.

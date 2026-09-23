@@ -16,6 +16,12 @@ use Firefly\Validation\Constraint\NotBlank;
  * and an empty array satisfied every part of the Schema-Object shape test except emptiness. The map was then
  * read as a Schema Object declaring no type, and the sibling `enum` member serialised as `"enum": []` — a
  * JSON array where the meta-schema requires a Schema Object.
+ *
+ * `mixed $security` is the same trap for the OTHER exception the serialiser now makes. An operation's
+ * `security` member holds Security Requirement Objects whose scope lists must stay JSON arrays, empty ones
+ * included — and `security` is also a perfectly ordinary property name, whose unconstrained schema here is
+ * `[]` and must still be `{}`. The exemption is keyed on the value's SHAPE for that reason, and this member
+ * is what proves it.
  */
 final class KeywordRequest
 {
@@ -25,5 +31,6 @@ final class KeywordRequest
         public readonly mixed $enum = null,
         public readonly mixed $default = null,
         public readonly mixed $example = null,
+        public readonly mixed $security = null,
     ) {}
 }
