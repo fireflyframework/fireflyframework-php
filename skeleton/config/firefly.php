@@ -1893,6 +1893,29 @@ return [
         'lock' => [
             'provider' => env('FIREFLY_SCHEDULING_LOCK', 'none'),
         ],
+
+        /*
+         | `#[Scheduled(initialDelay: '10m')]` — wait this long after the first tick the application serves,
+         | then resume the normal cadence. Laravel's frequency DSL cannot express it, so it is applied as a
+         | per-tick `when()` predicate against an ANCHOR written to the cache the first time a task is seen.
+         | The anchor is in the cache, not in process memory, because the baseline deployment is a cron-driven
+         | `schedule:run` — a fresh process every minute, whose own start time would restart the window
+         | forever and hang the task silently.
+         |
+         | `store` names the cache store the anchor lives in ('' = the default store). A store that does not
+         | persist between requests (`array`, `null`) means the delay elapses once per process: right under a
+         | resident scheduler, harmless in tests, wrong under cron.
+         |
+         | Setting `enabled` to false REFUSES TO BOOT an application whose manifest carries an initialDelay,
+         | rather than accepting the parameter and ignoring it — which is what happened for two releases and
+         | is the behaviour this key exists to make impossible.
+         |
+         | Defaults: enabled true, store ''.
+        */
+        'initial-delay' => [
+            'enabled' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_ENABLED', true),
+            'store' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_STORE', ''),
+        ],
     ],
 
     /*

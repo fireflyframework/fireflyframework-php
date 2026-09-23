@@ -9,6 +9,7 @@ use Firefly\Context\Boot\BootPhase;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Scheduling\Boot\ScheduleWiringPass;
 use Firefly\Scheduling\Lock\DistributedLock;
 use Firefly\Scheduling\Lock\NoneLock;
@@ -163,4 +164,92 @@ it('keeps the minute-and-above buckets as they were', function () {
 
     expect($five->expression)->toBe('*/5 * * * *')
         ->and($hour->expression)->toBe('0 * * * *');
+});
+
+/*
+ * `initialDelay` WAS CAPTURED AND THEN READ BY NOBODY. The scanner compiled it into the descriptor, the
+ * descriptor carried it into the manifest, and the wiring pass never looked at it — so a task an author
+ * believed would wait ten minutes ran on the very first tick and nothing anywhere said otherwise. It is now
+ * a per-tick `Event::when()` predicate over a cache-held anchor (see InitialDelayGate), and the predicate
+ * itself is asserted end-to-end in tests/Schedule/InitialDelayCapstoneTest.php, over a real application.
+ * What belongs HERE is the other half: with the gate switched off, the parameter must be REFUSED at boot
+ * rather than quietly ignored again.
+ */
+
+/**
+ * @param  list<ScheduledDescriptor>  $descriptors
+ */
+function scheduleWithInitialDelayGate(array $descriptors, bool $enabled): Schedule
+{
+    $container = new Container;
+    Container::setInstance($container);
+    $container->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
+    {
+        public function store($name = null)
+        {
+            return new CacheRepository(new ArrayStore);
+        }
+    });
+    $container->instance(DistributedLock::class, new NoneLock);
+    $container->instance(ScheduledManifest::class, new ScheduledManifest($descriptors));
+
+    $config = new Config(new Repository(['firefly' => ['scheduling' => ['initial-delay' => ['enabled' => $enabled]]]]));
+    $profiles = new Profiles([]);
+
+    (new ScheduleWiringPass)->run(new BootContext(
+        container: $container,
+        definitions: new BeanDefinitionRegistry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+    ));
+
+    return $container->make(Schedule::class);
+}
+
+it('REFUSES TO BOOT when the gate is off and the manifest still carries an initialDelay', function () {
+    $refuse = fn () => scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m', initialDelay: '10m'),
+    ], enabled: false);
+
+    expect($refuse)->toThrow(
+        ConfigurationException::class,
+        "#[Scheduled(initialDelay: '10m')] on ".ScheduledJobs::class.'::reconcile',
+    );
+});
+
+it('refuses from run() itself, before any cache manager or Schedule is involved', function () {
+    // The refusal lives in run(), NOT in the deferred hook, so a plain web boot says so too — the
+    // misconfiguration cannot hide until the next cron minute on a machine nobody is watching. Nothing is
+    // bound here but the manifest and the lock: the refusal must not need the anchor store to reach it.
+    $container = new Container;
+    Container::setInstance($container);
+    $container->instance(DistributedLock::class, new NoneLock);
+    $container->instance(ScheduledManifest::class, new ScheduledManifest([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m', initialDelay: '10m'),
+    ]));
+
+    $config = new Config(new Repository(['firefly' => ['scheduling' => ['initial-delay' => ['enabled' => false]]]]));
+    $profiles = new Profiles([]);
+
+    $run = fn () => (new ScheduleWiringPass)->run(new BootContext(
+        container: $container,
+        definitions: new BeanDefinitionRegistry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+    ));
+
+    expect($run)->toThrow(ConfigurationException::class);
+});
+
+it('boots with the gate off when no descriptor asks for an initial delay', function () {
+    $schedule = scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m'),
+    ], enabled: false);
+
+    expect($schedule->events())->toHaveCount(1)
+        ->and($schedule->events()[0]->expression)->toBe('* * * * *');
 });
