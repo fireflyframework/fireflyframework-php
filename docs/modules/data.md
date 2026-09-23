@@ -276,12 +276,13 @@ a bare `ValueError` or `TypeError`. On a derived method the `SELECT` list is `co
 method the SQL owns its select list. A missing required column and a `NULL` into a non-nullable parameter are
 `ConfigurationException`s at first use, naming both the column and the parameter (the columns are checked
 against the table before the query runs — sqlite would otherwise read an unknown double-quoted identifier as a
-string literal). `findFirst…` returns one DTO or null; `count`/`exists`/`delete` ignore a projection. A **trailing `Pageable`
-combines** with the projection on a derived method: the window is taken in the database and one DTO is
-hydrated per row of it (`Slice` over-fetches `size + 1` for `hasNext`); `firefly.data.projection.pageable`
-restores the old unpaged list.
+string literal). `findFirst…` returns one DTO or null; `count`/`exists`/`delete` ignore a projection.
 Interface-style projections (Spring's `interface OrderSummary { String getCustomer(); }`) are not offered —
 PHP has no proxy that could implement an interface by column name at runtime; declare the DTO.
+
+A **trailing `Pageable` combines** with the projection on a derived method: the window is taken in the
+database and one DTO is hydrated per row of it (`Slice` over-fetches `size + 1` for `hasNext`);
+`firefly.data.projection.pageable` restores the old unpaged list.
 
 ### `#[Lock]`
 
