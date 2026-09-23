@@ -213,19 +213,36 @@ final class ErrorPage
      * A frame on ONE LINE, whatever the width.
      *
      * The order is the order a reader scans: where in the stack, whose code, which directory, WHICH FILE,
-     * which line, what was called. Only `.dir` and `.call` may be clipped, because only they have a
-     * discardable end; the file name and the line number are the answer and are never shortened.
+     * which line, what was called.
+     *
+     * WHAT THE ELLIPSIS TAKES, AND FROM WHICH END. `text-overflow:ellipsis` always drops the END of a span,
+     * so the only honest way to protect a token is to give it a span of its own that cannot shrink. Three
+     * tokens have one: the file name, the line, and the FUNCTION — `->get()` — because those are what tell
+     * one frame from another. A Laravel trace is sixty `Illuminate\…` frames whose method names are the
+     * only difference between them, and printing the call as a single span clipped exactly that away:
+     * sixty rows reading `Illuminate\Database\Eloq…`. So the call is split the way the path already was,
+     * into a shrinkable `.cls` and a `.fn` that is `flex:none`.
+     *
+     * That leaves `.dir` and `.cls` as the two spans the row is willing to lose the tail of, and the loss
+     * is not free: `.cls` loses a class name the neighbouring file name repeats, which costs nothing, but
+     * `.dir` loses its innermost directories, which is real. It is ranked last anyway — the file name, the
+     * line and the package badge beside it are enough to find the file, and a row has to give up something
+     * before it wraps.
      */
     private static function row(ErrorFrame $frame): string
     {
         $package = $frame->package();
+        $qualifier = $frame->callQualifier();
 
         return '<span class="ix">'.self::e('#'.$frame->index).'</span>'
             .($package === null ? '' : '<span class="pkg">'.self::e($package).'</span>')
             .'<span class="dir">'.self::e($frame->dir()).'</span>'
             .'<span class="base">'.self::e($frame->base()).'</span>'
             .'<span class="ln">'.($frame->line === null ? '' : self::e(':'.$frame->line)).'</span>'
-            .'<span class="call">'.self::e($frame->call).'</span>';
+            .'<span class="call">'
+            .($qualifier === '' ? '' : '<span class="cls">'.self::e($qualifier).'</span>')
+            .'<span class="fn">'.self::e($frame->callFunction()).'</span>'
+            .'</span>';
     }
 
     /**
@@ -378,19 +395,33 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .frames li:last-child{border-bottom:0}
 /* ONE LINE PER FRAME. The old rule was flex-wrap:wrap with overflow-wrap:anywhere on the path and
    margin-left:auto on the call, so every row became a wrapped path plus a third line for the call — an
-   87px pitch that made a hundred-frame trace 10,108 pixels tall. Only .dir and .call may shrink. */
+   87px pitch that made a hundred-frame trace 10,108 pixels tall. Only .dir and .cls may shrink. */
 .frames .row,.frames summary{display:flex;gap:8px;align-items:baseline;padding:7px 16px;min-width:0;flex-wrap:nowrap;white-space:nowrap}
 .frames summary{cursor:pointer;list-style:none}
 .frames summary::-webkit-details-marker{display:none}
 .frames summary::before{content:"▸";color:var(--ink-3);font-size:10px;flex:none}
 .frames details[open] summary::before{content:"▾"}
-.frames summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+/* THE RING IS DRAWN IN --brand-ink, NOT --brand. A focus indicator is a non-text contrast target: WCAG
+   2.1 SC 1.4.11 asks for 3:1 against what it sits on, and #e07a17 measures 3.01:1 on a white panel and
+   2.86:1 on --panel-2, which is exactly where the dependency disclosure's ring is drawn. Passing by 0.01
+   on one ground and failing on the other is not a contrast decision, it is an accident. --brand-ink is
+   the token this file already keeps for the brand as a foreground: 5.63:1 and 5.35:1 on those two grounds
+   in light, and identical to --brand in dark, where both are #ff9d3c. */
+.frames summary:focus-visible{outline:2px solid var(--brand-ink);outline-offset:-2px}
 .frames .ix{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:none;min-width:2.8em;text-align:right}
 .frames .pkg{font-size:11px;line-height:1.7;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:0 5px;flex:none;max-width:13em;overflow:hidden;text-overflow:ellipsis}
 .frames .dir{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
 .frames .base{font-family:var(--mono);font-size:12.5px;color:var(--ink);flex:none}
 .frames .ln{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);flex:none}
-.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+/* The call is the path's twin: .cls is the qualifier and may be ellipsised, .fn is the method name and is
+   the token that tells sixty Illuminate frames apart, so it never shrinks. A nested flex rather than two
+   row items, so the pair stays glued (the row's 8px gap would print `Collection ->each()`). */
+.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;display:flex;align-items:baseline}
+.frames .call .cls{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+/* flex:none, with one guard: PHP 8.4 names a closure `{closure:/abs/path/file.php:14}`, so a "function
+   name" can be a hundred characters of absolute path. The cap sits far above any real method name and
+   bites only that case, which would otherwise push the row out past the panel. */
+.frames .call .fn{flex:none;max-width:24em;overflow:hidden;text-overflow:ellipsis}
 /* The application's own frames are the point of the page; the dependency ones are context. */
 .frames li.own{border-left:3px solid var(--brand);background:var(--panel)}
 .frames li.own .base{font-weight:600}
@@ -402,7 +433,8 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .deps>summary::-webkit-details-marker{display:none}
 .deps>summary::before{content:"▸";color:var(--ink-3);font-size:10px}
 .deps[open]>summary::before{content:"▾"}
-.deps>summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+/* The one control a keyboard reader MUST operate to reach the dependency frames, on --panel-2. */
+.deps>summary:focus-visible{outline:2px solid var(--brand-ink);outline-offset:-2px}
 .deps .dn{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
 .deps-list{border-top:1px solid var(--line)}
 .src{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border-top:1px solid var(--line);display:block;overflow-x:auto}
@@ -418,7 +450,11 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
   .sheet{padding:32px 14px 48px}
   .status b{font-size:48px}
   .frames .pkg{display:none}
-  .frames .call{max-width:38%}
+  /* The qualifier goes entirely, before the method name loses a character: on a phone row
+     `Illuminate\Database\Eloquent\Builder` is what `Builder.php` two columns to its left already said,
+     and `->get()` is not said anywhere else. */
+  .frames .call .cls{display:none}
+  .frames .call .fn{max-width:14em}
   .frames .ix{min-width:2.2em}
 }
 CSS;

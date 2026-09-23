@@ -601,7 +601,30 @@ it('labels a dependency frame with its package, which was dead until the paths w
     expect($html)->toMatch('#<span class="pkg">[a-z0-9._-]+/[a-z0-9._-]+</span>#');
 });
 
-it('keeps every text token above 4.5:1 on every ground it is printed on', function () {
+it('gives the method name a span of its own, so the token a vendor frame is known by is never the clipped end', function () {
+    $settings = new ErrorPageSettings(trace: true, hints: false, maxFrames: 60);
+    // A Pest run reaches this closure through its own vendor code, so the trace really is a deep vendor
+    // stack — the shape the row was designed for and the one that exposed the bug.
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    $vendor = count(array_filter($error->frames, static fn ($f): bool => $f->vendor));
+
+    expect($vendor)->toBeGreaterThan(5)
+        // `.call` used to be one ellipsised span, and a call is `Class->method()`: the clip took the METHOD
+        // NAME and kept the namespace every Illuminate frame shares. The pair is now the path's pair.
+        ->and($html)->toMatch('#<span class="cls">[^<]+</span><span class="fn">(-&gt;|::)[A-Za-z_]#')
+        ->toContain('.frames .call .fn{flex:none;')
+        ->toContain('.frames .call .cls{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}')
+        // A phone drops the qualifier whole rather than shortening the method name.
+        ->toContain('.frames .call .cls{display:none}')
+        // The old single span, with the whole call inside the shrinkable box, must not come back.
+        ->not->toContain('.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;overflow:hidden')
+        // The synthetic throw frame has no qualifier at all, so the slot is simply not printed.
+        ->and($html)->toContain('<span class="fn">throw</span>');
+});
+
+it('keeps every text token above 4.5:1, and the focus ring above 3:1, on every ground each is drawn on', function () {
     // --ink-3 was #8d95a1 in light (2.80:1 on the page ground, 3.02:1 on a panel) and #6c7883 in dark
     // (3.76:1 on the inset panel). It carries the call, the frame index and the panel counts — small text a
     // reader is asked to compare, which is the last place to spend contrast.
@@ -635,4 +658,21 @@ it('keeps every text token above 4.5:1 on every ground it is printed on', functi
         ->and($ratio('#828e99', '#0f1214'))->toBeGreaterThan(4.5)
         ->and($ratio('#828e99', '#15191c'))->toBeGreaterThan(4.5)
         ->and($ratio('#828e99', '#181d21'))->toBeGreaterThan(4.5);
+
+    // THE FOCUS RING, which is not text and so is measured against SC 1.4.11's 3:1, not 4.5:1. It is drawn
+    // on two grounds: a frame's summary on --panel, and the dependency disclosure — the one control a
+    // keyboard reader MUST operate to reach the frames behind it — on --panel-2. In --brand those measured
+    // 3.01:1 and 2.86:1, so the ring on the control that matters most was the one below the floor.
+    expect($html)->toContain('--brand-ink:#a1520a')
+        ->toContain('.frames summary:focus-visible{outline:2px solid var(--brand-ink)')
+        ->toContain('.deps>summary:focus-visible{outline:2px solid var(--brand-ink)')
+        // Pinned as a string so the token cannot silently go back to the shape one that fails.
+        ->not->toContain('outline:2px solid var(--brand)')
+        ->and($ratio('#a1520a', '#ffffff'))->toBeGreaterThan(3.0)
+        ->and($ratio('#a1520a', '#faf9f6'))->toBeGreaterThan(3.0)
+        // Dark leaves the ring on --brand's own value; both tokens are #ff9d3c there.
+        ->and($ratio('#ff9d3c', '#15191c'))->toBeGreaterThan(3.0)
+        ->and($ratio('#ff9d3c', '#181d21'))->toBeGreaterThan(3.0)
+        // And the value that was failing is recorded as failing, so the swap cannot be undone by accident.
+        ->and($ratio('#e07a17', '#faf9f6'))->toBeLessThan(3.0);
 });

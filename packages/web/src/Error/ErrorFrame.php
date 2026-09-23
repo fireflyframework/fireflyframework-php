@@ -8,6 +8,10 @@ namespace Firefly\Web\Error;
  * One stack frame, with the two things that make a trace readable: whether it is YOURS, and what the code
  * around it says.
  *
+ * Both of its halves — the path and the call — are offered SPLIT, because the page prints each on one line
+ * and a line runs out of width. `dir()`/`base()` and `callQualifier()`/`callFunction()` are the same idea
+ * twice: a qualifier that may be ellipsised, and the token that identifies the frame and never may.
+ *
  * A raw PHP trace is forty frames of which perhaps four are the application's, and the rest are the
  * framework walking its own dispatch. Marking the application's frames is what turns scrolling into
  * reading, and it is decided by path — a frame under `vendor/` belongs to a dependency — which is crude,
@@ -52,6 +56,60 @@ final readonly class ErrorFrame
         $at = $this->separator();
 
         return $at < 0 ? $this->shortFile : substr($this->shortFile, $at + 1);
+    }
+
+    /**
+     * The part of $call BEFORE its last qualifier — the class or the namespace — without the separator;
+     * '' when the call carries none (`throw`, `array_map()`, `{closure}`).
+     *
+     * This is the half of a call a row is allowed to clip, and it is the half a path clips too: for
+     * `Illuminate\Database\Eloquent\Builder->get()` it is everything the neighbouring `Builder.php` already
+     * says, printed once more only because a reader scanning for a namespace wants to see it.
+     */
+    public function callQualifier(): string
+    {
+        $at = $this->callSplit();
+
+        return $at < 0 ? '' : substr($this->call, 0, $at);
+    }
+
+    /**
+     * The function half of $call, WITH the separator that introduces it (`->get()`, `::make()`, `\collect()`).
+     *
+     * NEVER shortened, for the same reason base() is not. A Laravel trace is sixty `Illuminate\…` frames
+     * whose qualifiers differ by a segment or two and whose METHOD NAMES are the only tokens that tell them
+     * apart; a row that clipped its way to `Illuminate\Database\Eloq…` would have printed sixty identical
+     * lines.
+     */
+    public function callFunction(): string
+    {
+        $at = $this->callSplit();
+
+        return $at < 0 ? $this->call : substr($this->call, $at);
+    }
+
+    /**
+     * The offset of the last `->`, `::` or `\` in $call, or -1 when there is none.
+     *
+     * Searched only BEFORE the first `{`, because a closure names itself inside braces and PHP 8.4 puts a
+     * file path in there — `App\Jobs\Sync::{closure:C:\app\Jobs\Sync.php:31}()` carries three separators
+     * that belong to a Windows path, and cutting at one of those would split the descriptor in half.
+     */
+    private function callSplit(): int
+    {
+        $brace = strpos($this->call, '{');
+        $scan = $brace === false ? $this->call : substr($this->call, 0, $brace);
+
+        $at = -1;
+        foreach (['->', '::', '\\'] as $marker) {
+            $found = strrpos($scan, $marker);
+
+            if ($found !== false && $found > $at) {
+                $at = $found;
+            }
+        }
+
+        return $at;
     }
 
     /**

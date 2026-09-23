@@ -29,7 +29,13 @@ it('renders a domain not-found with the throw site open', function (): void {
         ->assertSee('ORDER_NOT_FOUND')
         ->assertSee('That order does not exist.')
         ->assertSee('ResourceNotFoundException')
-        ->assertSee('app/Orders/OrderService.php')
+        // WAVE UX-E: a frame row prints its path as TWO spans — a directory that may be ellipsised when
+        // the row runs out of width, and a file name that never may. `assertSee('app/Orders/OrderService.php')`
+        // only ever matched because Playwright concatenates sibling text with no separator; it asserted a
+        // string the document no longer contains anywhere. Both halves are named instead, so the assertion
+        // says what the page actually promises and fails loudly if either span is dropped.
+        ->assertSee('OrderService.php')
+        ->assertSourceHas('<span class="dir">app/Orders/</span><span class="base">OrderService.php</span>')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-404-domain-debug');
 });
