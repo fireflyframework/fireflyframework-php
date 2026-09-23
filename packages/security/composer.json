@@ -41,10 +41,12 @@
         "illuminate/support": "^13.0"
     },
     "require-dev": {
-        "firefly/actuator": "*@dev"
+        "firefly/actuator": "*@dev",
+        "firefly/openapi": "*@dev"
     },
     "suggest": {
-        "firefly/actuator": "The /actuator/health endpoint whose `when-authorized` show-details this package answers (SecurityActuatorAutoConfiguration)."
+        "firefly/actuator": "The /actuator/health endpoint whose `when-authorized` show-details this package answers (SecurityActuatorAutoConfiguration).",
+        "firefly/openapi": "The OpenAPI document whose per-operation `security` this package fills in from the compiled method-security rules (MethodSecurityRequirementContributor)."
     },
     "extra": {
         "laravel": {

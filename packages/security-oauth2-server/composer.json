@@ -44,6 +44,12 @@
         "illuminate/support": "^13.0",
         "psr/log": "^3.0"
     },
+    "require-dev": {
+        "firefly/openapi": "*@dev"
+    },
+    "suggest": {
+        "firefly/openapi": "The OpenAPI document this server contributes its `authorizationCode` flow to, so a generated client can complete it (AuthorizationServerSchemeContributor)."
+    },
     "extra": {
         "laravel": {
             "providers": [

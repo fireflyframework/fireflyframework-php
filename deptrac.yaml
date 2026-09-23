@@ -325,6 +325,15 @@ deptrac:
     # direction is Security -> Actuator and NEVER the reverse: firefly/actuator must keep working in an
     # application with no security at all, so it names no principal, no role and no authority.
     # SecurityOAuth2Server -> Actuator is the precedent.
+    #
+    # The => OpenApi edge is ONE class (src/OpenApi): firefly/openapi owns a SecurityRequirementContributor /
+    # SecuritySchemeContributor port with no default beyond its own config-driven reader, and this package
+    # fills it with the facts configuration cannot express — the compiled method-security rules here, the
+    # authorization server's own flow URLs and client scopes in security-oauth2-server. Guarded by
+    # #[ConditionalOnClass], so an application without firefly/openapi never loads the class; firefly/openapi
+    # is a `suggest`, not a require. The direction is Security -> OpenApi and NEVER the reverse: the
+    # generator names no Security type, which is what keeps it generating a document in an app with no
+    # security at all.
     Security:
       - Kernel
       - Container
@@ -336,6 +345,7 @@ deptrac:
       - Cqrs
       - Validation
       - Actuator
+      - OpenApi
 
     # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
     # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and
@@ -361,6 +371,15 @@ deptrac:
     # EloquentRepository::save() tests its entity against Domain's RecordsDomainEvents, so the three
     # src/Eloquent/*ModelRepository subclasses carry that edge without naming a Domain type themselves. No file
     # in this package may import Firefly\Domain\*; a store is a store, not an aggregate.
+    #
+    # The => OpenApi edge is ONE class (src/OpenApi): firefly/openapi owns a SecuritySchemeContributor port,
+    # and this server fills it with the one security fact configuration cannot express — it IS the
+    # authorization server, so its `authorizationCode` flow URLs are its own endpoints under its own issuer
+    # and the scopes it grants are the union of what its registered clients ask for. Guarded by
+    # #[ConditionalOnClass], so an application without firefly/openapi never loads the class;
+    # firefly/openapi is a `suggest`, not a require. The direction is SecurityOAuth2Server -> OpenApi and
+    # NEVER the reverse: the generator names no OAuth2 server type, which is what keeps it generating a
+    # document in an app that issues no tokens.
     SecurityOAuth2Server:
       - Kernel
       - Container
@@ -374,6 +393,7 @@ deptrac:
       - Actuator
       - Scheduling
       - Resilience
+      - OpenApi
 
     # Actuator is a top-of-stack capability (like Web/Cqrs/Security): health/info/introspection endpoints mounted on
     # the illuminate Router by a route-registration BootPass. It reads Config, carries Container stereotypes + Context
