@@ -20,9 +20,21 @@ namespace Firefly\Admin\Table;
  * `border-box` on this page: `width:7.5ch` on a padded cell is 7.5 characters INCLUDING the padding, which
  * is about 34px of content and clips the verb `DELETE`. `--row-x` is published on `:root` by the layout
  * from TableSettings, and a custom property inherits into `<col>` like any other, so the `calc()` resolves
- * against whatever density the deployment configured. Flexible columns then split `100%` minus the sum of
- * those rigid widths, in proportion to their weights. Mixing `%` and `ch` inside one `calc()` is legal and
- * resolves at used-value time against the table's own width.
+ * against whatever density the deployment configured. Flexible columns are a PLAIN PERCENTAGE: this
+ * column's weight over the sum of the weights, and nothing else.
+ *
+ * WHY A BARE PERCENTAGE, AND NOT THE SUBTRACTION IT READS LIKE. The obvious expression is "one hundred
+ * percent, minus what the rigid columns took, times this column's share" — and it is the one arrangement
+ * that does not reach the browser. A `<col>` width whose `calc()` mixes a percentage with a SUBTRACTED
+ * length is not resolvable by the fixed-layout algorithm, and Chromium falls back to `auto`, which is the
+ * equal-share behaviour this class exists to prevent. Measured on the Routes colgroup written that way:
+ * 453/454/452 on a 1445px table — three identical columns where the weights 5/4/3 asked for 567/454/340.
+ * The subtraction is unnecessary anyway, because the fixed-layout algorithm already performs it: it gives
+ * every column with a declared length that length, then distributes what REMAINS among the percentage
+ * columns in proportion to their percentages. The same colgroup with `41.6667% / 33.3333% / 25%` renders
+ * 567/453/340, which is the 5:4:3 split of what the pill column left. Only the ratios between the
+ * percentages are ever read, so they never have to sum to anything in particular — and an all-flexible
+ * table, where they do sum to 100%, comes out the same way.
  *
  * `ch` IS A MONOSPACE ADVANCE HERE, ON PURPOSE. `ch` resolves against the `<col>`'s own font, which
  * inherits from `<table>` — 13px sans — while the cells these widths are sized for are 12.5px mono. The
@@ -48,27 +60,18 @@ final readonly class TableView
      */
     public function widths(): array
     {
-        $characters = 0.0;
-        $rigid = 0;
         $weight = 0.0;
 
         foreach ($this->columns as $column) {
-            if ($column->isRigid()) {
-                $characters += $column->width;
-                $rigid++;
-
-                continue;
+            if (! $column->isRigid()) {
+                $weight += $column->width;
             }
-
-            $weight += $column->width;
         }
-
-        $taken = self::number($characters).'ch + '.$rigid.' * 2 * var(--row-x)';
 
         return array_map(
             fn (TableColumn $column): string => $column->isRigid()
                 ? 'calc('.self::number($column->width).'ch + 2 * var(--row-x))'
-                : 'calc((100% - ('.$taken.')) * '.self::number($weight > 0.0 ? $column->width / $weight : 0.0).')',
+                : self::number($weight > 0.0 ? $column->width / $weight * 100 : 0.0).'%',
             $this->columns,
         );
     }

@@ -40,9 +40,16 @@ it('emits a rigid width as characters plus both cell paddings', function () {
     expect($view->widths()[0])->toBe('calc(7.5ch + 2 * var(--row-x))');
 });
 
-// A flexible column takes a share of what the rigid ones left, computed here rather than left to the
-// browser: `table-layout:fixed` splits leftover width EVENLY between columns with no width, which is how a
-// one-word Name column ends up as wide as a fully-qualified class name.
+/**
+ * A FLEXIBLE COLUMN IS A PLAIN PERCENTAGE, AND THE ALTERNATIVE IS WHY THIS ASSERTION IS LITERAL. The
+ * expression this once emitted — `calc((100% - (7.5ch + 1 * 2 * var(--row-x))) * 0.4167)` — is valid CSS
+ * and is still not a width: a `<col>` whose `calc()` mixes a percentage with a SUBTRACTED length is not
+ * resolvable by the fixed-layout algorithm, so Chromium falls back to `auto` and every flexible column
+ * collapses to an identical share. Measured on this exact colgroup: 453/454/452 on a 1445px table, where
+ * 5/4/3 asked for 567/454/340. A bare percentage needs no subtraction because the layout engine already
+ * subtracts — it honours the declared lengths first and splits the REMAINDER between the percentage
+ * columns in proportion to their percentages, which is 567/453/340 for the widths below.
+ */
 it('shares the remaining width between the flexible columns in proportion to their weight', function () {
     $view = TableView::of(
         TableColumn::pill('httpMethod', 'Method', ch: 7.5),
@@ -53,20 +60,27 @@ it('shares the remaining width between the flexible columns in proportion to the
 
     expect($view->widths())->toBe([
         'calc(7.5ch + 2 * var(--row-x))',
-        'calc((100% - (7.5ch + 1 * 2 * var(--row-x))) * 0.4167)',
-        'calc((100% - (7.5ch + 1 * 2 * var(--row-x))) * 0.3333)',
-        'calc((100% - (7.5ch + 1 * 2 * var(--row-x))) * 0.25)',
+        '41.6667%',
+        '33.3333%',
+        '25%',
     ]);
 });
 
-it('subtracts every rigid column and every one of their paddings', function () {
+// The rigid columns are subtracted by the LAYOUT ENGINE, not here, so adding a second one changes what the
+// flexible column is measured against without changing the percentage it declares. This is the assertion
+// that stops the subtraction creeping back into the expression.
+it('leaves the rigid columns for the layout engine to subtract', function () {
     $view = TableView::of(
         TableColumn::pill('method', 'Method', ch: 7.5),
         TableColumn::number('status', 'Status', ch: 6),
         TableColumn::path('path', 'Path', weight: 1),
     );
 
-    expect($view->widths()[2])->toBe('calc((100% - (13.5ch + 2 * 2 * var(--row-x))) * 1)');
+    expect($view->widths())->toBe([
+        'calc(7.5ch + 2 * var(--row-x))',
+        'calc(6ch + 2 * var(--row-x))',
+        '100%',
+    ]);
 });
 
 it('gives an all-rigid table no percentage arithmetic at all', function () {
@@ -78,10 +92,15 @@ it('gives an all-rigid table no percentage arithmetic at all', function () {
 it('gives an all-flexible table the whole width to share', function () {
     $view = TableView::of(TableColumn::text('key', 'Key', weight: 1), TableColumn::text('value', 'Value', weight: 3));
 
-    expect($view->widths())->toBe([
-        'calc((100% - (0ch + 0 * 2 * var(--row-x))) * 0.25)',
-        'calc((100% - (0ch + 0 * 2 * var(--row-x))) * 0.75)',
-    ]);
+    expect($view->widths())->toBe(['25%', '75%']);
+});
+
+// A weight of zero is a column that asked for nothing rather than a division by zero, and `0%` under a
+// fixed layout is a column the engine gives no share of the remainder to — which is what was asked for.
+it('gives a weightless flexible column no share instead of a division by zero', function () {
+    $view = TableView::of(TableColumn::pill('a', 'A', ch: 4), TableColumn::text('b', 'B', weight: 0));
+
+    expect($view->widths())->toBe(['calc(4ch + 2 * var(--row-x))', '0%']);
 });
 
 it('publishes its keys and the subset that may be sorted', function () {

@@ -16,7 +16,13 @@ it('lays the Routes table out with an explicit colgroup instead of leaving it to
         // The pill column's width carries BOTH cell paddings, because box-sizing is border-box here and a
         // bare 7.5ch is 7.5 characters minus 28px — which is where DELETE went.
         ->toContain('<col style="width:calc(7.5ch + 2 * var(--row-x))">')
-        ->toContain('calc((100% - (7.5ch + 1 * 2 * var(--row-x)))');
+        // The three flexible columns are bare percentages — 5/4/3 of the weight, not a `calc()` that
+        // subtracts the pill column. A `<col>` width mixing a percentage with a subtracted length is not
+        // resolvable under `table-layout:fixed` and Chromium silently sizes the column `auto` instead,
+        // which is the equal-thirds layout this whole colgroup exists to replace.
+        ->toContain('<col style="width:41.6667%">')
+        ->toContain('<col style="width:33.3333%">')
+        ->toContain('<col style="width:25%">');
 });
 
 it('types every cell of the Routes table by the vocabulary', function () {

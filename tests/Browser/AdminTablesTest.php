@@ -51,9 +51,16 @@ it('does not clip the verb DELETE in the method column', function (): void {
         ->assertNoJavaScriptErrors();
 });
 
-// The handler column used to absorb every spare pixel through `.cls{max-width:0;width:100%}` and fling the
-// Name column to the far edge. Every column now has a declared width, and none of them is the whole table.
-it('gives every column a declared width and none of them the whole table', function (): void {
+/**
+ * THE WEIGHTS, IN PIXELS, BECAUSE A BOUND PROVES NOTHING HERE. The handler column used to absorb every
+ * spare pixel through `.cls{max-width:0;width:100%}` and fling the Name column to the far edge; the
+ * colgroup declares 5/4/3 instead. This assertion is the declared proportion itself and not "no column is
+ * wider than 60% of the table", because that bound holds perfectly on a broken page: the first colgroup
+ * emitted a `calc()` mixing a percentage with a subtracted length, which is not resolvable under
+ * `table-layout:fixed`, so Chromium sized all three columns `auto` and drew equal thirds — 453/454/452 on
+ * a 1445px table, every one of them comfortably under 60%.
+ */
+it('splits the width the pill column leaves 5:4:3 between Path, Handler and Name', function (): void {
     /** @var AdminDashboardBrowserTestCase $this */
     visit('/firefly/mappings')
         ->assertScript(<<<'JS'
@@ -61,10 +68,29 @@ it('gives every column a declared width and none of them the whole table', funct
                 const table = document.querySelector('table.ftable');
                 const cols = [...table.querySelectorAll('col')];
                 if (cols.length !== 4) { return 'expected four cols, got ' + cols.length; }
-                const widths = [...table.querySelectorAll('thead th')].map(th => th.getBoundingClientRect().width);
-                return getComputedStyle(table).tableLayout === 'fixed'
-                    && widths.every(w => w > 40)
-                    && Math.max(...widths) < table.getBoundingClientRect().width * 0.6;
+                const layout = getComputedStyle(table).tableLayout;
+                if (layout !== 'fixed') { return 'table-layout is ' + layout; }
+
+                const got = [...table.querySelectorAll('thead th')].map(th => th.getBoundingClientRect().width);
+
+                // The pill column is 7.5 characters PLUS both cell paddings, and both halves are measured
+                // rather than assumed: `ch` is the mono advance the sheet gives `table.ftable colgroup`,
+                // and `--row-x` follows whatever density the deployment configured.
+                const ruler = document.createElement('div');
+                ruler.style.cssText = 'position:absolute;visibility:hidden;font:12.5px var(--mono);width:7.5ch';
+                document.body.appendChild(ruler);
+                const rowX = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-x'));
+                const pill = ruler.getBoundingClientRect().width + 2 * rowX;
+                ruler.remove();
+
+                // What the fixed-layout engine hands to the percentage columns is everything the declared
+                // length left, and 5/4/3 of that is what the Routes view asked for.
+                const leftover = table.getBoundingClientRect().width - got[0];
+                const want = [pill, leftover * 5 / 12, leftover * 4 / 12, leftover * 3 / 12];
+
+                return want.every((w, i) => Math.abs(w - got[i]) <= 2)
+                    || 'got ' + got.map(w => w.toFixed(1)).join('/')
+                       + ', wanted ' + want.map(w => w.toFixed(1)).join('/');
             })()
             JS, true)
         ->assertNoJavaScriptErrors();
@@ -99,4 +125,43 @@ it('searches and sorts on the server, from links that keep the rest of the state
         ->assertQueryStringHas('q', 'orders')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'admin-mappings-searched');
+});
+
+/**
+ * THE AUTO-LAYOUT PAGES STILL DEPEND ON `overflow-wrap:anywhere`, AND NOTHING USED TO SAY SO. Seven
+ * listings that this wave has not rebuilt yet — env, configprops, beans, health, http, metrics, the
+ * overview — still draw their cells as `td.mono.wrap` under `table-layout:auto`, where the column widths
+ * come from the CONTENT. Per CSS Text 3 only `anywhere` contributes its break opportunities to min-content
+ * sizing, so it is the one value that lets a token with no break of its own wrap INSIDE its column instead
+ * of widening the table past the panel; `break-word` looks equivalent, breaks the same token at render
+ * time, and sizes the column to the whole token.
+ *
+ * The scenario seeds its own worst case rather than hoping the process holds a long value: what is under
+ * test is min-content sizing, so the input has to be a run with no break opportunity in it, and the
+ * resolved `firefly.*` configuration this page happens to render is not reliably one.
+ */
+it('keeps a long unbreakable value inside the Environment panel', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/env')
+        ->assertScript(<<<'JS'
+            (() => {
+                const body = document.querySelector('#env-body');
+                if (body === null) { return 'no env table on the page'; }
+                const wrapper = body.closest('.tw');
+                const overflow = () => wrapper.scrollWidth - wrapper.clientWidth;
+
+                const before = overflow();
+                const row = document.createElement('tr');
+                row.innerHTML = '<td class="mono wrap"></td><td class="mono dim wrap"></td>';
+                row.children[0].textContent = 'firefly.browser-fixture.long';
+                row.children[1].textContent = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5'.repeat(3);
+                body.appendChild(row);
+                const after = overflow();
+                row.remove();
+
+                return (before <= 1 && after <= 1)
+                    || 'the env table overflows its panel: ' + before + 'px before the long value, ' + after + 'px after';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
 });

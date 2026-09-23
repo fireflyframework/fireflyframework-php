@@ -289,14 +289,16 @@
         td.text{max-width:64ch}
         td.num.pin{width:1%}
         /*
-           `break-word`, NOT `anywhere`, AND THE DIFFERENCE IS THE WHOLE ROUTES BUG. Per CSS Text 3 both
-           break an unbreakable token at render time, but `anywhere` also CONTRIBUTES its break
-           opportunities to min-content sizing — so under auto layout a path's minimum width became one
-           glyph, the layout engine gave it three characters, and `/greetings/{name}` rendered as six
-           stacked lines beside 1100px of empty column. `break-word` breaks the same token and leaves
-           intrinsic sizing alone, which is exactly the distinction the code wanted.
+           `anywhere`, AND IT HAS TO STAY `anywhere` HERE. Per CSS Text 3 both values break an unbreakable
+           token at render time; only `anywhere` also CONTRIBUTES its break opportunities to min-content
+           sizing. Under `table-layout:auto` — which is every table still carrying this class: env,
+           configprops, beans, health, http, metrics and the overview — min-content sizing is the whole
+           layout, and it is what keeps a base64 key or a JSON blob INSIDE its column. Measured with
+           `break-word` instead: a 130-character `FIREFLY_…` value made an env table 1253px wide inside a
+           618px panel. The fixed-layout listings do not want this trade and do not take it — see
+           `table.ftable td.t-text` below.
         */
-        .wrap{overflow-wrap:break-word}
+        .wrap{overflow-wrap:anywhere}
 
         /*
            THE TWO-LINE QUALIFIED CELL. A fully-qualified class name has no spaces, so any wrap breaks it
@@ -350,6 +352,10 @@
             font-family:var(--mono);font-size:12.5px;white-space:nowrap;text-overflow:ellipsis;
         }
         table.ftable td.t-line{color:var(--ink-2)}
+        /* `break-word`, NOT `anywhere`, and here the difference costs nothing: a fixed layout takes its
+           widths from the <colgroup> and never asks a cell for its min-content size, so the only thing
+           either value decides is where a long token breaks when it is drawn. `break-word` keeps whole
+           words whole and breaks only what has no break of its own, which is how a wrapped message reads. */
         table.ftable td.t-text{overflow-wrap:break-word}
         table.ftable td.t-qual{font-family:var(--mono)}
         /* A sorted header's arrow. One per table: ListingQuery::indicator() returns '' for every other column. */
