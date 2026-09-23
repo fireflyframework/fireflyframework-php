@@ -4,46 +4,23 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
-## [26.09.3] - 2026-09-22
+## [26.09.4] - 2026-09-23
 
-Seven waves of Spring parity, and the documentation that finally tells the truth about them. Tracing is
-OpenTelemetry-shaped and propagates W3C `traceparent` through the web filter chain, the `Http` client, both
-CQRS buses and every EDA envelope, and structured `json`/`ecs`/`logstash` logging carries the same trace and
-span ids onto every record. `firefly/data` reaches Spring Data parity — the kernel's typed
-`DataAccessException` family in place of driver errors, query by example behind `Specification`,
-`#[Modifying]`, `#[Projection]`, `#[Lock]` and `#[EntityGraph]` compiled into the manifest, `Slice`,
-a `#[Transactional(timeout:)]` that is enforced rather than carried, `#[TransactionalEventListener]` in four
-phases, and `db` health on by default. `firefly/security` reaches Spring Security parity — a
-session-persisted security context, form login on the framework's own page, HTTP Basic, logout, remember-me,
-an entry point that negotiates a login redirect against a bare 401, method security on any stereotyped bean
-through a generalised interceptor chain rather than on controllers alone, principal injection through a new
-`HandlerMethodArgumentResolver` port, and the authentication event family — and two new packages,
-`firefly/security-oauth2-client` and `firefly/security-oauth2-server`, sign an application in with a provider
-and let it be one. Constraint violations are Spring-shaped, each carrying the `constraint` that failed, and
-`#[Valid]` cascades into list elements. Tests reach the browser: a Pest 4 + Playwright harness with a CI job
-of its own. And the documentation caught up with all of it — a guard over every Markdown file this
-repository ships, in four parts: a listing that names a source file is compared **verbatim** against that
-file, a listing showing code the reader writes in their own application is marked illustrative and is still
-parsed and resolved against real class names, an illustrative block shaped like `config/firefly.php` is
-flattened back to dotted keys so that the nested configuration a package front page opens on is checked
-setting by setting, and every listing, marked or not, is held to the `firefly.*` keys, artisan signatures and
-`composer` scripts it names. Four new diagrams drawn from that same source, a
-redesigned site, and a fifteenth chapter in both editions.
+The gaps a second real application had to work around, closed in the framework instead. Every entry below
+began as a place where an application on `26.09.3` wrote framework-shaped code of its own — a metric wrapper
+around a method, a retry loop, a publisher per broker, a security rule that silently matched nothing — and
+each one is now a `firefly.*` key and an attribute the compiled manifest carries.
 
-Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
-application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught
-at a hundred and forty-four sites, three exception renderables registered ahead of the framework's, a
-RouteMatched listener validating ids, a replacement JWKS provider, thirty-five hand-written role checks, a
-whole Kafka consumer command, and a shell script whose body was one line. Each fix was reproduced by a
-failing test first, and each one deletes a workaround downstream.
+`firefly/observability` gains Micrometer's method attributes: `#[Timed]`, `#[Counted]` and `#[Observed]`
+compile into the same interceptor chain `#[Transactional]` rides, and the scanner REFUSES the shapes that
+would compile into nothing — a metric on a class no post-processor reaches, on a `final` class or method,
+and the two shapes PHP does not inherit, a class-level attribute on a base and a method an unannotated
+override hides. `firefly/resilience` puts the six patterns on that same chain as attributes rather than
+wrappers. The three EDA brokers publish through one port. `initialDelay` is applied rather than carried.
 
-Alongside them, `firefly/data` reaches Spring Data parity: a driver failure now leaves a repository or a
-`#[Transactional]` method as a typed member of the kernel's `DataAccessException` family with a fixed sentence
-and never the statement, query by example is a `Specification`, `#[Modifying]`/`#[Projection]`/`#[Lock]`/
-`#[EntityGraph]` and `Slice` are compiled into the manifest by the one scanner the package already had,
-`#[Transactional(timeout:)]` is enforced rather than carried, `#[TransactionalEventListener]` runs in four
-phases, and the actuator's `db` health indicator is on whenever a database is configured — every behaviour
-behind a documented `firefly.data.*` key and tested through the real Testbench pipeline.
+And the ids a problem document invites you to quote now resolve. `traceId` is the W3C trace id the backend
+knows, `correlationId` is its own member beside it, and both travel as response headers — with the deliberate
+exception of a deployment with tracing off, where every byte is what it was.
 
 ### BREAKING
 
@@ -67,32 +44,6 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   parameter (`HealthDetailsAuthorizer $authorizer`), so an application that constructs it directly rather than
   resolving the bean must pass one — `new DenyHealthDetailsAuthorizer` reproduces the old behaviour exactly.
 
-- **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
-  `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
-  names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new
-  `ConditionalHealthIndicator::available()` hook, which `HealthContributorRegistrar` honours). A failing or
-  missing database is reported DOWN and `/actuator/health` answers **503**; an application with no default
-  database gets no `db` component at all. **Migration:** `FIREFLY_HEALTH_DB_ENABLED=false` (or
-  `firefly.management.endpoint.health.db.enabled => false`) removes the indicator. An application whose
-  `config/firefly.php` was generated before this release still has the old `false` written out and keeps the
-  old behaviour until it edits that line.
-
-- **`packages/web` — problem+json no longer discloses an unhandled throwable's message when `app.debug` is
-  on.** The JSON renderer shared the HTML page's `firefly.web.error-page.trace` gate, which follows
-  `app.debug` — the wrong gate for a machine surface. Every local and compose environment sets `APP_DEBUG`,
-  so a console fed by problem+json rendered a duplicate-key insert as the DSN, the tenant id, the acting user
-  and the full statement in a red banner, while the HTML page beside it withheld everything. The problem
-  document now has its own gate, **`firefly.web.problem.disclose`**, default `false`, inheriting from
-  nothing. **Migration:** a developer who wants driver messages inside JSON `detail` sets that key; nothing
-  else changes, and the message is still on the exception for the log.
-
-- **`packages/web` — the router's own 404 and 405 sentences are replaced with ones written for a person.**
-  `The route api/x could not be found.` becomes `There is nothing at this address.` and `The GET method is
-  not supported for route api/x. Supported methods: POST.` becomes `This address only accepts POST.`, with
-  the verbs in an `allowed` extension member and the `Allow` header copied through (it used to be dropped).
-  "Route" is the framework's word and the path is already in `instance`. An author's `abort(404, '…')`
-  message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
-  not on the router's sentence.
 
 - **`packages/web` — problem+json's `traceId` is the W3C trace id, and the correlation id is its own member.**
   A member named after a trace carried a uuid no trace backend had ever heard of, so the one action a problem
@@ -109,65 +60,6 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   (`FIREFLY_WEB_TRACE_ID_ENABLED=false`) restores the previous value in all three surfaces and writes no new
   header, and `firefly.web.trace-id.header => ''` drops only the header. It is deliberately not W3C
   `traceresponse`, which LaraFly does not implement.
-
-- **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
-  denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
-  rule asked for in a `requiredAuthorities` extension member; the class, method, principal and authorities go
-  to the log at warning. One real application kept every `#[PreAuthorize]` at `isAuthenticated()` and judged
-  roles by hand at thirty-five sites because a consultant had read a class name on a panel. **Migration:**
-  assert on `ACCESS_DENIED` and `requiredAuthorities`, not on the sentence.
-
-- **`packages/security` — a JWKS outage is a `503 JWKS_UNAVAILABLE`, not a `401 INVALID_TOKEN`.**
-  `OAuth2ResourceServerFilter` wrapped every throwable from `JWT::decode($token, $this->jwks->keys())` — the
-  key fetch included — as an invalid token, so an unreachable issuer told every caller their token was bad and
-  a well-behaved client rotated a good one. The keys are resolved before the try that maps decoding failures.
-  `RemoteJwksProvider` throws `JwksUnavailableException` (a `ServiceUnavailableException`) for every fetch
-  failure — 5xx, refused, timed out, not JSON — where it used to let the HTTP client's `RequestException`
-  escape. **Migration:** a test asserting `RequestException` asserts `JwksUnavailableException`.
-
-- **`packages/security` — a method-security refusal for an ANONYMOUS caller at the CQRS bus is a `401`, not a
-  `403`.** `MethodSecurityMessageEnforcer` used to answer `ACCESS_DENIED` whether or not anyone was signed in; it now
-  shares `MethodSecurityEvaluator` with the dispatcher guard and the proxy interceptor, and all three say
-  `AUTHENTICATION_FAILED` for nobody and `ACCESS_DENIED` for somebody. **Migration:** a test asserting a 403 for an
-  anonymous command asserts a 401.
-
-- **`packages/security` — a `final` bean carrying method-security rules that no dispatch seam enforces refuses
-  `firefly:cache` (and the uncached boot).** A `#[Service]`/`#[Component]`/`#[Repository]` with `#[PreAuthorize]` and
-  the like is now proxied so the rule is actually enforced; the proxy must extend the class. Before this wave those
-  rules were silently unenforced. **Migration:** remove `final`, or move the rule onto the controller or handler.
-  The same scan refuses a `#[PreFilter]` on a `#[RestController]`/`#[Controller]` action (the dispatcher cannot
-  rewrite the arguments it resolved) and a `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no
-  `#[Component]`-family stereotype (nothing would enforce it). **Migration:** move the filter onto the service the
-  action calls; add a stereotype to the class.
-
-- **`packages/web` — `ControllerSecurityGuard` gains `afterInvocation()`.** An implementation outside this repo adds
-  the method (return `$result` to keep the old behaviour). `ArgumentResolver`'s constructor takes an optional third
-  `HandlerMethodArgumentResolvers`. `RouteScanner` records two optional binding keys (`attributes`, `nullable`) and
-  compiles an interface-typed parameter as a `service` binding rather than a query parameter.
-
-- **`packages/data` — the proxy engine is a `MethodInterceptor` chain.** `TransactionalBeanPostProcessor` is constructed
-  from a `ProxyPlan` and an `InterceptorRegistry`; `ProxyMethod` takes a list of `BoundAdvice` instead of a
-  `TransactionalDescriptor`; `ProxyMaterializer::materialize()` takes a planner and a plan; `TransactionInterceptor`
-  implements `MethodInterceptor`. Every proxy member name, `ProxyFactory::wrap()`'s first four parameters and the
-  compiled `transactional.php` are unchanged; `firefly:cache` additionally writes `proxy-plan.php`. **Migration:** run
-  `php artisan firefly:cache` once.
-
-- **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
-  `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
-  poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
-  catch in the process, that killed the worker onto the same offset for ever. The adapters catch `Throwable`
-  around the decode, not `SerializationException` alone, and `JsonSerializer::deserialize()` now refuses a
-  member of the wrong type (a string `payload`, an int `eventType`, a non-string header) and an unparseable
-  `timestamp` as a `SerializationException` instead of leaking a `TypeError` or a
-  `DateMalformedStringException` out of `EventEnvelope::fromArray`. `ConsumerLoop` nacks a poison record
-  without requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
-  `RabbitMqEventConsumer` lets the queue's DLX take it. `RdKafkaConsumerClient` and `RabbitMqEventConsumer`
-  take the `Serializer` port rather than `JsonSerializer` (a widening; every caller still passes
-  `JsonSerializer`). **Migration:** an `EventConsumer` implementation outside this repo reads
-  `$received->envelope` as nullable (`?->`), a `KafkaConsumerClient` implements `deadLetterRaw(string $raw,
-  string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
-  well-keyed body expects `SerializationException`.
-
 - **`packages/security` — a URL rule written `/api/*` stops being a dead rule, so every `/`-prefixed rule you
   have changes what it does on upgrade.** `HttpSecurityFilter` matches `Str::is($rule->pattern,
   $request->path())`, and Laravel's `path()` never carries a leading slash, so `['pattern' =>
@@ -326,6 +218,249 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   `invocableClone()` per repetition and proceeds on that, exactly as Spring Retry does. Each clone carries
   its own cursor and its own argument list, so every repetition re-enters the whole chain below the link
   (the transaction most of all) and an inner `setArguments()` stays scoped to its own repetition.
+- **`packages/web` — every problem document carries `traceId`, `correlationId` and both id headers.**
+  `traceId` is the id a person quotes — the request's **W3C trace id** when tracing gave it a valid span, the
+  correlation id when it did not — and it is echoed on `X-Trace-Id`; `correlationId` is always the correlation
+  id (`CorrelationIdFilter::of()`: Context, then the header, then minted), echoed on `X-Correlation-Id` and
+  untouched by any of this. An opaque 5xx names the first of the two: `An unexpected error occurred. It has
+  been logged; quote reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum
+  execution time of N seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500
+  quoting the engine.
+  problem+json publishes as `traceId` and the response echoes on `X-Trace-Id`: the W3C trace id when the
+  request had a valid span, the correlation id when it did not. A `Correlation` fact row holding the
+  `X-Correlation-Id` value sits beside it, and is omitted when the two ids are the same string. Found by the
+  browser suite.
+- **`packages/eda-rabbitmq`, `packages/eda-kafka`, `packages/eda-postgres` — the three broker publishers stamp
+  `traceparent`.** Their `publish()` methods build the envelope inside `EdaTracing::tracePublish()` instead of
+  beside it, so the message that reaches the exchange, the topic or the `firefly_eda_outbox` row carries the
+  PRODUCER span's `traceparent` and the consumer on the far side continues the trace. The consume side was
+  already traced through `SubscriberRegistrySink`, so until now one of our own traces stopped at the broker
+  while a foreign producer's was continued. On Postgres it covers **both** writers of a row — the
+  `EventPublisher` bean and the in-transaction `OutboxPreCommitHook`, which under `provider=postgres` is the
+  only path a `DomainEvent` takes — so the traced row is the one that commits with the aggregate; and
+  `firefly:outbox:relay` wraps its forward in `traceConsume()` of the claimed row, so the downstream producer
+  span is a child of the trace the row carries rather than a new root that overwrites it. New key
+  **`firefly.eda.tracing.brokers.enabled`** (default `true`) keeps in-process spans while putting no trace
+  identifier on a wire a third party reads; it is read in one place, `Firefly\Eda\Tracing\BrokerTracing`, by the
+  three publisher beans AND by `RelayDownstream`, because a gate that lives only in a bean fails open wherever
+  the container autowires a publisher instead. The relay applies it whether its downstream names a shipped
+  adapter by the alias (`rabbitmq`) or by that adapter's own class-string — two spellings of one downstream,
+  which now take the same configured path and carry `firefly.eda.rabbitmq.exchange` / the Kafka broker list
+  across it alike. A publisher the framework ships no adapter for stays yours to construct and yours to gate.
+
+- **`packages/scheduling` — `initialDelay` is applied.** The parameter has been carried through the compiled
+  descriptor and read by nothing since M7, because Laravel's frequency DSL cannot say "run once after a delay,
+  then resume the cadence". It is now a per-tick `Event::when()` predicate against an **anchor written to the
+  cache** the first time a task is seen — the cache, not process memory, because a cron-driven `schedule:run`
+  is a fresh process every minute whose own start time would restart the window forever and hang the task in
+  silence. The anchor therefore needs a store shared across processes under cron, which `ScheduleWiringPass`
+  **warns** about as the Schedule is built when it is not; the `null` driver, which cannot read back its own
+  write, makes the gate **admit** the tick and say so once rather than hang. The anchor has no expiry, so by
+  default a delay is armed once in the life of its cache key (a one-off warm-up); `initial-delay.release`
+  names the deployment and gives every release its own quiet period. Switching
+  `firefly.scheduling.initial-delay.enabled` off now **REFUSES TO BOOT** an application whose manifest carries
+  an `initialDelay`, and an unparseable duration is refused at boot too — the predicate runs inside
+  `filtersPass()`, which Laravel does not wrap, so a throw there would abort the whole minute's run.
+  `firefly.scheduling.initial-delay.*`.
+
+- **`packages/resilience` — an idle TTL for breaker and limiter records.** `CircuitBreaker` and `RateLimiter`
+  refresh an `idle-ttl` (default `720h`) on **every** store write, admitted or rejected, so a key in use can
+  never expire — the expiry is always further away than the next call, and an OPEN breaker cannot vanish
+  mid-outage — while a key nothing has touched for a month is reclaimed instead of living in the store
+  forever. `Bulkhead` has always worked this way through `permit-ttl`. A non-positive value means never
+  expire; `null` does too, which is the right choice for a `refill-rate: 0` hard quota that must not be handed
+  back.
+
+- **`packages/data` — a `#[Projection]` and a trailing `Pageable` combine**, paging **in the database** and
+  hydrating one DTO per row of the window (`Slice` fetches `size + 1` and reports `hasNext`). The projection
+  arm used to return before the pageable one, so `findByStatus(string $status, Pageable $p): Page` selected
+  the DTO's columns and then handed back every matching row unpaged — a list where the method's own declared
+  return type said `Page`, on exactly the wide list screens a projection is for.
+  `firefly.data.projection.pageable` restores the old shape for one release.
+
+- **`packages/observability` — the log ids reach a channel built after boot.** `LogManager` pushes
+  `Illuminate\Contracts\Log\ContextLogProcessor` onto every channel it creates, `Log::build()` included, so
+  the framework binds that contract to `FireflyContextLogProcessor` — Laravel's own context processor
+  preserved inside it, then the correlation id and the W3C trace ids, resolved per record so the `Tracer` need
+  not be bound when the binding is made. A per-tenant file a job opens is now correlatable. The structured
+  **formatter** still does not reach an on-demand channel — it is set on handlers built from a config array
+  this package never sees — and `docs/modules/logging.md` says so. `firefly.logging.structured.all-channels`.
+
+### Changed
+
+- **`packages/resilience` — `CircuitBreaker::__construct()` and `RateLimiter::__construct()` now default
+  `$idleTtl` to `DEFAULT_IDLE_TTL` (2592000.0 seconds, thirty days) rather than `null`,** so an instance
+  built BY HAND — not only one the registry builds — is bounded. The framework's own
+  `TokenEndpointRateLimiter` is such an instance. **Migration:** an application that constructs either
+  directly and relies on an unbounded record must now pass `idleTtl: null` explicitly. The sharpest case is a
+  `RateLimiter` with `refillRate: 0.0` — a hard quota rather than a rate — whose quota is now handed back
+  after thirty days of silence where before it never was.
+
+### Fixed
+
+- **`packages/openapi` — a success response documents what the action actually returns.** The generator read a
+  declared return type only when it was a single named class it could reflect, and published that class's
+  PUBLIC PROPERTIES whatever it was — so the most useful part of the document was wrong exactly where real
+  applications live. An Eloquent model (what every repository returns) was documented as `incrementing`,
+  `exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column; a `JsonResponse` as `original`,
+  `exception` and a `ResponseHeaderBag`; a Laravel paginator as `onEachSide`; `@return Page<Order>` as one bare
+  `Page` whose `items` were anything; `Parcel|Label` and `int|string` as any value, and `?Parcel` without its
+  null. The document now follows `ResponseFactory` and `JsonMessageConverter` in their own order: a returned
+  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`) however that
+  class reaches the generator — a declared type, an arm of a `JsonResponse|RedirectResponse` union (`*/*`, since
+  the action picks at runtime and no arm's media type or status is the one sent), a `@return` line on an action
+  with no declared type, or an `#[ApiResponse(type:)]` — and never as a component built from its internals, a rule
+  the schema factory now enforces at its own door rather than at one caller. Markup is documented as
+  `text/html`, an `Arrayable` from `toArray()` — an Eloquent model from its `@property` tags or, untagged, from
+  its key, `$fillable`, casts, timestamps, `$appends` and relations, minus `$hidden` — before a
+  `JsonSerializable`, and Laravel's three paginators as the envelopes they write. Generic instantiations are
+  bound to the class's `@template` parameters and become components named springdoc's way (`PageOrder`,
+  `LengthAwarePaginatorOrder`), `@extends` included; union, nullable and intersection types are documented on
+  returns, response members and request members alike (a union-typed request member is also `required` again).
+  A Laravel API resource is its `toArray()` shape inside the envelope its `$wrap` names, and a resource
+  collection the list of what it collects (`#[Collects]`, `$collects` or the naming convention).
+  An `#[ApiResponse]` without a `type` no longer erases the body: on the success status it keeps the derived
+  schema and only replaces the description, and on an error status it documents the problem+json body the
+  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values. The
+  built-in viewer (`viewer.style: builtin`) draws all of it: components by name, unions and nullable nested
+  objects arm by arm, maps and lists of components — where it used to show `any`, `object[]` or nothing.
+
+- **`packages/web` — a returned paginator was rendered as pagination links instead of written as data.**
+  `ResponseFactory` checked `Htmlable` before handing a value to the JSON converter, and `AbstractPaginator` is
+  `Htmlable`, so a `#[RestController]` returning `->paginate()` answered with link markup (or a `TypeError` with
+  no view factory bound). A value that is also `Arrayable` or `JsonSerializable` now reaches the converter
+  first, as Laravel's own `Response::shouldBeJson()` decides; a View, Renderable or Htmlable that is neither
+  still renders as `text/html`.
+
+## [26.09.3] - 2026-09-22
+
+Seven waves of Spring parity, and the documentation that finally tells the truth about them. Tracing is
+OpenTelemetry-shaped and propagates W3C `traceparent` through the web filter chain, the `Http` client, both
+CQRS buses and every EDA envelope, and structured `json`/`ecs`/`logstash` logging carries the same trace and
+span ids onto every record. `firefly/data` reaches Spring Data parity — the kernel's typed
+`DataAccessException` family in place of driver errors, query by example behind `Specification`,
+`#[Modifying]`, `#[Projection]`, `#[Lock]` and `#[EntityGraph]` compiled into the manifest, `Slice`,
+a `#[Transactional(timeout:)]` that is enforced rather than carried, `#[TransactionalEventListener]` in four
+phases, and `db` health on by default. `firefly/security` reaches Spring Security parity — a
+session-persisted security context, form login on the framework's own page, HTTP Basic, logout, remember-me,
+an entry point that negotiates a login redirect against a bare 401, method security on any stereotyped bean
+through a generalised interceptor chain rather than on controllers alone, principal injection through a new
+`HandlerMethodArgumentResolver` port, and the authentication event family — and two new packages,
+`firefly/security-oauth2-client` and `firefly/security-oauth2-server`, sign an application in with a provider
+and let it be one. Constraint violations are Spring-shaped, each carrying the `constraint` that failed, and
+`#[Valid]` cascades into list elements. Tests reach the browser: a Pest 4 + Playwright harness with a CI job
+of its own. And the documentation caught up with all of it — a guard over every Markdown file this
+repository ships, in four parts: a listing that names a source file is compared **verbatim** against that
+file, a listing showing code the reader writes in their own application is marked illustrative and is still
+parsed and resolved against real class names, an illustrative block shaped like `config/firefly.php` is
+flattened back to dotted keys so that the nested configuration a package front page opens on is checked
+setting by setting, and every listing, marked or not, is held to the `firefly.*` keys, artisan signatures and
+`composer` scripts it names. Four new diagrams drawn from that same source, a
+redesigned site, and a fifteenth chapter in both editions.
+
+Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
+application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught
+at a hundred and forty-four sites, three exception renderables registered ahead of the framework's, a
+RouteMatched listener validating ids, a replacement JWKS provider, thirty-five hand-written role checks, a
+whole Kafka consumer command, and a shell script whose body was one line. Each fix was reproduced by a
+failing test first, and each one deletes a workaround downstream.
+
+Alongside them, `firefly/data` reaches Spring Data parity: a driver failure now leaves a repository or a
+`#[Transactional]` method as a typed member of the kernel's `DataAccessException` family with a fixed sentence
+and never the statement, query by example is a `Specification`, `#[Modifying]`/`#[Projection]`/`#[Lock]`/
+`#[EntityGraph]` and `Slice` are compiled into the manifest by the one scanner the package already had,
+`#[Transactional(timeout:)]` is enforced rather than carried, `#[TransactionalEventListener]` runs in four
+phases, and the actuator's `db` health indicator is on whenever a database is configured — every behaviour
+behind a documented `firefly.data.*` key and tested through the real Testbench pipeline.
+
+### BREAKING
+
+- **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
+  `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
+  names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new
+  `ConditionalHealthIndicator::available()` hook, which `HealthContributorRegistrar` honours). A failing or
+  missing database is reported DOWN and `/actuator/health` answers **503**; an application with no default
+  database gets no `db` component at all. **Migration:** `FIREFLY_HEALTH_DB_ENABLED=false` (or
+  `firefly.management.endpoint.health.db.enabled => false`) removes the indicator. An application whose
+  `config/firefly.php` was generated before this release still has the old `false` written out and keeps the
+  old behaviour until it edits that line.
+
+- **`packages/web` — problem+json no longer discloses an unhandled throwable's message when `app.debug` is
+  on.** The JSON renderer shared the HTML page's `firefly.web.error-page.trace` gate, which follows
+  `app.debug` — the wrong gate for a machine surface. Every local and compose environment sets `APP_DEBUG`,
+  so a console fed by problem+json rendered a duplicate-key insert as the DSN, the tenant id, the acting user
+  and the full statement in a red banner, while the HTML page beside it withheld everything. The problem
+  document now has its own gate, **`firefly.web.problem.disclose`**, default `false`, inheriting from
+  nothing. **Migration:** a developer who wants driver messages inside JSON `detail` sets that key; nothing
+  else changes, and the message is still on the exception for the log.
+
+- **`packages/web` — the router's own 404 and 405 sentences are replaced with ones written for a person.**
+  `The route api/x could not be found.` becomes `There is nothing at this address.` and `The GET method is
+  not supported for route api/x. Supported methods: POST.` becomes `This address only accepts POST.`, with
+  the verbs in an `allowed` extension member and the `Allow` header copied through (it used to be dropped).
+  "Route" is the framework's word and the path is already in `instance`. An author's `abort(404, '…')`
+  message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
+  not on the router's sentence.
+
+- **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
+  denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
+  rule asked for in a `requiredAuthorities` extension member; the class, method, principal and authorities go
+  to the log at warning. One real application kept every `#[PreAuthorize]` at `isAuthenticated()` and judged
+  roles by hand at thirty-five sites because a consultant had read a class name on a panel. **Migration:**
+  assert on `ACCESS_DENIED` and `requiredAuthorities`, not on the sentence.
+
+- **`packages/security` — a JWKS outage is a `503 JWKS_UNAVAILABLE`, not a `401 INVALID_TOKEN`.**
+  `OAuth2ResourceServerFilter` wrapped every throwable from `JWT::decode($token, $this->jwks->keys())` — the
+  key fetch included — as an invalid token, so an unreachable issuer told every caller their token was bad and
+  a well-behaved client rotated a good one. The keys are resolved before the try that maps decoding failures.
+  `RemoteJwksProvider` throws `JwksUnavailableException` (a `ServiceUnavailableException`) for every fetch
+  failure — 5xx, refused, timed out, not JSON — where it used to let the HTTP client's `RequestException`
+  escape. **Migration:** a test asserting `RequestException` asserts `JwksUnavailableException`.
+
+- **`packages/security` — a method-security refusal for an ANONYMOUS caller at the CQRS bus is a `401`, not a
+  `403`.** `MethodSecurityMessageEnforcer` used to answer `ACCESS_DENIED` whether or not anyone was signed in; it now
+  shares `MethodSecurityEvaluator` with the dispatcher guard and the proxy interceptor, and all three say
+  `AUTHENTICATION_FAILED` for nobody and `ACCESS_DENIED` for somebody. **Migration:** a test asserting a 403 for an
+  anonymous command asserts a 401.
+
+- **`packages/security` — a `final` bean carrying method-security rules that no dispatch seam enforces refuses
+  `firefly:cache` (and the uncached boot).** A `#[Service]`/`#[Component]`/`#[Repository]` with `#[PreAuthorize]` and
+  the like is now proxied so the rule is actually enforced; the proxy must extend the class. Before this wave those
+  rules were silently unenforced. **Migration:** remove `final`, or move the rule onto the controller or handler.
+  The same scan refuses a `#[PreFilter]` on a `#[RestController]`/`#[Controller]` action (the dispatcher cannot
+  rewrite the arguments it resolved) and a `#[PostAuthorize]`/`#[PreFilter]`/`#[PostFilter]` on a class with no
+  `#[Component]`-family stereotype (nothing would enforce it). **Migration:** move the filter onto the service the
+  action calls; add a stereotype to the class.
+
+- **`packages/web` — `ControllerSecurityGuard` gains `afterInvocation()`.** An implementation outside this repo adds
+  the method (return `$result` to keep the old behaviour). `ArgumentResolver`'s constructor takes an optional third
+  `HandlerMethodArgumentResolvers`. `RouteScanner` records two optional binding keys (`attributes`, `nullable`) and
+  compiles an interface-typed parameter as a `service` binding rather than a query parameter.
+
+- **`packages/data` — the proxy engine is a `MethodInterceptor` chain.** `TransactionalBeanPostProcessor` is constructed
+  from a `ProxyPlan` and an `InterceptorRegistry`; `ProxyMethod` takes a list of `BoundAdvice` instead of a
+  `TransactionalDescriptor`; `ProxyMaterializer::materialize()` takes a planner and a plan; `TransactionInterceptor`
+  implements `MethodInterceptor`. Every proxy member name, `ProxyFactory::wrap()`'s first four parameters and the
+  compiled `transactional.php` are unchanged; `firefly:cache` additionally writes `proxy-plan.php`. **Migration:** run
+  `php artisan firefly:cache` once.
+
+- **`packages/eda` — `ReceivedEnvelope::$envelope` is nullable, and `KafkaConsumerClient` gains
+  `deadLetterRaw()`.** A record the serializer cannot decode is now a *poison* record (`ReceivedEnvelope::
+  poison()`: raw bytes, failure, destination) rather than an exception thrown out of `poll()`, outside every
+  catch in the process, that killed the worker onto the same offset for ever. The adapters catch `Throwable`
+  around the decode, not `SerializationException` alone, and `JsonSerializer::deserialize()` now refuses a
+  member of the wrong type (a string `payload`, an int `eventType`, a non-string header) and an unparseable
+  `timestamp` as a `SerializationException` instead of leaking a `TypeError` or a
+  `DateMalformedStringException` out of `EventEnvelope::fromArray`. `ConsumerLoop` nacks a poison record
+  without requeue and keeps polling; `KafkaEventConsumer` produces the raw bytes to `<topic>.DLT` and commits;
+  `RabbitMqEventConsumer` lets the queue's DLX take it. `RdKafkaConsumerClient` and `RabbitMqEventConsumer`
+  take the `Serializer` port rather than `JsonSerializer` (a widening; every caller still passes
+  `JsonSerializer`). **Migration:** an `EventConsumer` implementation outside this repo reads
+  `$received->envelope` as nullable (`?->`), a `KafkaConsumerClient` implements `deadLetterRaw(string $raw,
+  string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
+  well-keyed body expects `SerializationException`.
+
+### Added
 
 - **`packages/security-oauth2-client` — a new package: Spring Security's `oauth2Login()` and `oauth2Client()` (wave B).**
   Client registrations in Spring Boot's shape (`firefly.security.oauth2.client.registration.{id}` / `provider.{id}`)
@@ -467,14 +602,11 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   common statuses. The OpenAPI problem schema declares `additionalProperties: true` so a generated client
   keeps the members an application put there.
 
-- **`packages/web` — every problem document carries `traceId`, `correlationId` and both id headers.**
-  `traceId` is the id a person quotes — the request's **W3C trace id** when tracing gave it a valid span, the
-  correlation id when it did not — and it is echoed on `X-Trace-Id`; `correlationId` is always the correlation
-  id (`CorrelationIdFilter::of()`: Context, then the header, then minted), echoed on `X-Correlation-Id` and
-  untouched by any of this. An opaque 5xx names the first of the two: `An unexpected error occurred. It has
-  been logged; quote reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum
-  execution time of N seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500
-  quoting the engine.
+- **`packages/web` — every problem document carries `traceId` and `X-Correlation-Id`.** The request's
+  correlation id (`CorrelationIdFilter::of()`: Context, then the header, then minted) is in the body and on
+  the response, and an opaque 5xx names it: `An unexpected error occurred. It has been logged; quote
+  reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum execution time of N
+  seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500 quoting the engine.
 
 - **`packages/web` — `#[PathVariable(pattern:, notFoundCode:, notFoundMessage:)]`.** The segment's shape is
   checked by `ArgumentResolver` before the controller runs, and a miss is the entity's own 404 (default
@@ -523,10 +655,7 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 - **`packages/web` — the HTML error page publishes the request reference.** The production 500 now reads
   "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
-  problem+json publishes as `traceId` and the response echoes on `X-Trace-Id`: the W3C trace id when the
-  request had a valid span, the correlation id when it did not. A `Correlation` fact row holding the
-  `X-Correlation-Id` value sits beside it, and is omitted when the two ids are the same string. Found by the
-  browser suite.
+  problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
 
 - **Cross-wave browser scenarios (`tests/Browser/LoginFlowTest.php`, `ObservabilityTest.php`,
   `DataSurfacesTest.php`).** The framework's real form login replaces the harness's `?as=user` stand-in
@@ -593,76 +722,12 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   application bound stays on the plain path. **`firefly.validation.messages`** (`constraint` | `laravel`,
   default `constraint`) is read into a `ValidationSettings` bean.
 
-- **`packages/eda-rabbitmq`, `packages/eda-kafka`, `packages/eda-postgres` — the three broker publishers stamp
-  `traceparent`.** Their `publish()` methods build the envelope inside `EdaTracing::tracePublish()` instead of
-  beside it, so the message that reaches the exchange, the topic or the `firefly_eda_outbox` row carries the
-  PRODUCER span's `traceparent` and the consumer on the far side continues the trace. The consume side was
-  already traced through `SubscriberRegistrySink`, so until now one of our own traces stopped at the broker
-  while a foreign producer's was continued. On Postgres it covers **both** writers of a row — the
-  `EventPublisher` bean and the in-transaction `OutboxPreCommitHook`, which under `provider=postgres` is the
-  only path a `DomainEvent` takes — so the traced row is the one that commits with the aggregate; and
-  `firefly:outbox:relay` wraps its forward in `traceConsume()` of the claimed row, so the downstream producer
-  span is a child of the trace the row carries rather than a new root that overwrites it. New key
-  **`firefly.eda.tracing.brokers.enabled`** (default `true`) keeps in-process spans while putting no trace
-  identifier on a wire a third party reads; it is read in one place, `Firefly\Eda\Tracing\BrokerTracing`, by the
-  three publisher beans AND by `RelayDownstream`, because a gate that lives only in a bean fails open wherever
-  the container autowires a publisher instead. The relay applies it whether its downstream names a shipped
-  adapter by the alias (`rabbitmq`) or by that adapter's own class-string — two spellings of one downstream,
-  which now take the same configured path and carry `firefly.eda.rabbitmq.exchange` / the Kafka broker list
-  across it alike. A publisher the framework ships no adapter for stays yours to construct and yours to gate.
-
-- **`packages/scheduling` — `initialDelay` is applied.** The parameter has been carried through the compiled
-  descriptor and read by nothing since M7, because Laravel's frequency DSL cannot say "run once after a delay,
-  then resume the cadence". It is now a per-tick `Event::when()` predicate against an **anchor written to the
-  cache** the first time a task is seen — the cache, not process memory, because a cron-driven `schedule:run`
-  is a fresh process every minute whose own start time would restart the window forever and hang the task in
-  silence. The anchor therefore needs a store shared across processes under cron, which `ScheduleWiringPass`
-  **warns** about as the Schedule is built when it is not; the `null` driver, which cannot read back its own
-  write, makes the gate **admit** the tick and say so once rather than hang. The anchor has no expiry, so by
-  default a delay is armed once in the life of its cache key (a one-off warm-up); `initial-delay.release`
-  names the deployment and gives every release its own quiet period. Switching
-  `firefly.scheduling.initial-delay.enabled` off now **REFUSES TO BOOT** an application whose manifest carries
-  an `initialDelay`, and an unparseable duration is refused at boot too — the predicate runs inside
-  `filtersPass()`, which Laravel does not wrap, so a throw there would abort the whole minute's run.
-  `firefly.scheduling.initial-delay.*`.
-
-- **`packages/resilience` — an idle TTL for breaker and limiter records.** `CircuitBreaker` and `RateLimiter`
-  refresh an `idle-ttl` (default `720h`) on **every** store write, admitted or rejected, so a key in use can
-  never expire — the expiry is always further away than the next call, and an OPEN breaker cannot vanish
-  mid-outage — while a key nothing has touched for a month is reclaimed instead of living in the store
-  forever. `Bulkhead` has always worked this way through `permit-ttl`. A non-positive value means never
-  expire; `null` does too, which is the right choice for a `refill-rate: 0` hard quota that must not be handed
-  back.
-
-- **`packages/data` — a `#[Projection]` and a trailing `Pageable` combine**, paging **in the database** and
-  hydrating one DTO per row of the window (`Slice` fetches `size + 1` and reports `hasNext`). The projection
-  arm used to return before the pageable one, so `findByStatus(string $status, Pageable $p): Page` selected
-  the DTO's columns and then handed back every matching row unpaged — a list where the method's own declared
-  return type said `Page`, on exactly the wide list screens a projection is for.
-  `firefly.data.projection.pageable` restores the old shape for one release.
-
-- **`packages/observability` — the log ids reach a channel built after boot.** `LogManager` pushes
-  `Illuminate\Contracts\Log\ContextLogProcessor` onto every channel it creates, `Log::build()` included, so
-  the framework binds that contract to `FireflyContextLogProcessor` — Laravel's own context processor
-  preserved inside it, then the correlation id and the W3C trace ids, resolved per record so the `Tracer` need
-  not be bound when the binding is made. A per-tenant file a job opens is now correlatable. The structured
-  **formatter** still does not reach an on-demand channel — it is set on handlers built from a config array
-  this package never sees — and `docs/modules/logging.md` says so. `firefly.logging.structured.all-channels`.
-
 - **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
   page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
   document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"
   [Pattern]`.
 
 ### Changed
-
-- **`packages/resilience` — `CircuitBreaker::__construct()` and `RateLimiter::__construct()` now default
-  `$idleTtl` to `DEFAULT_IDLE_TTL` (2592000.0 seconds, thirty days) rather than `null`,** so an instance
-  built BY HAND — not only one the registry builds — is bounded. The framework's own
-  `TokenEndpointRateLimiter` is such an instance. **Migration:** an application that constructs either
-  directly and relies on an unbounded record must now pass `idleTtl: null` explicitly. The sharpest case is a
-  `RateLimiter` with `refillRate: 0.0` — a hard quota rather than a rate — whose quota is now handed back
-  after thirty days of silence where before it never was.
 
 - **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
   template invariant and started requiring `view-string` for every `Factory::make()` argument; both are
@@ -682,40 +747,6 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   path and the new `constraint` member are the same in both styles.
 
 ### Fixed
-
-- **`packages/openapi` — a success response documents what the action actually returns.** The generator read a
-  declared return type only when it was a single named class it could reflect, and published that class's
-  PUBLIC PROPERTIES whatever it was — so the most useful part of the document was wrong exactly where real
-  applications live. An Eloquent model (what every repository returns) was documented as `incrementing`,
-  `exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column; a `JsonResponse` as `original`,
-  `exception` and a `ResponseHeaderBag`; a Laravel paginator as `onEachSide`; `@return Page<Order>` as one bare
-  `Page` whose `items` were anything; `Parcel|Label` and `int|string` as any value, and `?Parcel` without its
-  null. The document now follows `ResponseFactory` and `JsonMessageConverter` in their own order: a returned
-  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`) however that
-  class reaches the generator — a declared type, an arm of a `JsonResponse|RedirectResponse` union (`*/*`, since
-  the action picks at runtime and no arm's media type or status is the one sent), a `@return` line on an action
-  with no declared type, or an `#[ApiResponse(type:)]` — and never as a component built from its internals, a rule
-  the schema factory now enforces at its own door rather than at one caller. Markup is documented as
-  `text/html`, an `Arrayable` from `toArray()` — an Eloquent model from its `@property` tags or, untagged, from
-  its key, `$fillable`, casts, timestamps, `$appends` and relations, minus `$hidden` — before a
-  `JsonSerializable`, and Laravel's three paginators as the envelopes they write. Generic instantiations are
-  bound to the class's `@template` parameters and become components named springdoc's way (`PageOrder`,
-  `LengthAwarePaginatorOrder`), `@extends` included; union, nullable and intersection types are documented on
-  returns, response members and request members alike (a union-typed request member is also `required` again).
-  A Laravel API resource is its `toArray()` shape inside the envelope its `$wrap` names, and a resource
-  collection the list of what it collects (`#[Collects]`, `$collects` or the naming convention).
-  An `#[ApiResponse]` without a `type` no longer erases the body: on the success status it keeps the derived
-  schema and only replaces the description, and on an error status it documents the problem+json body the
-  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values. The
-  built-in viewer (`viewer.style: builtin`) draws all of it: components by name, unions and nullable nested
-  objects arm by arm, maps and lists of components — where it used to show `any`, `object[]` or nothing.
-
-- **`packages/web` — a returned paginator was rendered as pagination links instead of written as data.**
-  `ResponseFactory` checked `Htmlable` before handing a value to the JSON converter, and `AbstractPaginator` is
-  `Htmlable`, so a `#[RestController]` returning `->paginate()` answered with link markup (or a `TypeError` with
-  no view factory bound). A value that is also `Arrayable` or `JsonSerializable` now reaches the converter
-  first, as Laravel's own `Response::shouldBeJson()` decides; a View, Renderable or Htmlable that is neither
-  still renders as `text/html`.
 
 - **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
   API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context
