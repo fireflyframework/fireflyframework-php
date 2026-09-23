@@ -87,7 +87,7 @@ use ReflectionNamedType;
  *     declares make the magic methods its own. Reached by the class-level fan-out these are skipped in
  *     silence; written EXPLICITLY on `__invoke()` — the single-action-service shape — or on a `public
  *     static`, they are the exact "compiles and is then honoured by nothing" this scan exists to refuse.
- *   - The three #[Fallback] refusals — see assertFallback(), which is the reason this scanner exists at all
+ *   - The five #[Fallback] refusals — see assertFallback(), which is the reason this scanner exists at all
  *     rather than being a copy of the observability one with different attribute names.
  *
  * Runs at cache time (and once per process on an uncached dev boot, through the AdviceSource). Production
@@ -295,22 +295,35 @@ final class ResilienceMethodScanner
     }
 
     /**
-     * The three refusals that make #[Fallback] a compile-time contract rather than a runtime hope.
+     * The five refusals that make #[Fallback] a compile-time contract rather than a runtime hope.
      *
+     *   - A #[Fallback] with no other resilience attribute on the method guards nothing: the method would be
+     *     proxied only to install a try/catch, which is a `try` the author can write themselves and which
+     *     the reader of the class would have no way to see. Refused, with the sentence that says so.
+     *   - The named method must not be the GUARDED METHOD ITSELF. Every other check here waves that one
+     *     through — it exists by construction, and its signature receives its own arguments by construction —
+     *     and at runtime it is the one shape that never terminates: the recovery calls the method back
+     *     through the proxy, which re-enters this advice, fails, recovers, and recurses until the stack ends.
+     *     A breaker does not bound it either; an OPEN breaker's refusal is a Throwable like any other, caught
+     *     by the same fallback that calls the method again.
      *   - The named method must EXIST on the class. Reflection can prove that, so a typo must never reach
      *     production as a `Call to undefined method` raised from inside the catch block that was handling
      *     the outage.
+     *   - The named method must be PUBLIC. The interceptor invokes the recovery as `[$bean, $method](...)`
+     *     from its own scope — a call from OUTSIDE the class, whatever the proxy's own relationship to it —
+     *     so a `protected` or `private` recovery fatals with `Error: Call to protected method` raised, again,
+     *     from inside the catch that was absorbing the outage. `hasMethod()` answers true for both, which is
+     *     why the check above is not enough on its own; `isPublic()` proves it without running anything.
      *   - The named method must be able to RECEIVE the guarded call: its required-parameter count cannot
      *     exceed the guarded method's parameter count plus one (the optional trailing Throwable this
      *     interceptor appends when the last parameter accepts one). Anything looser than that cannot be
      *     proven without running it — a union type, a variadic — and is left to PHP.
-     *   - A #[Fallback] with no other resilience attribute on the method guards nothing: the method would be
-     *     proxied only to install a try/catch, which is a `try` the author can write themselves and which
-     *     the reader of the class would have no way to see. Refused, with the sentence that says so.
      *
-     * The order matters: "carries no other resilience attribute" is asked first, because a lonely #[Fallback]
-     * is wrong whatever it names, and answering it with a paragraph about parameter counts would send its
-     * author to fix the wrong thing.
+     * The order matters, and it is the order above: "carries no other resilience attribute" is asked first,
+     * because a lonely #[Fallback] is wrong whatever it names and answering it with a paragraph about
+     * parameter counts would send its author to fix the wrong thing; the self-reference is asked next,
+     * because a method is always its own compatible signature and every later check would pass; and
+     * existence precedes visibility, which precedes arity, because each one is the premise of the next.
      *
      * @param  ReflectionClass<object>  $reflection
      */
@@ -326,6 +339,16 @@ final class ResilienceMethodScanner
             );
         }
 
+        if ($fallback->method === $guarded->getName()) {
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} names the guarded method itself. The recovery is called on the bean, which "
+                .'is the proxy, so it re-enters this advice, fails again and recovers again — unbounded recursion '
+                .'that ends in a stack overflow rather than in a degraded answer, and an open circuit breaker does '
+                .'not bound it (its refusal is caught by the same fallback). Name a DIFFERENT method that returns '
+                .'the degraded answer.'
+            );
+        }
+
         if (! $reflection->hasMethod($fallback->method)) {
             throw new ConfigurationException(
                 "#[Fallback] on {$site} names fallback method [{$fallback->method}], which ".$reflection->getName()
@@ -335,6 +358,18 @@ final class ResilienceMethodScanner
         }
 
         $recovery = $reflection->getMethod($fallback->method);
+
+        if (! $recovery->isPublic()) {
+            throw new ConfigurationException(
+                "#[Fallback] on {$site} names [{$fallback->method}], which is "
+                .($recovery->isPrivate() ? 'private' : 'protected').'. The interceptor calls the recovery on the '
+                .'bean from OUTSIDE the class, so a non-public method fatals with `Call to '
+                .($recovery->isPrivate() ? 'private' : 'protected').' method` inside the catch that was handling the '
+                .'outage — the one moment it must not. Make the fallback public, or call the pattern through '
+                .'ResilienceRegistry at the call site.'
+            );
+        }
+
         $capacity = $guarded->getNumberOfParameters() + 1;
 
         if ($recovery->getNumberOfRequiredParameters() > $capacity) {

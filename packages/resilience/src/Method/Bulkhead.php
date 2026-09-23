@@ -10,7 +10,7 @@ use Attribute;
  * Resilience4j's `@Bulkhead`, ported: the guarded method must hold one of the
  * `firefly.resilience.bulkhead.<name>` instance's permits for the length of the call, and is refused with a
  * BulkheadFullException when none is free. The attribute carries ONE thing — the instance name — because
- * every knob (`max-concurrent-calls`, `max-wait-duration`) already lives in configuration, where an operator
+ * every knob (`max-concurrent`, `max-wait`, `permit-ttl`) already lives in configuration, where an operator
  * can widen a pool without a deploy. That is Resilience4j's own split, and it is the reason this attribute
  * wraps the programmatic component rather than reimplementing a policy: there is exactly one Bulkhead in
  * this package, its permit count lives in the shared ResilienceStore, and both call paths draw on the SAME

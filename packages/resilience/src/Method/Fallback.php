@@ -22,9 +22,12 @@ use Throwable;
  * A NAMED METHOD THAT DOES NOT EXIST, OR CANNOT RECEIVE THE CALL, IS A ConfigurationException AT SCAN TIME
  * — never a runtime surprise inside a `catch`. The whole point of a fallback is to be the thing that works
  * when nothing else does; discovering at 3am that it was misspelled, inside the handler for the outage it
- * was supposed to absorb, is the single worst moment to find out. The scan checks the method exists and
- * that its required-parameter count can be satisfied by the guarded method's arguments (plus the optional
- * trailing Throwable), which is everything reflection can prove without running it.
+ * was supposed to absorb, is the single worst moment to find out. The scan checks that the method is not the
+ * guarded method itself (which recovers by recursing until the stack ends), that it EXISTS, that it is
+ * PUBLIC — the interceptor calls it on the bean from outside, so a `protected` one fatals exactly where a
+ * missing one would — and that its required-parameter count can be satisfied by the guarded method's
+ * arguments (plus the optional trailing Throwable), which is everything reflection can prove without
+ * running it.
  */
 #[Attribute(Attribute::TARGET_METHOD)]
 final readonly class Fallback

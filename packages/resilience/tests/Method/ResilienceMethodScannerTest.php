@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Resilience\Exception\BulkheadFullException;
 use Firefly\Resilience\Method\ResilienceMethodDescriptor;
 use Firefly\Resilience\Scanner\ResilienceMethodScanner;
+use Firefly\Resilience\Tests\Fixtures\ClassLevelPayments\PaymentGateway as ClassLevelPaymentGateway;
 use Firefly\Resilience\Tests\Fixtures\Method\PaymentService;
+use Firefly\Resilience\Tests\Fixtures\NarrowedFallback\PaymentGateway as NarrowedPaymentGateway;
 
 /**
  * The PSR-4 root the well-formed fixtures live under. Each offender lives in its OWN directory beside it, so
@@ -16,6 +18,21 @@ use Firefly\Resilience\Tests\Fixtures\Method\PaymentService;
 function resiliencePsr4(string $dir = 'Method'): array
 {
     return ['Firefly\\Resilience\\Tests\\Fixtures\\'.$dir => __DIR__.'/../Fixtures/'.$dir];
+}
+
+/**
+ * One well-formed directory's rows, indexed the way a reader thinks about them.
+ *
+ * @return array<string, ResilienceMethodDescriptor> keyed by Class::method
+ */
+function resilienceRules(string $dir = 'Method'): array
+{
+    $rules = [];
+    foreach ((new ResilienceMethodScanner)->scan(resiliencePsr4($dir)) as $rule) {
+        $rules[$rule->key()] = $rule;
+    }
+
+    return $rules;
 }
 
 it('compiles all six attributes on one method into one descriptor', function (): void {
@@ -75,22 +92,41 @@ it('indexes the proxy advice by class and method', function (): void {
         ]);
 });
 
-it('refuses a #[Fallback] naming a method the class does not have', function (): void {
-    (new ResilienceMethodScanner)->scan(resiliencePsr4('MissingFallback'));
-})->throws(ConfigurationException::class, 'names fallback method');
+/*
+ | The class-level rule is the parity claim five of the six attributes make in their own docblocks ("a
+ | class-level attribute applies to every public method, a method-level one replaces it"), and it is the
+ | piece most able to regress in silence: it is one `??` per pattern, and `?:` in its place would swallow a
+ | method-level instance whose name happened to be falsy, while reading the class attributes inside the
+ | method loop would keep every other test in this file green at the cost of a reflection call per method.
+ */
 
-it('refuses a #[Fallback] whose signature cannot receive the guarded call', function (): void {
-    (new ResilienceMethodScanner)->scan(resiliencePsr4('IncompatibleFallback'));
-})->throws(ConfigurationException::class, 'cannot receive the guarded call');
+it('applies a class-level guard to every public method and lets a method-level one replace its own kind', function (): void {
+    $rules = resilienceRules('ClassLevelPayments');
 
-it('refuses a #[Fallback] with nothing to fall back from', function (): void {
-    (new ResilienceMethodScanner)->scan(resiliencePsr4('LonelyFallback'));
-})->throws(ConfigurationException::class, 'carries no other resilience attribute');
+    expect($rules[ClassLevelPaymentGateway::class.'::charge']->retry)->toBe('payments')
+        ->and($rules[ClassLevelPaymentGateway::class.'::charge']->circuitBreaker)->toBe('payments')
+        // REPLACED per KIND, never wholesale: `refund()` names its own retry instance and keeps the class's
+        // breaker, because the five patterns are resolved independently of one another.
+        ->and($rules[ClassLevelPaymentGateway::class.'::refund']->retry)->toBe('refunds')
+        ->and($rules[ClassLevelPaymentGateway::class.'::refund']->circuitBreaker)->toBe('payments')
+        ->and($rules[ClassLevelPaymentGateway::class.'::charge']->bulkhead)->toBeNull()
+        ->and($rules[ClassLevelPaymentGateway::class.'::charge']->fallbackMethod)->toBeNull();
+});
 
-it('refuses resilience attributes on an unstereotyped class', function (): void {
-    (new ResilienceMethodScanner)->scan(resiliencePsr4('UnstereotypedPayments'));
-})->throws(ConfigurationException::class, 'carries no #[Component]-family stereotype');
+it('never fans a class-level guard onto a static or a magic method', function (): void {
+    // Neither can be intercepted: a static call has no instance to wrap, and the `__firefly*` members the
+    // generated proxy declares make the magic methods its own. The FAN-OUT is what is skipped here, and
+    // silently, because the author wrote one attribute about the class rather than one about `__invoke()`.
+    // An attribute written BY HAND on either shape is refused — see ResilienceMethodScannerRefusalTest.
+    expect(resilienceRules('ClassLevelPayments'))
+        ->not->toHaveKey(ClassLevelPaymentGateway::class.'::reconcileAll')
+        ->not->toHaveKey(ClassLevelPaymentGateway::class.'::__invoke');
+});
 
-it('refuses resilience attributes on a final class', function (): void {
-    (new ResilienceMethodScanner)->scan(resiliencePsr4('FinalPayments'));
-})->throws(ConfigurationException::class, 'is final and a proxy must extend it');
+it('carries a narrowed #[Fallback(on:)] list into the row verbatim', function (): void {
+    // The default is `[Throwable::class]` — everything — so a row that only ever holds the default proves
+    // nothing about the list the author wrote, which is their statement that a programming error keeps
+    // propagating while a saturated pool is absorbed.
+    expect(resilienceRules('NarrowedFallback')[NarrowedPaymentGateway::class.'::charge']->fallbackOn)
+        ->toBe([BulkheadFullException::class, RuntimeException::class]);
+});
