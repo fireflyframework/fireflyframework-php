@@ -63,6 +63,7 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\OpenApi\\Schema\\DtoSchemaFactory',
                     1 => 'Firefly\\Web\\Dispatch\\HandlerMethodArgumentResolvers',
+                    2 => 'Firefly\\OpenApi\\Security\\SecurityModel',
                 ],
             ],
             4 => [
@@ -78,6 +79,32 @@ return [
                 ],
             ],
             5 => [
+                'method' => 'configuredSecurity',
+                'returns' => 'Firefly\\OpenApi\\Security\\ConfiguredSecurity',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            6 => [
+                'method' => 'securityModel',
+                'returns' => 'Firefly\\OpenApi\\Security\\SecurityModel',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Container\\Container',
+                    1 => 'Firefly\\OpenApi\\Security\\ConfiguredSecurity',
+                    2 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            7 => [
                 'method' => 'openApiGenerator',
                 'returns' => 'Firefly\\OpenApi\\Generator\\OpenApiGenerator',
                 'name' => null,
@@ -90,9 +117,10 @@ return [
                     1 => 'Firefly\\OpenApi\\OpenApiProperties',
                     2 => 'Firefly\\OpenApi\\Generator\\OperationFactory',
                     3 => 'Firefly\\OpenApi\\Generator\\DocumentInfo',
+                    4 => 'Firefly\\OpenApi\\Security\\SecurityModel',
                 ],
             ],
-            6 => [
+            8 => [
                 'method' => 'viewerPage',
                 'returns' => 'Firefly\\OpenApi\\Web\\ViewerPage',
                 'name' => null,

@@ -72,6 +72,28 @@ return [
                 ],
             ],
             5 => [
+                'method' => 'configuredSecurity',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\OpenApi\\Security\\ConfiguredSecurity',
+                        ],
+                    ],
+                ],
+            ],
+            6 => [
+                'method' => 'securityModel',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\OpenApi\\Security\\SecurityModel',
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
                 'method' => 'openApiGenerator',
                 'conditions' => [
                     0 => [
@@ -82,7 +104,7 @@ return [
                     ],
                 ],
             ],
-            6 => [
+            8 => [
                 'method' => 'viewerPage',
                 'conditions' => [
                     0 => [

@@ -13,6 +13,7 @@ use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\ResponseSchemaFactory;
 use Firefly\OpenApi\Schema\SchemaRegistry;
 use Firefly\OpenApi\Schema\TypeSchema;
+use Firefly\OpenApi\Security\SecurityModel;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Route\RouteDescriptor;
 use ReflectionClass;
@@ -53,10 +54,17 @@ use ReflectionNamedType;
  */
 final class OperationFactory
 {
+    /**
+     * $security is last and nullable for the reason $resolvers is: every existing construction of this
+     * factory — the #[Bean] below, an application's own override, the fixtures — keeps compiling, and one
+     * built without it publishes the document this package published before there was anything to say about
+     * authentication.
+     */
     public function __construct(
         private readonly DtoSchemaFactory $schemas,
         private readonly ResponseSchemaFactory $responses = new ResponseSchemaFactory,
         private readonly ?HandlerMethodArgumentResolvers $resolvers = null,
+        private readonly ?SecurityModel $security = null,
     ) {}
 
     /**
@@ -136,6 +144,16 @@ final class OperationFactory
         }
 
         $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
+
+        // Operation-level `security`. Absent — not `[]` — when nothing requires anything: an empty array in
+        // OpenAPI is the positive claim "this operation needs no authentication", which is exactly the claim
+        // a generator must not make on its own. It is written when a contributor says the path is protected,
+        // and it stays absent for a path an explicit permitAll rule covers too, since the document declares
+        // no security at its root for such an entry to override.
+        $requirements = $this->security?->requirementsFor($route) ?? [];
+        if ($requirements !== []) {
+            $operation['security'] = $requirements;
+        }
 
         return $operation;
     }

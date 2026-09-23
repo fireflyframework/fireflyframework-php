@@ -1316,6 +1316,29 @@ return [
     //      | Default: false.
     //     */
     //     'include-html' => false,
+    //
+    //     /*
+    //      | Publish the security the application actually has. `components.securitySchemes` is emitted from
+    //      | what `firefly.security.*` is configured with — HTTP Basic, the local JWT filter, the OAuth2
+    //      | resource server (with its issuer named in the description), and, when
+    //      | firefly/security-oauth2-server is installed and on, a real `authorizationCode` flow whose URLs
+    //      | come from the server's own settings and whose scopes come from the registered clients. Each
+    //      | operation then carries the requirement its path really has: a path a deny-by-default URL rule or
+    //      | a method rule protects names the scheme, and a `permitAll` path names nothing.
+    //      |
+    //      | Nothing is emitted when firefly.security.enabled is off, so this key only ever matters to an
+    //      | application that HAS security — in which case a document that omitted it was telling every
+    //      | generated client the API was open.
+    //      |
+    //      | `webhooks` and `callbacks` are deliberately still not emitted: they describe an application's own
+    //      | OUTBOUND contracts — the requests it sends to someone else — and no manifest in this framework
+    //      | records those, so a generator that invented them would be documenting code that does not exist.
+    //      |
+    //      | Default: true.
+    //     */
+    //     'security' => [
+    //         'enabled' => env('FIREFLY_OPENAPI_SECURITY_ENABLED', true),
+    //     ],
     // ],
 
     /*

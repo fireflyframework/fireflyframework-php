@@ -7,6 +7,7 @@ namespace Firefly\OpenApi\Generator;
 use Firefly\OpenApi\OpenApiProperties;
 use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\SchemaRegistry;
+use Firefly\OpenApi\Security\SecurityModel;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
 use stdClass;
@@ -67,13 +68,16 @@ final class OpenApiGenerator
      * $info carries the OPTIONAL Info Object members (summary, termsOfService, contact, license) that
      * OpenApiProperties does not. It is last and nullable so every existing three-argument construction —
      * OpenApiAutoConfiguration's #[Bean], an application's own override bean, the fixtures — keeps compiling
-     * and keeps producing exactly the document it produced before.
+     * and keeps producing exactly the document it produced before. $security joins it on the same terms, and
+     * for the same reason: a generator built without one describes an application that has no security to
+     * describe, which is exactly what every construction of it did before this parameter existed.
      */
     public function __construct(
         private readonly RouteManifest $routes,
         private readonly OpenApiProperties $properties,
         private readonly OperationFactory $operations,
         private readonly ?DocumentInfo $info = null,
+        private readonly ?SecurityModel $security = null,
     ) {}
 
     /**
@@ -172,6 +176,15 @@ final class OpenApiGenerator
             'schemas' => $registry->all(),
             'responses' => [ProblemSchema::RESPONSE_NAME => ProblemSchema::response()],
         ];
+
+        // `securitySchemes` is emitted only when something is actually configured. An empty map would be
+        // legal and would also tell a reader the server takes no credentials, which for an application that
+        // simply has not installed firefly/security is true and for one that has is a lie — so the member is
+        // absent rather than empty, the same rule `servers` and `tags` follow around it.
+        $schemes = $this->security?->schemes() ?? [];
+        if ($schemes !== []) {
+            $document['components']['securitySchemes'] = $schemes;
+        }
 
         $tags = $this->tags($described, $used);
         if ($tags !== []) {
