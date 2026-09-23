@@ -3025,6 +3025,113 @@ it('pins every Spanish chapter-opening promise to the identifiers the English on
         ->and($judged)->toBeGreaterThan(0, 'no chapter opens on a promise in both editions any more, so this canary holds nothing');
 });
 
+/**
+ * The paths the framework mounts itself, which no skeleton attribute declares.
+ *
+ * The actuator, the admin dashboard and the two OpenAPI surfaces are wired by the framework's own providers,
+ * so fireflySkeletonRoutes() cannot see them and a `curl localhost:8000/actuator/health` in a chapter is not
+ * a missing route. Each one is read off the settings object that really resolves it, with no configuration at
+ * all, so the day a default path moves the exemption moves with it.
+ *
+ * @return non-empty-list<string>
+ */
+function fireflyFrameworkMountedPaths(): array
+{
+    $config = new Config(new ConfigRepository([]));
+    $openApi = OpenApiProperties::fromConfig($config);
+
+    return [
+        '/'.ExposureModel::fromConfig($config)->basePath,
+        AdminSettings::fromConfig($config)->url(),
+        '/'.$openApi->specPath,
+        '/'.$openApi->viewerPath,
+    ];
+}
+
+/**
+ * Every curl transcript on ONE page, judged against the routes the shipped skeleton really declares.
+ *
+ * Split out of the guard below so the guard's own PROMISE is testable, the way fireflyDbHealthIndicatorProse()
+ * is. The promise is that the framework-path exemption skips THAT TRANSCRIPT and nothing else: a page is free
+ * to open on `curl localhost:8000/actuator/health` and still owe the truth about every application route it
+ * documents further down. That promise lived in a comment and in a `continue 3` that resumed the enclosing
+ * FILE loop instead of the block loop, which is to say the first actuator transcript on a page silently
+ * retired the check for the rest of it — a guard going quiet, which is worse than no guard. Taking the blocks
+ * as a parameter is what lets the canary below assert the promise instead of restating it.
+ *
+ * @param  string  $page  repo-relative path, used only to address the reader in a failure
+ * @param  list<array{line: int, info: string, marker: string, code: string}>  $blocks
+ * @return array{judged: int, failures: list<string>}
+ */
+function fireflyCurlTranscriptProse(string $page, array $blocks): array
+{
+    $routes = fireflySkeletonRoutes();
+    $framework = fireflyFrameworkMountedPaths();
+
+    /** @var list<string> $failures */
+    $failures = [];
+    $judged = 0;
+
+    foreach ($blocks as $index => $block) {
+        $calls = preg_match_all('/curl\s+[^\n]*localhost:8000(\S*)/', $block['code'], $found);
+
+        // A block holding several calls cannot be tied to the one transcript beside it, so only a
+        // single-call block is judged. Every transcript in either manuscript is written that way.
+        if ($calls !== 1) {
+            continue;
+        }
+
+        // A bare `localhost:8000` (or one with only a query string) is the root, which is exactly
+        // the route the quick start got wrong, so it must resolve rather than be skipped.
+        $requested = strtok($found[1][0], '?');
+        $requested = $requested === false ? '/' : $requested;
+
+        // THE EXEMPTION IS A PREDICATE, deliberately, rather than a `continue N` counted out of a stack of
+        // nested loops. It skips this block and only this block; the next transcript on the page is judged.
+        $mounted = array_filter(
+            $framework,
+            static fn (string $prefix): bool => str_starts_with($requested, $prefix),
+        );
+
+        if ($mounted !== []) {
+            continue;
+        }
+
+        /** @var list<array{path: string, stereotype: string, class: string}> $matched */
+        $matched = array_values(array_filter(
+            $routes,
+            static fn (array $route): bool => preg_match(
+                '#^'.preg_replace('/\\\\\{[^}]*\\\\\}/', '[^/]+', preg_quote($route['path'], '#')).'$#',
+                $requested,
+            ) === 1,
+        ));
+
+        $judged++;
+
+        if ($matched === []) {
+            $failures[] = $page.':'.$block['line'].' calls `localhost:8000'.$requested.'`, and the '
+                .'shipped skeleton serves no such route — it declares '
+                .implode(', ', array_column($routes, 'path'));
+
+            continue;
+        }
+
+        $fence = $blocks[$index + 1]['info'] ?? '';
+        $expected = str_starts_with($fence, 'json') ? 'RestController' : null;
+
+        if ($expected === null || in_array($expected, array_column($matched, 'stereotype'), true)) {
+            continue;
+        }
+
+        $failures[] = $page.':'.$block['line'].' shows a `json` transcript for `localhost:8000'
+            .$requested.'`, and the skeleton serves that path from '.$matched[0]['class'].', a `#['
+            .$matched[0]['stereotype'].']` — an HTML page, not JSON. Fix the walkthrough rather than '
+            .'the transcript: the reader runs this command.';
+    }
+
+    return ['judged' => $judged, 'failures' => $failures];
+}
+
 it('pins every quick-start curl transcript to the route the shipped skeleton really serves', function () {
     // The twenty-fifth, and the one whose defect a reader hits in the first ten minutes. The quick start told
     // them to "hit the two routes you just read", printed `curl -s localhost:8000/` and showed
@@ -3040,22 +3147,11 @@ it('pins every quick-start curl transcript to the route the shipped skeleton rea
     // routes fireflySkeletonRoutes() reads out of skeleton/app, and the fence of the transcript BESIDE it is
     // held to the stereotype that serves it: `json` needs a `#[RestController]`, `html` needs a `#[Controller]`.
     // A path no skeleton route claims is skipped rather than failed — the actuator, the dashboard and the
-    // OpenAPI surface are mounted by the framework and not by an attribute, and those three prefixes are
-    // derived below so that a MISSING route is still caught anywhere else.
+    // OpenAPI surface are mounted by the framework and not by an attribute, and fireflyFrameworkMountedPaths()
+    // derives those prefixes so that a MISSING route is still caught anywhere else.
     $root = dirname(__DIR__);
-    $routes = fireflySkeletonRoutes();
 
-    $config = new Config(new ConfigRepository([]));
-    $openApi = OpenApiProperties::fromConfig($config);
-    // The three surfaces the framework mounts natively, as their own settings objects resolve them with no
-    // configuration at all — so the day a default path moves, the exemption moves with it.
-    $framework = [
-        '/'.ExposureModel::fromConfig($config)->basePath,
-        AdminSettings::fromConfig($config)->url(),
-        '/'.$openApi->specPath,
-        '/'.$openApi->viewerPath,
-    ];
-
+    /** @var list<string> $failures */
     $failures = [];
     $judged = 0;
 
@@ -3074,64 +3170,79 @@ it('pins every quick-start curl transcript to the route the shipped skeleton rea
             }
 
             $page = substr($file->getPathname(), strlen($root) + 1);
-            $blocks = fireflyFencedBlocks($file->getPathname());
+            $verdict = fireflyCurlTranscriptProse($page, fireflyFencedBlocks($file->getPathname()));
 
-            foreach ($blocks as $index => $block) {
-                $calls = preg_match_all('/curl\s+[^\n]*localhost:8000(\S*)/', $block['code'], $found);
-
-                // A block holding several calls cannot be tied to the one transcript beside it, so only a
-                // single-call block is judged. Every transcript in either manuscript is written that way.
-                if ($calls !== 1) {
-                    continue;
-                }
-
-                // A bare `localhost:8000` (or one with only a query string) is the root, which is exactly
-                // the route the quick start got wrong, so it must resolve rather than be skipped.
-                $requested = strtok($found[1][0], '?');
-                $requested = $requested === false ? '/' : $requested;
-
-                foreach ($framework as $prefix) {
-                    if (str_starts_with($requested, $prefix)) {
-                        continue 3;
-                    }
-                }
-
-                /** @var list<array{path: string, stereotype: string, class: string}> $matched */
-                $matched = array_values(array_filter(
-                    $routes,
-                    static fn (array $route): bool => preg_match(
-                        '#^'.preg_replace('/\\\\\{[^}]*\\\\\}/', '[^/]+', preg_quote($route['path'], '#')).'$#',
-                        $requested,
-                    ) === 1,
-                ));
-
-                $judged++;
-
-                if ($matched === []) {
-                    $failures[] = $page.':'.$block['line'].' calls `localhost:8000'.$requested.'`, and the '
-                        .'shipped skeleton serves no such route — it declares '
-                        .implode(', ', array_column($routes, 'path'));
-
-                    continue;
-                }
-
-                $fence = $blocks[$index + 1]['info'] ?? '';
-                $expected = str_starts_with($fence, 'json') ? 'RestController' : null;
-
-                if ($expected === null || in_array($expected, array_column($matched, 'stereotype'), true)) {
-                    continue;
-                }
-
-                $failures[] = $page.':'.$block['line'].' shows a `json` transcript for `localhost:8000'
-                    .$requested.'`, and the skeleton serves that path from '.$matched[0]['class'].', a `#['
-                    .$matched[0]['stereotype'].']` — an HTML page, not JSON. Fix the walkthrough rather than '
-                    .'the transcript: the reader runs this command.';
-            }
+            $failures = array_merge($failures, $verdict['failures']);
+            $judged += $verdict['judged'];
         }
     }
 
     expect($failures)->toBe([])
         ->and($judged)->toBeGreaterThan(0, 'no page walks the reader through a request to the skeleton any more, so this canary holds nothing');
+});
+
+it('keeps judging a page after a framework-mounted curl transcript is exempted', function () {
+    // The canary above owes this one its exemption. The rule is "skip the transcript, not the page", and the
+    // first shape of it — `continue 3` out of four nested foreach loops — resumed the FILE loop, so the first
+    // `curl localhost:8000/actuator/…` on a page retired the check for every transcript below it. Nothing in
+    // the tree was framework-prefixed at the time, so the guard was green and silent, and chapter 11 is full
+    // of actuator material: the next transcript added there would have taken the rest of its page down with
+    // it. `expect($judged)->toBeGreaterThan(0)` cannot see that — one judged block satisfies it.
+    //
+    // So the promise is asserted on a page built for it: an exempt transcript FIRST, then a call to a path the
+    // skeleton does not serve, then a call to one it does. The exempt path is taken from the guard's own list
+    // and the served path from the guard's own route scan, so the fixture cannot drift away from either.
+    $exempt = fireflyFrameworkMountedPaths()[0].'/health';
+    $served = array_values(array_filter(
+        fireflySkeletonRoutes(),
+        static fn (array $route): bool => $route['stereotype'] === 'RestController' && str_contains($route['path'], '{'),
+    ));
+
+    expect($served)->not->toBe([], 'the skeleton declares no parameterised JSON route, so this fixture holds nothing');
+
+    $path = (string) preg_replace('/\{[^}]*\}/', 'Ada', $served[0]['path']);
+
+    $dir = sys_get_temp_dir().'/firefly-docs-curl-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+
+    try {
+        file_put_contents($dir.'/page.md', implode("\n", [
+            '```bash',
+            'curl -s localhost:8000'.$exempt,
+            '```',
+            '',
+            '```json',
+            '{"status":"UP"}',
+            '```',
+            '',
+            '```bash',
+            'curl -s localhost:8000/invoices/42',
+            '```',
+            '',
+            '```json',
+            '{"id":42}',
+            '```',
+            '',
+            '```bash',
+            'curl -s localhost:8000'.$path,
+            '```',
+            '',
+            '```json',
+            '{"message":"Hello, Ada!"}',
+            '```',
+            '',
+        ]));
+
+        $verdict = fireflyCurlTranscriptProse('fixture.md', fireflyFencedBlocks($dir.'/page.md'));
+    } finally {
+        fireflyRemoveDirectory($dir);
+    }
+
+    // Two of the three transcripts are judged — the exempt one is not — and the one naming a route the
+    // skeleton does not declare is the one that fails, AFTER the exemption rather than instead of it.
+    expect($verdict['judged'])->toBe(2)
+        ->and($verdict['failures'])->toHaveCount(1)
+        ->and(implode("\n", $verdict['failures']))->toContain('/invoices/42');
 });
 
 it('pins every filter-operator enumeration to the labels DataFilter really declares', function () {
