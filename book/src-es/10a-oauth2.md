@@ -11,12 +11,14 @@ Al terminar este capítulo sabrás cuál de los dos paquetes OAuth2 tienes entre
 
 ## Dos paquetes, dos direcciones
 
-El Capítulo 10 terminó con una cadena de filtros y con el aviso de que tres de sus números pertenecían a paquetes que aquel capítulo no instalaba. Aquí están. Ninguno de los dos paquetes depende del otro — ambos dependen solo de `firefly/security` — e instalar uno nunca arrastra al otro:
+El Capítulo 10 terminó con una cadena de filtros y con el aviso de que tres de sus números pertenecían a paquetes que aquel capítulo no instalaba. Aquí están. Ninguno de los dos paquetes depende del otro — cada uno se apoya en `firefly/security` y ninguno nombra al otro — e instalar uno nunca arrastra al otro:
 
 ```bash
 composer require firefly/security-oauth2-client   # ser un relying party: identificar personas en un proveedor
 composer require firefly/security-oauth2-server   # ser el proveedor: emitir tú mismo los tokens
 ```
+
+No pesan lo mismo, eso sí, y los dos bloques `require` lo dicen sin rodeos. `firefly/security-oauth2-client` nombra siete paquetes del framework — `autoconfigure`, `config`, `container`, `context`, `kernel`, `security` y `web` — y `firefly/security-oauth2-server` nombra once paquetes del framework: esos mismos siete más `actuator`, `data`, `resilience` y `scheduling`, uno por cada cosa que el rol de proveedor posee y que un relying party nunca tiene. `firefly/data`, porque los clientes registrados, las autorizaciones y los consentimientos son stores de Eloquent construidos sobre `EloquentRepository`; `firefly/actuator`, porque el servidor aporta un endpoint que lista los clientes que tiene registrados; `firefly/resilience`, porque el endpoint de token está limitado por tasa; y `firefly/scheduling`, porque las autorizaciones caducadas se purgan en un cron (`*/15 * * * *` por defecto) que el despliegue puede cambiar. Lo que sí es igual en ambos bloques es la parte que importa aquí: `firefly/security` es el único paquete de *seguridad* que nombra cualquiera de los dos — el tercer rol de OAuth2, el resource server, vive dentro del propio `firefly/security` — y ninguno de los dos bloques nombra al otro paquete.
 
 `firefly/security-oauth2-client` aporta `OAuth2AuthorizationRequestRedirectFilter` (`-89`) y `OAuth2LoginAuthenticationFilter` (`-88`), que se sitúan entre el filtro JWT y el filtro de servidor de recursos de la cadena que ya conoces. `firefly/security-oauth2-server` aporta exactamente uno, `OAuth2AuthorizationServerFilter` (`-82`), que responde **todos** los endpoints que el servidor posee. Las dos mitades vienen apagadas, clave por clave, y las dos se configuran bajo `firefly.security.oauth2.*` — el mismo bloque que el Capítulo 10 usó para `resource_server`, que es el tercer papel de OAuth2 y el único que solo *verifica* un token acuñado por otro.
 

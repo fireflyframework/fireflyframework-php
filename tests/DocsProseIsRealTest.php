@@ -507,6 +507,139 @@ function fireflyOAuth2PresetProse(array $builtIn, array $deduced, array $outcome
     return ['quoting' => $quoting, 'failures' => $failures];
 }
 
+/**
+ * Every paragraph that presents the two OAuth2 packages and says what installing one costs, held against the
+ * only file that can settle it: the `require` block of each package's composer.json.
+ *
+ * Three questions are asked, and none of the answers is typed out here. Does the paragraph claim either
+ * package needs `firefly/security` and nothing else? Does a footprint it counts match the block it is
+ * counting? And does it name a framework package that block does not list?
+ *
+ * @param  list<string>  $client  the `firefly/*` requires of packages/security-oauth2-client/composer.json
+ * @param  list<string>  $server  the `firefly/*` requires of packages/security-oauth2-server/composer.json
+ * @return array{quoting: int, counting: int, exclusivity: list<string>, enumeration: list<string>}
+ */
+function fireflyOAuth2InstallProse(array $client, array $server): array
+{
+    $quoting = 0;
+    $counting = 0;
+    $exclusivity = [];
+    $enumeration = [];
+
+    $sets = ['firefly/security-oauth2-client' => $client, 'firefly/security-oauth2-server' => $server];
+    $required = array_unique([...$client, ...$server]);
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $index => $paragraph) {
+            $lower = mb_strtolower($paragraph);
+
+            // THE TRIGGER READS A WINDOW, NOT A PARAGRAPH, and the sentence that shipped is why. "both depend
+            // only on `firefly/security`" names neither package: it introduces them, and the two `composer
+            // require` lines that name them are the block underneath. A trigger that asked one paragraph to
+            // hold both the claim and the package names walked straight past the only falsehood this canary
+            // was written for. So the window is the paragraph plus the two that follow it, stopping at the
+            // next heading — far enough to reach the listing a claim is introducing, near enough that the two
+            // are one thought. The claim is still judged, and still quoted, as the paragraph it was written in.
+            $window = '';
+            foreach (array_slice($paragraphs, $index, 3) as $offset => $following) {
+                if ($offset > 0 && str_starts_with(ltrim($following), '#')) {
+                    break;
+                }
+
+                $window .= mb_strtolower($following)."\n\n";
+            }
+
+            // A page may name either package, or quote a `composer require` line, without owing anything here;
+            // the sentence this guard exists for is the one that compares the two AND says what one costs.
+            if (! str_contains($window, 'security-oauth2-client') || ! str_contains($window, 'security-oauth2-server')) {
+                continue;
+            }
+
+            if (preg_match('/depend|requir|instal|arrastr|drag|pull/u', $lower) !== 1) {
+                continue;
+            }
+
+            $quoting++;
+
+            // (1) THE CLAIM THAT SHIPPED. "Neither package is a dependency of the other — both depend only on
+            // `firefly/security`" was two thirds true, and the false third was the only dependency statement
+            // the chapter made. The refusal is conditional on the derivation, not on a memory of it: while a
+            // block really does name one firefly package there is nothing here to refuse, and the guard below
+            // exercises that rather than describing it. The backtick matters — `firefly/security-oauth2-server`
+            // contains the shorter name as a substring, and a paragraph saying "only the server" must not fire.
+            if ((count($client) > 1 || count($server) > 1)
+                && preg_match('/\b(only|solo|sólo|únicamente|unicamente)\b[^.]{0,80}?`firefly\/security`/u', $lower) === 1) {
+                $exclusivity[] = $page.' says the OAuth2 packages need `firefly/security` and nothing else; the client\'s '
+                    .'require block names '.count($client).' firefly packages and the server\'s '.count($server).': '
+                    .mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 160);
+            }
+
+            // (2) A FOOTPRINT IS A COUNT, and a count is a claim. Every number a paragraph writes before
+            // "framework packages" is read as one of the two blocks being counted, and it has to be one of the
+            // two sizes those blocks really have.
+            if (preg_match_all('/([\p{L}\d]+)\**\s+\**(?:framework packages|firefly packages|paquetes del framework|paquetes de firefly)\b/iu', $paragraph, $claims, PREG_SET_ORDER) === 0) {
+                continue;
+            }
+
+            foreach ($claims as $claim) {
+                $written = fireflyWrittenNumber($claim[1]);
+
+                if ($written === null) {
+                    continue;
+                }
+
+                $counting++;
+                $counted = null;
+
+                foreach ($sets as $package => $set) {
+                    if (count($set) === $written) {
+                        $counted = $package;
+
+                        break;
+                    }
+                }
+
+                if ($counted === null) {
+                    $enumeration[] = $page.' counts an OAuth2 install footprint at '.$claim[1].' framework packages, and '
+                        .'the require blocks name '.count($client).' (client) and '.count($server).' (server)';
+
+                    continue;
+                }
+
+                // (3) And the paragraph owes the names, not just the number: a reader who is told the figure is
+                // being told which packages arrive. Every entry of the block it counted has to appear in it,
+                // short (`data`) or qualified (`firefly/data`) — whichever the sentence prefers.
+                foreach ($sets[$counted] as $dependency) {
+                    $short = substr($dependency, strlen('firefly/'));
+
+                    if (str_contains($paragraph, '`'.$short.'`') || str_contains($paragraph, '`'.$dependency.'`')) {
+                        continue;
+                    }
+
+                    $enumeration[] = $page.' counts '.$counted.'\'s footprint at '.$claim[1].' framework packages without '
+                        .'naming `'.$dependency.'`, which its require block lists';
+                }
+            }
+
+            // The mirror of (3): a paragraph counting require blocks may not qualify a framework package
+            // NEITHER block names. The two subjects are excluded because naming them is the point — and
+            // because neither require block lists the other, which is the claim beside this one.
+            if (preg_match_all('/`(firefly\/[a-z0-9-]+)`/', $paragraph, $named) > 0) {
+                foreach (array_unique($named[1]) as $package) {
+                    if (in_array($package, $required, true) || array_key_exists($package, $sets)) {
+                        continue;
+                    }
+
+                    $enumeration[] = $page.' counts the OAuth2 require blocks while naming `'.$package.'`, which neither '
+                        .'block lists';
+                }
+            }
+        }
+    }
+
+    return ['quoting' => $quoting, 'counting' => $counting, 'exclusivity' => $exclusivity, 'enumeration' => $enumeration];
+}
+
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
     // DERIVED, not typed out. Every public bool method of the expression root is a candidate; the evaluator's
     // own parse() — which validates the name against dispatch()'s match with no root attached — is what
@@ -2471,4 +2604,83 @@ it('pins every OAuth2 preset paragraph to the client-authentication methods the 
         // The promise, exercised rather than described: with every preset settling the method there is nothing
         // to qualify, and the same walk over the same pages must refuse nothing and hold nothing.
         ->and(fireflyOAuth2PresetProse([...$builtIn, ...$deduced], [], $outcomes))->toBe(['quoting' => 0, 'failures' => []]);
+});
+
+it('pins every OAuth2 install-footprint sentence to the two composer.json require blocks', function () {
+    // The twenty-second, and the one a green gate could never have caught. Chapter 10A introduced its two
+    // packages with "Neither package is a dependency of the other — both depend only on `firefly/security` —
+    // and installing one never drags the other in", in English and, word for word, in Spanish. The first and
+    // third clauses are true. The middle one was the chapter's ONLY dependency statement, and it was false:
+    // packages/security-oauth2-client/composer.json requires seven firefly packages and
+    // packages/security-oauth2-server/composer.json eleven. A reader taking the sentence at face value would
+    // run `composer require firefly/security-oauth2-server` expecting one framework package and receive
+    // eleven, among them firefly/data and firefly/scheduling — a Postgres-shaped surprise in a deployment that
+    // had installed an identity provider.
+    //
+    // NOTHING COULD SEE IT. The two `composer require` lines under the sentence are audited as a listing, and
+    // a listing audit compares shape, not consequence: both lines were correct and the paragraph above them
+    // was not. No canary in this file had ever read a composer.json require block.
+    //
+    // DERIVED FROM THE BLOCKS THEMSELVES. The two sets are read out of the manifests at test time — every
+    // `firefly/*` key of each `require` — so the day the server drops firefly/resilience or the client gains a
+    // package, the counts and the names the chapter owes change with them and the sentences that quote them go
+    // red. The install-footprint claim is stated here rather than merely permitted, because the wave's rule is
+    // that a claim with no file behind it does not ship: this test is that file.
+    $requires = static function (string $package): array {
+        /** @var array{require?: array<string, string>} $manifest */
+        $manifest = json_decode(
+            (string) file_get_contents(dirname(__DIR__).'/packages/'.$package.'/composer.json'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        $firefly = array_values(array_filter(
+            array_keys($manifest['require'] ?? []),
+            static fn (string $name): bool => str_starts_with($name, 'firefly/'),
+        ));
+        sort($firefly);
+
+        return $firefly;
+    };
+
+    $client = $requires('security-oauth2-client');
+    $server = $requires('security-oauth2-server');
+
+    // The three facts the corrected paragraph rests on, asserted before they are used to judge anything.
+    // Neither block names the other package — that is what "neither names the other" means, and it is the
+    // clause the old sentence got right. `firefly/security` is in both, and it is the only package of the
+    // security family in either, which is the accurate claim that replaced the false one.
+    expect($client)->not->toContain('firefly/security-oauth2-server')
+        ->and($server)->not->toContain('firefly/security-oauth2-client')
+        ->and($client)->toContain('firefly/security')
+        ->and($server)->toContain('firefly/security');
+
+    foreach (['client' => $client, 'server' => $server] as $role => $set) {
+        $security = array_values(array_filter(
+            $set,
+            static fn (string $name): bool => str_starts_with($name, 'firefly/security'),
+        ));
+
+        expect($security)->toBe(['firefly/security'], 'the OAuth2 '.$role.' now requires a second security package, so '
+            .'"the only security package either one names" is no longer true of it');
+    }
+
+    // Counting is how the guard tells the two footprints apart, so equal sizes would make it ambiguous.
+    expect(count($client))->not->toBe(count($server));
+
+    [
+        'quoting' => $quoting,
+        'counting' => $counting,
+        'exclusivity' => $exclusivity,
+        'enumeration' => $enumeration,
+    ] = fireflyOAuth2InstallProse($client, $server);
+
+    expect($exclusivity)->toBe([])
+        ->and($enumeration)->toBe([])
+        ->and($quoting)->toBeGreaterThan(0, 'no page compares the two OAuth2 packages any more, so this canary holds nothing')
+        ->and($counting)->toBeGreaterThan(0, 'no page states either OAuth2 install footprint any more, so this canary holds nothing')
+        // The promise, exercised rather than described: were each package to require `firefly/security` alone,
+        // "both depend only on `firefly/security`" would be true as written, and the same walk over the same
+        // pages must refuse no sentence for saying it.
+        ->and(fireflyOAuth2InstallProse(['firefly/security'], ['firefly/security'])['exclusivity'])->toBe([]);
 });
