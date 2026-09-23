@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2912,7 +2912,7 @@ does. Their messages are fixed sentences; the driver's message, with the stateme
 <!-- illustrative: an application's own throw site; the skeleton's OrderService throws exactly this exception from its own use case -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">use Firefly\Kernel\Exception\Business\ResourceNotFoundException;</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">throw new ResourceNotFoundException("Order {$id} not found");</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">throw new ResourceNotFoundException(&quot;Order {$id} not found&quot;);</span>
 </span></code></pre></div>
 <h2 id="extension-members-and-a-title-of-your-own">Extension members and a title of your own<a class="headerlink" href="#extension-members-and-a-title-of-your-own" title="Permanent link">&para;</a></h2>
 <p>RFC 9457 lets a problem document carry <em>extension members</em> beside the standard ones, and lets <code>title</code> be
@@ -2921,19 +2921,19 @@ any exception in the taxonomy — or any subclass you write — can carry them w
 <!-- illustrative: an application's own throw site; firefly/web's renderer test builds the very same exception, and the document below is what it asserts -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">use Firefly\Kernel\Exception\Business\PaymentRequiredException;</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">throw (new PaymentRequiredException('The Team edition includes up to five workers.', 'EDITION_LIMIT'))</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">    -&gt;withExtensions(['field' =&gt; 'workers', 'limit' =&gt; 5])</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">    -&gt;withTitle('Your plan does not include this');</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">throw (new PaymentRequiredException(&#39;The Team edition includes up to five workers.&#39;, &#39;EDITION_LIMIT&#39;))</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">    -&gt;withExtensions([&#39;field&#39; =&gt; &#39;workers&#39;, &#39;limit&#39; =&gt; 5])</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">    -&gt;withTitle(&#39;Your plan does not include this&#39;);</span>
 </span></code></pre></div>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">402</span><span class="p">,</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Your plan does not include this"</span><span class="p">,</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"EDITION_LIMIT"</span><span class="p">,</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"business"</span><span class="p">,</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The Team edition includes up to five workers."</span><span class="p">,</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"workers"</span><span class="p">,</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">"limit"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">402</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Your plan does not include this&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;EDITION_LIMIT&quot;</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;business&quot;</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">&quot;severity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warning&quot;</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The Team edition includes up to five workers.&quot;</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">&quot;field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;workers&quot;</span><span class="p">,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">}</span>
 </span></code></pre></div>
 <p><code>withExtensions()</code>/<code>withTitle()</code> mutate the instance and return it, so a throw site stays one expression and
@@ -2950,16 +2950,16 @@ name, and the <code>rejectedValue</code>:</p>
 <div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">use Firefly\Kernel\Error\FieldError;</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="x">use Firefly\Kernel\Exception\Business\ValidationException;</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">throw new ValidationException('Validation failed', [</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">    new FieldError('email', 'must not be blank', constraint: 'NotBlank', rejectedValue: ''),</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">    new FieldError('age', 'must be &gt;= 0', 'min', -1),</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">throw new ValidationException(&#39;Validation failed&#39;, [</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">    new FieldError(&#39;email&#39;, &#39;must not be blank&#39;, constraint: &#39;NotBlank&#39;, rejectedValue: &#39;&#39;),</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">    new FieldError(&#39;age&#39;, &#39;must be &gt;= 0&#39;, &#39;min&#39;, -1),</span>
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">]);</span>
 </span></code></pre></div>
 <p>Rendered inside the problem document's <code>errors</code> array as <code>field</code>, <code>message</code>, then <code>code</code>, <code>constraint</code> and
 <code>rejectedValue</code> when present:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">"errors"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"email"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must not be blank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"constraint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NotBlank"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">"field"</span><span class="p">:</span><span class="w"> </span><span class="s2">"age"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"must be &gt;= 0"</span><span class="p">,</span><span class="w"> </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"min"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rejectedValue"</span><span class="p">:</span><span class="w"> </span><span class="mi">-1</span><span class="w"> </span><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">&quot;errors&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;email&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;must not be blank&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;constraint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NotBlank&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rejectedValue&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;age&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;must be &gt;= 0&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;min&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rejectedValue&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-1</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">]</span>
 </span></code></pre></div>
 <p><code>firefly/validation</code>'s <code>#[Valid]</code> produces these for every declared constraint — the constraint's own sentence
@@ -2973,19 +2973,25 @@ layer (a later package) renders it; here is the shape:</p>
 <!-- illustrative: the two calls a renderer or a reader makes to turn an exception into the payload -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="x">use Firefly\Kernel\Error\ErrorResponse;</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="x">$response = ErrorResponse::fromException($exception, instance: '/orders/42', traceId: $traceId);</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="x">$payload  = $response-&gt;toArray(); // omits null/empty optionals</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="x">$response = ErrorResponse::fromException(</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="x">    $exception,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="x">    instance: &#39;/orders/42&#39;,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="x">    traceId: $traceId,             // the id a person quotes: see &quot;Web rendering&quot; for which id that is</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="x">    correlationId: $correlationId, // always the correlation id, so the two are never conflated</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="x">);</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="x">$payload  = $response-&gt;toArray(); // omits null/empty optionals</span>
 </span></code></pre></div>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="mi">404</span><span class="p">,</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Not Found"</span><span class="p">,</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"RESOURCE_NOT_FOUND"</span><span class="p">,</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">"category"</span><span class="p">:</span><span class="w"> </span><span class="s2">"business"</span><span class="p">,</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">"severity"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warning"</span><span class="p">,</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="nt">"detail"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Order 42 not found"</span><span class="p">,</span>
-</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="nt">"instance"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/orders/42"</span><span class="p">,</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">"traceId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span>
-</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">}</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">404</span><span class="p">,</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Not Found&quot;</span><span class="p">,</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RESOURCE_NOT_FOUND&quot;</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;business&quot;</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">&quot;severity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warning&quot;</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Order 42 not found&quot;</span><span class="p">,</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="nt">&quot;instance&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/orders/42&quot;</span><span class="p">,</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">&quot;traceId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span><span class="nt">&quot;correlationId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="web-rendering-m6">Web rendering (M6)<a class="headerlink" href="#web-rendering-m6" title="Permanent link">&para;</a></h2>
 <p><code>firefly/web</code> (<a href="../web/">Web Layer</a>) is the concrete renderer this document promised: every
@@ -3037,12 +3043,19 @@ real message stays on the exception, where the log has it beside the same id. Wh
 bound at all — a JSON-only deployment that never constructed one — the default is the <strong>safe</strong> one; an
 absent gate must not mean an open one.</p>
 </div>
-<p>Two more things every problem document carries. <strong><code>traceId</code></strong> is the request's correlation id — the one
-<code>CorrelationIdFilter</code> reads or mints at order <code>-100</code> and stamps on every log line — and the same value is on
-the response as <code>X-Correlation-Id</code>, so the body a person screenshots and the log line an operator searches
-for share it; a request that arrived with no id is given one rather than left unreferenced. And the headers an
-<code>HttpExceptionInterface</code> carries are copied through: a <strong>405</strong> keeps its <code>Allow</code> header, and is rendered with
-the reason phrase as its title, a sentence written for a person (<code>This address only accepts POST.</code>) in place of
+<p>Two more things every problem document carries. <strong>The ids — two of them, related and never conflated.</strong>
+<strong><code>traceId</code></strong> is the id a person quotes: the request's <strong>W3C trace id</strong> when tracing gave it a valid span,
+and the correlation id when it did not — so pasting it into a trace search finds the request, which was the
+one thing it could never do while the member named after a trace held a uuid no trace backend had heard of.
+<strong><code>correlationId</code></strong> is always the correlation id, the one <code>CorrelationIdFilter</code> reads or mints at order
+<code>-100</code> and stamps on every log line, and it is on the response as <code>X-Correlation-Id</code> exactly as before; a
+request that arrived with no id is given one rather than left unreferenced. The trace id gets its <strong>own</strong>
+response header (<code>X-Trace-Id</code>, see <code>firefly.web.trace-id.*</code> below) and is written only when there is one, so
+the two ids never overwrite each other and a deployment with tracing off sees no new header at all. With
+tracing off, <code>traceId</code> and <code>correlationId</code> are the same string — byte for byte what the document carried
+before the trace id existed.</p>
+<p>And the headers an <code>HttpExceptionInterface</code> carries are copied through: a <strong>405</strong> keeps its <code>Allow</code> header,
+and is rendered with the reason phrase as its title, a sentence written for a person (<code>This address only accepts POST.</code>) in place of
 the router's, and the permitted verbs in an <code>allowed</code> extension member. A 404 the router raised for a URL that
 matches nothing says <code>There is nothing at this address.</code>; an <code>abort(404, '…')</code> message the author wrote is
 kept verbatim. A 503 carries <code>Retry-After</code>, and PHP's own execution-time limit (<code>Maximum execution time of N
@@ -3110,33 +3123,62 @@ dependencies'.</p>
 <p>The reference configuration ships the whole block commented out at its defaults — uncomment the keys this
 deployment wants to change:</p>
 <!-- source: skeleton/config/firefly.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="x">//     'error-page' =&gt; [</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="x">//         // Turn this off to fall back to Laravel's own error page. Default: true.</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="x">//         'enabled' =&gt; true,</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="x">//     &#39;error-page&#39; =&gt; [</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="x">//         // Turn this off to fall back to Laravel&#39;s own error page. Default: true.</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="x">//         &#39;enabled&#39; =&gt; true,</span>
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="x">// …</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="x">//         'trace' =&gt; env('APP_DEBUG', false),</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="x">//         &#39;trace&#39; =&gt; env(&#39;APP_DEBUG&#39;, false),</span>
 </span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="x">//</span>
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="x">//         // The name in the page's wordmark and title. Default: `app.name`.</span>
-</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="x">//         'title' =&gt; env('APP_NAME', 'LaraFly'),</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="x">//         // The name in the page&#39;s wordmark and title. Default: `app.name`.</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="x">//         &#39;title&#39; =&gt; env(&#39;APP_NAME&#39;, &#39;LaraFly&#39;),</span>
 </span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="x">//</span>
 </span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="x">//         // How many source lines to show around a throwing line, clamped to 0-40. 0 shows none.</span>
 </span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="x">//         // Default: 7.</span>
-</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="x">//         'excerpt-lines' =&gt; 7,</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="x">//         &#39;excerpt-lines&#39; =&gt; 7,</span>
 </span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="x">// …</span>
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="x">//         'json-paths' =&gt; 'api/*,webhooks/*',</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="x">//         &#39;json-paths&#39; =&gt; &#39;api/*,webhooks/*&#39;,</span>
 </span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="x">// …</span>
-</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="x">//         'views' =&gt; [</span>
-</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="x">//             '404' =&gt; 'errors.not-found',</span>
-</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="x">//             'default' =&gt; 'errors.generic',</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="x">//         &#39;views&#39; =&gt; [</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="x">//             &#39;404&#39; =&gt; &#39;errors.not-found&#39;,</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="x">//             &#39;default&#39; =&gt; &#39;errors.generic&#39;,</span>
 </span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="x">//         ],</span>
 </span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="x">//     ],</span>
 </span></code></pre></div>
+<p>The reference both surfaces publish has two keys of its own:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.web.trace-id.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Whether the W3C trace id is what <code>traceId</code>, the page's <strong>Reference</strong> row and the echoed header publish. <code>false</code> puts the correlation id back in all three — the pre-trace behaviour — and turns the echo off. The trace id is still read for logs and the HTTP-exchange row; only publishing it stops.</td>
+</tr>
+<tr>
+<td><code>firefly.web.trace-id.header</code></td>
+<td>string</td>
+<td><code>X-Trace-Id</code></td>
+<td>The response header the trace id is echoed on, beside <code>X-Correlation-Id</code> and never in place of it. <code>''</code> disables the echo and leaves the document and the page untouched. It is deliberately <strong>not</strong> W3C <code>traceresponse</code>, which LaraFly does not implement.</td>
+</tr>
+</tbody>
+</table>
 <p><strong><code>trace</code> is enforced where the data is gathered, not where it is printed.</strong> With it off the framework never
 walks the stack, never opens a source file and never copies the exception message — so there is nothing
 assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
-<strong>reference</strong> — the same correlation id the problem document publishes as <code>traceId</code>, so the 500 page reads
-"quote reference <code>&lt;id&gt;</code> if you report it" and an operator can find the log line it stamps: enough to quote
-into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
+<strong>reference</strong> — the same id the problem document publishes as <code>traceId</code>, which is the W3C trace id when the
+request had a valid span and the correlation id when it did not, and the same value the response echoes on
+<code>X-Trace-Id</code> — so the 500 page reads "quote reference <code>&lt;id&gt;</code> if you report it" and the id a person
+screenshots is the one a trace search resolves. When the two ids differ the page carries a <strong>Correlation</strong>
+fact row beside the Reference one, holding the <code>X-Correlation-Id</code> value; when they are the same string the
+row is omitted, because two rows repeating one value teach a reader the ids are interchangeable. That is
+enough to quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
 advice about <em>how</em> to turn traces on is suppressed outside non-production environments too, because naming
 the framework and a config key to an anonymous visitor is a free hint about your stack.</p>
 <p><strong>Overriding it.</strong> <code>views</code> hands a status — or <code>default</code> — to your own Blade view. The view receives the same
@@ -3223,7 +3265,7 @@ building is not the elegant choice; it is the one that still works when nothing 
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

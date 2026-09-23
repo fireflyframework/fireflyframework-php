@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2687,7 +2687,7 @@ subclasses to implement <code>doFilter()</code> plus optional <code>urls()</code
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">    protected function urls(): array</span>
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    {</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">        return ['/api/*'];</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">        return [&#39;/api/*&#39;];</span>
 </span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">    }</span>
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">}</span>
 </span></code></pre></div>
@@ -2720,7 +2720,7 @@ of any application filter:</p>
 <tr>
 <td><code>CorrelationIdFilter</code></td>
 <td><code>-100</code></td>
-<td>Reads an inbound <code>X-Correlation-Id</code> header (minting one if absent), exposes it via <code>Context</code> as <code>firefly.correlation_id</code>, and echoes it back on the response header.</td>
+<td>Reads an inbound <code>X-Correlation-Id</code> header (minting one if absent), exposes it via <code>Context</code> as <code>firefly.correlation_id</code>, and echoes it back on the response header. When the request also carries a valid W3C trace id, that id is echoed on a <strong>second</strong> header of its own (<code>firefly.web.trace-id.header</code>, <code>X-Trace-Id</code> by default; <code>''</code> or <code>firefly.web.trace-id.enabled =&gt; false</code> turns the echo off) — <code>X-Correlation-Id</code> is never overwritten by it: a caller that sent an id is entitled to get its own value back. See <a href="../error-handling/#the-html-error-page">Error Handling</a>.</td>
 </tr>
 </tbody>
 </table>
@@ -2817,7 +2817,7 @@ live on the same middleware stack.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

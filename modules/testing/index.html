@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2853,8 +2853,8 @@ service provider — and every other package in the monorepo dogfoods it for its
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">{</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">    protected function configOverrides(): array</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">    {</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        return ['firefly.scan.paths' =&gt; [</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">            'App\\Widgets\\' =&gt; app_path('Widgets'),</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        return [&#39;firefly.scan.paths&#39; =&gt; [</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">            &#39;App\\Widgets\\&#39; =&gt; app_path(&#39;Widgets&#39;),</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">        ]];</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">    }</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">}</span>
@@ -2884,9 +2884,9 @@ service provider — and every other package in the monorepo dogfoods it for its
 </ul>
 <p><code>bootFireflyApp()</code> is the same call, but returns the booted <code>ApplicationContext</code> instead of the raw <code>Application</code>:</p>
 <!-- source: packages/testing/tests/BootFireflyAppTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">it('boots a bare cqrs app with AutoConfigure first and an explicit binding', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">it(&#39;boots a bare cqrs app with AutoConfigure first and an explicit binding&#39;, function () {</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">    $context = bootFireflyApp(</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">        config: ['firefly' =&gt; ['cqrs' =&gt; []]],</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">        config: [&#39;firefly&#39; =&gt; [&#39;cqrs&#39; =&gt; []]],</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="x">        providers: [CqrsServiceProvider::class, CqrsWiringProvider::class],</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="x">        bindings: [HandlerManifest::class =&gt; new HandlerManifest([], [])],</span>
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">    );</span>
@@ -2906,9 +2906,9 @@ service provider — and every other package in the monorepo dogfoods it for its
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">    // …</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">    protected function defineFireflyEnvironment(Application $app): void</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">    {</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">        $this-&gt;createSchema('widgets', function (Blueprint $table): void {</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">        $this-&gt;createSchema(&#39;widgets&#39;, function (Blueprint $table): void {</span>
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">            $table-&gt;id();</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">            $table-&gt;string('name');</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">            $table-&gt;string(&#39;name&#39;);</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="x">        });</span>
 </span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="x">    }</span>
 </span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="x">}</span>
@@ -2984,15 +2984,15 @@ Laravel's <code>Event::fake()</code>/<code>Bus::fake()</code> (which don't see F
 </tbody>
 </table>
 <!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="x">it('records publishes in the FakeEventPublisher-compatible shape', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="x">it(&#39;records publishes in the FakeEventPublisher-compatible shape&#39;, function () {</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="x">    $publisher = new RecordingEventPublisher;</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">    $publisher-&gt;publish('accounts.events', 'AccountOpened', ['owner' =&gt; 'alice'], ['x' =&gt; '1']);</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">    $publisher-&gt;publish(&#39;accounts.events&#39;, &#39;AccountOpened&#39;, [&#39;owner&#39; =&gt; &#39;alice&#39;], [&#39;x&#39; =&gt; &#39;1&#39;]);</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="x">    expect($publisher-&gt;published)-&gt;toHaveCount(1)</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">        -&gt;and($publisher-&gt;published[0]['destination'])-&gt;toBe('accounts.events')</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="x">        -&gt;and($publisher-&gt;published[0]['eventType'])-&gt;toBe('AccountOpened')</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="x">        -&gt;and($publisher-&gt;published[0]['payload']['owner'])-&gt;toBe('alice')</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="x">        -&gt;and($publisher-&gt;published[0]['headers']['x'])-&gt;toBe('1');</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">        -&gt;and($publisher-&gt;published[0][&#39;destination&#39;])-&gt;toBe(&#39;accounts.events&#39;)</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="x">        -&gt;and($publisher-&gt;published[0][&#39;eventType&#39;])-&gt;toBe(&#39;AccountOpened&#39;)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="x">        -&gt;and($publisher-&gt;published[0][&#39;payload&#39;][&#39;owner&#39;])-&gt;toBe(&#39;alice&#39;)</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="x">        -&gt;and($publisher-&gt;published[0][&#39;headers&#39;][&#39;x&#39;])-&gt;toBe(&#39;1&#39;);</span>
 </span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="x">});</span>
 </span></code></pre></div>
 <h2 id="security-test-support">Security test support<a class="headerlink" href="#security-test-support" title="Permanent link">&para;</a></h2>
@@ -3036,15 +3036,15 @@ root <code>tests/Pest.php</code>, the only Pest bootstrap file the monorepo load
 </ul>
 <p>The package's own suite is where each of them is exercised; this is <code>toHavePublished()</code> with a payload subset:</p>
 <!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="x">it('supports the toHavePublished expectation with a payload subset', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="x">it(&#39;supports the toHavePublished expectation with a payload subset&#39;, function () {</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="x">    $publisher = new RecordingEventPublisher;</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="x">    $publisher-&gt;publish('accounts.events', 'AccountOpened', ['owner' =&gt; 'alice', 'balance' =&gt; 500]);</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="x">    $publisher-&gt;publish(&#39;accounts.events&#39;, &#39;AccountOpened&#39;, [&#39;owner&#39; =&gt; &#39;alice&#39;, &#39;balance&#39; =&gt; 500]);</span>
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="x">    // toHavePublished() is registered at runtime by FireflyExpectations::register() (tests/Pest.php),</span>
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="x">    // invisible to PHPStan's static reflection of the vendor Pest\Expectation class — see the matching</span>
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="x">    // note in functions.php's assertEventPublished().</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="x">    // invisible to PHPStan&#39;s static reflection of the vendor Pest\Expectation class — see the matching</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="x">    // note in functions.php&#39;s assertEventPublished().</span>
 </span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="x">    // @phpstan-ignore method.notFound</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="x">    expect($publisher)-&gt;toHavePublished('AccountOpened', payloadContains: ['owner' =&gt; 'alice']);</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="x">    expect($publisher)-&gt;toHavePublished(&#39;AccountOpened&#39;, payloadContains: [&#39;owner&#39; =&gt; &#39;alice&#39;]);</span>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="x">});</span>
 </span></code></pre></div>
 <blockquote>
@@ -3063,12 +3063,12 @@ alongside <code>bootFireflyApp()</code>/<code>fireflyApplication()</code> in <co
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="x">function assertNoEventsPublished(object $publisher): void</span>
 </span></code></pre></div>
 <!-- source: packages/testing/tests/Double/RecordingEventPublisherTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="x">it('supports the procedural assertions', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="x">it(&#39;supports the procedural assertions&#39;, function () {</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="x">    $publisher = new RecordingEventPublisher;</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="x">    assertNoEventsPublished($publisher);</span>
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="x">    $publisher-&gt;publish('d', 'Thing', ['id' =&gt; 7]);</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="x">    assertEventPublished($publisher, 'Thing', ['id' =&gt; 7]);</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="x">    $publisher-&gt;publish(&#39;d&#39;, &#39;Thing&#39;, [&#39;id&#39; =&gt; 7]);</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="x">    assertEventPublished($publisher, &#39;Thing&#39;, [&#39;id&#39; =&gt; 7]);</span>
 </span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="x">});</span>
 </span></code></pre></div>
 <h2 id="slice-builders">Slice builders<a class="headerlink" href="#slice-builders" title="Permanent link">&para;</a></h2>
@@ -3094,27 +3094,27 @@ alongside <code>bootFireflyApp()</code>/<code>fireflyApplication()</code> in <co
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="x">uses(WebSliceTestCase::class);</span>
 </span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="x">it('boots a web slice and serves a sliced controller route', function () {</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="x">it(&#39;boots a web slice and serves a sliced controller route&#39;, function () {</span>
 </span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="x">    /** @var WebSliceTestCase $this */</span>
 </span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="x">    $this-&gt;webSlice(scan: [</span>
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="x">        'Firefly\\Testing\\Tests\\Fixtures\\Slice\\' =&gt; dirname(__DIR__).'/Fixtures/Slice',</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="x">        &#39;Firefly\\Testing\\Tests\\Fixtures\\Slice\\&#39; =&gt; dirname(__DIR__).&#39;/Fixtures/Slice&#39;,</span>
 </span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="x">    ]);</span>
 </span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="x">    $response = $this-&gt;get('/slice/ping');</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="x">    $response = $this-&gt;get(&#39;/slice/ping&#39;);</span>
 </span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
 </span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="x">    expect($response-&gt;status())-&gt;toBe(200)</span>
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="x">        -&gt;and($response-&gt;json('pong'))-&gt;toBeTrue();</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="x">        -&gt;and($response-&gt;json(&#39;pong&#39;))-&gt;toBeTrue();</span>
 </span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="x">});</span>
 </span></code></pre></div>
 <!-- source: packages/testing/tests/Slice/DataSliceTest.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="x">uses(DataSliceTestCase::class);</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="x">it('boots ONLY the sliced data beans and resolves them', function () {</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="x">it(&#39;boots ONLY the sliced data beans and resolves them&#39;, function () {</span>
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="x">    /** @var DataSliceTestCase $this */</span>
 </span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="x">    $context = $this-&gt;dataSlice(</span>
 </span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="x">        scan: [</span>
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="x">            'Firefly\\Testing\\Tests\\Fixtures\\Slice\\' =&gt; dirname(__DIR__).'/Fixtures/Slice',</span>
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="x">            'Firefly\\Testing\\Tests\\Fixtures\\SliceData\\' =&gt; dirname(__DIR__).'/Fixtures/SliceData',</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="x">            &#39;Firefly\\Testing\\Tests\\Fixtures\\Slice\\&#39; =&gt; dirname(__DIR__).&#39;/Fixtures/Slice&#39;,</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="x">            &#39;Firefly\\Testing\\Tests\\Fixtures\\SliceData\\&#39; =&gt; dirname(__DIR__).&#39;/Fixtures/SliceData&#39;,</span>
 </span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="x">        ],</span>
 </span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="x">        overrides: [</span>
 </span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="x">            PricingPort::class =&gt; new class implements PricingPort</span>
@@ -3150,15 +3150,15 @@ Pest closure file):</p>
 </span></code></pre></div>
 <p>The monorepo's one class-style test is exactly this shape:</p>
 <!-- source: packages/testing/tests/Attributes/SliceAttributesTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="x">#[WebSlice(scan: ['Firefly\\Testing\\Tests\\Fixtures\\Slice\\' =&gt; __DIR__.'/../Fixtures/Slice'])]</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="x">#[WebSlice(scan: [&#39;Firefly\\Testing\\Tests\\Fixtures\\Slice\\&#39; =&gt; __DIR__.&#39;/../Fixtures/Slice&#39;])]</span>
 </span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="x">final class SliceAttributesTest extends WebSliceTestCase</span>
 </span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="x">{</span>
 </span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="x">    public function test_web_slice_attribute_boots_the_sliced_route(): void</span>
 </span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="x">    {</span>
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="x">        $response = $this-&gt;get('/slice/ping');</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="x">        $response = $this-&gt;get(&#39;/slice/ping&#39;);</span>
 </span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
 </span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="x">        $this-&gt;assertSame(200, $response-&gt;status());</span>
-</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="x">        $this-&gt;assertTrue($response-&gt;json('pong'));</span>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="x">        $this-&gt;assertTrue($response-&gt;json(&#39;pong&#39;));</span>
 </span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="x">        $this-&gt;assertInstanceOf(SliceController::class, $this-&gt;fireflyContext()-&gt;get(SliceController::class));</span>
 </span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="x">    }</span>
 </span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="x">}</span>
@@ -3187,22 +3187,22 @@ runs. Do not mix the two on the same test class.</p>
 </span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="x">    public function load(string ...$names): array</span>
 </span></code></pre></div>
 <!-- source: packages/testing/tests/Fixture/FixtureLayerTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="x">it('registers, makes with overrides, and loads named fixtures', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="x">it(&#39;registers, makes with overrides, and loads named fixtures&#39;, function () {</span>
 </span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="x">    $registry = (new FixtureRegistry)</span>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="x">        -&gt;register('widget', function (array $overrides): Widget {</span>
-</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="x">            $name = $overrides['name'] ?? 'default';</span>
-</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="x">            $qty = $overrides['qty'] ?? 1;</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="x">        -&gt;register(&#39;widget&#39;, function (array $overrides): Widget {</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="x">            $name = $overrides[&#39;name&#39;] ?? &#39;default&#39;;</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="x">            $qty = $overrides[&#39;qty&#39;] ?? 1;</span>
 </span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
 </span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="x">            return new Widget(</span>
-</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="x">                is_string($name) ? $name : 'default',</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="x">                is_string($name) ? $name : &#39;default&#39;,</span>
 </span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="x">                is_int($qty) ? $qty : 1,</span>
 </span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="x">            );</span>
 </span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="x">        });</span>
 </span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="x">    // …</span>
-</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="x">    expect($registry-&gt;has('widget'))-&gt;toBeTrue()</span>
-</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="x">        -&gt;and($default-&gt;name)-&gt;toBe('default')</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="x">    expect($registry-&gt;has(&#39;widget&#39;))-&gt;toBeTrue()</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="x">        -&gt;and($default-&gt;name)-&gt;toBe(&#39;default&#39;)</span>
 </span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="x">        -&gt;and($bolt-&gt;qty)-&gt;toBe(5)</span>
-</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="x">        -&gt;and($registry-&gt;load('widget', 'widget'))-&gt;toHaveCount(2);</span>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="x">        -&gt;and($registry-&gt;load(&#39;widget&#39;, &#39;widget&#39;))-&gt;toHaveCount(2);</span>
 </span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="x">});</span>
 </span></code></pre></div>
 <ul>
@@ -3214,7 +3214,7 @@ runs. Do not mix the two on the same test class.</p>
 </span></code></pre></div>
 <!-- source: packages/testing/tests/Fixture/FixtureLayerTest.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="x">    $publisher = new RecordingApplicationEventPublisher;</span>
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="x">    (new AggregateSeeder)-&gt;publishEvents($publisher, new Widget('a'), new Widget('b'));</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="x">    (new AggregateSeeder)-&gt;publishEvents($publisher, new Widget(&#39;a&#39;), new Widget(&#39;b&#39;));</span>
 </span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
 </span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="x">    expect($publisher-&gt;events)-&gt;toHaveCount(2);</span>
 </span></code></pre></div>
@@ -3228,13 +3228,13 @@ runs. Do not mix the two on the same test class.</p>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="x">    public function record(string $value): void</span>
 </span></code></pre></div>
 <!-- source: packages/testing/tests/Fixture/ListenerSpyTest.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="x">it('appends every recorded value to $seen, in order', function () {</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="x">it(&#39;appends every recorded value to $seen, in order&#39;, function () {</span>
 </span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="x">    $spy = new ListenerSpy;</span>
 </span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="x">    $spy-&gt;record('order.placed');</span>
-</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="x">    $spy-&gt;record('order.shipped');</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="x">    $spy-&gt;record(&#39;order.placed&#39;);</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="x">    $spy-&gt;record(&#39;order.shipped&#39;);</span>
 </span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
-</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="x">    expect($spy-&gt;seen)-&gt;toBe(['order.placed', 'order.shipped']);</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="x">    expect($spy-&gt;seen)-&gt;toBe([&#39;order.placed&#39;, &#39;order.shipped&#39;]);</span>
 </span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="x">});</span>
 </span></code></pre></div>
 <h2 id="boot-time-footgun-killers-fireflyboot">Boot-time footgun-killers: <code>FireflyBoot</code><a class="headerlink" href="#boot-time-footgun-killers-fireflyboot" title="Permanent link">&para;</a></h2>
@@ -3259,7 +3259,7 @@ re-derive by hand:</p>
 </span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="x">use Illuminate\Config\Repository;</span>
 </span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="x">use Illuminate\Foundation\Application;</span>
 </span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>
-</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="x">$config = new Config(new Repository(['firefly' =&gt; ['demo' =&gt; ['enabled' =&gt; true]]]));</span>
+</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="x">$config = new Config(new Repository([&#39;firefly&#39; =&gt; [&#39;demo&#39; =&gt; [&#39;enabled&#39; =&gt; true]]]));</span>
 </span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="x">$evaluator = FireflyBoot::makeConditionEvaluator($config);</span>
 </span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>
 </span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="x">$app = new Application;</span>
@@ -3344,7 +3344,7 @@ re-derive by hand:</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

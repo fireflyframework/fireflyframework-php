@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -3133,7 +3133,7 @@ machine-readable numbers — Prometheus scrapes it.</p>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">    }</span>
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">    try {</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">        $response = $endpoint-&gt;handle(new EndpointRequest('GET', $subPath, $query));</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">        $response = $endpoint-&gt;handle(new EndpointRequest(&#39;GET&#39;, $subPath, $query));</span>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    } catch (Throwable) {</span>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">        return null;</span>
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    }</span>
@@ -3179,14 +3179,16 @@ to the dashboard, though, produced a Health panel whose entire content was an ap
 and change a config key.</p>
 <p>The dashboard reads <code>HealthContributorRegistry</code> directly instead, calling each indicator in isolation so one that
 throws is reported <code>DOWN</code> with its exception class and message and nothing else is affected — exactly what
-<code>HealthEndpoint</code>'s own fail-safe read does. The JSON <code>/actuator/health</code> response is unchanged and still withholds
-components until <code>show-details</code> is <code>always</code>.</p>
+<code>HealthEndpoint</code>'s own fail-safe read does. The JSON <code>/actuator/health</code> response is untouched by any of this
+and still applies its own disclosure policy: it withholds components unless <code>show-details</code> is <code>always</code>, or is
+<code>when-authorized</code> and the <a href="../actuator/#who-may-read-the-component-details"><code>HealthDetailsAuthorizer</code></a> admits
+the caller.</p>
 <h2 id="access-the-whole-security-boundary">Access: the whole security boundary<a class="headerlink" href="#access-the-whole-security-boundary" title="Permanent link">&para;</a></h2>
 <p>Because the dashboard bypasses exposure, <strong>its own URL is the only thing standing in front of <code>beans</code>, <code>env</code> and
 <code>conditions</code>.</strong> That is why it must not be on by default in production, and why the enable flag is written the way
 it is:</p>
 <!-- source: packages/admin/src/AdminSettings.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">enabled: $config-&gt;bool('firefly.admin.enabled', $config-&gt;bool('app.debug', false)),</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">enabled: $config-&gt;bool(&#39;firefly.admin.enabled&#39;, $config-&gt;bool(&#39;app.debug&#39;, false)),</span>
 </span></code></pre></div>
 <p><code>firefly.admin.enabled</code> <strong>defaults to the value of <code>app.debug</code></strong>. An application already running with debug on is
 already serving stack traces to whoever asks and is a development environment by definition, so a dashboard there
@@ -3206,17 +3208,17 @@ for the dashboard's natively-registered routes exactly as it runs for your contr
 configuration:</p>
 <!-- illustrative: the deployment's own config/firefly.php — the shipped reference carries every one of these keys with its env-backed default, and choosing these values is the deployment's decision, not the framework's -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">return [</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="x">    'admin' =&gt; [</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">        'enabled' =&gt; true,          // explicit: this deployment wants the dashboard with app.debug off</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">        'base-path' =&gt; '/firefly',</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="x">    &#39;admin&#39; =&gt; [</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">        &#39;enabled&#39; =&gt; true,          // explicit: this deployment wants the dashboard with app.debug off</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">        &#39;base-path&#39; =&gt; &#39;/firefly&#39;,</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">    ],</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">    'security' =&gt; [</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">        'enabled' =&gt; true,</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">        'http' =&gt; [</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="x">            'enabled' =&gt; true,</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="x">            'rules' =&gt; [</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="x">                ['pattern' =&gt; 'firefly', 'access' =&gt; 'hasRole:ADMIN'],</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="x">                ['pattern' =&gt; 'firefly/*', 'access' =&gt; 'hasRole:ADMIN'],</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">    &#39;security&#39; =&gt; [</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">        &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">        &#39;http&#39; =&gt; [</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="x">            &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="x">            &#39;rules&#39; =&gt; [</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="x">                [&#39;pattern&#39; =&gt; &#39;firefly&#39;, &#39;access&#39; =&gt; &#39;hasRole:ADMIN&#39;],</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="x">                [&#39;pattern&#39; =&gt; &#39;firefly/*&#39;, &#39;access&#39; =&gt; &#39;hasRole:ADMIN&#39;],</span>
 </span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="x">            ],</span>
 </span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="x">        ],</span>
 </span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="x">    ],</span>
@@ -3262,11 +3264,11 @@ whose <code>{page}</code> segment is constrained to <code>[A-Za-z0-9\-_/]*</code
 <!-- source: packages/admin/src/Boot/AdminRouteRegistrar.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="x">$router-&gt;get($base, static fn (Request $request) =&gt; $container-&gt;make(AdminAction::class)($request))</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="x">    -&gt;middleware($middleware)</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">    -&gt;name('firefly.admin.index');</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="x">$router-&gt;match(['GET', 'POST'], $base.'/{page}', static fn (Request $request, string $page) =&gt; $container-&gt;make(AdminAction::class)($request, $page))</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">    -&gt;name(&#39;firefly.admin.index&#39;);</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="x">$router-&gt;match([&#39;GET&#39;, &#39;POST&#39;], $base.&#39;/{page}&#39;, static fn (Request $request, string $page) =&gt; $container-&gt;make(AdminAction::class)($request, $page))</span>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="x">    -&gt;middleware($middleware)</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">    -&gt;where('page', '[A-Za-z0-9\-_/]*')</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="x">    -&gt;name('firefly.admin.page');</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">    -&gt;where(&#39;page&#39;, &#39;[A-Za-z0-9\-_/]*&#39;)</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="x">    -&gt;name(&#39;firefly.admin.page&#39;);</span>
 </span></code></pre></div>
 <p>They are registered natively on the illuminate <code>Router</code>, not declared with <code>#[GetMapping]</code>, for the same reason the
 actuator's and <a href="../openapi/#the-routes-are-not-attribute-routes">OpenAPI's</a> are: <code>firefly.admin.base-path</code> has to be
@@ -3511,8 +3513,10 @@ boot pass and before any bean resolves, which is the only point at which the mer
 <li><strong>No write operations besides the log level, the data browser and the feature switches.</strong> <code>/caches</code> is read-only
   for the same reason it is read-only on the JSON surface — <code>firefly/actuator</code> carries no code edge to
   <code>firefly/security</code> and so cannot say who asked.</li>
-<li><strong><code>when-authorized</code> health details</strong> degrade to <code>never</code> on the JSON surface (see
-  <a href="../actuator/#known-latent">Actuator</a>); the dashboard sidesteps it entirely by reading the contributor registry.</li>
+<li><strong>The Health panel ignores <code>show-details</code> entirely</strong>, reading the contributor registry rather than the JSON
+  surface's disclosure policy (see above). The JSON surface's own <code>when-authorized</code> is real and answered by
+  <a href="../actuator/#who-may-read-the-component-details"><code>HealthDetailsAuthorizer</code></a>; the dashboard never consults it,
+  because its URL is already the whole security boundary.</li>
 </ul>
 <hr />
 <p>See also: <a href="../actuator/">Actuator</a> for the endpoints themselves, <a href="../observability/">Observability</a> for the metrics
@@ -3594,7 +3598,7 @@ a table, and <a href="../data-browser/">Data Browser</a> for the Django-style vi
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1968,6 +1968,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#method-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-cqrsmetrics-drop-in-the-m10-seam" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2730,6 +2758,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#method-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Method attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-cqrsmetrics-drop-in-the-m10-seam" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2878,18 +2934,18 @@ single request's, which is worse than empty, because it reads as data.</p>
 reference ships — <code>store</code> empty is the in-process <code>SimpleMeterRegistry</code>, <code>ttl</code> in seconds with <code>0</code> meaning no
 expiry, and <code>distribution.buckets</code> empty keeping every timer a summary:</p>
 <!-- source: skeleton/config/firefly.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">'observability' =&gt; [</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    'metrics' =&gt; [</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">&#39;observability&#39; =&gt; [</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    &#39;metrics&#39; =&gt; [</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">        // …</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        'enabled' =&gt; true,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        &#39;enabled&#39; =&gt; true,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">        // …</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">        'store' =&gt; env('FIREFLY_METRICS_STORE', ''),</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">        &#39;store&#39; =&gt; env(&#39;FIREFLY_METRICS_STORE&#39;, &#39;&#39;),</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        // …</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">        'ttl' =&gt; (int) env('FIREFLY_METRICS_TTL', 0),</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">        &#39;ttl&#39; =&gt; (int) env(&#39;FIREFLY_METRICS_TTL&#39;, 0),</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">        // …</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">        'distribution' =&gt; [</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">        &#39;distribution&#39; =&gt; [</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">            // …</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="x">            'buckets' =&gt; [],</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="x">            &#39;buckets&#39; =&gt; [],</span>
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="x">        ],</span>
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="x">    ],</span>
 </span></code></pre></div>
@@ -2907,11 +2963,11 @@ timer is <strong>created</strong> — bounds are keyed by meter name, never by t
 layout — and <code>CacheMeterRegistry</code> increments one <code>&lt;id&gt;:le:&lt;bound&gt;</code> counter per bucket a sample falls into, so
 a cross-process scrape rebuilds the histogram exactly. <code>PrometheusTextFormat</code> then emits:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># TYPE http_server_requests_seconds histogram
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="0.05"} 12
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="0.5"} 40
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>http_server_requests_seconds_bucket{method="GET",uri="/orders/{id}",le="+Inf"} 41
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>http_server_requests_seconds_count{method="GET",uri="/orders/{id}"} 41
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>http_server_requests_seconds_sum{method="GET",uri="/orders/{id}"} 9.87
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>http_server_requests_seconds_bucket{method=&quot;GET&quot;,uri=&quot;/orders/{id}&quot;,le=&quot;0.05&quot;} 12
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>http_server_requests_seconds_bucket{method=&quot;GET&quot;,uri=&quot;/orders/{id}&quot;,le=&quot;0.5&quot;} 40
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>http_server_requests_seconds_bucket{method=&quot;GET&quot;,uri=&quot;/orders/{id}&quot;,le=&quot;+Inf&quot;} 41
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>http_server_requests_seconds_count{method=&quot;GET&quot;,uri=&quot;/orders/{id}&quot;} 41
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>http_server_requests_seconds_sum{method=&quot;GET&quot;,uri=&quot;/orders/{id}&quot;} 9.87
 </span></code></pre></div>
 <p><code>_count</code> and <code>_sum</code> are the same two lines the summary has, so <code>rate(x_sum[5m]) / rate(x_count[5m])</code> keeps
 working the day buckets are switched on; <code>histogram_quantile()</code> becomes possible. Off by default: turning a
@@ -2951,13 +3007,138 @@ to start from.</p>
 <li><code>TracingFilter</code> — a <code>#[Component]</code> <code>WebFilter</code> at <code>#[Order(-110)]</code>, the outermost discovered filter, starting a
   SERVER span per request when tracing is on (see <a href="../tracing/">Tracing</a>).</li>
 </ul>
+<h2 id="method-attributes">Method attributes<a class="headerlink" href="#method-attributes" title="Permanent link">&para;</a></h2>
+<p>Auto-instrumentation covers the seams the framework owns. <code>#[Timed]</code>, <code>#[Counted]</code> and <code>#[Observed]</code> —
+Micrometer's three, ported — cover the method an application owns, on any stereotyped bean, with no recorder
+injected and no <code>try</code>/<code>finally</code> written by hand:</p>
+<!-- illustrative: `OrderService` and the `Basket`, `Order` and `Money` types it trades in are the reader's own domain, so no file in this repository can own these meter names; the framework ships the three attributes, not the class that carries them. -->
+<div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">#[Service]</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">class OrderService</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="x">    #[Timed(&#39;orders.place&#39;, extraTags: [&#39;tier&#39; =&gt; &#39;gold&#39;])]</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="x">    #[Counted(&#39;orders.place.calls&#39;)]</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">    public function place(Basket $basket): Order { /* … */ }</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="x">    #[Timed(&#39;orders.import&#39;, longTask: true)]</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">    public function importAll(string $path): int { /* … */ }</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="x">    #[Observed(&#39;orders.quote&#39;, contextualName: &#39;quote an order&#39;)]</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="x">    public function quote(Basket $basket): Money { /* … */ }</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="x">}</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>What it records</th>
+<th>Tags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#[Timed(value, extraTags, longTask)]</code></td>
+<td>a timer around the call, and the same timer on a throw</td>
+<td><code>class</code> (short name), <code>method</code>, <code>exception</code> (short name, <code>none</code> on success), plus <code>extraTags</code></td>
+</tr>
+<tr>
+<td><code>#[Counted(value, extraTags, recordFailuresOnly)]</code></td>
+<td>one counter increment per invocation</td>
+<td><code>class</code>, <code>method</code>, <code>result</code> = <code>success</code>|<code>failure</code>, <code>exception</code>, plus <code>extraTags</code></td>
+</tr>
+<tr>
+<td><code>#[Observed(name, contextualName, lowCardinalityKeyValues)]</code></td>
+<td>one <strong>span</strong> and one <strong>timer</strong> under one name — Micrometer's Observation API in one attribute</td>
+<td><code>class</code>, <code>method</code>, <code>exception</code> on the timer; <code>lowCardinalityKeyValues</code> on <strong>both</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>value</code>/<code>name</code> empty falls back to the configured default name below. <code>contextualName</code> is the span's name
+when the waterfall wants a sentence and the query language wants a meter name. Both targets are allowed, as
+Micrometer allows them: a <strong>class</strong>-level attribute applies to every public instance method the class exposes
+and a <strong>method</strong>-level one of the same kind replaces it for that method — the replacement rule
+<code>MethodSecurityScanner</code> applies to <code>#[PreAuthorize]</code>.</p>
+<p><code>longTask: true</code> is Micrometer's <code>LongTaskTimer</code>, reduced to the half this registry can honestly publish: a
+set-gauge <code>&lt;meter&gt;.active</code>, carrying the timer's own tags, holding the number of invocations <strong>this process</strong>
+has in flight — a depth, not a flag, so a re-entered or recursive long task reads <code>2</code> rather than dropping to
+<code>0</code> when the inner call returns. Sampling the duration of a task that has not finished needs a meter type
+<code>MeterRegistry</code> does not have, and across processes a gauge is last-writer-wins (see
+<a href="#known-latent">Known-latent</a>) — read <code>&lt;meter&gt;.active</code> as "this meter has work in flight somewhere".</p>
+<p><strong>The advice is the OUTERMOST link of the proxy chain</strong> — order 50, ahead of method security's 100 and the
+transaction's 1000:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>#[Timed] ( #[PreAuthorize] ( resilience ( #[Transactional] ( method ) ) ) )
+</span></code></pre></div>
+<p>Three consequences, and each one is why the number is 50. A timer measures what the <strong>caller</strong> waited for:
+the expression evaluation and role-hierarchy walk of a refusal, and the <code>BEGIN</code>/<code>COMMIT</code> of a transactional
+method, are both time a client would measure from outside. A refusal is still <strong>counted</strong>, as a failure —
+inside security the <code>AccessDeniedException</code> would be thrown before this link ran and the meter would never
+see the call, so a permissions misconfiguration would read as falling traffic and a flat error rate, which is
+the shape of a silent outage. And a deadlock thrown by <code>COMMIT</code> is attributed to <code>orders.place</code> with
+<code>exception=QueryException</code> rather than disappearing after the body has already returned.</p>
+<p>This is a deliberate <strong>divergence</strong> from Micrometer, not parity with it: <code>TimedAspect</code>, <code>CountedAspect</code> and
+<code>ObservedAspect</code> are unordered <code>@Aspect</code>s, so Spring AOP runs all three innermost — inside Spring Security's
+interceptors and level with the transaction advisor — and a <code>@Timed</code> method whose <code>@PreAuthorize</code> denies is,
+in Spring, today, neither timed nor counted. The chain the number produces is asserted on the compiled plan
+by <code>packages/cli</code>'s cached-boot fixture, so the ordering is a test rather than a paragraph.</p>
+<p><strong>Telemetry never changes the call.</strong> Every recorder and tracer touch goes through its own best-effort guard
+(<code>HttpExchangeFilter::record()</code>'s, for the same reason plus one: most of them run in a <code>finally</code>, where a
+throw would <em>discard</em> the exception already on its way to the caller). A lost sample is the correct price for
+a telemetry failure; a changed return value or a swapped exception never is.</p>
+<p><strong>Compiled, not reflected.</strong> <code>ObservabilityMethodScanner</code> is the one reflection site this adds, run at
+<code>firefly:cache</code>; the rows are baked into the generated proxy as <code>ObservabilityMethodDescriptor::fromArray([…])</code>
+literals. It <strong>refuses</strong> — loudly, where a person can read the message — anything that would compile and then
+be honoured by nothing: an attribute on a class nothing post-processes, on a <code>final</code> class or a <code>final</code> method
+the class itself declares, written explicitly on a <code>static</code> or a <code>__</code>-prefixed method, <code>#[Timed(percentiles:)]</code>
+and <code>#[Timed(description:)]</code> (see <a href="#known-latent">Known-latent</a>), and a <code>#[Timed]</code> and <code>#[Counted]</code> on one
+method spelling out the <strong>same</strong>
+meter name — a Prometheus name has exactly one type, so the registry would record the first and refuse the
+second for the life of the process. <code>#[Timed]</code> and <code>#[Observed]</code> may share a name, both being timers.</p>
+<h3 id="key">Key<a class="headerlink" href="#key" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.observability.method.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enforce <code>#[Timed]</code>/<code>#[Counted]</code>/<code>#[Observed]</code>. Off makes them inert — the proxy runs a pass-through link in place of this one — never half-applied. Read live on every call as well as at wrap time.</td>
+</tr>
+<tr>
+<td><code>firefly.observability.method.timed.name</code></td>
+<td>string</td>
+<td><code>method.timed</code></td>
+<td>Meter name for a <code>#[Timed]</code> that names none.</td>
+</tr>
+<tr>
+<td><code>firefly.observability.method.counted.name</code></td>
+<td>string</td>
+<td><code>method.counted</code></td>
+<td>Meter name for a <code>#[Counted]</code> that names none.</td>
+</tr>
+<tr>
+<td><code>firefly.observability.method.observed.name</code></td>
+<td>string</td>
+<td><code>method.observed</code></td>
+<td>Meter and span name for an <code>#[Observed]</code> that names none.</td>
+</tr>
+</tbody>
+</table>
+<p>The advice is compiled either way, so a cached application and a dev application agree on the shape of every
+proxy; only the link's behaviour differs. The whole feature is also inert while the metrics master gate
+(<code>firefly.observability.metrics.enabled</code>) is off — there is no registry to record into.</p>
 <h2 id="the-cqrsmetrics-drop-in-the-m10-seam">The CqrsMetrics drop-in (the M10 seam)<a class="headerlink" href="#the-cqrsmetrics-drop-in-the-m10-seam" title="Permanent link">&para;</a></h2>
 <p><code>packages/cqrs/src/Metrics/CqrsMetrics.php</code> was built in M10 as a deliberate extension point: <code>CqrsAutoConfiguration</code>
 binds a <code>NoOpCqrsMetrics</code> behind <code>#[ConditionalOnMissingBean(CqrsMetrics::class)]</code>, with a docblock promising a real
 recorder would drop in later as a bean swap. <code>firefly/observability</code> is that drop-in:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>MeterRegistryCqrsMetrics implements CqrsMetrics — records each command/query as a timer:
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  cqrs_commands_seconds{type, outcome}
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  cqrs_queries_seconds{type, outcome}
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>MeterRegistryCqrsMetrics implements CqrsMetrics — records each command/query as a timer:
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  cqrs_commands_seconds{type, outcome}
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  cqrs_queries_seconds{type, outcome}
 </span></code></pre></div>
 <p>The precedence trick: <code>ObservabilityAutoConfiguration</code> is <code>#[Configuration] #[Order(500)]</code> — <strong>deliberately below</strong>
 <code>CqrsAutoConfiguration</code>'s <code>#[Order(1000)]</code> (the same mechanism <code>firefly/security</code>'s <code>SecurityAutoConfiguration</code> uses
@@ -3037,6 +3218,11 @@ rather than answered with a <code>400</code>.</p>
 <td><code>firefly.observability.metrics.distribution.per-meter</code></td>
 <td><code>[]</code></td>
 <td><code>meter name =&gt; list</code> overrides; an empty list makes that meter a summary.</td>
+</tr>
+<tr>
+<td><code>firefly.observability.method.*</code></td>
+<td>see <a href="#method-attributes">Method attributes</a></td>
+<td>The <code>#[Timed]</code>/<code>#[Counted]</code>/<code>#[Observed]</code> gate and the three fallback meter names.</td>
 </tr>
 <tr>
 <td><code>firefly.observability.tracing.*</code></td>
@@ -3130,7 +3316,17 @@ rather than answered with a <code>400</code>.</p>
 <h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Percentiles / client-side quantiles</strong> — timers offer fixed buckets (what Prometheus aggregates across
-  processes); there is no sliding-window percentile summary.</li>
+  processes); there is no sliding-window percentile summary. <code>#[Timed(percentiles:)]</code> is therefore REFUSED at
+  scan time rather than accepted and honoured by nothing, with a message naming
+  <code>firefly.observability.metrics.distribution.per-meter</code> — the histogram buckets a percentile is actually
+  computed from here.</li>
+<li><strong>A meter carries no description.</strong> <code>PrometheusTextFormat</code> synthesises every <code># HELP</code> line from the
+  sanitised family name and the family's type (<code># HELP orders_place orders_place (timer)</code>), and there is no
+  seam from a meter to a help text: <code>MetricsRecorder::record()</code> takes a name, tags and a duration, and a
+  description is family-level metadata a sample-level port cannot carry. <code>#[Timed(description:)]</code> is
+  therefore REFUSED at scan time, on the same rule as <code>percentiles</code> above — the message says where the <code>#
+  HELP</code> line comes from and suggests a docblock on the method instead. Micrometer's <code>@Timed(description=)</code>
+  has no equivalent here until the registry itself grows per-family metadata.</li>
 <li><strong>OTLP metrics push</strong> — spans export over OTLP; metrics are pull-only (<code>/actuator/prometheus</code>).</li>
 <li><strong>Multiprocess aggregation is opt-in, and partial.</strong> <code>firefly.observability.metrics.store</code> gives counters,
   timers and set-gauges cross-process totals through the cache (see <a href="#surviving-the-request">Surviving the
@@ -3217,7 +3413,7 @@ rather than answered with a <code>400</code>.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

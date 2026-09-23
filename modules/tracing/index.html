@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2638,11 +2638,12 @@
 <code>SpanKind</code>, <code>SpanStatus</code>, <code>SpanContext</code> — with <code>NoOpTracer</code> as the shipped default and an OpenTelemetry
 adapter that binds itself when the SDK is installed and <code>firefly.observability.tracing.enabled</code> is on. With it
 on, every request gets a SERVER span continued from an inbound W3C <code>traceparent</code>, every Laravel <code>Http</code> client
-call gets a CLIENT span and sends <code>traceparent</code>, every command and query gets an INTERNAL span, and an event
-published through the in-memory or queue bus carries <code>traceparent</code> in its envelope with a PRODUCER span on
-publish; every delivery gets a CONSUMER span, a broker's included, through the shared <code>SubscriberRegistrySink</code>
-(see <a href="#known-latent">Known-latent</a> for the broker publishers that do not stamp the header yet). The trace and
-span ids reach Laravel <code>Context</code> (<code>firefly.trace_id</code>,
+call gets a CLIENT span and sends <code>traceparent</code>, every command and query gets an INTERNAL span, and a published
+event gets a PRODUCER span that writes <code>traceparent</code> into the envelope headers — from the in-memory and queue
+buses and from all three broker publishers (<code>RabbitMqEventPublisher</code>, <code>KafkaEventPublisher</code>,
+<code>PostgresEventPublisher</code>), with <code>firefly:outbox:relay</code> forwarding a claimed row under that row's own trace
+rather than starting a new one. Every delivery gets a CONSUMER span, a broker's included, through the shared
+<code>SubscriberRegistrySink</code>. The trace and span ids reach Laravel <code>Context</code> (<code>firefly.trace_id</code>,
 <code>firefly.span_id</code>), every log line (see <a href="../logging/">Logging</a>), and <code>/actuator/httpexchanges</code>.</p>
 <h2 id="the-port">The port<a class="headerlink" href="#the-port" title="Permanent link">&para;</a></h2>
 <!-- source: packages/observability/src/Tracing/Tracer.php -->
@@ -2673,8 +2674,8 @@ That is what keeps every request of an <code>Http::pool()</code> a sibling under
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">    public function handle(ShipOrder $command): void</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">    {</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">        $this-&gt;tracer-&gt;trace('carrier.book', function (Span $span) use ($command): void {</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">            $span-&gt;setAttribute('order.id', $command-&gt;orderId);</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">        $this-&gt;tracer-&gt;trace(&#39;carrier.book&#39;, function (Span $span) use ($command): void {</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">            $span-&gt;setAttribute(&#39;order.id&#39;, $command-&gt;orderId);</span>
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">            $this-&gt;carrier-&gt;book($command-&gt;orderId);   // an Http:: call inside gets its own CLIENT span</span>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">        }, SpanKind::Internal);</span>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">    }</span>
@@ -2719,12 +2720,21 @@ case-insensitively, list or string values) and <code>inject(SpanContext): array&
 </tr>
 <tr>
 <td>EDA</td>
-<td><code>EdaTracing</code> seam in <code>firefly/eda</code> (<code>NoOpEdaTracing</code> default), filled by <code>TracerEdaTracing</code>; called by <code>InMemoryEventBus</code>, <code>QueueEventBus</code> (publish and the worker-side <code>deliver()</code>) and <code>SubscriberRegistrySink</code> (every broker consumer)</td>
+<td><code>EdaTracing</code> seam in <code>firefly/eda</code> (<code>NoOpEdaTracing</code> default), filled by <code>TracerEdaTracing</code>; called by <code>InMemoryEventBus</code>, <code>QueueEventBus</code> (publish and the worker-side <code>deliver()</code>), <code>SubscriberRegistrySink</code> (every broker consumer), the three broker publishers — <code>RabbitMqEventPublisher</code>, <code>KafkaEventPublisher</code> and <code>PostgresEventPublisher</code> (both its writers: the bean and the in-tx <code>OutboxPreCommitHook</code>) — and <code>OutboxRelay</code>, which wraps its forward in <code>traceConsume()</code> so the relay hop continues the row's trace instead of rooting a new one</td>
 <td><code>PRODUCER</code> <code>publish &lt;destination&gt;</code> / <code>CONSUMER</code> <code>process &lt;destination&gt;</code>; <code>messaging.system=firefly-eda</code>, <code>messaging.destination.name</code>, <code>messaging.operation.type</code>, <code>messaging.message.id</code>, <code>firefly.eda.event_type</code></td>
-<td><code>traceparent</code>/<code>tracestate</code> in the envelope headers, beside <code>x-correlation-id</code></td>
+<td><code>traceparent</code>/<code>tracestate</code> in the envelope headers, beside <code>x-correlation-id</code>; <code>firefly.eda.tracing.brokers.enabled=false</code> keeps the in-process spans while the three broker publishers stamp nothing on the transport (see <a href="../eda/#config-keys">EDA</a>)</td>
 </tr>
 </tbody>
 </table>
+<p><strong>The id a person quotes is the trace id.</strong> <code>firefly/web</code> reads the ids <code>TracingFilter</code> publishes above
+(<code>Firefly\Web\Trace\TraceContext</code>, which owns the two attribute/<code>Context</code> keys the filter's own constants
+alias), so problem+json's <code>traceId</code> and the HTML error page's <strong>Reference</strong> row carry the request's W3C
+trace id whenever it has a valid one, and the response echoes it on <code>X-Trace-Id</code>. Without a valid span all
+three fall back to the correlation id — what they carried before — so switching tracing on is the only thing
+that changes them. The correlation id is not absorbed: <code>X-Correlation-Id</code> is untouched and the document
+carries it as its own <code>correlationId</code> member. Both behaviours are gated by <code>firefly.web.trace-id.enabled</code>
+and <code>firefly.web.trace-id.header</code>, documented in
+<a href="../error-handling/#the-html-error-page">Error Handling</a>. This is <strong>not</strong> <code>traceresponse</code>.</p>
 <p>Both seams are the <code>CqrsMetrics</code> shape: an interface in the owning package with a no-op default behind
 <code>#[ConditionalOnMissingBean]</code>, and observability's <code>#[Order(500)]</code> auto-configuration registering the real one
 first. Neither <code>firefly/cqrs</code> nor <code>firefly/eda</code> depends on observability.</p>
@@ -2875,7 +2885,7 @@ end-to-end suite over the SDK, bind <code>OpenTelemetry\SDK\Trace\SpanExporter\I
 <tr>
 <td>Async correlation</td>
 <td>none first-party</td>
-<td><code>traceparent</code> in an in-memory or queued <code>EventEnvelope</code>, CONSUMER spans on every delivery</td>
+<td>a PRODUCER span and a <code>traceparent</code> on the envelope the in-memory bus, the queue bus and the RabbitMQ/Kafka/Postgres publishers hand the transport; CONSUMER spans on every delivery</td>
 </tr>
 <tr>
 <td>Vendor lock</td>
@@ -2886,14 +2896,23 @@ end-to-end suite over the SDK, bind <code>OpenTelemetry\SDK\Trace\SpanExporter\I
 </table>
 <h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Broker publishers do not yet stamp <code>traceparent</code>.</strong> <code>eda-rabbitmq</code>, <code>eda-kafka</code> and <code>eda-postgres</code>
-  build their envelopes themselves and do not call <code>EdaTracing::tracePublish()</code>; their consume path is traced
-  through the shared <code>SubscriberRegistrySink</code>, so a <code>traceparent</code> a producer DID put in the headers is
-  continued. Routing the three <code>publish()</code> methods through the seam is a small, contained follow-up.</li>
-<li><strong><code>#[Timed]</code>/<code>#[Counted]</code>/<code>#[Observed]</code> method attributes</strong> wait for the method-interceptor chain the
-  security wave generalises from the transactional proxy.</li>
-<li><strong>problem+json's <code>traceId</code></strong> is still the correlation id (what <code>CorrelationIdFilter::of()</code> returns), so a
-  document and its <code>X-Correlation-Id</code> keep agreeing; the W3C trace id is on the exchange row and in the logs.</li>
+<li><strong>A FOREIGN downstream publisher gates itself.</strong> <code>firefly.eda.tracing.brokers.enabled</code> is applied by
+  <code>BrokerTracing</code>, which the three adapters' <code>#[Bean]</code> methods and <code>RelayDownstream</code> both call — including when
+  a shipped adapter is named by its own class-string instead of its alias, since the two are one downstream and
+  resolve identically. What the gate cannot reach is a relay downstream that is neither: your own publisher
+  class, or one you bind under <code>firefly.eda.relay.downstream</code>. <code>firefly/eda-postgres</code> knows no constructor
+  arguments for a class it ships no adapter entry for, so the container autowires it and the bound <code>EdaTracing</code>
+  reaches it whatever the key says. Call <code>BrokerTracing::resolve()</code> in your own factory, exactly as the three
+  shipped adapters do.</li>
+<li><strong>The gate does not strip a <code>traceparent</code> a row already carries.</strong> Turning the key off stops our publishers
+  writing one, so a row written while it was off has none. A row written BEFORE it was turned off keeps its
+  <code>traceparent</code> and the relay still forwards it, as it forwards a header a foreign producer set.</li>
+<li><strong><code>#[Timed]</code>/<code>#[Counted]</code>/<code>#[Observed]</code> are shipped</strong>, enforced on any stereotyped bean through the
+  method-interceptor chain as the <strong>outermost</strong> advice (order 50, ahead of method security's 100 and the
+  transaction's 1000), so a timer measures the authorization refusal and the <code>COMMIT</code> as well as the method
+  body. <code>#[Observed]</code> starts a span <em>and</em> a timer under one name — Micrometer's Observation API in one
+  attribute — and degrades to the timer alone when tracing is off. Gated by
+  <code>firefly.observability.method.enabled</code>; see <a href="../observability/#method-attributes">Observability</a>.</li>
 <li><strong>No <code>traceresponse</code></strong>: W3C defines no response header yet; nothing is written on the way out.</li>
 </ul>
 
@@ -2971,7 +2990,7 @@ end-to-end suite over the SDK, bind <code>OpenTelemetry\SDK\Trace\SpanExporter\I
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

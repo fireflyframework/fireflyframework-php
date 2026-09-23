@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1324,6 +1324,56 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resilience-as-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resilience as attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resilience as attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-composition-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The composition, fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-link-sits-in-the-proxy-chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the link sits in the proxy chain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2826,6 +2876,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#resilience-as-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resilience as attributes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resilience as attributes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-composition-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The composition, fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-link-sits-in-the-proxy-chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the link sits in the proxy chain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#cache-backed-state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2890,10 +2990,14 @@
 
 
 <h1 id="resilience">Resilience<a class="headerlink" href="#resilience" title="Permanent link">&para;</a></h1>
-<p><code>firefly/resilience</code> is LaraFly's resilience layer (a Resilience4j analog): six <strong>programmatic</strong> patterns —
-<code>Retry</code>, <code>CircuitBreaker</code>, <code>RateLimiter</code>, <code>Bulkhead</code>, <code>TimeLimiter</code>, <code>Fallback</code> — each a plain
+<p><code>firefly/resilience</code> is LaraFly's resilience layer (a Resilience4j analog): six patterns — <code>Retry</code>,
+<code>CircuitBreaker</code>, <code>RateLimiter</code>, <code>Bulkhead</code>, <code>TimeLimiter</code>, <code>Fallback</code> — each a plain
 <code>call(callable): mixed</code> decorator, built once per named instance from <code>firefly.resilience.*</code> by a
 config-driven <code>ResilienceRegistry</code>.</p>
+<p>There are <strong>two ways to reach them and one implementation of each</strong>: the programmatic model below, and the
+six matching attributes (<a href="#resilience-as-attributes">Resilience as attributes</a>), which apply the very same
+component objects to a method through the proxy chain <code>#[Transactional]</code> already uses. An attribute is a
+second door, never a second policy engine.</p>
 <h2 id="the-programmatic-model">The programmatic model<a class="headerlink" href="#the-programmatic-model" title="Permanent link">&para;</a></h2>
 <p>Inject <code>ResilienceRegistry</code> and pull a named, typed pattern instance from it:</p>
 <!-- illustrative: an application's own gateway bean pulling one named breaker out of the registry -->
@@ -2903,7 +3007,7 @@ config-driven <code>ResilienceRegistry</code>.</p>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">    public function charge(Order $order): Receipt</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">    {</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        return $this-&gt;registry-&gt;circuitBreaker('payments')-&gt;call(</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        return $this-&gt;registry-&gt;circuitBreaker(&#39;payments&#39;)-&gt;call(</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">            fn (): Receipt =&gt; $this-&gt;client-&gt;charge($order),</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">        );</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">    }</span>
@@ -2928,35 +3032,41 @@ several of those example values are deliberately not the framework default (the 
 <code>wait-duration</code> 0 and <code>backoff-multiplier</code> 1.0, <code>circuit-breaker</code> <code>minimum-number-of-calls</code> 0, <code>time-limiter</code>
 <code>timeout</code> 30s):</p>
 <!-- source: skeleton/config/firefly.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">'resilience' =&gt; [</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">&#39;resilience&#39; =&gt; [</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="x">    // …</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">    'store' =&gt; [</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">        'lock-block-timeout' =&gt; '500ms',</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">    &#39;store&#39; =&gt; [</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">        &#39;lock-block-timeout&#39; =&gt; &#39;500ms&#39;,</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">    ],</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">    // 'retry' =&gt; [</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">    //     'payments' =&gt; ['max-attempts' =&gt; 3, 'wait-duration' =&gt; '250ms', 'backoff-multiplier' =&gt; 2.0],</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">    // …</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">    // &#39;retry&#39; =&gt; [</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">    //     &#39;payments&#39; =&gt; [&#39;max-attempts&#39; =&gt; 3, &#39;wait-duration&#39; =&gt; &#39;250ms&#39;, &#39;backoff-multiplier&#39; =&gt; 2.0],</span>
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">    // ],</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    // 'circuit-breaker' =&gt; [</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">    //     'payments' =&gt; [</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    //         'failure-threshold' =&gt; 5,</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">    //         'window-size' =&gt; 10,</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">    //         'minimum-number-of-calls' =&gt; 5,</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">    //         'wait-duration-in-open' =&gt; '30s',</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">    //         'half-open-max-calls' =&gt; 1,</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="x">    //         'half-open-probe-timeout' =&gt; '30s',</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="x">    //     ],</span>
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="x">    // ],</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="x">    // 'rate-limiter' =&gt; [</span>
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="x">    //     'api' =&gt; ['max-tokens' =&gt; 10, 'refill-rate' =&gt; 10.0, 'timeout' =&gt; 0],</span>
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="x">    // ],</span>
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="x">    // 'bulkhead' =&gt; [</span>
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="x">    //     'db' =&gt; ['max-concurrent' =&gt; 10, 'max-wait' =&gt; 0, 'permit-ttl' =&gt; '60s'],</span>
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="x">    // ],</span>
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="x">    // 'time-limiter' =&gt; [</span>
-</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="x">    //     'payments' =&gt; ['timeout' =&gt; '2s'],</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    // &#39;circuit-breaker&#39; =&gt; [</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">    //     &#39;payments&#39; =&gt; [</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    //         &#39;failure-threshold&#39; =&gt; 5,</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">    //         &#39;window-size&#39; =&gt; 10,</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">    //         &#39;minimum-number-of-calls&#39; =&gt; 5,</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">    //         &#39;wait-duration-in-open&#39; =&gt; &#39;30s&#39;,</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">    //         &#39;half-open-max-calls&#39; =&gt; 1,</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="x">    //         &#39;half-open-probe-timeout&#39; =&gt; &#39;30s&#39;,</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="x">    //         &#39;idle-ttl&#39; =&gt; &#39;720h&#39;, // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="x">    //     ],</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="x">    // ],</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="x">    // &#39;rate-limiter&#39; =&gt; [</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="x">    //     &#39;api&#39; =&gt; [</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="x">    //         &#39;max-tokens&#39; =&gt; 10,</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="x">    //         &#39;refill-rate&#39; =&gt; 10.0,</span>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="x">    //         &#39;timeout&#39; =&gt; 0,</span>
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="x">    //         &#39;idle-ttl&#39; =&gt; &#39;720h&#39;, // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)</span>
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="x">    //     ],</span>
 </span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="x">    // ],</span>
-</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="x">],</span>
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="x">    // &#39;bulkhead&#39; =&gt; [</span>
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="x">    //     &#39;db&#39; =&gt; [&#39;max-concurrent&#39; =&gt; 10, &#39;max-wait&#39; =&gt; 0, &#39;permit-ttl&#39; =&gt; &#39;60s&#39;],</span>
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a><span class="x">    // ],</span>
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="x">    // &#39;time-limiter&#39; =&gt; [</span>
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="x">    //     &#39;payments&#39; =&gt; [&#39;timeout&#39; =&gt; &#39;2s&#39;],</span>
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="x">    // ],</span>
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="x">],</span>
 </span></code></pre></div>
 <p>Duration-shaped keys (<code>wait-duration</code>, <code>max-wait</code>, <code>wait-duration-in-open</code>, <code>timeout</code>, …) accept either a
 bare number of seconds or a <code>Firefly\Resilience\Duration</code>-parsed string: <code>250ms</code>, <code>30s</code>, <code>5m</code>, <code>1h</code>. <code>Duration</code>
@@ -3085,6 +3195,12 @@ read-decide-write is atomic and a trip on one FPM worker is visible to the next.
 <td><code>[Throwable::class]</code></td>
 <td>Only these exceptions count as failures; anything else propagates without affecting the breaker's state — and explicitly <em>returns</em> the probe permit it took, so an ignored exception leaves the episode exactly as it found it.</td>
 </tr>
+<tr>
+<td><code>idle-ttl</code></td>
+<td>duration|null</td>
+<td><code>720h</code> (30 days)</td>
+<td>How long the breaker's record may sit untouched before the cache may reclaim it, <strong>refreshed on every call — admitted <em>or</em> rejected</strong>, so a breaker that is being used can never lose its record. The rejected calls are the important half: an OPEN breaker performs no transition while it sheds load, so a transition-only refresh would let its record expire mid-outage and read back CLOSED. A reclaimed key rebuilds CLOSED — for a breaker that has genuinely taken no calls for <code>idle-ttl</code>, the state it would decide anyway <em>provided <code>idle-ttl</code> comfortably exceeds <code>wait-duration-in-open</code></em>, which is why thirty days is indistinguishable from "never" here (<code>wait-duration-in-open</code> is thirty <em>seconds</em>). Keep that margin if you lower it. <code>null</code>, <code>0</code> or a negative duration all mean <strong>never expire</strong>, never "expire immediately". It is also the constructor's default, so a <code>CircuitBreaker</code> built by hand is bounded unless it passes <code>idleTtl: null</code>.</td>
+</tr>
 </tbody>
 </table>
 <h4 id="probe-permits-are-leases-and-state-reports-the-effective-state">Probe permits are leases, and <code>state()</code> reports the effective state<a class="headerlink" href="#probe-permits-are-leases-and-state-reports-the-effective-state" title="Permanent link">&para;</a></h4>
@@ -3138,6 +3254,12 @@ callers that want to check admission without invoking a callable.</p>
 <td>duration</td>
 <td><code>0</code></td>
 <td>How long to poll for a token before rejecting (<code>0</code> = fail fast).</td>
+</tr>
+<tr>
+<td><code>idle-ttl</code></td>
+<td>duration|null</td>
+<td><code>720h</code> (30 days)</td>
+<td>How long the bucket may sit untouched before the cache may reclaim it, <strong>refreshed on every acquisition</strong> — granted or refused — so a limiter under load can never lose its bucket. The reclaim is invisible: the bucket refills at <code>refill-rate</code> per second and a missing record reads as a FULL bucket, so after <code>max-tokens / refill-rate</code> seconds of silence a reclaimed bucket and a live one are the same bucket. The exception is <code>refill-rate: 0</code>, a hard quota rather than a rate, where reclaiming the key hands the quota back — set <code>idle-ttl</code> to <code>null</code> for that one. <code>null</code>, <code>0</code> or a negative duration all mean <strong>never expire</strong>, never "expire immediately". It is also the constructor's default, so a <code>RateLimiter</code> built by hand (one bucket per client id, per IP, …) is bounded unless it passes <code>idleTtl: null</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -3219,17 +3341,17 @@ exception) and the exception list to catch, at the call site:</p>
 <p>Any exception not in <code>on</code> (default <code>[Throwable::class]</code>, i.e. everything) rethrows unchanged.</p>
 <h2 id="composition-and-decorator-ordering">Composition and decorator ordering<a class="headerlink" href="#composition-and-decorator-ordering" title="Permanent link">&para;</a></h2>
 <p>Every pattern shares the same <code>call(callable): mixed</code> shape, so they compose by nesting closures — there is
-no fluent chain in M7 (see <a href="#known-latent">Known-latent</a>). A typical outside-in stacking order, from the
+no fluent decorator DSL (see <a href="#known-latent">Known-latent</a>). A typical outside-in stacking order, from the
 caller's perspective, mirrors Resilience4j's convention — outermost catches/observes the most, innermost sits
 closest to the real call:</p>
 <!-- illustrative: an application's own composition of five patterns around one call -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">$fallback = new Fallback(fn (Throwable $e) =&gt; Receipt::declined($e));</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">$result = $fallback-&gt;call(fn (): Receipt =&gt;</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">    $registry-&gt;retry('payments')-&gt;call(fn (): Receipt =&gt;</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">        $registry-&gt;circuitBreaker('payments')-&gt;call(fn (): Receipt =&gt;</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">            $registry-&gt;bulkhead('payments')-&gt;call(fn (): Receipt =&gt;</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">                $registry-&gt;timeLimiter('payments')-&gt;call(fn (): Receipt =&gt;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">    $registry-&gt;retry(&#39;payments&#39;)-&gt;call(fn (): Receipt =&gt;</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">        $registry-&gt;circuitBreaker(&#39;payments&#39;)-&gt;call(fn (): Receipt =&gt;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">            $registry-&gt;bulkhead(&#39;payments&#39;)-&gt;call(fn (): Receipt =&gt;</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">                $registry-&gt;timeLimiter(&#39;payments&#39;)-&gt;call(fn (): Receipt =&gt;</span>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">                    $this-&gt;client-&gt;charge($order),</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="x">                ),</span>
 </span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="x">            ),</span>
@@ -3240,8 +3362,106 @@ closest to the real call:</p>
 <p><code>Fallback</code> outermost means it can recover from <em>any</em> of the inner patterns' own exceptions (a tripped
 breaker, an exhausted retry, a timed-out call). <code>Retry</code> wrapping <code>CircuitBreaker</code> means a retry attempt
 that finds the breaker OPEN will retry against the still-open breaker rather than skip straight to failure —
-order the two the other way around if you want retries to stop the instant the breaker trips. There is no
-enforced ordering; compose the nesting that matches the semantics you want.</p>
+order the two the other way around if you want retries to stop the instant the breaker trips. In the
+programmatic model there is no enforced ordering; compose the nesting that matches the semantics you want.
+The <strong>attributes are the opposite</strong>: their nesting is fixed, and it is Resilience4j's — see
+<a href="#the-composition-fixed">the composition, fixed</a> below.</p>
+<h2 id="resilience-as-attributes">Resilience as attributes<a class="headerlink" href="#resilience-as-attributes" title="Permanent link">&para;</a></h2>
+<p>The same six patterns, applied to a method. <code>#[Retry]</code>, <code>#[CircuitBreaker]</code>, <code>#[RateLimiter]</code>,
+<code>#[Bulkhead]</code> and <code>#[TimeLimiter]</code> each name an instance configured under <code>firefly.resilience.*</code>;
+<code>#[Fallback]</code> names a method on the same class to call when the guarded call finally fails. The shape, taken
+from the framework's own fixture — <code>charge()</code> throws on purpose there, so what the listing shows is the
+recovery path:</p>
+<!-- source: packages/resilience/tests/Fixtures/Method/PaymentService.php -->
+<div class="language-php highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="x">#[Service]</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="x">class PaymentService</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">{</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="x">    #[Bulkhead(&#39;payments&#39;)]</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="x">    #[TimeLimiter(&#39;payments&#39;)]</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">    #[RateLimiter(&#39;payments&#39;)]</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="x">    #[CircuitBreaker(&#39;payments&#39;)]</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="x">    #[Retry(&#39;payments&#39;)]</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="x">    #[Fallback(method: &#39;chargeUnavailable&#39;)]</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="x">    public function charge(string $account, int $cents): string</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="x">    {</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="x">        throw new RuntimeException(&#39;gateway down&#39;);</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="x">    }</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="x">    public function chargeUnavailable(string $account, int $cents, ?Throwable $cause = null): string</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="x">    {</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="x">        return &#39;queued&#39;;</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="x">    }</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="x">    // …</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="x">}</span>
+</span></code></pre></div>
+<p>Each attribute carries <strong>only the instance name</strong>, because every knob (<code>max-attempts</code>, <code>failure-threshold</code>,
+<code>max-tokens</code>, …) already lives in configuration where an operator can change it without a deploy — the same
+split Resilience4j makes. The five registry-backed attributes target a <strong>method or a class</strong> (a class-level
+attribute applies to every public method; a method-level one replaces it); <code>#[Fallback]</code> is method-only,
+because a recovery method is a property of one signature.</p>
+<p><strong>The class-level fan-out stops at a recovery.</strong> A method named by a <code>#[Fallback]</code> on the same class does
+<em>not</em> inherit the class-level <code>#[CircuitBreaker]</code> / <code>#[Retry]</code> / <code>#[RateLimiter]</code> / <code>#[Bulkhead]</code> /
+<code>#[TimeLimiter]</code> — Resilience4j's own treatment of <code>fallbackMethod</code>. The recovery is invoked on the bean,
+which <em>is</em> the proxy, so a guard fanned onto it would be applied by the very link that is unwinding: the
+class breaker that just opened on the failure would refuse the recovery, and the degraded answer would be
+replaced by a <code>CircuitBreakerOpenException</code> raised from inside the catch that was handling the outage. A
+pattern written <strong>on</strong> the recovery by hand is still honoured — that is naming the method on purpose — and
+it picks up nothing the class fanned out.</p>
+<p>The beans are wrapped by the same machinery <code>#[Transactional]</code> uses, so the same limits apply: the guarded
+method must be a non-<code>final</code> public method of a non-<code>final</code> class reached <strong>through the container</strong> —
+<code>$this-&gt;charge(...)</code> from inside the same object bypasses the proxy, exactly as in Spring.</p>
+<p>A <code>#[Fallback]</code> naming a method the class does not have, or one whose signature cannot receive the guarded
+call, <strong>refuses to compile</strong> at <code>firefly:cache</code> — never a surprise raised from inside the catch block that
+is handling the outage.</p>
+<h3 id="the-composition-fixed">The composition, fixed<a class="headerlink" href="#the-composition-fixed" title="Permanent link">&para;</a></h3>
+<p>Within the one advice link, the six patterns nest in Resilience4j's own order, outermost first:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )
+</span></code></pre></div>
+<ul>
+<li><strong><code>Fallback</code> outermost</strong>, so it sees the exception the retry finally gave up on. Inside <code>Retry</code> it would
+  recover every failed attempt and the retry would "succeed" on the recovery value, so nothing would ever
+  be retried.</li>
+<li><strong><code>Retry</code> outside the breaker</strong>, so each attempt is a fresh call the breaker gets to judge — that is how
+  a retry storm trips the breaker instead of hiding from it.</li>
+<li><strong><code>CircuitBreaker</code> outside the rate limiter</strong>, so an OPEN breaker refuses in microseconds without
+  spending a token on a call that is not going to happen.</li>
+<li><strong><code>TimeLimiter</code> outside the bulkhead</strong>, so the timeout covers the work and not the wait for a permit.</li>
+<li><strong><code>Bulkhead</code> innermost</strong>, so a permit is held for the shortest possible window.</li>
+</ul>
+<h3 id="where-the-link-sits-in-the-proxy-chain">Where the link sits in the proxy chain<a class="headerlink" href="#where-the-link-sits-in-the-proxy-chain" title="Permanent link">&para;</a></h3>
+<p>The advice runs at <strong>order 200</strong>: inside method security (100), outside the transaction (1000), with method
+metrics (50) outside everything.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>#[Timed] ( #[PreAuthorize] ( resilience ( #[Transactional] ( method ) ) ) )
+</span></code></pre></div>
+<p>Both halves matter. A call a <code>#[PreAuthorize]</code> refuses must <strong>not</strong> spend a retry budget, a bulkhead permit
+or a breaker outcome — a 403 is a caller's mistake, not a downstream failure, and counting it as one is how
+a permissions bug trips a production breaker. And a <strong>retry opens a new transaction per attempt</strong> rather
+than re-running inside one that is already doomed: every attempt re-enters the chain below the resilience
+link, so an attempt that writes rows and then throws is rolled back before the next attempt begins. (The
+mechanism is <code>MethodInvocation::invocableClone()</code> — a repeating link cannot simply call <code>proceed()</code> twice,
+because the invocation is single-use.) Metrics outside all of it means a timer measures every attempt and
+the waits between them: the latency the caller actually experienced.</p>
+<h3 id="key">Key<a class="headerlink" href="#key" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.resilience.method.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Whether the six attributes are applied. Off makes every resilience attribute <strong>inert</strong> — the proxy runs a pass-through link in place of the resilience one — never half-applied.</td>
+</tr>
+</tbody>
+</table>
+<p>Switching it off does not change the plan: the advice is still compiled, so a cached application and a dev
+application agree on the shape of every proxy, and only the link's behaviour differs.</p>
 <h2 id="cache-backed-state">Cache-backed state<a class="headerlink" href="#cache-backed-state" title="Permanent link">&para;</a></h2>
 <p><code>CircuitBreaker</code>, <code>RateLimiter</code>, and <code>Bulkhead</code> are <strong>stateful across calls</strong> — a breaker's outcome window and
 probe leases, a bucket's token count, a bulkhead's permit leases — and PHP-FPM shares nothing between
@@ -3298,10 +3518,11 @@ builds; a store you bind yourself owns its own policy.</p>
   timeout still blocks the FPM worker for its full duration before the exception is raised. On the <code>pcntl</code>
   path, <code>pcntl_alarm()</code>'s one-second granularity also means any <code>timeout</code> below <code>1s</code> is rounded up to <code>1s</code>
   (sub-second timeouts always use the post-hoc wall-clock path instead, on every runtime).</li>
-<li><strong>Programmatic only — no attribute interception yet.</strong> <code>#[Retry]</code>/<code>#[CircuitBreaker]</code>-style method
-  interception (annotate a method and have calls to it automatically wrapped) and a fluent decorator DSL both
-  require AOP (method-call interception), which is <strong>SP-5</strong>, not M7. M7's resilience is exclusively the
-  programmatic <code>$registry-&gt;pattern('name')-&gt;call(...)</code> model documented above.</li>
+<li><strong>No fluent decorator DSL.</strong> Resilience4j's <code>Decorators.ofSupplier(…).withRetry(…).withCircuitBreaker(…)</code>
+  builder has no equivalent here: the programmatic model composes by nesting <code>call()</code> closures by hand, and
+  the attributes compose in one fixed order that is not configurable. Attribute interception itself is no
+  longer latent — see <a href="#resilience-as-attributes">Resilience as attributes</a> — but a caller who wants a
+  nesting other than the documented one must write the closures.</li>
 <li><strong>Cache-backed state requires a persistent cache driver with atomic lock support.</strong> <code>CacheResilienceStore</code>
   needs both persistence <em>and</em> <code>Illuminate\Contracts\Cache\LockProvider</code> support from the configured cache
   store to actually survive across FPM requests and stay race-free: <code>file</code>, <code>database</code>, and <code>redis</code> qualify.
@@ -3310,12 +3531,16 @@ builds; a store you bind yourself owns its own policy.</p>
   cross-request behaviour. The <code>null</code> cache driver's locks are no-ops (<code>withLock()</code> degrades to running the
   callback without a critical section whenever the driver isn't a <code>LockProvider</code>), so it must not be used in
   production for these patterns either.</li>
-<li><strong><code>CircuitBreaker</code> and <code>RateLimiter</code> records have no idle TTL.</strong> Their cache records are written with no
-  expiry, so an idle key (a payment integration nobody calls for a month) lingers in the cache store
-  indefinitely rather than being reclaimed. This is inert — the next call simply reads whatever state is
-  there — but it is a known, un-bounded cache-growth characteristic worth knowing about for capacity
-  planning. <code>Bulkhead</code> is the exception: its permit-set record carries <code>permit-ttl</code> and is refreshed on
-  every write, so it disappears once nothing has touched the bulkhead for a full lease.</li>
+<li><strong>An idle record is reclaimed on the cache's schedule, not on a sweep the framework runs.</strong> Every
+  cache-backed pattern now writes its record with an expiry refreshed on every write — <code>idle-ttl</code> for
+  <a href="#circuitbreaker"><code>CircuitBreaker</code></a> and <a href="#ratelimiter"><code>RateLimiter</code></a>, <code>permit-ttl</code> for
+  <a href="#bulkhead"><code>Bulkhead</code></a> — so a retired integration's key stops living in the cache forever, which is what
+  it used to do. What remains latent is that this is the ONLY reclamation there is: nothing enumerates or
+  prunes <code>firefly:resilience:*</code> keys, so a driver whose expiry is lazy (the <code>file</code> and <code>database</code> stores
+  delete an expired entry when it is next read) keeps the bytes on disk until something asks for that key
+  again, and a key whose name your code stopped using is never asked for. The bound is on a record's
+  LIFETIME, not on the store's size. Set <code>idle-ttl</code> to <code>null</code> (or <code>0</code>) to opt a specific instance out of even
+  that bound — the right choice for a <code>refill-rate: 0</code> hard quota, which must not be handed back.</li>
 </ul>
 
 
@@ -3392,7 +3617,7 @@ builds; a store you bind yourself owns its own policy.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

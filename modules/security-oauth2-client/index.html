@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2888,20 +2888,20 @@ and refresh, <code>Http::oauth2Client()</code>, and a whole provider in one clas
 <code>firefly.security.oauth2.client.*</code> and defaults to off.</p>
 <!-- illustrative: the deployment's own config/firefly.php — three registrations an application chooses, whose ids, client ids and secrets the framework cannot contain -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">return [</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    'security' =&gt; [</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">        'enabled' =&gt; true,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        'http' =&gt; ['enabled' =&gt; true, 'rules' =&gt; [['pattern' =&gt; '*', 'access' =&gt; 'authenticated']]],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">        'oauth2' =&gt; [</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">            'client' =&gt; [</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">                'enabled' =&gt; true,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">                'login' =&gt; ['enabled' =&gt; true],</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">                'registration' =&gt; [</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">                    'google' =&gt; ['client_id' =&gt; env('GOOGLE_CLIENT_ID'), 'client_secret' =&gt; env('GOOGLE_CLIENT_SECRET')],</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">                    'corp' =&gt; ['provider' =&gt; 'keycloak', 'client_id' =&gt; 'portal', 'client_secret' =&gt; env('KC_SECRET'), 'client_name' =&gt; 'Corporate SSO'],</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="x">                    'billing' =&gt; ['provider' =&gt; 'corp', 'client_id' =&gt; 'billing-job', 'client_secret' =&gt; env('BILLING_SECRET'), 'authorization_grant_type' =&gt; 'client_credentials', 'scope' =&gt; ['invoices:read']],</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    &#39;security&#39; =&gt; [</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">        &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        &#39;http&#39; =&gt; [&#39;enabled&#39; =&gt; true, &#39;rules&#39; =&gt; [[&#39;pattern&#39; =&gt; &#39;*&#39;, &#39;access&#39; =&gt; &#39;authenticated&#39;]]],</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">        &#39;oauth2&#39; =&gt; [</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">            &#39;client&#39; =&gt; [</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">                &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">                &#39;login&#39; =&gt; [&#39;enabled&#39; =&gt; true],</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">                &#39;registration&#39; =&gt; [</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">                    &#39;google&#39; =&gt; [&#39;client_id&#39; =&gt; env(&#39;GOOGLE_CLIENT_ID&#39;), &#39;client_secret&#39; =&gt; env(&#39;GOOGLE_CLIENT_SECRET&#39;)],</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">                    &#39;corp&#39; =&gt; [&#39;provider&#39; =&gt; &#39;keycloak&#39;, &#39;client_id&#39; =&gt; &#39;portal&#39;, &#39;client_secret&#39; =&gt; env(&#39;KC_SECRET&#39;), &#39;client_name&#39; =&gt; &#39;Corporate SSO&#39;],</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="x">                    &#39;billing&#39; =&gt; [&#39;provider&#39; =&gt; &#39;corp&#39;, &#39;client_id&#39; =&gt; &#39;billing-job&#39;, &#39;client_secret&#39; =&gt; env(&#39;BILLING_SECRET&#39;), &#39;authorization_grant_type&#39; =&gt; &#39;client_credentials&#39;, &#39;scope&#39; =&gt; [&#39;invoices:read&#39;]],</span>
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="x">                ],</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="x">                'provider' =&gt; [</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="x">                    'corp' =&gt; ['issuer_uri' =&gt; 'https://sso.example.com/realms/corp'],</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="x">                &#39;provider&#39; =&gt; [</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="x">                    &#39;corp&#39; =&gt; [&#39;issuer_uri&#39; =&gt; &#39;https://sso.example.com/realms/corp&#39;],</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="x">                ],</span>
 </span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="x">            ],</span>
 </span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="x">        ],</span>
@@ -3033,9 +3033,9 @@ rather than taking every other way in down with it.</p>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>GET /login/oauth2/code/{id}?code&amp;state   OAuth2LoginAuthenticationFilter (-88)
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  → the authorization request is PULLED from the session first (single use, whatever follows)
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  → `error` in the query → the provider's RFC 6749 code
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  → none saved / another registration's → authorization_request_not_found; state ≠ (hash_equals) → invalid_state_parameter
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  → the callback URL ≠ the request's redirect_uri → invalid_redirect_uri; no code → invalid_request
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  → `error` in the query → the provider&#39;s RFC 6749 code
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  → none saved / another registration&#39;s → authorization_request_not_found; state ≠ (hash_equals) → invalid_state_parameter
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>  → the callback URL ≠ the request&#39;s redirect_uri → invalid_redirect_uri; no code → invalid_request
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  → OAuth2LoginAuthenticationProvider
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>      DefaultOAuth2AccessTokenResponseClient: POST token_uri (form, Basic/post/none client auth, code_verifier, the two timeouts)
 </span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>      openid: OidcIdTokenDecoder (RS256 against the JWKS through RemoteJwksProvider, exp) → OidcIdTokenValidator
@@ -3044,9 +3044,9 @@ rather than taking every other way in down with it.</p>
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>      else:   DefaultOAuth2UserService: GET user_info_uri with the bearer → DefaultOAuth2User
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>      GrantedAuthoritiesMapper bean (optional) → OAuth2AuthenticationToken::of(user, mapped, registrationId)
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>  → session id regenerated, SecurityContextRepository::save(), the authorized client saved (session + cache, encrypted),
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    AuthenticationSuccessEvent + InteractiveAuthenticationSuccessEvent('oauth2-login'),
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    AuthenticationSuccessEvent + InteractiveAuthenticationSuccessEvent(&#39;oauth2-login&#39;),
 </span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    302 saved request | login.default_success_url
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>  → any OAuth2AuthenticationException → AuthenticationFailureBadCredentialsEvent (username '', ip) + 302 login.failure_url
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>  → any OAuth2AuthenticationException → AuthenticationFailureBadCredentialsEvent (username &#39;&#39;, ip) + 302 login.failure_url
 </span></code></pre></div>
 <p>Both filters answer their own paths before <code>HttpSecurityFilter</code>, so no URL rule is needed for them; both are gated
 by the security master flag, the package master and <code>login.enabled</code>, re-read live. A 503 from discovery or the JWKS
@@ -3298,7 +3298,7 @@ describes:</p>
 <!-- source: packages/security-oauth2-client/tests/Support/OAuth2ClientCapstoneTestCase.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">abstract class OAuth2ClientCapstoneTestCase extends SecurityCapstoneTestCase</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">{</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">    public const string ISSUER = 'http://localhost/fake-idp';</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">    public const string ISSUER = &#39;http://localhost/fake-idp&#39;;</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="x">    public FakeAuthorizationServer $idp;</span>
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">    // …</span>
@@ -3307,10 +3307,10 @@ describes:</p>
 </span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">        return [</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="x">            ...parent::configOverrides(),</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="x">            // …</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="x">            'firefly.security.oauth2.client.enabled' =&gt; true,</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="x">            'firefly.security.oauth2.client.login.enabled' =&gt; true,</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="x">            'firefly.security.oauth2.client.registration.fake' =&gt; FakeAuthorizationServer::registrationConfig($this-&gt;registrationOverrides()),</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="x">            'firefly.security.oauth2.client.provider.fake' =&gt; FakeAuthorizationServer::providerConfig(self::ISSUER, $this-&gt;providerOverrides()),</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="x">            &#39;firefly.security.oauth2.client.enabled&#39; =&gt; true,</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="x">            &#39;firefly.security.oauth2.client.login.enabled&#39; =&gt; true,</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="x">            &#39;firefly.security.oauth2.client.registration.fake&#39; =&gt; FakeAuthorizationServer::registrationConfig($this-&gt;registrationOverrides()),</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="x">            &#39;firefly.security.oauth2.client.provider.fake&#39; =&gt; FakeAuthorizationServer::providerConfig(self::ISSUER, $this-&gt;providerOverrides()),</span>
 </span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="x">            ...$this-&gt;clientOverrides(),</span>
 </span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="x">        ];</span>
 </span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="x">    }</span>
@@ -3338,7 +3338,7 @@ expires tokens. Every hop is recorded (<code>authorizationRequests</code>, <code
 <p><code>FireflyTestCase::actingAsOidcUser()</code> signs a real <code>OidcUser</code> in for the rest of a test — claims, scopes, extra
 authorities, the registration id — with no provider involved:</p>
 <!-- illustrative: the one line a reader writes in their own test -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">$this-&gt;actingAsOidcUser(['sub' =&gt; 'ada', 'email' =&gt; 'ada@example.com'], ['ROLE_ADMIN'], 'okta', ['openid', 'profile']);</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">$this-&gt;actingAsOidcUser([&#39;sub&#39; =&gt; &#39;ada&#39;, &#39;email&#39; =&gt; &#39;ada@example.com&#39;], [&#39;ROLE_ADMIN&#39;], &#39;okta&#39;, [&#39;openid&#39;, &#39;profile&#39;]);</span>
 </span></code></pre></div>
 <p>and <code>actingAsAuthentication(Authentication $token)</code> is the seam beneath it and <code>actingAsPrincipal()</code>. The package's own
 suites are the reference: <code>packages/security-oauth2-client/tests/Support/OAuth2ClientCapstoneTestCase.php</code> boots the
@@ -3476,7 +3476,7 @@ authorization server, real IdP adapters beyond the presets, and MFA are the next
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

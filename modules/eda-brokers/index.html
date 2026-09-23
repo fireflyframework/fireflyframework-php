@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1594,6 +1594,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#tracing-on-the-wire-all-three" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracing on the wire (all three)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2847,6 +2858,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#tracing-on-the-wire-all-three" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracing on the wire (all three)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3216,6 +3238,39 @@ provider selected the whole package resolves nothing and requires nothing.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="tracing-on-the-wire-all-three">Tracing on the wire (all three)<a class="headerlink" href="#tracing-on-the-wire-all-three" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.eda.tracing.brokers.enabled</code></td>
+<td><code>true</code></td>
+<td>Whether <code>RabbitMqEventPublisher</code>, <code>KafkaEventPublisher</code> and <code>PostgresEventPublisher</code> may stamp a <code>traceparent</code> on the envelope they hand to the transport.</td>
+</tr>
+</tbody>
+</table>
+<p>All three <code>publish()</code> methods run inside <code>EdaTracing::tracePublish()</code>, so the message that reaches the
+exchange, the topic or the <code>firefly_eda_outbox</code> row carries the producer span's <code>traceparent</code> and the consumer
+on the far side continues the trace rather than starting a new one. On Postgres that covers <strong>both</strong> writers of
+a row: the <code>EventPublisher</code> bean and <code>OutboxPreCommitHook</code>, which is the only path a <code>DomainEvent</code> takes under
+<code>provider=postgres</code> — so the traced row is the one that commits with the aggregate. <code>firefly:outbox:relay</code>
+wraps its forward in <code>traceConsume()</code> of the claimed row, so the downstream producer span is a <strong>child</strong> of the
+trace the row carries instead of a fresh root.</p>
+<p>It does nothing unless <code>firefly.observability.tracing.enabled</code> and <code>firefly.observability.tracing.eda.enabled</code>
+are on (with them off the bound <code>EdaTracing</code> is the no-op). Set it to <code>false</code> to keep in-process spans while
+refusing to put trace identifiers on a wire someone else reads. The key is read in exactly one place —
+<code>Firefly\Eda\Tracing\BrokerTracing</code> — by the three publisher beans and by <code>RelayDownstream</code>, because a gate
+that lives only in a bean fails open wherever a publisher is built by container autowiring. The relay honours it
+whether you name a shipped adapter by its alias (<code>rabbitmq</code>) or by its own class-string: both spellings take the
+same configured path. A downstream of your OWN — a publisher class this package ships no adapter for, or one you
+bind under <code>firefly.eda.relay.downstream</code> — is yours to construct and therefore yours to gate; call
+<code>BrokerTracing::resolve()</code> where you build it.</p>
 <div class="admonition note">
 <p class="admonition-title">No config key activates a broker by itself</p>
 <p>Installing <code>firefly/eda-postgres</code> (say) via Composer does nothing until <code>firefly.eda.provider=postgres</code>
@@ -3312,7 +3367,9 @@ Kafka — just the natural insertion order of one table).</p>
 <p><code>firefly:outbox:relay</code> is a <strong>distinct, optional</strong> path that fronts a <strong>different downstream broker</strong>. Enable
 it by setting <code>firefly.eda.postgres.relay.downstream_provider</code> — to a shipped alias (<code>rabbitmq</code>/<code>kafka</code>), to
 an <code>EventPublisher</code> class-string, or to the id of a binding you supply — or by binding your own publisher
-under the container id <code>firefly.eda.relay.downstream</code> (checked first, so the key may then stay unset).</p>
+under the container id <code>firefly.eda.relay.downstream</code> (checked first, so the key may then stay unset). A
+shipped adapter named by its OWN class-string is the same downstream as its alias and resolves identically,
+config keys and broker-tracing gate included.</p>
 <p>With neither configured, running the command <strong>fails</strong> with a console error naming the key and the available
 aliases, and exits <code>FAILURE</code>. That is deliberate: an operator who starts the relay expects rows to move, and a
 silent success would look like a working relay that delivers nothing. If you did not mean to front a second
@@ -3497,23 +3554,23 @@ anonymous Pest closure, so PHPStan can see <code>skipUnlessDocker()</code> stati
 <p>Missing extension, missing environment variable, or no Docker daemon reachable — any one of these skips
 the suite with a clear message, so <code>composer check</code> and ordinary CI runs never depend on a live broker.
 Run them explicitly (with the broker/extension/Docker prerequisites satisfied) via:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">FIREFLY_PG_DSN</span><span class="o">=</span><span class="s2">"host=127.0.0.1;port=5432;dbname=firefly;user=postgres;password=postgres"</span><span class="w"> </span><span class="se">\</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">FIREFLY_PG_DSN</span><span class="o">=</span><span class="s2">&quot;host=127.0.0.1;port=5432;dbname=firefly;user=postgres;password=postgres&quot;</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>vendor/bin/pest<span class="w"> </span>--group<span class="o">=</span>integration
 </span></code></pre></div>
 <h2 id="example-switching-an-app-to-the-postgres-outbox">Example: switching an app to the Postgres outbox<a class="headerlink" href="#example-switching-an-app-to-the-postgres-outbox" title="Permanent link">&para;</a></h2>
 <p>Set the provider, and uncomment the <code>postgres</code> block the reference already ships at its defaults — <code>relay</code> is
 optional and only read by <code>firefly:outbox:relay</code>, so leave it out for terminal in-process delivery:</p>
 <!-- source: skeleton/config/firefly.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="x">    'eda' =&gt; [</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="x">    &#39;eda&#39; =&gt; [</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="x">        'provider' =&gt; env('FIREFLY_EDA_PROVIDER', 'memory'),</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="x">        &#39;provider&#39; =&gt; env(&#39;FIREFLY_EDA_PROVIDER&#39;, &#39;memory&#39;),</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="x">// …</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="x">        // 'postgres' =&gt; [</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="x">        //     'connection' =&gt; 'pgsql',</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="x">        //     'channel' =&gt; 'firefly_eda_events',</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="x">        //     'max_attempts' =&gt; 3,</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="x">        //     'relay' =&gt; [</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="x">        //         'downstream_provider' =&gt; 'rabbitmq',</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="x">        // &#39;postgres&#39; =&gt; [</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="x">        //     &#39;connection&#39; =&gt; &#39;pgsql&#39;,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="x">        //     &#39;channel&#39; =&gt; &#39;firefly_eda_events&#39;,</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="x">        //     &#39;max_attempts&#39; =&gt; 3,</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="x">        //     &#39;relay&#39; =&gt; [</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="x">        //         &#39;downstream_provider&#39; =&gt; &#39;rabbitmq&#39;,</span>
 </span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="x">        //     ],</span>
 </span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="x">        // ],</span>
 </span></code></pre></div>
@@ -3598,7 +3655,7 @@ call sites that worked against <code>memory</code>/<code>queue</code> now run ag
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

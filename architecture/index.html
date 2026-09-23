@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2809,17 +2809,17 @@ a LaraFly filter runs in the same pipeline as CORS or secure-headers middleware,
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">    $beans = [];</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">    foreach ($context-&gt;definitions-&gt;all() as $definition) {</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">        if (is_a($definition-&gt;class(), WebFilter::class, true)) {</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">            $beans[] = ['class' =&gt; $definition-&gt;class(), 'order' =&gt; $definition-&gt;descriptor-&gt;order];</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">            $beans[] = [&#39;class&#39; =&gt; $definition-&gt;class(), &#39;order&#39; =&gt; $definition-&gt;descriptor-&gt;order];</span>
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">        }</span>
 </span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">    }</span>
 </span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
 </span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    usort($beans, static function (array $a, array $b): int {</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">        return $a['order'] &lt;=&gt; $b['order'] ?: strcmp($a['class'], $b['class']);</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">        return $a[&#39;order&#39;] &lt;=&gt; $b[&#39;order&#39;] ?: strcmp($a[&#39;class&#39;], $b[&#39;class&#39;]);</span>
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">    });</span>
 </span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>
 </span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">    return array_merge(</span>
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">        [RequestContextFilter::class, CorrelationIdFilter::class],</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">        array_map(static fn (array $bean): string =&gt; $bean['class'], $beans),</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">        array_map(static fn (array $bean): string =&gt; $bean[&#39;class&#39;], $beans),</span>
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="x">    );</span>
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="x">}</span>
 </span></code></pre></div>
@@ -2924,12 +2924,14 @@ header map, with no SDK involved. <code>TracingFilter</code> (<code>-110</code>)
 request arriving with a <code>traceparent</code> continues that trace and one arriving without starts a new root — then
 publishes <code>firefly.trace_id</code> and <code>firefly.span_id</code> onto Laravel's <code>Context</code> and <code>Request::$attributes</code>. From
 there the same trace crosses five boundaries: inbound HTTP, an <code>INTERNAL</code> span per CQRS message, a
-<code>PRODUCER</code> span stamping <code>traceparent</code> into the envelope's headers on the in-memory and queue buses, a
+<code>PRODUCER</code> span stamping <code>traceparent</code> into the envelope's headers, a
 <code>CONSUMER</code> span on every delivery — a broker's included, through the shared <code>SubscriberRegistrySink</code> — and a
 <code>CLIENT</code> span on every outbound <code>Http</code> call, which injects the header again for the next service's own filter
-to extract. The producer half is the narrower one on purpose: <code>eda-rabbitmq</code>, <code>eda-kafka</code> and <code>eda-postgres</code>
-build their envelopes themselves and do not reach the publish seam yet, so a <code>traceparent</code> reaches a broker
-only when something upstream put it there — see <a href="../modules/tracing/#known-latent">Known-latent</a>.</p>
+to extract. Since 26.09.4 the producer half is as wide as the consumer half: <code>RabbitMqEventPublisher</code>,
+<code>KafkaEventPublisher</code> and <code>PostgresEventPublisher</code> route <code>publish()</code> through the same seam the in-memory and
+queue buses have always used, so a broker record carries a <code>traceparent</code> of the framework's own making.
+<code>firefly.eda.tracing.brokers.enabled</code> sends those three back to the no-op without touching the other two; what
+no gate reaches is a relay downstream you wrote yourself — see <a href="../modules/tracing/#known-latent">Known-latent</a>.</p>
 <p>The CQRS and EDA seams follow the <code>CqrsMetrics</code> shape: an interface in the owning package with a no-op
 default behind <code>#[ConditionalOnMissingBean]</code>, and observability's <code>#[Order(500)]</code> auto-configuration
 registering the real implementation first. Neither <code>firefly/cqrs</code> nor <code>firefly/eda</code> depends on
@@ -3027,7 +3029,7 @@ for long-running/WebSocket/SSE workloads. This section is expanded as those subs
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

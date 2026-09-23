@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -3085,8 +3085,12 @@ bytes on a real wire.</p>
 (so a <code>traceparent</code> can be stamped on the way out) and <code>traceConsume()</code> wraps one delivery. <code>InMemoryEventBus</code>,
 <code>QueueEventBus</code> (publish, and <code>deliver()</code> on the worker) and <code>SubscriberRegistrySink</code> (every broker consumer)
 call it; <code>NoOpEdaTracing</code> is the default and <code>firefly/observability</code> swaps in PRODUCER/CONSUMER spans — see
-<a href="../tracing/">Tracing</a>. The broker packages' own <code>publish()</code> methods do not call it yet (a documented
-known-latent there).</p>
+<a href="../tracing/">Tracing</a>. The three broker packages call it from their own <code>publish()</code> methods too, so the
+envelope that reaches RabbitMQ, Kafka or the <code>firefly_eda_outbox</code> row carries the producer span's
+<code>traceparent</code>; <code>firefly.eda.tracing.brokers.enabled</code> is the one switch that keeps the in-process spans while
+putting nothing on a wire a third party reads. <code>Firefly\Eda\Tracing\BrokerTracing</code> is where that key is read —
+once, by the adapters' <code>#[Bean]</code> methods AND by <code>RelayDownstream</code>, because a gate that lives only in a bean
+fails open wherever a publisher is built by autowiring instead.</p>
 <h2 id="config-keys">Config keys<a class="headerlink" href="#config-keys" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3140,6 +3144,12 @@ known-latent there).</p>
 <td><code>[]</code></td>
 <td>The broker destinations <code>php artisan firefly:eda:consume</code> binds when <code>--destination</code> is not passed. Read <strong>only</strong> by that command; it must be a list of strings or the command throws a <code>ConfigurationException</code>.</td>
 </tr>
+<tr>
+<td><code>firefly.eda.tracing.brokers.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Whether the rabbitmq/kafka/postgres publishers may stamp a <code>traceparent</code> on the envelope they hand to the transport. Read in ONE place (<code>BrokerTracing</code>), by the adapters' publisher beans and by the relay's downstream overrides. Set it to <code>false</code> to keep in-process spans while putting no trace identifier on a third party's wire; it can only ever downgrade the bound <code>EdaTracing</code> to the no-op, never switch tracing on.</td>
+</tr>
 </tbody>
 </table>
 <div class="admonition note">
@@ -3167,7 +3177,7 @@ defaults.</p>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="x">{</span>
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="x">    public function __construct(private readonly ListenerSpy $spy) {}</span>
 </span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="x">    #[EventListener('order.*')]</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="x">    #[EventListener(&#39;order.*&#39;)]</span>
 </span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="x">    public function onOrder(EventEnvelope $envelope): void</span>
 </span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="x">    {</span>
 </span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="x">        $this-&gt;spy-&gt;record($envelope-&gt;eventType);</span>
@@ -3187,7 +3197,7 @@ publishes into the exchange <code>firefly.eda.rabbitmq.exchange</code> names, de
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
 </span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="x">    public function place(int $orderId): void</span>
 </span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="x">    {</span>
-</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="x">        $this-&gt;events-&gt;publish('orders', 'order.placed', ['id' =&gt; $orderId]);</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="x">        $this-&gt;events-&gt;publish(&#39;orders&#39;, &#39;order.placed&#39;, [&#39;id&#39; =&gt; $orderId]);</span>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="x">    }</span>
 </span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="x">}</span>
 </span></code></pre></div>
@@ -3292,7 +3302,7 @@ publishes into the exchange <code>firefly.eda.rabbitmq.exchange</code> names, de
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

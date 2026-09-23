@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -3199,9 +3199,9 @@ class header and the <code>@method</code> tags that type them remain:</p>
 </span></code></pre></div>
 <p>Calling those methods is what the grammar buys:</p>
 <!-- illustrative: the calls a reader makes against their own repository; a derived method has no body to point at -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">$repo-&gt;findByStatusAndAmountGreaterThan('open', 100);        // WHERE status = ? AND amount &gt; ?</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="x">$repo-&gt;findTop2ByStatusOrderByAmountDesc('open');             // WHERE status = ? ORDER BY amount desc LIMIT 2</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">$repo-&gt;existsByEmailIgnoreCase('b@x.test');                   // WHERE LOWER(email) = LOWER(?)</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="x">$repo-&gt;findByStatusAndAmountGreaterThan(&#39;open&#39;, 100);        // WHERE status = ? AND amount &gt; ?</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="x">$repo-&gt;findTop2ByStatusOrderByAmountDesc(&#39;open&#39;);             // WHERE status = ? ORDER BY amount desc LIMIT 2</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="x">$repo-&gt;existsByEmailIgnoreCase(&#39;b@x.test&#39;);                   // WHERE LOWER(email) = LOWER(?)</span>
 </span></code></pre></div>
 <p><code>@method</code> tags on the class (not a real method body) are how PHPStan sees a typed return for what is, at
 runtime, dynamic <code>__call</code> dispatch.</p>
@@ -3218,7 +3218,7 @@ runtime, dynamic <code>__call</code> dispatch.</p>
 </span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="x">}</span>
 </span></code></pre></div>
 <!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="x">#[Query('select * from records where email = :email order by amount asc')]</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="x">#[Query(&#39;select * from records where email = :email order by amount asc&#39;)]</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="x">public function findByEmailRaw(string $email): array</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="x">{</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="x">    $rows = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3249,7 +3249,7 @@ both would otherwise apply to the same method name.</p>
 <div class="language-php highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="x">Specifications::allOf(...$specifications); // AND-folds left-to-right; zero-arg = match-all</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="x">Specifications::anyOf(...$specifications); // OR-folds left-to-right; zero-arg = match-all</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="x">Specifications::not($specification);</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="x">Specifications::where(fn (Builder $q) =&gt; $q-&gt;where('status', 'open'));</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="x">Specifications::where(fn (Builder $q) =&gt; $q-&gt;where(&#39;status&#39;, &#39;open&#39;));</span>
 </span></code></pre></div>
 <p>Each combinator groups its side in a nested closure so precedence survives further composition —
 <code>AndSpecification</code> emits <code>-&gt;where(fn ($inner) =&gt; ...)-&gt;where(fn ($inner) =&gt; ...)</code>, <code>OrSpecification</code> emits
@@ -3277,21 +3277,21 @@ Eloquent model with some attributes set (only what was set, not every column —
 is a one-property probe), a plain object (its public properties) or a plain <code>column =&gt; value</code> array; the
 <code>ExampleMatcher</code> carries the rules:</p>
 <!-- illustrative: the probe, the matcher and the six calls a reader writes against their own repository -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="x">$repo-&gt;findByExample(Example::of(['status' =&gt; 'open']));                       // WHERE status = ?</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="x">$repo-&gt;findByExample(Example::of(new Order(['status' =&gt; 'open', 'customer' =&gt; 'Ada'])));</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="x">$repo-&gt;findByExample(Example::of([&#39;status&#39; =&gt; &#39;open&#39;]));                       // WHERE status = ?</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="x">$repo-&gt;findByExample(Example::of(new Order([&#39;status&#39; =&gt; &#39;open&#39;, &#39;customer&#39; =&gt; &#39;Ada&#39;])));</span>
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="x">$matcher = ExampleMatcher::matching()                                           // = matchingAll(): AND</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="x">    -&gt;withIgnorePaths('id', 'created_at')                                       // dropped from the probe</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="x">    -&gt;withIgnorePaths(&#39;id&#39;, &#39;created_at&#39;)                                       // dropped from the probe</span>
 </span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="x">    -&gt;withStringMatcher(StringMatcher::CONTAINING)                              // every string: LIKE %v%</span>
-</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="x">    -&gt;withIgnoreCase('customer')                                                // no paths = every string</span>
-</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="x">    -&gt;withMatcher('email', GenericPropertyMatcher::startsWith()-&gt;caseSensitive())</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="x">    -&gt;withIgnoreCase(&#39;customer&#39;)                                                // no paths = every string</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="x">    -&gt;withMatcher(&#39;email&#39;, GenericPropertyMatcher::startsWith()-&gt;caseSensitive())</span>
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="x">    -&gt;withIncludeNullValues();                                                  // null probe value =&gt; IS NULL</span>
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
 </span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="x">$repo-&gt;findByExample(Example::of($probe, $matcher));</span>
 </span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="x">$repo-&gt;findOneByExample($example);        // null, the row, or IncorrectResultSizeDataAccessException for more</span>
 </span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="x">$repo-&gt;countByExample($example);</span>
 </span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="x">$repo-&gt;existsByExample($example);</span>
-</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="x">$repo-&gt;findByExamplePaged($example, Pageable::of(1, 20, Sort::by('id')));</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="x">$repo-&gt;findByExamplePaged($example, Pageable::of(1, 20, Sort::by(&#39;id&#39;)));</span>
 </span></code></pre></div>
 <p>Rules: <code>matchingAny()</code> folds with OR; a <code>null</code> probe value is skipped unless <code>withIncludeNullValues()</code>; only
 <strong>string</strong> values get string matching (<code>EXACT</code> = <code>=</code>, <code>CONTAINING</code>/<code>STARTING</code>/<code>ENDING</code> = <code>LIKE</code>), an int,
@@ -3311,7 +3311,7 @@ there too.</p>
 <!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="x">/** A statement that needs a transaction: returns the affected-row count. */</span>
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="x">#[Modifying]</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="x">#[Query('update records set status = :status where amount &lt; :amount')]</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="x">#[Query(&#39;update records set status = :status where amount &lt; :amount&#39;)]</span>
 </span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="x">public function closeSmall(string $status, int $amount): int</span>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="x">{</span>
 </span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="x">    $affected = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3322,7 +3322,7 @@ there too.</p>
 </span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
 </span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="x">/** A statement that may run without a transaction. */</span>
 </span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="x">#[Modifying(requiresTransaction: false)]</span>
-</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="x">#[Query('delete from records where status = :status')]</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="x">#[Query(&#39;delete from records where status = :status&#39;)]</span>
 </span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="x">public function purgeStatus(string $status): int</span>
 </span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="x">{</span>
 </span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="x">    $affected = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3341,7 +3341,7 @@ context to clear.</p>
 <h3 id="projection"><code>#[Projection]</code><a class="headerlink" href="#projection" title="Permanent link">&para;</a></h3>
 <!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="x">/**</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="x"> * A derived query hydrated into a DTO; the SELECT list is inferred from RecordSummary's constructor.</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="x"> * A derived query hydrated into a DTO; the SELECT list is inferred from RecordSummary&#39;s constructor.</span>
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="x"> *</span>
 </span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="x"> * @return list&lt;RecordSummary&gt;</span>
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="x"> */</span>
@@ -3361,7 +3361,7 @@ context to clear.</p>
 </span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="x"> * @return list&lt;RecordSummary&gt;</span>
 </span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="x"> */</span>
 </span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="x">#[Projection(RecordSummary::class)]</span>
-</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="x">#[Query('select id, email, amount from records where status = :status order by amount asc')]</span>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="x">#[Query(&#39;select id, email, amount from records where status = :status order by amount asc&#39;)]</span>
 </span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="x">public function summariesByStatusRaw(string $status): array</span>
 </span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="x">{</span>
 </span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="x">    $rows = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3396,6 +3396,9 @@ against the table before the query runs — sqlite would otherwise read an unkno
 string literal). <code>findFirst…</code> returns one DTO or null; <code>count</code>/<code>exists</code>/<code>delete</code> ignore a projection.
 Interface-style projections (Spring's <code>interface RecordSummary { String getEmail(); }</code>) are not offered —
 PHP has no proxy that could implement an interface by column name at runtime; declare the DTO.</p>
+<p>A <strong>trailing <code>Pageable</code> combines</strong> with the projection on a derived method: the window is taken in the
+database and one DTO is hydrated per row of it (<code>Slice</code> over-fetches <code>size + 1</code> for <code>hasNext</code>);
+<code>firefly.data.projection.pageable</code> restores the old unpaged list.</p>
 <h3 id="lock"><code>#[Lock]</code><a class="headerlink" href="#lock" title="Permanent link">&para;</a></h3>
 <p><code>PESSIMISTIC_WRITE</code> compiles to <code>lockForUpdate()</code>, <code>PESSIMISTIC_READ</code> to <code>sharedLock()</code>:</p>
 <!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
@@ -3430,10 +3433,10 @@ compiles it to nothing, so the read simply succeeds there.</p>
 <h3 id="entitygraph"><code>#[EntityGraph]</code><a class="headerlink" href="#entitygraph" title="Permanent link">&para;</a></h3>
 <!-- source: packages/data/tests/Fixtures/Repository/RecordRepository.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="x">/** @var array&lt;string, list&lt;string&gt;&gt; */</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="x">protected array $entityGraphs = ['Record.full' =&gt; ['entries']];</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="x">protected array $entityGraphs = [&#39;Record.full&#39; =&gt; [&#39;entries&#39;]];</span>
 </span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="x">// …</span>
 </span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="x">/** @return list&lt;Record&gt; */</span>
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="x">#[EntityGraph(attributePaths: ['entries'])]</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="x">#[EntityGraph(attributePaths: [&#39;entries&#39;])]</span>
 </span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="x">public function findByStatusOrderByIdDesc(string $status): array</span>
 </span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="x">{</span>
 </span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="x">    $rows = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3448,7 +3451,7 @@ compiles it to nothing, so the read simply succeeds there.</p>
 </span><span id="__span-14-17"><a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="x"> *</span>
 </span><span id="__span-14-18"><a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="x"> * @return list&lt;Record&gt;</span>
 </span><span id="__span-14-19"><a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="x"> */</span>
-</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="x">#[EntityGraph('Record.full')]</span>
+</span><span id="__span-14-20"><a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="x">#[EntityGraph(&#39;Record.full&#39;)]</span>
 </span><span id="__span-14-21"><a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a><span class="x">public function findAll(): array</span>
 </span><span id="__span-14-22"><a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a><span class="x">{</span>
 </span><span id="__span-14-23"><a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="x">    return parent::findAll();</span>
@@ -3470,7 +3473,7 @@ type is <code>Slice</code>, a <code>Page</code> otherwise — so an undeclared <
 </span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="x"> *</span>
 </span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="x"> * @return Slice&lt;Record&gt;</span>
 </span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="x"> */</span>
-</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="x">#[EntityGraph(attributePaths: ['entries'])]</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="x">#[EntityGraph(attributePaths: [&#39;entries&#39;])]</span>
 </span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="x">public function findByStatusOrderByIdAsc(string $status, Pageable $pageable): Slice</span>
 </span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="x">{</span>
 </span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="x">    $slice = $this-&gt;dispatchQuery(__FUNCTION__, func_get_args());</span>
@@ -3566,11 +3569,11 @@ count query:</p>
 </span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="x">        public ?Sort $sort = null,</span>
 </span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="x">    ) {</span>
 </span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="x">        if ($page &lt; 1) {</span>
-</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="x">            throw new InvalidArgumentException('Page number is 1-based and must be &gt;= 1.');</span>
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="x">            throw new InvalidArgumentException(&#39;Page number is 1-based and must be &gt;= 1.&#39;);</span>
 </span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="x">        }</span>
 </span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>
 </span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="x">        if ($size &lt; 1) {</span>
-</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="x">            throw new InvalidArgumentException('Page size must be &gt;= 1.');</span>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="x">            throw new InvalidArgumentException(&#39;Page size must be &gt;= 1.&#39;);</span>
 </span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="x">        }</span>
 </span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="x">    }</span>
 </span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a>
@@ -3666,8 +3669,8 @@ direction and returns a new <code>Sort</code>. An <code>Order</code> is a proper
 <!-- source: packages/data/src/Repository/Direction.php -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="x">enum Direction: string</span>
 </span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="x">{</span>
-</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="x">    case Asc = 'asc';</span>
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="x">    case Desc = 'desc';</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="x">    case Asc = &#39;asc&#39;;</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="x">    case Desc = &#39;desc&#39;;</span>
 </span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="x">}</span>
 </span></code></pre></div>
 <p><code>Direction</code>'s backing value <strong>is</strong> the Eloquent <code>orderBy()</code> direction string, so the mapping at the Eloquent
@@ -3717,6 +3720,11 @@ a kernel <code>OptimisticLockingFailureException</code> (409). See <a href="../e
 <td><code>true</code></td>
 <td>register <code>#[TransactionalEventListener]</code> methods — see <a href="../transactional/#transactional-event-listeners">Transactions</a></td>
 </tr>
+<tr>
+<td><code>firefly.data.projection.pageable</code></td>
+<td><code>true</code></td>
+<td>a <code>#[Projection]</code> method taking a trailing <code>Pageable</code> pages <strong>in the database</strong> and hydrates one DTO per row of the window; <code>false</code> restores the old behaviour, where the projection won and the whole unpaged result came back</td>
+</tr>
 </tbody>
 </table>
 <h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
@@ -3728,8 +3736,12 @@ a kernel <code>OptimisticLockingFailureException</code> (409). See <a href="../e
   placeholder used twice needs the argument twice.</li>
 <li><strong>Interface projections are out</strong> — PHP has no runtime proxy for an interface keyed by column name; declare
   the DTO class.</li>
-<li><strong>A <code>#[Projection]</code> and a trailing <code>Pageable</code> do not combine</strong>: the projection returns the whole (unpaged)
-  result. Page the entities, or add a <code>LIMIT</code> to the <code>#[Query]</code>.</li>
+<li><strong>A <code>#[Projection]</code> and a trailing <code>Pageable</code> combine on a DERIVED method, not on a <code>#[Query]</code> one.</strong>
+  <code>findByStatus(string $status, Pageable $p): Page</code> selects the DTO's columns and pages <strong>in the database</strong>,
+  hydrating one DTO per row of the window; declaring <code>Slice</code> fetches <code>size + 1</code> and reports <code>hasNext</code>. A
+  <code>#[Query]</code> method's SQL still owns its own select list <em>and</em> its own window — the framework does not rewrite
+  hand-written SQL — so page it with a <code>LIMIT</code>/<code>OFFSET</code> of its own. Set <code>firefly.data.projection.pageable</code> to
+  <code>false</code> for one release if call sites relied on the old unpaged list.</li>
 </ul>
 <hr />
 <h2 id="browsing-what-a-repository-holds">Browsing what a repository holds<a class="headerlink" href="#browsing-what-a-repository-holds" title="Permanent link">&para;</a></h2>
@@ -3816,7 +3828,7 @@ reasoning, and for the relations it walks between your entities.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

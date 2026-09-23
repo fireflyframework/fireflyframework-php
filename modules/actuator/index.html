@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1904,6 +1904,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Health">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#who-may-read-the-component-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who may read the component details
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2628,6 +2645,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Health">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#who-may-read-the-component-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who may read the component details
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2734,6 +2768,36 @@ the whole of its security model: see <a href="../admin/">Admin Dashboard</a>, an
 <p><code>HealthIndicator { health(): Health }</code>; <code>Status</code> = UP/DOWN/OUT_OF_SERVICE/UNKNOWN (severity DOWN&gt;OUT_OF_SERVICE&gt;UP&gt;UNKNOWN);
 a most-severe <code>StatusAggregator</code> (empty→UP); a bean-scan <code>HealthContributorRegistrar</code>; built-in <code>Ping</code>/<code>DiskSpace</code>/<code>Db</code>
 indicators. A throwing indicator degrades to DOWN — never a 500.</p>
+<h3 id="who-may-read-the-component-details">Who may read the component details<a class="headerlink" href="#who-may-read-the-component-details" title="Permanent link">&para;</a></h3>
+<p><code>firefly.management.endpoint.health.show-details</code> decides whether the body carries each contributor's
+<code>components</code> block, and it has <strong>three</strong> literals. <code>always</code> publishes the details to every caller, <code>never</code> to
+none, and <code>when-authorized</code> asks a bean:</p>
+<!-- source: packages/actuator/src/Health/HealthDetailsAuthorizer.php -->
+<div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">namespace Firefly\Actuator\Health;</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">// …</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">interface HealthDetailsAuthorizer</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">{</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">    public function mayReadDetails(): bool;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">}</span>
+</span></code></pre></div>
+<p><code>firefly/actuator</code> owns the QUESTION and ships the conservative answer — <code>DenyHealthDetailsAuthorizer</code>,
+which refuses everybody, so <code>when-authorized</code> in an application without <code>firefly/security</code> behaves exactly as
+<code>never</code> does. It cannot ship the real answer: there is no <code>Actuator → Security</code> edge in <code>deptrac.yaml</code> and
+there must not be, because a diagnostics surface has to work in an application with no principal model at all.
+<a href="../security/#the-one-bean-this-package-gives-the-actuator"><code>firefly/security</code></a> fills the port from the
+other side whenever <code>firefly.security.enabled</code> is on — <code>PrincipalHealthDetailsAuthorizer</code> reads the
+session-held principal from the same <code>SecurityContextHolder</code> every other rule in that package reads and
+compares it against <code>firefly.management.endpoint.health.roles</code> through the configured <code>RoleHierarchy</code>. An
+application that wants its own rule binds its own <code>HealthDetailsAuthorizer</code> bean and both of the shipped ones
+back off (<code>#[ConditionalOnMissingBean]</code>). This is the <code>CqrsMetrics</code>/<code>EdaTracing</code> seam shape, not a new
+mechanism.</p>
+<p>Anything else in <code>show-details</code> — including a typo — reads as <code>never</code>, the fail-closed direction.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>when-authorized</code> with no <code>roles</code> is every authenticated principal</p>
+<p>An empty <code>firefly.management.endpoint.health.roles</code> is Spring's "any authenticated principal", and
+component details name database drivers, disk paths, broker hosts and indicator error messages. On a
+surface a probe reaches, list the roles that should read them.</p>
+</div>
 <h2 id="exposure-security-recommended">Exposure &amp; security (recommended)<a class="headerlink" href="#exposure-security-recommended" title="Permanent link">&para;</a></h2>
 <p>Default <code>firefly.management.endpoints.web.exposure.include = "health,info"</code>; sensitive endpoints return <strong>404</strong> until
 explicitly exposed. An endpoint body is always a JSON <strong>object</strong>: <code>/actuator/info</code> with no <code>InfoContributor</code>
@@ -2743,17 +2807,17 @@ framework's own end-to-end lockdown test seeds, written as the settings the test
 three entries are the nested <code>security.http.rules</code> array of <code>config/firefly.php</code>, which the shipped reference already
 carries commented out:</p>
 <!-- source: packages/actuator/tests/Support/SecuredActuatorCapstoneTestCase.php -->
-<div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">return [</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    ...parent::configOverrides(),</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">    'firefly.management.endpoints.web.exposure.include' =&gt; 'health,info,env',</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">    'firefly.security.enabled' =&gt; true,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">    'firefly.security.http.enabled' =&gt; true,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">    'firefly.security.http.rules' =&gt; [</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">        ['pattern' =&gt; 'actuator/health', 'access' =&gt; 'permitAll'],</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">        ['pattern' =&gt; 'actuator/info', 'access' =&gt; 'permitAll'],</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="x">        ['pattern' =&gt; 'actuator/*', 'access' =&gt; 'hasRole:ACTUATOR'],</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="x">    ],</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="x">];</span>
+<div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">return [</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="x">    ...parent::configOverrides(),</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">    &#39;firefly.management.endpoints.web.exposure.include&#39; =&gt; &#39;health,info,env&#39;,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">    &#39;firefly.security.enabled&#39; =&gt; true,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">    &#39;firefly.security.http.enabled&#39; =&gt; true,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">    &#39;firefly.security.http.rules&#39; =&gt; [</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">        [&#39;pattern&#39; =&gt; &#39;actuator/health&#39;, &#39;access&#39; =&gt; &#39;permitAll&#39;],</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">        [&#39;pattern&#39; =&gt; &#39;actuator/info&#39;, &#39;access&#39; =&gt; &#39;permitAll&#39;],</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">        [&#39;pattern&#39; =&gt; &#39;actuator/*&#39;, &#39;access&#39; =&gt; &#39;hasRole:ACTUATOR&#39;],</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">    ],</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">];</span>
 </span></code></pre></div>
 <p><code>firefly/security</code>'s <code>HttpSecurityFilter</code> is a <strong>global</strong> middleware — <code>FilterChainRegistrar</code> pushes it onto Laravel's
 HTTP-kernel middleware stack (<code>$kernel-&gt;pushMiddleware(...)</code>), so it runs for <strong>every</strong> request the kernel handles,
@@ -2782,7 +2846,8 @@ data browser's sensitive columns, and <code>page_header</code> is page furniture
 <li><code>firefly.management.endpoints.web.exposure.include</code> / <code>.exclude</code> (CSV or <code>*</code>; <code>*</code> is a wildcard in <strong>both</strong> lists and exclude wins, so <code>.exclude = "*"</code> is the kill switch)</li>
 <li><code>firefly.management.endpoints.web.base-path</code> (default <code>/actuator</code>)</li>
 <li><code>firefly.management.endpoint.{id}.enabled</code> (per-endpoint)</li>
-<li><code>firefly.management.endpoint.health.show-details</code> (default <code>never</code>; only the literal <code>always</code> shows component details — see Known-latent for <code>when-authorized</code>)</li>
+<li><code>firefly.management.endpoint.health.show-details</code> (default <code>never</code>) — <code>never</code> | <code>when-authorized</code> | <code>always</code>; anything else reads as <code>never</code>. <code>when-authorized</code> asks the <code>HealthDetailsAuthorizer</code> bean, which refuses everybody until <code>firefly/security</code> fills it (see <a href="#who-may-read-the-component-details">Who may read the component details</a>)</li>
+<li><code>firefly.management.endpoint.health.roles</code> (default <code>[]</code>) — who <code>when-authorized</code> admits, Spring's <code>management.endpoint.health.roles</code>. <strong>Empty means any AUTHENTICATED principal</strong>; a non-empty list means one holding at least one of these roles, a bare name read as <code>ROLE_&lt;name&gt;</code> (the spelling <code>hasRole:</code> uses) and the configured role hierarchy applied. A <strong>CSV string is the same restriction as the list</strong> — <code>'ADMIN,ACTUATOR'</code> grants what <code>['ADMIN', 'ACTUATOR']</code> grants, Spring's own spelling of the property and the one both neighbouring list keys above use. A list whose entries are ALL unusable — a blank string, a null left by a dangling key — <strong>refuses every caller</strong> rather than being read as the empty list, because a typo must not widen the surface it was written to narrow; a value that is neither a list nor a string counts as one unusable entry and refuses the same way, never failing the read (a probe must not get a 500 out of a config typo). The refusal is logged once per boot, naming this key. Read only by <code>firefly/security</code>'s authorizer: without that package installed and its master flag on, the key does nothing</li>
 <li><code>firefly.management.endpoint.health.group.{name}.include</code></li>
 <li><code>firefly.management.endpoint.health.db.enabled</code> (default <strong><code>true</code></strong>) — the <code>db</code> health indicator, registered whenever <code>database.default</code> names a connection with a driver (Spring Boot's <code>DataSourceHealthIndicator</code> auto-configuration); a failing or missing database reports DOWN and <code>/actuator/health</code> answers 503; an application with no default database gets no <code>db</code> component at all. <code>false</code> removes the indicator. An indicator can decline registration itself by implementing <code>ConditionalHealthIndicator::available()</code>.</li>
 <li><code>firefly.management.info.app.*</code>, <code>firefly.management.info.build.path</code></li>
@@ -2793,8 +2858,7 @@ data browser's sensitive columns, and <code>page_header</code> is page furniture
 URL generation, the HTTP-kernel middleware pipeline) — not app controllers. Health/info reuse Laravel <code>DB</code>/<code>Log</code>/config.</p>
 <h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>when-authorized</code> show-details degrades to <code>never</code> (no Security code edge; gate details via the lockdown).</li>
-<li><code>/refresh</code>, <code>/threaddump</code>, <code>/shutdown</code> are deferred to later SP cycles. <code>/caches</code> is read-only: Spring's <code>DELETE</code> eviction is deliberately not implemented, because <code>firefly/actuator</code> carries no code edge to <code>firefly/security</code> and so cannot say who asked; a <code>POST</code> to it answers 404.</li>
+<li><code>/refresh</code>, <code>/threaddump</code>, <code>/shutdown</code> are deferred to later SP cycles. <code>/caches</code> is read-only: Spring's <code>DELETE</code> eviction is deliberately not implemented, because <code>firefly/actuator</code> carries no code edge to <code>firefly/security</code> and so cannot say who asked; a <code>POST</code> to it answers 404. The <code>HealthDetailsAuthorizer</code> port above is the shape that would change that, and is deliberately scoped to the one question it asks.</li>
 <li>No second management port (an Octane second-listener is an SP-7 option).</li>
 </ul>
 
@@ -2872,7 +2936,7 @@ URL generation, the HTTP-kernel middleware pipeline) — not app controllers. He
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

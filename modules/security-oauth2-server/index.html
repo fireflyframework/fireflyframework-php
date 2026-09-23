@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1910,6 +1910,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-this-package-tells-the-openapi-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this package tells the OpenAPI document
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#configuration-fireflysecurityoauth2server-snake_case" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2819,6 +2830,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-this-package-tells-the-openapi-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this package tells the OpenAPI document
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#configuration-fireflysecurityoauth2server-snake_case" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2906,11 +2928,11 @@ as a hash; every error is the RFC 6749 JSON document or the redirect-with-error.
    <!-- illustrative: the deployment's own config/firefly.php; the model class and the user store are the application's --></li>
 </ol>
 <p><div class="language-php highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="x">return [</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    'security' =&gt; [</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">        'enabled' =&gt; true,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        'form_login' =&gt; ['enabled' =&gt; true],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">        'csrf' =&gt; ['enabled' =&gt; true],</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">        'users' =&gt; ['driver' =&gt; 'eloquent', 'model' =&gt; App\Models\User::class, 'authorities' =&gt; ''],</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="x">    &#39;security&#39; =&gt; [</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="x">        &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="x">        &#39;form_login&#39; =&gt; [&#39;enabled&#39; =&gt; true],</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="x">        &#39;csrf&#39; =&gt; [&#39;enabled&#39; =&gt; true],</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="x">        &#39;users&#39; =&gt; [&#39;driver&#39; =&gt; &#39;eloquent&#39;, &#39;model&#39; =&gt; App\Models\User::class, &#39;authorities&#39; =&gt; &#39;&#39;],</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="x">    ],</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="x">];</span>
 </span></code></pre></div>
@@ -2918,19 +2940,19 @@ as a hash; every error is the RFC 6749 JSON document or the redirect-with-error.
    <code>{noop}</code> only in development):
    <!-- illustrative: the deployment's own config/firefly.php; a client id, its encoded secret and its redirect URIs belong to the application, not to the framework --></p>
 <p><div class="language-php highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="x">return [</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="x">    'security' =&gt; [</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="x">    &#39;security&#39; =&gt; [</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="x">        // …the keys from step 2…</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">        'oauth2' =&gt; [</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">            'server' =&gt; [</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">                'enabled' =&gt; true,</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">                'jwt' =&gt; ['signing_key' =&gt; env('FIREFLY_OAUTH2_SERVER_SIGNING_KEY')],</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">                'clients' =&gt; [</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">                    'web-app' =&gt; [</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">                        'client_secret' =&gt; '{bcrypt}$2y$10$…',</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">                        'client_name' =&gt; 'The web application',</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">                        'authorization_grant_types' =&gt; ['authorization_code', 'refresh_token'],</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">                        'redirect_uris' =&gt; ['https://app.example.com/login/oauth2/code/web-app'],</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">                        'scopes' =&gt; ['openid', 'profile', 'email'],</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="x">        &#39;oauth2&#39; =&gt; [</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="x">            &#39;server&#39; =&gt; [</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="x">                &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="x">                &#39;jwt&#39; =&gt; [&#39;signing_key&#39; =&gt; env(&#39;FIREFLY_OAUTH2_SERVER_SIGNING_KEY&#39;)],</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="x">                &#39;clients&#39; =&gt; [</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="x">                    &#39;web-app&#39; =&gt; [</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="x">                        &#39;client_secret&#39; =&gt; &#39;{bcrypt}$2y$10$…&#39;,</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="x">                        &#39;client_name&#39; =&gt; &#39;The web application&#39;,</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="x">                        &#39;authorization_grant_types&#39; =&gt; [&#39;authorization_code&#39;, &#39;refresh_token&#39;],</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="x">                        &#39;redirect_uris&#39; =&gt; [&#39;https://app.example.com/login/oauth2/code/web-app&#39;],</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="x">                        &#39;scopes&#39; =&gt; [&#39;openid&#39;, &#39;profile&#39;, &#39;email&#39;],</span>
 </span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="x">                    ],</span>
 </span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="x">                ],</span>
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="x">            ],</span>
@@ -2942,16 +2964,16 @@ as a hash; every error is the RFC 6749 JSON document or the redirect-with-error.
    yourself — the server binds the <code>JwksDocumentSource</code> the filter reads, so no HTTP self-fetch ever happens:
    <!-- illustrative: the deployment's own config/firefly.php, pointing the resource-server filter at this very application --></p>
 <p><div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">return [</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">    'security' =&gt; [</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">    &#39;security&#39; =&gt; [</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">        // …the keys from steps 2 and 3…</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="x">        'oauth2' =&gt; [</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="x">        &#39;oauth2&#39; =&gt; [</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="x">            // …the server block from step 3…</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">            'resource_server' =&gt; [</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="x">                'enabled' =&gt; true,</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="x">                'jwks_source' =&gt; 'local',</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">                'jwks_uri' =&gt; env('APP_URL').'/oauth2/jwks',</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="x">                'issuer' =&gt; env('APP_URL'),</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="x">                'audience' =&gt; 'web-app',</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">            &#39;resource_server&#39; =&gt; [</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="x">                &#39;enabled&#39; =&gt; true,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="x">                &#39;jwks_source&#39; =&gt; &#39;local&#39;,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">                &#39;jwks_uri&#39; =&gt; env(&#39;APP_URL&#39;).&#39;/oauth2/jwks&#39;,</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="x">                &#39;issuer&#39; =&gt; env(&#39;APP_URL&#39;),</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="x">                &#39;audience&#39; =&gt; &#39;web-app&#39;,</span>
 </span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="x">            ],</span>
 </span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="x">        ],</span>
 </span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="x">    ],</span>
@@ -3095,7 +3117,7 @@ redirected</strong> — the resource owner sees the framework's 400 page — and
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="x">    public function customize(JwtEncodingContext $context): void</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="x">    {</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="x">        if ($context-&gt;tokenType === OAuth2TokenType::AccessToken) {</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">            $context-&gt;claim('roles', array_map(fn ($a) =&gt; $a-&gt;getAuthority(), $context-&gt;principal?-&gt;getAuthorities() ?? []));</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="x">            $context-&gt;claim(&#39;roles&#39;, array_map(fn ($a) =&gt; $a-&gt;getAuthority(), $context-&gt;principal?-&gt;getAuthorities() ?? []));</span>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="x">        }</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="x">    }</span>
 </span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="x">}</span>
@@ -3165,6 +3187,50 @@ which the payload says in <code>authorizations.processLocal</code>; on the defau
 so <code>authorizations.driver = eloquent</code> is what makes the numbers describe the deployment. The admin dashboard's
 <strong>OAuth2 clients</strong> page (<code>/firefly/oauth2</code>, group Wiring) renders the endpoint in-process, prints <code>—</code> rather than
 <code>0</code> for a client a process-local store counted nothing for, and is hidden while the endpoint is absent.</p>
+<h2 id="what-this-package-tells-the-openapi-document">What this package tells the OpenAPI document<a class="headerlink" href="#what-this-package-tells-the-openapi-document" title="Permanent link">&para;</a></h2>
+<p><code>src/OpenApi</code> is one class, and it is the only reason <code>deptrac.yaml</code> carries a <strong><code>SecurityOAuth2Server → OpenApi</code></strong>
+edge (the direction matters: <code>firefly/openapi</code> names no type of this package, which is what keeps it generating a
+document in an application that issues no tokens). <code>firefly/openapi</code> is a <code>suggest</code> and never a <code>require</code>, and
+<code>AuthorizationServerSchemeContributor</code> is <code>#[ConditionalOnClass(SecuritySchemeContributor::class)]</code>.</p>
+<p>It publishes the <strong>one security fact <code>firefly.security.*</code> cannot state</strong>: this application <em>is</em> the authorization
+server. <code>firefly/openapi</code>'s own config-driven contributor emits <code>type: http, scheme: bearer</code> schemes, because a
+resource server has no flow URLs to publish; this one emits a real <strong><code>type: oauth2</code></strong> scheme named
+<code>oauth2AuthorizationCode</code>, with an <code>authorizationCode</code> flow built from <code>AuthorizationServerSettings</code> — the
+<code>authorizationUrl</code> and <code>tokenUrl</code> under this server's own issuer — so Swagger UI renders an <strong>Authorize</strong> button
+that completes the flow against it. A <code>refreshUrl</code> (the token endpoint, RFC 6749 §6) appears only when a client
+may refresh.</p>
+<ul>
+<li><strong>The scopes map is the union of what the authorization-code clients registered</strong>, sorted, each described in the
+  consent page's own words (<code>ConsentPage::describe()</code>, so the sentence a user approves and the sentence Swagger UI
+  shows cannot drift). A <code>client_credentials</code>-only client's scopes stay out: they belong to a flow this scheme
+  does not describe.</li>
+<li><strong>An enabled server publishes the scheme even with no authorization-code client registered</strong>, with an empty
+  <code>scopes</code> map. The flow URLs are facts about the server, not about its client registry, and
+  <a href="../security/#what-this-package-tells-the-openapi-document"><code>firefly/security</code></a> names <code>oauth2AuthorizationCode</code> on
+  a method-secured operation from the same <code>firefly.security.oauth2.server.enabled</code>. An emit-nothing rule would
+  leave that name dangling in <code>components.securitySchemes</code> exactly where it costs most — a <code>client_credentials</code>
+  token issuer, or an <code>eloquent</code> client table that is empty or unreachable when CI generates the document.</li>
+<li><strong>Generating the document never needs the client store to answer.</strong> With <code>clients.driver: eloquent</code> the scopes
+  map is a <code>SELECT</code>, and the two documented ways of producing a document are the two places it is least likely to
+  succeed: <code>php artisan firefly:openapi</code> in a CI container whose <code>oauth2_registered_clients</code> table was never
+  migrated, and a <code>/openapi.json</code> scrape from a build step with no database behind it. A store that cannot be read
+  — or that refuses a hand-edited row, which the driver does by design — falls back to <strong>no clients</strong>, which is the
+  empty-registry answer above; nothing on the path to <code>OpenApiGenerator</code> catches, so without it the command would
+  fail outright and the route would answer <code>500</code>. The refusal still reaches every runtime read, where it protects
+  somebody: the document is a report, not an admission gate.</li>
+<li><strong>A scope an operation requires is declared by the flow.</strong> The map above is what the <em>clients</em> registered, and a
+  <code>#[PreAuthorize("hasScope('orders.read')")]</code> elsewhere in the same application states a scope no client may have
+  asked for yet. <code>firefly/openapi</code>'s <code>SecurityModel</code> — the one place that sees both contributor lists — unions
+  every scope the document states for this scheme into its flows, so the Authorize dialog can offer them and a
+  strict linter (Spectral's <code>oas3-operation-security-defined</code>) has nothing to reject. A scope this package already
+  described keeps the consent page's sentence; one only an operation named is described with its own name.</li>
+<li><strong>The scheme carries no default scopes.</strong> The flow's <code>scopes</code> map says which scopes <em>exist</em>;
+  <code>SecurityScheme::$scopes</code> would say which ones every operation naming the scheme <em>needs</em>, and a server whose
+  clients between them registered a dozen would then demand all twelve on every path.</li>
+</ul>
+<p><code>packages/security-oauth2-server/tests/OpenApi/AuthorizationServerDocumentCapstoneTest.php</code> boots the generator
+beside this server — with an empty client registry on purpose — and asserts that the document names no scheme it
+did not publish and publishes none nothing names. It is the only place in the tree that can see both halves.</p>
 <h2 id="configuration-fireflysecurityoauth2server-snake_case">Configuration (<code>firefly.security.oauth2.server.*</code>, snake_case)<a class="headerlink" href="#configuration-fireflysecurityoauth2server-snake_case" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3335,6 +3401,11 @@ so <code>authorizations.driver = eloquent</code> is what makes the numbers descr
 <td><code>1.0</code></td>
 <td>Tokens per second.</td>
 </tr>
+<tr>
+<td><code>rate_limit.idle_ttl</code></td>
+<td><code>2592000</code> (30 days)</td>
+<td>Seconds of idleness after which a bucket's cache key may be reclaimed, refreshed on every acquisition. These buckets are keyed by client id — or by IP address when no client id was presented — so, alone among the framework's limiters, their number grows with traffic; a public token endpoint facing a wide address space is the case for setting this far lower. The reclaim is invisible: a bucket refills at <code>refill_rate</code> per second, so <code>max_tokens / refill_rate</code> seconds after the last request (a minute at the defaults) a reclaimed bucket and a surviving one are the same full bucket. <code>0</code> writes them with no expiry at all.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
@@ -3347,11 +3418,11 @@ owner without a session behind it. The machine helpers (token, introspection, re
 sign-in at all.</p>
 <!-- illustrative: the five calls a reader makes from their own test against their own server -->
 <p><div class="language-php highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="x">$oauth2 = new OAuth2ServerTestClient($this);</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="x">$code = $oauth2-&gt;obtainCode('web-app', 'https://app.test/cb', 'openid profile');   // authorize, consent if shown, the code off Location</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">$tokens = $oauth2-&gt;exchangeCode('web-app', $code, 'https://app.test/cb', 'the-secret')-&gt;json();</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="x">$oauth2-&gt;introspect('svc', 'svc-secret', $tokens['access_token'])-&gt;assertJson(['active' =&gt; true]);</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="x">$oauth2-&gt;refresh('web-app', $tokens['refresh_token'], 'the-secret');</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">$oauth2-&gt;userInfo($tokens['access_token'])-&gt;assertJson(['sub' =&gt; 'ada']);</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="x">$code = $oauth2-&gt;obtainCode(&#39;web-app&#39;, &#39;https://app.test/cb&#39;, &#39;openid profile&#39;);   // authorize, consent if shown, the code off Location</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="x">$tokens = $oauth2-&gt;exchangeCode(&#39;web-app&#39;, $code, &#39;https://app.test/cb&#39;, &#39;the-secret&#39;)-&gt;json();</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="x">$oauth2-&gt;introspect(&#39;svc&#39;, &#39;svc-secret&#39;, $tokens[&#39;access_token&#39;])-&gt;assertJson([&#39;active&#39; =&gt; true]);</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="x">$oauth2-&gt;refresh(&#39;web-app&#39;, $tokens[&#39;refresh_token&#39;], &#39;the-secret&#39;);</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="x">$oauth2-&gt;userInfo($tokens[&#39;access_token&#39;])-&gt;assertJson([&#39;sub&#39; =&gt; &#39;ada&#39;]);</span>
 </span></code></pre></div>
 <code>authorize()</code> sends a fresh PKCE pair and state each time (<code>proofKey()</code>, <code>state()</code>); <code>approveConsent()</code> posts
 the page; <code>clientCredentials()</code>, <code>revoke()</code>, <code>tokens()</code> and <code>token()</code> cover the rest. The package's own suites are
@@ -3490,7 +3561,7 @@ for a <code>firefly.security.http_basic.except</code> list in the security packa
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

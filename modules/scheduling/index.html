@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/larafly-favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1311,6 +1311,34 @@
     <span class="md-ellipsis">
       
         The lock guard (at-most-one-node)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#initial-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial delay
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initial delay">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-fireflyscheduling-kebab-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.scheduling.*, kebab-case)
       
     </span>
   </a>
@@ -2732,6 +2760,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#initial-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial delay
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initial delay">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-fireflyscheduling-kebab-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration (firefly.scheduling.*, kebab-case)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#known-latent" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2851,7 +2907,7 @@ havingValue: 'postgres')]</code> — installing the package with the property un
 </span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
 </span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="x">        if (count($triggers) !== 1) {</span>
 </span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="x">            throw new InvalidArgumentException(</span>
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="x">                '#[Scheduled] requires exactly one of cron, fixedRate or fixedDelay to be set.',</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="x">                &#39;#[Scheduled] requires exactly one of cron, fixedRate or fixedDelay to be set.&#39;,</span>
 </span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="x">            );</span>
 </span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="x">        }</span>
 </span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="x">    }</span>
@@ -2873,13 +2929,13 @@ havingValue: 'postgres')]</code> — installing the package with the property un
 <!-- illustrative: an application's own bean with two scheduled methods -->
 <div class="language-php highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="x">final class Reconciliation</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="x">{</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">    #[Scheduled(cron: '0 3 * * *', lock: true)]</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="x">    #[Scheduled(cron: &#39;0 3 * * *&#39;, lock: true)]</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="x">    public function nightlyReconcile(): void</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="x">    {</span>
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="x">        // ...</span>
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="x">    }</span>
 </span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">    #[Scheduled(fixedRate: '5m', lock: 'billing-sweep', lockTtl: '2m')]</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="x">    #[Scheduled(fixedRate: &#39;5m&#39;, lock: &#39;billing-sweep&#39;, lockTtl: &#39;2m&#39;)]</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="x">    public function billingSweep(): void</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="x">    {</span>
 </span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="x">        // ...</span>
@@ -2890,12 +2946,10 @@ havingValue: 'postgres')]</code> — installing the package with the property un
 <li><strong><code>zone</code></strong> — an IANA timezone name (e.g. <code>'America/New_York'</code>), applied to the registered <code>Event</code> via
   Laravel's own <code>$event-&gt;timezone(...)</code> (<code>Illuminate\Console\Scheduling\ManagesFrequencies::timezone()</code>), so
   the cron/frequency expression is evaluated in that timezone instead of the scheduler's default.</li>
+<li><strong><code>initialDelay</code></strong> — a <code>Duration</code>-parsed string holding the task back before its first run, then leaving
+  the cadence alone. It is applied; see <a href="#initial-delay">Initial delay</a> for the anchor it is measured from
+  and the cache store a cron-driven scheduler needs to honour it.</li>
 </ul>
-<p><code>initialDelay</code> is accepted by the attribute and carried through the compiled descriptor
-(<code>ScheduledDescriptor</code>) for forward compatibility, but <strong><code>ScheduleWiringPass</code> does not yet apply it</strong> to the
-registered Laravel <code>Event</code> — Laravel's frequency DSL has no native initial-delay-before-first-run primitive
-to wire it onto. Set it if you like for self-documentation, but it currently has no runtime effect (see
-<a href="#known-latent">Known-latent</a>).</p>
 <h2 id="discovery-scheduledscanner-scheduledmanifest">Discovery: <code>ScheduledScanner</code> → <code>ScheduledManifest</code><a class="headerlink" href="#discovery-scheduledscanner-scheduledmanifest" title="Permanent link">&para;</a></h2>
 <p><code>Firefly\Scheduling\Scanner\ScheduledScanner</code> is the package's <strong>sole reflection site</strong> (a grep-enforced
 invariant): it walks the app's PSR-4 roots, reflects every public method carrying <code>#[Scheduled]</code>, and emits
@@ -2955,6 +3009,72 @@ cache-only <code>Event::onOneServer()</code>, so the configured backend (not Lar
 <p>A thrown exception from the task body is <strong>logged and swallowed</strong>, never propagated — a failing scheduled
 task must never abort the rest of the scheduler run (pyfly <code>_invoke</code> parity). It logs via the bound
 <code>Psr\Log\LoggerInterface</code> when one is available, falling back to <code>error_log()</code> otherwise.</p>
+<h2 id="initial-delay">Initial delay<a class="headerlink" href="#initial-delay" title="Permanent link">&para;</a></h2>
+<p>Laravel's frequency DSL cannot express "run once after a delay, then resume the cadence". It does have
+<code>Event::when()</code> — a per-tick predicate — and an initial delay <strong>is</strong> a predicate: refuse every tick until the
+window has passed. <code>Firefly\Scheduling\Schedule\InitialDelayGate</code> is that predicate.</p>
+<p><strong>The anchor is in the cache, not in process memory.</strong> Spring measures <code>initialDelay</code> from application start,
+which works because the application is a process that stays up. The baseline deployment here is a cron-driven
+<code>schedule:run</code>: a fresh PHP process every minute, whose "application start" is always a second ago, so a
+window measured from boot would never elapse and the task would never run — a silent hang that looks exactly
+like a task nobody scheduled. The gate writes the anchor to the cache
+(<code>firefly:scheduling:initial-delay:&lt;Class&gt;::&lt;method&gt;</code>, add-if-absent, no expiry) the first time it sees the
+task, and every later process measures the window from that <strong>first observation</strong>.</p>
+<p><strong>THE ANCHOR STORE MUST BE SHARED ACROSS PROCESSES under cron.</strong> With <code>array</code>, every <code>schedule:run</code> re-anchors
+at its own <code>now</code> and the task NEVER becomes due — it does not run early, it never runs — so <code>ScheduleWiringPass</code>
+<strong>warns as the Schedule is built</strong> when a task carries a delay and the resolved anchor store cannot outlive the
+process. A resident scheduler (<code>schedule:work</code>, <code>firefly:schedule</code>, Octane) keeps one process and honours the
+delay over <code>array</code>. The <code>null</code> driver stores nothing at all: the gate sees that it cannot read back its own
+write, logs it once per process and <strong>admits</strong> the tick rather than hanging the task in silence — a task that
+runs without its delay is a visible wrong, a task that never runs is an invisible one.</p>
+<p><strong>The window is armed once per cache key, not once per deployment.</strong> The anchor has no expiry and nothing
+forgets it, so by default an <code>initialDelay</code> is a one-off warm-up for a newly introduced task: the first
+deployment waits its ten minutes, and every deployment after it reads an anchor from weeks ago, finds the
+window long elapsed and runs on its first tick. That is a defensible default and it is <strong>not</strong> Spring's.
+<code>firefly.scheduling.initial-delay.release</code> is how an application asks for the other reading — there is no
+application start to measure from here, so the deployment names itself (a git sha, <code>APP_VERSION</code>, the release
+directory), the anchor records which release armed it, and the first process of a different release arms a
+fresh window and says so once. The value must change <strong>once per deployment and never within one</strong>: something
+that varies per process (<code>uniqid()</code>, the PID, a boot timestamp) re-anchors every minute and the task never
+runs.</p>
+<p><strong>Switching the gate off refuses the boot.</strong> Setting <code>firefly.scheduling.initial-delay.enabled</code> to <code>false</code>
+in an application whose manifest carries an <code>initialDelay</code> is a <code>ConfigurationException</code> rather than a
+parameter silently ignored — which is what happened for two releases and is the behaviour the key exists to
+make impossible. An unparseable duration is refused at boot for the same reason: the predicate runs inside
+<code>Event::filtersPass()</code>, which Laravel calls <strong>outside</strong> the try/catch that contains a failing task, so a throw
+there would abort the whole <code>schedule:run</code> for that minute rather than skip one task.</p>
+<h3 id="configuration-fireflyscheduling-kebab-case">Configuration (<code>firefly.scheduling.*</code>, kebab-case)<a class="headerlink" href="#configuration-fireflyscheduling-kebab-case" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefly.scheduling.lock.provider</code></td>
+<td><code>'none'</code></td>
+<td>The <code>DistributedLock</code> backend a locked task uses: <code>none</code>, <code>cache</code>, or <code>postgres</code> (needs <code>firefly/scheduling-postgres</code>) — see <a href="#the-distributedlock-port">The <code>DistributedLock</code> port</a>.</td>
+</tr>
+<tr>
+<td><code>firefly.scheduling.initial-delay.enabled</code></td>
+<td><code>true</code></td>
+<td>Apply <code>#[Scheduled(initialDelay:)]</code>. <code>false</code> <strong>refuses to boot</strong> an application whose manifest carries one, rather than accepting the parameter and ignoring it.</td>
+</tr>
+<tr>
+<td><code>firefly.scheduling.initial-delay.store</code></td>
+<td><code>''</code></td>
+<td>Cache store the anchor lives in; <code>''</code> is the default store. Must be shared across processes (redis/memcached/database) wherever the scheduler is cron-driven.</td>
+</tr>
+<tr>
+<td><code>firefly.scheduling.initial-delay.release</code></td>
+<td><code>''</code></td>
+<td>Names this deployment, so every release arms its own window. Empty keeps the permanent anchor — one window per cache key, for the life of the key.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="known-latent">Known-latent<a class="headerlink" href="#known-latent" title="Permanent link">&para;</a></h2>
 <p>These are carried-forward, documented limitations of the M7 shipment — not bugs:</p>
 <ul>
@@ -2970,11 +3090,14 @@ task must never abort the rest of the scheduler run (pyfly <code>_invoke</code> 
   <code>everyTenMinutes()</code>, not every 7 minutes, and <code>'42s'</code> runs every minute. Sub-minute rates ARE honoured down
   to one second, but only under a resident scheduler (<code>schedule:work</code> / <code>firefly:schedule</code>); a cron-driven
   <code>schedule:run</code> starts the event once a minute and re-runs it until that minute ends.</li>
-<li><strong><code>initialDelay</code> is accepted but not yet applied.</strong> As noted above, the attribute parameter is captured
-  through to the compiled descriptor but <code>ScheduleWiringPass</code> does not currently read it when registering the
-  Laravel <code>Event</code> — no initial-delay offset is set. Laravel's frequency DSL has no native way to express "run
-  once after an initial delay, then resume the normal cadence", so this is deferred to <strong>SP-5</strong> alongside the
-  cron shims above. (<code>zone</code> <strong>is</strong> applied — see <code>#[Scheduled]</code> above.)</li>
+<li><strong>An <code>initialDelay</code> window is armed once per cache key, not once per application start.</strong> The anchor
+  <a href="#initial-delay">Initial delay</a> describes has no expiry and nothing prunes it, so with no
+  <code>initial-delay.release</code> named a redeploy or a restart reads the old anchor and runs the task immediately:
+  the delay is a one-off warm-up for a newly introduced task, which is a reading of the parameter and not
+  Spring's. Naming the release buys Spring's reading; nothing buys "measured from this process's boot",
+  because under cron that process is one minute old. What is genuinely out of reach is a delay honoured
+  without a cross-process cache under a cron-driven scheduler: the framework warns, and cannot do better —
+  there is nowhere else a fresh process per minute could read a first observation from.</li>
 <li><strong>A <code>#[Scheduled]</code> method outside <code>firefly.scan.paths</code> never registers.</strong> The <code>ScheduledManifest</code> resolves
   to the <code>firefly:cache</code> artifact if present, otherwise an in-process scan of <code>firefly.scan.paths</code>, otherwise
   empty — so no hand-wiring is needed, but a task the scan cannot see is silently absent rather than an
@@ -3055,7 +3178,7 @@ task must never abort the rest of the scheduler run (pyfly <code>_invoke</code> 
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
