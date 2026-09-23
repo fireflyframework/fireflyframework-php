@@ -16,11 +16,19 @@ use Firefly\Kernel\Exception\FireflyException;
  * named `status`, `code` or `title` can never replace the real one: the document's identity is the
  * exception's, and an application building a problem from user-supplied context must not be able to lie
  * about it by accident.
+ *
+ * `traceId` and `correlationId` are two members, not one written twice. `traceId` is the id a person quotes
+ * — the W3C trace id when the request had a valid span, the correlation id when it did not (the web layer's
+ * Firefly\Web\Trace\TraceContext::referenceFor() decides, because only it can see a Request) — and
+ * `correlationId` is always the correlation id, so a caller can match the document to its own request log
+ * whatever tracing is doing. Both are MEMBERS of this DTO rather than something a renderer appends to
+ * toArray()'s output: the published schema (Firefly\OpenApi\Schema\ProblemSchema) is generated from what
+ * this class emits, and a member added downstream of toArray() is a member every generated client drops.
  */
 final readonly class ErrorResponse
 {
     /** The members this class defines; an extension of the same name never reaches the document. */
-    public const array STANDARD_MEMBERS = ['status', 'title', 'code', 'category', 'severity', 'detail', 'type', 'instance', 'traceId', 'timestamp', 'errors'];
+    public const array STANDARD_MEMBERS = ['status', 'title', 'code', 'category', 'severity', 'detail', 'type', 'instance', 'traceId', 'correlationId', 'timestamp', 'errors'];
 
     /**
      * @param  list<FieldError>  $errors
@@ -39,6 +47,11 @@ final readonly class ErrorResponse
         public array $errors = [],
         public ?string $timestamp = null,
         public array $extensions = [],
+        // Appended rather than placed beside $traceId, where it belongs in the DOCUMENT: the member order
+        // of the rendered problem is STANDARD_MEMBERS' (and toArray()'s), never this list's — `errors` and
+        // `timestamp` already swap places between the two — so a new member costs nothing here and would
+        // cost every positional call site there.
+        public ?string $correlationId = null,
     ) {}
 
     public static function fromException(
@@ -46,6 +59,7 @@ final readonly class ErrorResponse
         ?string $instance = null,
         ?string $traceId = null,
         ?string $timestamp = null,
+        ?string $correlationId = null,
     ): self {
         $errors = $e instanceof ValidationException ? $e->fieldErrors() : [];
 
@@ -61,6 +75,7 @@ final readonly class ErrorResponse
             errors: $errors,
             timestamp: $timestamp,
             extensions: $e->extensions(),
+            correlationId: $correlationId,
         );
     }
 
@@ -80,7 +95,7 @@ final readonly class ErrorResponse
             'severity' => $this->severity->value,
         ];
 
-        foreach (['detail' => $this->detail, 'type' => $this->type, 'instance' => $this->instance, 'traceId' => $this->traceId, 'timestamp' => $this->timestamp] as $key => $value) {
+        foreach (['detail' => $this->detail, 'type' => $this->type, 'instance' => $this->instance, 'traceId' => $this->traceId, 'correlationId' => $this->correlationId, 'timestamp' => $this->timestamp] as $key => $value) {
             if ($value !== null) {
                 $data[$key] = $value;
             }

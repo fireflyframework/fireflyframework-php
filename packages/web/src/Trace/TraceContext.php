@@ -6,6 +6,7 @@ namespace Firefly\Web\Trace;
 
 use Firefly\Config\Config;
 use Firefly\Web\Filter\CorrelationIdFilter;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Support\Facades\Facade;
@@ -120,11 +121,24 @@ final class TraceContext
             && preg_match('/^[0-9a-f]{32}$/', $value) === 1;
     }
 
+    /**
+     * The typed config accessor, or null when there is no application to read one from.
+     *
+     * THE GUARD IS ON THE REPOSITORY, NOT ON Config ITSELF. Nothing in the framework binds
+     * Firefly\Config\Config — every consumer resolves it by reflection over the `config` repository the
+     * container already holds (WebServiceProvider, ObservabilityWiringProvider and DatasourceReport all
+     * just call make(Config::class)) — so `bound(Config::class)` is FALSE in a real application, and a
+     * guard written that way answers null for every request in production. Both keys below then read as
+     * their hardcoded defaults and `firefly.web.trace-id.enabled => false` does nothing at all: the
+     * documented kill switch is inert. Asking whether the REPOSITORY is bound asks the question that
+     * actually decides whether make() can build a Config, and stays false in the two callers this class
+     * exists to survive — the shutdown handler after a fatal, and a test that never booted Laravel.
+     */
     private static function config(): ?Config
     {
         $app = Facade::getFacadeApplication();
 
-        if ($app === null || ! $app->bound(Config::class)) {
+        if ($app === null || ! ($app->bound(ConfigRepository::class) || $app->bound(Config::class))) {
             return null;
         }
 

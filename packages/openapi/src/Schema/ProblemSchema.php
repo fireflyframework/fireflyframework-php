@@ -14,12 +14,19 @@ use Firefly\Kernel\Error\ErrorSeverity;
  *
  * The distinction matters because the two differ. Firefly\Kernel\Error\ErrorResponse::toArray() emits
  * `status`/`title`/`code`/`category`/`severity` unconditionally, then `detail`/`type`/`instance`/`traceId`/
- * `timestamp` only when non-null, then `errors` only when non-empty; ProblemDetailsRenderer serialises that
- * under `Content-Type: application/problem+json`. So `code`, `category`, `severity` and `errors` are Firefly
+ * `correlationId`/`timestamp` only when non-null, then `errors` only when non-empty; ProblemDetailsRenderer
+ * serialises that under `Content-Type: application/problem+json`. So `code`, `category`, `severity` and `errors` are Firefly
  * extension members on top of RFC 7807's five (and RFC 9457's re-issue of them), `type` is OPTIONAL here
  * where the RFC gives it a default of `about:blank`, and `instance` carries a request PATH rather than a URI
  * reference. Documenting the RFC's shape instead of this one would hand every generated client a decoder that
  * silently drops the three members a caller actually branches on.
+ *
+ * `traceId` and `correlationId` are described as two members because they ARE two, and their values differ
+ * on any request tracing touched: `traceId` is the W3C trace id when the request had a valid span (what a
+ * person pastes into a trace search, and what `X-Trace-Id` echoes) and the correlation id when it did not,
+ * while `correlationId` is always the correlation id `X-Correlation-Id` carries. A spec that described only
+ * the first — or that still called `traceId` "the correlation id", which was true of exactly one release —
+ * would document a member that does not mean what it says.
  *
  * `category` and `severity` are enumerated straight off ErrorCategory::cases()/ErrorSeverity::cases(), so a
  * new case added in packages/kernel appears in the spec on the next generation with no edit here — the same
@@ -68,7 +75,8 @@ final class ProblemSchema
                 'detail' => ['type' => 'string', 'description' => 'A human-readable explanation of this occurrence.'],
                 'type' => ['type' => 'string', 'format' => 'uri-reference', 'description' => 'A URI reference identifying the problem type.'],
                 'instance' => ['type' => 'string', 'description' => 'The request path this occurrence relates to.'],
-                'traceId' => ['type' => 'string', 'description' => 'Correlation id for this occurrence, when tracing is active.'],
+                'traceId' => ['type' => 'string', 'description' => 'The W3C trace id for this occurrence when the request had a valid span, the correlation id otherwise; echoed on X-Trace-Id when it is a trace id.'],
+                'correlationId' => ['type' => 'string', 'description' => 'The request correlation id, echoed on X-Correlation-Id; equal to traceId only when the request had no trace.'],
                 'timestamp' => ['type' => 'string', 'format' => 'date-time', 'description' => 'When the error was rendered (ISO-8601).'],
                 'errors' => [
                     'type' => 'array',

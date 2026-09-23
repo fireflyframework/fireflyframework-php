@@ -38,9 +38,10 @@ it('describes every optional member ErrorResponse can add', function () {
         detail: 'The reference must not be blank.',
         type: 'https://example.test/problems/validation',
         instance: 'api/orders',
-        traceId: 'abc123',
+        traceId: '4bf92f3577b34da6a3ce929d0e0e4736',
         errors: [new FieldError('reference', 'must not be blank', 'NotBlank', '')],
         timestamp: '2026-09-03T00:00:00+00:00',
+        correlationId: 'corr-42',
     ))->toArray();
 
     /** @var array<string, mixed> $properties */
@@ -49,6 +50,24 @@ it('describes every optional member ErrorResponse can add', function () {
     $undocumented = array_values(array_diff(array_keys($payload), array_keys($properties)));
 
     expect($undocumented)->toBe([], 'ErrorResponse emits members the problem schema does not describe');
+});
+
+/**
+ * The two ids are two members, and the spec has to say which is which. Every problem+json response carries
+ * `correlationId` (ProblemDetailsRenderer passes it on every render), and `traceId` stopped being "the
+ * correlation id" the moment the W3C trace id started filling it — a description still saying so would send
+ * every reader of a generated client to a trace search that answers nothing.
+ */
+it('describes traceId and correlationId as the two different ids they are', function () {
+    /** @var array<string, array<string, string>> $properties */
+    $properties = ProblemSchema::schema()['properties'];
+
+    expect($properties)->toHaveKey('correlationId')
+        ->and($properties['correlationId']['type'])->toBe('string')
+        ->and($properties['correlationId']['description'])->toContain('X-Correlation-Id')
+        ->and($properties['traceId']['description'])->toContain('W3C trace id')
+        // The one claim the previous wording made that the framework no longer honours.
+        ->and($properties['traceId']['description'])->not->toStartWith('Correlation id for this occurrence');
 });
 
 it('mirrors FieldError::toArray() in the errors item schema', function () {

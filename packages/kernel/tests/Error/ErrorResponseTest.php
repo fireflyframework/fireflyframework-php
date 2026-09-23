@@ -40,6 +40,7 @@ it('includes optionals and field errors when present', function () {
         traceId: 'trace-123',
         errors: [new FieldError('email', 'is required')],
         timestamp: '2026-07-14T00:00:00+00:00',
+        correlationId: 'corr-123',
     );
 
     expect($r->toArray())->toBe([
@@ -52,6 +53,8 @@ it('includes optionals and field errors when present', function () {
         'type' => 'https://errors.firefly.dev/validation',
         'instance' => '/orders',
         'traceId' => 'trace-123',
+        // Beside the trace id, in the document, whatever order the constructor takes its arguments in.
+        'correlationId' => 'corr-123',
         'timestamp' => '2026-07-14T00:00:00+00:00',
         'errors' => [
             ['field' => 'email', 'message' => 'is required'],
@@ -70,6 +73,20 @@ it('builds from a FireflyException', function () {
         ->and($r->instance)->toBe('/orders/42')
         ->and($r->traceId)->toBe('t-1')
         ->and($r->errors)->toBe([]);
+});
+
+it('omits correlationId when nothing supplied one, and never lets an extension forge it', function () {
+    $plain = ErrorResponse::fromException(new ResourceNotFoundException('Order 42 not found'))->toArray();
+
+    // An extension member of the same name is dropped like any other standard member's impostor: the id is
+    // the request's, published by the web layer, not something a throw site can put in the document.
+    $forged = ErrorResponse::fromException(
+        (new ResourceNotFoundException('Order 42 not found'))->withExtensions(['correlationId' => 'spoofed']),
+        correlationId: 'corr-42',
+    )->toArray();
+
+    expect($plain)->not->toHaveKey('correlationId')
+        ->and($forged['correlationId'])->toBe('corr-42');
 });
 
 it('carries field errors when built from a ValidationException', function () {

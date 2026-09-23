@@ -69,17 +69,19 @@ final class ProblemDetailsRenderer
         $reference = TraceContext::referenceFor($request);
         $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
+        // The correlation id keeps its own member beside the trace id. They are usually different values
+        // with different jobs — one finds the trace, one matches the caller's own request log — and a
+        // document that published only the first would make the second unrecoverable from the response.
+        // It is passed THROUGH ErrorResponse rather than written onto the array afterwards: the DTO's
+        // member list is what the published OpenAPI component is generated and guarded from, so a member
+        // appended here would be one no generated client decodes.
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
+            correlationId: $correlationId,
         )->toArray();
-
-        // The correlation id keeps its own member beside the trace id. They are usually different values
-        // with different jobs — one finds the trace, one matches the caller's own request log — and a
-        // document that published only the first would make the second unrecoverable from the response.
-        $payload['correlationId'] = $correlationId;
 
         $headers = [
             'Content-Type' => 'application/problem+json',

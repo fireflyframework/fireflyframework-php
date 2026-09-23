@@ -64,6 +64,16 @@ case-insensitively, list or string values) and `inject(SpanContext): array<strin
 | CQRS | `CqrsTracing` seam in `firefly/cqrs` (`NoOpCqrsTracing` default), filled by `TracerCqrsTracing` | `INTERNAL`, named by the message's short class; `firefly.cqrs.kind`, `firefly.cqrs.message` | nothing to carry — in-process; the span nests under whatever is current |
 | EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`) and `SubscriberRegistrySink` (every broker consumer) | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
 
+**The id a person quotes is the trace id.** `firefly/web` reads the ids `TracingFilter` publishes above
+(`Firefly\Web\Trace\TraceContext`, which owns the two attribute/`Context` keys the filter's own constants
+alias), so problem+json's `traceId` and the HTML error page's **Reference** row carry the request's W3C
+trace id whenever it has a valid one, and the response echoes it on `X-Trace-Id`. Without a valid span all
+three fall back to the correlation id — what they carried before — so switching tracing on is the only thing
+that changes them. The correlation id is not absorbed: `X-Correlation-Id` is untouched and the document
+carries it as its own `correlationId` member. Both behaviours are gated by `firefly.web.trace-id.enabled`
+and `firefly.web.trace-id.header`, documented in
+[Error Handling](error-handling.md#the-html-error-page). This is **not** `traceresponse`.
+
 Both seams are the `CqrsMetrics` shape: an interface in the owning package with a no-op default behind
 `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration registering the real one
 first. Neither `firefly/cqrs` nor `firefly/eda` depends on observability.
@@ -151,6 +161,6 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
   continued. Routing the three `publish()` methods through the seam is a small, contained follow-up.
 - **`#[Timed]`/`#[Counted]`/`#[Observed]` method attributes** wait for the method-interceptor chain the
   security wave generalises from the transactional proxy.
-- **problem+json's `traceId`** is still the correlation id (what `CorrelationIdFilter::of()` returns), so a
-  document and its `X-Correlation-Id` keep agreeing; the W3C trace id is on the exchange row and in the logs.
-- **No `traceresponse`**: W3C defines no response header yet; nothing is written on the way out.
+- **No `traceresponse`**: the W3C response header is a separate, unshipped thing and nothing writes it. The
+  trace id that IS echoed on the way out goes on the de-facto `X-Trace-Id` (`firefly.web.trace-id.header`)
+  that a gateway or a browser agent already reads, and implies nothing about `traceresponse`.
