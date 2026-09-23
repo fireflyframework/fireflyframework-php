@@ -143,18 +143,40 @@ final class Format
         return strlen($value) <= $max ? $value : '…'.substr($value, -($max - 1));
     }
 
+    /**
+     * The half of a qualified name that IDENTIFIES it: `OrderController`, `store`.
+     *
+     * Parameterised on the separator because the dashboard qualifies four different things by three
+     * different characters — a class by `\`, a config key and a meter name by `.` — and the rendering is
+     * identical in all of them: the leaf on top, the stem dim underneath, and the stem is the half that may
+     * be elided when the column is narrow.
+     */
+    public static function leafOf(string $value, string $separator = '\\'): string
+    {
+        $position = strrpos($value, $separator);
+
+        return $position === false ? $value : substr($value, $position + strlen($separator));
+    }
+
+    /** The half that LOCATES it: `App\Http\Controllers`, `firefly.observability.metrics`. */
+    public static function stemOf(string $value, string $separator = '\\'): string
+    {
+        $position = strrpos($value, $separator);
+
+        return $position === false ? '' : substr($value, 0, $position);
+    }
+
     /** A short, readable class name with its namespace kept as a separate, dimmable prefix. */
     public static function shortClass(string $fqcn): string
     {
-        $position = strrpos($fqcn, '\\');
-
-        return $position === false ? $fqcn : substr($fqcn, $position + 1);
+        return self::leafOf($fqcn);
     }
 
+    /** The namespace WITH its trailing separator — the shape the bean graph and the entity map print. */
     public static function namespaceOf(string $fqcn): string
     {
-        $position = strrpos($fqcn, '\\');
+        $stem = self::stemOf($fqcn);
 
-        return $position === false ? '' : substr($fqcn, 0, $position + 1);
+        return $stem === '' ? '' : $stem.'\\';
     }
 }
