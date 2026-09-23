@@ -28,6 +28,7 @@
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
         "firefly/cqrs": "*@dev",
+        "firefly/data": "*@dev",
         "firefly/eda": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",

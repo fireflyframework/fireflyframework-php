@@ -374,6 +374,14 @@ deptrac:
     # (=> Web), backs Cqrs's CqrsMetrics/CqrsTracing seams (=> Cqrs) and Eda's EdaTracing seam (=> Eda), and
     # gauges Resilience circuit breakers (=> Resilience). It reads Config, carries Container/Context attributes,
     # extends AutoConfigure's base. NOTHING depends on it.
+    #
+    # The => Data edge is Micrometer's method attributes (src/Method, src/Scanner): #[Timed]/#[Counted]/#[Observed]
+    # are enforced by an ObservabilityAdviceSource + ObservabilityMethodInterceptor on the GENERALISED method-
+    # interceptor chain Data owns (Advice/AdviceSource/MethodInterceptor/MethodInvocation in packages/data/src/Proxy)
+    # — the same ports firefly/security's MethodSecurityAdviceSource implements, and the reason that chain was
+    # generalised out of the transactional proxy in the first place. Observability CONSUMES those ports and adds
+    # nothing to them; the direction is Observability -> Data and NEVER the reverse (Data names no meter, no span
+    # and no tracer).
     Observability:
       - Kernel
       - Container
@@ -385,6 +393,7 @@ deptrac:
       - Cqrs
       - Eda
       - Resilience
+      - Data
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
     # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
