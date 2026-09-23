@@ -22,6 +22,11 @@ function resilienceReflectionHits(string $dir): array
     return $hits;
 }
 
-it('keeps firefly/resilience entirely free of boot-time attribute introspection', function () {
-    expect(resilienceReflectionHits(__DIR__.'/../src'))->toBe([]);
+it('confines firefly/resilience reflection to the single sanctioned ResilienceMethodScanner', function () {
+    // ResilienceMethodScanner is the SOLE sanctioned reflection site in packages/resilience/src — the
+    // scan-time half of #[Retry]/#[CircuitBreaker]/#[RateLimiter]/#[Bulkhead]/#[TimeLimiter]/#[Fallback],
+    // which runs at `firefly:cache` time and never on a cached boot. The assertion is still an EXACT set,
+    // not a floor: docblocks count, so no other resilience/src file (comments included) may name
+    // ReflectionClass/ReflectionMethod/getAttributes, and the programmatic patterns stay reflection-free.
+    expect(resilienceReflectionHits(__DIR__.'/../src'))->toBe(['ResilienceMethodScanner.php']);
 });

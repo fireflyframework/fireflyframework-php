@@ -162,12 +162,23 @@ deptrac:
     # Resilience is a leaf capability: cache-backed primitives + a config-built registry. It reads Config,
     # reuses Kernel infra exceptions, carries Container/Context attributes, and extends AutoConfigure's base.
     # No capability layer (Web/Validation) may depend on it; it must not depend on them.
+    #
+    # The => Data edge is the ATTRIBUTE half of those primitives (src/Method, src/Scanner): #[Retry],
+    # #[CircuitBreaker], #[RateLimiter], #[Bulkhead], #[TimeLimiter] and #[Fallback] are enforced by a
+    # ResilienceAdviceSource + ResilienceMethodInterceptor on the GENERALISED method-interceptor chain Data
+    # owns (packages/data/src/Proxy), the same ports firefly/security and firefly/observability implement.
+    # Every one of those attributes DELEGATES to the programmatic component already in this package — no
+    # policy is reimplemented behind the attribute — so the edge buys interception and nothing else. The
+    # direction is Resilience -> Data and NEVER the reverse; Data names no breaker and no limiter, and the
+    # "leaf capability" claim above is unchanged in substance: nothing depends on Resilience that did not
+    # before.
     Resilience:
       - Kernel
       - Container
       - Config
       - Context
       - AutoConfigure
+      - Data
 
     # Scheduling is a leaf capability: a DistributedLock port + adapters, a #[Scheduled] scanner/manifest, and a
     # ScheduleWiringPass. It reads Config, reuses Kernel infra exceptions (CacheLock's unsupported-store guard),
@@ -469,8 +480,12 @@ deptrac:
     # (whose composer.json genuinely requires the full runtime family, so it legitimately lists all 18
     # layers), firefly/cli's composer.json requires exactly the packages ManifestCacheWriter/CacheCommand/
     # ActuatorCliRenderer call into — so this ruleset lists ONLY those layers, deliberately OMITTING
-    # Domain/Resilience/SchedulingPostgres (not required by packages/cli/composer.json, not called by any
-    # writer/scanner). It is depended on by NONE. It does NOT depend on Testing (dev-only).
+    # Domain/SchedulingPostgres (not required by packages/cli/composer.json, not called by any writer/scanner).
+    # Resilience IS listed from wave N on: ManifestCacheWriter's proxy planner names ResilienceAdviceSource
+    # beside the transactional, security and observability ones, so firefly:cache compiles #[Retry]/
+    # #[CircuitBreaker]/… into the same plan — which is a genuine call into the package, and
+    # packages/cli/composer.json requires it accordingly.
+    # It is depended on by NONE. It does NOT depend on Testing (dev-only).
     Cli:
       - Kernel
       - Container
@@ -488,6 +503,7 @@ deptrac:
       - SecurityOAuth2Server
       - Actuator
       - Observability
+      - Resilience
 
     # Installer is the standalone global `firefly new` tool: symfony/console + symfony/process ONLY,
     # ZERO firefly runtime deps, so a global install never drags in the framework. Depends on nothing
