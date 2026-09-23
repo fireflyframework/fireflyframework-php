@@ -138,7 +138,12 @@ layer (a later package) renders it; here is the shape:
 ```php
 use Firefly\Kernel\Error\ErrorResponse;
 
-$response = ErrorResponse::fromException($exception, instance: '/orders/42', traceId: $traceId);
+$response = ErrorResponse::fromException(
+    $exception,
+    instance: '/orders/42',
+    traceId: $traceId,             // the id a person quotes: see "Web rendering" for which id that is
+    correlationId: $correlationId, // always the correlation id, so the two are never conflated
+);
 $payload  = $response->toArray(); // omits null/empty optionals
 ```
 
@@ -151,7 +156,8 @@ $payload  = $response->toArray(); // omits null/empty optionals
   "severity": "warning",
   "detail": "Order 42 not found",
   "instance": "/orders/42",
-  "traceId": "..."
+  "traceId": "...",
+  "correlationId": "..."
 }
 ```
 
@@ -187,12 +193,20 @@ client different things about one failure. It has **three** cases, and only the 
     bound at all — a JSON-only deployment that never constructed one — the default is the **safe** one; an
     absent gate must not mean an open one.
 
-Two more things every problem document carries. **`traceId`** is the request's correlation id — the one
-`CorrelationIdFilter` reads or mints at order `-100` and stamps on every log line — and the same value is on
-the response as `X-Correlation-Id`, so the body a person screenshots and the log line an operator searches
-for share it; a request that arrived with no id is given one rather than left unreferenced. And the headers an
-`HttpExceptionInterface` carries are copied through: a **405** keeps its `Allow` header, and is rendered with
-the reason phrase as its title, a sentence written for a person (`This address only accepts POST.`) in place of
+Two more things every problem document carries. **The ids — two of them, related and never conflated.**
+**`traceId`** is the id a person quotes: the request's **W3C trace id** when tracing gave it a valid span,
+and the correlation id when it did not — so pasting it into a trace search finds the request, which was the
+one thing it could never do while the member named after a trace held a uuid no trace backend had heard of.
+**`correlationId`** is always the correlation id, the one `CorrelationIdFilter` reads or mints at order
+`-100` and stamps on every log line, and it is on the response as `X-Correlation-Id` exactly as before; a
+request that arrived with no id is given one rather than left unreferenced. The trace id gets its **own**
+response header (`X-Trace-Id`, see `firefly.web.trace-id.*` below) and is written only when there is one, so
+the two ids never overwrite each other and a deployment with tracing off sees no new header at all. With
+tracing off, `traceId` and `correlationId` are the same string — byte for byte what the document carried
+before the trace id existed.
+
+And the headers an `HttpExceptionInterface` carries are copied through: a **405** keeps its `Allow` header,
+and is rendered with the reason phrase as its title, a sentence written for a person (`This address only accepts POST.`) in place of
 the router's, and the permitted verbs in an `allowed` extension member. A 404 the router raised for a URL that
 matches nothing says `There is nothing at this address.`; an `abort(404, '…')` message the author wrote is
 kept verbatim. A 503 carries `Retry-After`, and PHP's own execution-time limit (`Maximum execution time of N
@@ -272,12 +286,23 @@ deployment wants to change:
 //     ],
 ```
 
+The reference both surfaces publish has two keys of its own:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `firefly.web.trace-id.enabled` | bool | `true` | Whether the W3C trace id is what `traceId`, the page's **Reference** row and the echoed header publish. `false` puts the correlation id back in all three — the pre-trace behaviour — and turns the echo off. The trace id is still read for logs and the HTTP-exchange row; only publishing it stops. |
+| `firefly.web.trace-id.header` | string | `X-Trace-Id` | The response header the trace id is echoed on, beside `X-Correlation-Id` and never in place of it. `''` disables the echo and leaves the document and the page untouched. It is deliberately **not** W3C `traceresponse`, which LaraFly does not implement. |
+
 **`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never
 walks the stack, never opens a source file and never copies the exception message — so there is nothing
 assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
-**reference** — the same correlation id the problem document publishes as `traceId`, so the 500 page reads
-"quote reference `<id>` if you report it" and an operator can find the log line it stamps: enough to quote
-into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
+**reference** — the same id the problem document publishes as `traceId`, which is the W3C trace id when the
+request had a valid span and the correlation id when it did not, and the same value the response echoes on
+`X-Trace-Id` — so the 500 page reads "quote reference `<id>` if you report it" and the id a person
+screenshots is the one a trace search resolves. When the two ids differ the page carries a **Correlation**
+fact row beside the Reference one, holding the `X-Correlation-Id` value; when they are the same string the
+row is omitted, because two rows repeating one value teach a reader the ids are interchangeable. That is
+enough to quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
 advice about *how* to turn traces on is suppressed outside non-production environments too, because naming
 the framework and a config key to an anonymous visitor is a free hint about your stack.
 

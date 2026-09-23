@@ -70,6 +70,30 @@ provider selected the whole package resolves nothing and requires nothing.
 | `firefly.eda.kafka.brokers` | `127.0.0.1:9092` | `metadata.broker.list` for both the producer and the consumer. |
 | `firefly.eda.consumer.group_id` | `firefly` | The Kafka consumer group id (`group.id`). Namespaced under the broker-agnostic `firefly.eda.consumer.*` prefix rather than `firefly.eda.kafka.*` because a consumer group id is a Kafka-specific concept with no RabbitMQ/Postgres analog — it is read only by `KafkaAutoConfiguration`. |
 
+### Tracing on the wire (all three)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `firefly.eda.tracing.brokers.enabled` | `true` | Whether `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` may stamp a `traceparent` on the envelope they hand to the transport. |
+
+All three `publish()` methods run inside `EdaTracing::tracePublish()`, so the message that reaches the
+exchange, the topic or the `firefly_eda_outbox` row carries the producer span's `traceparent` and the consumer
+on the far side continues the trace rather than starting a new one. On Postgres that covers **both** writers of
+a row: the `EventPublisher` bean and `OutboxPreCommitHook`, which is the only path a `DomainEvent` takes under
+`provider=postgres` — so the traced row is the one that commits with the aggregate. `firefly:outbox:relay`
+wraps its forward in `traceConsume()` of the claimed row, so the downstream producer span is a **child** of the
+trace the row carries instead of a fresh root.
+
+It does nothing unless `firefly.observability.tracing.enabled` and `firefly.observability.tracing.eda.enabled`
+are on (with them off the bound `EdaTracing` is the no-op). Set it to `false` to keep in-process spans while
+refusing to put trace identifiers on a wire someone else reads. The key is read in exactly one place —
+`Firefly\Eda\Tracing\BrokerTracing` — by the three publisher beans and by `RelayDownstream`, because a gate
+that lives only in a bean fails open wherever a publisher is built by container autowiring. The relay honours it
+whether you name a shipped adapter by its alias (`rabbitmq`) or by its own class-string: both spellings take the
+same configured path. A downstream of your OWN — a publisher class this package ships no adapter for, or one you
+bind under `firefly.eda.relay.downstream` — is yours to construct and therefore yours to gate; call
+`BrokerTracing::resolve()` where you build it.
+
 !!! note "No config key activates a broker by itself"
     Installing `firefly/eda-postgres` (say) via Composer does nothing until `firefly.eda.provider=postgres`
     is set. Conversely, setting the provider without installing the matching package throws at boot (eda's
@@ -185,7 +209,9 @@ Kafka — just the natural insertion order of one table).
 `firefly:outbox:relay` is a **distinct, optional** path that fronts a **different downstream broker**. Enable
 it by setting `firefly.eda.postgres.relay.downstream_provider` — to a shipped alias (`rabbitmq`/`kafka`), to
 an `EventPublisher` class-string, or to the id of a binding you supply — or by binding your own publisher
-under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset).
+under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset). A
+shipped adapter named by its OWN class-string is the same downstream as its alias and resolves identically,
+config keys and broker-tracing gate included.
 
 With neither configured, running the command **fails** with a console error naming the key and the available
 aliases, and exits `FAILURE`. That is deliberate: an operator who starts the relay expects rows to move, and a

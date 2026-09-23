@@ -267,6 +267,48 @@ config access spec, and a rule written that way locks the path down instead of o
 deliberate: an unrecognised spec must fail closed. Interpolated role/authority values containing a single
 quote are rejected outright (expression injection).
 
+### Patterns are matched against `$request->path()`, whichever way you spell them
+
+`HttpSecurityFilter` matches `Str::is($rule->pattern, $request->path())`, and Laravel's `path()` never carries a
+leading slash — it answers `api/orders`, and `/` for the root. A pattern written `/api/orders` would therefore
+match **nothing**: `Str::is('/api/orders', 'api/orders')` is `false`. That is the spelling a route manifest uses
+and the one you get by copying a URL out of a browser, and a rule that matches nothing looks exactly like a rule
+that did not apply — deny-by-default then refuses the one path you meant to open.
+
+So `HttpSecurity` normalises every pattern where the rule is **built** (`requestMatcher()`, which `anyRequest()`
+and `fromConfig()` both call): `/api/*` and `api/*` are one rule, and `/` keeps its slash because that is what
+`path()` answers for the root. Normalising at the single door every rule comes through is also what lets
+`firefly/openapi` publish a truthful `security` member — it reads these same rules to decide which operations are
+public, and a rule meaning one thing to the document and nothing to the filter is a published claim the server
+does not honour.
+
+> **Upgrading: read your `/`-prefixed rules as if they were live, because now they are.** A rule that used to
+> match nothing now matches, and because the list is **first-match-wins** a rule waking up changes the answer in
+> **both** directions — the dangerous one is fail-**open**:
+>
+> ```php
+> 'rules' => [
+>     ['pattern' => '/admin/*', 'access' => 'permitAll'],   // was DEAD, is now the first match
+>     ['pattern' => '*',        'access' => 'authenticated'],
+> ],
+> ```
+>
+> `/admin/secret` used to reach the second rule and be served only to an authenticated caller, because
+> `Str::is('/admin/*', 'admin/secret')` is `false`. The first rule is now stored as `admin/*`, matches, and the
+> path is **served anonymously**. The opposite case is fail-closed and merely surprising: a `/`-prefixed
+> `hasRole:`/`denyAll` rule ahead of a broader `permitAll` now matches first and refuses callers that used to get
+> through.
+>
+> Grep `firefly.security.http.rules` (and any `HttpSecurity::create()` chain) for `/`-prefixed patterns before
+> upgrading. A `/`-prefixed `permitAll` sitting ahead of a broader rule is the shape to fix — narrow it, move it
+> after the broader rule, or delete it. Rule sets with no leading slashes behave exactly as they did.
+
+**A leading slash is the only thing normalised — a route placeholder is not.** The pattern is matched against a
+request path, so `['pattern' => '/api/orders/{id}']` normalises to `api/orders/{id}` and still matches nothing:
+`Str::is('api/orders/{id}', 'api/orders/7')` is `false`. Copy the route's shape, not its text — write
+`api/orders/*`. `firefly/openapi` reads these rules the same way and treats a placeholder pattern as the dead rule
+it is, so a document generated beside such a rule reports the path as protected rather than claiming it is public.
+
 ## Web
 
 ### The entry point
@@ -366,6 +408,81 @@ integers (`-95` through `-88`). A `WebFilter` of your own slots *between* two of
 exists: `-88`→`-85`, `-85`→`-83`, `-82`→`-80`, `-80`→`-70`, or outside the range on either side. Declaring an order
 already taken is not refused and is not a position you chose — the `strcmp` tie-break above resolves it by your own
 fully-qualified class name, so where you land depends on your namespace rather than on your intent.
+
+## The one bean this package gives the actuator
+
+`src/Actuator` is the whole of it, and it is the only reason `deptrac.yaml` carries a **`Security → Actuator`**
+edge (the direction matters: `firefly/actuator` names no principal, no role and no authority, because a
+diagnostics surface has to work in an application with no security at all — `SecurityOAuth2Server → Actuator`,
+which supplies `/actuator/oauth2clients`, is the precedent). `firefly/actuator` is a `suggest` of this package
+and not a `require`: a secured API with no diagnostics surface is an ordinary deployment.
+
+[`/actuator/health`](actuator.md#who-may-read-the-component-details) asks one question this package can answer
+and it cannot — may the CURRENT caller read the component details — and declares it as a deny-by-default
+`HealthDetailsAuthorizer` port. `SecurityActuatorAutoConfiguration` fills it with
+`PrincipalHealthDetailsAuthorizer`, which is:
+
+- `#[ConditionalOnClass(HealthDetailsAuthorizer::class)]` on the whole `#[Configuration]`, so the class and
+  every reflection of its signatures is skipped when `firefly/actuator` is not installed — the
+  `OpenTelemetryAutoConfiguration` idiom;
+- `#[ConditionalOnProperty('firefly.security.enabled', 'true')]`, so an application with the master flag off
+  keeps actuator's `DenyHealthDetailsAuthorizer` and the behaviour it already had;
+- `#[Order(400)]`, below `ActuatorAutoConfiguration`'s, so this bean registers first and actuator's own
+  `#[ConditionalOnMissingBean]` backs its default off — the precedence `MeterRegistryCqrsMetrics` uses against
+  CQRS's no-op.
+
+The rule itself is Spring's. The principal comes from the same `SecurityContextHolder` every other rule here
+reads (populated by the filters above, so a caller is authenticated by HTTP Basic, a session or a JWT exactly
+as anywhere else), and it is compared against **`firefly.management.endpoint.health.roles`** — a
+`firefly.management.*` key, documented in the [Actuator](actuator.md#configuration-fireflymanagement-kebab-case)
+reference — through the configured `RoleHierarchy`, with a bare name read as `ROLE_<name>`. An empty list
+admits any authenticated principal; a list whose entries are all unusable refuses everybody and logs once,
+rather than being read as the empty one. A CSV string is that same list (`'ADMIN,ACTUATOR'`, Spring's own
+spelling), and a value that is neither list nor string is one unusable entry — read with the untyped `get()`
+rather than `Config::array()` on purpose, because this read runs on every scrape from a path
+`HealthEndpoint`'s fail-safe does not wrap, and a typed mismatch would answer a probe with 500.
+
+## What this package tells the OpenAPI document
+
+`src/OpenApi` is one class, and it is the only reason `deptrac.yaml` carries a **`Security → OpenApi`** edge (the
+direction matters: `firefly/openapi` names no Security type, which is what keeps it generating a document in an
+application with no security at all). `firefly/openapi` is a `suggest` of this package and never a `require`, and
+`MethodSecurityRequirementContributor` is `#[ConditionalOnClass(SecurityRequirementContributor::class)]`, so an
+application without the generator never loads a class implementing an absent interface.
+
+`firefly/openapi` can already read `firefly.security.*` through the Config port and publish what the **URL rules**
+do to a path. What it cannot see is the compiled `SecurityMethodManifest` — that is a code edge `deptrac.yaml`
+forbids in that direction — so an action carrying `#[PreAuthorize]`, `#[Secured]`, `#[RolesAllowed]` or
+`#[PostAuthorize]` was published with **no** `security` member at all while the dispatcher answered `401`/`403` to
+every caller of it. That is fail-**open** documentation, and it is exactly the setup the method-security-first
+shape produces: permissive URL rules, the rules on the handlers, Spring's `anyRequest().permitAll()`.
+
+`MethodSecurityRequirementContributor` fills the `SecurityRequirementContributor` port with the manifest this
+package already owns:
+
+- it looks the route's own `controllerClass::methodName` up, and names **every configured scheme** (an
+  operation's `security` array is an OR-list, and an application running HTTP Basic beside a bearer filter really
+  does accept either credential) — plus `oauth2AuthorizationCode` when `firefly.security.oauth2.server.enabled`,
+  the same flag [`firefly/security-oauth2-server`](security-oauth2-server.md) publishes that scheme from;
+- it is gated by **`firefly.security.enabled` alone**. `firefly.security.method.enabled` stands down the *proxy
+  link* and never the controller dispatcher — `SecurityWiringPass` installs `MethodSecurityControllerGuard` once
+  past the master flag whatever that flag says — so reading it here would publish a guarded action as public;
+- `permitAll()` (the pre expression the scanner compiles for a method whose only rules are post/filter ones) is
+  **no opinion**, not "public": the URL rules may still protect the path. A `#[PostAuthorize]` beside it *is* a
+  refusal — the same `deny()`, the same 401/403 — and is published as one. `#[PreFilter]`/`#[PostFilter]` narrow a
+  result and refuse nobody, so they contribute nothing;
+- a `hasScope()` the rule demands of **every** caller becomes the requirement's scope list, on the token-shaped
+  entries only (HTTP Basic has no scope vocabulary a generated client could ask a token endpoint for). An
+  `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement instead: an OpenAPI scope list
+  is conjunctive, so naming both alternatives would send a generated client to ask for a scope its registration
+  may not include. The name published is the **OAuth2 scope**, never the authority: `hasScope('SCOPE_orders.read')`
+  and `hasScope('orders.read')` are one rule (`SecurityExpressionRoot::hasScope()` normalises the bare form), and
+  only `orders.read` is a scope a client registration can hold.
+
+`packages/security/tests/OpenApi/MethodSecuredDocumentCapstoneTest.php` boots the generator beside this package and
+asserts the document and the dispatcher against each other on the same routes — the pairing that keeps the two
+from drifting, and the one the `firefly/openapi` capstone cannot make (it has no method-secured fixture, and no
+edge that would let it have one).
 
 ## Configuration (`firefly.security.*`, snake_case)
 

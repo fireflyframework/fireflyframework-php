@@ -7,6 +7,7 @@ namespace Firefly\Eda\Postgres\Outbox;
 use Firefly\Config\Config;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
+use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Container\Container;
@@ -28,10 +29,12 @@ use Illuminate\Contracts\Container\Container;
  * HOW IT RESOLVES NOW, in order, so an app can always win:
  *   1. an explicit container binding under self::BINDING — the escape hatch for a downstream that needs credentials,
  *      TLS options or anything else this package has no business knowing about;
- *   2. the configured value read as a container id or class-string — `downstream_provider` may name a binding or a
- *      publisher class directly;
- *   3. a shipped adapter ALIAS ('rabbitmq' | 'kafka') mapped to that package's publisher, built with the adapter's
- *      OWN config keys.
+ *   2. the configured value read as a container id — an app that has BOUND it has already constructed it, so every
+ *      constructor argument is already the app's own choice;
+ *   3. a SHIPPED adapter, named either by its ALIAS ('rabbitmq' | 'kafka') or by that adapter's own class-string —
+ *      two spellings of one downstream, both built with the adapter's OWN config keys;
+ *   4. any other existing class-string, autowired — a publisher this package ships no adapter entry for and knows
+ *      no configuration keys of.
  *
  * WHY THE ADAPTER CLASSES ARE REFERENCED AS STRINGS. deptrac's layer graph forbids an EdaPostgres -> EdaRabbitmq /
  * EdaKafka edge (see deptrac.yaml: every broker is a sibling leaf package, depended on by NONE), and rightly so —
@@ -121,37 +124,74 @@ final class RelayDownstream
      */
     private static function instantiate(Container $container, Config $config, string $provider): mixed
     {
-        if ($container->bound($provider) || class_exists($provider)) {
+        // An app that BOUND this id built the publisher itself, so every argument — tracing included — is already
+        // its own choice, and passing constructor overrides here would defeat the binding rather than honour it
+        // (Illuminate skips a shared instance the moment make() is handed parameters).
+        if ($container->bound($provider)) {
             return self::make($container, $provider, [], $provider);
         }
 
-        $adapter = self::ADAPTERS[$provider] ?? null;
+        // ONE route for a shipped adapter, whichever way it was spelled. The class-string used to fall straight
+        // through to the bare class_exists() branch below, and the publisher was then built by container autowiring
+        // with its constructor DEFAULTS: the exchange an operator had set in firefly.eda.rabbitmq.exchange silently
+        // became `firefly.events`, and — the reason this was a defect rather than an untidiness —
+        // firefly.eda.tracing.brokers.enabled FAILED OPEN, because Illuminate returns a constructor parameter's
+        // default only when the type is UNBOUND, and EdaTracing is bound in every app that has firefly/eda
+        // installed. Writing RabbitMqEventPublisher::class instead of 'rabbitmq' therefore put traceparents on a
+        // third party's wire with the compliance gate switched off: two spellings of one downstream that behaved
+        // differently, and the gate was bypassed by the more explicit of the two.
+        $alias = isset(self::ADAPTERS[$provider]) ? $provider : self::shippedAdapterAlias($provider);
 
-        if ($adapter === null) {
-            throw new ConfigurationException(sprintf(
-                '%s="%s" names neither a shipped adapter [%s], nor a bound container id, nor an existing class. Fix the '
-                .'value, or bind your own downstream EventPublisher under the container id "%s".',
-                self::PROVIDER_KEY,
-                $provider,
-                implode('|', array_keys(self::ADAPTERS)),
-                self::BINDING,
-            ));
+        if ($alias !== null) {
+            $adapter = self::ADAPTERS[$alias];
+
+            if (! class_exists($adapter['class'])) {
+                throw new ConfigurationException(sprintf(
+                    '%s="%s" but %s is not installed — %s could not be found. Run `composer require %s`, or bind your own '
+                    .'downstream EventPublisher under the container id "%s".',
+                    self::PROVIDER_KEY,
+                    $provider,
+                    $adapter['package'],
+                    $adapter['class'],
+                    $adapter['package'],
+                    self::BINDING,
+                ));
+            }
+
+            return self::make($container, $adapter['class'], self::parameters($container, $config, $alias), $provider);
         }
 
-        if (! class_exists($adapter['class'])) {
-            throw new ConfigurationException(sprintf(
-                '%s="%s" but %s is not installed — %s could not be found. Run `composer require %s`, or bind your own '
-                .'downstream EventPublisher under the container id "%s".',
-                self::PROVIDER_KEY,
-                $provider,
-                $adapter['package'],
-                $adapter['class'],
-                $adapter['package'],
-                self::BINDING,
-            ));
+        // A publisher class this package ships no adapter entry for: it knows none of that class's config keys, so
+        // the container autowires it and the application owns every argument, tracing included.
+        if (class_exists($provider)) {
+            return self::make($container, $provider, [], $provider);
         }
 
-        return self::make($container, $adapter['class'], self::parameters($container, $config, $provider), $provider);
+        throw new ConfigurationException(sprintf(
+            '%s="%s" names neither a shipped adapter [%s], nor a bound container id, nor an existing class. Fix the '
+            .'value, or bind your own downstream EventPublisher under the container id "%s".',
+            self::PROVIDER_KEY,
+            $provider,
+            implode('|', array_keys(self::ADAPTERS)),
+            self::BINDING,
+        ));
+    }
+
+    /**
+     * The alias a SHIPPED adapter's class-string belongs to, or null when the value names a class this package has
+     * no adapter entry for. `downstream_provider` accepts both spellings, and the two have to resolve to the same
+     * publisher with the same configuration — otherwise the class-string is a quiet way around every key
+     * self::parameters() carries across the adapter's own #[ConditionalOnProperty] gate.
+     */
+    private static function shippedAdapterAlias(string $provider): ?string
+    {
+        foreach (self::ADAPTERS as $alias => $adapter) {
+            if ($adapter['class'] === $provider) {
+                return $alias;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -160,23 +200,38 @@ final class RelayDownstream
      * make part of those classes' public API — so a rename there surfaces here as a loud BindingResolutionException
      * rather than a quietly-defaulted broker address.
      *
+     * `tracing` IS ONE OF THOSE OVERRIDES, and for the same reason as `exchange`. The adapter's own bean method
+     * reads firefly.eda.tracing.brokers.enabled before handing the publisher an EdaTracing; that bean is gated off
+     * here by construction, so the publisher is built by container autowiring instead — and Illuminate returns a
+     * constructor parameter's DEFAULT only when the class is UNBOUND. EdaTracing is bound in every app that has
+     * firefly/eda installed, so `?EdaTracing $tracing = null` was being satisfied with the real tracing whatever
+     * the key said, and `firefly:outbox:relay` wrote traceparents onto the downstream broker with the key false —
+     * the one deployment the key exists for. BrokerTracing::forContainer() makes the same decision the bean
+     * methods make, so the gate holds on every construction path.
+     *
      * @return array<string, mixed>
      */
     private static function parameters(Container $container, Config $config, string $provider): array
     {
         if ($provider === 'rabbitmq') {
-            return ['exchange' => $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events')];
+            return [
+                'exchange' => $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events'),
+                'tracing' => BrokerTracing::forContainer($container, $config),
+            ];
         }
 
         if ($provider === 'kafka') {
             // The broker list lives one level down, on KafkaProducerFactory, so it is built here and injected as the
             // publisher's `factory` argument — parameter overrides do not reach nested dependencies.
-            return ['factory' => self::make(
-                $container,
-                'Firefly\\Eda\\Kafka\\KafkaProducerFactory',
-                ['brokers' => $config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092')],
-                $provider,
-            )];
+            return [
+                'factory' => self::make(
+                    $container,
+                    'Firefly\\Eda\\Kafka\\KafkaProducerFactory',
+                    ['brokers' => $config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092')],
+                    $provider,
+                ),
+                'tracing' => BrokerTracing::forContainer($container, $config),
+            ];
         }
 
         return [];

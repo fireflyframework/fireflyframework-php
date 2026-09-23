@@ -25,6 +25,7 @@
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
+        "firefly/data": "*@dev",
         "firefly/kernel": "*@dev",
         "illuminate/cache": "^13.0",
         "illuminate/contracts": "^13.0",

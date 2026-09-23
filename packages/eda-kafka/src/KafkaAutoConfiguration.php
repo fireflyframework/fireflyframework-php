@@ -13,6 +13,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\JsonSerializer;
+use Firefly\Eda\Tracing\BrokerTracing;
+use Firefly\Eda\Tracing\EdaTracing;
 use RuntimeException;
 
 /**
@@ -43,7 +45,7 @@ final class KafkaAutoConfiguration
 
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'kafka')]
-    public function eventPublisher(Config $config, SubscriberRegistry $registry): EventPublisher
+    public function eventPublisher(Config $config, SubscriberRegistry $registry, ?EdaTracing $tracing = null): EventPublisher
     {
         if (! KafkaProducerFactory::available()) {
             throw new RuntimeException('firefly.eda.provider=kafka but ext-rdkafka is not loaded. Install librdkafka + the rdkafka extension, or set another provider.');
@@ -53,6 +55,7 @@ final class KafkaAutoConfiguration
             new KafkaProducerFactory($config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092')),
             $registry,
             new JsonSerializer,
+            BrokerTracing::resolve($config, $tracing),
         );
     }
 

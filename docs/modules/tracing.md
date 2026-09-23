@@ -71,7 +71,17 @@ case-insensitively, list or string values) and `inject(SpanContext): array<strin
 | Inbound HTTP | `TracingFilter` — a `#[Component] WebFilter` at `#[Order(-110)]`, the outermost discovered filter (right after `RequestContextFilter` and `CorrelationIdFilter`, wrapping `HttpExchangeFilter`/`MetricsFilter`) | `SERVER`, named `GET /orders/{id}` once the router has matched; `http.request.method`, `url.path`, `url.scheme`, `server.address`, `http.route`, `http.response.status_code`, `firefly.correlation_id`; `ERROR` on 5xx or a throw | `traceparent`/`tracestate` read from the request; ids published to `Context` and to `Request::$attributes` (where `HttpExchangeFilter` reads the `traceId` for the exchange row) |
 | Outbound HTTP | `HttpClientTracingMiddleware`, a Guzzle middleware `HttpClientTracingPass` installs on the `Http` factory at boot (`Http::globalMiddleware()`) | `CLIENT`, named by the method; `http.request.method`, `url.scheme`, `server.address`, `server.port`, `url.path` (never `url.full` — the query string is where tokens live), `http.response.status_code`; `ERROR` at ≥ 400 or on a rejection | `traceparent`/`tracestate` set on the PSR-7 request; works under `Http::fake()` (global middleware is outermost) |
 | CQRS | `CqrsTracing` seam in `firefly/cqrs` (`NoOpCqrsTracing` default), filled by `TracerCqrsTracing` | `INTERNAL`, named by the message's short class; `firefly.cqrs.kind`, `firefly.cqrs.message` | nothing to carry — in-process; the span nests under whatever is current |
-| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`) and `SubscriberRegistrySink` (every broker consumer) | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
+| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`), `SubscriberRegistrySink` (every broker consumer), the three broker publishers — `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` (both its writers: the bean and the in-tx `OutboxPreCommitHook`) — and `OutboxRelay`, which wraps its forward in `traceConsume()` so the relay hop continues the row's trace instead of rooting a new one | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
+
+**The id a person quotes is the trace id.** `firefly/web` reads the ids `TracingFilter` publishes above
+(`Firefly\Web\Trace\TraceContext`, which owns the two attribute/`Context` keys the filter's own constants
+alias), so problem+json's `traceId` and the HTML error page's **Reference** row carry the request's W3C
+trace id whenever it has a valid one, and the response echoes it on `X-Trace-Id`. Without a valid span all
+three fall back to the correlation id — what they carried before — so switching tracing on is the only thing
+that changes them. The correlation id is not absorbed: `X-Correlation-Id` is untouched and the document
+carries it as its own `correlationId` member. Both behaviours are gated by `firefly.web.trace-id.enabled`
+and `firefly.web.trace-id.header`, documented in
+[Error Handling](error-handling.md#the-html-error-page). This is **not** `traceresponse`.
 
 Both seams are the `CqrsMetrics` shape: an interface in the owning package with a no-op default behind
 `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration registering the real one
@@ -154,12 +164,21 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 
 ## Known-latent
 
-- **Broker publishers do not yet stamp `traceparent`.** `eda-rabbitmq`, `eda-kafka` and `eda-postgres`
-  build their envelopes themselves and do not call `EdaTracing::tracePublish()`; their consume path is traced
-  through the shared `SubscriberRegistrySink`, so a `traceparent` a producer DID put in the headers is
-  continued. Routing the three `publish()` methods through the seam is a small, contained follow-up.
-- **`#[Timed]`/`#[Counted]`/`#[Observed]` method attributes** wait for the method-interceptor chain the
-  security wave generalises from the transactional proxy.
-- **problem+json's `traceId`** is still the correlation id (what `CorrelationIdFilter::of()` returns), so a
-  document and its `X-Correlation-Id` keep agreeing; the W3C trace id is on the exchange row and in the logs.
+- **A FOREIGN downstream publisher gates itself.** `firefly.eda.tracing.brokers.enabled` is applied by
+  `BrokerTracing`, which the three adapters' `#[Bean]` methods and `RelayDownstream` both call — including when
+  a shipped adapter is named by its own class-string instead of its alias, since the two are one downstream and
+  resolve identically. What the gate cannot reach is a relay downstream that is neither: your own publisher
+  class, or one you bind under `firefly.eda.relay.downstream`. `firefly/eda-postgres` knows no constructor
+  arguments for a class it ships no adapter entry for, so the container autowires it and the bound `EdaTracing`
+  reaches it whatever the key says. Call `BrokerTracing::resolve()` in your own factory, exactly as the three
+  shipped adapters do.
+- **The gate does not strip a `traceparent` a row already carries.** Turning the key off stops our publishers
+  writing one, so a row written while it was off has none. A row written BEFORE it was turned off keeps its
+  `traceparent` and the relay still forwards it, as it forwards a header a foreign producer set.
+- **`#[Timed]`/`#[Counted]`/`#[Observed]` are shipped**, enforced on any stereotyped bean through the
+  method-interceptor chain as the **outermost** advice (order 50, ahead of method security's 100 and the
+  transaction's 1000), so a timer measures the authorization refusal and the `COMMIT` as well as the method
+  body. `#[Observed]` starts a span *and* a timer under one name — Micrometer's Observation API in one
+  attribute — and degrades to the timer alone when tracing is off. Gated by
+  `firefly.observability.method.enabled`; see [Observability](observability.md#method-attributes).
 - **No `traceresponse`**: W3C defines no response header yet; nothing is written on the way out.

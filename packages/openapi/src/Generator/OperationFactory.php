@@ -6,6 +6,7 @@ namespace Firefly\OpenApi\Generator;
 
 use Firefly\OpenApi\Attributes\ApiParameter;
 use Firefly\OpenApi\Attributes\ApiResponse;
+use Firefly\OpenApi\Schema\ClassNames;
 use Firefly\OpenApi\Schema\DocType;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
 use Firefly\OpenApi\Schema\ElementTypes;
@@ -13,6 +14,7 @@ use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\ResponseSchemaFactory;
 use Firefly\OpenApi\Schema\SchemaRegistry;
 use Firefly\OpenApi\Schema\TypeSchema;
+use Firefly\OpenApi\Security\SecurityModel;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Route\RouteDescriptor;
 use ReflectionClass;
@@ -53,10 +55,24 @@ use ReflectionNamedType;
  */
 final class OperationFactory
 {
+    /**
+     * The prefix documentedReturnClass() marks a class pointer with while it parses a `@return` line without
+     * resolving anything. A NUL byte opens it because no `$ref` this package ever writes can begin with one,
+     * so a marked pointer is unmistakably the parser's answer and never a schema that came from elsewhere.
+     */
+    private const string CLASS_MARK = "\0return-class:";
+
+    /**
+     * $security is last and nullable for the reason $resolvers is: every existing construction of this
+     * factory — the #[Bean] below, an application's own override, the fixtures — keeps compiling, and one
+     * built without it publishes the document this package published before there was anything to say about
+     * authentication.
+     */
     public function __construct(
         private readonly DtoSchemaFactory $schemas,
         private readonly ResponseSchemaFactory $responses = new ResponseSchemaFactory,
         private readonly ?HandlerMethodArgumentResolvers $resolvers = null,
+        private readonly ?SecurityModel $security = null,
     ) {}
 
     /**
@@ -136,6 +152,16 @@ final class OperationFactory
         }
 
         $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
+
+        // Operation-level `security`. Absent — not `[]` — when nothing requires anything: an empty array in
+        // OpenAPI is the positive claim "this operation needs no authentication", which is exactly the claim
+        // a generator must not make on its own. It is written when a contributor says the path is protected,
+        // and it stays absent for a path an explicit permitAll rule covers too, since the document declares
+        // no security at its root for such an entry to override.
+        $requirements = $this->security?->requirementsFor($route) ?? [];
+        if ($requirements !== []) {
+            $operation['security'] = $requirements;
+        }
 
         return $operation;
     }
@@ -287,7 +313,8 @@ final class OperationFactory
      */
     private function responseSet(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
     {
-        $responses = [(string) $route->status => $this->successResponse($route, $registry)];
+        [$status, $success] = $this->successResponse($route, $registry);
+        $responses = [(string) $status => $success];
 
         if ($rejectable) {
             $responses['400'] = ['$ref' => ProblemSchema::RESPONSE_REF];
@@ -300,7 +327,8 @@ final class OperationFactory
         $responses['default'] = ['$ref' => ProblemSchema::RESPONSE_REF];
 
         foreach ($doc->responses as $declared) {
-            $responses[(string) $declared->status] = $this->declaredResponse($declared, $registry, $this->method($route)?->getDeclaringClass());
+            $status = (string) $declared->status;
+            $responses[$status] = $this->declaredResponse($declared, $responses[$status] ?? null, $registry, $this->method($route)?->getDeclaringClass());
         }
 
         return $this->sortStatuses($responses);
@@ -312,9 +340,20 @@ final class OperationFactory
      * without one is invalid, and defaulting it to '' would produce a document that validates as a technicality
      * and reads as a blank.
      *
-     * An omitted `type` documents a BODILESS response, which is the honest shape for a 204 or a 304 and the
-     * common case for the error statuses this attribute mostly documents — those render through
-     * ProblemDetailsRenderer, whose shape the shared problem component already states.
+     * AN OMITTED `type` IS NOT ALWAYS "NO BODY", and treating it as one was wrong for the two statuses an
+     * author most often declares:
+     *
+     *   - A status the generator already DERIVED with a body — the success status, above all — keeps that
+     *     body and takes the author's description. Re-declaring the 200 is how prose reaches a success
+     *     response, and it used to replace the derived entry wholesale, so adding a sentence to a 200 erased
+     *     the schema of everything the action returns.
+     *   - An ERROR status (4xx, 5xx, a `4XX`/`5XX` range, or `default`) carries the problem document, because
+     *     every FireflyException renders through ProblemDetailsRenderer as application/problem+json. A
+     *     documented 404 with no content told a client generator the 404 was empty — and to discard the
+     *     `code` it exists to branch on.
+     *
+     * Anything else — a 202 or a 304 the author mentions only in prose — has nothing to borrow a body from and
+     * nothing the framework renders for it, and stays bodiless.
      *
      * `type` is a full PHPDoc type EXPRESSION, not only a class or a scalar name: `'list<Shipment>'`,
      * `'array<string, Money>'` and `'?Consignment'` all resolve, through the same parser that reads a
@@ -322,14 +361,23 @@ final class OperationFactory
      * response degrades the same PHP type to `type: object` — not an inconsistency, but the difference
      * between a declared type that cannot say which it is and an author who has said.
      *
+     * @param  mixed  $derived  the entry the generator derived for the same status, if it derived one
      * @param  ReflectionClass<object>|null  $declaring
      * @return array<string, mixed>
      */
-    private function declaredResponse(ApiResponse $declared, SchemaRegistry $registry, ?ReflectionClass $declaring = null): array
+    private function declaredResponse(ApiResponse $declared, mixed $derived, SchemaRegistry $registry, ?ReflectionClass $declaring = null): array
     {
         $response = ['description' => $declared->description];
 
         if ($declared->type === null) {
+            if (is_array($derived) && isset($derived['content'])) {
+                return [...$response, 'content' => $derived['content']];
+            }
+
+            if ($this->isError($declared->status)) {
+                $response['content'] = [ProblemSchema::MEDIA_TYPE => ['schema' => ['$ref' => ProblemSchema::REF]]];
+            }
+
             return $response;
         }
 
@@ -337,13 +385,34 @@ final class OperationFactory
         // 'list<Shipment>')]` means whatever `Shipment` means in that file's imports, exactly as it would in
         // a docblock three lines below. Without it only a fully-qualified name would resolve, which is the
         // one spelling nobody writes.
-        $schema = DocType::schema($declared->type, fn (string $class): array => $this->responses->schema($class, $registry), $declaring)
+        $schema = DocType::schema($declared->type, fn (string $class, array $arguments = []): array => $this->responses->schema($class, $registry, $arguments), $declaring)
             ?? TypeSchema::for($declared->type)
             ?? ['type' => 'object'];
+
+        // A bare class name is the one type expression that can name a Laravel API resource, whose response is
+        // its envelope rather than its bare shape.
+        $class = ClassNames::resolve(trim($declared->type), $declaring);
+        if ($class !== null) {
+            $schema = $this->responses->envelope($class, $schema);
+        }
 
         $response['content'] = ['application/json' => ['schema' => $schema]];
 
         return $response;
+    }
+
+    /**
+     * Whether a declared status is one ProblemDetailsRenderer answers: a 4xx or 5xx, the `4XX`/`5XX` ranges
+     * OpenAPI allows in their place, or `default` — which in this document already stands for "every
+     * problem the handler raises".
+     */
+    private function isError(int|string $status): bool
+    {
+        if (is_int($status)) {
+            return $status >= 400;
+        }
+
+        return strtolower($status) === 'default' || preg_match('/^[45]xx$/i', $status) === 1 || (ctype_digit($status) && (int) $status >= 400);
     }
 
     /**
@@ -420,7 +489,24 @@ final class OperationFactory
      * a status that carries no body is exactly what a strict client generator turns into a phantom return
      * type, and describing a rendered page as JSON would be a lie a generator would act on.
      *
-     * @return array<string, mixed>
+     * A return that is not DATA — a Response the action built, a Responsable, markup — is documented by
+     * RenderedResponse, which follows ResponseFactory's own branches, and is decided BEFORE the `@return`
+     * type is resolved: resolving it registers a component, and a component built out of a JsonResponse's
+     * internals is exactly the thing that must not appear. Such a return can also carry its own status (a
+     * redirect's 302), which is why the status comes back beside the response.
+     *
+     * THE DECLARED TYPE IS READ AS PHP DECLARED IT, through RenderedResponse::forType(), not as the one
+     * class name returnType() can offer. That distinction is the whole of a bug this branch shipped: a
+     * `: JsonResponse|RedirectResponse` reflects as a union, returnType() answered null for it, and the
+     * declared-type schema reader — which learned to read unions in the same wave — documented `anyOf` of
+     * the two classes' internals, components and all, for a pair of returns neither of which is a payload.
+     * An action with NO declared type and a `@return RedirectResponse` is the other half of the same hole,
+     * and is decided from the `@return` line's own class, found without resolving it. ResponseSchemaFactory
+     * refuses such a class at its entry point whatever reaches it, so the document cannot regrow those
+     * components from a path nobody thought of here; what this method adds is the RIGHT answer — the media
+     * type, and the status a redirect carries — where the factory alone would only manage to say nothing.
+     *
+     * @return array{0: int, 1: array<string, mixed>}
      */
     private function successResponse(RouteDescriptor $route, SchemaRegistry $registry): array
     {
@@ -428,27 +514,93 @@ final class OperationFactory
         $type = $this->returnType($route);
 
         if ($route->status === 204 || $type === 'void' || $type === 'never') {
-            return ['description' => 'No content.'];
+            return [$route->status, ['description' => 'No content.']];
         }
 
         // A #[Controller] route renders a page. It reaches this factory only when
         // firefly.openapi.include-html is on, and describing its response as a JSON schema would be a lie
         // that a client generator would faithfully act on.
         if ($route->html) {
-            return [
+            return [$route->status, [
                 'description' => 'An HTML page.',
                 'content' => ['text/html' => ['schema' => ['type' => 'string']]],
-            ];
+            ]];
+        }
+
+        $declared = $method?->getReturnType();
+        $rendered = RenderedResponse::forType($declared, $this->returnProse($method));
+
+        if ($rendered === null && $declared === null) {
+            $documentedClass = $this->documentedReturnClass($method);
+            $rendered = $documentedClass === null ? null : RenderedResponse::for($documentedClass, $this->returnProse($method));
+        }
+
+        if ($rendered !== null) {
+            return [$rendered->status ?? $route->status, $rendered->response];
         }
 
         [$documented, $prose] = $this->documentedReturn($method, $registry);
 
-        $schema = $documented ?? $this->declaredReturnSchema($type, $registry);
+        $schema = $documented ?? $this->declaredReturnSchema($method, $registry);
 
-        return [
+        if ($type !== null && (class_exists($type) || interface_exists($type))) {
+            $schema = $this->responses->envelope($type, $schema);
+        }
+
+        return [$route->status, [
             'description' => $prose === '' ? 'Successful response.' : $prose,
             'content' => ['application/json' => ['schema' => $schema]],
-        ];
+        ]];
+    }
+
+    /**
+     * Only the prose half of the `@return` line: the type expression is parsed to find where the prose
+     * starts, but none of the classes in it are resolved — resolving one registers its component.
+     */
+    private function returnProse(?ReflectionMethod $method): string
+    {
+        $line = DocBlock::parse($method?->getDocComment())->returnLine();
+
+        if ($line === null) {
+            return '';
+        }
+
+        return DocType::split($line, static fn (string $class): array => [])[1];
+    }
+
+    /**
+     * The ONE class an action's `@return` line names, when the line names exactly that class and nothing
+     * around it — `@return RedirectResponse where to go instead`, never `list<RedirectResponse>` and never
+     * `Parcel|RedirectResponse`, where no single class is what is sent.
+     *
+     * It is asked only of an action with NO declared return type, because that is the one case where the
+     * comment is all there is to decide a returned Response by; where PHP states a type, PHP wins and a
+     * disagreeing comment is a comment that has drifted.
+     *
+     * NOTHING IS RESOLVED TO FIND IT. The parser is handed a resolver that answers every class with a MARKED
+     * pointer and never touches the registry, so a line that turns out to name a JsonResponse has not
+     * already minted the component this whole branch exists to keep out of the document — the same care
+     * returnProse() takes, for the same reason. A marked pointer that survives as the WHOLE schema is the
+     * proof that the expression was that one class: wrap it in a `list<>` and an `items` appears around it,
+     * union it with anything and it becomes an `anyOf`, and neither is a single class any more.
+     */
+    private function documentedReturnClass(?ReflectionMethod $method): ?string
+    {
+        $line = DocBlock::parse($method?->getDocComment())->returnLine();
+
+        if ($line === null || $method === null) {
+            return null;
+        }
+
+        [$schema] = DocType::split(
+            $line,
+            static fn (string $class, array $arguments = []): array => $arguments === [] ? ['$ref' => self::CLASS_MARK.$class] : [],
+            new ReflectionClass($method->getDeclaringClass()->getName()),
+        );
+
+        $ref = $schema !== null && count($schema) === 1 ? ($schema['$ref'] ?? null) : null;
+
+        return is_string($ref) && str_starts_with($ref, self::CLASS_MARK) ? substr($ref, strlen(self::CLASS_MARK)) : null;
     }
 
     /**
@@ -472,7 +624,7 @@ final class OperationFactory
 
         [$schema, $prose] = DocType::split(
             $line,
-            fn (string $class): array => $this->responses->schema($class, $registry),
+            fn (string $class, array $arguments = []): array => $this->responses->schema($class, $registry, $arguments),
             new ReflectionClass($method->getDeclaringClass()->getName()),
         );
 
@@ -498,16 +650,19 @@ final class OperationFactory
     }
 
     /**
+     * The success body the DECLARED return type states, union and nullability included — `?Parcel` answers
+     * with null as well as a Parcel, and `Parcel|Label` with either. An undeclared return is the any-value
+     * schema.
+     *
      * @return array<string, mixed>
      */
-    private function declaredReturnSchema(?string $type, SchemaRegistry $registry): array
+    private function declaredReturnSchema(?ReflectionMethod $method, SchemaRegistry $registry): array
     {
-        return match (true) {
-            $type === null => [],
+        return TypeSchema::reflected($method?->getReturnType(), fn (string $type): array => match (true) {
             $type === 'array', $type === 'iterable' => ['type' => 'object'],
-            TypeSchema::isDto($type) => $this->responses->schema($type, $registry),
+            class_exists($type) || interface_exists($type) => $this->responses->schema($type, $registry),
             default => TypeSchema::for($type) ?? ['type' => 'object'],
-        };
+        });
     }
 
     /**

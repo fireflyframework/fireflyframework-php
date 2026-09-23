@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Web\Filter;
 
 use Closure;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\Request;
 use Illuminate\Log\Context\Repository as ContextRepository;
 use Illuminate\Support\Facades\Context;
@@ -12,7 +13,12 @@ use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
-/** Reads or mints X-Correlation-Id, exposes it via Context, and echoes it on the response. */
+/**
+ * Reads or mints X-Correlation-Id, exposes it via Context, and echoes it on the response — plus, when the
+ * request carries a W3C trace id, that id on its own header (TraceContext::header(), `X-Trace-Id` by
+ * default). The correlation id is never overwritten by the trace id: one id a caller matches to its own
+ * request log, one id a person pastes into a trace search.
+ */
 final class CorrelationIdFilter extends OncePerRequestFilter
 {
     public const ORDER = -100;
@@ -31,6 +37,16 @@ final class CorrelationIdFilter extends OncePerRequestFilter
         $response = $next($request);
         if ($response instanceof Response) {
             $response->headers->set(self::HEADER, $correlationId);
+
+            // The trace id gets its OWN header rather than replacing the correlation id above: a caller that
+            // sent an X-Correlation-Id is entitled to get its own value back, and the two ids answer
+            // different questions. Written only when this request actually has a valid trace id, so a
+            // deployment with tracing off sees no new header at all.
+            $traceHeader = TraceContext::header();
+            $traceId = TraceContext::traceId($request);
+            if ($traceHeader !== '' && $traceId !== null) {
+                $response->headers->set($traceHeader, $traceId);
+            }
         }
 
         return $response;

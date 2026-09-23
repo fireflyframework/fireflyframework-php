@@ -38,6 +38,7 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    2 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             2 => [

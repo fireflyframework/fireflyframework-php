@@ -146,9 +146,26 @@ final class TransactionalScanner
      * The rendered signatures of the named public methods of one class — the ONLY place signatures are
      * reflected, keeping ProxyClassGenerator and ProxyPlanner free of the reflection substrings.
      *
-     * Two things fail loud here rather than inside a generated class: a `final` target (the proxy must extend
-     * it, and PHP would fatal at require time with no hint of which manifest row caused it) and a by-reference
-     * parameter (`&$out`: the terminal closure spreads a copied list, so the writeback would be silently lost).
+     * Three things fail loud here rather than inside a generated class: a `final` target (the proxy must extend
+     * it, and PHP would fatal at require time with no hint of which manifest row caused it), a `final` METHOD
+     * (the proxy overrides every planned method, so the same fatal arrives one level down — and for a
+     * class-level attribute that fanned onto the method, nothing in it points back at what planned it) and a
+     * by-reference parameter (`&$out`: the terminal closure spreads a copied list, so the writeback would be
+     * silently lost).
+     *
+     * The `final` METHOD refusal reports the DECLARING class, because a class-level #[Transactional] plans
+     * every public method a class exposes — the inherited ones included — so the `final` is routinely in a
+     * base the reader does not own, and naming the planned class sends them to a file with no `final` in it.
+     *
+     * AND IT STAYS A REFUSAL, where observability's metric scan skips the same shape (an ancestor's `final`
+     * method reached purely by a class-level fan-out: see ObservabilityMethodScanner). The divergence is
+     * deliberate and asymmetric in cost. Skipping a meter loses a line on a dashboard; skipping a transaction
+     * boundary runs a method its author declared #[Transactional] with no transaction around it, so a
+     * mid-method failure leaves half the writes committed — a data-integrity bug the application discovers in
+     * its data, long after the scan that chose not to mention it. A refusal a reader can act on is the cheaper
+     * of the two, so this scanner spends the message instead: it names where the `final` lives, and offers the
+     * two remedies that belong to the reader either way (narrow the attribute onto the methods that need it,
+     * or run the work through TransactionTemplate).
      *
      * @param  class-string  $class
      * @param  list<string>  $methods
@@ -164,6 +181,10 @@ final class TransactionalScanner
         $signatures = [];
         foreach ($methods as $name) {
             $method = $reflection->getMethod($name);
+            if ($method->isFinal()) {
+                throw UnsupportedTransactionalMethodException::finalMethod($class, $name, $method->getDeclaringClass()->getName());
+            }
+
             [$paramSource, $argSource] = $this->renderParameters($method, $class);
             $signatures[$name] = new ProxySignature($paramSource, $argSource, $this->renderReturnType($method));
         }

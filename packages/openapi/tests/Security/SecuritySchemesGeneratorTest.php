@@ -1,0 +1,513 @@
+<?php
+
+declare(strict_types=1);
+
+use Firefly\Config\Config;
+use Firefly\OpenApi\Generator\OpenApiGenerator;
+use Firefly\OpenApi\Generator\OperationFactory;
+use Firefly\OpenApi\Security\ConfiguredSecurity;
+use Firefly\OpenApi\Security\SecurityModel;
+use Firefly\OpenApi\Security\SecurityRequirement;
+use Firefly\OpenApi\Security\SecurityRequirementContributor;
+use Firefly\OpenApi\Security\SecurityScheme;
+use Firefly\OpenApi\Security\SecuritySchemeContributor;
+use Firefly\OpenApi\Tests\Support\FixtureDocument;
+use Firefly\Web\Route\RouteDescriptor;
+use Illuminate\Config\Repository;
+
+/**
+ * The schemes and the per-operation requirements as the GENERATOR emits them — over the real fixture
+ * manifest, through the real OperationFactory, out of the real serialiser.
+ *
+ * The assertions that matter are the two negatives. `security` must be ABSENT from the permitAll operation
+ * rather than `[]`, because an empty array in OpenAPI is the positive claim "this operation needs no
+ * authentication"; and `components.securitySchemes` must be absent entirely from a document generated
+ * without a SecurityModel, because an empty map is the same claim about the whole server.
+ *
+ * @param  array<string, mixed>  $security
+ */
+function schemesGeneratorConfig(array $security, bool $publish = true): Config
+{
+    return new Config(new Repository([
+        'firefly' => ['security' => $security, 'openapi' => ['security' => ['enabled' => $publish]]],
+    ]));
+}
+
+/**
+ * The generator over the shared fixture manifest, with the URL rules the tests below are written against:
+ * `/api/orders` is public, everything under `/api/orders/` needs a token.
+ */
+function schemesGenerator(bool $publish = true): OpenApiGenerator
+{
+    $config = schemesGeneratorConfig([
+        'enabled' => true,
+        'jwt' => ['enabled' => true],
+        'http' => ['enabled' => true, 'rules' => [
+            ['pattern' => 'api/orders', 'access' => 'permitAll'],
+            ['pattern' => 'api/orders/*', 'access' => 'hasRole:ADMIN'],
+        ]],
+    ], $publish);
+
+    $configured = new ConfiguredSecurity($config);
+    $model = new SecurityModel([$configured], [$configured], $config);
+
+    return new OpenApiGenerator(
+        FixtureDocument::routes(),
+        FixtureDocument::properties(),
+        new OperationFactory(FixtureDocument::schemas(), security: $model),
+        null,
+        $model,
+    );
+}
+
+it('publishes the configured scheme under components.securitySchemes', function () {
+    /** @var array<string, array<string, mixed>> $components */
+    $components = schemesGenerator()->generate()['components'];
+
+    expect($components)->toHaveKey('securitySchemes')
+        ->and($components['securitySchemes'])->toBe([
+            'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer', 'bearerFormat' => 'JWT'],
+        ]);
+});
+
+it('requires the scheme on the operation a deny-by-default rule covers', function () {
+    $show = FixtureDocument::operation(schemesGenerator()->generate(), '/api/orders/{id}', 'get');
+
+    expect($show['security'])->toBe([['bearerAuth' => []]]);
+});
+
+it('leaves the security member OFF the operation a permitAll rule covers', function () {
+    $create = FixtureDocument::operation(schemesGenerator()->generate(), '/api/orders', 'post');
+
+    // `security: []` would be the claim "this needs no authentication" — true here, but a claim only worth
+    // making against a document-level default this generator does not emit.
+    expect($create)->not->toBeEmpty()
+        ->and(array_key_exists('security', $create))->toBeFalse();
+});
+
+it('round-trips both through toJson with the requirement as a JSON array of objects', function () {
+    $json = schemesGenerator()->toJson();
+
+    /** @var array<string, mixed> $document */
+    $document = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+
+    /** @var array<string, array<string, mixed>> $components */
+    $components = $document['components'];
+
+    expect($components['securitySchemes'])->toHaveKey('bearerAuth')
+        ->and(FixtureDocument::operation($document, '/api/orders/{id}', 'get')['security'])->toBe([['bearerAuth' => []]])
+        ->and(array_key_exists('security', FixtureDocument::operation($document, '/api/orders', 'post')))->toBeFalse();
+
+    // THIS ASSERTION IS THE POINT OF THE TEST, and the assoc-mode decode above cannot make it: `json_decode`
+    // maps `{}` back to `[]` when $assoc is true, so `toBe([['bearerAuth' => []]])` passes just as happily
+    // against `{"bearerAuth": {}}` — which is what the serialiser emitted until the empty-array-to-object
+    // rewrite learned to leave a Security Requirement Object's scope list alone. A requirement whose scopes
+    // are an OBJECT is invalid under the 3.1 meta-schema (the patterned field is typed `[string]`) and
+    // Swagger UI cannot read it, so the shape has to be observed in the bytes that are actually served.
+    expect($json)->toContain('"bearerAuth": []')
+        ->and($json)->not->toContain('"bearerAuth": {}');
+});
+
+it('serialises an EMPTY scope list as a JSON array and the requirement itself as an object', function () {
+    // The same fact read off the raw decode rather than out of the string: `security` is a LIST, its entries
+    // are OBJECTS, and the scope list under a scheme name is an ARRAY even when it is empty. Decoding without
+    // $assoc is what makes the last of those three observable at all — see FixtureDocument::rawValue().
+    $json = schemesGenerator()->toJson();
+
+    expect(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security'))
+        ->toBeArray()->toHaveCount(1)
+        ->and(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security', 0))
+        ->toBeInstanceOf(stdClass::class)
+        ->and(FixtureDocument::rawValue($json, 'paths', '/api/orders/{id}', 'get', 'security', 0, 'bearerAuth'))
+        ->toBeArray()->toBe([]);
+});
+
+it('still writes an unconstrained DTO member NAMED security as an empty object', function () {
+    // The exemption is keyed on the SHAPE of the value, not on the name `security` alone, and this is why.
+    // `security` is an ordinary PHP property name, so it is an ordinary key of a `properties` map — where an
+    // unconstrained member's `[]` is a Schema Object and must still be `{}`. A Schema Object is a map and a
+    // Security Requirement list is a list, so the two readings cannot collide; this pins that they do not.
+    $json = FixtureDocument::generatorFor('KeywordFixture')->toJson();
+
+    expect($json)->toContain('"security": {}')
+        ->and($json)->not->toContain('"security": []');
+});
+
+it('emits neither member when firefly.openapi.security.enabled is off', function () {
+    $document = schemesGenerator(publish: false)->generate();
+
+    /** @var array<string, array<string, mixed>> $components */
+    $components = $document['components'];
+
+    expect(array_key_exists('securitySchemes', $components))->toBeFalse()
+        ->and(array_key_exists('security', FixtureDocument::operation($document, '/api/orders/{id}', 'get')))->toBeFalse();
+});
+
+it('emits no securitySchemes at all for a generator built without a security model', function () {
+    /** @var array<string, array<string, mixed>> $components */
+    $components = FixtureDocument::generator()->generate()['components'];
+
+    expect(array_key_exists('securitySchemes', $components))->toBeFalse();
+});
+
+it('merges two contributors by name, first writer winning, sorted', function () {
+    $first = new class implements SecuritySchemeContributor
+    {
+        public function schemes(): array
+        {
+            return [new SecurityScheme('oauth2AuthorizationCode', ['type' => 'oauth2'])];
+        }
+    };
+
+    $second = new class implements SecuritySchemeContributor
+    {
+        public function schemes(): array
+        {
+            return [
+                new SecurityScheme('oauth2AuthorizationCode', ['type' => 'apiKey']),
+                new SecurityScheme('httpBasic', ['type' => 'http', 'scheme' => 'basic']),
+            ];
+        }
+    };
+
+    $model = new SecurityModel([$first, $second], [], schemesGeneratorConfig([]));
+
+    expect($model->schemes())->toBe([
+        'httpBasic' => ['type' => 'http', 'scheme' => 'basic'],
+        'oauth2AuthorizationCode' => ['type' => 'oauth2'],
+    ]);
+});
+
+it('ORs two contributors requirements and de-duplicates an identical one', function () {
+    $requiring = function (string $scheme): SecurityRequirementContributor {
+        return new class($scheme) implements SecurityRequirementContributor
+        {
+            public function __construct(private readonly string $scheme) {}
+
+            /** @return list<SecurityRequirement> */
+            public function requirementsFor(RouteDescriptor $route): array
+            {
+                return [new SecurityRequirement($this->scheme)];
+            }
+        };
+    };
+
+    $silent = new class implements SecurityRequirementContributor
+    {
+        public function requirementsFor(RouteDescriptor $route): ?array
+        {
+            return null;
+        }
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    expect((new SecurityModel([], [$requiring('bearerAuth'), $silent, $requiring('httpBasic')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []], ['httpBasic' => []]])
+        ->and((new SecurityModel([], [$requiring('bearerAuth'), $requiring('bearerAuth')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []]]);
+});
+
+it('does not let a permitAll contributor erase a requirement another contributor states', function () {
+    $public = new class implements SecurityRequirementContributor
+    {
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [];
+        }
+    };
+
+    $protecting = new class implements SecurityRequirementContributor
+    {
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [new SecurityRequirement('bearerAuth')];
+        }
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    // THE MECHANISMS ARE CONJUNCTIVE AT RUNTIME: a request passes the URL filter AND the controller
+    // dispatcher, so a permitAll URL rule says nothing about a #[PreAuthorize] on the handler. An empty list
+    // contributes nothing to the merge rather than erasing it — the method-security-first setup (permissive
+    // URL rules, rules on the handlers) is exactly the shape the old permitAll-wins rule published as public
+    // while the dispatcher answered 401. The order the container hands the contributors over in must not
+    // change the answer.
+    expect((new SecurityModel([], [$public, $protecting], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []]])
+        ->and((new SecurityModel([], [$protecting, $public], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => []]]);
+});
+
+it('publishes the operation as public only when NO contributor requires anything', function () {
+    $public = new class implements SecurityRequirementContributor
+    {
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [];
+        }
+    };
+
+    $silent = new class implements SecurityRequirementContributor
+    {
+        public function requirementsFor(RouteDescriptor $route): ?array
+        {
+            return null;
+        }
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    expect((new SecurityModel([], [$public, $silent], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([]);
+});
+
+it('merges two contributors naming the SAME scheme into one entry carrying the union of their scopes', function () {
+    $requiring = function (string $scheme, string ...$scopes): SecurityRequirementContributor {
+        return new class($scheme, array_values($scopes)) implements SecurityRequirementContributor
+        {
+            /** @param list<string> $scopes */
+            public function __construct(private readonly string $scheme, private readonly array $scopes) {}
+
+            /** @return list<SecurityRequirement> */
+            public function requirementsFor(RouteDescriptor $route): array
+            {
+                return [new SecurityRequirement($this->scheme, $this->scopes)];
+            }
+        };
+    };
+
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    // Two entries for one scheme would be an OR over them, and the scopeless one would make the other
+    // meaningless — the URL rule wanting only a principal would satisfy an operation whose #[PreAuthorize]
+    // demands a scope. Both callers must pass both mechanisms, so the union is the honest statement.
+    expect((new SecurityModel([], [$requiring('bearerAuth'), $requiring('bearerAuth', 'orders.read')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => ['orders.read']]])
+        ->and((new SecurityModel([], [$requiring('bearerAuth', 'orders.read'), $requiring('bearerAuth', 'orders.write')], schemesGeneratorConfig([])))->requirementsFor($route))
+        ->toBe([['bearerAuth' => ['orders.read', 'orders.write']]]);
+});
+
+/**
+ * A stand-in for the package the scheme seam was cut for: an authorization server, which knows both the
+ * `authorizationCode` flow it publishes and the scope list its registered clients are issued, and which has
+ * no way of knowing which routes the requirement contributors will be asked about.
+ *
+ * @param  list<string>  $defaults
+ */
+function authorizationServerContributor(string $name = 'oauth2AuthorizationCode', array $defaults = ['orders.read']): SecuritySchemeContributor
+{
+    return new class($name, $defaults) implements SecuritySchemeContributor
+    {
+        /** @param list<string> $defaults */
+        public function __construct(private readonly string $name, private readonly array $defaults) {}
+
+        /** @return list<SecurityScheme> */
+        public function schemes(): array
+        {
+            return [new SecurityScheme($this->name, ['type' => 'oauth2', 'flows' => ['authorizationCode' => []]], $this->defaults)];
+        }
+    };
+}
+
+/** @param list<string> $scopes */
+function requiringContributor(string $scheme, array $scopes = []): SecurityRequirementContributor
+{
+    return new class($scheme, $scopes) implements SecurityRequirementContributor
+    {
+        /** @param list<string> $scopes */
+        public function __construct(private readonly string $scheme, private readonly array $scopes) {}
+
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [new SecurityRequirement($this->scheme, $this->scopes)];
+        }
+    };
+}
+
+it("gives a requirement the named scheme's default scopes when it states none of its own", function () {
+    $config = schemesGeneratorConfig([]);
+    $scheme = authorizationServerContributor();
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    expect((new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode')], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => ['orders.read']]])
+        // A requirement that states its own scopes keeps them: the operation's own claim is the specific one,
+        // and overwriting it with the scheme's fallback is how a document ends up demanding every scope on
+        // every path.
+        ->and((new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode', ['orders.write'])], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => ['orders.write']]])
+        // A name nobody contributed is published exactly as written. The document is invalid either way, and
+        // quietly rewriting the entry would hide which contributor produced the dangling name.
+        ->and((new SecurityModel([$scheme], [requiringContributor('schemeNobodyContributed')], $config))->requirementsFor($route))
+        ->toBe([['schemeNobodyContributed' => []]])
+        // A scheme with no defaults — every scheme this framework ships — leaves the empty list alone.
+        ->and((new SecurityModel([authorizationServerContributor(defaults: [])], [requiringContributor('oauth2AuthorizationCode')], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => []]]);
+});
+
+it('takes the default scopes from the same contributor whose definition won the name', function () {
+    // schemes() is first-writer-wins, and the scopes must come from that same writer: publishing one
+    // contributor's flow beside another's scope list would name scopes the published flow never declares.
+    $config = schemesGeneratorConfig([]);
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    $model = new SecurityModel(
+        [authorizationServerContributor(defaults: ['first.writer']), authorizationServerContributor(defaults: ['second.writer'])],
+        [requiringContributor('oauth2AuthorizationCode')],
+        $config,
+    );
+
+    expect($model->requirementsFor($route))->toBe([['oauth2AuthorizationCode' => ['first.writer']]]);
+});
+
+it('carries an inherited scope list all the way into the generated document', function () {
+    // Through the real generator and the real serialiser, not only through the model: `firefly.security` is
+    // absent here, so ConfiguredSecurity has no opinion about any route and the contributed pair is the
+    // whole of the document's security.
+    $config = schemesGeneratorConfig([]);
+    $scheme = authorizationServerContributor();
+    $model = new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode')], $config);
+
+    $generator = new OpenApiGenerator(
+        FixtureDocument::routes(),
+        FixtureDocument::properties(),
+        new OperationFactory(FixtureDocument::schemas(), security: $model),
+        null,
+        $model,
+    );
+
+    /** @var array<string, mixed> $document */
+    $document = json_decode($generator->toJson(), true, flags: JSON_THROW_ON_ERROR);
+
+    /** @var array<string, array<string, mixed>> $components */
+    $components = $document['components'];
+
+    expect(FixtureDocument::operation($document, '/api/orders/{id}', 'get')['security'])
+        ->toBe([['oauth2AuthorizationCode' => ['orders.read']]])
+        // SecurityScheme::$scopes is still NOT copied into the Security Scheme Object — the field is a
+        // statement about what an operation NEEDS, and a contributor with a long client catalogue keeps it
+        // out of the flow. What the flow declares is what this document actually demands: the scope reached
+        // the requirement first, and a scope an operation requires under an oauth2 scheme has to be a scope
+        // that scheme's flow offers, or the Authorize dialog cannot ask for it.
+        ->and($components['securitySchemes']['oauth2AuthorizationCode'])
+        ->toBe(['type' => 'oauth2', 'flows' => ['authorizationCode' => ['scopes' => ['orders.read' => 'orders.read']]]]);
+});
+
+it('declares every scope the document requires of an oauth2 scheme in each of that scheme\'s flows', function () {
+    // THE MIRROR OF THE DANGLING SCHEME NAME, one level down: the requirement contributor states
+    // `hasScope('orders.read')` on the scheme, the scheme contributor builds its scopes map out of what its
+    // registered clients asked for, and for a registry holding neither the two halves of one fact were
+    // stated by two contributors and published by only one. Swagger UI's Authorize dialog offers only what
+    // the Flow Object declares, and Spectral's oas3-operation-security-defined rejects the operation.
+    $config = schemesGeneratorConfig([]);
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    $scheme = new class implements SecuritySchemeContributor
+    {
+        /** @return list<SecurityScheme> */
+        public function schemes(): array
+        {
+            return [new SecurityScheme('oauth2AuthorizationCode', [
+                'type' => 'oauth2',
+                'flows' => [
+                    // Two flows, and the requirement names neither: a caller may hold the scope through
+                    // whichever one their client is registered for, so a map that declared it in one and not
+                    // the other would still leave the operation asking for a scope half the scheme cannot issue.
+                    'authorizationCode' => ['tokenUrl' => 'https://auth.test/token', 'scopes' => ['openid' => 'Sign you in']],
+                    'clientCredentials' => ['tokenUrl' => 'https://auth.test/token', 'scopes' => []],
+                ],
+            ])];
+        }
+    };
+
+    $model = new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode', ['orders.write', 'orders.read'])], $config);
+    $model->requirementsFor($route);
+
+    expect($model->schemes()['oauth2AuthorizationCode'])->toBe([
+        'type' => 'oauth2',
+        'flows' => [
+            'authorizationCode' => ['tokenUrl' => 'https://auth.test/token', 'scopes' => [
+                // Sorted, and the scope the contributor already described keeps ITS sentence: that
+                // description is the owning package's own words, and this one is a name repeated.
+                'openid' => 'Sign you in',
+                'orders.read' => 'orders.read',
+                'orders.write' => 'orders.write',
+            ]],
+            'clientCredentials' => ['tokenUrl' => 'https://auth.test/token', 'scopes' => [
+                'orders.read' => 'orders.read',
+                'orders.write' => 'orders.write',
+            ]],
+        ],
+    ]);
+});
+
+it('leaves a scheme that has no scopes map of its own exactly as its contributor wrote it', function () {
+    $config = schemesGeneratorConfig([]);
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    // A `type: http` scheme has no place to declare a scope — a bearer token's authorities are not a
+    // vocabulary the document defines — and `openIdConnect` states its scopes at the discovery document
+    // `openIdConnectUrl` points at rather than here. Inventing a `scopes` member on either would publish a
+    // Security Scheme Object the 3.1 meta-schema does not allow.
+    $schemes = new class implements SecuritySchemeContributor
+    {
+        /** @return list<SecurityScheme> */
+        public function schemes(): array
+        {
+            return [
+                new SecurityScheme('bearerAuth', ['type' => 'http', 'scheme' => 'bearer']),
+                new SecurityScheme('oidc', ['type' => 'openIdConnect', 'openIdConnectUrl' => 'https://auth.test/.well-known/openid-configuration']),
+            ];
+        }
+    };
+
+    $model = new SecurityModel(
+        [$schemes],
+        [requiringContributor('bearerAuth', ['orders.read']), requiringContributor('oidc', ['orders.read'])],
+        $config,
+    );
+    $model->requirementsFor($route);
+
+    expect($model->schemes())->toBe([
+        'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+        'oidc' => ['type' => 'openIdConnect', 'openIdConnectUrl' => 'https://auth.test/.well-known/openid-configuration'],
+    ]);
+});
+
+it('serves an oauth2 flow nothing requires a scope of with its empty scopes map as a JSON object', function () {
+    // The other half of the join, in the bytes: a flow whose map nothing adds to is untouched, and an empty
+    // `scopes` map is `{}` rather than `[]` — the Flow Object's member is typed as a map by the 3.1
+    // meta-schema, and `"scopes": []` is a document a strict validator rejects.
+    $config = schemesGeneratorConfig([]);
+
+    $scheme = new class implements SecuritySchemeContributor
+    {
+        /** @return list<SecurityScheme> */
+        public function schemes(): array
+        {
+            return [new SecurityScheme('oauth2AuthorizationCode', [
+                'type' => 'oauth2',
+                'flows' => ['authorizationCode' => ['tokenUrl' => 'https://auth.test/token', 'scopes' => []]],
+            ])];
+        }
+    };
+
+    // The requirement names the scheme and states no scope, which is the shape a `hasRole()` rule produces —
+    // nothing to declare, so nothing is declared.
+    $model = new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode')], $config);
+
+    $json = (new OpenApiGenerator(
+        FixtureDocument::routes(),
+        FixtureDocument::properties(),
+        new OperationFactory(FixtureDocument::schemas(), security: $model),
+        null,
+        $model,
+    ))->toJson();
+
+    expect($json)->toContain('"scopes": {}')
+        ->and($json)->not->toContain('"scopes": []');
+});

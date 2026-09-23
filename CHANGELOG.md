@@ -47,6 +47,26 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### BREAKING
 
+- **`packages/actuator` + `packages/security` — `when-authorized` health details are real, and no longer a
+  synonym for `never`.** `firefly.management.endpoint.health.show-details: when-authorized` used to degrade to
+  `never` because `firefly/actuator` has no code edge to `firefly/security` and could not say who asked. It now
+  asks a deny-by-default **`Firefly\Actuator\Health\HealthDetailsAuthorizer`** port, which `firefly/security`
+  fills from the session-held principal whenever `firefly.security.enabled` is on (`src/Actuator`, a new
+  `Security → Actuator` deptrac edge; `firefly/actuator` still names no principal). **An application already
+  running `when-authorized` with security on therefore starts disclosing what it used to withhold**: with the
+  new `firefly.management.endpoint.health.roles` at its default `[]` — Spring's "any AUTHENTICATED principal"
+  — every authenticated caller now reads the component details, which name database drivers, disk paths,
+  broker hosts and indicator error messages. An application with `firefly/security` absent or its master flag
+  off is unaffected: the deny default stands and the body is byte for byte what it was.
+  **Migration:** decide, do not inherit. Either set `show-details: never`, or list the roles that may read them
+  in `firefly.management.endpoint.health.roles` (a list or Spring's CSV string; a bare name is read as
+  `ROLE_<name>` and the role hierarchy applies; a value whose entries are all unusable refuses everybody rather
+  than admitting them, and never fails the scrape), or bind your own
+  `HealthDetailsAuthorizer` bean — actuator's and security's are both `#[ConditionalOnMissingBean]` and back off.
+  In the same change the `final` `Firefly\Actuator\Health\HealthEndpoint` gained a required fourth constructor
+  parameter (`HealthDetailsAuthorizer $authorizer`), so an application that constructs it directly rather than
+  resolving the bean must pass one — `new DenyHealthDetailsAuthorizer` reproduces the old behaviour exactly.
+
 - **`packages/actuator` — the `db` health indicator is on by default.** Like Spring Boot's
   `DataSourceHealthIndicator` auto-configuration, `DbHealthIndicator` now registers whenever `database.default`
   names a connection with a driver (`#[ConditionalOnProperty(... matchIfMissing: true)]` plus the new
@@ -73,6 +93,22 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   "Route" is the framework's word and the path is already in `instance`. An author's `abort(404, '…')`
   message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
   not on the router's sentence.
+
+- **`packages/web` — problem+json's `traceId` is the W3C trace id, and the correlation id is its own member.**
+  A member named after a trace carried a uuid no trace backend had ever heard of, so the one action a problem
+  document invites — quote this id — resolved nothing in a trace search. `Firefly\Web\Trace\TraceContext`
+  now decides the id three surfaces publish at once: the document's **`traceId`**, the HTML error page's
+  **`Reference`** row, and a new **`X-Trace-Id`** response header written by `CorrelationIdFilter` on every
+  response (and by the problem renderer on the ones it builds). A request with no valid span — every request
+  in a deployment with tracing off — puts the correlation id back in the document and on the page, byte for
+  byte what both carried before, and gets no `X-Trace-Id` at all: turning tracing on is the only thing that
+  changes any of the three. The correlation id is NOT absorbed: `X-Correlation-Id` echoes it untouched, the
+  document gains a **`correlationId`** member holding it, and the page carries a **`Correlation`** fact row
+  beside `Reference` when the two differ. **Migration:** a client that reads `traceId` and matches it against
+  `X-Correlation-Id` matches `correlationId` instead; `firefly.web.trace-id.enabled => false`
+  (`FIREFLY_WEB_TRACE_ID_ENABLED=false`) restores the previous value in all three surfaces and writes no new
+  header, and `firefly.web.trace-id.header => ''` drops only the header. It is deliberately not W3C
+  `traceresponse`, which LaraFly does not implement.
 
 - **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
   denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
@@ -132,7 +168,164 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
   well-keyed body expects `SerializationException`.
 
+- **`packages/security` — a URL rule written `/api/*` stops being a dead rule, so every `/`-prefixed rule you
+  have changes what it does on upgrade.** `HttpSecurityFilter` matches `Str::is($rule->pattern,
+  $request->path())`, and Laravel's `path()` never carries a leading slash, so `['pattern' =>
+  '/actuator/health', 'access' => 'permitAll']` matched **nothing**: the request fell through to
+  deny-by-default and 401'd on the one path the operator had explicitly opened, with no error anywhere to say
+  why (a dead rule is indistinguishable from a rule that did not apply). `HttpSecurity::requestMatcher()` —
+  the single door `anyRequest()` and `fromConfig()` both come through — now normalises every pattern to the
+  `$request->path()` spelling, so `/api/*` and `api/*` are one rule; `'/'` keeps its slash, because that is
+  what `path()` answers for the root (and `'/'` is the one `/`-prefixed pattern that already matched). This
+  entry is **not** under *Fixed*: what changes is the effective access control of a running deployment, and it
+  moves in **both** directions.
+  - **Fail-OPEN — the direction to audit first.** `rules: [['pattern' => '/admin/*', 'access' => 'permitAll'],
+    ['pattern' => '*', 'access' => 'authenticated']]` served `/admin/secret` only to an authenticated caller:
+    the first rule was dead (`Str::is('/admin/*', 'admin/secret')` is `false`) and the second matched. After
+    this change `fromConfig()` stores that pattern as `admin/*`, the first rule matches, and **the path is
+    served anonymously**.
+  - **Fail-closed.** A previously-skipped `/`-prefixed `hasRole:`/`denyAll` rule sitting ahead of a broader
+    `permitAll` now matches first and starts refusing callers the broader rule used to let through.
+
+  **Migration:** before upgrading, grep `firefly.security.http.rules` — and any `HttpSecurity::create()` chain
+  — for `/`-prefixed patterns, and read the list in order as if every one of them were live, because now they
+  are. A `/`-prefixed `permitAll` ahead of a broader rule is the shape that opens a path; narrow it, move it
+  after the broader rule, or delete it. Patterns with no leading slash are untouched, and a rule set with none
+  behaves exactly as before. The normalisation is also what lets `firefly/openapi` publish a truthful
+  `security` member: it reads these same rules, and a rule meaning one thing to the document and nothing to
+  the filter would be a published claim the server does not honour.
+
+  **The leading slash is the only thing normalised.** A pattern is matched against a request path, so one
+  carrying a route placeholder — `['pattern' => '/api/orders/{id}']` — is still a dead rule afterwards
+  (`Str::is('api/orders/{id}', 'api/orders/7')` is `false`), and nothing rewrites it into `api/orders/*` on
+  your behalf: a placeholder stands for a segment only the route knows the shape of, and a matcher that
+  guessed would open paths nobody wrote. Copy the route's shape rather than its text.
+
 ### Added
+
+- **`packages/openapi` — the document publishes the security the server actually has.** `components.securitySchemes`
+  and each operation's `security` are generated from `firefly.security.*`, read through the **`Config` port**, so
+  no class of `firefly/security` is imported and `deptrac.yaml` gains no edge — which is what the module doc had
+  for two releases given as the reason none of it could be emitted. `http_basic.enabled` publishes `httpBasic`,
+  `jwt.enabled` publishes `bearerAuth`, and `oauth2.resource_server.enabled` publishes `oauth2ResourceServer`
+  (deliberately `type: http`, not `type: oauth2`: a resource server issues no tokens and has no flow URLs, and an
+  `oauth2` scheme with empty `flows` renders as an un-fillable form). Each operation then carries the requirement
+  the **same `firefly.security.http.rules`** give its path: a `permitAll` path carries no `security` member at all,
+  and every other path — including one no rule matches, because the rules are deny-by-default — names **every**
+  configured scheme, since the OR-list is what the running filters really accept. A `hasScope:` rule puts its scope
+  on the bearer entry. `securitySchemes` and `security` are absent rather than empty when there is nothing to say,
+  because an empty `security` array is OpenAPI's positive claim that no authentication is required. Gated by
+  **`firefly.openapi.security.enabled`** (default `true`) and inert while `firefly.security.enabled` is off. Two
+  ports — `SecuritySchemeContributor` and `SecurityRequirementContributor` — let another package add what
+  configuration cannot state; they are collected from the container's tagged-interface list, so an implementation
+  is registered as a **`#[Component]`** (a `#[Bean]` under the concrete type is never tagged and would be dropped
+  in silence). A contributed scheme may carry **default scopes**, which `SecurityModel` puts on a requirement that
+  names that scheme and states none of its own — the split the ports create, since the package holding the scope
+  vocabulary is not the one asked about each route; a requirement that states its own keeps them. Requirements merge
+  **per scheme name**, unioning their scope lists, and an empty list from one contributor no longer erases what
+  another requires — the mechanisms are conjunctive at runtime, so an operation is published public only when
+  NOTHING requires anything of it. A rule pattern carrying a **route placeholder** (`'/api/orders/{id}'`) is a dead
+  rule for the filter, which never sees a template, and is a dead rule here too — every `{...}` is blanked before the patterns
+  are tried, so `api/orders/*` covers the operation and `api/orders/{id}` leaves it published as protected rather
+  than as a path the server does not actually open. Scope lists serialise as JSON **arrays**, empty ones included:
+  a Security Requirement Object's value is typed `[string]` by the 3.1 meta-schema, and `{"bearerAuth": {}}` is a
+  document Swagger UI cannot read.
+
+- **`packages/security` — the document says what the DISPATCHER enforces, not only what the URL rules do.**
+  `MethodSecurityRequirementContributor` (`src/OpenApi`, a new `Security → OpenApi` deptrac edge; `firefly/openapi`
+  is a `suggest` and the class is `#[ConditionalOnClass]`) fills `firefly/openapi`'s requirement port from the
+  compiled `SecurityMethodManifest` this package already owns — which that package cannot see, and which is what
+  made a `#[PreAuthorize]` action publish **no** `security` member while the dispatcher answered `401`/`403` to
+  every caller of it. The method-security-first shape (permissive URL rules, the rules on the handlers, Spring's
+  `anyRequest().permitAll()`) is exactly the setup that was documented as public. It names **every** configured
+  scheme, because the `security` array is an OR-list and the runtime really accepts either credential; it is gated
+  by **`firefly.security.enabled` alone**, because `firefly.security.method.enabled` stands down the proxy link and
+  never the controller dispatcher; `permitAll()` is **no opinion** rather than "public", while a `#[PostAuthorize]`
+  beside it is a refusal and is published as one (`#[PreFilter]`/`#[PostFilter]` narrow a result and refuse nobody,
+  so they contribute nothing); and a `hasScope()` the rule demands of every caller becomes the requirement's scope
+  list, while `hasAnyScope()`, an `or` of scopes or a negation publishes a **bare** requirement — an OpenAPI scope
+  list is conjunctive, and naming both alternatives sends a generated client to ask for a scope it may not be
+  registered for. The name published is the **OAuth2 scope**, never the granted authority:
+  `hasScope('SCOPE_orders.read')` and `hasScope('orders.read')` are one rule, since `SecurityExpressionRoot`
+  normalises the bare form before testing it, and only `orders.read` is a name a client registration can hold —
+  the prefixed spelling would be declared in the authorization server's flow scopes as well and the Authorize
+  dialog would ask for a scope that does not exist. A `hasScope:` URL rule is normalised the same way.
+
+- **`packages/security-oauth2-server` — the authorization server contributes its own `authorizationCode` flow.**
+  `AuthorizationServerSchemeContributor` (`src/OpenApi`, a new `SecurityOAuth2Server → OpenApi` deptrac edge, same
+  `suggest` + `#[ConditionalOnClass]` shape) publishes the one security fact configuration cannot state: this
+  application IS the authorization server. It is the only **`type: oauth2`** scheme this framework emits — the
+  `authorizationUrl` and `tokenUrl` from `AuthorizationServerSettings` under the server's own issuer, a
+  `refreshUrl` (the token endpoint) only when a client may refresh, and a scopes map that is the union of what the
+  authorization-code clients registered, described in the consent page's own words — so Swagger UI can render an
+  **Authorize** button that completes the flow. An **enabled server publishes it even with no authorization-code
+  client registered**, with an empty `scopes` map: the URLs are facts about the server rather than about its client
+  registry, and the requirement side names the scheme from the same `firefly.security.oauth2.server.enabled`, so a
+  `client_credentials`-only issuer — or an `eloquent` client table that is empty when CI generates the document —
+  cannot produce a dangling reference. **Generating the document never needs that client store to answer**: an
+  unreadable one — a table CI never migrated, a database a build step cannot reach, a row the `eloquent` driver
+  refuses — falls back to the same empty map, because nothing between the contributor and `OpenApiGenerator`
+  catches and `php artisan firefly:openapi` exists to produce a build artifact. **And every scope the document
+  requires of an `oauth2` scheme is declared by that scheme's flows**: the scopes map is what the clients
+  registered, a `#[PreAuthorize("hasScope('orders.read')")]` states a scope no client may have asked for, and
+  `SecurityModel` — the one place that sees both contributor lists, asked for the schemes after the paths — unions
+  the second into the first (sorted, every flow of the scheme, a description the owning contributor gave left
+  alone). Without it Swagger UI's Authorize dialog could not offer the scope the operation demands and Spectral's
+  `oas3-operation-security-defined` rejected the operation. A capstone in each package boots `firefly/openapi`
+  beside the security package and asserts the document against the running dispatcher, that it names no scheme it
+  did not publish, and that no operation requires a scope its own `securitySchemes` does not declare.
+
+- **`packages/observability` — Micrometer's method attributes.** `#[Timed]`, `#[Counted]` and `#[Observed]`
+  on any stereotyped bean, enforced by an `ObservabilityAdviceSource` on the same method-interceptor chain
+  `#[Transactional]` and `#[PreAuthorize]` use, as the **outermost** advice (order 50): a timer measures the
+  authorization refusal and the `COMMIT`, and a refused call is counted as a failure instead of vanishing
+  from the meter. That placement is a deliberate divergence from Micrometer, whose three aspects are
+  unordered and therefore run innermost — inside Spring Security's interceptors — where a `@Timed` method
+  whose `@PreAuthorize` denies is neither timed nor counted. `#[Observed]` is a span and a timer under one
+  name, degrading to the timer alone with tracing off; `#[Timed(longTask: true)]` publishes a `<meter>.active`
+  set-gauge holding this process's in-flight **depth**. The rows are compiled by
+  `ObservabilityMethodScanner` into `ObservabilityMethodDescriptor::fromArray([…])` literals inside the
+  generated proxy, so a cached boot adds no reflection site; the scan REFUSES what would compile and then be
+  honoured by nothing — an attribute on a class nothing post-processes, on a `final` class or a `final` method
+  the class declares, written explicitly on a `static` or `__`-prefixed method, `#[Timed(percentiles:)]`
+  (naming `firefly.observability.metrics.distribution.per-meter` — this registry publishes histogram buckets,
+  not client-side quantiles), `#[Timed(description:)]` (this exposition synthesises every `# HELP` line from
+  the meter name and its type, so a description would reach no scrape), and a `#[Timed]` and `#[Counted]` on
+  one method spelling out the same meter name, which a Prometheus name's single type makes unrecordable. Every recorder and tracer touch is
+  best-effort behind a guard of its own: a telemetry failure costs a sample, never a return value or an
+  exception. `firefly.observability.method.*`.
+
+- **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
+  `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under
+  `firefly.resilience.*`, and `#[Fallback]` names a recovery method on the same class; each is applied to a
+  `#[Service]`/`#[Component]`/`#[Repository]` method through the same proxy chain `#[Transactional]` already
+  uses. The five registry-backed attributes take a method or a class (class-level applies to every public
+  method, method-level replaces it) — with one exception: **the class-level fan-out stops at a method a
+  `#[Fallback]` names**, Resilience4j's own treatment of `fallbackMethod`. The recovery is invoked on the
+  bean, which is the proxy, so a guard fanned onto it would be applied by the very link that is unwinding and
+  the class breaker that just opened on the failure would refuse the recovery — "degrade" turned into "fail
+  twice". A pattern written on the recovery by hand is still honoured. Every attribute **wraps the
+  programmatic component this package already
+  ships** — there is one `Retry`, one `CircuitBreaker`, one of each, and the attribute is a second door to
+  it, so the two call styles cannot diverge. Within the link the composition is Resilience4j's and is fixed:
+  `Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )`, pinned on
+  a recorded transcript rather than argued. The link runs at advice **order 200** — inside method security
+  (100), so a call a `#[PreAuthorize]` refuses never spends a retry budget or trips a breaker, and outside
+  the transaction (1000), so **each retry attempt opens a transaction of its own** and an attempt that wrote
+  rows before it threw is rolled back before the next one begins. A `#[Fallback]` naming a method the class
+  does not have, or one whose signature cannot receive the guarded call, refuses to compile at
+  `firefly:cache`. Gated by **`firefly.resilience.method.enabled`** (default `true`); off makes every
+  resilience attribute inert — a pass-through proxy link — and never half-applied, and it does not change the
+  compiled plan, so a cached and a dev application agree on the shape of every proxy. Documented in
+  `docs/modules/resilience.md` and the config reference.
+
+- **`packages/data` — `MethodInvocation::invocableClone()`, the sanctioned re-entry for a repeating advice
+  link.** `proceed()` is single-use by design (Spring's `ReflectiveMethodInvocation`): it advances a cursor,
+  so a second call from the same link reaches the NEXT link rather than the remainder it just ran. A link
+  that must run the remainder AGAIN — a retry, and nothing else in this framework — takes an
+  `invocableClone()` per repetition and proceeds on that, exactly as Spring Retry does. Each clone carries
+  its own cursor and its own argument list, so every repetition re-enters the whole chain below the link
+  (the transaction most of all) and an inner `setArguments()` stays scoped to its own repetition.
 
 - **`packages/security-oauth2-client` — a new package: Spring Security's `oauth2Login()` and `oauth2Client()` (wave B).**
   Client registrations in Spring Boot's shape (`firefly.security.oauth2.client.registration.{id}` / `provider.{id}`)
@@ -274,11 +467,14 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   common statuses. The OpenAPI problem schema declares `additionalProperties: true` so a generated client
   keeps the members an application put there.
 
-- **`packages/web` — every problem document carries `traceId` and `X-Correlation-Id`.** The request's
-  correlation id (`CorrelationIdFilter::of()`: Context, then the header, then minted) is in the body and on
-  the response, and an opaque 5xx names it: `An unexpected error occurred. It has been logged; quote
-  reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum execution time of N
-  seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500 quoting the engine.
+- **`packages/web` — every problem document carries `traceId`, `correlationId` and both id headers.**
+  `traceId` is the id a person quotes — the request's **W3C trace id** when tracing gave it a valid span, the
+  correlation id when it did not — and it is echoed on `X-Trace-Id`; `correlationId` is always the correlation
+  id (`CorrelationIdFilter::of()`: Context, then the header, then minted), echoed on `X-Correlation-Id` and
+  untouched by any of this. An opaque 5xx names the first of the two: `An unexpected error occurred. It has
+  been logged; quote reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum
+  execution time of N seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500
+  quoting the engine.
 
 - **`packages/web` — `#[PathVariable(pattern:, notFoundCode:, notFoundMessage:)]`.** The segment's shape is
   checked by `ArgumentResolver` before the controller runs, and a miss is the entity's own 404 (default
@@ -327,7 +523,10 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 - **`packages/web` — the HTML error page publishes the request reference.** The production 500 now reads
   "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
-  problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
+  problem+json publishes as `traceId` and the response echoes on `X-Trace-Id`: the W3C trace id when the
+  request had a valid span, the correlation id when it did not. A `Correlation` fact row holding the
+  `X-Correlation-Id` value sits beside it, and is omitted when the two ids are the same string. Found by the
+  browser suite.
 
 - **Cross-wave browser scenarios (`tests/Browser/LoginFlowTest.php`, `ObservabilityTest.php`,
   `DataSurfacesTest.php`).** The framework's real form login replaces the harness's `?as=user` stand-in
@@ -394,12 +593,76 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   application bound stays on the plain path. **`firefly.validation.messages`** (`constraint` | `laravel`,
   default `constraint`) is read into a `ValidationSettings` bean.
 
+- **`packages/eda-rabbitmq`, `packages/eda-kafka`, `packages/eda-postgres` — the three broker publishers stamp
+  `traceparent`.** Their `publish()` methods build the envelope inside `EdaTracing::tracePublish()` instead of
+  beside it, so the message that reaches the exchange, the topic or the `firefly_eda_outbox` row carries the
+  PRODUCER span's `traceparent` and the consumer on the far side continues the trace. The consume side was
+  already traced through `SubscriberRegistrySink`, so until now one of our own traces stopped at the broker
+  while a foreign producer's was continued. On Postgres it covers **both** writers of a row — the
+  `EventPublisher` bean and the in-transaction `OutboxPreCommitHook`, which under `provider=postgres` is the
+  only path a `DomainEvent` takes — so the traced row is the one that commits with the aggregate; and
+  `firefly:outbox:relay` wraps its forward in `traceConsume()` of the claimed row, so the downstream producer
+  span is a child of the trace the row carries rather than a new root that overwrites it. New key
+  **`firefly.eda.tracing.brokers.enabled`** (default `true`) keeps in-process spans while putting no trace
+  identifier on a wire a third party reads; it is read in one place, `Firefly\Eda\Tracing\BrokerTracing`, by the
+  three publisher beans AND by `RelayDownstream`, because a gate that lives only in a bean fails open wherever
+  the container autowires a publisher instead. The relay applies it whether its downstream names a shipped
+  adapter by the alias (`rabbitmq`) or by that adapter's own class-string — two spellings of one downstream,
+  which now take the same configured path and carry `firefly.eda.rabbitmq.exchange` / the Kafka broker list
+  across it alike. A publisher the framework ships no adapter for stays yours to construct and yours to gate.
+
+- **`packages/scheduling` — `initialDelay` is applied.** The parameter has been carried through the compiled
+  descriptor and read by nothing since M7, because Laravel's frequency DSL cannot say "run once after a delay,
+  then resume the cadence". It is now a per-tick `Event::when()` predicate against an **anchor written to the
+  cache** the first time a task is seen — the cache, not process memory, because a cron-driven `schedule:run`
+  is a fresh process every minute whose own start time would restart the window forever and hang the task in
+  silence. The anchor therefore needs a store shared across processes under cron, which `ScheduleWiringPass`
+  **warns** about as the Schedule is built when it is not; the `null` driver, which cannot read back its own
+  write, makes the gate **admit** the tick and say so once rather than hang. The anchor has no expiry, so by
+  default a delay is armed once in the life of its cache key (a one-off warm-up); `initial-delay.release`
+  names the deployment and gives every release its own quiet period. Switching
+  `firefly.scheduling.initial-delay.enabled` off now **REFUSES TO BOOT** an application whose manifest carries
+  an `initialDelay`, and an unparseable duration is refused at boot too — the predicate runs inside
+  `filtersPass()`, which Laravel does not wrap, so a throw there would abort the whole minute's run.
+  `firefly.scheduling.initial-delay.*`.
+
+- **`packages/resilience` — an idle TTL for breaker and limiter records.** `CircuitBreaker` and `RateLimiter`
+  refresh an `idle-ttl` (default `720h`) on **every** store write, admitted or rejected, so a key in use can
+  never expire — the expiry is always further away than the next call, and an OPEN breaker cannot vanish
+  mid-outage — while a key nothing has touched for a month is reclaimed instead of living in the store
+  forever. `Bulkhead` has always worked this way through `permit-ttl`. A non-positive value means never
+  expire; `null` does too, which is the right choice for a `refill-rate: 0` hard quota that must not be handed
+  back.
+
+- **`packages/data` — a `#[Projection]` and a trailing `Pageable` combine**, paging **in the database** and
+  hydrating one DTO per row of the window (`Slice` fetches `size + 1` and reports `hasNext`). The projection
+  arm used to return before the pageable one, so `findByStatus(string $status, Pageable $p): Page` selected
+  the DTO's columns and then handed back every matching row unpaged — a list where the method's own declared
+  return type said `Page`, on exactly the wide list screens a projection is for.
+  `firefly.data.projection.pageable` restores the old shape for one release.
+
+- **`packages/observability` — the log ids reach a channel built after boot.** `LogManager` pushes
+  `Illuminate\Contracts\Log\ContextLogProcessor` onto every channel it creates, `Log::build()` included, so
+  the framework binds that contract to `FireflyContextLogProcessor` — Laravel's own context processor
+  preserved inside it, then the correlation id and the W3C trace ids, resolved per record so the `Tracer` need
+  not be bound when the binding is made. A per-tenant file a job opens is now correlatable. The structured
+  **formatter** still does not reach an on-demand channel — it is set on handlers built from a config array
+  this package never sees — and `docs/modules/logging.md` says so. `firefly.logging.structured.all-channels`.
+
 - **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
   page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
   document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"
   [Pattern]`.
 
 ### Changed
+
+- **`packages/resilience` — `CircuitBreaker::__construct()` and `RateLimiter::__construct()` now default
+  `$idleTtl` to `DEFAULT_IDLE_TTL` (2592000.0 seconds, thirty days) rather than `null`,** so an instance
+  built BY HAND — not only one the registry builds — is bounded. The framework's own
+  `TokenEndpointRateLimiter` is such an instance. **Migration:** an application that constructs either
+  directly and relies on an unbounded record must now pass `idleTtl: null` explicitly. The sharpest case is a
+  `RateLimiter` with `refillRate: 0.0` — a hard quota rather than a rate — whose quota is now handed back
+  after thirty days of silence where before it never was.
 
 - **`larastan/larastan` is pinned to `~3.11.0` at the root.** Larastan 3.12 made the Eloquent `Builder`
   template invariant and started requiring `view-string` for every `Factory::make()` argument; both are
@@ -419,6 +682,40 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   path and the new `constraint` member are the same in both styles.
 
 ### Fixed
+
+- **`packages/openapi` — a success response documents what the action actually returns.** The generator read a
+  declared return type only when it was a single named class it could reflect, and published that class's
+  PUBLIC PROPERTIES whatever it was — so the most useful part of the document was wrong exactly where real
+  applications live. An Eloquent model (what every repository returns) was documented as `incrementing`,
+  `exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column; a `JsonResponse` as `original`,
+  `exception` and a `ResponseHeaderBag`; a Laravel paginator as `onEachSide`; `@return Page<Order>` as one bare
+  `Page` whose `items` were anything; `Parcel|Label` and `int|string` as any value, and `?Parcel` without its
+  null. The document now follows `ResponseFactory` and `JsonMessageConverter` in their own order: a returned
+  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`) however that
+  class reaches the generator — a declared type, an arm of a `JsonResponse|RedirectResponse` union (`*/*`, since
+  the action picks at runtime and no arm's media type or status is the one sent), a `@return` line on an action
+  with no declared type, or an `#[ApiResponse(type:)]` — and never as a component built from its internals, a rule
+  the schema factory now enforces at its own door rather than at one caller. Markup is documented as
+  `text/html`, an `Arrayable` from `toArray()` — an Eloquent model from its `@property` tags or, untagged, from
+  its key, `$fillable`, casts, timestamps, `$appends` and relations, minus `$hidden` — before a
+  `JsonSerializable`, and Laravel's three paginators as the envelopes they write. Generic instantiations are
+  bound to the class's `@template` parameters and become components named springdoc's way (`PageOrder`,
+  `LengthAwarePaginatorOrder`), `@extends` included; union, nullable and intersection types are documented on
+  returns, response members and request members alike (a union-typed request member is also `required` again).
+  A Laravel API resource is its `toArray()` shape inside the envelope its `$wrap` names, and a resource
+  collection the list of what it collects (`#[Collects]`, `$collects` or the naming convention).
+  An `#[ApiResponse]` without a `type` no longer erases the body: on the success status it keeps the derived
+  schema and only replaces the description, and on an error status it documents the problem+json body the
+  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values. The
+  built-in viewer (`viewer.style: builtin`) draws all of it: components by name, unions and nullable nested
+  objects arm by arm, maps and lists of components — where it used to show `any`, `object[]` or nothing.
+
+- **`packages/web` — a returned paginator was rendered as pagination links instead of written as data.**
+  `ResponseFactory` checked `Htmlable` before handing a value to the JSON converter, and `AbstractPaginator` is
+  `Htmlable`, so a `#[RestController]` returning `->paginate()` answered with link markup (or a `TypeError` with
+  no view factory bound). A value that is also `Arrayable` or `JsonSerializable` now reaches the converter
+  first, as Laravel's own `Response::shouldBeJson()` decides; a View, Renderable or Htmlable that is neither
+  still renders as `text/html`.
 
 - **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
   API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context

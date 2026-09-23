@@ -38,6 +38,25 @@ return [
                     ],
                 ],
             ],
+            2 => [
+                'method' => 'resilienceMethodInterceptor',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.resilience.method.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Resilience\\Method\\ResilienceMethodInterceptor',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

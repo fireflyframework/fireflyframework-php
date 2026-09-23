@@ -26,16 +26,22 @@ use Attribute;
  * precedence, and it is what lets an author put real prose on the `200` instead of "Successful response."
  * without losing the derived response's content type.
  *
- * `type` is a PHP type NAME, not a schema: `'array'`, `'string'`, or a DTO class-string, which becomes a
- * `$ref` to a component registered exactly like a request body's. Passing a class the process cannot autoload
+ * `type` is a PHPDoc type EXPRESSION, resolved in the controller's own imports: a class-string, which becomes
+ * a `$ref` to a component registered exactly like a request body's, or anything a `@return` line can say —
+ * `'list<Shipment>'`, `'array<string, Money>'`, `'?Consignment'`. Passing a class the process cannot autoload
  * degrades to an untyped body rather than emitting a dangling pointer.
+ *
+ * OMITTING `type` keeps whatever body the status already has: re-declaring a derived status (the success
+ * status, typically) replaces only its description, and an error status — 4xx, 5xx, a `4XX`/`5XX` range or
+ * `default` — is documented with the problem body ProblemDetailsRenderer sends for it. Only a status with
+ * neither, such as a 202 described in prose alone, is documented as bodiless.
  */
 #[Attribute(Attribute::TARGET_METHOD | Attribute::IS_REPEATABLE)]
 final class ApiResponse
 {
     /**
      * @param  int|string  $status  an HTTP status, or the literal string `default`
-     * @param  string|null  $type  a PHP type name or DTO class-string; null documents the response as bodiless
+     * @param  string|null  $type  a PHPDoc type expression; null keeps the status's derived or problem body
      */
     public function __construct(
         public readonly int|string $status,

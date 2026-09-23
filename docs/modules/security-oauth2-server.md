@@ -257,6 +257,53 @@ so `authorizations.driver = eloquent` is what makes the numbers describe the dep
 **OAuth2 clients** page (`/firefly/oauth2`, group Wiring) renders the endpoint in-process, prints `—` rather than
 `0` for a client a process-local store counted nothing for, and is hidden while the endpoint is absent.
 
+## What this package tells the OpenAPI document
+
+`src/OpenApi` is one class, and it is the only reason `deptrac.yaml` carries a **`SecurityOAuth2Server → OpenApi`**
+edge (the direction matters: `firefly/openapi` names no type of this package, which is what keeps it generating a
+document in an application that issues no tokens). `firefly/openapi` is a `suggest` and never a `require`, and
+`AuthorizationServerSchemeContributor` is `#[ConditionalOnClass(SecuritySchemeContributor::class)]`.
+
+It publishes the **one security fact `firefly.security.*` cannot state**: this application *is* the authorization
+server. `firefly/openapi`'s own config-driven contributor emits `type: http, scheme: bearer` schemes, because a
+resource server has no flow URLs to publish; this one emits a real **`type: oauth2`** scheme named
+`oauth2AuthorizationCode`, with an `authorizationCode` flow built from `AuthorizationServerSettings` — the
+`authorizationUrl` and `tokenUrl` under this server's own issuer — so Swagger UI renders an **Authorize** button
+that completes the flow against it. A `refreshUrl` (the token endpoint, RFC 6749 §6) appears only when a client
+may refresh.
+
+- **The scopes map is the union of what the authorization-code clients registered**, sorted, each described in the
+  consent page's own words (`ConsentPage::describe()`, so the sentence a user approves and the sentence Swagger UI
+  shows cannot drift). A `client_credentials`-only client's scopes stay out: they belong to a flow this scheme
+  does not describe.
+- **An enabled server publishes the scheme even with no authorization-code client registered**, with an empty
+  `scopes` map. The flow URLs are facts about the server, not about its client registry, and
+  [`firefly/security`](security.md#what-this-package-tells-the-openapi-document) names `oauth2AuthorizationCode` on
+  a method-secured operation from the same `firefly.security.oauth2.server.enabled`. An emit-nothing rule would
+  leave that name dangling in `components.securitySchemes` exactly where it costs most — a `client_credentials`
+  token issuer, or an `eloquent` client table that is empty or unreachable when CI generates the document.
+- **Generating the document never needs the client store to answer.** With `clients.driver: eloquent` the scopes
+  map is a `SELECT`, and the two documented ways of producing a document are the two places it is least likely to
+  succeed: `php artisan firefly:openapi` in a CI container whose `oauth2_registered_clients` table was never
+  migrated, and a `/openapi.json` scrape from a build step with no database behind it. A store that cannot be read
+  — or that refuses a hand-edited row, which the driver does by design — falls back to **no clients**, which is the
+  empty-registry answer above; nothing on the path to `OpenApiGenerator` catches, so without it the command would
+  fail outright and the route would answer `500`. The refusal still reaches every runtime read, where it protects
+  somebody: the document is a report, not an admission gate.
+- **A scope an operation requires is declared by the flow.** The map above is what the *clients* registered, and a
+  `#[PreAuthorize("hasScope('orders.read')")]` elsewhere in the same application states a scope no client may have
+  asked for yet. `firefly/openapi`'s `SecurityModel` — the one place that sees both contributor lists — unions
+  every scope the document states for this scheme into its flows, so the Authorize dialog can offer them and a
+  strict linter (Spectral's `oas3-operation-security-defined`) has nothing to reject. A scope this package already
+  described keeps the consent page's sentence; one only an operation named is described with its own name.
+- **The scheme carries no default scopes.** The flow's `scopes` map says which scopes *exist*;
+  `SecurityScheme::$scopes` would say which ones every operation naming the scheme *needs*, and a server whose
+  clients between them registered a dozen would then demand all twelve on every path.
+
+`packages/security-oauth2-server/tests/OpenApi/AuthorizationServerDocumentCapstoneTest.php` boots the generator
+beside this server — with an empty client registry on purpose — and asserts that the document names no scheme it
+did not publish and publishes none nothing names. It is the only place in the tree that can see both halves.
+
 ## Configuration (`firefly.security.oauth2.server.*`, snake_case)
 
 | Key | Default | Meaning |
@@ -293,6 +340,7 @@ so `authorizations.driver = eloquent` is what makes the numbers describe the dep
 | `rate_limit.enabled` | `false` | A token bucket per client id (else IP) at the token endpoint, over firefly/resilience's store; `429 temporarily_unavailable` + `Retry-After`. |
 | `rate_limit.max_tokens` | `60` | The burst. |
 | `rate_limit.refill_rate` | `1.0` | Tokens per second. |
+| `rate_limit.idle_ttl` | `2592000` (30 days) | Seconds of idleness after which a bucket's cache key may be reclaimed, refreshed on every acquisition. These buckets are keyed by client id — or by IP address when no client id was presented — so, alone among the framework's limiters, their number grows with traffic; a public token endpoint facing a wide address space is the case for setting this far lower. The reclaim is invisible: a bucket refills at `refill_rate` per second, so `max_tokens / refill_rate` seconds after the last request (a minute at the defaults) a reclaimed bucket and a surviving one are the same full bucket. `0` writes them with no expiry at all. |
 
 ## Testing
 

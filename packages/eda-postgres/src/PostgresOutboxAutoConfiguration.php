@@ -20,6 +20,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
+use Firefly\Eda\Tracing\BrokerTracing;
+use Firefly\Eda\Tracing\EdaTracing;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
@@ -59,7 +61,7 @@ final class PostgresOutboxAutoConfiguration
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry): EventPublisher
+    public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry, ?EdaTracing $tracing = null): EventPublisher
     {
         $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
         $conn = $connections->connection($name);
@@ -71,6 +73,7 @@ final class PostgresOutboxAutoConfiguration
             $registry,
             $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
             $emitNotify,
+            BrokerTracing::resolve($config, $tracing),
         );
     }
 
@@ -78,10 +81,17 @@ final class PostgresOutboxAutoConfiguration
      * The in-tx outbox hook. It resolves the aggregate's OWN connection per-event (I1) and carries
      * HandlerManifest::destinations() + CorrelationContext so the in-tx write preserves per-event destinations +
      * transaction_id — matching the after-commit EdaCommandEventPublisher at CqrsAutoConfiguration.php:116-121 (M5).
+     *
+     * IT GETS THE SAME GATED EdaTracing AS eventPublisher() ABOVE, and that is not a nicety. Under this provider
+     * commandEventPublisher() below NoOps the after-commit leg, so this hook is the ONLY writer of a DomainEvent's
+     * outbox row: the flagship rows — the ones that commit with the aggregate — are written by the publisher this
+     * bean builds, not by the bound EventPublisher. Threading the tracing only into eventPublisher() would have
+     * traced the hand-called EventPublisher::publish() path and left the framework's own domain-event path
+     * untraced, which is the opposite of what PostgresEventPublisher's docblock promises.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation, SubscriberRegistry $registry): OutboxPreCommitHook
+    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation, SubscriberRegistry $registry, ?EdaTracing $tracing = null): OutboxPreCommitHook
     {
         return new OutboxPreCommitHook(
             $connections,
@@ -90,6 +100,7 @@ final class PostgresOutboxAutoConfiguration
             $config->string('firefly.cqrs.default_destination', 'cqrs.events'),
             $manifest->destinations(),
             $correlation,
+            BrokerTracing::resolve($config, $tracing),
         );
     }
 

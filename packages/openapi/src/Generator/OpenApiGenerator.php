@@ -7,6 +7,7 @@ namespace Firefly\OpenApi\Generator;
 use Firefly\OpenApi\OpenApiProperties;
 use Firefly\OpenApi\Schema\ProblemSchema;
 use Firefly\OpenApi\Schema\SchemaRegistry;
+use Firefly\OpenApi\Security\SecurityModel;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
 use stdClass;
@@ -60,6 +61,14 @@ final class OpenApiGenerator
     /** The same, for the keywords that hold a LIST of instances rather than one. */
     private const array INSTANCE_LIST_KEYWORDS = ['enum', 'examples'];
 
+    /**
+     * The OpenAPI member whose value is a list of Security Requirement Objects — the root Document Object's
+     * and every Operation Object's `security`. Its scope values are JSON ARRAYS in the 3.1 meta-schema
+     * (`[string]`), and an empty one is the ordinary case rather than an exotic one: every scheme this
+     * framework publishes is a bearer or basic scheme with no scopes at all. See objectify().
+     */
+    private const string SECURITY_KEYWORD = 'security';
+
     /** @var array<string, mixed>|null */
     private ?array $document = null;
 
@@ -67,13 +76,16 @@ final class OpenApiGenerator
      * $info carries the OPTIONAL Info Object members (summary, termsOfService, contact, license) that
      * OpenApiProperties does not. It is last and nullable so every existing three-argument construction —
      * OpenApiAutoConfiguration's #[Bean], an application's own override bean, the fixtures — keeps compiling
-     * and keeps producing exactly the document it produced before.
+     * and keeps producing exactly the document it produced before. $security joins it on the same terms, and
+     * for the same reason: a generator built without one describes an application that has no security to
+     * describe, which is exactly what every construction of it did before this parameter existed.
      */
     public function __construct(
         private readonly RouteManifest $routes,
         private readonly OpenApiProperties $properties,
         private readonly OperationFactory $operations,
         private readonly ?DocumentInfo $info = null,
+        private readonly ?SecurityModel $security = null,
     ) {}
 
     /**
@@ -172,6 +184,19 @@ final class OpenApiGenerator
             'schemas' => $registry->all(),
             'responses' => [ProblemSchema::RESPONSE_NAME => ProblemSchema::response()],
         ];
+
+        // `securitySchemes` is emitted only when something is actually configured. An empty map would be
+        // legal and would also tell a reader the server takes no credentials, which for an application that
+        // simply has not installed firefly/security is true and for one that has is a lie — so the member is
+        // absent rather than empty, the same rule `servers` and `tags` follow around it.
+        //
+        // ASKED AFTER THE PATHS, and that order is load-bearing rather than incidental: an oauth2 scheme's
+        // flows declare every scope the operations above require of it, so the model has to have been asked
+        // about every surviving route before it can publish the map. See SecurityModel::$statedScopes.
+        $schemes = $this->security?->schemes() ?? [];
+        if ($schemes !== []) {
+            $document['components']['securitySchemes'] = $schemes;
+        }
 
         $tags = $this->tags($described, $used);
         if ($tags !== []) {
@@ -316,7 +341,8 @@ final class OpenApiGenerator
     /**
      * Recursively re-encodes empty arrays as empty JSON OBJECTS — see toJson() for why that is necessary —
      * EXCEPT under the instance keywords, whose value is a payload value rather than part of the document's
-     * structure and is therefore handed to instance() to be typed by the schema it sits in.
+     * structure and is therefore handed to instance() to be typed by the schema it sits in, and EXCEPT under
+     * `security`, whose scope lists are arrays by the meta-schema's own typing (see securityRequirements()).
      */
     private function objectify(mixed $value): mixed
     {
@@ -332,7 +358,10 @@ final class OpenApiGenerator
 
         $encoded = [];
         foreach ($value as $key => $item) {
+            $requirements = $key === self::SECURITY_KEYWORD ? $this->securityRequirements($item) : null;
+
             $encoded[$key] = match (true) {
+                $requirements !== null => $requirements,
                 $type === null => $this->objectify($item),
                 in_array($key, self::INSTANCE_KEYWORDS, true) => $this->instance($item, $type),
                 in_array($key, self::INSTANCE_LIST_KEYWORDS, true) && is_array($item) => array_map(
@@ -344,6 +373,64 @@ final class OpenApiGenerator
         }
 
         return $encoded;
+    }
+
+    /**
+     * A `security` member's value, ready to serialise, or null when this node is not one — in which case the
+     * caller falls through to the ordinary rules.
+     *
+     * WHY THIS EXCEPTION HAS TO EXIST. A Security Requirement Object maps a scheme NAME to the list of scopes
+     * that operation needs, and the 3.1 meta-schema types that list `[string]` — a JSON array. An empty one is
+     * not an edge case here, it is the normal case: `bearerAuth`, `httpBasic` and `oauth2ResourceServer` all
+     * carry no scopes, so the requirement ConfiguredSecurity produces for nearly every protected operation is
+     * `[['bearerAuth' => []]]`. The blanket empty-array-to-object rewrite turned that into
+     * `{"bearerAuth": {}}`, which fails `oas3-schema` validation and which Swagger UI cannot read as a
+     * requirement at all — the feature's primary output, invalid in its default configuration.
+     *
+     * WHY THE KEY ALONE IS NOT THE TEST, and this is the whole reason the shape is checked here rather than a
+     * name being added to a keyword list. `security` is a perfectly ordinary PHP property name, and a DTO that
+     * has one appears as a key of a `properties` map — where the value is a Schema Object and where an
+     * UNCONSTRAINED member's `[]` must still become `{}`. That is the exact defect declaredType() documents
+     * one level up, so the exemption fires only on a value that really has the Security Requirement list shape:
+     * a non-empty LIST of string-keyed maps whose every value is a list of strings. A Schema Object is a map,
+     * never a list, so the two readings can never collide.
+     *
+     * An EMPTY requirement entry is still objectified. `security: [{}]` is the OpenAPI spelling for "security
+     * is optional here" — an empty Security Requirement OBJECT, not an empty list — and it is the one member
+     * of this list that the `{}` rewrite gets right.
+     *
+     * @return list<array<string, list<string>>|stdClass>|null
+     */
+    private function securityRequirements(mixed $value): ?array
+    {
+        if (! is_array($value) || $value === [] || ! array_is_list($value)) {
+            return null;
+        }
+
+        $entries = [];
+
+        foreach ($value as $entry) {
+            if (! is_array($entry) || ($entry !== [] && array_is_list($entry))) {
+                return null;
+            }
+
+            /** @var array<string, list<string>> $checked */
+            $checked = [];
+
+            /** @var mixed $scopes */
+            foreach ($entry as $scheme => $scopes) {
+                if (! is_string($scheme) || ! is_array($scopes) || ! array_is_list($scopes) || array_filter($scopes, 'is_string') !== $scopes) {
+                    return null;
+                }
+
+                /** @var list<string> $scopes */
+                $checked[$scheme] = $scopes;
+            }
+
+            $entries[] = $checked === [] ? new stdClass : $checked;
+        }
+
+        return $entries;
     }
 
     /**

@@ -36,6 +36,38 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
 a most-severe `StatusAggregator` (empty→UP); a bean-scan `HealthContributorRegistrar`; built-in `Ping`/`DiskSpace`/`Db`
 indicators. A throwing indicator degrades to DOWN — never a 500.
 
+### Who may read the component details
+
+`firefly.management.endpoint.health.show-details` decides whether the body carries each contributor's
+`components` block, and it has **three** literals. `always` publishes the details to every caller, `never` to
+none, and `when-authorized` asks a bean:
+
+```php
+interface HealthDetailsAuthorizer   // Firefly\Actuator\Health
+{
+    public function mayReadDetails(): bool;
+}
+```
+
+`firefly/actuator` owns the QUESTION and ships the conservative answer — `DenyHealthDetailsAuthorizer`,
+which refuses everybody, so `when-authorized` in an application without `firefly/security` behaves exactly as
+`never` does. It cannot ship the real answer: there is no `Actuator → Security` edge in `deptrac.yaml` and
+there must not be, because a diagnostics surface has to work in an application with no principal model at all.
+[`firefly/security`](security.md#the-one-bean-this-package-gives-the-actuator) fills the port from the
+other side whenever `firefly.security.enabled` is on — `PrincipalHealthDetailsAuthorizer` reads the
+session-held principal from the same `SecurityContextHolder` every other rule in that package reads and
+compares it against `firefly.management.endpoint.health.roles` through the configured `RoleHierarchy`. An
+application that wants its own rule binds its own `HealthDetailsAuthorizer` bean and both of the shipped ones
+back off (`#[ConditionalOnMissingBean]`). This is the `CqrsMetrics`/`EdaTracing` seam shape, not a new
+mechanism.
+
+Anything else in `show-details` — including a typo — reads as `never`, the fail-closed direction.
+
+!!! warning "`when-authorized` with no `roles` is every authenticated principal"
+    An empty `firefly.management.endpoint.health.roles` is Spring's "any authenticated principal", and
+    component details name database drivers, disk paths, broker hosts and indicator error messages. On a
+    surface a probe reaches, list the roles that should read them.
+
 ## Exposure & security (recommended)
 
 Default `firefly.management.endpoints.web.exposure.include = "health,info"`; sensitive endpoints return **404** until
@@ -90,7 +122,8 @@ data browser's sensitive columns, and `page_header` is page furniture, not a cre
 - `firefly.management.endpoints.web.exposure.include` / `.exclude` (CSV or `*`; `*` is a wildcard in **both** lists and exclude wins, so `.exclude = "*"` is the kill switch)
 - `firefly.management.endpoints.web.base-path` (default `/actuator`)
 - `firefly.management.endpoint.{id}.enabled` (per-endpoint)
-- `firefly.management.endpoint.health.show-details` (default `never`; only the literal `always` shows component details — see Known-latent for `when-authorized`)
+- `firefly.management.endpoint.health.show-details` (default `never`) — `never` | `when-authorized` | `always`; anything else reads as `never`. `when-authorized` asks the `HealthDetailsAuthorizer` bean, which refuses everybody until `firefly/security` fills it (see [Who may read the component details](#who-may-read-the-component-details))
+- `firefly.management.endpoint.health.roles` (default `[]`) — who `when-authorized` admits, Spring's `management.endpoint.health.roles`. **Empty means any AUTHENTICATED principal**; a non-empty list means one holding at least one of these roles, a bare name read as `ROLE_<name>` (the spelling `hasRole:` uses) and the configured role hierarchy applied. A **CSV string is the same restriction as the list** — `'ADMIN,ACTUATOR'` grants what `['ADMIN', 'ACTUATOR']` grants, Spring's own spelling of the property and the one both neighbouring list keys above use. A list whose entries are ALL unusable — a blank string, a null left by a dangling key — **refuses every caller** rather than being read as the empty list, because a typo must not widen the surface it was written to narrow; a value that is neither a list nor a string counts as one unusable entry and refuses the same way, never failing the read (a probe must not get a 500 out of a config typo). The refusal is logged once per boot, naming this key. Read only by `firefly/security`'s authorizer: without that package installed and its master flag on, the key does nothing
 - `firefly.management.endpoint.health.group.{name}.include`
 - `firefly.management.endpoint.health.db.enabled` (default **`true`**) — the `db` health indicator, registered whenever `database.default` names a connection with a driver (Spring Boot's `DataSourceHealthIndicator` auto-configuration); a failing or missing database reports DOWN and `/actuator/health` answers 503; an application with no default database gets no `db` component at all. `false` removes the indicator. An indicator can decline registration itself by implementing `ConditionalHealthIndicator::available()`.
 - `firefly.management.info.app.*`, `firefly.management.info.build.path`
@@ -103,6 +136,5 @@ URL generation, the HTTP-kernel middleware pipeline) — not app controllers. He
 
 ## Known-latent
 
-- `when-authorized` show-details degrades to `never` (no Security code edge; gate details via the lockdown).
-- `/refresh`, `/threaddump`, `/shutdown` are deferred to later SP cycles. `/caches` is read-only: Spring's `DELETE` eviction is deliberately not implemented, because `firefly/actuator` carries no code edge to `firefly/security` and so cannot say who asked; a `POST` to it answers 404.
+- `/refresh`, `/threaddump`, `/shutdown` are deferred to later SP cycles. `/caches` is read-only: Spring's `DELETE` eviction is deliberately not implemented, because `firefly/actuator` carries no code edge to `firefly/security` and so cannot say who asked; a `POST` to it answers 404. The `HealthDetailsAuthorizer` port above is the shape that would change that, and is deliberately scoped to the one question it asks.
 - No second management port (an Octane second-listener is an SP-7 option).

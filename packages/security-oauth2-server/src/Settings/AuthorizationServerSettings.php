@@ -6,6 +6,7 @@ namespace Firefly\Security\OAuth2\Server\Settings;
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Resilience\RateLimiter;
 use Firefly\Security\Web\Settings\FormLoginSettings;
 use Illuminate\Http\Request;
 
@@ -20,6 +21,15 @@ use Illuminate\Http\Request;
  * PATHS are matched against `Request::path()` through FormLoginSettings::path() — leading slash, no query, no
  * trailing slash — so a front-controller prefix or a query string never breaks the match, and they are published
  * as `endpointUrl($path)`, the issuer followed by the path, exactly as Spring builds them.
+ *
+ * `rate_limit.idle_ttl` IS SECONDS OF IDLENESS, NOT A WINDOW. The token endpoint's buckets are keyed by client id —
+ * or by IP address when no client id was presented — so, alone among the framework's rate limiters, their key space
+ * grows with traffic instead of with configuration. Each bucket is therefore written with this expiry, refreshed on
+ * every acquisition, and thirty days (`RateLimiter::DEFAULT_IDLE_TTL`) is the default: a bucket refills at
+ * `refill_rate` per second, and `refill_rate` must be positive, so `max_tokens / refill_rate` seconds after the last
+ * request — a minute at the defaults — a reclaimed bucket and a surviving one are the same full bucket, and nothing
+ * an operator can observe distinguishes them. A public token endpoint facing a wide address space is the case for
+ * setting it much lower; `0` writes the buckets with no expiry at all, which is what this did before the key existed.
  *
  * EVERY READ BELOW SPELLS ITS KEY OUT IN FULL rather than concatenating PREFIX, on purpose: tests/ConfigReferenceTest.php
  * discovers the keys the framework reads by finding the literal `'firefly.…'` string inside each Config-port call, so a
@@ -65,6 +75,7 @@ final readonly class AuthorizationServerSettings
         public bool $rateLimitEnabled = false,
         public int $rateLimitMaxTokens = 60,
         public float $rateLimitRefillRate = 1.0,
+        public float $rateLimitIdleTtl = RateLimiter::DEFAULT_IDLE_TTL,
     ) {
         self::assertIssuer($this->issuer);
         self::assertAlgorithm($this->algorithm);
@@ -124,6 +135,7 @@ final readonly class AuthorizationServerSettings
             rateLimitEnabled: $config->bool('firefly.security.oauth2.server.rate_limit.enabled', false),
             rateLimitMaxTokens: $config->int('firefly.security.oauth2.server.rate_limit.max_tokens', 60),
             rateLimitRefillRate: self::rate($refillRate, self::PREFIX.'.rate_limit.refill_rate'),
+            rateLimitIdleTtl: (float) $config->int('firefly.security.oauth2.server.rate_limit.idle_ttl', (int) RateLimiter::DEFAULT_IDLE_TTL),
         );
     }
 

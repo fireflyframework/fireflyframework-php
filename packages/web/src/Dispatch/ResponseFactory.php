@@ -7,6 +7,7 @@ namespace Firefly\Web\Dispatch;
 use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\View\ModelAndView;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Contracts\Support\Responsable;
@@ -14,12 +15,14 @@ use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use JsonSerializable;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Content-negotiates a controller return. An already-built Response (Symfony OR Illuminate — incl.
- * JsonResponse) or a Responsable passes through untouched; a View / ModelAndView / Htmlable / Renderable is
- * rendered as text/html; any other value (array/JsonSerializable/Arrayable/scalar) is written by the
+ * JsonResponse) or a Responsable passes through untouched; a ModelAndView, and a View / Htmlable / Renderable
+ * that is not also Arrayable or JsonSerializable, is rendered as text/html; any other value
+ * (array/JsonSerializable/Arrayable/scalar) is written by the
  * MessageConverter chosen from the request Accept header and wrapped in a Response carrying $status if given,
  * else the descriptor's default status. Return type is the Symfony HttpFoundation Response supertype so a
  * JsonResponse passthrough type-checks.
@@ -64,11 +67,17 @@ final class ResponseFactory
 
         // A View is also Renderable, so it is covered by the Renderable arm; it is named explicitly for
         // clarity because it is by far the common case (`return view('welcome', [...])`).
-        if ($result instanceof View || $result instanceof Renderable) {
+        //
+        // Both HTML arms step aside for a value that knows its own JSON shape. A Laravel paginator is the case
+        // that forced it: AbstractPaginator is Htmlable (toHtml() renders its pagination LINKS) and is also
+        // Arrayable, and with the HTML arm first a #[RestController] returning `->paginate()` answered with
+        // link markup — or a TypeError, with no view factory bound — instead of its data. Laravel's own
+        // Response::shouldBeJson() makes the same call in the same order: data first, rendering second.
+        if (! $this->isData($result) && ($result instanceof View || $result instanceof Renderable)) {
             return $this->html($result->render(), $status ?? $descriptor->status);
         }
 
-        if ($result instanceof Htmlable) {
+        if (! $this->isData($result) && $result instanceof Htmlable) {
             return $this->html($result->toHtml(), $status ?? $descriptor->status);
         }
 
@@ -80,6 +89,15 @@ final class ResponseFactory
             : (string) json_encode($result, JSON_THROW_ON_ERROR);
 
         return new Response($body, $status ?? $descriptor->status, ['Content-Type' => $mediaType]);
+    }
+
+    /**
+     * Whether the negotiated converter owns this value's shape: exactly the two object spellings
+     * JsonMessageConverter writes as something other than their public properties.
+     */
+    private function isData(mixed $result): bool
+    {
+        return $result instanceof Arrayable || $result instanceof JsonSerializable;
     }
 
     private function renderModelAndView(ModelAndView $result, ?int $status): SymfonyResponse

@@ -15,6 +15,7 @@ use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
 use Firefly\Web\Route\RouteManifest;
 use Firefly\Web\Route\RouteScanner;
+use stdClass;
 
 /**
  * Builds the generator over the REAL scanners, from the REAL fixture controller — never from a hand-written
@@ -153,6 +154,48 @@ final class FixtureDocument
         }
 
         return $refs;
+    }
+
+    /**
+     * One value out of a SERIALISED document, addressed by member names and list offsets, decoded WITHOUT
+     * `$assoc` — or null when the path does not exist.
+     *
+     * WHY THE DECODE MODE MATTERS ENOUGH TO HAVE A HELPER. `json_decode($json, true)` maps an empty JSON
+     * OBJECT back to `[]`, exactly as it maps an empty JSON ARRAY — so every assertion written against an
+     * assoc-decoded document is blind to the one distinction this generator works hardest to get right. A
+     * Security Requirement Object's scope list is typed `[string]` by the 3.1 meta-schema and an
+     * unconstrained schema is an object, and `toBe([])` passes against both spellings of both. Decoding into
+     * stdClass keeps the JSON type, and this walker is what makes navigating the result bearable without
+     * every test re-deriving it.
+     *
+     * @param  int|string  ...$path  member names, and integer offsets for a list
+     */
+    public static function rawValue(string $json, int|string ...$path): mixed
+    {
+        /** @var mixed $node */
+        $node = json_decode($json, flags: JSON_THROW_ON_ERROR);
+
+        foreach ($path as $step) {
+            if (is_int($step)) {
+                if (! is_array($node) || ! array_key_exists($step, $node)) {
+                    return null;
+                }
+
+                /** @var mixed $node */
+                $node = $node[$step];
+
+                continue;
+            }
+
+            if (! $node instanceof stdClass || ! property_exists($node, $step)) {
+                return null;
+            }
+
+            /** @var mixed $node */
+            $node = $node->{$step};
+        }
+
+        return $node;
     }
 
     /**

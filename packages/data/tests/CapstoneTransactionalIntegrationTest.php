@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\Tests\Fixtures\Capstone\AccountService;
+use Firefly\Data\Tests\Fixtures\Capstone\BeanWiredLedger;
 use Firefly\Data\Tests\Fixtures\Capstone\IgnorableException;
 use Firefly\Data\Tests\Support\DataCapstoneTestCase;
 use Firefly\Kernel\Exception\Infrastructure\DuplicateKeyException;
@@ -80,4 +81,38 @@ it('enforces #[Transactional(timeout:)] through the proxy: overrun, rolled back,
     /** @var DataCapstoneTestCase $this */
     expect(fn () => accountService($this->app())->slowTransfer())->toThrow(TransactionTimedOutException::class)
         ->and(DB::table('accounts')->count())->toBe(0);
+});
+
+/*
+ | The SECOND wiring shape the chain is installed for. Everything above resolves a #[Service]; a #[Bean] method's
+ | declared return type is post-processed too, and that is the whole reason the stereotype is not the rule —
+ | ObservabilityMethodScanner declines to refuse a metric attribute on exactly this shape, on exactly this
+ | premise. Read off the source the premise is four links long (abstractsToExtend threads $bean->returns as the
+ | declared class → the BPP keys hasProxyFor() on it → the plan has a row for it → ProxyFactory::wrap reaches the
+ | proxy through newInstanceWithoutConstructor, so the non-autowirable constructor is no obstacle). Below it is a
+ | test: the bean comes back as the generated subclass, and its transaction really rolls back.
+ */
+
+it('proxies an UNSTEREOTYPED class wired by a #[Bean] method and really runs its transaction', function () {
+    /** @var DataCapstoneTestCase $this */
+    /** @var ApplicationContext $context */
+    $context = $this->app()->make(ApplicationContext::class);
+
+    /** @var BeanWiredLedger $ledger */
+    $ledger = $context->get(BeanWiredLedger::class);
+
+    expect($ledger::class)->not->toBe(BeanWiredLedger::class) // the generated proxy subclass
+        ->and($ledger)->toBeInstanceOf(BeanWiredLedger::class);
+
+    try {
+        $ledger->recordAndFail();
+    } catch (RuntimeException) {
+    }
+
+    // Two inserts and a throw: without the proxy the first row would have survived on its own autocommit.
+    expect(DB::table('accounts')->count())->toBe(0);
+
+    // The commit half, and the proof that the readonly constructor state survived newInstanceWithoutConstructor.
+    expect($ledger->recordAndCommit())->toBe('ledger')
+        ->and(DB::table('accounts')->pluck('name')->all())->toBe(['ledger']);
 });

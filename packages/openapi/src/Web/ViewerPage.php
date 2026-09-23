@@ -276,11 +276,42 @@ final class ViewerPage
             return node;
           }
 
-          function typeOf(schema) {
-            if (!schema) { return 'any'; }
-            if (schema.type === 'array') { return typeOf(deref(schema.items)) + '[]'; }
-            if (Array.isArray(schema.type)) { return schema.type.join(' | '); }
-            return schema.type || (schema.properties ? 'object' : 'any');
+          // The name a reader knows a schema by: the component a $ref points at, never the `object` behind it.
+          function refName(node) {
+            return node && typeof node.$ref === 'string' ? node.$ref.slice(node.$ref.lastIndexOf('/') + 1) : null;
+          }
+
+          function arms(schema) {
+            return (schema && (schema.anyOf || schema.oneOf)) || null;
+          }
+
+          function isNull(node) {
+            var schema = deref(node);
+            return !!schema && schema.type === 'null';
+          }
+
+          // A type LABEL. Every shape the generator emits has one: a component by its name, a union as its arms,
+          // a list as its element with [], a map as map<string, value>, and a type list as each of its types.
+          function typeOf(node) {
+            if (!node) { return 'any'; }
+            var name = refName(node);
+            if (name) { return name; }
+            var union = arms(node);
+            if (union) { return union.map(typeOf).join(' | '); }
+            if (node.allOf) { return node.allOf.map(typeOf).join(' & '); }
+            if (Array.isArray(node.type)) { return node.type.map(function (t) { return one(node, t); }).join(' | '); }
+            if (node.type) { return one(node, node.type); }
+            if (node.properties) { return 'object'; }
+            if (node.const !== undefined) { return JSON.stringify(node.const); }
+            return node.enum ? 'enum' : 'any';
+          }
+
+          function one(schema, type) {
+            if (type === 'array') { return (schema.items ? typeOf(schema.items) : 'any') + '[]'; }
+            if (type === 'object' && !schema.properties && schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+              return 'map<string, ' + typeOf(schema.additionalProperties) + '>';
+            }
+            return type;
           }
 
           // Constraint keywords, shown beside the type — this is where the validation attributes surface.
@@ -291,30 +322,66 @@ final class ViewerPage
             if (!schema) { return ''; }
             return RULES.filter(function (k) { return schema[k] !== undefined; }).map(function (k) {
               var v = schema[k];
-              return '<span class="rule">' + esc(k) + ' ' + esc(Array.isArray(v) ? v.join(', ') : v) + '</span>';
+              var shown = Array.isArray(v) ? v.map(function (x) { return x === null ? 'null' : x; }).join(', ') : v;
+              return '<span class="rule">' + esc(k) + ' ' + esc(shown) + '</span>';
             }).join('');
           }
 
-          function tree(schema, required, depth) {
-            schema = deref(schema);
+          // The members under a schema, depth first. It used to descend `properties` and a plain array alone, so a
+          // nullable nested object (an anyOf with null), a union, an allOf and a map were drawn as nothing at all.
+          function tree(node, required, depth) {
+            var schema = deref(node);
             depth = depth || 0;
             if (!schema || depth > 12) { return ''; }
-            if (schema.type === 'array') {
-              return '<ul><li><span class="dim">[ ]</span> ' + esc(typeOf(schema)) + tree(schema.items, [], depth + 1) + '</li></ul>';
+
+            var union = arms(schema);
+            if (union) {
+              var real = union.filter(function (arm) { return !isNull(arm); });
+              if (real.length === 1) { return tree(real[0], null, depth); }
+              return real.length ? '<ul>' + real.map(function (arm) {
+                return '<li><span class="dim">one of</span> <span class="type">' + esc(typeOf(arm)) + '</span>'
+                  + tree(arm, null, depth + 1) + '</li>';
+              }).join('') + '</ul>' : '';
             }
-            if (!schema.properties) { return ''; }
-            var req = schema.required || required || [];
-            var out = '<ul>';
-            Object.keys(schema.properties).forEach(function (name) {
-              var child = deref(schema.properties[name]);
-              var isReq = req.indexOf(name) !== -1;
-              out += '<li><span class="k">' + esc(name) + '</span>'
-                + (isReq ? '<span class="req">required</span>' : '')
-                + ' <span class="type">' + esc(typeOf(child)) + '</span> ' + rules(child)
-                + (child && child.description ? ' <span class="dim">— ' + esc(child.description) + '</span>' : '')
-                + tree(child, [], depth + 1) + '</li>';
-            });
-            return out + '</ul>';
+
+            if (schema.allOf) {
+              var merged = { properties: {}, required: [] };
+              schema.allOf.map(deref).forEach(function (part) {
+                if (!part) { return; }
+                Object.keys(part.properties || {}).forEach(function (k) { merged.properties[k] = part.properties[k]; });
+                merged.required = merged.required.concat(part.required || []);
+              });
+              return Object.keys(merged.properties).length ? tree(merged, merged.required, depth) : '';
+            }
+
+            if (schema.type === 'array' || (Array.isArray(schema.type) && schema.type.indexOf('array') !== -1)) {
+              var inner = tree(schema.items, null, depth + 1);
+              return inner ? '<ul><li><span class="dim">[ ]</span> <span class="type">' + esc(typeOf(schema.items)) + '</span>' + inner + '</li></ul>' : '';
+            }
+
+            if (schema.properties) {
+              var req = schema.required || required || [];
+              var out = '<ul>';
+              Object.keys(schema.properties).forEach(function (name) {
+                var raw = schema.properties[name];
+                var child = deref(raw);
+                var text = (raw && raw.description) || (child && child.description);
+                out += '<li><span class="k">' + esc(name) + '</span>'
+                  + (req.indexOf(name) !== -1 ? '<span class="req">required</span>' : '')
+                  + ' <span class="type">' + esc(typeOf(raw)) + '</span> ' + rules(child)
+                  + (text ? ' <span class="dim">— ' + esc(text) + '</span>' : '')
+                  + tree(raw, null, depth + 1) + '</li>';
+              });
+              return out + '</ul>';
+            }
+
+            var value = schema.additionalProperties;
+            if (value && typeof value === 'object') {
+              return '<ul><li><span class="dim">{ key }</span> <span class="type">' + esc(typeOf(value)) + '</span> '
+                + rules(deref(value)) + tree(value, null, depth + 1) + '</li></ul>';
+            }
+
+            return '';
           }
 
           function collect() {
@@ -374,21 +441,40 @@ final class ViewerPage
             return type ? { type: type, schema: deref(content[type].schema) } : null;
           }
 
-          // A minimal example built from the schema, so "Try it" starts from something valid-shaped
-          // rather than an empty box the reader has to fill from the table above.
-          function sample(schema, depth) {
-            schema = deref(schema); depth = depth || 0;
+          // A minimal example built from the schema, so "Try it" starts from something valid-shaped rather than an
+          // empty box the reader has to fill from the table above. A union starts from its first real arm and a
+          // type list from its first non-null type — a union member used to start as null, which no server takes.
+          function sample(node, depth) {
+            var schema = deref(node); depth = depth || 0;
             if (!schema || depth > 8) { return null; }
             if (schema.default !== undefined) { return schema.default; }
-            if (schema.enum) { return schema.enum[0]; }
-            if (schema.type === 'array') { var one = sample(schema.items, depth + 1); return one === null ? [] : [one]; }
+            if (schema.const !== undefined) { return schema.const; }
+            if (schema.enum) { return schema.enum.filter(function (v) { return v !== null; })[0] || null; }
+            var union = arms(schema);
+            if (union) {
+              var real = union.filter(function (arm) { return !isNull(arm); });
+              return real.length ? sample(real[0], depth + 1) : null;
+            }
+            if (schema.allOf) {
+              var merged = {};
+              schema.allOf.forEach(function (part) {
+                var value = sample(part, depth + 1);
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                  Object.keys(value).forEach(function (k) { merged[k] = value[k]; });
+                }
+              });
+              return merged;
+            }
+            var type = Array.isArray(schema.type) ? schema.type.filter(function (t) { return t !== 'null'; })[0] : schema.type;
+            if (type === 'array') { var first = sample(schema.items, depth + 1); return first === null ? [] : [first]; }
             if (schema.properties) {
               var out = {};
               Object.keys(schema.properties).forEach(function (k) { out[k] = sample(schema.properties[k], depth + 1); });
               return out;
             }
-            return { string: '', integer: 0, number: 0, boolean: false }[schema.type] !== undefined
-              ? { string: '', integer: 0, number: 0, boolean: false }[schema.type] : null;
+            if (type === 'object') { return {}; }
+            var scalars = { string: '', integer: 0, number: 0, boolean: false };
+            return scalars[type] !== undefined ? scalars[type] : null;
           }
 
           function select(id, push) {
@@ -424,9 +510,12 @@ final class ViewerPage
               var r = deref(responses[code]);
               var content = r.content ? Object.keys(r.content)[0] : '';
               var cls = code === 'default' ? 'cd' : (code[0] === '4' ? 'c4' : (code[0] === '5' ? 'c5' : ''));
+              // Headers are part of the contract too — a redirect is its Location.
+              var headers = r.headers ? Object.keys(r.headers) : [];
               html += '<tr><td><span class="status ' + cls + '">' + esc(code) + '</span></td>'
                    + '<td class="mono dim">' + esc(content || '—') + '</td>'
-                   + '<td class="dim">' + esc(r.description || '') + '</td></tr>';
+                   + '<td class="dim">' + esc(r.description || '')
+                   + (headers.length ? ' <span class="mono">' + esc(headers.join(', ')) + '</span>' : '') + '</td></tr>';
             });
             html += '</tbody></table></section>';
 

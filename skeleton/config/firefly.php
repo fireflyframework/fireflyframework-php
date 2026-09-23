@@ -309,10 +309,14 @@ return [
          |
          | `access` is a FIXED vocabulary, not free expression text — HttpSecurity::fromConfig() maps it:
          |
-         |     permitAll | denyAll | authenticated | hasRole:<ROLE> | hasAuthority:<AUTHORITY>
+         |     permitAll | denyAll | authenticated | hasRole:<ROLE> | hasAuthority:<AUTHORITY> | hasScope:<scope>
          |
          | Anything it does not recognise compiles to denyAll(): the spec is fail-closed, so a typo
          | locks the path down rather than opening it. Write `hasRole:ADMIN`, never `hasRole('ADMIN')`.
+         |
+         | Patterns are matched against `$request->path()`, which never carries a leading slash. A pattern
+         | IS normalised to that spelling when the rule is built, so 'api/*' and '/api/*' are the same rule
+         | and '/' still means the root path — write whichever reads better.
          |
          | Defaults: enabled false, rules [].
         */
@@ -658,10 +662,20 @@ return [
                 // A token bucket per client id (else per IP) at the token endpoint, over firefly/resilience's
                 // store: `max_tokens` burst, `refill_rate` tokens per second. A refused request is
                 // 429 temporarily_unavailable with Retry-After.
+                //
+                // `idle_ttl` is seconds of idleness after which a bucket's cache key may be reclaimed,
+                // refreshed on every acquisition, default 2592000 (30 days). These buckets are the one set of
+                // framework cache keys that grows with TRAFFIC rather than with configuration — one per client
+                // id, one per IP address — so a public token endpoint facing a wide address space is the case
+                // for setting it far lower. It costs nothing: a bucket refills at `refill_rate` per second, so
+                // `max_tokens / refill_rate` seconds after the last request (a minute at the defaults) a
+                // reclaimed bucket and a surviving one are the same full bucket. 0 writes them with no expiry
+                // at all, which is what this did before the key existed.
                 'rate_limit' => [
                     // 'enabled' => false,
                     // 'max_tokens' => 60,
                     // 'refill_rate' => 1.0,
+                    // 'idle_ttl' => 2592000,
                 ],
             ],
         ],
@@ -773,13 +787,42 @@ return [
 
             'health' => [
                 /*
-                 | 'always' includes each contributor's component details in the body; anything else
-                 | (including the default) returns the aggregated status only. Details name drivers,
-                 | paths and error messages, so they are off by default.
+                 | `show-details` is never | when-authorized | always (default never). 'always' includes
+                 | each contributor's component details in the body; anything else (including a typo)
+                 | returns the aggregated status only. Details name drivers, paths and error messages, so
+                 | they are off by default.
                  |
-                 | Default: 'never'.
+                 | `when-authorized` is now REAL rather than a synonym for `never`: firefly/actuator asks a
+                 | deny-by-default HealthDetailsAuthorizer, and firefly/security fills that port from the
+                 | session-held principal whenever `firefly.security.enabled` is on. An application without
+                 | firefly/security (or with security off) keeps the old behaviour exactly — details are
+                 | withheld — and an application that wants its own rule binds its own
+                 | HealthDetailsAuthorizer bean.
+                 |
+                 | `roles` is Spring's `management.endpoint.health.roles`: empty means any AUTHENTICATED
+                 | principal may read the details; a non-empty list means one holding at least one of these
+                 | roles. A bare name is read as `ROLE_<name>`, the same spelling `hasRole:` uses, and the
+                 | configured role hierarchy applies.
+                 |
+                 | A CSV STRING IS THE SAME RESTRICTION AS THE LIST: 'ADMIN,ACTUATOR' grants what
+                 | ['ADMIN', 'ACTUATOR'] grants, because that is Spring's own spelling of the property and
+                 | the spelling both neighbouring list keys in this block use (exposure.include, each
+                 | group's include).
+                 |
+                 | An entry that is not a usable role name — a blank string, a null left by a dangling key,
+                 | a number — is dropped, and a list whose entries ALL drop REFUSES every caller instead of
+                 | being read as the empty list: a typo must never widen the surface it was written to
+                 | narrow. A value that is neither a list nor a string counts as one unusable entry and
+                 | refuses the same way; it never fails the endpoint, because /actuator/health answering
+                 | 500 to a liveness probe is the one outcome this gate must not cause. The refusal is
+                 | logged once per boot, naming this key.
+                 |
+                 | Defaults: show-details 'never', roles [].
                 */
                 'show-details' => env('FIREFLY_HEALTH_SHOW_DETAILS', 'never'),
+                'roles' => [
+                    // 'ACTUATOR',
+                ],
 
                 /*
                  | The DB indicator is ON BY DEFAULT whenever `database.default` names a connection with a
@@ -945,6 +988,28 @@ return [
     //          | Default: false. Turn it on deliberately, on a machine where the payload is yours to read.
     //         */
     //         'disclose' => false,
+    //     ],
+    //
+    //     /*
+    //      | THE REFERENCE A PERSON QUOTES. When tracing is on and the request has a valid W3C trace id, that
+    //      | id — not the correlation id — is what problem+json publishes as `traceId`, what the HTML error
+    //      | page shows in its Reference row, and what the response echoes on `header` below. Paste it into a
+    //      | trace search and the request is there. With tracing off (or on a request no tracing filter
+    //      | touched) every one of those falls back to the correlation id, which is exactly what they carried
+    //      | before this key existed, so switching tracing on is the only thing that changes them.
+    //      |
+    //      | The correlation id is NOT absorbed: `X-Correlation-Id` still echoes it untouched (a caller that
+    //      | sent one gets its own value back) and problem+json carries it as its own `correlationId` member.
+    //      | Two ids, two jobs, side by side.
+    //      |
+    //      | `header` names the response header the trace id is echoed on; '' turns the echo off and leaves the
+    //      | document and the page alone. It is deliberately not W3C `traceresponse`, which is not implemented.
+    //      |
+    //      | Defaults: enabled true, header 'X-Trace-Id'.
+    //     */
+    //     'trace-id' => [
+    //         'enabled' => env('FIREFLY_WEB_TRACE_ID_ENABLED', true),
+    //         'header' => env('FIREFLY_WEB_TRACE_ID_HEADER', 'X-Trace-Id'),
     //     ],
     // ],
 
@@ -1294,6 +1359,68 @@ return [
     //      | Default: false.
     //     */
     //     'include-html' => false,
+    //
+    //     /*
+    //      | Publish the security the application actually has. `components.securitySchemes` is emitted from
+    //      | what `firefly.security.*` is configured with, and nothing else:
+    //      |
+    //      |     http_basic.enabled                  -> httpBasic            {type: http, scheme: basic}
+    //      |     jwt.enabled                         -> bearerAuth           {type: http, scheme: bearer}
+    //      |     oauth2.resource_server.enabled      -> oauth2ResourceServer {type: http, scheme: bearer},
+    //      |                                            with the issuer and audience in its description
+    //      |     oauth2.server.enabled               -> oauth2AuthorizationCode {type: oauth2}, a REAL
+    //      |                                            authorizationCode flow with this server's own
+    //      |                                            authorization and token URLs and the scopes its
+    //      |                                            registered clients asked for (firefly/security-oauth2-server
+    //      |                                            contributes it; an enabled server publishes it even
+    //      |                                            with no client registered yet, with an empty scopes map,
+    //      |                                            and a client store that cannot be read falls back to the
+    //      |                                            same map rather than failing the document)
+    //      |
+    //      | Each operation then carries the requirement its path really has, read from the SAME
+    //      | firefly.security.http.rules the filter enforces: a `permitAll` path carries no `security` member
+    //      | at all, and every other path — including one no rule matches, since the rules are deny by
+    //      | default — names every scheme above, because the server really does accept any of them. A
+    //      | `hasScope:` rule puts its scope on the bearer entry — the OAUTH2 SCOPE, never the authority:
+    //      | `hasScope:SCOPE_orders.read` and `hasScope:orders.read` are one rule (the evaluator normalises
+    //      | the bare form to the `SCOPE_x` authority before testing it, as it normalises ADMIN to
+    //      | ROLE_ADMIN), and only `orders.read` is a scope a client registration can hold.
+    //      |
+    //      | METHOD RULES ARE READ TOO, by firefly/security: a controller action carrying #[PreAuthorize],
+    //      | #[Secured], #[RolesAllowed] or #[PostAuthorize] is refused by the DISPATCHER rather than by a URL
+    //      | rule, so it names the configured schemes even where http.rules say permitAll — and the scope of a
+    //      | `hasScope()` the rule really demands of every caller rides on the token-shaped entries, with the
+    //      | same SCOPE_ normalisation a URL rule gets. It is
+    //      | gated by firefly.security.enabled alone: firefly.security.method.enabled stands down the PROXY
+    //      | link, never the controller dispatcher, so a document that fell silent on it would publish a
+    //      | guarded action as public. #[PreFilter]/#[PostFilter] contribute nothing — they narrow a result,
+    //      | they refuse nobody.
+    //      |
+    //      | Where a path is covered by BOTH a URL rule and a method rule, the two are merged per scheme name
+    //      | with their scope lists UNIONED: a caller passes the filter AND the dispatcher, so the stricter
+    //      | statement is the true one, and an operation is published public only when NOTHING requires
+    //      | anything of it. The join runs the other way too: a scope the operations require of an `oauth2`
+    //      | scheme is declared by that scheme's flows, so Swagger UI's Authorize dialog can offer it and no
+    //      | operation names a scope its own securitySchemes entry does not define.
+    //      |
+    //      | Two interfaces — Firefly\OpenApi\Security\SecuritySchemeContributor and
+    //      | SecurityRequirementContributor — are how a package adds what configuration cannot state; three
+    //      | implementations ship (the config-driven one above, firefly/security's method-rule contributor and
+    //      | firefly/security-oauth2-server's authorizationCode scheme).
+    //      |
+    //      | Nothing is emitted when firefly.security.enabled is off, so this key only ever matters to an
+    //      | application that HAS security — in which case a document that omitted it was telling every
+    //      | generated client the API was open.
+    //      |
+    //      | `webhooks` and `callbacks` are deliberately still not emitted: they describe an application's own
+    //      | OUTBOUND contracts — the requests it sends to someone else — and no manifest in this framework
+    //      | records those, so a generator that invented them would be documenting code that does not exist.
+    //      |
+    //      | Default: true.
+    //     */
+    //     'security' => [
+    //         'enabled' => env('FIREFLY_OPENAPI_SECURITY_ENABLED', true),
+    //     ],
     // ],
 
     /*
@@ -1354,6 +1481,55 @@ return [
                 // 'buckets' => [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
                 // 'per-meter' => ['http_server_requests_seconds' => [0.05, 0.1, 0.25, 0.5, 1, 2.5]],
                 'buckets' => [],
+            ],
+        ],
+
+        /*
+         | Micrometer's method attributes: #[Timed], #[Counted] and #[Observed] on any #[Service]/
+         | #[Component]/#[Repository] method, enforced through the SAME proxy chain #[Transactional] and
+         | #[PreAuthorize] use. The metric advice is the OUTERMOST link (order 50, ahead of security's 100
+         | and the transaction's 1000), so a timer measures the authorization refusal and the COMMIT as well
+         | as the method body — the latency a caller actually waited for — and a refused call is counted as
+         | a failure instead of vanishing from the meter.
+         |
+         | #[Timed(value:, extraTags:, longTask:)] records a timer, tagged `exception` with the
+         | thrown class's short name (`none` on success). `longTask` adds a `<meter>.active` gauge carrying
+         | the timer's own tags and holding the number of invocations THIS PROCESS has in flight (a nested or
+         | recursive call reads 2, not 1); with a `metrics.store` configured the shared key is last-writer-
+         | wins like every other set-gauge, so read it as "work in flight somewhere" rather than as a
+         | fleet-wide count. #[Counted(value:, extraTags:, recordFailuresOnly:)] counts invocations, tagged
+         | `result`. #[Observed(name:, contextualName:, lowCardinalityKeyValues:)] starts a span AND a timer
+         | under one name — Micrometer's Observation API in one attribute; with tracing off it degrades to
+         | the timer.
+         |
+         | A failure INSIDE the recording never reaches the caller: the meters and the span are written
+         | best-effort, so a cache-backed registry that cannot reach its store loses the sample rather than
+         | turning a method that returned into a method that threw.
+         |
+         | #[Timed(percentiles:)] is REFUSED at scan time: this package publishes fixed histogram buckets,
+         | not client-side quantile summaries. Configure `metrics.distribution.per-meter` above and compute
+         | the quantile in the query instead. So is a #[Timed] and a #[Counted] on ONE method that spell out
+         | the SAME meter name — a Prometheus name has exactly one type, so the registry would record the
+         | first and refuse the second for the life of the process. Name the two meters apart (the timer
+         | already publishes its own `_count`); #[Timed] and #[Observed] may share a name, both being timers.
+         |
+         | Turning `enabled` off makes every one of the three inert (the proxies run a pass-through link);
+         | it never leaves them half-enforced. The three `name` keys are the meter names used when an
+         | attribute does not name its own.
+         |
+         | Defaults: enabled true, timed.name 'method.timed', counted.name 'method.counted',
+         | observed.name 'method.observed'.
+        */
+        'method' => [
+            'enabled' => env('FIREFLY_OBSERVABILITY_METHOD_ENABLED', true),
+            'timed' => [
+                // 'name' => 'method.timed',
+            ],
+            'counted' => [
+                // 'name' => 'method.counted',
+            ],
+            'observed' => [
+                // 'name' => 'method.observed',
             ],
         ],
 
@@ -1588,6 +1764,24 @@ return [
              | Default: [] (the default channel).
             */
             // 'channels' => ['stack', 'stderr'],
+
+            /*
+             | Put the correlation id and the W3C trace ids on EVERY channel, including one created after
+             | boot by `Log::build()`. The per-channel wiring above can only dress the channels
+             | `logging.channels` names; this binds Laravel's own ContextLogProcessor contract to a decorator
+             | that LogManager hands to every channel it builds, on-demand ones included, so an ad-hoc
+             | per-tenant file gets the same `correlation_id` / `trace_id` / `span_id` / `request_id` fields
+             | as the application channel. Laravel's own context processor is preserved inside it, so
+             | `Context::add()` is unaffected — the framework's ids are simply written over an application
+             | context key of the same name rather than under it.
+             |
+             | It does NOT extend the structured FORMATTER to an on-demand channel: a formatter is set on
+             | handlers built from a config array this package never sees, and there is no container seam for
+             | those. Such a channel carries the ids and Monolog's line format.
+             |
+             | Default: true.
+            */
+            'all-channels' => env('FIREFLY_LOGGING_ALL_CHANNELS', true),
         ],
     ],
 
@@ -1608,6 +1802,24 @@ return [
     | minimum-number-of-calls 0; time-limiter timeout 30s). Only `store.lock-block-timeout` below is written
     | at its true default.
     |
+    | IDLE TTL — the cache-backed patterns (circuit-breaker, rate-limiter; bulkhead has always had its own
+    | `permit-ttl`) write their state with an expiry of `idle-ttl`, default 30 days, REFRESHED BY EVERY
+    | CALL — including the ones the gate REFUSES: a breaker rejecting while OPEN and a limiter refusing an
+    | acquisition both rewrite their record, because those are the moments losing it would hand the traffic
+    | back to exactly what the gate exists to protect. An instance that is being called therefore can never
+    | lose its record — the expiry is always pushed further away than the next call — while an instance
+    | nobody has touched for a month stops occupying a cache key forever, which is what a retired integration
+    | used to do. A reclaimed key rebuilds in the state a genuinely idle instance was already in (a CLOSED
+    | breaker, a full bucket), so the reclaim is invisible — keep `idle-ttl` comfortably above
+    | `wait-duration-in-open` if you lower it, so that "idle" cannot mean "OPEN with no callers". Set
+    | `idle-ttl` to null — or to 0, or to any negative duration, all of which are read as the same
+    | instruction — for the old unbounded behaviour: the right choice for a rate limiter with
+    | `refill-rate` 0, which is a hard quota rather than a rate and must not be handed back. A non-positive
+    | value means NEVER EXPIRE and never "expire immediately", the reading `permit-ttl` already has, because
+    | the cache deletes a key written with a TTL of zero and that would silently retire the breaker or the
+    | limit itself. Durations use the framework grammar (ms/s/m/h or a bare number of seconds): 30 days is
+    | `'720h'`.
+    |
     | See docs/modules/resilience.md for the full key-by-key tables.
     |
     */
@@ -1626,6 +1838,34 @@ return [
             'lock-block-timeout' => '500ms',
         ],
 
+        /*
+         | Resilience as ATTRIBUTES. #[Retry], #[CircuitBreaker], #[RateLimiter], #[Bulkhead] and
+         | #[TimeLimiter] each name an instance configured below and are applied to any #[Service]/
+         | #[Component]/#[Repository] method through the same proxy chain #[Transactional] uses; #[Fallback]
+         | names a method on the same class to call when the guarded call finally fails. Every attribute
+         | delegates to the programmatic component documented below — there is one implementation of each
+         | pattern, and the attribute is a second way to reach it.
+         |
+         | The composition is Resilience4j's, outermost first:
+         |
+         |     Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )
+         |
+         | so a fallback sees what the retry gave up on, each retry attempt is judged by the breaker, an OPEN
+         | breaker refuses without spending a token, and a bulkhead permit is held for the work alone.
+         |
+         | The advice runs INSIDE method security and OUTSIDE the transaction: a call #[PreAuthorize] refuses
+         | never consumes a retry budget or trips a breaker, and a retry opens a new transaction per attempt.
+         |
+         | A #[Fallback] naming a method the class does not have, or one whose signature cannot receive the
+         | guarded call, REFUSES TO COMPILE — never a surprise inside the catch block handling the outage.
+         |
+         | Default: true. Off makes every resilience attribute inert (a pass-through proxy link), never
+         | half-applied.
+        */
+        'method' => [
+            'enabled' => env('FIREFLY_RESILIENCE_METHOD_ENABLED', true),
+        ],
+
         // 'retry' => [
         //     'payments' => ['max-attempts' => 3, 'wait-duration' => '250ms', 'backoff-multiplier' => 2.0],
         // ],
@@ -1637,10 +1877,16 @@ return [
         //         'wait-duration-in-open' => '30s',
         //         'half-open-max-calls' => 1,
         //         'half-open-probe-timeout' => '30s',
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
         //     ],
         // ],
         // 'rate-limiter' => [
-        //     'api' => ['max-tokens' => 10, 'refill-rate' => 10.0, 'timeout' => 0],
+        //     'api' => [
+        //         'max-tokens' => 10,
+        //         'refill-rate' => 10.0,
+        //         'timeout' => 0,
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
+        //     ],
         // ],
         // 'bulkhead' => [
         //     'db' => ['max-concurrent' => 10, 'max-wait' => 0, 'permit-ttl' => '60s'],
@@ -1710,6 +1956,22 @@ return [
         'transactional-event-listeners' => [
             'enabled' => env('FIREFLY_DATA_TRANSACTIONAL_LISTENERS', true),
         ],
+
+        /*
+         | A #[Projection] and a trailing Pageable now COMBINE: `findByStatus(string $status, Pageable $p):
+         | Page` selects the DTO's columns and pages IN THE DATABASE, hydrating one DTO per row of the
+         | window. Declaring `Slice` gets a slice (size + 1 fetched, the extra one dropped, no count query).
+         | Until this key existed the projection won and the whole unpaged result came back, which was the
+         | documented limitation and also the wrong answer on exactly the wide list screens a projection is
+         | for — and a wrong answer the method's own declared return type contradicted.
+         |
+         | Set to false for one release if call sites relied on the old list-shaped return.
+         |
+         | Default: true.
+        */
+        'projection' => [
+            'pageable' => env('FIREFLY_DATA_PAGED_PROJECTIONS', true),
+        ],
     ],
 
     /*
@@ -1727,6 +1989,54 @@ return [
     'scheduling' => [
         'lock' => [
             'provider' => env('FIREFLY_SCHEDULING_LOCK', 'none'),
+        ],
+
+        /*
+         | `#[Scheduled(initialDelay: '10m')]` — hold the task back for this long once its window is armed,
+         | then resume the normal cadence. Laravel's frequency DSL cannot express it, so it is applied as a
+         | per-tick `when()` predicate against an ANCHOR written to the cache the first time a task is seen.
+         | The anchor is in the cache, not in process memory, because the baseline deployment is a cron-driven
+         | `schedule:run` — a fresh process every minute, whose own start time would restart the window
+         | forever and hang the task silently.
+         |
+         | WHEN THE WINDOW IS ARMED, stated exactly, because the anchor outlives far more than it looks like
+         | it should. It is written with NO EXPIRY and nothing forgets it, so on the cross-process store the
+         | paragraph below insists on, it survives every later restart AND every later deployment: by default
+         | an initialDelay holds a task back ONCE IN THE LIFE OF THE CACHE KEY. The first deployment waits its
+         | ten minutes; a restart or a redeploy does NOT re-arm the window — it reads the old anchor, finds it
+         | long elapsed, and runs the task on its first tick. Deleting the key re-arms it by hand
+         | (`firefly:scheduling:initial-delay:<Class>::<method>`).
+         |
+         | `release` is how every deployment gets its own quiet period instead — Spring's reading, which
+         | measures the window from application start. There is no application start under cron, so the
+         | DEPLOYMENT NAMES ITSELF here: set this to a git sha, APP_VERSION, the release directory, whatever
+         | the pipeline already has. The anchor records the release that armed it, the first process of a
+         | different one arms a fresh window, and the take-over is logged once per process so a deploy that
+         | goes quiet explains itself. THE VALUE MUST CHANGE ONCE PER DEPLOYMENT AND NEVER WITHIN ONE:
+         | something that varies per process (`uniqid()`, the PID, a boot timestamp) re-anchors every minute
+         | and the task NEVER RUNS. '' (the default) keeps the permanent anchor above.
+         |
+         | `store` names the cache store the anchor lives in ('' = the default store). AN INITIAL DELAY NEEDS
+         | A STORE SHARED ACROSS PROCESSES wherever the scheduler is cron-driven. `schedule:run` is a fresh
+         | process every minute, so a store that starts empty (`array`) writes a new anchor on every tick,
+         | reads back `now`, and the window never elapses: the task does not run early, it NEVER RUNS. A
+         | resident scheduler (`schedule:work`, Octane) is the exception — it keeps one process, so `array`
+         | there measures the window from its first tick and honours it. Use redis/memcached/database under
+         | cron; the framework warns as the Schedule is built when it sees a delay anchored in a store that
+         | cannot outlive the process. The `null` driver stores nothing at all: the gate notices it cannot
+         | read back its own write, logs it once and ADMITS the tick rather than hanging the task in silence.
+         |
+         | Setting `enabled` to false REFUSES TO BOOT an application whose manifest carries an initialDelay,
+         | rather than accepting the parameter and ignoring it — which is what happened for two releases and
+         | is the behaviour this key exists to make impossible. An unparseable duration is refused at boot
+         | too, for the same reason: the predicate runs where Laravel does not contain a throw.
+         |
+         | Defaults: enabled true, store '', release ''.
+        */
+        'initial-delay' => [
+            'enabled' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_ENABLED', true),
+            'store' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_STORE', ''),
+            'release' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_RELEASE', ''),
         ],
     ],
 
@@ -1884,6 +2194,35 @@ return [
         // 'kafka' => [
         //     'brokers' => env('KAFKA_BROKERS', '127.0.0.1:9092'),
         // ],
+
+        /*
+         | Broker publishers and the trace. The rabbitmq, kafka and postgres adapters route publish()
+         | through the same EdaTracing seam the in-memory and queue buses use, so the envelope that reaches
+         | the wire carries a `traceparent` (and `tracestate`) and the consumer on the far side — ours or a
+         | third party's — continues the trace instead of starting a new one. The consume side was already
+         | traced; this is the other half. On Postgres it covers BOTH writers of an outbox row: the
+         | EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path a domain
+         | event takes under provider=postgres — so the traced row is the one that commits with the
+         | aggregate. `firefly:outbox:relay` forwards a claimed row under that row's own trace rather than
+         | starting a new one.
+         |
+         | It does nothing at all unless `firefly.observability.tracing.enabled` and
+         | `firefly.observability.tracing.eda.enabled` are on, because with them off the bound EdaTracing is
+         | the no-op. Set this to false to keep in-process spans while refusing to put trace identifiers on
+         | a wire someone else reads: it is read in ONE place (Firefly\Eda\Tracing\BrokerTracing), by the
+         | three publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
+         | applies it whether you name the adapter by its alias (`rabbitmq`) or by its own class-string.
+         | A downstream of your OWN, bound under `firefly.eda.relay.downstream` or named by a publisher
+         | class this framework ships no adapter for, is yours to construct and therefore yours to gate:
+         | call BrokerTracing::resolve() where you build it.
+         |
+         | Default: true.
+        */
+        'tracing' => [
+            'brokers' => [
+                'enabled' => env('FIREFLY_EDA_BROKER_TRACING_ENABLED', true),
+            ],
+        ],
     ],
 
     /*

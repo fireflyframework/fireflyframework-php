@@ -81,6 +81,23 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\Observability\\Method\\ObservabilityAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Observability\\ObservabilityAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -164,6 +181,20 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'observabilityMethodInterceptor',
+                'returns' => 'Firefly\\Observability\\Method\\ObservabilityMethodInterceptor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+                    1 => 'Firefly\\Observability\\Tracing\\Tracer',
+                    2 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            7 => [
                 'method' => 'cqrsTracing',
                 'returns' => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
                 'name' => null,
@@ -175,7 +206,7 @@ return [
                     0 => 'Firefly\\Observability\\Tracing\\Tracer',
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'edaTracing',
                 'returns' => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 'name' => null,
@@ -192,7 +223,7 @@ return [
         'dependencies' => [
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\Observability\\Tracing\\OpenTelemetry\\OpenTelemetryAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -233,7 +264,7 @@ return [
         'dependencies' => [
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\Observability\\Web\\HttpExchangeFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -252,7 +283,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\Observability\\Web\\MetricsFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -270,7 +301,7 @@ return [
             0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
         ],
     ],
-    8 => [
+    9 => [
         'class' => 'Firefly\\Observability\\Web\\TracingFilter',
         'stereotype' => 'component',
         'name' => null,

@@ -63,7 +63,7 @@ of any application filter:
 | Filter | Order | Behaviour |
 |---|---|---|
 | `RequestContextFilter` | `-200` | Seeds a fresh UUID into Laravel's `Context` facade as `firefly.request_id`, scoped to the request. |
-| `CorrelationIdFilter` | `-100` | Reads an inbound `X-Correlation-Id` header (minting one if absent), exposes it via `Context` as `firefly.correlation_id`, and echoes it back on the response header. |
+| `CorrelationIdFilter` | `-100` | Reads an inbound `X-Correlation-Id` header (minting one if absent), exposes it via `Context` as `firefly.correlation_id`, and echoes it back on the response header. When the request also carries a valid W3C trace id, that id is echoed on a **second** header of its own (`firefly.web.trace-id.header`, `X-Trace-Id` by default; `''` or `firefly.web.trace-id.enabled => false` turns the echo off) — `X-Correlation-Id` is never overwritten by it: a caller that sent an id is entitled to get its own value back. See [Error Handling](error-handling.md#the-html-error-page). |
 
 Metrics and tracing filters are **not** part of this release — only the `WebFilter` seam and these two
 framework filters ship in M6; metrics/tracing filters are tracked for **M12**.

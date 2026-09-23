@@ -6,6 +6,44 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Security\\Actuator\\SecurityActuatorAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnClass',
+                'args' => [
+                    0 => 'Firefly\\Actuator\\Health\\HealthDetailsAuthorizer',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'healthDetailsAuthorizer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.security.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Actuator\\Health\\HealthDetailsAuthorizer',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Security\\OAuth2\\OAuth2ResourceServerFilter',
         'postConstruct' => [
         ],
@@ -26,7 +64,34 @@ return [
         'beanConditions' => [
         ],
     ],
-    1 => [
+    2 => [
+        'class' => 'Firefly\\Security\\OpenApi\\MethodSecurityRequirementContributor',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnClass',
+                'args' => [
+                    0 => 'Firefly\\OpenApi\\Security\\SecurityRequirementContributor',
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.security.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    3 => [
         'class' => 'Firefly\\Security\\SecurityAutoConfiguration',
         'postConstruct' => [
         ],
@@ -549,7 +614,7 @@ return [
             ],
         ],
     ],
-    2 => [
+    4 => [
         'class' => 'Firefly\\Security\\Session\\SecurityContextPersistenceFilter',
         'postConstruct' => [
         ],
@@ -570,7 +635,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    3 => [
+    5 => [
         'class' => 'Firefly\\Security\\Web\\Basic\\HttpBasicFilter',
         'postConstruct' => [
         ],
@@ -599,7 +664,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    4 => [
+    6 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
         'postConstruct' => [
         ],
@@ -620,7 +685,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    5 => [
+    7 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
         'postConstruct' => [
         ],
@@ -649,7 +714,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    6 => [
+    8 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
         'postConstruct' => [
         ],
@@ -670,7 +735,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    7 => [
+    9 => [
         'class' => 'Firefly\\Security\\Web\\Login\\FormLoginFilter',
         'postConstruct' => [
         ],
@@ -691,7 +756,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    8 => [
+    10 => [
         'class' => 'Firefly\\Security\\Web\\Logout\\LogoutFilter',
         'postConstruct' => [
         ],
@@ -712,7 +777,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    9 => [
+    11 => [
         'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
         'postConstruct' => [
         ],
@@ -733,7 +798,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    10 => [
+    12 => [
         'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
         'postConstruct' => [
         ],
@@ -754,7 +819,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    11 => [
+    13 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'postConstruct' => [
         ],

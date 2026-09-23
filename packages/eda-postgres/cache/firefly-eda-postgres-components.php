@@ -57,6 +57,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Illuminate\\Database\\ConnectionResolverInterface',
                     2 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    3 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             2 => [
@@ -73,6 +74,7 @@ return [
                     2 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
                     3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
                     4 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    5 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             3 => [

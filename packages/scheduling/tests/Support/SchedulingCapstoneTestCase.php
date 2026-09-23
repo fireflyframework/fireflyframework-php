@@ -54,10 +54,22 @@ abstract class SchedulingCapstoneTestCase extends FireflyTestCase
      */
     protected function defineFireflyEnvironment(Application $app): void
     {
-        $psr4 = ['Firefly\\Scheduling\\Tests\\CapstoneFixtures\\' => __DIR__.'/../CapstoneFixtures'];
-        $descriptors = (new ScheduledScanner)->scan($psr4);
+        $descriptors = (new ScheduledScanner)->scan($this->scheduledFixturePsr4());
 
         $app->instance(ScheduledManifest::class, new ScheduledManifest($descriptors));
         $app->singleton(SpyCounter::class);
+    }
+
+    /**
+     * The fixture namespace the real scanner is pointed at. It is a method rather than a literal inside
+     * defineFireflyEnvironment() so a sibling capstone can aim the SAME boot at a DIFFERENT one-task
+     * namespace: the count pinned above (exactly one #[Scheduled] task) is load-bearing for this capstone's
+     * own assertions, so a second task must arrive in its own directory, not in this one.
+     *
+     * @return array<string, string>
+     */
+    protected function scheduledFixturePsr4(): array
+    {
+        return ['Firefly\\Scheduling\\Tests\\CapstoneFixtures\\' => __DIR__.'/../CapstoneFixtures'];
     }
 }

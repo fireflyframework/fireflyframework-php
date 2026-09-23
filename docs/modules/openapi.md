@@ -125,7 +125,9 @@ public function index(): array
 
 1. **The `@return` type expression.** The only place a PHP `array` can say what is *in* it. Prose after the type
    becomes the response `description` — the only response description anyone actually writes.
-2. **The declared return type.** A class becomes a component `$ref`, a backed enum its value set, a scalar itself.
+2. **The declared return type** — unions, nullables and intersections included (`?Order` answers with null as well,
+   `Order|Refund` with either). What a class becomes is what the runtime writes for it: see
+   [What a returned class becomes](#what-a-returned-class-becomes).
 3. **Neither** — `type: object`, the old behaviour, kept as the *fallback* for a bare `array` return with nothing
    said about it. A `@return array<string, mixed>` parses fine and means nothing, so it is treated as saying nothing
    rather than allowed to suppress what the declared type knew.
@@ -144,7 +146,9 @@ Schema fragment. It is used for `@return`, for `@param`/`@var` on collection mem
 | `array{a: int, ...}` | the same, but open — the `...` is the only thing that lifts `additionalProperties: false` |
 | `array{int, string}` | `prefixItems`, with `minItems`/`maxItems` — a tuple |
 | `'draft'\|'sent'` | `type: string` with `enum` |
-| `?Order`, `Order\|null` | `anyOf: [{$ref}, {type: null}]` |
+| `?Order`, `Order\|null` | `anyOf: [{$ref}, {type: null}]` — and `?Carbon` and `Carbon\|null` alike are `type: [string, null]` with the `format` kept |
+| `Page<Order>`, any generic class | the class's `@template` parameters bound to the arguments: `{$ref: PageOrder}` |
+| `Collection<int, Order>`, any Laravel collection | `type: array` with `items: {$ref: Order}` (a string key makes it a map) |
 | `non-empty-string`, `positive-int` | `minLength: 1`, `minimum: 1` |
 | `mixed` | `{}` — the any-value schema, a real answer |
 | `never`, `callable`, an unresolvable name | **nothing**, so the caller falls back to what it already knew |
@@ -156,18 +160,55 @@ Class names resolve through the **imports of the file the expression was written
 file's `use` statements, so they are read from the source. Without that, only fully-qualified names would work,
 which is the one spelling nobody writes.
 
-### A returned class becomes a component
+### What a returned class becomes
 
-`ResponseSchemaFactory` builds it from the **wire shape** — what `json_encode` emits — which is not the same thing as
-the request side's constructor:
+The document follows **`ResponseFactory` and `JsonMessageConverter` branch for branch, in their order**, because that
+is what decides what goes on the wire — and a document that decided differently would describe responses the server
+never sends. It used to reflect every class's public properties, which documented an Eloquent model as `incrementing`,
+`exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column, and a `JsonResponse` as `original`,
+`exception` and a `ResponseHeaderBag`.
 
-- A class implementing `JsonSerializable` serialises as whatever `jsonSerialize()` **returns**. Give that method a
+- **A Response the action built** is sent as it is, so its class is all there is to go on: a `JsonResponse` is JSON of
+  a shape the action decided, a `BinaryFileResponse` a binary download, a `RedirectResponse` a `302` with its
+  `Location` (and no `200` — the `#[Mapping]`'s status never reaches the wire), anything else `*/*`. A `Responsable`
+  builds its own response, so it is `*/*` too — except an API resource, below. A `ModelAndView`, or a View /
+  Renderable / Htmlable that is not also data, is `text/html`. State the body of a `JsonResponse` with
+  `#[ApiResponse(200, type: …)]`. A **union** — `: JsonResponse|RedirectResponse` — is `*/*` at the mapping's
+  status: the action picks at runtime and no arm's media type or status is the one sent. An action with **no
+  declared type** is read from its `@return` line, so `@return RedirectResponse` documents the `302` exactly as
+  the declared type would. Whichever way a response class arrives — a declared type, a union arm, a `@return`, an
+  `#[ApiResponse(type:)]` — it never becomes a component: the schema factory refuses it at its own door, so there
+  is no path that regrows the `original`/`exception`/`ResponseHeaderBag` shape above.
+- **An `Arrayable`** is written through `toArray()`, ahead of `JsonSerializable`: its `toArray()` `@return` shape, then
+  the value type of its `@implements Arrayable<K, V>`, and otherwise "an object" — never its properties.
+- **An Eloquent model** is read from its `@property` tags when it has them — `@property` a column, always present;
+  `@property-read` an accessor or relation, present only when appended or loaded; `@property-write` never written —
+  and otherwise from what Eloquent itself is told: the key, `$fillable`, the casts (`casts()` included), the timestamps
+  and `$appends`. That is the skeleton's own `OrderEntity` style. A cast maps to what `toArray()` writes (a date as RFC
+  3339, a custom date format as a plain string, `timestamp` as Unix seconds, `decimal` as a **string**); nothing there
+  states a column's nullability, so every attribute but the key admits null. Relations come from their declared
+  return type (`HasMany<Line, $this>`) under their snake_case key, never required. `$hidden` and `$visible` filter as
+  `toArray()` does.
+- **A Laravel paginator** — `->paginate()`, `->simplePaginate()`, `->cursorPaginate()` — is the envelope its
+  `toArray()` builds around the element type, as its own component: `LengthAwarePaginator<int, Order>` is
+  `LengthAwarePaginatorOrder`.
+- **An API resource** is its `toArray()` `@return` shape (or, when it inherits `JsonResource::toArray()`, the class it
+  `@mixin`s), sent inside the envelope its `$wrap` names — `data` unless `JsonResource::withoutWrapping()` ran. A
+  `ResourceCollection` is the list of what it collects, found as Laravel finds it: `#[Collects]`, then `$collects`,
+  then the naming convention. Nested inside another payload, a resource is unwrapped, as `jsonSerialize()` writes it.
+- **A class implementing `JsonSerializable`** serialises as whatever `jsonSerialize()` **returns**. Give that method a
   `@return array{…}` and the schema is exact. The skeleton's `App\Orders\Order` is the case that matters: it
   publishes a derived `total` that is a *method*, so reflection alone would document five of the six members the API
   actually sends.
-- Everything else serialises as its **public properties**, which is what reflection reads.
+- **Everything else** serialises as its **public properties**, which is what reflection reads — each member in the
+  scope of the class that declares it, so an inherited `@var T` resolves through the subclass's `@extends Base<Order>`.
 - A declared shape only wins when it says something. `@return array<string, mixed>` on `jsonSerialize()` means "an
   object, members unknown" — strictly less than the property list it would have suppressed, so it is ignored.
+
+**A generic instantiation is a component of its own.** `Page<Order>` binds `Order` to `Page`'s `@template T`, so the
+`list<T>` its constructor documents becomes a list of Order, and the instantiation is named the way springdoc names
+one: `PageOrder`, `PageString`. Every `Page<Order>` in the document shares that component; an argument with no name to
+give (`Page<list<Order>>`) is written in place instead, and one that says nothing (`Page<mixed>`) is plain `Page`.
 
 Nullability is not requiredness here. A response member is present or absent, and `?int $id` is always *present* and
 sometimes null — so response members stay `required` and nullable ones widen their type. The request side's rule
@@ -188,6 +229,11 @@ public function book(): array
 
 `type` is a full expression, not only a class or scalar name, and a short name resolves through the controller's own
 imports.
+
+**Without a `type`, a status keeps the body it already has.** Re-declaring the success status only replaces its
+description — adding a sentence to a `200` used to erase the schema of everything the action returns — and an error
+status (`4xx`, `5xx`, a `4XX`/`5XX` range or `default`) is documented with the problem+json body `ProblemDetailsRenderer`
+sends for it. Only a status with neither, a `202` mentioned in prose, is bodiless.
 
 ## How a request DTO becomes a schema
 
@@ -657,11 +703,15 @@ new configuration.
 ### What `builtin` is for
 
 A hand-written, dependency-free reference: one inline `<script>`, a few hundred bytes of CSS, one `fetch` of the
-spec route, and a dark/light palette that follows `prefers-color-scheme`. It does the two things a reader actually
+spec route, and a dark/light palette that follows `prefers-color-scheme`. It does the things a reader actually
 needs and raw JSON does not give them — groups operations by tag with verbs and paths visible at a glance, and
 resolves `$ref` pointers client-side so a reader sees a DTO's members rather than a pointer into
-`#/components/schemas`. Try-it-out, OAuth flows and code samples are deliberately absent; that is what `swagger`
-is for. Choose it when the deployment wants no third-party JavaScript in the response at all.
+`#/components/schemas`, labelled by component name. Every shape the generator emits is drawn: a union member reads
+`Parcel | Label | null` with each arm expanded, a nullable nested object shows its members, a map shows its value
+type under `{ key }`, a list of components reads `Parcel[]`, and a response's headers (a redirect's `Location`) are
+shown beside it. A small request console — "Try it" and "Copy as cURL" — starts each body from a value of the right
+type. OAuth flows and code samples are deliberately absent; that is what `swagger` is for. Choose it when the
+deployment wants no third-party JavaScript in the response at all.
 
 The viewer fetches the spec from the sibling route rather than having the document inlined, so an edit-and-reload
 cycle shows up on a browser refresh, and so the two routes can be exposed independently — a deployment may want the
@@ -690,6 +740,7 @@ otherwise get a link that 404s from every page but the root.
 | `firefly.openapi.servers` | `[]` | Bare URL strings and/or OpenAPI Server Objects. An entry that is neither — or an object with no `url` — is **dropped**, because it would be invalid under the 3.1 schema and would poison an otherwise-good document. Omitted from the document when empty. |
 | `firefly.openapi.exclude` | `''` | CSV of path **prefixes** left out of the document. Removes them from the spec only; it does not unroute them. |
 | `firefly.openapi.include-html` | `false` | Document `#[Controller]` HTML routes as `text/html` operations. |
+| `firefly.openapi.security.enabled` | `true` | Emit `components.securitySchemes` and each operation's `security` from `firefly.security.*` — see [What the document says about authentication](#what-the-document-says-about-authentication). Nothing is emitted when `firefly.security.enabled` is off, so this key only matters to an application that **has** security. |
 
 The optional Info Object members live on `DocumentInfo` rather than on `OpenApiProperties`, and its constructor
 argument is last and nullable, so every existing three-argument `OpenApiGenerator` construction — the auto-
@@ -735,6 +786,177 @@ separate literal. A rule that covers the console but not its assets produces an 
 
 The alternative, for a deployment that wants no documentation surface in production at all, is
 `firefly.openapi.enabled => false` plus a `firefly:openapi --output=` step in CI.
+
+## What the document says about authentication
+
+`components.securitySchemes` and each operation's `security` are generated from `firefly.security.*`, read through
+the **`Config` port** — no class of `firefly/security` is imported and `deptrac.yaml` gains no edge, which is what
+made this possible at all. It is gated by **`firefly.openapi.security.enabled`** (default `true`) and produces
+nothing when `firefly.security.enabled` is off.
+
+### The schemes
+
+| Emitted when | Name | Security Scheme Object |
+|---|---|---|
+| `firefly.security.oauth2.resource_server.enabled` | `oauth2ResourceServer` | `{type: http, scheme: bearer, bearerFormat: JWT}` with the issuer and audience named in the `description` |
+| `firefly.security.jwt.enabled` | `bearerAuth` | `{type: http, scheme: bearer, bearerFormat: JWT}` |
+| `firefly.security.http_basic.enabled` | `httpBasic` | `{type: http, scheme: basic}` |
+| `firefly.security.oauth2.server.enabled` | `oauth2AuthorizationCode` | `{type: oauth2}` with a real `authorizationCode` flow — this server's own authorization and token URLs, a `refreshUrl` when a client may refresh, and the scopes its authorization-code clients registered. Contributed by **`firefly/security-oauth2-server`**, not by this package |
+
+The last row is the one that needs a *contributor*: the flow URLs live in `AuthorizationServerSettings` and the
+scopes live in the registered clients, neither of which `firefly.security.*` states in a form this package could
+read. An **enabled server publishes it even with no authorization-code client registered**, with an empty `scopes`
+map — the URLs are facts about the server, not about its client registry, and the operations that name the scheme
+name it from the same `oauth2.server.enabled` flag. Publishing on a narrower fact than the one requirements are
+named on is how a document ends up with a dangling `$ref`-like reference `components.securitySchemes` cannot
+resolve. Generating the document never needs that client store to answer: an unreadable one falls back to the same
+empty map, because a missing table in CI must not fail `firefly:openapi` or turn `/openapi.json` into a `500`.
+
+**An `oauth2` scheme's flows declare every scope the document requires of it.** That is the same join read
+backwards, and it is `SecurityModel`'s to make for the same reason: the scheme comes from the package that knows
+the flow, the scope comes from the contributor asked about the route, and only the model sees both lists. Without
+it a `#[PreAuthorize("hasScope('orders.read')")]` publishes `security: [{oauth2AuthorizationCode: [orders.read]}]`
+beside `scopes: {}` — Swagger UI's Authorize dialog offers only what the Flow Object declares, so the button the
+scheme exists for cannot complete the flow for exactly those operations, and Spectral's
+`oas3-operation-security-defined` rejects a requirement naming a scope its scheme does not define. The scopes are
+unioned into **every** flow of the scheme (a requirement names a scheme, never a flow), sorted, and a scope the
+contributor already described keeps that description — the model has no vocabulary of its own and writes the
+scope's own name. `openIdConnect` is left alone: its scopes live in the discovery document `openIdConnectUrl`
+points at, not in this one.
+
+The resource server is deliberately **not** `type: oauth2`: it does not issue tokens and has no flow URLs to
+publish, and an `oauth2` scheme with an empty `flows` object renders in Swagger UI as a form nobody can fill in.
+
+The member is **absent rather than empty** when nothing is configured. An empty map is the positive claim "this
+server takes no credentials", which is true of an application without `firefly/security` and a lie about one with it.
+
+### The requirement on each operation
+
+`firefly.security.http.rules` is first-match-wins and **deny-by-default** once `firefly.security.http.enabled` is
+on, and the document says exactly what the filter does:
+
+| The path | The operation |
+|---|---|
+| matches a `permitAll` rule | carries **no** `security` member — public |
+| matches any other rule | requires the configured schemes |
+| matches **no** rule | requires them too, because deny-by-default is what `HttpSecurityFilter` will do to it |
+
+A `hasScope:` rule puts its scope in the requirement's scope list, beside the bearer scheme only — a `SCOPE_x`
+authority is something a client can ask a token endpoint for, and HTTP Basic has no such vocabulary. `hasRole:`
+and `hasAuthority:` contribute a bare requirement: publishing `['ROLE_ADMIN']` as a scope would name a vocabulary
+no token endpoint has heard of.
+
+**The scope published is the OAuth2 scope, not the authority.** `hasScope:SCOPE_orders.read` and
+`hasScope:orders.read` are the **same** rule — the evaluator normalises the bare form to the `SCOPE_x` authority
+before testing it, exactly as it normalises `ADMIN` to `ROLE_ADMIN` — so the `SCOPE_` prefix is stripped before the
+name is published. A requirement's scope list is what a generated client asks the authorization server for, and no
+client registration holds a scope called `SCOPE_orders.read`.
+
+With `http.enabled` **off** the contributor has *no opinion* — not "public". The absence of URL rules says nothing
+about whether a method rule protects the handler, and `security: []` in OpenAPI is the positive claim that no
+authentication is required.
+
+**Every configured scheme is named, not just one.** The `security` array is an OR-list, and an application running
+HTTP Basic beside a bearer filter really does accept either credential (each filter skips an `Authorization`
+header belonging to the other). Naming one would leave the other published under `securitySchemes` and referenced
+by nothing — an option the document offers a generated client without ever declaring it usable.
+
+**Rule patterns are matched the way the filter matches them.** `HttpSecurity` normalises every pattern to the
+`$request->path()` spelling where the rule is built, so `['pattern' => '/api/*']` and `['pattern' => 'api/*']` are
+one rule for the filter and one rule for the document. This package repeats that normalisation rather than sharing
+it, because `deptrac.yaml` permits it no edge to `firefly/security`.
+
+**A pattern carrying a route placeholder matches nothing — here too.** The generator is asked about a route
+*template* (`/api/orders/{id}`); the filter only ever sees a *request path* (`api/orders/7`). So
+`['pattern' => '/api/orders/{id}', 'access' => 'permitAll']` is a **dead rule**, and the document treats it as one:
+every `{...}` in the template is replaced with a byte no literal can match before the patterns are tried, so
+`api/orders/*` still covers the operation and `api/orders/{id}` does not. Without that, the document would call the
+operation public while the filter answered `401` to every caller of it — fail-**open** documentation, the one
+failure mode this whole section exists to rule out. Write `api/orders/*`.
+
+### Contributing a scheme or a requirement
+
+Two ports let another package add what configuration cannot state:
+
+```php
+interface SecuritySchemeContributor { /** @return list<SecurityScheme> */ public function schemes(): array; }
+interface SecurityRequirementContributor { /** @return list<SecurityRequirement>|null */ public function requirementsFor(RouteDescriptor $route): ?array; }
+```
+
+**Three implementations ship**, and the two beyond `ConfiguredSecurity` are exactly the case the interfaces were
+cut for — a package holding facts `firefly.security.*` cannot express, adding them without this package gaining an
+edge to it:
+
+| Implementation | Package | What it adds |
+|---|---|---|
+| `ConfiguredSecurity` | `firefly/openapi` | the config-driven schemes and the URL-rule requirement, described above |
+| `MethodSecurityRequirementContributor` | `firefly/security` | the requirement a controller action's `#[PreAuthorize]`/`#[Secured]`/`#[RolesAllowed]`/`#[PostAuthorize]` really carries, read from the compiled method-security manifest |
+| `AuthorizationServerSchemeContributor` | `firefly/security-oauth2-server` | the `oauth2AuthorizationCode` scheme with this application's own `authorizationCode` flow |
+
+### Method rules become requirements
+
+A controller action's method rules are enforced by the **dispatcher**, not by a URL rule, so
+`firefly.security.http` may be empty and the operation still be protected — the method-security-first setup
+(Spring's `anyRequest().permitAll()` plus rules on the handlers) is precisely the one the URL contributor cannot
+describe. `MethodSecurityRequirementContributor` looks the route's `controllerClass::methodName` up in the manifest
+and names the configured schemes for it.
+
+- It is gated by **`firefly.security.enabled` alone**. `firefly.security.method.enabled` stands down the *proxy
+  link* (the advice on `#[Service]`/`#[Component]`/`#[Repository]` beans) and never the controller dispatcher, so a
+  contributor that fell silent on it would publish a guarded action with **no** `security` member — OpenAPI's
+  positive claim that no authentication is required.
+- A `#[PostAuthorize]` counts: it refuses through the same `deny()` and the same 401/403. A `#[PreFilter]` or
+  `#[PostFilter]` does not — it narrows a result and refuses nobody.
+- A `hasScope()` the rule demands of **every** caller rides on the token-shaped entries. `hasAnyScope()`, an `or`
+  of scopes, a negation — anything where the names are not all required — publishes a **bare** requirement
+  instead, because a Security Requirement Object's scope list is *conjunctive*: a client generated from
+  `{bearerAuth: ['a','b']}` asks its authorization server for both, and an `hasAnyScope('a','b')` rule never
+  demanded that. Roles and authorities stay out for the reason they always did. A scope written as the authority —
+  `hasScope('SCOPE_orders.read')`, the spelling `SecurityExpressionRoot` documents — publishes as `orders.read`:
+  the two are one rule at runtime, and only the unprefixed name is one a client registration can hold.
+
+Register an implementation as a **`#[Component]`**, not as a `#[Bean]`. Contributors are collected with
+`Container::getAll()`, which reads the `firefly.contract.<interface>` tag, and that tag is written only for
+scanned components — an object a `#[Bean]` factory returns under its own concrete type would be built and then
+silently dropped, with a quietly smaller document as the only symptom. `#[ConditionalOnClass]` and
+`#[ConditionalOnProperty]` work on a `#[Component]` (copy `HttpSecurityFilter`'s shape), so gating costs nothing.
+A `#[Bean]` whose *return type is the interface* is picked up as well, as a rescue — not as the documented shape.
+
+**Requirements merge per scheme name, and an empty list does not win.** The mechanisms behind the contributors
+are *conjunctive at runtime* — a request passes the URL filter **and** the controller dispatcher — so:
+
+- a scheme named by two contributors appears **once**, carrying the **union** of their scope lists. Published
+  twice, the scopeless entry would satisfy the operation on its own under OpenAPI's OR reading and the other's
+  scope would mean nothing at all;
+- an **empty list** (`permitAll`) contributes nothing rather than erasing what another contributor requires. It
+  held while `ConfiguredSecurity` was alone — the one mechanism letting a request through was the whole truth
+  about the path — and became false the moment a second mechanism could refuse independently;
+- the operation is published **public** (no `security` member) only when *no* contributor required anything, which
+  is still the ordinary answer for a path every mechanism opens.
+
+That leaves `null` and `[]` with the same effect on the merged list, which is correct rather than redundant: "I
+have no opinion" and "I require nothing here" are the same contribution to an AND of mechanisms. Scheme names merge
+first-writer-wins and sort by name, so the document does not reshuffle with container iteration order.
+
+**A scheme may carry default scopes.** `SecurityScheme`'s third argument is the scope list a requirement *naming
+that scheme* is published with when it states none of its own:
+
+```php
+new SecurityScheme('oauth2AuthorizationCode', ['type' => 'oauth2', 'flows' => [...]], ['orders.read']);
+```
+
+`SecurityModel` is the only thing that reads it, and it reads it in that one case — a requirement that states its
+own scopes keeps them, because the operation's own claim is the specific one and overwriting it is how a document
+ends up demanding every scope on every path. It exists for the split the two ports create: the package that knows
+the scope vocabulary (an authorization server, whose registered clients hold it) is usually not the one asked
+about each route. The list is deliberately **not** part of the Security Scheme Object — a scheme declares which
+scopes *exist*, a requirement declares which ones an operation *needs*. Every scheme this framework ships leaves
+it empty, so nothing inherits anything unless a contributor asks for it.
+
+What *does* travel from the requirements back into the Scheme Object is the scope **name**: whatever the operations
+end up requiring of an `oauth2` scheme is declared by its flows, so the two halves of one fact are never published
+by only one side. `SecurityModel` is asked for the schemes *after* the paths are built, which is what makes that
+possible at all.
 
 ## Overriding a piece of the pipeline
 
@@ -789,8 +1011,10 @@ compiled route manifest of *every* application for the benefit of one optional p
 - **`x-firefly-constraints` is the escape hatch, not a vocabulary.** Anything JSON Schema cannot state lands there
   verbatim; no attempt is made to translate a checksum rule or a temporal predicate into an approximation that
   would be wrong.
-- **`webhooks`, `security` schemes and `callbacks`** are not emitted — `firefly/security`'s configuration is not
-  reachable from this package without a code edge that `deptrac.yaml` deliberately does not permit.
+- **`webhooks` and `callbacks`** are not emitted. They describe an application's own *outbound* contracts — the
+  requests it sends to somebody else — and no manifest in this framework records those, so a generator that
+  emitted them would be documenting code that does not exist. (`security` schemes **are** emitted now; see
+  [What the document says about authentication](#what-the-document-says-about-authentication).)
 
 ---
 

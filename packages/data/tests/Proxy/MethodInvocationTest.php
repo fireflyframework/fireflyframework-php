@@ -98,3 +98,105 @@ it('is single-use: a second proceed() from the same link reaches the next link, 
     expect($invocation->proceed())->toBe(2)
         ->and($calls)->toBe(1);
 });
+
+/*
+ | …and the escape hatch from that rule, which is what makes #[Retry] beside #[Transactional] safe. A
+ | repeating link takes an invocableClone() per repetition instead of proceeding twice, so every repetition
+ | re-enters the WHOLE remainder — the inner links and the terminal — rather than skipping one inner link per
+ | extra call. Written as the transaction-shaped chain the hazard actually lives in: with a bare second
+ | proceed() the log below reads ['before:tx', 'terminal:1', 'after:tx', 'terminal:2'], i.e. the second run
+ | of the method happened OUTSIDE the transaction.
+ */
+it('re-enters the whole remainder from an invocableClone(), leaving the original invocation where it stood', function () {
+    $log = [];
+    $repeating = new class($log) implements MethodInterceptor
+    {
+        /** @param  list<string>  $log */
+        public function __construct(public array &$log) {}
+
+        public function invoke(MethodInvocation $invocation): mixed
+        {
+            $last = null;
+            for ($attempt = 0; $attempt < 3; $attempt++) {
+                $last = $invocation->invocableClone()->proceed();
+            }
+
+            return $last;
+        }
+    };
+    $terminal = 0;
+    $invocation = new MethodInvocation(new stdClass, stdClass::class, 'work', [], [$repeating, chainLink('tx', $log)], [], static function (array $args) use (&$terminal, &$log): int {
+        $log[] = 'terminal:'.(++$terminal);
+
+        return $terminal;
+    });
+
+    expect($invocation->proceed())->toBe(3)
+        ->and($log)->toBe([
+            'before:tx', 'terminal:1', 'after:tx',
+            'before:tx', 'terminal:2', 'after:tx',
+            'before:tx', 'terminal:3', 'after:tx',
+        ]);
+});
+
+it('gives each invocableClone() its own arguments, so an inner rewrite never leaks back to the original', function () {
+    $seen = [];
+    $repeating = new class implements MethodInterceptor
+    {
+        public function invoke(MethodInvocation $invocation): mixed
+        {
+            $invocation->invocableClone()->proceed();
+
+            return $invocation->invocableClone()->proceed();
+        }
+    };
+    $log = [];
+    $invocation = new MethodInvocation(
+        new stdClass,
+        stdClass::class,
+        'work',
+        [1],
+        // An inner pre-filter: it rewrites the arguments on the way in, on whichever invocation it is handed.
+        [$repeating, chainLink('filter', $log, [10, 20])],
+        [],
+        static function (array $args) use (&$seen): int {
+            $seen[] = $args;
+
+            return array_sum($args);
+        },
+    );
+
+    expect($invocation->proceed())->toBe(30)
+        ->and($seen)->toBe([[10, 20], [10, 20]])
+        // The ORIGINAL never moved: the rewrite landed on the clones, so a link reading the arguments after
+        // the repetitions (a #[Fallback] recovery does exactly that) still sees what the caller passed.
+        ->and($invocation->getArguments())->toBe([1]);
+});
+
+it('re-enters the remainder from a clone even after a repetition threw', function () {
+    $attempts = 0;
+    $repeating = new class implements MethodInterceptor
+    {
+        public function invoke(MethodInvocation $invocation): mixed
+        {
+            try {
+                return $invocation->invocableClone()->proceed();
+            } catch (RuntimeException) {
+                return $invocation->invocableClone()->proceed();
+            }
+        }
+    };
+    $log = [];
+    $invocation = new MethodInvocation(new stdClass, stdClass::class, 'work', [], [$repeating, chainLink('tx', $log)], [], static function (array $args) use (&$attempts): string {
+        if (++$attempts === 1) {
+            throw new RuntimeException('down');
+        }
+
+        return 'ok';
+    });
+
+    // The second repetition ran the inner link again — the throwing one did not consume it.
+    expect($invocation->proceed())->toBe('ok')
+        ->and($log)->toBe(['before:tx', 'before:tx', 'after:tx'])
+        ->and($attempts)->toBe(2);
+});

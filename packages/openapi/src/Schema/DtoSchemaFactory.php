@@ -168,7 +168,13 @@ final class DtoSchemaFactory
             );
         }
 
-        $base = TypeSchema::for($type) ?? [];
+        // A union member arrives with its null arm already in place, which leaves the mapper's own nullable
+        // widening — defined for a single string `type` — nothing to do.
+        $base = $member->union !== null
+            ? TypeSchema::reflected($member->union, fn (string $arm): array => TypeSchema::isDto($arm)
+                ? ['$ref' => $this->ref($arm, $registry, [], [], $elements)]
+                : (TypeSchema::for($arm) ?? []))
+            : (TypeSchema::for($type) ?? []);
 
         // `items` is seeded into the BASE rather than layered on afterwards so the constraint mapper's
         // first-writer-wins ordering sees a complete declared-type fragment — and so `minItems`/`maxItems`

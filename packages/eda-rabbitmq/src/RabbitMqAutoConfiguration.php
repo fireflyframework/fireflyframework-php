@@ -14,6 +14,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\JsonSerializer;
+use Firefly\Eda\Tracing\BrokerTracing;
+use Firefly\Eda\Tracing\EdaTracing;
 
 /**
  * Binds the RabbitMQ EventPublisher + EventConsumer when firefly.eda.provider=rabbitmq. #[Order(900)] (below
@@ -57,13 +59,15 @@ final class RabbitMqAutoConfiguration
 
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'rabbitmq')]
-    public function eventPublisher(Config $config, RabbitMqConnectionFactory $factory, SubscriberRegistry $registry): EventPublisher
+    public function eventPublisher(Config $config, RabbitMqConnectionFactory $factory, SubscriberRegistry $registry, ?EdaTracing $tracing = null): EventPublisher
     {
         return new RabbitMqEventPublisher(
             $factory,
             $registry,
             new JsonSerializer,
             $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events'),
+            null,
+            BrokerTracing::resolve($config, $tracing),
         );
     }
 

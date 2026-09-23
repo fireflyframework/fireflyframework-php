@@ -10,6 +10,7 @@ use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Filter\CorrelationIdFilter;
+use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -34,6 +35,14 @@ use Throwable;
  *     exception and then dropped here, because only Content-Type was ever written on the response.
  *   - `Retry-After` on a 503. The two things that produce one — a starved worker pool, an unreachable
  *     upstream — clear in seconds when they clear at all, and the header is the standard way to say so.
+ *   - `traceId` IS the W3C trace id now, and `correlationId` is its own member beside it. The first bullet
+ *     above described the release in which `traceId` carried the correlation id: a member named after a
+ *     trace holding a value no trace backend had ever heard of. TraceContext::referenceFor() publishes the
+ *     request's W3C trace id when tracing is on and this request has a valid one, and FALLS BACK to the
+ *     correlation id — byte for byte what this document carried before — when it does not, so the only
+ *     thing that changes the value is switching tracing on. The correlation id is not absorbed: it keeps
+ *     `X-Correlation-Id` untouched and gains `correlationId`, and the trace id is echoed on its own header
+ *     (`firefly.web.trace-id.header`, `X-Trace-Id` by default, '' to disable) only when there is one.
  */
 final class ProblemDetailsRenderer
 {
@@ -57,19 +66,33 @@ final class ProblemDetailsRenderer
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
 
         $correlationId = CorrelationIdFilter::of($request);
-        $exception = ProblemMapper::toFireflyException($e, $disclose, $correlationId);
+        $reference = TraceContext::referenceFor($request);
+        $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
+        // The correlation id keeps its own member beside the trace id. They are usually different values
+        // with different jobs — one finds the trace, one matches the caller's own request log — and a
+        // document that published only the first would make the second unrecoverable from the response.
+        // It is passed THROUGH ErrorResponse rather than written onto the array afterwards: the DTO's
+        // member list is what the published OpenAPI component is generated and guarded from, so a member
+        // appended here would be one no generated client decodes.
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
-            traceId: $correlationId,
+            traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
+            correlationId: $correlationId,
         )->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',
             CorrelationIdFilter::HEADER => $correlationId,
         ];
+
+        $traceHeader = TraceContext::header();
+        $traceId = TraceContext::traceId($request);
+        if ($traceHeader !== '' && $traceId !== null) {
+            $headers[$traceHeader] = $traceId;
+        }
 
         if ($e instanceof HttpExceptionInterface) {
             foreach ($e->getHeaders() as $name => $value) {

@@ -10,6 +10,7 @@ use Firefly\Data\Domain\PreCommitEventHook;
 use Firefly\Domain\DomainEvent;
 use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
+use Firefly\Eda\Tracing\EdaTracing;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
@@ -29,6 +30,15 @@ use Illuminate\Database\ConnectionResolverInterface;
  * unconstructible (see PostgresEventPublisher's docblock). Passing the shared instance rather than a throwaway
  * `new SubscriberRegistry` keeps a single registry per application, so there is never a second, invisible one to
  * reason about when debugging a missing delivery.
+ *
+ * THE TRACING IT CARRIES IS NOT OPTIONAL DECORATION. Under firefly.eda.provider=postgres,
+ * PostgresOutboxAutoConfiguration::commandEventPublisher() deliberately NoOps the after-commit eda leg so a domain
+ * event reaches the outbox EXACTLY ONCE — in-tx, here. That makes this hook the ONLY writer of a DomainEvent's
+ * outbox row: the bound EventPublisher bean is reached only by application code calling publish() by hand. So the
+ * EdaTracing this class threads into the per-event PostgresEventPublisher is what decides whether the FLAGSHIP
+ * rows — the ones that commit with the aggregate — carry a `traceparent` at all. It is the gated one
+ * (BrokerTracing::resolve(), honouring firefly.eda.tracing.brokers.enabled), identical to the bean's, so the two
+ * write paths are never traced differently. Null keeps the constructor usable from a test that does not care.
  */
 final class OutboxPreCommitHook implements PreCommitEventHook
 {
@@ -40,6 +50,7 @@ final class OutboxPreCommitHook implements PreCommitEventHook
         private readonly string $defaultDestination,
         private readonly array $destinations,
         private readonly ?CorrelationContext $correlation = null,
+        private readonly ?EdaTracing $tracing = null,
     ) {}
 
     public function handle(object $event, ?string $connection = null): void
@@ -50,7 +61,7 @@ final class OutboxPreCommitHook implements PreCommitEventHook
 
         $conn = $this->connections->connection($connection); // the aggregate's connection — carries the open tx
         $emitNotify = $conn instanceof Connection && $conn->getDriverName() === 'pgsql';
-        $publisher = new PostgresEventPublisher($conn, $this->registry, $this->channel, $emitNotify);
+        $publisher = new PostgresEventPublisher($conn, $this->registry, $this->channel, $emitNotify, $this->tracing);
 
         (new EdaCommandEventPublisher($publisher, $this->defaultDestination, $this->destinations, $this->correlation))
             ->publish($event);

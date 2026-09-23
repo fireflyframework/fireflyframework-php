@@ -67,3 +67,68 @@ it('allows an admin through the admin path', function () {
     $out = httpFilter()->handle(Request::create('/api/admin/users', 'GET'), fn () => new Response('ok'));
     expect($out)->toBeInstanceOf(Response::class);
 });
+
+it('honours a rule spelled with a leading slash, because the pattern is normalised where it is built', function () {
+    // The spelling a RouteManifest path uses, and the one an operator copying a URL out of a browser writes.
+    // Un-normalised it matches nothing — Str::is('/api/public/*', 'api/public/ping') is false — and this
+    // anonymous request would fall through to deny-by-default and throw instead of being let through.
+    $rules = HttpSecurity::fromConfig([
+        ['pattern' => '/api/public/*', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]);
+    $config = new Config(new Repository(['firefly' => ['security' => ['enabled' => true, 'http' => ['enabled' => true]]]]));
+    $filter = new HttpSecurityFilter($rules, new SecurityExpressionEvaluator, RoleHierarchy::fromRules([]), new DenyAllPermissionEvaluator, $config);
+
+    $out = $filter->handle(Request::create('/api/public/ping', 'GET'), fn () => new Response('ok'));
+
+    expect($out)->toBeInstanceOf(Response::class);
+});
+
+/**
+ * A filter over an arbitrary rule list, with both gates on — `shouldNotFilter()` is AND-gated on the master
+ * `firefly.security.enabled` flag and on `firefly.security.http.enabled`, and with either missing every
+ * assertion below would silently pass against an inert filter.
+ */
+function filterOver(HttpSecurity $rules): HttpSecurityFilter
+{
+    $config = new Config(new Repository(['firefly' => ['security' => ['enabled' => true, 'http' => ['enabled' => true]]]]));
+
+    return new HttpSecurityFilter($rules, new SecurityExpressionEvaluator, RoleHierarchy::fromRules([]), new DenyAllPermissionEvaluator, $config);
+}
+
+it('serves a path anonymously once a /-prefixed permitAll rule ahead of a broader rule wakes up', function () {
+    // THE FAIL-OPEN DIRECTION of the pattern normalisation, pinned because it is the one an upgrade has to be
+    // audited for. Before normalisation `Str::is('/admin/*', 'admin/secret')` was false: the first rule was
+    // dead, the `*` rule matched, and this anonymous request was refused. The pattern is now stored as
+    // `admin/*`, so the first rule is the first match and the path is PUBLIC. The CHANGELOG's BREAKING entry
+    // and docs/modules/security.md tell operators to grep for exactly this shape; this test is why that
+    // sentence can be written as fact.
+    $out = filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/admin/*', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]))->handle(Request::create('/admin/secret', 'GET'), fn () => new Response('ok'));
+
+    expect($out)->toBeInstanceOf(Response::class);
+});
+
+it('refuses a path a later permitAll used to open once a /-prefixed denyAll rule wakes up', function () {
+    // The other direction of the same change, and the harmless one: a rule that used to be skipped now denies
+    // first. Both are recorded here so neither reads as an accident later.
+    filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/admin/*', 'access' => 'denyAll'],
+        ['pattern' => '*', 'access' => 'permitAll'],
+    ]))->handle(Request::create('/admin/secret', 'GET'), fn () => new Response('ok'));
+})->throws(AuthenticationException::class);
+
+it('refuses a request a rule spelled with a route placeholder appears to open, because it matches nothing', function () {
+    // The runtime half of the pair the OpenAPI contributor is written against (see
+    // packages/openapi/tests/Security/ConfiguredSecurityTest.php). A pattern is matched against
+    // `$request->path()` — `api/orders/7` — and never against the route template it was copied from, so
+    // `api/orders/{id}` matches nothing at all and the `*` rule takes the request. Normalisation removes a
+    // leading slash and deliberately does NOT invent a wildcard for the placeholder: a matcher that guessed
+    // at the segment's shape would open paths nobody wrote. `api/orders/*` is the spelling that works.
+    filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/api/orders/{id}', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]))->handle(Request::create('/api/orders/7', 'GET'), fn () => new Response('ok'));
+})->throws(AuthenticationException::class);

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Firefly\Actuator;
 
 use Firefly\Actuator\Endpoint\ExposureModel;
+use Firefly\Actuator\Health\DenyHealthDetailsAuthorizer;
+use Firefly\Actuator\Health\HealthDetailsAuthorizer;
 use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Actuator\Server\ManagementServerSettings;
 use Firefly\Config\Config;
@@ -51,5 +53,13 @@ final class ActuatorAutoConfiguration
     public function managementPortGuard(ManagementServerSettings $settings): ManagementPortGuard
     {
         return new ManagementPortGuard($settings);
+    }
+
+    /** The deny-by-default answer to "may this caller read health details" — see HealthDetailsAuthorizer. */
+    #[Bean]
+    #[ConditionalOnMissingBean(HealthDetailsAuthorizer::class)]
+    public function healthDetailsAuthorizer(): HealthDetailsAuthorizer
+    {
+        return new DenyHealthDetailsAuthorizer;
     }
 }

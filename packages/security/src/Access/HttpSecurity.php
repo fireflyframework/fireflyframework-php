@@ -15,6 +15,9 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  * fromConfig() reads the same verbs as `firefly.security.http.rules` access specs: `permitAll`, `denyAll`,
  * `authenticated`, `hasRole:<role>`, `hasAuthority:<authority>` and `hasScope:<scope>` (the `SCOPE_x`
  * authority a bearer token or an OAuth2 login granted); anything else denies.
+ *
+ * Patterns are normalised to the leading-slash-free spelling the filter matches against — see
+ * normalisePattern(); `/api/*` and `api/*` are the same rule, and `/` still means the root path.
  */
 final class HttpSecurity
 {
@@ -30,7 +33,7 @@ final class HttpSecurity
 
     public function requestMatcher(string $pattern): self
     {
-        $this->pending = $pattern;
+        $this->pending = self::normalisePattern($pattern);
 
         return $this;
     }
@@ -102,6 +105,42 @@ final class HttpSecurity
             str_starts_with($access, 'hasScope:') => "hasScope('".self::assertSafeValue(substr($access, 9))."')",
             default => 'denyAll()', // fail-closed: an unrecognised access spec denies
         };
+    }
+
+    /**
+     * EVERY PATTERN IS STORED IN THE SHAPE `$request->path()` HANDS THE FILTER — leading slashes off, because
+     * HttpSecurityFilter matches `Str::is($rule->pattern, $request->path())` and Laravel's `path()` never
+     * carries one. Without this, `['pattern' => '/actuator/health', 'access' => 'permitAll']` — the spelling
+     * half the world writes, and the spelling every route in a RouteManifest uses — is a DEAD rule:
+     * `Str::is('/actuator/health', 'actuator/health')` is false, the request matches nothing, deny-by-default
+     * refuses it, and the operator reads a 401 on the one path they explicitly opened. The failure is silent
+     * (a dead rule looks exactly like a rule that did not apply) and it is also the failure mode that makes a
+     * generated OpenAPI document lie: firefly/openapi reads these same rules to decide which operations
+     * publish a `security` requirement, and a rule that means one thing to the document and nothing to the
+     * filter is a published claim about a path the server does not honour.
+     *
+     * Root is the one path that KEEPS its slash: `$request->path()` answers `'/'` for it, never `''`, so a
+     * `'/'` pattern must stay `'/'` rather than normalising to an empty string that matches nothing.
+     *
+     * THE SLASH IS THE ONLY THING THIS FIXES, and the rest of a RouteManifest path is not a request path: a
+     * pattern is matched against `api/orders/7`, never against the template `api/orders/{id}`, so a pattern
+     * that carries a placeholder is a dead rule that no normalisation can rescue — `api/orders/*` is the
+     * spelling that covers it. Nothing here rewrites one into the other, because a placeholder stands for a
+     * segment whose shape only the route knows and a matcher that guessed at it would be opening paths the
+     * operator did not write. firefly/openapi's ConfiguredSecurity mirrors that reading — it blanks every
+     * placeholder before trying the patterns — so a rule dead for this filter is dead for the document too
+     * rather than being published as a path the server lets through.
+     *
+     * Normalising here rather than in the filter is deliberate — this is the ONE door every rule comes
+     * through (`anyRequest()` and `fromConfig()` both call it), so a rule is in canonical form from the
+     * moment it exists, and anything that reads `UrlAuthorizationRule::$pattern` afterwards — the filter, a
+     * test, an actuator endpoint — sees the same spelling the matcher will use.
+     */
+    private static function normalisePattern(string $pattern): string
+    {
+        $normalised = ltrim($pattern, '/');
+
+        return $normalised === '' ? '/' : $normalised;
     }
 
     /**

@@ -1,9 +1,14 @@
 # Resilience
 
-`firefly/resilience` is LaraFly's resilience layer (a Resilience4j analog): six **programmatic** patterns —
-`Retry`, `CircuitBreaker`, `RateLimiter`, `Bulkhead`, `TimeLimiter`, `Fallback` — each a plain
+`firefly/resilience` is LaraFly's resilience layer (a Resilience4j analog): six patterns — `Retry`,
+`CircuitBreaker`, `RateLimiter`, `Bulkhead`, `TimeLimiter`, `Fallback` — each a plain
 `call(callable): mixed` decorator, built once per named instance from `firefly.resilience.*` by a
 config-driven `ResilienceRegistry`.
+
+There are **two ways to reach them and one implementation of each**: the programmatic model below, and the
+six matching attributes ([Resilience as attributes](#resilience-as-attributes)), which apply the very same
+component objects to a method through the proxy chain `#[Transactional]` already uses. An attribute is a
+second door, never a second policy engine.
 
 ## The programmatic model
 
@@ -127,6 +132,7 @@ read-decide-write is atomic and a trip on one FPM worker is visible to the next.
 | `half-open-max-calls` | int | `1` | Probe calls admitted per HALF_OPEN episode. |
 | `half-open-probe-timeout` | duration | `30s` | Lease length of a half-open probe permit. An expired permit is pruned before permits are counted, so a probe whose worker died does not consume a slot forever. `0` disables permit holding entirely. |
 | `record-on` | list\<class-string\<Throwable\>\> | `[Throwable::class]` | Only these exceptions count as failures; anything else propagates without affecting the breaker's state — and explicitly *returns* the probe permit it took, so an ignored exception leaves the episode exactly as it found it. |
+| `idle-ttl` | duration\|null | `720h` (30 days) | How long the breaker's record may sit untouched before the cache may reclaim it, **refreshed on every call — admitted *or* rejected**, so a breaker that is being used can never lose its record. The rejected calls are the important half: an OPEN breaker performs no transition while it sheds load, so a transition-only refresh would let its record expire mid-outage and read back CLOSED. A reclaimed key rebuilds CLOSED — for a breaker that has genuinely taken no calls for `idle-ttl`, the state it would decide anyway *provided `idle-ttl` comfortably exceeds `wait-duration-in-open`*, which is why thirty days is indistinguishable from "never" here (`wait-duration-in-open` is thirty *seconds*). Keep that margin if you lower it. `null`, `0` or a negative duration all mean **never expire**, never "expire immediately". It is also the constructor's default, so a `CircuitBreaker` built by hand is bounded unless it passes `idleTtl: null`. |
 
 #### Probe permits are leases, and `state()` reports the effective state
 
@@ -160,6 +166,7 @@ callers that want to check admission without invoking a callable.
 | `max-tokens` | int | `10` | Bucket capacity. |
 | `refill-rate` | float | `10.0` | Tokens added per second (capped at `max-tokens`). |
 | `timeout` | duration | `0` | How long to poll for a token before rejecting (`0` = fail fast). |
+| `idle-ttl` | duration\|null | `720h` (30 days) | How long the bucket may sit untouched before the cache may reclaim it, **refreshed on every acquisition** — granted or refused — so a limiter under load can never lose its bucket. The reclaim is invisible: the bucket refills at `refill-rate` per second and a missing record reads as a FULL bucket, so after `max-tokens / refill-rate` seconds of silence a reclaimed bucket and a live one are the same bucket. The exception is `refill-rate: 0`, a hard quota rather than a rate, where reclaiming the key hands the quota back — set `idle-ttl` to `null` for that one. `null`, `0` or a negative duration all mean **never expire**, never "expire immediately". It is also the constructor's default, so a `RateLimiter` built by hand (one bucket per client id, per IP, …) is bounded unless it passes `idleTtl: null`. |
 
 ### Bulkhead
 
@@ -212,7 +219,7 @@ Any exception not in `on` (default `[Throwable::class]`, i.e. everything) rethro
 ## Composition and decorator ordering
 
 Every pattern shares the same `call(callable): mixed` shape, so they compose by nesting closures — there is
-no fluent chain in M7 (see [Known-latent](#known-latent)). A typical outside-in stacking order, from the
+no fluent decorator DSL (see [Known-latent](#known-latent)). A typical outside-in stacking order, from the
 caller's perspective, mirrors Resilience4j's convention — outermost catches/observes the most, innermost sits
 closest to the real call:
 
@@ -236,8 +243,106 @@ $result = $fallback->call(fn (): Receipt =>
 `Fallback` outermost means it can recover from *any* of the inner patterns' own exceptions (a tripped
 breaker, an exhausted retry, a timed-out call). `Retry` wrapping `CircuitBreaker` means a retry attempt
 that finds the breaker OPEN will retry against the still-open breaker rather than skip straight to failure —
-order the two the other way around if you want retries to stop the instant the breaker trips. There is no
-enforced ordering; compose the nesting that matches the semantics you want.
+order the two the other way around if you want retries to stop the instant the breaker trips. In the
+programmatic model there is no enforced ordering; compose the nesting that matches the semantics you want.
+The **attributes are the opposite**: their nesting is fixed, and it is Resilience4j's — see
+[the composition, fixed](#the-composition-fixed) below.
+
+## Resilience as attributes
+
+The same six patterns, applied to a method. `#[Retry]`, `#[CircuitBreaker]`, `#[RateLimiter]`,
+`#[Bulkhead]` and `#[TimeLimiter]` each name an instance configured under `firefly.resilience.*`;
+`#[Fallback]` names a method on the same class to call when the guarded call finally fails.
+
+```php
+#[Service]
+class PaymentService
+{
+    #[Bulkhead('payments')]
+    #[TimeLimiter('payments')]
+    #[RateLimiter('payments')]
+    #[CircuitBreaker('payments')]
+    #[Retry('payments')]
+    #[Fallback(method: 'chargeUnavailable')]
+    public function charge(string $account, int $cents): Receipt
+    {
+        return $this->client->charge($account, $cents);
+    }
+
+    public function chargeUnavailable(string $account, int $cents, ?Throwable $cause = null): Receipt
+    {
+        return Receipt::queued($account, $cents);
+    }
+}
+```
+
+Each attribute carries **only the instance name**, because every knob (`max-attempts`, `failure-threshold`,
+`max-tokens`, …) already lives in configuration where an operator can change it without a deploy — the same
+split Resilience4j makes. The five registry-backed attributes target a **method or a class** (a class-level
+attribute applies to every public method; a method-level one replaces it); `#[Fallback]` is method-only,
+because a recovery method is a property of one signature.
+
+**The class-level fan-out stops at a recovery.** A method named by a `#[Fallback]` on the same class does
+*not* inherit the class-level `#[CircuitBreaker]` / `#[Retry]` / `#[RateLimiter]` / `#[Bulkhead]` /
+`#[TimeLimiter]` — Resilience4j's own treatment of `fallbackMethod`. The recovery is invoked on the bean,
+which *is* the proxy, so a guard fanned onto it would be applied by the very link that is unwinding: the
+class breaker that just opened on the failure would refuse the recovery, and the degraded answer would be
+replaced by a `CircuitBreakerOpenException` raised from inside the catch that was handling the outage. A
+pattern written **on** the recovery by hand is still honoured — that is naming the method on purpose — and
+it picks up nothing the class fanned out.
+
+The beans are wrapped by the same machinery `#[Transactional]` uses, so the same limits apply: the guarded
+method must be a non-`final` public method of a non-`final` class reached **through the container** —
+`$this->charge(...)` from inside the same object bypasses the proxy, exactly as in Spring.
+
+A `#[Fallback]` naming a method the class does not have, or one whose signature cannot receive the guarded
+call, **refuses to compile** at `firefly:cache` — never a surprise raised from inside the catch block that
+is handling the outage.
+
+### The composition, fixed
+
+Within the one advice link, the six patterns nest in Resilience4j's own order, outermost first:
+
+```
+Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )
+```
+
+- **`Fallback` outermost**, so it sees the exception the retry finally gave up on. Inside `Retry` it would
+  recover every failed attempt and the retry would "succeed" on the recovery value, so nothing would ever
+  be retried.
+- **`Retry` outside the breaker**, so each attempt is a fresh call the breaker gets to judge — that is how
+  a retry storm trips the breaker instead of hiding from it.
+- **`CircuitBreaker` outside the rate limiter**, so an OPEN breaker refuses in microseconds without
+  spending a token on a call that is not going to happen.
+- **`TimeLimiter` outside the bulkhead**, so the timeout covers the work and not the wait for a permit.
+- **`Bulkhead` innermost**, so a permit is held for the shortest possible window.
+
+### Where the link sits in the proxy chain
+
+The advice runs at **order 200**: inside method security (100), outside the transaction (1000), with method
+metrics (50) outside everything.
+
+```
+#[Timed] ( #[PreAuthorize] ( resilience ( #[Transactional] ( method ) ) ) )
+```
+
+Both halves matter. A call a `#[PreAuthorize]` refuses must **not** spend a retry budget, a bulkhead permit
+or a breaker outcome — a 403 is a caller's mistake, not a downstream failure, and counting it as one is how
+a permissions bug trips a production breaker. And a **retry opens a new transaction per attempt** rather
+than re-running inside one that is already doomed: every attempt re-enters the chain below the resilience
+link, so an attempt that writes rows and then throws is rolled back before the next attempt begins. (The
+mechanism is `MethodInvocation::invocableClone()` — a repeating link cannot simply call `proceed()` twice,
+because the invocation is single-use.) Metrics outside all of it means a timer measures every attempt and
+the waits between them: the latency the caller actually experienced.
+
+### Key
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `firefly.resilience.method.enabled` | bool | `true` | Whether the six attributes are applied. Off makes every resilience attribute **inert** — the proxy runs a pass-through link in place of the resilience one — never half-applied. |
+
+Switching it off does not change the plan: the advice is still compiled, so a cached application and a dev
+application agree on the shape of every proxy, and only the link's behaviour differs.
 
 ## Cache-backed state
 
@@ -289,10 +394,11 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   timeout still blocks the FPM worker for its full duration before the exception is raised. On the `pcntl`
   path, `pcntl_alarm()`'s one-second granularity also means any `timeout` below `1s` is rounded up to `1s`
   (sub-second timeouts always use the post-hoc wall-clock path instead, on every runtime).
-- **Programmatic only — no attribute interception yet.** `#[Retry]`/`#[CircuitBreaker]`-style method
-  interception (annotate a method and have calls to it automatically wrapped) and a fluent decorator DSL both
-  require AOP (method-call interception), which is **SP-5**, not M7. M7's resilience is exclusively the
-  programmatic `$registry->pattern('name')->call(...)` model documented above.
+- **No fluent decorator DSL.** Resilience4j's `Decorators.ofSupplier(…).withRetry(…).withCircuitBreaker(…)`
+  builder has no equivalent here: the programmatic model composes by nesting `call()` closures by hand, and
+  the attributes compose in one fixed order that is not configurable. Attribute interception itself is no
+  longer latent — see [Resilience as attributes](#resilience-as-attributes) — but a caller who wants a
+  nesting other than the documented one must write the closures.
 - **Cache-backed state requires a persistent cache driver with atomic lock support.** `CacheResilienceStore`
   needs both persistence *and* `Illuminate\Contracts\Cache\LockProvider` support from the configured cache
   store to actually survive across FPM requests and stay race-free: `file`, `database`, and `redis` qualify.
@@ -301,9 +407,13 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   cross-request behaviour. The `null` cache driver's locks are no-ops (`withLock()` degrades to running the
   callback without a critical section whenever the driver isn't a `LockProvider`), so it must not be used in
   production for these patterns either.
-- **`CircuitBreaker` and `RateLimiter` records have no idle TTL.** Their cache records are written with no
-  expiry, so an idle key (a payment integration nobody calls for a month) lingers in the cache store
-  indefinitely rather than being reclaimed. This is inert — the next call simply reads whatever state is
-  there — but it is a known, un-bounded cache-growth characteristic worth knowing about for capacity
-  planning. `Bulkhead` is the exception: its permit-set record carries `permit-ttl` and is refreshed on
-  every write, so it disappears once nothing has touched the bulkhead for a full lease.
+- **An idle record is reclaimed on the cache's schedule, not on a sweep the framework runs.** Every
+  cache-backed pattern now writes its record with an expiry refreshed on every write — `idle-ttl` for
+  [`CircuitBreaker`](#circuitbreaker) and [`RateLimiter`](#ratelimiter), `permit-ttl` for
+  [`Bulkhead`](#bulkhead) — so a retired integration's key stops living in the cache forever, which is what
+  it used to do. What remains latent is that this is the ONLY reclamation there is: nothing enumerates or
+  prunes `firefly:resilience:*` keys, so a driver whose expiry is lazy (the `file` and `database` stores
+  delete an expired entry when it is next read) keeps the bytes on disk until something asks for that key
+  again, and a key whose name your code stopped using is never asked for. The bound is on a record's
+  LIFETIME, not on the store's size. Set `idle-ttl` to `null` (or `0`) to opt a specific instance out of even
+  that bound — the right choice for a `refill-rate: 0` hard quota, which must not be handed back.

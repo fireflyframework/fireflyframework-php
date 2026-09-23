@@ -379,6 +379,10 @@ string literal). `findFirst…` returns one DTO or null; `count`/`exists`/`delet
 Interface-style projections (Spring's `interface RecordSummary { String getEmail(); }`) are not offered —
 PHP has no proxy that could implement an interface by column name at runtime; declare the DTO.
 
+A **trailing `Pageable` combines** with the projection on a derived method: the window is taken in the
+database and one DTO is hydrated per row of it (`Slice` over-fetches `size + 1` for `hasNext`);
+`firefly.data.projection.pageable` restores the old unpaged list.
+
 ### `#[Lock]`
 
 `PESSIMISTIC_WRITE` compiles to `lockForUpdate()`, `PESSIMISTIC_READ` to `sharedLock()`:
@@ -714,6 +718,7 @@ a kernel `OptimisticLockingFailureException` (409). See [Error Handling](error-h
 | `firefly.data.transaction.default-timeout` | `0` | seconds a `#[Transactional]` method may run when it names no `timeout:`; 0 = none — see [Transactions](transactional.md#timeouts) |
 | `firefly.data.transaction.statement-timeout` | `true` | issue the driver-level statement timeout at transaction start (the wall-clock check is always on when a timeout is set) |
 | `firefly.data.transactional-event-listeners.enabled` | `true` | register `#[TransactionalEventListener]` methods — see [Transactions](transactional.md#transactional-event-listeners) |
+| `firefly.data.projection.pageable` | `true` | a `#[Projection]` method taking a trailing `Pageable` pages **in the database** and hydrates one DTO per row of the window; `false` restores the old behaviour, where the projection won and the whole unpaged result came back |
 
 ## Known-latent
 
@@ -724,8 +729,12 @@ a kernel `OptimisticLockingFailureException` (409). See [Error Handling](error-h
   placeholder used twice needs the argument twice.
 - **Interface projections are out** — PHP has no runtime proxy for an interface keyed by column name; declare
   the DTO class.
-- **A `#[Projection]` and a trailing `Pageable` do not combine**: the projection returns the whole (unpaged)
-  result. Page the entities, or add a `LIMIT` to the `#[Query]`.
+- **A `#[Projection]` and a trailing `Pageable` combine on a DERIVED method, not on a `#[Query]` one.**
+  `findByStatus(string $status, Pageable $p): Page` selects the DTO's columns and pages **in the database**,
+  hydrating one DTO per row of the window; declaring `Slice` fetches `size + 1` and reports `hasNext`. A
+  `#[Query]` method's SQL still owns its own select list *and* its own window — the framework does not rewrite
+  hand-written SQL — so page it with a `LIMIT`/`OFFSET` of its own. Set `firefly.data.projection.pageable` to
+  `false` for one release if call sites relied on the old unpaged list.
 
 ---
 

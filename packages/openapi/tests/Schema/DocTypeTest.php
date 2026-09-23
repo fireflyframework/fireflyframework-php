@@ -128,3 +128,15 @@ it('splits a tag line into its type expression and the prose after it', function
     expect($prose)->toBe('')
         ->and($schema)->toBe(['$ref' => '#/components/schemas/Consignment']);
 });
+
+it('spells `X|null` exactly as it spells `?X`, whatever X is', function () use ($ref) {
+    // `@property Carbon|null $shipped_at` is how IDE helpers write every nullable column, and `?Carbon` is how a
+    // declared type writes it: one type, so one schema — the format kept beside a widened type, not an anyOf.
+    $dated = static fn (string $class): array => is_a($class, DateTimeInterface::class, true)
+        ? ['type' => 'string', 'format' => 'date-time']
+        : $ref($class);
+
+    expect(DocType::schema('\DateTimeImmutable|null', $dated))->toBe(['type' => ['string', 'null'], 'format' => 'date-time'])
+        ->and(DocType::schema('null|\DateTimeImmutable', $dated))->toBe(DocType::schema('?\DateTimeImmutable', $dated))
+        ->and(DocType::schema('\\'.Money::class.'|null', $ref))->toBe(['anyOf' => [['$ref' => '#/components/schemas/Money'], ['type' => 'null']]]);
+});

@@ -21,6 +21,15 @@ the wiring passes run already carries the ids; both go through one idempotent `L
   (`RequestContextFilter`). Nothing is added for an id that is not known — a plain-text line with tracing off
   looks exactly as it did.
 
+A channel an application **builds** rather than configures — `Log::build(['driver' => 'single', …])`, the
+per-tenant file a job opens — is never seen by that wiring, so `FireflyContextLogProcessor` covers it from the
+other side: `LogManager` pushes `Illuminate\Contracts\Log\ContextLogProcessor` onto **every** channel it
+creates, and the framework binds that contract to a decorator running Laravel's own processor first and then
+the same two above. A configured channel carries both and reads identically (both passes write the same
+fields from the same `Context`); an on-demand one now carries the ids as well, though not the structured
+formatter — see [Known-latent](#known-latent). `firefly.logging.structured.all-channels` turns the rebinding
+off.
+
 ## Structured logging
 
 Two keys in `config/firefly.php`, both shipped at their defaults in the reference — `format` is `''` (Laravel's
@@ -86,6 +95,7 @@ format is a boot-time decision.
 |---|---|---|
 | `firefly.logging.structured.format` | `''` | `''` \| `json` \| `ecs` \| `logstash`. |
 | `firefly.logging.structured.channels` | `[]` | Channel names to format (and to carry the id processors); empty means `logging.default`; a name not defined under `logging.channels` refuses to boot. |
+| `firefly.logging.structured.all-channels` | `true` | Bind `ContextLogProcessor` to the framework's decorator, so a channel built after boot (`Log::build()`, a stack a package creates) carries the correlation and trace ids too. Off leaves Laravel's own binding in place and the listed channels unaffected. |
 | `firefly.observability.tracing.service-name` | `''` | Shared with tracing: the `service.name` on every line; empty falls back to `app.name`. |
 
 ## Laravel comparison
@@ -100,5 +110,12 @@ format is a boot-time decision.
 
 - **`gelf` and `logfmt`** are not offered; Monolog has a `GelfMessageFormatter`, and a channel can still set
   it through Laravel's own `formatter` key.
-- **The processors are attached per channel, at resolution time.** A channel created after boot through
-  `Log::build()` gets neither the ids nor the formatter.
+- **The ids reach every channel, including one built after boot.** `LogManager` hands
+  `Illuminate\Contracts\Log\ContextLogProcessor` to every channel it creates — on-demand ones from
+  `Log::build()` included — so the framework binds that contract to a decorator carrying the correlation id
+  and the W3C trace ids, with Laravel's own context processor preserved **inside** it (the application's
+  `Context::add()` values are still written, and the framework's ids are written over a user key of the same
+  name rather than under it). What still does **not** reach an on-demand channel is the structured
+  **formatter**: a formatter is set on handlers built from a config array this package never sees, and there
+  is no container seam for those, so such a channel carries the ids and Monolog's line format. Gated by
+  `firefly.logging.structured.all-channels`.
