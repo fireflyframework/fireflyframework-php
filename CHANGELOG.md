@@ -434,8 +434,11 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   span is a child of the trace the row carries rather than a new root that overwrites it. New key
   **`firefly.eda.tracing.brokers.enabled`** (default `true`) keeps in-process spans while putting no trace
   identifier on a wire a third party reads; it is read in one place, `Firefly\Eda\Tracing\BrokerTracing`, by the
-  three publisher beans AND by `RelayDownstream`'s constructor overrides, because a gate that lives only in a
-  bean fails open wherever the container autowires a publisher instead.
+  three publisher beans AND by `RelayDownstream`, because a gate that lives only in a bean fails open wherever
+  the container autowires a publisher instead. The relay applies it whether its downstream names a shipped
+  adapter by the alias (`rabbitmq`) or by that adapter's own class-string — two spellings of one downstream,
+  which now take the same configured path and carry `firefly.eda.rabbitmq.exchange` / the Kafka broker list
+  across it alike. A publisher the framework ships no adapter for stays yours to construct and yours to gate.
 
 - **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
   page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem

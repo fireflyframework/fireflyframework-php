@@ -31,7 +31,9 @@ downstream with `firefly.eda.postgres.relay.downstream_provider`, which accepts:
 
 * `rabbitmq` / `kafka` — the shipped adapter, built from that package's own config keys
   (`firefly.eda.rabbitmq.exchange`, `firefly.eda.kafka.brokers`);
-* the class-string of any `EventPublisher`, or the id of anything bound in the container;
+* the class-string of any `EventPublisher`, or the id of anything bound in the container — a shipped
+  adapter's own class-string is treated exactly as its alias, so it is built from the same config keys and
+  honours `firefly.eda.tracing.brokers.enabled` the same way;
 * nothing at all, if you instead bind your own ready-made publisher under the container id
   `firefly.eda.relay.downstream` (`RelayDownstream::BINDING`) — the escape hatch for a downstream needing
   credentials or transport options this package has no business knowing about.

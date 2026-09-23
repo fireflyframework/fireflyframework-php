@@ -87,10 +87,12 @@ trace the row carries instead of a fresh root.
 It does nothing unless `firefly.observability.tracing.enabled` and `firefly.observability.tracing.eda.enabled`
 are on (with them off the bound `EdaTracing` is the no-op). Set it to `false` to keep in-process spans while
 refusing to put trace identifiers on a wire someone else reads. The key is read in exactly one place —
-`Firefly\Eda\Tracing\BrokerTracing` — by the three publisher beans and by `RelayDownstream`'s `rabbitmq`/`kafka`
-constructor overrides, because a gate that lives only in a bean fails open wherever a publisher is built by
-container autowiring. A downstream you name by class-string, or bind yourself under
-`firefly.eda.relay.downstream`, is yours to construct and therefore yours to gate.
+`Firefly\Eda\Tracing\BrokerTracing` — by the three publisher beans and by `RelayDownstream`, because a gate
+that lives only in a bean fails open wherever a publisher is built by container autowiring. The relay honours it
+whether you name a shipped adapter by its alias (`rabbitmq`) or by its own class-string: both spellings take the
+same configured path. A downstream of your OWN — a publisher class this package ships no adapter for, or one you
+bind under `firefly.eda.relay.downstream` — is yours to construct and therefore yours to gate; call
+`BrokerTracing::resolve()` where you build it.
 
 !!! note "No config key activates a broker by itself"
     Installing `firefly/eda-postgres` (say) via Composer does nothing until `firefly.eda.provider=postgres`
@@ -206,7 +208,9 @@ Kafka — just the natural insertion order of one table).
 `firefly:outbox:relay` is a **distinct, optional** path that fronts a **different downstream broker**. Enable
 it by setting `firefly.eda.postgres.relay.downstream_provider` — to a shipped alias (`rabbitmq`/`kafka`), to
 an `EventPublisher` class-string, or to the id of a binding you supply — or by binding your own publisher
-under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset).
+under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset). A
+shipped adapter named by its OWN class-string is the same downstream as its alias and resolves identically,
+config keys and broker-tracing gate included.
 
 With neither configured, running the command **fails** with a console error naming the key and the available
 aliases, and exits `FAILURE`. That is deliberate: an operator who starts the relay expects rows to move, and a

@@ -155,11 +155,14 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 
 ## Known-latent
 
-- **A downstream named by class-string skips the broker gate.** `firefly.eda.tracing.brokers.enabled` is
-  applied by `BrokerTracing`, which the three adapters' `#[Bean]` methods and `RelayDownstream`'s
-  `rabbitmq`/`kafka` constructor overrides all call. A relay downstream named by its own class-string (or bound
-  under `firefly.eda.relay.downstream`) is built by the application, so its tracing is the application's to
-  choose — the same rule that already applies to `firefly.eda.rabbitmq.exchange` on that route.
+- **A FOREIGN downstream publisher gates itself.** `firefly.eda.tracing.brokers.enabled` is applied by
+  `BrokerTracing`, which the three adapters' `#[Bean]` methods and `RelayDownstream` both call — including when
+  a shipped adapter is named by its own class-string instead of its alias, since the two are one downstream and
+  resolve identically. What the gate cannot reach is a relay downstream that is neither: your own publisher
+  class, or one you bind under `firefly.eda.relay.downstream`. `firefly/eda-postgres` knows no constructor
+  arguments for a class it ships no adapter entry for, so the container autowires it and the bound `EdaTracing`
+  reaches it whatever the key says. Call `BrokerTracing::resolve()` in your own factory, exactly as the three
+  shipped adapters do.
 - **The gate does not strip a `traceparent` a row already carries.** Turning the key off stops our publishers
   writing one, so a row written while it was off has none. A row written BEFORE it was turned off keeps its
   `traceparent` and the relay still forwards it, as it forwards a header a foreign producer set.

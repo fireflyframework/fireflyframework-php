@@ -1970,9 +1970,11 @@ return [
          | `firefly.observability.tracing.eda.enabled` are on, because with them off the bound EdaTracing is
          | the no-op. Set this to false to keep in-process spans while refusing to put trace identifiers on
          | a wire someone else reads: it is read in ONE place (Firefly\Eda\Tracing\BrokerTracing), by the
-         | three publisher beans AND by the relay's downstream overrides, so it cannot be bypassed by a
-         | publisher the container autowires. A downstream you name by class-string, or bind yourself under
-         | `firefly.eda.relay.downstream`, is yours to construct and therefore yours to gate.
+         | three publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
+         | applies it whether you name the adapter by its alias (`rabbitmq`) or by its own class-string.
+         | A downstream of your OWN, bound under `firefly.eda.relay.downstream` or named by a publisher
+         | class this framework ships no adapter for, is yours to construct and therefore yours to gate:
+         | call BrokerTracing::resolve() where you build it.
          |
          | Default: true.
         */
