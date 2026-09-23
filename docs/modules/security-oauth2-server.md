@@ -99,6 +99,10 @@ redirected** — the resource owner sees the framework's 400 page — and everyt
 | `/connect/logout` | GET, POST | RP-initiated logout: `id_token_hint` (verified; expiry ignored), optional `client_id`, `post_logout_redirect_uri` (registered, exact) and `state`; the session is ended through the security core's `LogoutHandler` — the same bean `LogoutFilter` uses — and the browser redirected (or sent to `/`). |
 | `/connect/register` (off) | POST | RFC 7591 with a bearer carrying `client.create`; `201` with the metadata and the secret, once. The bearer is **single-use**: a successful registration invalidates it, so one initial access token registers one client, and a body asking for `client.create` itself is refused. |
 
+![The same round trip seen from the authorization server: /oauth2/authorize behind OAuth2AuthorizationServerFilter at -82, the server's own login and consent pages, the single-use code, the back-channel /oauth2/token exchange that checks the PKCE verifier, and /oauth2/jwks, where the relying party verifies the id token's signature](../assets/diagrams/oauth2-authorization-code.svg)
+
+Three of those rows — `/oauth2/authorize`, `/oauth2/token` and `/oauth2/jwks` — are one conversation, and the figure above is that conversation with a relying party drawn beside it. The middle lane happens to be `firefly/security-oauth2-client`; any RFC 6749 client sees the same right-hand lane. The server's own half is worth reading twice: `/oauth2/authorize` is a **browser** endpoint that needs a signed-in resource owner, so it runs this application's own form login and consent page before it mints anything, while `/oauth2/token` is a **back-channel** endpoint that authenticates the *client* and never looks at a session. The ordered list below is the right-hand lane of the figure, in full.
+
 ### The authorization endpoint, in order
 
 1. `client_id` and `redirect_uri` (exact match against the registered list; may be omitted when the client

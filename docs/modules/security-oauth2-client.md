@@ -88,6 +88,10 @@ rather than taking every other way in down with it.
 
 ## The login flow
 
+![The authorization-code round trip with PKCE: the browser, a LaraFly relying party and a LaraFly authorization server, with every real endpoint path, the single-use state, the nonce, the S256 challenge and the back-channel token exchange](../assets/diagrams/oauth2-authorization-code.svg)
+
+The trace below picks the flow up at the start URL. What sends a browser there first is the ordinary entry point: `HttpSecurityFilter` denies the anonymous request at `-70`, `LoginUrlAuthenticationEntryPoint` saves the GET and redirects to `firefly.security.form_login.login_page` (`/login` by default), and the login page carries one "Sign in with {client_name}" button per `authorization_code` registration (see **The login page** below). Nothing in firefly/security redirects straight to a provider — the page is always the hop in between, which is what makes two providers, or a provider plus a password form, one screen rather than a choice made in configuration.
+
 ```
 GET /oauth2/authorization/{id}   OAuth2AuthorizationRequestRedirectFilter (-89)
   → OAuth2AuthorizationRequestResolver: state (32 random bytes), nonce (always, for `openid`), PKCE verifier (S256)

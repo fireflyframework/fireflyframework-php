@@ -226,6 +226,12 @@ Every rule compiles to the **exact same expression grammar** `#[PreAuthorize]` u
 
 ::: figure art/figures/security-filter-chain.svg | Figure 10.1 — HttpSecurityFilter is the last link of an ordered chain: every filter's real #[Order] value, the two framework filters prepended ahead of all of them, and the DelegatingAuthenticationEntryPoint an anonymous denial reaches — a login redirect, a Basic challenge or a 401.
 
+Three of those numbers do one job between them. `OAuth2AuthorizationRequestRedirectFilter` at `-89` starts a sign-in with a provider, `OAuth2LoginAuthenticationFilter` at `-88` finishes it, and `OAuth2AuthorizationServerFilter` at `-82` is what a request hits when *you* are the provider. The first two are `firefly/security-oauth2-client`, the third is `firefly/security-oauth2-server`, and neither package needs the other: either half works against any conformant counterpart on the far side.
+
+Figure 10.2 follows one sign-in through both halves at once, because the thing worth understanding about the authorization-code grant is not any single step but which secret each party holds at which moment. Start at the top left with a rule you have already written: `GET /orders` matches no `permitAll()`, `HttpSecurityFilter` denies it at `-70`, and the entry point does exactly what it does for form login — saves the GET and redirects to `/login`. What is different is that the login page now carries a button per registration, and that button goes to `/oauth2/authorization/{id}`. From there the browser never carries a secret again: the code it brings back is worthless without the PKCE verifier, which never left the relying party's session, and is spent in a back-channel `POST /oauth2/token` no browser ever sees.
+
+::: figure art/figures/oauth2-authorization-code.svg | Figure 10.2 — One sign-in, end to end: HttpSecurityFilter denies the request and the entry point saves it and redirects to /login, the login page's provider button starts the round trip at /oauth2/authorization/{id} with a single-use state, a nonce and an S256 code challenge, the authorization server runs its own login and consent pages before minting a single-use code, and the relying party spends that code and the verifier in a back-channel token exchange whose id token is checked against /oauth2/jwks.
+
 ---
 
 ## Method security: the closed-whitelist expression grammar
