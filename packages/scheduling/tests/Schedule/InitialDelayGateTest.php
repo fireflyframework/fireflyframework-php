@@ -15,11 +15,22 @@ use Psr\Log\LoggerInterface;
 /** Ten minutes, already parsed — the gate is handed seconds, never a duration string (see isDue()). */
 const TEN_MINUTES = 600.0;
 
-function delayGate(?Repository $cache = null, bool $enabled = true, ?LoggerInterface $logger = null): InitialDelayGate
+/** The key every anchor below is written under, spelled once. */
+const WARMUP_ANCHOR = InitialDelayGate::ANCHOR_PREFIX.'App\\Tasks\\Warmup::run';
+
+/**
+ * One `schedule:run` process. `$release` is what THIS deployment calls itself
+ * (firefly.scheduling.initial-delay.release); '' is the default — no deployment names itself, so the anchor
+ * is permanent and shared by every release that ever runs.
+ */
+function delayGate(?Repository $cache = null, bool $enabled = true, ?LoggerInterface $logger = null, string $release = ''): InitialDelayGate
 {
     return new InitialDelayGate(
         $cache ?? new Repository(new ArrayStore),
-        new Config(new ConfigRepository(['firefly' => ['scheduling' => ['initial-delay' => ['enabled' => $enabled]]]])),
+        new Config(new ConfigRepository(['firefly' => ['scheduling' => ['initial-delay' => [
+            'enabled' => $enabled,
+            'release' => $release,
+        ]]]])),
         $logger,
     );
 }
@@ -155,4 +166,117 @@ it('never becomes due when each tick runs in its own process against a store tha
     }
 
     expect($verdicts)->toBe(array_fill(0, 10, false));
+});
+
+/*
+ * WHAT A REDEPLOY DOES TO A WINDOW THAT WAS ALREADY ARMED — the half of this feature that was described but
+ * never pinned. The anchor has NO EXPIRY and nothing forgets it, so on the cross-process store an initial
+ * delay demands under cron it outlives the deployment that wrote it: with no release named, `initialDelay`
+ * holds a task back once in the life of the cache key, and the deploy that follows reads a week-old anchor
+ * and runs the task on its first tick. That is a defensible default (a one-off warm-up for a task that has
+ * just been introduced) but it is not Spring's, and the difference between the two readings is a task
+ * running when somebody believed it would wait — so both are written down now, and both are pinned here.
+ */
+
+it('does NOT re-arm the window across a redeploy while no release is named', function (): void {
+    // Two gates, one surviving anchor: a brand-new process a week later, over the store that outlived the
+    // deployment which armed it. The anchor is not rewritten and the task is due immediately.
+    $cache = new Repository(new ArrayStore);
+    $task = delayedTask('10m');
+
+    delayGate($cache)->isDue($task, TEN_MINUTES, 1_000.0);
+    $armed = $cache->get(WARMUP_ANCHOR);
+
+    expect(delayGate($cache)->isDue($task, TEN_MINUTES, 1_000.0 + 604_800.0))->toBeTrue()
+        ->and($cache->get(WARMUP_ANCHOR))->toBe($armed);
+});
+
+it('gives every named release its own window, so the deployment after the first is quiet again', function (): void {
+    $cache = new Repository(new ArrayStore);
+    $task = delayedTask('10m');
+
+    // v1 ships, waits out its ten minutes, and then runs for as long as it stays deployed.
+    delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 1_000.0);
+
+    expect(delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 1_000.0 + 601.0))->toBeTrue();
+
+    // v2 ships a week later: same store, same surviving anchor — but another release armed it, so this one
+    // takes the key over and measures its own window from the first tick IT serves.
+    expect(delayGate($cache, release: 'v2')->isDue($task, TEN_MINUTES, 604_800.0))->toBeFalse()
+        ->and(delayGate($cache, release: 'v2')->isDue($task, TEN_MINUTES, 604_800.0 + 599.0))->toBeFalse()
+        ->and(delayGate($cache, release: 'v2')->isDue($task, TEN_MINUTES, 604_800.0 + 601.0))->toBeTrue();
+});
+
+it('arms ONE window per release, however many processes of that release observe the task', function (): void {
+    // THE HAZARD OF NAMING THE WRONG THING, pinned so nobody reaches for a per-boot identifier: a value that
+    // changed per process would re-anchor every cron minute and the task would never become due at all —
+    // the same silent hang a store that cannot outlive the process causes. Twelve separate processes, one
+    // release: the window the FIRST of them armed is the one all twelve measure.
+    $cache = new Repository(new ArrayStore);
+    $task = delayedTask('10m');
+
+    $verdicts = [];
+    for ($tick = 0; $tick < 12; $tick++) {
+        $verdicts[] = delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 1_000.0 + $tick * 60.0);
+    }
+
+    expect($verdicts)->toBe([...array_fill(0, 10, false), true, true]);
+});
+
+it('takes over an anchor that no release armed, once, when a deployment first names itself', function (): void {
+    // The upgrade path: an application that ran without `release` has bare-timestamp anchors in its shared
+    // store. They belong to no deployment, so the first one to name itself arms its own window over them.
+    $cache = new Repository(new ArrayStore);
+    $task = delayedTask('10m');
+
+    delayGate($cache)->isDue($task, TEN_MINUTES, 1_000.0);
+
+    expect(delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 50_000.0))->toBeFalse()
+        ->and(delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 50_000.0 + 300.0))->toBeFalse()
+        ->and(delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 50_000.0 + 601.0))->toBeTrue();
+});
+
+it('writes a bare timestamp while no release is named, and stamps the release when one is', function (): void {
+    // The value shape matters beyond this class: a bare timestamp is what every anchor already in a
+    // production store holds, and what an operator (or the capstone) writes by hand to open a window early.
+    $plain = new Repository(new ArrayStore);
+    $stamped = new Repository(new ArrayStore);
+
+    delayGate($plain)->isDue(delayedTask('10m'), TEN_MINUTES, 1_000.0);
+    delayGate($stamped, release: 'v1')->isDue(delayedTask('10m'), TEN_MINUTES, 1_000.0);
+
+    expect($plain->get(WARMUP_ANCHOR))->toBe(1_000.0)
+        ->and($stamped->get(WARMUP_ANCHOR))->toBe(['release' => 'v1', 'at' => 1_000.0]);
+});
+
+it('SAYS SO when a new release takes the window over, once per process', function (): void {
+    // "The deploy went out and the task stopped running for ten minutes" is the question this feature
+    // invents, so the take-over is not silent. Under cron every minute is its own process, so a `release`
+    // that wrongly varies per process prints this line every minute instead of hanging without a word.
+    $cache = new Repository(new ArrayStore);
+    $logger = new RecordingLogger;
+    $task = delayedTask('10m');
+
+    delayGate($cache, release: 'v1')->isDue($task, TEN_MINUTES, 1_000.0);
+
+    $redeployed = delayGate($cache, logger: $logger, release: 'v2');
+    $redeployed->isDue($task, TEN_MINUTES, 2_000.0);
+    $redeployed->isDue($task, TEN_MINUTES, 2_060.0);
+
+    expect($logger->mentioning('re-armed'))->toHaveCount(1)
+        ->and($logger->records[0]['level'])->toBe('info')
+        ->and($logger->records[0]['message'])->toContain('App\\Tasks\\Warmup::run')
+        ->and($logger->records[0]['message'])->toContain('[v2]');
+});
+
+it('says nothing at all when no release is named and the anchor is simply read back', function (): void {
+    // The default path must stay quiet: an anchor being reused is not an event, it is the design.
+    $cache = new Repository(new ArrayStore);
+    $logger = new RecordingLogger;
+    $task = delayedTask('10m');
+
+    delayGate($cache, logger: $logger)->isDue($task, TEN_MINUTES, 1_000.0);
+    delayGate($cache, logger: $logger)->isDue($task, TEN_MINUTES, 1_000.0 + 604_800.0);
+
+    expect($logger->records)->toBe([]);
 });

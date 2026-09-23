@@ -87,3 +87,43 @@ it('anchors in the application cache store, so the next schedule:run process mea
 
     expect(Cache::get(DELAY_ANCHOR_KEY))->toBe($anchor);
 });
+
+/**
+ * THE REDEPLOY, over the real pipeline. The anchor has no expiry and the cache store outlives the
+ * deployment that wrote it, so by default a window is armed ONCE IN THE LIFE OF THE KEY — the reading the
+ * gate's docblock and the config reference now both state outright. `firefly.scheduling.initial-delay.release`
+ * is what an application sets when it wants Spring's reading instead: every deployment its own quiet period.
+ *
+ * The release is re-read on EVERY tick, which is why setting it mid-test is faithful rather than a shortcut:
+ * in production the next release is a different process reading a different environment, and the take-over
+ * it performs lives entirely in the anchor, not in anything the gate holds between ticks.
+ */
+it('re-arms the window for a deployment that names a new release, and for that alone', function () {
+    /** @var InitialDelayCapstoneTestCase $this */
+    /** @var Schedule $schedule */
+    $schedule = $this->app()->make(Schedule::class);
+    [$delayed] = delayCapstoneEvents($schedule);
+
+    config()->set(InitialDelayGate::RELEASE_KEY, '2026.09.23-a1b2c3d');
+
+    expect($delayed->filtersPass($this->app()))->toBeFalse();
+    $armed = Cache::get(DELAY_ANCHOR_KEY);
+
+    // The next minute's `schedule:run` of the SAME release measures the window already armed — a release
+    // identifier that re-anchored per process would hang the task exactly as a volatile store does.
+    $delayed->filtersPass($this->app());
+
+    expect(Cache::get(DELAY_ANCHOR_KEY))->toBe($armed);
+
+    // That window elapses, and the task runs for as long as this release stays deployed.
+    Cache::put(DELAY_ANCHOR_KEY, ['release' => '2026.09.23-a1b2c3d', 'at' => microtime(true) - 601.0]);
+
+    expect($delayed->filtersPass($this->app()))->toBeTrue();
+
+    // Deploy. The surviving anchor was armed by somebody else's release, so this one takes the key over and
+    // the ten minutes start again — where before this, the week-old anchor admitted the very first tick.
+    config()->set(InitialDelayGate::RELEASE_KEY, '2026.09.24-9f8e7d6');
+
+    expect($delayed->filtersPass($this->app()))->toBeFalse()
+        ->and(Cache::get(DELAY_ANCHOR_KEY))->not->toBe($armed);
+});

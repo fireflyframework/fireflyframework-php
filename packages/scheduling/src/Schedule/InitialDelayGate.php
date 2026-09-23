@@ -23,8 +23,7 @@ use Throwable;
  * minute, whose "application start" is always a second ago, so a window measured from boot would never
  * elapse and the task would never run — a silent hang that looks exactly like a task nobody scheduled. The
  * anchor is therefore written to the cache the first time the gate sees the task and read back by every
- * later process, so the window is measured from the FIRST tick after deployment, whichever process served
- * it.
+ * later process, so the window is measured from that FIRST OBSERVATION, whichever process served it.
  *
  * `add()` is add-if-absent, so the first process to see the task writes the anchor and every later one
  * reads it back rather than resetting it. It is NOT the driver's atomic add here: Laravel only delegates to
@@ -32,6 +31,35 @@ use Throwable;
  * processes racing on the very first tick can both write. They write times within the same tick, which
  * moves the window by less than the scheduler's own resolution — not worth a lock, and worth saying out
  * loud so nobody reads atomicity into the call that is not there.
+ *
+ * HOW LONG "FIRST OBSERVATION" REACHES, stated exactly, because the anchor outlives far more than people
+ * assume. It is written with NO EXPIRY on purpose — it is one small value per scheduled task, it must
+ * outlive any delay an application configures, and an expiry would silently restart the window in the
+ * middle of a deployment's life, which is the outage this class exists to abolish — and nothing else
+ * forgets it either. Over the cross-process store an initial delay requires under cron (redis, memcached,
+ * database) the anchor therefore survives every later restart AND every later deployment: with no release
+ * named, `initialDelay` holds a task back ONCE IN THE LIFE OF THE CACHE KEY. The first deployment waits its
+ * ten minutes; every deployment after it reads an anchor from weeks ago, finds the window long elapsed and
+ * runs the task on its first tick. That is a defensible default — it is the reading under which a delay is
+ * a one-off warm-up for a task that has just been introduced — but it is NOT Spring's, and an operator who
+ * wants the window back re-arms it by deleting the key (`firefly:scheduling:initial-delay:*`).
+ *
+ * `firefly.scheduling.initial-delay.release` is how an application asks for the other reading, the one
+ * where every deployment gets its quiet period. There is no application start to measure from here, so the
+ * framework cannot derive it: the DEPLOYMENT NAMES ITSELF (a git sha, APP_VERSION, the release directory —
+ * whatever the pipeline already has), the anchor records which release armed it, and a process whose
+ * release is not the anchor's arms a fresh window for its own. THE VALUE MUST CHANGE ONCE PER DEPLOYMENT
+ * AND NEVER WITHIN ONE: a value that varies per process (`uniqid()`, the PID, a boot timestamp) re-anchors
+ * every minute and the task NEVER becomes due — the same silent hang a process-local store causes under
+ * cron, for the same reason. Empty (the default) keeps the permanent anchor described above, so an
+ * application that names nothing behaves exactly as it did before this key existed.
+ *
+ * The anchor's VALUE is a bare timestamp while no release is named — the shape this gate has always written
+ * — and `['release' => …, 'at' => …]` once one is. A bare timestamp read while a release IS named was armed
+ * by a deployment that named none, so the first one to name itself takes the key over and arms its own
+ * window, once. The re-arm writes with `forever()` rather than `add()`, the key being occupied by
+ * definition; two processes of the new release racing on it write times within the same tick, which is the
+ * same sub-resolution disagreement the first anchor tolerates.
  *
  * WHAT A STORE THAT CANNOT HOLD THE ANCHOR ACTUALLY DOES, stated exactly, because the obvious guess ("the
  * delay elapses immediately") is wrong in the direction that hurts. The window is measured from the first
@@ -52,9 +80,6 @@ use Throwable;
  *     without its delay is a visible wrong; a task that never runs is an invisible one.
  * `array` is warned about rather than refused, because refusing would make it unusable in exactly the suites
  * that need to assert on scheduling.
- *
- * The anchor is written with no expiry ON PURPOSE: it is one small float per scheduled task, it must
- * outlive any delay an application configures, and losing it silently restarts the window.
  */
 final class InitialDelayGate
 {
@@ -62,10 +87,13 @@ final class InitialDelayGate
 
     public const string STORE_KEY = 'firefly.scheduling.initial-delay.store';
 
+    public const string RELEASE_KEY = 'firefly.scheduling.initial-delay.release';
+
     public const string ANCHOR_PREFIX = 'firefly:scheduling:initial-delay:';
 
     /**
-     * Anchors already reported as unreadable, keyed by anchor key. A resident scheduler would otherwise log
+     * What this process has already said, keyed by anchor key (plus a suffix for the re-arm note, so a task
+     * that is re-armed and later unreadable still reports both). A resident scheduler would otherwise log
      * the same line every tick for the life of the process; one line per task per process is the report.
      *
      * @var array<string, true>
@@ -96,13 +124,10 @@ final class InitialDelayGate
         }
 
         $now ??= microtime(true);
-        $key = self::ANCHOR_PREFIX.$descriptor->class.'::'.$descriptor->method;
+        $key = $this->anchorKey($descriptor);
 
         try {
-            $this->cache->add($key, $now, null);
-
-            /** @var mixed $anchor */
-            $anchor = $this->cache->get($key);
+            $anchor = $this->anchor($descriptor, $this->config->string(self::RELEASE_KEY, ''), $now);
         } catch (Throwable $exception) {
             $this->reportOnce($key, "initial delay anchor for {$descriptor->class}::{$descriptor->method} could not be "
                 ."reached: {$exception->getMessage()} The delay cannot be honoured, so the task is admitted rather than "
@@ -111,7 +136,7 @@ final class InitialDelayGate
             return true;
         }
 
-        if (! is_numeric($anchor)) {
+        if ($anchor === null) {
             $this->reportOnce($key, "initial delay anchor for {$descriptor->class}::{$descriptor->method} is not "
                 .'persisting in the configured store — it read back empty immediately after being written. The delay '
                 .'cannot be honoured, so the task is admitted rather than held back in silence; point `'
@@ -120,7 +145,92 @@ final class InitialDelayGate
             return true;
         }
 
-        return $now >= (float) $anchor + $delaySeconds;
+        return $now >= $anchor + $delaySeconds;
+    }
+
+    /**
+     * The instant THIS release's window opened, or null when the store cannot read back its own write (the
+     * one failure the gate can actually see, reported and failed open by the caller).
+     *
+     * Three outcomes, in the order they are decided: an absent anchor is armed at `$now` by the add-if-absent
+     * below; an anchor this release owns — or any anchor at all while no release is named — is the window,
+     * read back untouched however many processes observe it; an anchor armed by SOMEBODY ELSE'S release is
+     * taken over, which is the whole point of naming one.
+     *
+     * The take-over SAYS SO, once per process, because "the task stopped running right after the deploy" is
+     * the exact question naming a release invents, and it should be answerable from a log line rather than
+     * from this file. Once per process is also the right volume in both deployments: a resident scheduler
+     * re-arms once and logs once, while under cron every minute is its own process — so a `release` that
+     * wrongly varies per process, which re-anchors forever and never lets the task run, prints the line that
+     * names itself every single minute instead of hanging in silence.
+     */
+    private function anchor(ScheduledDescriptor $descriptor, string $release, float $now): ?float
+    {
+        $key = $this->anchorKey($descriptor);
+
+        $this->cache->add($key, $this->record($now, $release), null);
+
+        /** @var mixed $stored */
+        $stored = $this->cache->get($key);
+        $anchoredAt = $this->anchoredAt($stored);
+
+        if ($anchoredAt === null || $release === '' || $this->anchoredFor($stored) === $release) {
+            return $anchoredAt;
+        }
+
+        $this->cache->forever($key, $this->record($now, $release));
+        $this->noteOnce($key.' re-armed', "initial delay for {$descriptor->class}::{$descriptor->method} re-armed for "
+            ."release [{$release}]: the anchor in the store was armed by a different release, so this deployment "
+            .'waits out its window before the task runs again.');
+
+        return $now;
+    }
+
+    private function anchorKey(ScheduledDescriptor $descriptor): string
+    {
+        return self::ANCHOR_PREFIX.$descriptor->class.'::'.$descriptor->method;
+    }
+
+    /**
+     * What the anchor is written as: a bare timestamp while no release is named (the shape every anchor in
+     * the wild already has, and the one the capstone and any operator inspecting the key sees), the
+     * release-stamped record once one is.
+     *
+     * @return float|array{release: string, at: float}
+     */
+    private function record(float $now, string $release): float|array
+    {
+        return $release === '' ? $now : ['release' => $release, 'at' => $now];
+    }
+
+    /** The instant a stored anchor was armed, in either shape, or null when it is neither. */
+    private function anchoredAt(mixed $stored): ?float
+    {
+        if (is_numeric($stored)) {
+            return (float) $stored;
+        }
+
+        if (is_array($stored)) {
+            /** @var mixed $at */
+            $at = $stored['at'] ?? null;
+
+            return is_numeric($at) ? (float) $at : null;
+        }
+
+        return null;
+    }
+
+    /** The release a stored anchor was armed for, or null for a bare timestamp, which was armed for none. */
+    private function anchoredFor(mixed $stored): ?string
+    {
+        if (! is_array($stored)) {
+            return null;
+        }
+
+        /** @var mixed $release */
+        $release = $stored['release'] ?? null;
+
+        return is_string($release) ? $release : null;
     }
 
     private function reportOnce(string $key, string $message): void
@@ -131,5 +241,16 @@ final class InitialDelayGate
 
         $this->reported[$key] = true;
         $this->logger?->warning($message);
+    }
+
+    /** As reportOnce(), for a thing that is working as designed and still worth reading in a log. */
+    private function noteOnce(string $key, string $message): void
+    {
+        if (isset($this->reported[$key])) {
+            return;
+        }
+
+        $this->reported[$key] = true;
+        $this->logger?->info($message);
     }
 }

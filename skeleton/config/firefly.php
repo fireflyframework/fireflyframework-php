@@ -1895,12 +1895,29 @@ return [
         ],
 
         /*
-         | `#[Scheduled(initialDelay: '10m')]` — wait this long after the first tick the application serves,
+         | `#[Scheduled(initialDelay: '10m')]` — hold the task back for this long once its window is armed,
          | then resume the normal cadence. Laravel's frequency DSL cannot express it, so it is applied as a
          | per-tick `when()` predicate against an ANCHOR written to the cache the first time a task is seen.
          | The anchor is in the cache, not in process memory, because the baseline deployment is a cron-driven
          | `schedule:run` — a fresh process every minute, whose own start time would restart the window
          | forever and hang the task silently.
+         |
+         | WHEN THE WINDOW IS ARMED, stated exactly, because the anchor outlives far more than it looks like
+         | it should. It is written with NO EXPIRY and nothing forgets it, so on the cross-process store the
+         | paragraph below insists on, it survives every later restart AND every later deployment: by default
+         | an initialDelay holds a task back ONCE IN THE LIFE OF THE CACHE KEY. The first deployment waits its
+         | ten minutes; a restart or a redeploy does NOT re-arm the window — it reads the old anchor, finds it
+         | long elapsed, and runs the task on its first tick. Deleting the key re-arms it by hand
+         | (`firefly:scheduling:initial-delay:<Class>::<method>`).
+         |
+         | `release` is how every deployment gets its own quiet period instead — Spring's reading, which
+         | measures the window from application start. There is no application start under cron, so the
+         | DEPLOYMENT NAMES ITSELF here: set this to a git sha, APP_VERSION, the release directory, whatever
+         | the pipeline already has. The anchor records the release that armed it, the first process of a
+         | different one arms a fresh window, and the take-over is logged once per process so a deploy that
+         | goes quiet explains itself. THE VALUE MUST CHANGE ONCE PER DEPLOYMENT AND NEVER WITHIN ONE:
+         | something that varies per process (`uniqid()`, the PID, a boot timestamp) re-anchors every minute
+         | and the task NEVER RUNS. '' (the default) keeps the permanent anchor above.
          |
          | `store` names the cache store the anchor lives in ('' = the default store). AN INITIAL DELAY NEEDS
          | A STORE SHARED ACROSS PROCESSES wherever the scheduler is cron-driven. `schedule:run` is a fresh
@@ -1917,11 +1934,12 @@ return [
          | is the behaviour this key exists to make impossible. An unparseable duration is refused at boot
          | too, for the same reason: the predicate runs where Laravel does not contain a throw.
          |
-         | Defaults: enabled true, store ''.
+         | Defaults: enabled true, store '', release ''.
         */
         'initial-delay' => [
             'enabled' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_ENABLED', true),
             'store' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_STORE', ''),
+            'release' => env('FIREFLY_SCHEDULING_INITIAL_DELAY_RELEASE', ''),
         ],
     ],
 
