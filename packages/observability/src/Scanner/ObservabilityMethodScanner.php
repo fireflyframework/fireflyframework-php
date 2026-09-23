@@ -92,6 +92,10 @@ use ReflectionNamedType;
  *   - #[Timed(percentiles:)] — see the attribute's own docblock. Percentile summaries are a documented
  *     Known-latent of this package; the message names `firefly.observability.metrics.distribution.per-meter`,
  *     which is where a percentile actually comes from here.
+ *   - #[Timed(description:)] — the same rule, applied to the same attribute's other decorative parameter.
+ *     PrometheusTextFormat synthesises every `# HELP` line from the sanitised meter name and the family's
+ *     type, and there is no seam from a per-method descriptor to that line, so a description compiled into
+ *     the plan would be read by nothing. Refused rather than carried: the row below does not hold it either.
  *   - Two attributes on ONE method that spell out the SAME meter name for two different meter TYPES —
  *     #[Timed('orders.place')] beside #[Counted('orders.place')], the mainstream one. A Prometheus name has
  *     exactly one type, so the in-process registry refuses the second registration for the life of the
@@ -175,8 +179,8 @@ final class ObservabilityMethodScanner
     /**
      * One class's rows, and the subset of them the class is RESPONSIBLE for — the two answers the second pass
      * needs about it. Every refusal that is a property of the SITE alone (an uninterceptable method carrying
-     * an attribute by hand, a `final` method, `#[Timed(percentiles:)]`) fires here; the ones that depend on
-     * what else was scanned wait for the caller.
+     * an attribute by hand, a `final` method, `#[Timed(percentiles:)]`, `#[Timed(description:)]`) fires here;
+     * the ones that depend on what else was scanned wait for the caller.
      *
      * "Responsible" is ownership of the attribute, not of the method: a class attribute is always the class's
      * own (PHP does not inherit them), and a method attribute belongs to the class that DECLARES the method.
@@ -252,12 +256,21 @@ final class ObservabilityMethodScanner
                 );
             }
 
+            if ($timed !== null && $timed->description !== '') {
+                throw new ConfigurationException(
+                    "#[Timed(description:)] on {$site} cannot be honoured: this package's exposition synthesises "
+                    .'every `# HELP` line from the meter name and its type, so a description would reach no '
+                    .'scrape. Put the sentence in a docblock on the method, or on the dashboard panel that reads '
+                    .'the meter, and drop the parameter.'
+                );
+            }
+
             $this->refuseMeterTypeCollision($site, $timed, $counted, $observed);
 
             $classRules[] = new ObservabilityMethodDescriptor(
                 $class,
                 $method->getName(),
-                $timed === null ? null : ['name' => $timed->value, 'tags' => $timed->extraTags, 'description' => $timed->description, 'longTask' => $timed->longTask],
+                $timed === null ? null : ['name' => $timed->value, 'tags' => $timed->extraTags, 'longTask' => $timed->longTask],
                 $counted === null ? null : ['name' => $counted->value, 'tags' => $counted->extraTags, 'failuresOnly' => $counted->recordFailuresOnly],
                 $observed === null ? null : ['name' => $observed->name, 'contextualName' => $observed->contextualName, 'tags' => $observed->lowCardinalityKeyValues],
             );

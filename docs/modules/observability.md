@@ -130,7 +130,7 @@ injected and no `try`/`finally` written by hand:
 #[Service]
 class OrderService
 {
-    #[Timed('orders.place', extraTags: ['tier' => 'gold'], description: 'Places an order.')]
+    #[Timed('orders.place', extraTags: ['tier' => 'gold'])]
     #[Counted('orders.place.calls')]
     public function place(Basket $basket): Order { /* … */ }
 
@@ -144,7 +144,7 @@ class OrderService
 
 | Attribute | What it records | Tags |
 |---|---|---|
-| `#[Timed(value, extraTags, description, longTask, percentiles)]` | a timer around the call, and the same timer on a throw | `class` (short name), `method`, `exception` (short name, `none` on success), plus `extraTags` |
+| `#[Timed(value, extraTags, longTask)]` | a timer around the call, and the same timer on a throw | `class` (short name), `method`, `exception` (short name, `none` on success), plus `extraTags` |
 | `#[Counted(value, extraTags, recordFailuresOnly)]` | one counter increment per invocation | `class`, `method`, `result` = `success`\|`failure`, `exception`, plus `extraTags` |
 | `#[Observed(name, contextualName, lowCardinalityKeyValues)]` | one **span** and one **timer** under one name — Micrometer's Observation API in one attribute | `class`, `method`, `exception` on the timer; `lowCardinalityKeyValues` on **both** |
 
@@ -192,7 +192,8 @@ a telemetry failure; a changed return value or a swapped exception never is.
 literals. It **refuses** — loudly, where a person can read the message — anything that would compile and then
 be honoured by nothing: an attribute on a class nothing post-processes, on a `final` class or a `final` method
 the class itself declares, written explicitly on a `static` or a `__`-prefixed method, `#[Timed(percentiles:)]`
-(see [Known-latent](#known-latent)), and a `#[Timed]` and `#[Counted]` on one method spelling out the **same**
+and `#[Timed(description:)]` (see [Known-latent](#known-latent)), and a `#[Timed]` and `#[Counted]` on one
+method spelling out the **same**
 meter name — a Prometheus name has exactly one type, so the registry would record the first and refuse the
 second for the life of the process. `#[Timed]` and `#[Observed]` may share a name, both being timers.
 
@@ -313,6 +314,13 @@ rather than answered with a `400`.
   scan time rather than accepted and honoured by nothing, with a message naming
   `firefly.observability.metrics.distribution.per-meter` — the histogram buckets a percentile is actually
   computed from here.
+- **A meter carries no description.** `PrometheusTextFormat` synthesises every `# HELP` line from the
+  sanitised family name and the family's type (`# HELP orders_place orders_place (timer)`), and there is no
+  seam from a meter to a help text: `MetricsRecorder::record()` takes a name, tags and a duration, and a
+  description is family-level metadata a sample-level port cannot carry. `#[Timed(description:)]` is
+  therefore REFUSED at scan time, on the same rule as `percentiles` above — the message says where the `#
+  HELP` line comes from and suggests a docblock on the method instead. Micrometer's `@Timed(description=)`
+  has no equivalent here until the registry itself grows per-family metadata.
 - **OTLP metrics push** — spans export over OTLP; metrics are pull-only (`/actuator/prometheus`).
 - **Multiprocess aggregation is opt-in, and partial.** `firefly.observability.metrics.store` gives counters,
   timers and set-gauges cross-process totals through the cache (see [Surviving the

@@ -137,6 +137,29 @@ it('refuses #[Timed(percentiles:)] and names the key that does publish percentil
 })->throws(ConfigurationException::class, 'firefly.observability.metrics.distribution.per-meter');
 
 /*
+ | …and the same rule for the same attribute's other decorative parameter. Micrometer carries `description:`
+ | to the `# HELP` line; PrometheusTextFormat synthesises that line from the sanitised family name and its
+ | type, and no seam runs from a per-method descriptor to the exposition. A `description:` that compiled into
+ | a row nothing reads is the "accepted and honoured by nothing" this scan exists to refuse, so it is refused
+ | where its author can read the message rather than documented as a surprise.
+ */
+
+it('refuses #[Timed(description:)], which no exposition here could publish', function (): void {
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\Description' => __DIR__.'/../Fixtures/Description']);
+})->throws(ConfigurationException::class, 'every `# HELP` line from the meter name and its type');
+
+it('names the offending site in the #[Timed(description:)] refusal', function (): void {
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\Description' => __DIR__.'/../Fixtures/Description']);
+})->throws(ConfigurationException::class, 'DescribedService::described');
+
+it('leaves a #[Timed] that names no description alone, and compiles no description key into its row', function (): void {
+    $rules = (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\BeanWired' => __DIR__.'/../Fixtures/BeanWired']);
+
+    expect($rules[0]->timed)->toBeArray()
+        ->and($rules[0]->timed)->not->toHaveKey('description');
+});
+
+/*
  | The final-method refusal fires only where its own remedy exists for the person reading it. "Remove `final`
  | from the method" is not an instruction an author can follow about a base class they do not own — and the
  | framework's own AutoConfiguration::register() is final, so a #[Service] #[Timed] subclass of any such base

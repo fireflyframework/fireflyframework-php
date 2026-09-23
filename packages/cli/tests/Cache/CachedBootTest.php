@@ -78,7 +78,7 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
         // leave the whole suite green while a cached app recorded no method meter at all.
         ->and($plan->hasProxyFor(DemoTimedService::class))->toBeTrue()
         ->and(array_keys($plan->adviceFor(DemoTimedService::class)))->toBe([ObservabilityAdviceSource::ID])
-        ->and($plan->methodsFor(DemoTimedService::class)['measured'][0]['row']['timed'])->toBe(['name' => 'demo.timed', 'tags' => [], 'description' => '', 'longTask' => false]);
+        ->and($plan->methodsFor(DemoTimedService::class)['measured'][0]['row']['timed'])->toBe(['name' => 'demo.timed', 'tags' => [], 'longTask' => false]);
 
     /** @var array<string,string> $map */
     $map = require $dir.'/'.FireflyCachePaths::PROXY_MAP;

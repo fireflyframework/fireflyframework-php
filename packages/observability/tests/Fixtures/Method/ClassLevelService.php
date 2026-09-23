@@ -20,7 +20,7 @@ use Firefly\Observability\Method\Timed;
  * attribute written BY HAND on either shape is a refusal, and lives in its own fixture directory.
  */
 #[Service]
-#[Timed('orders.svc', extraTags: ['scope' => 'class'], description: 'Every order operation.')]
+#[Timed('orders.svc', extraTags: ['scope' => 'class'])]
 class ClassLevelService
 {
     public function inherited(): void {}

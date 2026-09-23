@@ -18,7 +18,7 @@ namespace Firefly\Observability\Method;
  * Every optional key is read with a null default in fromArray() for the reason SecurityMethodDescriptor
  * gives: a plan compiled before a key existed must still load.
  *
- * @phpstan-type TimedRow array{name: string, tags: array<string, string>, description: string, longTask: bool}
+ * @phpstan-type TimedRow array{name: string, tags: array<string, string>, longTask: bool}
  * @phpstan-type CountedRow array{name: string, tags: array<string, string>, failuresOnly: bool}
  * @phpstan-type ObservedRow array{name: string, contextualName: string, tags: array<string, string>}
  * @phpstan-type ObservabilityMethodRow array{class: string, method: string, timed?: TimedRow|null, counted?: CountedRow|null, observed?: ObservedRow|null}

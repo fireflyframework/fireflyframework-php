@@ -263,8 +263,9 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   honoured by nothing — an attribute on a class nothing post-processes, on a `final` class or a `final` method
   the class declares, written explicitly on a `static` or `__`-prefixed method, `#[Timed(percentiles:)]`
   (naming `firefly.observability.metrics.distribution.per-meter` — this registry publishes histogram buckets,
-  not client-side quantiles), and a `#[Timed]` and `#[Counted]` on one method spelling out the same meter
-  name, which a Prometheus name's single type makes unrecordable. Every recorder and tracer touch is
+  not client-side quantiles), `#[Timed(description:)]` (this exposition synthesises every `# HELP` line from
+  the meter name and its type, so a description would reach no scrape), and a `#[Timed]` and `#[Counted]` on
+  one method spelling out the same meter name, which a Prometheus name's single type makes unrecordable. Every recorder and tracer touch is
   best-effort behind a guard of its own: a telemetry failure costs a sample, never a return value or an
   exception. `firefly.observability.method.*`.
 

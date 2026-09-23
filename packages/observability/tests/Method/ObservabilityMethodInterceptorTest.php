@@ -153,7 +153,7 @@ function metricsGauge(SimpleMeterRegistry $registry, string $name, array $tags):
 
 it('records a timer around a successful call, tagged exception=none', function (): void {
     $registry = new SimpleMeterRegistry;
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => ['tier' => 'gold'], 'description' => '', 'longTask' => false]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => ['tier' => 'gold'], 'longTask' => false]);
 
     $result = metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
 
@@ -164,7 +164,7 @@ it('records a timer around a successful call, tagged exception=none', function (
 
 it('records the timer tagged with the exception class and rethrows', function (): void {
     $registry = new SimpleMeterRegistry;
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'longTask' => false]);
 
     $call = fn (): mixed => metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): never => throw new RuntimeException('boom')));
 
@@ -196,7 +196,7 @@ it('counts a refusal as a failure, tagged with the exception it threw', function
 
 it('publishes an <meter>.active gauge for a long task and returns it to zero', function (): void {
     $registry = new SimpleMeterRegistry;
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'description' => '', 'longTask' => true]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'longTask' => true]);
 
     metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): int => 3));
 
@@ -216,7 +216,7 @@ it('records an #[Observed] as one timer under its own name', function (): void {
 
 it('does nothing at all when the master key is off', function (): void {
     $registry = new SimpleMeterRegistry;
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'longTask' => false]);
 
     expect(metricsInterceptor($registry, enabled: false)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok')))->toBe('ok')
         ->and($registry->meters())->toBe([]);
@@ -232,7 +232,7 @@ it('does nothing at all when the master key is off', function (): void {
 it('counts the DEPTH of a re-entered long task rather than raising a 1/0 flag', function (): void {
     $registry = new SimpleMeterRegistry;
     $interceptor = metricsInterceptor($registry);
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'description' => '', 'longTask' => true]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'longTask' => true]);
 
     $tags = ['class' => 'OrderService', 'method' => 'importAll'];
 
@@ -264,7 +264,7 @@ it('counts the DEPTH of a re-entered long task rather than raising a 1/0 flag', 
 
 it('publishes the long-task gauge under the TIMER\'s tags, extraTags included', function (): void {
     $registry = new SimpleMeterRegistry;
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => ['shard' => 'eu'], 'description' => '', 'longTask' => true]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => ['shard' => 'eu'], 'longTask' => true]);
 
     metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
 
@@ -336,7 +336,7 @@ it('records the exception on the span and marks it ERROR before ending it', func
  */
 
 it('returns the method\'s value even when every metric write fails', function (): void {
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'description' => '', 'longTask' => true], ['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'longTask' => true], ['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false]);
 
     $result = metricsInterceptor(new ExplodingMethodMetricsRecorder)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
 
@@ -344,7 +344,7 @@ it('returns the method\'s value even when every metric write fails', function ()
 });
 
 it('lets the method\'s own exception through unchanged when every metric write fails', function (): void {
-    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false]);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'longTask' => false]);
 
     $call = fn (): mixed => metricsInterceptor(new ExplodingMethodMetricsRecorder)->invoke(metricsInvocation($descriptor, static fn (): never => throw new OutOfRangeException('out of stock')));
 
@@ -376,7 +376,7 @@ it('records the timer and the observation even when the counter\'s write throws'
     $descriptor = new ObservabilityMethodDescriptor(
         'App\\Orders\\OrderService',
         'place',
-        ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false],
+        ['name' => 'orders.place', 'tags' => [], 'longTask' => false],
         ['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false],
         ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []],
     );
@@ -397,7 +397,7 @@ it('keeps the observation when the registry refuses a REAL #[Timed]/#[Counted] n
     $descriptor = new ObservabilityMethodDescriptor(
         'App\\Orders\\OrderService',
         'place',
-        ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false],
+        ['name' => 'orders.place', 'tags' => [], 'longTask' => false],
         ['name' => 'orders.place', 'tags' => [], 'failuresOnly' => false],
         ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []],
     );

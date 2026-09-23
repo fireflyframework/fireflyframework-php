@@ -1463,7 +1463,7 @@ return [
          | as the method body — the latency a caller actually waited for — and a refused call is counted as
          | a failure instead of vanishing from the meter.
          |
-         | #[Timed(value:, extraTags:, description:, longTask:)] records a timer, tagged `exception` with the
+         | #[Timed(value:, extraTags:, longTask:)] records a timer, tagged `exception` with the
          | thrown class's short name (`none` on success). `longTask` adds a `<meter>.active` gauge carrying
          | the timer's own tags and holding the number of invocations THIS PROCESS has in flight (a nested or
          | recursive call reads 2, not 1); with a `metrics.store` configured the shared key is last-writer-

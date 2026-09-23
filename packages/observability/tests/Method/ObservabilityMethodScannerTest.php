@@ -42,7 +42,6 @@ it('compiles a #[Timed] method into a descriptor row', function (): void {
     expect($place->timed)->toBe([
         'name' => 'orders.place',
         'tags' => ['tier' => 'gold'],
-        'description' => 'Places an order.',
         'longTask' => false,
     ])->and($place->counted)->toBeNull()->and($place->observed)->toBeNull();
 });
@@ -54,7 +53,7 @@ it('compiles #[Timed] and #[Counted] on the same method into one row', function 
 
     // The whole row, not just the flag: a #[Timed] that named no meter compiles an EMPTY name, which is what
     // tells the interceptor to fall back to `firefly.observability.method.timed.name`.
-    expect($import->timed)->toBe(['name' => '', 'tags' => [], 'description' => '', 'longTask' => true])
+    expect($import->timed)->toBe(['name' => '', 'tags' => [], 'longTask' => true])
         ->and($import->counted)->toBe(['name' => 'orders.imported', 'tags' => [], 'failuresOnly' => true]);
 });
 
@@ -85,11 +84,11 @@ it('applies a class-level #[Timed] to every public method and lets a method-leve
     $rules = observabilityRules();
 
     expect($rules[ClassLevelService::class.'::inherited']->timed)
-        ->toBe(['name' => 'orders.svc', 'tags' => ['scope' => 'class'], 'description' => 'Every order operation.', 'longTask' => false])
-        // REPLACED, not merged: neither the class meter's name nor its tags nor its description leak onto a
-        // method that named its own.
+        ->toBe(['name' => 'orders.svc', 'tags' => ['scope' => 'class'], 'longTask' => false])
+        // REPLACED, not merged: neither the class meter's name nor its tags leak onto a method that named
+        // its own.
         ->and($rules[ClassLevelService::class.'::overridden']->timed)
-        ->toBe(['name' => 'orders.method', 'tags' => [], 'description' => '', 'longTask' => false])
+        ->toBe(['name' => 'orders.method', 'tags' => [], 'longTask' => false])
         ->and($rules[ClassLevelService::class.'::inherited']->counted)->toBeNull()
         ->and($rules[ClassLevelService::class.'::inherited']->observed)->toBeNull();
 });
@@ -98,7 +97,7 @@ it('resolves the three kinds independently, so a method-level #[Counted] keeps t
     $rules = observabilityRules();
 
     expect($rules[ClassLevelService::class.'::alsoCounted']->timed)
-        ->toBe(['name' => 'orders.svc', 'tags' => ['scope' => 'class'], 'description' => 'Every order operation.', 'longTask' => false])
+        ->toBe(['name' => 'orders.svc', 'tags' => ['scope' => 'class'], 'longTask' => false])
         ->and($rules[ClassLevelService::class.'::alsoCounted']->counted)
         ->toBe(['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false]);
 });
@@ -114,7 +113,7 @@ it('never fans a class-level attribute onto a static or a magic method', functio
 });
 
 it('round-trips a descriptor through toArray/fromArray', function (): void {
-    $descriptor = new ObservabilityMethodDescriptor('C', 'm', ['name' => 'n', 'tags' => [], 'description' => '', 'longTask' => false], null, null);
+    $descriptor = new ObservabilityMethodDescriptor('C', 'm', ['name' => 'n', 'tags' => [], 'longTask' => false], null, null);
 
     expect(ObservabilityMethodDescriptor::fromArray($descriptor->toArray()))->toEqual($descriptor);
 });

@@ -12,7 +12,7 @@ use RuntimeException;
 #[Service]
 class TimedService
 {
-    #[Timed('orders.place', extraTags: ['tier' => 'gold'], description: 'Places an order.')]
+    #[Timed('orders.place', extraTags: ['tier' => 'gold'])]
     public function place(string $sku): string
     {
         return $sku;

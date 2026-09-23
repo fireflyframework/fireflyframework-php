@@ -50,7 +50,7 @@ it('carries each descriptor through to the plan row unchanged', function (): voi
     expect($advice[TimedService::class]['place'])->toBe([
         'class' => TimedService::class,
         'method' => 'place',
-        'timed' => ['name' => 'orders.place', 'tags' => ['tier' => 'gold'], 'description' => 'Places an order.', 'longTask' => false],
+        'timed' => ['name' => 'orders.place', 'tags' => ['tier' => 'gold'], 'longTask' => false],
         'counted' => null,
         'observed' => null,
     ])
@@ -85,4 +85,9 @@ it('refuses, from scanProxyAdvice() too, a metric on a final method', function (
 it('refuses, from scanProxyAdvice() too, #[Timed(percentiles:)]', function (): void {
     expect(fn () => (new ObservabilityMethodScanner)->scanProxyAdvice(observabilityAdvicePsr4('Percentiles')))
         ->toThrow(ConfigurationException::class, 'firefly.observability.metrics.distribution.per-meter');
+});
+
+it('refuses, from scanProxyAdvice() too, #[Timed(description:)]', function (): void {
+    expect(fn () => (new ObservabilityMethodScanner)->scanProxyAdvice(observabilityAdvicePsr4('Description')))
+        ->toThrow(ConfigurationException::class, 'every `# HELP` line from the meter name and its type');
 });
