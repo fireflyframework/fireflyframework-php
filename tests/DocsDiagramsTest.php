@@ -16,12 +16,17 @@ use Firefly\Data\Proxy\TransactionalAdviceSource;
 use Firefly\Data\Tests\Fixtures\Chain\ChainedLedger;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Eda\Bus\InMemoryEventBus;
+use Firefly\Eda\Bus\QueueEventBus;
+use Firefly\Eda\Consumer\SubscriberRegistrySink;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Observability\Cqrs\TracerCqrsTracing;
 use Firefly\Observability\Eda\TracerEdaTracing;
 use Firefly\Observability\Logging\StructuredLogging;
 use Firefly\Observability\Logging\TraceContextLogProcessor;
 use Firefly\Observability\ObservabilityAutoConfiguration;
+use Firefly\Observability\Tracing\OpenTelemetry\OpenTelemetryAutoConfiguration;
 use Firefly\Observability\Tracing\SpanKind;
 use Firefly\Observability\Tracing\W3CTraceContextPropagator;
 use Firefly\Observability\Web\HttpClientTracingMiddleware;
@@ -971,14 +976,15 @@ it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy s
 
 /**
  * tracing-propagation.svg is the fourth picture this wave drew, and it is the one that transcribes the MOST by
- * hand: two `#[Order]` integers, an auto-configuration's third, two Laravel `Context` keys, two Monolog field
- * names, a configuration key, five `SpanKind` names and the two span-name templates the EDA seam builds. Not
- * one of them is checked by anything above — the roster in the first test buys the figure four structural
- * checks (well-formed, one `<title>`/`<desc>`, embedded somewhere, mirrored into the book) and none of those
- * would notice `firefly.logging.format` where the framework reads `firefly.logging.structured.format`. That
- * exact mistake was in the first draft of this file, which is why this guard exists: a configuration key in a
- * picture is unreachable by `tests/ConfigReferenceTest.php` and by `DocsCodeAudit`'s shape contract alike,
- * because an SVG is not a fenced block and never will be.
+ * hand: two `#[Order]` integers, an auto-configuration's third, the OpenTelemetry adapter's fourth (which only
+ * the prose writes), two Laravel `Context` keys, two Monolog field names, a configuration key, five `SpanKind`
+ * names and the two span-name templates the EDA seam builds. Not one of them is checked by anything above —
+ * the roster in the first test buys the figure four structural checks (well-formed, one `<title>`/`<desc>`,
+ * embedded somewhere, mirrored into the book) and none of those would notice `firefly.logging.format` where
+ * the framework reads `firefly.logging.structured.format`. That exact mistake was in the first draft of this
+ * file, which is why this guard exists: a configuration key in a picture is unreachable by
+ * `tests/ConfigReferenceTest.php` and by `DocsCodeAudit`'s shape contract alike, because an SVG is not a
+ * fenced block and never will be.
  *
  * So the same treatment the three earlier figures already get, and the same rule: NOTHING load-bearing is
  * typed into this file. Every integer is reflected off the attribute that declares it, every key and field
@@ -989,12 +995,36 @@ it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy s
  * `PRODUCER` span, or starts naming it something other than `publish <destination>`, turns this red and names
  * the file that still draws the old one.
  *
- * `docs/modules/tracing.md` is held to the same three integers, because its propagation table is where the
- * figure's captions came from and a table and a picture drifting apart is worse than either being wrong alone.
+ * THREE documents are held to the same values, not one. `docs/modules/tracing.md` because its propagation
+ * table is where the figure's captions came from, and a table and a picture drifting apart is worse than
+ * either being wrong alone; and BOTH translations of `book/src{,-es}/11-observability-actuator.md`, because
+ * the chapter that embeds the figure also writes every one of those integers, keys and span kinds out in
+ * prose. That is the shape chapters 9 and 10 already have — the guards above read `book/src/10-security.md`
+ * and `book/src-es/10-security.md`, and `book/src/09-transactions.md` and `book/src-es/09-transactions.md`,
+ * for exactly this reason — and chapter 11 transcribes more than either of them.
+ *
+ * One claim in the figure is not an integer and cannot be reflected off an attribute: WHO calls the EDA seam.
+ * An earlier draft of the panel said "every bus and consumer", which was the single false sentence in the
+ * picture — only `InMemoryEventBus`, `QueueEventBus` and `SubscriberRegistrySink` take an `EdaTracing` at all,
+ * and the three broker starters build their envelopes themselves (the follow-up `docs/modules/tracing.md`
+ * lists under "Known-latent"). With a broker starter installed there is no `PRODUCER` span and no
+ * `traceparent` on the envelope, so the `CONSUMER` span starts a new ROOT instead of joining the request that
+ * published — the exact join the panel promises. Both halves of that scoping are pinned below, from the
+ * constructors that take the seam and from the starters that still do not.
  */
 it('pins the tracing-propagation figure to the real orders, context keys, log fields and span kinds', function () {
     $root = dirname(__DIR__);
-    $doc = (string) file_get_contents($root.'/docs/modules/tracing.md');
+
+    // The module page whose propagation table the captions were written from, and both translations of the
+    // chapter that embeds the figure and then repeats its values in sentences. Everything the figure and the
+    // prose SHARE is asserted across all three; the two book copies carry one extra badge of their own.
+    $modulePage = 'docs/modules/tracing.md';
+    $chapter = ['book/src/11-observability-actuator.md', 'book/src-es/11-observability-actuator.md'];
+
+    $prose = [];
+    foreach ([$modulePage, ...$chapter] as $relative) {
+        $prose[$relative] = (string) file_get_contents($root.'/'.$relative);
+    }
 
     // What the picture SAYS, not what its markup spells: the drawn text is read out of the parsed document so
     // that `&lt;destination&gt;` is compared as the `<destination>` a reader sees, and a line broken across
@@ -1014,7 +1044,12 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     // Every `#[Order]` the picture writes, read off the class that declares it — exactly as the filter-chain
     // guard above reads the sixteen it checks.
     $orders = [];
-    foreach ([TracingFilter::class, HttpExchangeFilter::class, ObservabilityAutoConfiguration::class] as $class) {
+    foreach ([
+        TracingFilter::class,
+        HttpExchangeFilter::class,
+        ObservabilityAutoConfiguration::class,
+        OpenTelemetryAutoConfiguration::class,
+    ] as $class) {
         $attributes = (new ReflectionClass($class))->getAttributes(Order::class);
         expect($attributes)->toHaveCount(1, "{$class} carries no single #[Order] attribute");
         $orders[$class] = $attributes[0]->newInstance()->order;
@@ -1023,6 +1058,16 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     $tracing = $orders[TracingFilter::class];
     $exchanges = $orders[HttpExchangeFilter::class];
     $autoConfiguration = $orders[ObservabilityAutoConfiguration::class];
+    $adapter = $orders[OpenTelemetryAutoConfiguration::class];
+
+    // The adapter has to register BEFORE the NoOp it displaces, which is the whole reason the prose writes the
+    // two numbers in one breath. Asserting the relation as well as the digits means a reader who follows the
+    // sentence is following something the container still does.
+    expect($adapter)->toBeLessThan(
+        $autoConfiguration,
+        'OpenTelemetryAutoConfiguration no longer registers ahead of ObservabilityAutoConfiguration; the '
+        .'chapter says the adapter binds itself over the NoOpTracer, and that only works while it is first',
+    );
 
     // The one ordering claim the bottom-left panel makes: the exchange recorder runs INSIDE the span, which is
     // the only reason a row of /actuator/httpexchanges can carry a trace id at all.
@@ -1038,10 +1083,24 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         );
     }
 
-    foreach (["#[Order({$tracing})]", "#[Order({$autoConfiguration})]"] as $badge) {
-        expect(str_contains($doc, $badge))->toBeTrue(
-            "docs/modules/tracing.md no longer writes '{$badge}'; its propagation table and the figure must "
-            .'agree, because the captions were written from the table',
+    // The same integers in every page that repeats them. `#[Order(400)]` is here and NOT in the loop above
+    // because the picture does not draw it — only the prose does, which until now left the one number with no
+    // check on it anywhere.
+    foreach ($prose as $relative => $text) {
+        foreach (["#[Order({$tracing})]", "#[Order({$adapter})]", "#[Order({$autoConfiguration})]"] as $badge) {
+            expect(str_contains($text, $badge))->toBeTrue(
+                "{$relative} no longer writes '{$badge}'; the table, the chapter and the figure must agree, "
+                .'because the captions were written from the table and the chapter was written from both',
+            );
+        }
+    }
+
+    // And the exchange recorder's own order, which only the chapter spells as an attribute (the figure draws
+    // it as `HttpExchangeFilter (-100)` and the module page names the filter without the number).
+    foreach ($chapter as $relative) {
+        expect(str_contains($prose[$relative], "#[Order({$exchanges})]"))->toBeTrue(
+            "{$relative} no longer writes '#[Order({$exchanges})]' beside HttpExchangeFilter, which is the "
+            .'number that makes its "runs inside the tracing filter" sentence true',
         );
     }
 
@@ -1064,12 +1123,15 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         );
     }
 
-    foreach ([TracingFilter::CONTEXT_TRACE_ID, TracingFilter::CONTEXT_SPAN_ID] as $key) {
-        expect(str_contains($doc, $key))->toBeTrue("docs/modules/tracing.md no longer names the Context key '{$key}'");
+    foreach ($prose as $relative => $text) {
+        foreach ([TracingFilter::CONTEXT_TRACE_ID, TracingFilter::CONTEXT_SPAN_ID] as $key) {
+            expect(str_contains($text, $key))->toBeTrue("{$relative} no longer names the Context key '{$key}'");
+        }
     }
 
     // The master gate, read off the filter's own #[ConditionalOnProperty] rather than typed: the bottom band
-    // tells a reader to switch exactly this on, and a renamed property would leave that instruction useless.
+    // tells a reader to switch exactly this on, and a renamed property would leave that instruction useless —
+    // in the picture and in the three pages that name the same key alike.
     $gates = array_map(
         static fn (ReflectionAttribute $attribute): string => $attribute->newInstance()->name,
         (new ReflectionClass(TracingFilter::class))->getAttributes(ConditionalOnProperty::class),
@@ -1078,6 +1140,12 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         ->and(str_contains($svg, $gates[0]))->toBeTrue(
             "tracing-propagation.svg no longer writes '{$gates[0]}', the property that switches tracing on",
         );
+
+    foreach ($prose as $relative => $text) {
+        expect(str_contains($text, $gates[0]))->toBeTrue(
+            "{$relative} no longer writes '{$gates[0]}', the property it tells the reader to switch on",
+        );
+    }
 
     // The four instrumented seams, DRIVEN rather than remembered. Each produces the spans the picture draws,
     // and the picture is then checked against them.
@@ -1125,18 +1193,30 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
 
     foreach ([SpanKind::Server, SpanKind::Client, SpanKind::Internal, SpanKind::Producer, SpanKind::Consumer] as $kind) {
         $word = strtoupper($kind->name);
-        expect(str_contains($svg, $word))->toBeTrue("tracing-propagation.svg no longer names the {$word} span")
-            ->and(str_contains($doc, $word))->toBeTrue("docs/modules/tracing.md no longer names the {$word} span");
+        expect(str_contains($svg, $word))->toBeTrue("tracing-propagation.svg no longer names the {$word} span");
+
+        foreach ($prose as $relative => $text) {
+            expect(str_contains($text, $word))->toBeTrue("{$relative} no longer names the {$word} span");
+        }
     }
 
     // The two span-name templates the EDA panel draws, read off the names the seam actually produced for a
-    // destination this test chose: `publish orders` becomes `publish <destination>` in the picture.
+    // destination this test chose: `publish orders` becomes `publish <destination>` in the picture. The three
+    // pages write the same template in backticks, and a rename that stops at the figure would leave the
+    // chapter telling a reader to grep for a span name that no longer exists.
     foreach ([SpanKind::Producer, SpanKind::Consumer] as $kind) {
         $template = str_replace('orders', '<destination>', $firstOf($kind)->name);
         expect(str_contains($svg, strtoupper($kind->name).' `'.$template.'`'))->toBeTrue(
             "tracing-propagation.svg no longer draws the {$kind->name} span as `{$template}`, which is what "
             .'TracerEdaTracing names it today',
         );
+
+        foreach ($prose as $relative => $text) {
+            expect(str_contains($text, '`'.$template.'`'))->toBeTrue(
+                "{$relative} no longer writes the {$kind->name} span name `{$template}`, which is what "
+                .'TracerEdaTracing builds today',
+            );
+        }
     }
 
     // The traceparent really does ride in the envelope headers, and really is written onto the PSR-7 request —
@@ -1163,4 +1243,55 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
             "tracing-propagation.svg no longer writes the CQRS span attribute '{$attribute}'",
         );
     }
+
+    // WHO calls the EDA seam — the one claim in the panel that is prose rather than an integer, and the one an
+    // earlier draft got wrong by saying "every bus and consumer". Three classes take an EdaTracing, and the
+    // panel enumerates exactly those three; the constructors are what says so.
+    foreach ([InMemoryEventBus::class, QueueEventBus::class, SubscriberRegistrySink::class] as $caller) {
+        $takesSeam = false;
+        foreach ((new ReflectionClass($caller))->getConstructor()?->getParameters() ?? [] as $parameter) {
+            $type = $parameter->getType();
+            $takesSeam = $takesSeam || ($type instanceof ReflectionNamedType && $type->getName() === EdaTracing::class);
+        }
+
+        expect($takesSeam)->toBeTrue(
+            "{$caller} no longer takes an ".EdaTracing::class.'; the EDA panel enumerates it as one of the '
+            .'three places the seam is reached from, and that enumeration is the whole of the panel’s accuracy',
+        );
+    }
+
+    expect(str_contains($svg, (new ReflectionClass(SubscriberRegistrySink::class))->getShortName()))->toBeTrue(
+        'tracing-propagation.svg no longer names the sink every broker consumer feeds — the only part of the '
+        .'EDA panel that is true of a broker at all, and the reason the CONSUMER half of it is not overclaimed',
+    );
+
+    // The other side of the same claim. While these three starters build their envelopes themselves there is
+    // no PRODUCER span and no traceparent for a broker publish, which is why the panel scopes the header line
+    // to an in-memory or queued envelope and why docs/modules/tracing.md carries a "Known-latent" bullet. The
+    // day one of them does go through the seam, this turns red and both have to widen with it.
+    $seam = (new ReflectionClass(EdaTracing::class))->getShortName();
+    foreach (['eda-kafka', 'eda-postgres', 'eda-rabbitmq'] as $starter) {
+        $sources = '';
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/packages/'.$starter.'/src', FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
+                $sources .= (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        expect($sources)->not->toBe('', "packages/{$starter}/src holds no PHP at all — this guard reads nothing")
+            ->and(str_contains($sources, $seam))->toBeFalse(
+                "packages/{$starter} now reaches the {$seam} seam. That is the follow-up docs/modules/tracing.md "
+                .'lists under "Known-latent": widen the EDA panel of tracing-propagation.svg (and its byte-identical '
+                .'book/art/figures mirror) past the in-memory and queue buses, and retire the bullet',
+            );
+    }
+
+    expect(str_contains($prose[$modulePage], '## Known-latent'))->toBeTrue(
+        'docs/modules/tracing.md no longer carries the Known-latent section the EDA panel is scoped against; '
+        .'the figure and the caveat that makes it true have to move together',
+    );
 });

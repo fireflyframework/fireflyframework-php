@@ -45,11 +45,11 @@
 
   <rect x="432" y="328" width="376" height="118" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
   <text x="620" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">EDA · across the transport</text>
-  <text x="444" y="370" font-size="11" fill="#374151">EdaTracing seam in firefly/eda, filled by</text>
-  <text x="444" y="386" font-size="11" fill="#374151">TracerEdaTracing; called by every bus and consumer.</text>
+  <text x="444" y="370" font-size="11" fill="#374151">EdaTracing seam in firefly/eda, filled by TracerEdaTracing:</text>
+  <text x="444" y="386" font-size="11" fill="#374151">the in-memory and queue buses, and SubscriberRegistrySink.</text>
   <text x="444" y="406" font-size="11" fill="#1f2937">PRODUCER `publish &lt;destination&gt;` on the way out</text>
   <text x="444" y="422" font-size="11" fill="#1f2937">CONSUMER `process &lt;destination&gt;` on delivery</text>
-  <text x="444" y="438" font-size="10.5" fill="#6b7280" font-style="italic">traceparent/tracestate ride in the envelope headers</text>
+  <text x="444" y="438" font-size="10.5" fill="#6b7280" font-style="italic">traceparent/tracestate ride in an in-memory or queued envelope</text>
 
   <rect x="820" y="328" width="380" height="118" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
   <text x="1010" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Outbound HTTP</text>
