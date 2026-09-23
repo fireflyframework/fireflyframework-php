@@ -142,6 +142,33 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   string $dltTopic)`, and a test that expected a `TypeError` from `JsonSerializer::deserialize()` on a
   well-keyed body expects `SerializationException`.
 
+- **`packages/security` — a URL rule written `/api/*` stops being a dead rule, so every `/`-prefixed rule you
+  have changes what it does on upgrade.** `HttpSecurityFilter` matches `Str::is($rule->pattern,
+  $request->path())`, and Laravel's `path()` never carries a leading slash, so `['pattern' =>
+  '/actuator/health', 'access' => 'permitAll']` matched **nothing**: the request fell through to
+  deny-by-default and 401'd on the one path the operator had explicitly opened, with no error anywhere to say
+  why (a dead rule is indistinguishable from a rule that did not apply). `HttpSecurity::requestMatcher()` —
+  the single door `anyRequest()` and `fromConfig()` both come through — now normalises every pattern to the
+  `$request->path()` spelling, so `/api/*` and `api/*` are one rule; `'/'` keeps its slash, because that is
+  what `path()` answers for the root (and `'/'` is the one `/`-prefixed pattern that already matched). This
+  entry is **not** under *Fixed*: what changes is the effective access control of a running deployment, and it
+  moves in **both** directions.
+  - **Fail-OPEN — the direction to audit first.** `rules: [['pattern' => '/admin/*', 'access' => 'permitAll'],
+    ['pattern' => '*', 'access' => 'authenticated']]` served `/admin/secret` only to an authenticated caller:
+    the first rule was dead (`Str::is('/admin/*', 'admin/secret')` is `false`) and the second matched. After
+    this change `fromConfig()` stores that pattern as `admin/*`, the first rule matches, and **the path is
+    served anonymously**.
+  - **Fail-closed.** A previously-skipped `/`-prefixed `hasRole:`/`denyAll` rule sitting ahead of a broader
+    `permitAll` now matches first and starts refusing callers the broader rule used to let through.
+
+  **Migration:** before upgrading, grep `firefly.security.http.rules` — and any `HttpSecurity::create()` chain
+  — for `/`-prefixed patterns, and read the list in order as if every one of them were live, because now they
+  are. A `/`-prefixed `permitAll` ahead of a broader rule is the shape that opens a path; narrow it, move it
+  after the broader rule, or delete it. Patterns with no leading slash are untouched, and a rule set with none
+  behaves exactly as before. The normalisation is also what lets `firefly/openapi` publish a truthful
+  `security` member: it reads these same rules, and a rule meaning one thing to the document and nothing to
+  the filter would be a published claim the server does not honour.
+
 ### Added
 
 - **`packages/openapi` — the document publishes the security the server actually has.** `components.securitySchemes`
@@ -160,8 +187,11 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   ports — `SecuritySchemeContributor` and `SecurityRequirementContributor` — let another package add what
   configuration cannot state; they are collected from the container's tagged-interface list, so an implementation
   is registered as a **`#[Component]`** (a `#[Bean]` under the concrete type is never tagged and would be dropped
-  in silence). The config-driven contributor is the only implementation that ships. Method rules
-  (`#[PreAuthorize]`, `#[Secured]`) are **not** read into requirements.
+  in silence). A contributed scheme may carry **default scopes**, which `SecurityModel` puts on a requirement that
+  names that scheme and states none of its own — the split the ports create, since the package holding the scope
+  vocabulary is not the one asked about each route; a requirement that states its own keeps them. The config-driven
+  contributor is the only implementation that ships. Method rules (`#[PreAuthorize]`, `#[Secured]`) are **not** read
+  into requirements.
 
 - **`packages/resilience` — the six patterns as attributes, on the proxy chain.** `#[Retry]`,
   `#[CircuitBreaker]`, `#[RateLimiter]`, `#[Bulkhead]` and `#[TimeLimiter]` name an instance configured under
@@ -504,20 +534,6 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   path and the new `constraint` member are the same in both styles.
 
 ### Fixed
-
-- **`packages/security` — a URL rule written `/api/*` is no longer a dead rule.** `HttpSecurityFilter` matches
-  `Str::is($rule->pattern, $request->path())`, and Laravel's `path()` never carries a leading slash, so
-  `['pattern' => '/actuator/health', 'access' => 'permitAll']` matched **nothing**: the request fell through to
-  deny-by-default and 401'd on the one path the operator had explicitly opened, with no error anywhere to say why
-  (a dead rule is indistinguishable from a rule that did not apply). `HttpSecurity::requestMatcher()` — the single
-  door `anyRequest()` and `fromConfig()` both come through — now normalises every pattern to the `$request->path()`
-  spelling, so `/api/*` and `api/*` are one rule; `/` keeps its slash, because that is what `path()` answers for
-  the root. **If you have `/`-prefixed patterns today they were inert and are now live**, which is what they were
-  written to mean — check that a `/`-prefixed rule *ahead* of a broader one is the precedence you want, since a
-  previously-skipped `hasRole:`/`denyAll` rule will now match before a later `permitAll`. The direction is
-  fail-closed either way. This is also what lets `firefly/openapi` publish a truthful `security` member: it reads
-  the same rules, and a rule meaning one thing to the document and nothing to the filter would be a published
-  claim the server does not honour.
 
 - **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
   API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context

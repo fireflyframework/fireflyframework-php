@@ -46,6 +46,9 @@ it('collects a #[Component] contributor through the container tag', function () 
 it('collects a contributor registered as a #[Bean] under the interface, instead of dropping it silently', function () {
     $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
 
+    // `orders.read` and not `orders.read, orders.write`: the scanned scheme contributor declares the latter as
+    // the scheme's DEFAULT scopes, and a requirement that states its own — this one does — keeps them. The
+    // default is the fallback for a requirement with nothing to say, never an override of one that has.
     expect(contributorSecurityModel()->requirementsFor($route))->toBe([['oauth2AuthorizationCode' => ['orders.read']]]);
 });
 

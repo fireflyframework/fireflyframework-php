@@ -798,6 +798,21 @@ over everything, because a path the framework lets through unauthenticated is pu
 Scheme names merge first-writer-wins and sort by name, so the document does not reshuffle with container iteration
 order.
 
+**A scheme may carry default scopes.** `SecurityScheme`'s third argument is the scope list a requirement *naming
+that scheme* is published with when it states none of its own:
+
+```php
+new SecurityScheme('oauth2AuthorizationCode', ['type' => 'oauth2', 'flows' => [...]], ['orders.read']);
+```
+
+`SecurityModel` is the only thing that reads it, and it reads it in that one case — a requirement that states its
+own scopes keeps them, because the operation's own claim is the specific one and overwriting it is how a document
+ends up demanding every scope on every path. It exists for the split the two ports create: the package that knows
+the scope vocabulary (an authorization server, whose registered clients hold it) is usually not the one asked
+about each route. The list is deliberately **not** part of the Security Scheme Object — a scheme declares which
+scopes *exist*, a requirement declares which ones an operation *needs*. Every scheme this framework ships leaves
+it empty, so nothing inherits anything unless a contributor asks for it.
+
 ## Overriding a piece of the pipeline
 
 Every collaborator is a `#[Bean]` behind `#[ConditionalOnMissingBean]`, so replacing one is a short

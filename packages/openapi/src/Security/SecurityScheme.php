@@ -17,16 +17,25 @@ namespace Firefly\OpenApi\Security;
  * contributors without either having to know the other exists.
  *
  * `scopes` is the DEFAULT scope list a requirement naming this scheme carries when its author had nothing
- * more specific to say — the registered client's scopes, for the authorization-code scheme firefly/
- * security-oauth2-server contributes. It is deliberately not part of the definition: the Scheme Object
- * declares which scopes EXIST, a Security Requirement Object declares which ones an operation NEEDS, and
- * conflating the two is how a document ends up demanding every scope on every path.
+ * more specific to say — the registered client's scopes, for the authorization-code scheme an
+ * authorization-server package would contribute. SecurityModel::resolve() is what applies it, and it applies
+ * it in ONE case: a SecurityRequirement that names this scheme and carries no scopes of its own is published
+ * with these. A requirement that states its own scopes keeps them; the operation's own statement is the more
+ * specific one. Leave the list empty — as every scheme this framework ships does — and no requirement is
+ * touched.
+ *
+ * It is deliberately not part of the definition: the Scheme Object declares which scopes EXIST (an oauth2
+ * flow's `scopes` map), a Security Requirement Object declares which ones an operation NEEDS, and conflating
+ * the two is how a document ends up demanding every scope on every path. Setting this field is therefore a
+ * claim about what a caller NEEDS by default on the operations that name this scheme, not a catalogue of
+ * what the scheme can issue — a contributor with a long client scope list almost certainly wants the former
+ * to stay empty and to say the specific thing from a SecurityRequirementContributor instead.
  */
 final readonly class SecurityScheme
 {
     /**
      * @param  array<string, mixed>  $definition  the Security Scheme Object
-     * @param  list<string>  $scopes
+     * @param  list<string>  $scopes  the default scopes a requirement naming this scheme inherits when it states none
      */
     public function __construct(
         public string $name,

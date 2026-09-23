@@ -199,3 +199,107 @@ it('lets a permitAll contributor win over one that would protect the path', func
     expect((new SecurityModel([], [$public, $protecting], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([])
         ->and((new SecurityModel([], [$protecting, $public], schemesGeneratorConfig([])))->requirementsFor($route))->toBe([]);
 });
+
+/**
+ * A stand-in for the package the scheme seam was cut for: an authorization server, which knows both the
+ * `authorizationCode` flow it publishes and the scope list its registered clients are issued, and which has
+ * no way of knowing which routes the requirement contributors will be asked about.
+ *
+ * @param  list<string>  $defaults
+ */
+function authorizationServerContributor(string $name = 'oauth2AuthorizationCode', array $defaults = ['orders.read']): SecuritySchemeContributor
+{
+    return new class($name, $defaults) implements SecuritySchemeContributor
+    {
+        /** @param list<string> $defaults */
+        public function __construct(private readonly string $name, private readonly array $defaults) {}
+
+        /** @return list<SecurityScheme> */
+        public function schemes(): array
+        {
+            return [new SecurityScheme($this->name, ['type' => 'oauth2', 'flows' => ['authorizationCode' => []]], $this->defaults)];
+        }
+    };
+}
+
+/** @param list<string> $scopes */
+function requiringContributor(string $scheme, array $scopes = []): SecurityRequirementContributor
+{
+    return new class($scheme, $scopes) implements SecurityRequirementContributor
+    {
+        /** @param list<string> $scopes */
+        public function __construct(private readonly string $scheme, private readonly array $scopes) {}
+
+        /** @return list<SecurityRequirement> */
+        public function requirementsFor(RouteDescriptor $route): array
+        {
+            return [new SecurityRequirement($this->scheme, $this->scopes)];
+        }
+    };
+}
+
+it("gives a requirement the named scheme's default scopes when it states none of its own", function () {
+    $config = schemesGeneratorConfig([]);
+    $scheme = authorizationServerContributor();
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    expect((new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode')], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => ['orders.read']]])
+        // A requirement that states its own scopes keeps them: the operation's own claim is the specific one,
+        // and overwriting it with the scheme's fallback is how a document ends up demanding every scope on
+        // every path.
+        ->and((new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode', ['orders.write'])], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => ['orders.write']]])
+        // A name nobody contributed is published exactly as written. The document is invalid either way, and
+        // quietly rewriting the entry would hide which contributor produced the dangling name.
+        ->and((new SecurityModel([$scheme], [requiringContributor('schemeNobodyContributed')], $config))->requirementsFor($route))
+        ->toBe([['schemeNobodyContributed' => []]])
+        // A scheme with no defaults — every scheme this framework ships — leaves the empty list alone.
+        ->and((new SecurityModel([authorizationServerContributor(defaults: [])], [requiringContributor('oauth2AuthorizationCode')], $config))->requirementsFor($route))
+        ->toBe([['oauth2AuthorizationCode' => []]]);
+});
+
+it('takes the default scopes from the same contributor whose definition won the name', function () {
+    // schemes() is first-writer-wins, and the scopes must come from that same writer: publishing one
+    // contributor's flow beside another's scope list would name scopes the published flow never declares.
+    $config = schemesGeneratorConfig([]);
+    $route = new RouteDescriptor('GET', '/orders', 'App\\Http\\DemoController', 'show', 200, null, []);
+
+    $model = new SecurityModel(
+        [authorizationServerContributor(defaults: ['first.writer']), authorizationServerContributor(defaults: ['second.writer'])],
+        [requiringContributor('oauth2AuthorizationCode')],
+        $config,
+    );
+
+    expect($model->requirementsFor($route))->toBe([['oauth2AuthorizationCode' => ['first.writer']]]);
+});
+
+it('carries an inherited scope list all the way into the generated document', function () {
+    // Through the real generator and the real serialiser, not only through the model: `firefly.security` is
+    // absent here, so ConfiguredSecurity has no opinion about any route and the contributed pair is the
+    // whole of the document's security.
+    $config = schemesGeneratorConfig([]);
+    $scheme = authorizationServerContributor();
+    $model = new SecurityModel([$scheme], [requiringContributor('oauth2AuthorizationCode')], $config);
+
+    $generator = new OpenApiGenerator(
+        FixtureDocument::routes(),
+        FixtureDocument::properties(),
+        new OperationFactory(FixtureDocument::schemas(), security: $model),
+        null,
+        $model,
+    );
+
+    /** @var array<string, mixed> $document */
+    $document = json_decode($generator->toJson(), true, flags: JSON_THROW_ON_ERROR);
+
+    /** @var array<string, array<string, mixed>> $components */
+    $components = $document['components'];
+
+    expect(FixtureDocument::operation($document, '/api/orders/{id}', 'get')['security'])
+        ->toBe([['oauth2AuthorizationCode' => ['orders.read']]])
+        // The default scope list is NOT part of the Security Scheme Object: the scheme declares which scopes
+        // exist, the requirement declares which ones this operation needs.
+        ->and($components['securitySchemes']['oauth2AuthorizationCode'])
+        ->toBe(['type' => 'oauth2', 'flows' => ['authorizationCode' => []]]);
+});

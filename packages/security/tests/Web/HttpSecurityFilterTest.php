@@ -83,3 +83,39 @@ it('honours a rule spelled with a leading slash, because the pattern is normalis
 
     expect($out)->toBeInstanceOf(Response::class);
 });
+
+/**
+ * A filter over an arbitrary rule list, with both gates on — `shouldNotFilter()` is AND-gated on the master
+ * `firefly.security.enabled` flag and on `firefly.security.http.enabled`, and with either missing every
+ * assertion below would silently pass against an inert filter.
+ */
+function filterOver(HttpSecurity $rules): HttpSecurityFilter
+{
+    $config = new Config(new Repository(['firefly' => ['security' => ['enabled' => true, 'http' => ['enabled' => true]]]]));
+
+    return new HttpSecurityFilter($rules, new SecurityExpressionEvaluator, RoleHierarchy::fromRules([]), new DenyAllPermissionEvaluator, $config);
+}
+
+it('serves a path anonymously once a /-prefixed permitAll rule ahead of a broader rule wakes up', function () {
+    // THE FAIL-OPEN DIRECTION of the pattern normalisation, pinned because it is the one an upgrade has to be
+    // audited for. Before normalisation `Str::is('/admin/*', 'admin/secret')` was false: the first rule was
+    // dead, the `*` rule matched, and this anonymous request was refused. The pattern is now stored as
+    // `admin/*`, so the first rule is the first match and the path is PUBLIC. The CHANGELOG's BREAKING entry
+    // and docs/modules/security.md tell operators to grep for exactly this shape; this test is why that
+    // sentence can be written as fact.
+    $out = filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/admin/*', 'access' => 'permitAll'],
+        ['pattern' => '*', 'access' => 'authenticated'],
+    ]))->handle(Request::create('/admin/secret', 'GET'), fn () => new Response('ok'));
+
+    expect($out)->toBeInstanceOf(Response::class);
+});
+
+it('refuses a path a later permitAll used to open once a /-prefixed denyAll rule wakes up', function () {
+    // The other direction of the same change, and the harmless one: a rule that used to be skipped now denies
+    // first. Both are recorded here so neither reads as an accident later.
+    filterOver(HttpSecurity::fromConfig([
+        ['pattern' => '/admin/*', 'access' => 'denyAll'],
+        ['pattern' => '*', 'access' => 'permitAll'],
+    ]))->handle(Request::create('/admin/secret', 'GET'), fn () => new Response('ok'));
+})->throws(AuthenticationException::class);

@@ -281,6 +281,27 @@ and `fromConfig()` both call): `/api/*` and `api/*` are one rule, and `/` keeps 
 public, and a rule meaning one thing to the document and nothing to the filter is a published claim the server
 does not honour.
 
+> **Upgrading: read your `/`-prefixed rules as if they were live, because now they are.** A rule that used to
+> match nothing now matches, and because the list is **first-match-wins** a rule waking up changes the answer in
+> **both** directions — the dangerous one is fail-**open**:
+>
+> ```php
+> 'rules' => [
+>     ['pattern' => '/admin/*', 'access' => 'permitAll'],   // was DEAD, is now the first match
+>     ['pattern' => '*',        'access' => 'authenticated'],
+> ],
+> ```
+>
+> `/admin/secret` used to reach the second rule and be served only to an authenticated caller, because
+> `Str::is('/admin/*', 'admin/secret')` is `false`. The first rule is now stored as `admin/*`, matches, and the
+> path is **served anonymously**. The opposite case is fail-closed and merely surprising: a `/`-prefixed
+> `hasRole:`/`denyAll` rule ahead of a broader `permitAll` now matches first and refuses callers that used to get
+> through.
+>
+> Grep `firefly.security.http.rules` (and any `HttpSecurity::create()` chain) for `/`-prefixed patterns before
+> upgrading. A `/`-prefixed `permitAll` sitting ahead of a broader rule is the shape to fix — narrow it, move it
+> after the broader rule, or delete it. Rule sets with no leading slashes behave exactly as they did.
+
 ## Web
 
 ### The entry point
