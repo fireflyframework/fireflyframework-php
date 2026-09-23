@@ -528,11 +528,23 @@ it('renders one <li> per budgeted frame and no more, so the page cannot be a wal
     $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
     $html = ErrorPage::render($error, $settings);
 
+    $shownVendor = count(array_filter($error->frames, static fn ($f): bool => $f->vendor));
+    $allVendor = $error->frameCount - $error->appFrameCount;
+
     expect(substr_count($html, '<li class="own">') + substr_count($html, '<li class="vendor">'))->toBe(8)
         // And the header is honest about what it dropped, rather than quietly showing eight of a hundred.
         ->toBeLessThan($error->frameCount)
         ->and($html)->toContain('8 of '.$error->frameCount.' frames')
-        ->toContain($error->appFrameCount.' in your code');
+        ->toContain($error->appFrameCount.' in your code')
+        // THE DISCLOSURE COUNTS THE SAME UNTRIMMED STACK THE HEADER DOES. Its label is the dependency
+        // frames in the whole stack, not the handful that survived the budget — `count($vendor)` there
+        // would read "2 frames in your dependencies" over a trace with fifty of them — and the `.dn` note
+        // beside it is what makes that honest rather than merely large: it says how many of those fifty
+        // are actually in the list below. Both halves are asserted, because a label that carries whatever
+        // number it is given passes a `toContain('frames in your dependencies')` either way.
+        ->and($allVendor)->toBeGreaterThan($shownVendor)
+        ->and($html)->toContain('<span class="dsum">'.$allVendor.' frames in your dependencies</span>')
+        ->toContain('<span class="dn">'.$shownVendor.' shown</span>');
 });
 
 it('puts your frames in the list and your dependencies behind one disclosure', function () {
@@ -549,7 +561,13 @@ it('puts your frames in the list and your dependencies behind one disclosure', f
         // rather than through toBeLessThan(): strpos() answers int|false, an expectation does not narrow
         // the variable it was given, and comparing a possible false at level max is an error, not a style.
         ->and($own !== false && $deps !== false && $own < $deps)->toBeTrue()
-        ->and($html)->toContain('frames in your dependencies')
+        ->and($html)->toContain('<span class="dsum">'.($error->frameCount - $error->appFrameCount).' frames in your dependencies</span>')
+        // And with nothing trimmed the note is not written at all, for the reason the header leaves out
+        // its "of": "32 shown" beside "32 frames in your dependencies" is a question a reader should not
+        // have to answer to know they are looking at the whole vendor set. The budget is stated here
+        // rather than assumed — a Pest stack longer than it would silently turn this into the other case.
+        ->and($error->frameCount)->toBeLessThanOrEqual(60)
+        ->and($html)->not->toContain('class="dn"')
         ->and(substr_count($html, '<details class="deps"'))->toBe(1)
         // A closed <details> is a real control with real keyboard behaviour. The alternative a judge
         // measured — a checkbox in one div and a `~` selector reaching for a sibling of its PARENT — matches
@@ -614,14 +632,52 @@ it('gives the method name a span of its own, so the token a vendor frame is know
         // `.call` used to be one ellipsised span, and a call is `Class->method()`: the clip took the METHOD
         // NAME and kept the namespace every Illuminate frame shares. The pair is now the path's pair.
         ->and($html)->toMatch('#<span class="cls">[^<]+</span><span class="fn">(-&gt;|::)[A-Za-z_]#')
-        ->toContain('.frames .call .fn{flex:none;')
-        ->toContain('.frames .call .cls{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}')
         // A phone drops the qualifier whole rather than shortening the method name.
         ->toContain('.frames .call .cls{display:none}')
         // The old single span, with the whole call inside the shrinkable box, must not come back.
         ->not->toContain('.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;overflow:hidden')
         // The synthetic throw frame has no qualifier at all, so the slot is simply not printed.
         ->and($html)->toContain('<span class="fn">throw</span>');
+});
+
+it('ranks what a narrow row gives up, and takes it inside the row rather than at the panel edge', function () {
+    $settings = new ErrorPageSettings(trace: true, hints: false, maxFrames: 60);
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    // `.fn` WAS `flex:none`, on the theory that a span which cannot shrink keeps its text. It does not: it
+    // keeps its WIDTH, its own `text-overflow` never gets a box narrower than its glyphs to draw an
+    // ellipsis in, and the glyphs run out of the row to be cut by `.panel{overflow:hidden}` with nothing
+    // marking the cut. Measured in Chrome at 375px over a 35-frame Laravel trace, 34 of 35 rows painted
+    // their method name up to 138px past the panel and `->whereHasMorphRelationship` arrived as `->wh`.
+    expect($html)
+        // The rank is a shrink FACTOR, not a refusal to shrink: .dir and .cls at 100, .fn at 1, so flexbox
+        // spends both discardable spans to nothing before it takes a character off the method name.
+        ->toContain('.frames .dir{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);min-width:0;flex:0 100 auto;overflow:hidden;text-overflow:ellipsis}')
+        ->toContain('.frames .call .cls{min-width:0;flex:0 100 auto;overflow:hidden;text-overflow:ellipsis}')
+        ->toContain('.frames .call .fn{min-width:0;flex:0 1 auto;max-width:24em;overflow:hidden;text-overflow:ellipsis}')
+        // And the row contains its own overflow, so nothing is ever cut by the panel instead.
+        ->toContain('display:flex;align-items:baseline;overflow:hidden}')
+        ->not->toContain('.frames .call .fn{flex:none')
+        // A PHONE DOES NOT SPEND THE LAST RANK AT ALL. At 375px a row has 295px and a real Laravel file
+        // name — `AddQueuedCookiesToResponse.php`, which never shortens — is 226 of them, so ranked
+        // shrinking alone ends with 23 of 35 method names cut and two rendered at zero width. The row wraps
+        // instead and the call takes a line of its own; the directory goes with `.pkg` and `.cls`, which is
+        // what holds the wrapped row to two lines. Nothing wraps INSIDE a span — that was the pre-wave rule
+        // at 87px a row — so the break can only fall between two whole tokens.
+        ->toContain('.frames .row,.frames summary{flex-wrap:wrap}')
+        ->toContain('.frames .dir{display:none}')
+        ->toContain('.frames .call{margin-left:0}')
+        // With a line to itself the call keeps the 24em guard it has everywhere: the phone's old 14em cap
+        // was cutting `->sendRequestThroughRouter` for room it no longer needs.
+        ->not->toContain('max-width:14em')
+        // The base rule stays nowrap; only the phone block relaxes it, which is what keeps a desktop row
+        // on one line at every panel width from 540px up (measured: 0 rows past the panel, 35 of 35 on one
+        // line). THE GEOMETRY ITSELF IS PINNED IN tests/Browser/ErrorPagesDebugTest.php, not here, by
+        // TRACE_CALLS_INSIDE_PANEL: `assertSee` reads text content, which is identical whether a span is
+        // drawn whole or clipped in half at the panel's edge, so the phone-width case measures every
+        // rendered `.fn` right edge against its `.panel` right edge instead.
+        ->toContain('flex-wrap:nowrap;white-space:nowrap}');
 });
 
 it('keeps every text token above 4.5:1, and the focus ring above 3:1, on every ground each is drawn on', function () {

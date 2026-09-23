@@ -215,19 +215,21 @@ final class ErrorPage
      * The order is the order a reader scans: where in the stack, whose code, which directory, WHICH FILE,
      * which line, what was called.
      *
-     * WHAT THE ELLIPSIS TAKES, AND FROM WHICH END. `text-overflow:ellipsis` always drops the END of a span,
-     * so the only honest way to protect a token is to give it a span of its own that cannot shrink. Three
-     * tokens have one: the file name, the line, and the FUNCTION — `->get()` — because those are what tell
-     * one frame from another. A Laravel trace is sixty `Illuminate\…` frames whose method names are the
-     * only difference between them, and printing the call as a single span clipped exactly that away:
-     * sixty rows reading `Illuminate\Database\Eloq…`. So the call is split the way the path already was,
-     * into a shrinkable `.cls` and a `.fn` that is `flex:none`.
+     * WHAT THE ELLIPSIS TAKES, AND IN WHICH ORDER. `text-overflow:ellipsis` always drops the END of a span,
+     * so the only way to say which token gets shortened first is to give each one a span of its own. Four
+     * do: the directory, the file name, the line, and the call — split again into the qualifier and the
+     * FUNCTION, `->get()`, because a Laravel trace is sixty `Illuminate\…` frames whose method names are
+     * the only difference between them, and printing the call as one span clipped exactly that away: sixty
+     * rows reading `Illuminate\Database\Eloq…`.
      *
-     * That leaves `.dir` and `.cls` as the two spans the row is willing to lose the tail of, and the loss
-     * is not free: `.cls` loses a class name the neighbouring file name repeats, which costs nothing, but
-     * `.dir` loses its innermost directories, which is real. It is ranked last anyway — the file name, the
-     * line and the package badge beside it are enough to find the file, and a row has to give up something
-     * before it wraps.
+     * With the spans in place the CSS ranks them, and the ranking is the whole design: `.dir` first —
+     * its innermost directories are a real loss, but the file name, the line and the package badge beside
+     * it are enough to find the file — then `.cls`, which repeats a class name the file name already gave,
+     * and only then `.fn`. The file name and the line never shorten at all. What a rank does NOT mean is
+     * "cannot shrink": a span that refuses to shrink in a row that must keeps its full width and paints
+     * past the row's edge, where it is cut with no ellipsis at all, so every rank here is a shrink factor
+     * and `.fn`'s is simply the smallest. On a phone even the last rank is not spent: the row wraps and
+     * gives the call a line of its own rather than take a character off it.
      */
     private static function row(ErrorFrame $frame): string
     {
@@ -410,18 +412,31 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .frames summary:focus-visible{outline:2px solid var(--brand-ink);outline-offset:-2px}
 .frames .ix{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:none;min-width:2.8em;text-align:right}
 .frames .pkg{font-size:11px;line-height:1.7;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:0 5px;flex:none;max-width:13em;overflow:hidden;text-overflow:ellipsis}
-.frames .dir{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+.frames .dir{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);min-width:0;flex:0 100 auto;overflow:hidden;text-overflow:ellipsis}
 .frames .base{font-family:var(--mono);font-size:12.5px;color:var(--ink);flex:none}
 .frames .ln{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);flex:none}
 /* The call is the path's twin: .cls is the qualifier and may be ellipsised, .fn is the method name and is
-   the token that tells sixty Illuminate frames apart, so it never shrinks. A nested flex rather than two
-   row items, so the pair stays glued (the row's 8px gap would print `Collection ->each()`). */
-.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;display:flex;align-items:baseline}
-.frames .call .cls{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
-/* flex:none, with one guard: PHP 8.4 names a closure `{closure:/abs/path/file.php:14}`, so a "function
-   name" can be a hundred characters of absolute path. The cap sits far above any real method name and
-   bites only that case, which would otherwise push the row out past the panel. */
-.frames .call .fn{flex:none;max-width:24em;overflow:hidden;text-overflow:ellipsis}
+   the token that tells sixty Illuminate frames apart, so it is the LAST thing the row gives up. A nested
+   flex rather than two row items, so the pair stays glued (the row's 8px gap would print
+   `Collection ->each()`).
+
+   WHAT "LAST" IS MADE OF, because `flex:none` did not mean it. An unshrinkable span inside a shrinking row
+   does not stay WHOLE, it stays WIDE: its box keeps its content width, its own `text-overflow` therefore
+   never has a narrower box to draw an ellipsis in, and the glyphs simply run out of the row and are cut by
+   `.panel{overflow:hidden}` with nothing to mark the cut. Measured in Chrome at 375px against a 35-frame
+   Laravel trace, 34 of 35 rows painted their method name up to 138px beyond the panel's right edge, and
+   `->whereHasMorphRelationship` arrived on screen as `->wh`.
+   So the ORDER is stated with shrink factors rather than by refusing to shrink: .dir and .cls shrink at
+   100 and .fn at 1, which spends the two discardable spans down to nothing before flexbox takes a single
+   character off the method name — and `overflow:hidden` here means that whatever is taken is taken inside
+   the row, with an ellipsis, instead of outside it in silence. At a 560-920px panel that ranking leaves
+   every method name whole except the closure descriptor below. */
+.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;display:flex;align-items:baseline;overflow:hidden}
+.frames .call .cls{min-width:0;flex:0 100 auto;overflow:hidden;text-overflow:ellipsis}
+/* The cap is the one guard: PHP 8.4 names a closure `{closure:/abs/path/file.php:14}`, so a "function
+   name" can be a hundred characters of absolute path. It sits far above any real method name and bites
+   only that case, which would otherwise take the whole row's width for one frame's descriptor. */
+.frames .call .fn{min-width:0;flex:0 1 auto;max-width:24em;overflow:hidden;text-overflow:ellipsis}
 /* The application's own frames are the point of the page; the dependency ones are context. */
 .frames li.own{border-left:3px solid var(--brand);background:var(--panel)}
 .frames li.own .base{font-weight:600}
@@ -454,8 +469,26 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
      `Illuminate\Database\Eloquent\Builder` is what `Builder.php` two columns to its left already said,
      and `->get()` is not said anywhere else. */
   .frames .call .cls{display:none}
-  .frames .call .fn{max-width:14em}
+  /* AND THEN THE PHONE ROW WRAPS, because at 375px it provably cannot do both. A row has 295px there, and
+     `AddQueuedCookiesToResponse.php` — a real Laravel file name, which never shortens — is 226 of them;
+     `:46` and `->handle` have to go somewhere. Ranked shrinking has an answer for that and it is the wrong
+     one: measured at 375px it spent .fn down until 23 of 35 method names had lost characters and two had
+     lost all of them, rendering at zero width. So the phone takes the other branch — one more line instead
+     of a shorter name — and the directory goes with .pkg and .cls, because it was already ellipsised to
+     `vendor/la…` on every row at this width and dropping it is what holds the wrapped row to two lines
+     instead of the four a full-width .dir forces (measured: 1,961px of trace against 3,406px).
+     This is NOT the pre-wave rule that made a hundred frames 10,108 pixels tall. That one wrapped the PATH
+     ITSELF, with overflow-wrap:anywhere, at 87px a row; nothing here wraps inside a span, and the break
+     can only fall between two whole tokens. */
+  .frames .dir{display:none}
+  .frames .row,.frames summary{flex-wrap:wrap}
+  .frames .call{margin-left:0}
   .frames .ix{min-width:2.2em}
+  /* The call keeps the 24em guard it has everywhere and no tighter one. A phone used to cap it at 14em,
+     which was the right cap while the call had to share a line with a file name and was the wrong one the
+     moment it stopped: on its own 295px line, 14em cut `->sendRequestThroughRouter` and
+     `->whereHasMorphRelationship` for nothing. 24em still fits that line, and still bites the closure
+     descriptor it exists for. */
 }
 CSS;
     }

@@ -10,7 +10,8 @@ namespace Firefly\Web\Error;
  *
  * Both of its halves — the path and the call — are offered SPLIT, because the page prints each on one line
  * and a line runs out of width. `dir()`/`base()` and `callQualifier()`/`callFunction()` are the same idea
- * twice: a qualifier that may be ellipsised, and the token that identifies the frame and never may.
+ * twice: a qualifier the row spends first, and the token that identifies the frame and is spent last of
+ * all — on a phone, where the row wraps rather than shorten it, not at all.
  *
  * A raw PHP trace is forty frames of which perhaps four are the application's, and the rest are the
  * framework walking its own dispatch. Marking the application's frames is what turns scrolling into
@@ -76,10 +77,11 @@ final readonly class ErrorFrame
     /**
      * The function half of $call, WITH the separator that introduces it (`->get()`, `::make()`, `\collect()`).
      *
-     * NEVER shortened, for the same reason base() is not. A Laravel trace is sixty `Illuminate\…` frames
-     * whose qualifiers differ by a segment or two and whose METHOD NAMES are the only tokens that tell them
-     * apart; a row that clipped its way to `Illuminate\Database\Eloq…` would have printed sixty identical
-     * lines.
+     * The LAST token a row shortens, for the same reason base() is never shortened at all. A Laravel trace
+     * is sixty `Illuminate\…` frames whose qualifiers differ by a segment or two and whose METHOD NAMES are
+     * the only tokens that tell them apart; a row that clipped its way to `Illuminate\Database\Eloq…` would
+     * have printed sixty identical lines. Having it in a span of its own is what lets the page rank it
+     * behind the directory and the qualifier — and, at phone width, wrap the row instead of spending it.
      */
     public function callFunction(): string
     {
