@@ -43,15 +43,20 @@ use Illuminate\Support\Str;
  * footer's own advice about turning the trace on, which is useful on a staging box and is a free hint about
  * the stack to anyone else — see `hints`.
  *
- * THE ONE ADDITION IS AUTHORED, AND IT HAS ITS OWN KEY. With `authored-detail` on (the default) a sub-500
- * failure also carries the sentence the application ITSELF wrote for a caller — a FireflyException's "Order
- * 42 does not exist.", or an `abort(404, 'No such tenant.')` — because that is exactly what the problem
- * document beside it publishes as `detail`, and one failure reading two ways depending on which surface
- * answered is its own kind of bug. It is not an exemption from the paragraph above: ProblemMapper decides
- * what counts as authored, withholds everything at 500 and above, and replaces the sentences the FRAMEWORK
- * generated — the router's "The route … could not be found." and the route-model-binding 404s Laravel
- * rewrites into it, which name a model class and a primary key. Turn the key off and there is no authored
- * sentence to print at all.
+ * THE ONE ADDITION IS AUTHORED, IT HAS ITS OWN KEY, AND NOTHING PRINTS IT YET. With `authored-detail` on
+ * (the default) the REPORT carries, as `ErrorReport::$publicDetail`, the sentence the application ITSELF
+ * wrote for a caller — a FireflyException's "Order 42 does not exist.", or an `abort(404, 'No such
+ * tenant.')` — because that is exactly what the problem document beside it publishes as `detail`, and one
+ * failure reading two ways depending on which surface answered is its own kind of bug. The built-in page
+ * does not use it yet: its production lede is still the generic reassurance for the status, and the lede
+ * that will prefer this sentence is not in this tree. The value arrives first for the same reason the three
+ * URLs below do — a renderer written against a value that is already decided cannot be the thing that
+ * forgets the rule. An application's own error view reads it today, because the view is handed the report.
+ * None of this is an exemption from the paragraph above: ProblemMapper decides what counts as authored,
+ * withholds everything at 500 and above, and replaces the sentences the FRAMEWORK generated — the router's
+ * "The route … could not be found." and the route-model-binding 404s Laravel rewrites into it, which name a
+ * model class and a primary key. Turn the key off and `$publicDetail` is '', so there is no authored
+ * sentence for any renderer to reach for at all.
  */
 final readonly class ErrorPageSettings
 {

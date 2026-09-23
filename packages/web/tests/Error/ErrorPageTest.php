@@ -486,3 +486,39 @@ it('clamps an absurd budget rather than trusting it', function () {
         ->and($config(100000)->maxFrames)->toBe(500)
         ->and(ErrorPageSettings::fromConfig(new Config(new Repository))->maxFrames)->toBe(40);
 });
+
+it('names the UNTRIMMED stack in the trace header, so a budgeted page cannot pass itself off as a whole one', function () {
+    // The budget and the header are two halves of one promise. Trimming to six frames and then counting the
+    // six is a label that was honest before `max-frames` existed and stops being honest the moment it does:
+    // it says "2 of 6 in your code" for a stack of a hundred and marks nothing where ninety-four frames went.
+    $trimmed = new ErrorPageSettings(trace: true, hints: false, maxFrames: 6);
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $trimmed, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $trimmed);
+
+    expect($error->frameCount)->toBeGreaterThan(6)
+        ->and($html)->toContain('6 of '.$error->frameCount.' frames · '.$error->appFrameCount.' in your code')
+        // One row per BUDGETED frame, still: the header names what was dropped, it does not smuggle it back.
+        ->and(substr_count($html, '<li class="'))->toBe(6);
+
+    // And when nothing was dropped the "of" is not written at all — "104 of 104" is a question a reader
+    // should not have to answer to know they are looking at the whole stack.
+    $whole = new ErrorPageSettings(trace: true, hints: false, maxFrames: 500);
+    $all = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $whole, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+
+    expect(ErrorPage::render($all, $whole))
+        ->toContain($all->frameCount.' frames · '.$all->appFrameCount.' in your code')
+        ->not->toContain(' of '.$all->frameCount.' frames');
+});
+
+it('answers an RFC 9457 `instance` that is root-relative, including at the site root', function () {
+    // A relative reference resolves against the document's base URI, so `orders/42` served from /orders/42
+    // identifies /orders/orders/42 — the member stops naming the occurrence it exists to name. The site
+    // root is the case a naive '/'.$path would get wrong in the other direction, answering '//'.
+    expect(ProblemMapper::instanceFor(Request::create('/orders/42')))->toBe('/orders/42')
+        ->and(ProblemMapper::instanceFor(Request::create('/api/v1/accounts/42')))->toBe('/api/v1/accounts/42')
+        ->and(ProblemMapper::instanceFor(Request::create('/')))->toBe('/')
+        // A query string is not part of the path, and a trailing slash is normalised away by Laravel before
+        // this ever sees it — both are the framework's answer, pinned here because the member depends on it.
+        ->and(ProblemMapper::instanceFor(Request::create('/orders/42?include=lines')))->toBe('/orders/42')
+        ->and(ProblemMapper::instanceFor(Request::create('/orders/')))->toBe('/orders');
+});

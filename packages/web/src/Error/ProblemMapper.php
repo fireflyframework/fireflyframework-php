@@ -135,6 +135,14 @@ final class ProblemMapper
      * base URI — which for a problem served from /api/orders/42 makes `api/orders/42` mean
      * /api/api/orders/42. One character, and the member stops identifying the occurrence it exists to
      * identify. Spring's ProblemDetail sets `instance` from the request URI for the same reason.
+     *
+     * THE PUBLISHED DOCUMENT IS NOT FIXED YET, AND THIS METHOD DOES NOT CLAIM IT IS. ProblemDetailsRenderer
+     * — the one surface that puts `instance` on the wire — still passes `$request->path()`, so a client
+     * still receives the relative form. The only caller here is ErrorReport, which hands the value to
+     * ErrorResponse and reads back the code, the category, the severity and the 405's verbs; the page's own
+     * path is built beside it. The rule arrives before its call sites deliberately, so that the conformance
+     * pass which changes the renderer moves one argument to an answer this package already tests, rather
+     * than restating what a root-relative reference is in a second place.
      */
     public static function instanceFor(Request $request): string
     {

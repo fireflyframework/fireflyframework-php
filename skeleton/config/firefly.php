@@ -955,14 +955,19 @@ return [
     //         'max-frames' => 40,
     //
     //         /*
-    //          | Whether the page may say the sentence the problem document already publishes — the
+    //          | Whether the error REPORT carries the sentence the problem document already publishes — the
     //          | application's own "Order 42 does not exist." for a sub-500 failure, which is the entire
-    //          | point of the exception taxonomy. With it off the page falls back to the generic sentence
-    //          | for the status, and one failure reads two ways depending on which surface answered.
+    //          | point of the exception taxonomy — so that a page can say the same words the document does
+    //          | instead of the generic sentence for the status.
     //          |
-    //          | Only sentences that were WRITTEN for a caller are ever used: below 500, from a
+    //          | THE BUILT-IN PAGE DOES NOT PRINT IT YET. It is carried and nothing more: the production
+    //          | page's lede is still the generic reassurance for the status. What reads the sentence today
+    //          | is an application's own error view (`views` below), which is handed the report as `$error`
+    //          | and can print `$error->publicDetail`. Turning this key off empties that property.
+    //          |
+    //          | Only sentences that were WRITTEN for a caller are ever carried: below 500, from a
     //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
-    //          | QueryException's message is the failing SQL and its bindings — and nothing is published.
+    //          | QueryException's message is the failing SQL and its bindings — and nothing is carried.
     //          |
     //          | Default: true.
     //         */

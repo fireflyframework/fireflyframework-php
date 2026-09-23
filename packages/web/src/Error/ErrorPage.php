@@ -133,21 +133,27 @@ final class ErrorPage
         return $html.'</ol></section>';
     }
 
+    /**
+     * THE HEADER COUNTS THE STACK, NOT THE ROWS. `max-frames` trims the list in the report, before any
+     * markup exists, so counting what is rendered would answer "7 of 40 in your code" for a stack of 104
+     * and say nothing at all about the sixty-four frames that were dropped — a label that was honest
+     * before the budget existed and became a quiet lie the moment it did. The untrimmed totals are carried
+     * on the report for exactly this, and are named whenever they differ from what is shown; when nothing
+     * was trimmed the "of" is left out, because "40 of 40" is a question a reader should not have to ask.
+     */
     private static function frames(ErrorReport $report): string
     {
         if ($report->frames === []) {
             return '';
         }
 
-        $app = 0;
-        foreach ($report->frames as $frame) {
-            if (! $frame->vendor) {
-                $app++;
-            }
-        }
+        $shown = count($report->frames);
+        $summary = $shown === $report->frameCount
+            ? $report->frameCount.' frames · '.$report->appFrameCount.' in your code'
+            : $shown.' of '.$report->frameCount.' frames · '.$report->appFrameCount.' in your code';
 
         $html = '<section class="panel"><h2>Stack trace <span class="n">'
-            .self::e((string) $app).' of '.self::e((string) count($report->frames)).' in your code</span></h2><ol class="frames">';
+            .self::e($summary).'</span></h2><ol class="frames">';
 
         $opened = 0;
         foreach ($report->frames as $frame) {
