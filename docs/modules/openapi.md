@@ -121,7 +121,9 @@ public function index(): array { /* … */ }
 
 1. **The `@return` type expression.** The only place a PHP `array` can say what is *in* it. Prose after the type
    becomes the response `description` — the only response description anyone actually writes.
-2. **The declared return type.** A class becomes a component `$ref`, a backed enum its value set, a scalar itself.
+2. **The declared return type** — unions, nullables and intersections included (`?Order` answers with null as well,
+   `Order|Refund` with either). What a class becomes is what the runtime writes for it: see
+   [What a returned class becomes](#what-a-returned-class-becomes).
 3. **Neither** — `type: object`, the old behaviour, kept as the *fallback* for a bare `array` return with nothing
    said about it. A `@return array<string, mixed>` parses fine and means nothing, so it is treated as saying nothing
    rather than allowed to suppress what the declared type knew.
@@ -140,7 +142,9 @@ Schema fragment. It is used for `@return`, for `@param`/`@var` on collection mem
 | `array{a: int, ...}` | the same, but open — the `...` is the only thing that lifts `additionalProperties: false` |
 | `array{int, string}` | `prefixItems`, with `minItems`/`maxItems` — a tuple |
 | `'draft'\|'sent'` | `type: string` with `enum` |
-| `?Order`, `Order\|null` | `anyOf: [{$ref}, {type: null}]` |
+| `?Order`, `Order\|null` | `anyOf: [{$ref}, {type: null}]` — and `?Carbon` and `Carbon\|null` alike are `type: [string, null]` with the `format` kept |
+| `Page<Order>`, any generic class | the class's `@template` parameters bound to the arguments: `{$ref: PageOrder}` |
+| `Collection<int, Order>`, any Laravel collection | `type: array` with `items: {$ref: Order}` (a string key makes it a map) |
 | `non-empty-string`, `positive-int` | `minLength: 1`, `minimum: 1` |
 | `mixed` | `{}` — the any-value schema, a real answer |
 | `never`, `callable`, an unresolvable name | **nothing**, so the caller falls back to what it already knew |
@@ -152,18 +156,50 @@ Class names resolve through the **imports of the file the expression was written
 file's `use` statements, so they are read from the source. Without that, only fully-qualified names would work,
 which is the one spelling nobody writes.
 
-### A returned class becomes a component
+### What a returned class becomes
 
-`ResponseSchemaFactory` builds it from the **wire shape** — what `json_encode` emits — which is not the same thing as
-the request side's constructor:
+The document follows **`ResponseFactory` and `JsonMessageConverter` branch for branch, in their order**, because that
+is what decides what goes on the wire — and a document that decided differently would describe responses the server
+never sends. It used to reflect every class's public properties, which documented an Eloquent model as `incrementing`,
+`exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column, and a `JsonResponse` as `original`,
+`exception` and a `ResponseHeaderBag`.
 
-- A class implementing `JsonSerializable` serialises as whatever `jsonSerialize()` **returns**. Give that method a
+- **A Response the action built** is sent as it is, so its class is all there is to go on: a `JsonResponse` is JSON of
+  a shape the action decided, a `BinaryFileResponse` a binary download, a `RedirectResponse` a `302` with its
+  `Location` (and no `200` — the `#[Mapping]`'s status never reaches the wire), anything else `*/*`. A `Responsable`
+  builds its own response, so it is `*/*` too — except an API resource, below. A `ModelAndView`, or a View /
+  Renderable / Htmlable that is not also data, is `text/html`. State the body of a `JsonResponse` with
+  `#[ApiResponse(200, type: …)]`.
+- **An `Arrayable`** is written through `toArray()`, ahead of `JsonSerializable`: its `toArray()` `@return` shape, then
+  the value type of its `@implements Arrayable<K, V>`, and otherwise "an object" — never its properties.
+- **An Eloquent model** is read from its `@property` tags when it has them — `@property` a column, always present;
+  `@property-read` an accessor or relation, present only when appended or loaded; `@property-write` never written —
+  and otherwise from what Eloquent itself is told: the key, `$fillable`, the casts (`casts()` included), the timestamps
+  and `$appends`. That is the skeleton's own `OrderEntity` style. A cast maps to what `toArray()` writes (a date as RFC
+  3339, a custom date format as a plain string, `timestamp` as Unix seconds, `decimal` as a **string**); nothing there
+  states a column's nullability, so every attribute but the key admits null. Relations come from their declared
+  return type (`HasMany<Line, $this>`) under their snake_case key, never required. `$hidden` and `$visible` filter as
+  `toArray()` does.
+- **A Laravel paginator** — `->paginate()`, `->simplePaginate()`, `->cursorPaginate()` — is the envelope its
+  `toArray()` builds around the element type, as its own component: `LengthAwarePaginator<int, Order>` is
+  `LengthAwarePaginatorOrder`.
+- **An API resource** is its `toArray()` `@return` shape (or, when it inherits `JsonResource::toArray()`, the class it
+  `@mixin`s), sent inside the envelope its `$wrap` names — `data` unless `JsonResource::withoutWrapping()` ran. A
+  `ResourceCollection` is the list of what it collects, found as Laravel finds it: `#[Collects]`, then `$collects`,
+  then the naming convention. Nested inside another payload, a resource is unwrapped, as `jsonSerialize()` writes it.
+- **A class implementing `JsonSerializable`** serialises as whatever `jsonSerialize()` **returns**. Give that method a
   `@return array{…}` and the schema is exact. The skeleton's `App\Orders\Order` is the case that matters: it
   publishes a derived `total` that is a *method*, so reflection alone would document five of the six members the API
   actually sends.
-- Everything else serialises as its **public properties**, which is what reflection reads.
+- **Everything else** serialises as its **public properties**, which is what reflection reads — each member in the
+  scope of the class that declares it, so an inherited `@var T` resolves through the subclass's `@extends Base<Order>`.
 - A declared shape only wins when it says something. `@return array<string, mixed>` on `jsonSerialize()` means "an
   object, members unknown" — strictly less than the property list it would have suppressed, so it is ignored.
+
+**A generic instantiation is a component of its own.** `Page<Order>` binds `Order` to `Page`'s `@template T`, so the
+`list<T>` its constructor documents becomes a list of Order, and the instantiation is named the way springdoc names
+one: `PageOrder`, `PageString`. Every `Page<Order>` in the document shares that component; an argument with no name to
+give (`Page<list<Order>>`) is written in place instead, and one that says nothing (`Page<mixed>`) is plain `Page`.
 
 Nullability is not requiredness here. A response member is present or absent, and `?int $id` is always *present* and
 sometimes null — so response members stay `required` and nullable ones widen their type. The request side's rule
@@ -180,6 +216,11 @@ public function book(): array { /* … */ }
 
 `type` is a full expression, not only a class or scalar name, and a short name resolves through the controller's own
 imports.
+
+**Without a `type`, a status keeps the body it already has.** Re-declaring the success status only replaces its
+description — adding a sentence to a `200` used to erase the schema of everything the action returns — and an error
+status (`4xx`, `5xx`, a `4XX`/`5XX` range or `default`) is documented with the problem+json body `ProblemDetailsRenderer`
+sends for it. Only a status with neither, a `202` mentioned in prose, is bodiless.
 
 ## How a request DTO becomes a schema
 
@@ -643,11 +684,15 @@ new configuration.
 ### What `builtin` is for
 
 A hand-written, dependency-free reference: one inline `<script>`, a few hundred bytes of CSS, one `fetch` of the
-spec route, and a dark/light palette that follows `prefers-color-scheme`. It does the two things a reader actually
+spec route, and a dark/light palette that follows `prefers-color-scheme`. It does the things a reader actually
 needs and raw JSON does not give them — groups operations by tag with verbs and paths visible at a glance, and
 resolves `$ref` pointers client-side so a reader sees a DTO's members rather than a pointer into
-`#/components/schemas`. Try-it-out, OAuth flows and code samples are deliberately absent; that is what `swagger`
-is for. Choose it when the deployment wants no third-party JavaScript in the response at all.
+`#/components/schemas`, labelled by component name. Every shape the generator emits is drawn: a union member reads
+`Parcel | Label | null` with each arm expanded, a nullable nested object shows its members, a map shows its value
+type under `{ key }`, a list of components reads `Parcel[]`, and a response's headers (a redirect's `Location`) are
+shown beside it. A small request console — "Try it" and "Copy as cURL" — starts each body from a value of the right
+type. OAuth flows and code samples are deliberately absent; that is what `swagger` is for. Choose it when the
+deployment wants no third-party JavaScript in the response at all.
 
 The viewer fetches the spec from the sibling route rather than having the document inlined, so an edit-and-reload
 cycle shows up on a browser refresh, and so the two routes can be exposed independently — a deployment may want the
