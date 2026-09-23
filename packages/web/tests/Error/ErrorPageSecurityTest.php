@@ -71,6 +71,31 @@ it('keeps an absolute path and an http(s) URL, which is the whole legitimate voc
         ->and($settings(['support' => 'HTTP://legacy.example.test/help'])->support)->toBe('HTTP://legacy.example.test/help');
 });
 
+/**
+ * Padding at the EDGES is the deployment; padding INSIDE is the attack.
+ *
+ * These values arrive from the mechanism the guard's own docblock names — a Helm value, a CI-rendered .env,
+ * a tenant-provisioning job — and a Helm block scalar and a here-doc-rendered variable both end in a
+ * newline. Dotenv trims a `.env` LINE; Laravel's `Env` does not touch a real environment variable, so
+ * "https://support.example.test/tickets/new\n" is exactly what the settings class is handed, and refusing
+ * it deleted an operator's link with no exception and no log over a character no reader ever sees. The URL
+ * standard strips leading and trailing C0 controls and space BEFORE it parses, so trimming them decides the
+ * value exactly as the browser will. An INTERIOR tab, LF or CR is the opposite case: the parser deletes
+ * those from the middle, which is the whole reason `java<TAB>script:` is a javascript: URL, so they are
+ * still refused. Both halves are asserted together because the guard's first shape refused both, and the
+ * two can never be conflated again — trimming first gives up nothing, since every hostile value trims into
+ * another one the guard already refuses.
+ */
+it('trims the whitespace a deployment adds at the edges, and still refuses it in the middle', function () use ($settings) {
+    expect($settings(['support' => "https://support.example.test/tickets/new\n"])->support)->toBe('https://support.example.test/tickets/new')
+        ->and($settings(['home' => " /dashboard\r\n"])->home)->toBe('/dashboard')
+        ->and($settings(['support' => 'https://support.example.test '])->support)->toBe('https://support.example.test');
+
+    foreach (["/log\tin", "https://support.example.test/a\nb", "java\tscript:alert(1)", ' //evil.test', "\x00/\\evil.test", "\tjavascript:alert(1)", "   \n  "] as $value) {
+        expect($settings(['support' => $value])->support)->toBe('');
+    }
+});
+
 it('defaults home to the site root, offers no sign-in or support link, and renders the action row', function () use ($settings) {
     $defaults = $settings([]);
 

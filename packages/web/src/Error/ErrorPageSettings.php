@@ -209,17 +209,32 @@ final readonly class ErrorPageSettings
      * `https://evil.test/phish`, which is the classic bypass of a filter that only looks for `//`. And
      * before any of that the parser DELETES every ASCII tab, LF and CR from the input, so `/<TAB>/evil.test`
      * IS `//evil.test` by the time anything reads it. Both are refused: the second character of a path may
-     * not open an authority, and a value carrying a character the parser would delete is DROPPED rather than
-     * normalised — a guard that keeps a string the browser will re-read differently has decided nothing. `/`
-     * alone, the default home, is the one path with no second character and is kept by name.
+     * not open an authority, and a value carrying INSIDE it a character the parser would delete is DROPPED
+     * rather than normalised — a guard that keeps a string the browser will re-read differently has decided
+     * nothing. `/` alone, the default home, is the one path with no second character and is kept by name.
      *
      * Refusing those characters instead of stripping them is also what keeps the scheme test honest.
      * `java\tscript:` is only a javascript: URL because a browser strips the tab; this method never has to
      * decide what the browser means by it, because the value is gone before either branch runs.
+     *
+     * THE EDGES ARE THE PARSER'S BUSINESS, AND TRIMMING THEM IS THAT SAME RULE READ PROPERLY rather than a
+     * softening of it. Before it does anything else the standard strips every LEADING and TRAILING C0
+     * control and space from the input, so a value padded at its edges is re-read by the browser as EXACTLY
+     * the value this method would have allowed: nothing is left undecided, and refusing it would delete a
+     * link an operator configured over a character no reader will ever see. The deployment mechanism this
+     * method exists for is the one that adds them — a Helm block scalar and a here-doc-rendered `.env` both
+     * end in a newline, and Laravel's `Env` does not trim a REAL environment variable the way Dotenv trims
+     * a `.env` line — and a trailing space was already being KEPT verbatim here while the newline spelling
+     * of the same padding dropped the whole link. So the edges are trimmed first and every refusal below is
+     * about the INTERIOR. That gives up no ground, because each hostile value trims into another this
+     * method already refuses: `<SP>//evil.test` into `//evil.test`, `<NUL>/\evil.test` into `/\evil.test`,
+     * `<TAB>javascript:…` into `javascript:…`.
      */
     private static function url(string $value): string
     {
-        if ($value === '' || preg_match('/[\t\n\r]/', $value) === 1) {
+        $value = trim($value, "\x00..\x20");
+
+        if ($value === '' || strpbrk($value, "\t\n\r") !== false) {
             return '';
         }
 

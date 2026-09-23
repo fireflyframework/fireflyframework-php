@@ -952,9 +952,12 @@ return [
     //          | templated environment variable would be stored XSS on the framework's own error page. An
     //          | absolute path (`/login`) or an `http(s)://` URL is kept; everything else — `data:`,
     //          | `vbscript:`, `file:`, `mailto:`, a protocol-relative `//host/…` or its backslash spelling
-    //          | `/\host/…`, and anything carrying a tab, LF or CR (characters a URL parser DELETES, so
-    //          | `/<TAB>/host` is `//host` to a browser) — is dropped to '' when the settings object is
-    //          | built, whoever built it, so it cannot hold an unsafe value at all.
+    //          | `/\host/…`, and anything carrying a tab, LF or CR INSIDE it (characters a URL parser
+    //          | DELETES wherever they sit, so `/<TAB>/host` is `//host` to a browser) — is dropped to ''
+    //          | when the settings object is built, whoever built it, so it cannot hold an unsafe value at
+    //          | all. Whitespace at the EDGES is trimmed rather than refused, because the parser strips it
+    //          | too: a value that reaches the environment with a trailing newline — a Helm block scalar, a
+    //          | here-doc-rendered variable — is still the URL you meant, and is kept.
     //          |
     //          | Defaults: home '/', sign-in '', support '', actions true.
     //         */
