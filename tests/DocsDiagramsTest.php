@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Container\Attributes\Order;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Data\Proxy\Advice;
 use Firefly\Data\Proxy\MethodInterceptor;
 use Firefly\Data\Proxy\MethodInvocation;
@@ -15,6 +16,15 @@ use Firefly\Data\Proxy\TransactionalAdviceSource;
 use Firefly\Data\Tests\Fixtures\Chain\ChainedLedger;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Eda\EventEnvelope;
+use Firefly\Observability\Cqrs\TracerCqrsTracing;
+use Firefly\Observability\Eda\TracerEdaTracing;
+use Firefly\Observability\Logging\StructuredLogging;
+use Firefly\Observability\Logging\TraceContextLogProcessor;
+use Firefly\Observability\ObservabilityAutoConfiguration;
+use Firefly\Observability\Tracing\SpanKind;
+use Firefly\Observability\Tracing\W3CTraceContextPropagator;
+use Firefly\Observability\Web\HttpClientTracingMiddleware;
 use Firefly\Observability\Web\HttpExchangeFilter;
 use Firefly\Observability\Web\MetricsFilter;
 use Firefly\Observability\Web\TracingFilter;
@@ -38,16 +48,24 @@ use Firefly\Security\Web\Logout\LogoutFilter;
 use Firefly\Security\Web\RememberMe\RememberMeAuthenticationFilter;
 use Firefly\Security\Web\SecurityHeadersFilter;
 use Firefly\Security\Web\Settings\FormLoginSettings;
+use Firefly\Testing\Double\RecordedSpan;
+use Firefly\Testing\Double\RecordingTracer;
 use Firefly\Tests\Fixtures\Advice\BothAdviceService;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Filter\RequestContextFilter;
+use GuzzleHttp\Promise\FulfilledPromise;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
+use Psr\Http\Message\RequestInterface;
 
-it('ships eight well-formed, referenced SVG diagrams', function () {
+it('ships nine well-formed, referenced SVG diagrams', function () {
     $root = dirname(__DIR__);
     $svgs = [
         'boot-pipeline.svg', 'di-autoconfig.svg', 'request-lifecycle.svg',
         'outbox-flow.svg', 'cqrs-eda-bridge.svg', 'security-filter-chain.svg',
         'oauth2-authorization-code.svg', 'method-interceptor-chain.svg',
+        'tracing-propagation.svg',
     ];
     $docsBlob = '';
     foreach (glob($root.'/docs/**/*.md') ?: [] as $md) {
@@ -79,7 +97,7 @@ it('ships eight well-formed, referenced SVG diagrams', function () {
             ->and($xml->desc->count())->toBe(1, "{$name} has no single <desc>");
     }
 
-    // The list above is exhaustive on purpose: a ninth SVG dropped into the directory without a line here
+    // The list above is exhaustive on purpose: a tenth SVG dropped into the directory without a line here
     // would ship unchecked — no well-formedness, no <title>/<desc>, no page embedding it, and no provenance
     // row (see the test below). Comparing the two sets is what turns adding a diagram into a deliberate act.
     $shipped = array_map('basename', glob($root.'/docs/assets/diagrams/*.svg') ?: []);
@@ -948,5 +966,201 @@ it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy s
                 "{$relative} no longer writes '{$fragment}', which is what the proxy pipeline emits today",
             );
         }
+    }
+});
+
+/**
+ * tracing-propagation.svg is the fourth picture this wave drew, and it is the one that transcribes the MOST by
+ * hand: two `#[Order]` integers, an auto-configuration's third, two Laravel `Context` keys, two Monolog field
+ * names, a configuration key, five `SpanKind` names and the two span-name templates the EDA seam builds. Not
+ * one of them is checked by anything above — the roster in the first test buys the figure four structural
+ * checks (well-formed, one `<title>`/`<desc>`, embedded somewhere, mirrored into the book) and none of those
+ * would notice `firefly.logging.format` where the framework reads `firefly.logging.structured.format`. That
+ * exact mistake was in the first draft of this file, which is why this guard exists: a configuration key in a
+ * picture is unreachable by `tests/ConfigReferenceTest.php` and by `DocsCodeAudit`'s shape contract alike,
+ * because an SVG is not a fenced block and never will be.
+ *
+ * So the same treatment the three earlier figures already get, and the same rule: NOTHING load-bearing is
+ * typed into this file. Every integer is reflected off the attribute that declares it, every key and field
+ * name is read from the constant the framework itself reads it from, and the span kinds and names are not
+ * asserted from memory at all — the real `TracerCqrsTracing`, `TracerEdaTracing` and
+ * `HttpClientTracingMiddleware` are DRIVEN against `RecordingTracer`, exactly as their own package tests drive
+ * them, and the picture is then checked against the spans they actually produced. A seam that stops opening a
+ * `PRODUCER` span, or starts naming it something other than `publish <destination>`, turns this red and names
+ * the file that still draws the old one.
+ *
+ * `docs/modules/tracing.md` is held to the same three integers, because its propagation table is where the
+ * figure's captions came from and a table and a picture drifting apart is worse than either being wrong alone.
+ */
+it('pins the tracing-propagation figure to the real orders, context keys, log fields and span kinds', function () {
+    $root = dirname(__DIR__);
+    $doc = (string) file_get_contents($root.'/docs/modules/tracing.md');
+
+    // What the picture SAYS, not what its markup spells: the drawn text is read out of the parsed document so
+    // that `&lt;destination&gt;` is compared as the `<destination>` a reader sees, and a line broken across
+    // <tspan>s would still match. Every assertion below is against a reader's view of the figure.
+    $document = new DOMDocument;
+    expect($document->loadXML((string) file_get_contents($root.'/docs/assets/diagrams/tracing-propagation.svg')))
+        ->toBeTrue('tracing-propagation.svg does not parse as XML');
+
+    $drawn = [];
+    foreach (['title', 'desc', 'text'] as $tag) {
+        foreach ($document->getElementsByTagName($tag) as $node) {
+            $drawn[] = $node->textContent;
+        }
+    }
+    $svg = implode("\n", $drawn);
+
+    // Every `#[Order]` the picture writes, read off the class that declares it — exactly as the filter-chain
+    // guard above reads the sixteen it checks.
+    $orders = [];
+    foreach ([TracingFilter::class, HttpExchangeFilter::class, ObservabilityAutoConfiguration::class] as $class) {
+        $attributes = (new ReflectionClass($class))->getAttributes(Order::class);
+        expect($attributes)->toHaveCount(1, "{$class} carries no single #[Order] attribute");
+        $orders[$class] = $attributes[0]->newInstance()->order;
+    }
+
+    $tracing = $orders[TracingFilter::class];
+    $exchanges = $orders[HttpExchangeFilter::class];
+    $autoConfiguration = $orders[ObservabilityAutoConfiguration::class];
+
+    // The one ordering claim the bottom-left panel makes: the exchange recorder runs INSIDE the span, which is
+    // the only reason a row of /actuator/httpexchanges can carry a trace id at all.
+    expect($tracing)->toBeLessThan(
+        $exchanges,
+        'HttpExchangeFilter no longer runs inside TracingFilter; the figure says the span already exists when '
+        .'the exchange is recorded, and that is how the row gets its traceId',
+    );
+
+    foreach (["#[Order({$tracing})]", "HttpExchangeFilter ({$exchanges})", "#[Order({$autoConfiguration})]"] as $badge) {
+        expect(str_contains($svg, $badge))->toBeTrue(
+            "tracing-propagation.svg no longer writes '{$badge}', which is what the attributes declare today",
+        );
+    }
+
+    foreach (["#[Order({$tracing})]", "#[Order({$autoConfiguration})]"] as $badge) {
+        expect(str_contains($doc, $badge))->toBeTrue(
+            "docs/modules/tracing.md no longer writes '{$badge}'; its propagation table and the figure must "
+            .'agree, because the captions were written from the table',
+        );
+    }
+
+    // The keys and field names, each read from the constant the framework reads it from. The two Context keys
+    // and the propagator's two header names are distinctive enough to match on their own; the two Monolog
+    // fields are not (`trace_id` is a substring of `firefly.trace_id`), so they are matched in the sentence
+    // that claims them, with the names interpolated rather than spelled.
+    $literals = [
+        TracingFilter::CONTEXT_TRACE_ID,
+        TracingFilter::CONTEXT_SPAN_ID,
+        StructuredLogging::FORMAT_KEY,
+        W3CTraceContextPropagator::TRACEPARENT,
+        W3CTraceContextPropagator::TRACESTATE,
+        'adds '.TraceContextLogProcessor::TRACE_ID.' and '.TraceContextLogProcessor::SPAN_ID,
+    ];
+
+    foreach ($literals as $literal) {
+        expect(str_contains($svg, $literal))->toBeTrue(
+            "tracing-propagation.svg no longer writes '{$literal}', which is the literal the framework reads",
+        );
+    }
+
+    foreach ([TracingFilter::CONTEXT_TRACE_ID, TracingFilter::CONTEXT_SPAN_ID] as $key) {
+        expect(str_contains($doc, $key))->toBeTrue("docs/modules/tracing.md no longer names the Context key '{$key}'");
+    }
+
+    // The master gate, read off the filter's own #[ConditionalOnProperty] rather than typed: the bottom band
+    // tells a reader to switch exactly this on, and a renamed property would leave that instruction useless.
+    $gates = array_map(
+        static fn (ReflectionAttribute $attribute): string => $attribute->newInstance()->name,
+        (new ReflectionClass(TracingFilter::class))->getAttributes(ConditionalOnProperty::class),
+    );
+    expect($gates)->not->toBe([], 'TracingFilter carries no #[ConditionalOnProperty]; the figure says it is gated')
+        ->and(str_contains($svg, $gates[0]))->toBeTrue(
+            "tracing-propagation.svg no longer writes '{$gates[0]}', the property that switches tracing on",
+        );
+
+    // The four instrumented seams, DRIVEN rather than remembered. Each produces the spans the picture draws,
+    // and the picture is then checked against them.
+    $recorder = new RecordingTracer;
+    $propagator = new W3CTraceContextPropagator;
+
+    (new TracerCqrsTracing($recorder))->traceCommand(new stdClass, static fn (): int => 1);
+
+    $eda = new TracerEdaTracing($recorder, $propagator);
+    $envelopeHeaders = [];
+    $eda->tracePublish('orders', 'order.created', [], function (array $headers) use (&$envelopeHeaders): void {
+        $envelopeHeaders = $headers;
+    });
+    $eda->traceConsume(new EventEnvelope('order.created', 'orders', [], $envelopeHeaders), static function (): void {});
+
+    $client = new HttpClientTracingMiddleware($recorder, $propagator);
+    $sent = null;
+    $client(static function (RequestInterface $request) use (&$sent): PromiseInterface {
+        $sent = $request;
+
+        return new FulfilledPromise(new Response(200));
+    })(new Request('GET', 'https://payments.test/charges?token=secret'), [])->wait();
+
+    // Every kind the figure names, taken from the spans the seams opened — plus SERVER, which TracingFilter
+    // opens through the same tracer and which SpanKind itself must still declare.
+    $opened = [
+        'the CQRS seam no longer opens an INTERNAL span around a command' => SpanKind::Internal,
+        'the EDA seam no longer opens a PRODUCER span on publish' => SpanKind::Producer,
+        'the EDA seam no longer opens a CONSUMER span on delivery' => SpanKind::Consumer,
+        'the Http client middleware no longer opens a CLIENT span' => SpanKind::Client,
+    ];
+
+    foreach ($opened as $complaint => $kind) {
+        expect($recorder->ofKind($kind))->not->toBe([], $complaint);
+    }
+
+    /** The first span of a kind, once the loop above has established that there is one. */
+    $firstOf = static function (SpanKind $kind) use ($recorder): RecordedSpan {
+        foreach ($recorder->ofKind($kind) as $span) {
+            return $span;
+        }
+
+        throw new RuntimeException("no {$kind->name} span was opened at all");
+    };
+
+    foreach ([SpanKind::Server, SpanKind::Client, SpanKind::Internal, SpanKind::Producer, SpanKind::Consumer] as $kind) {
+        $word = strtoupper($kind->name);
+        expect(str_contains($svg, $word))->toBeTrue("tracing-propagation.svg no longer names the {$word} span")
+            ->and(str_contains($doc, $word))->toBeTrue("docs/modules/tracing.md no longer names the {$word} span");
+    }
+
+    // The two span-name templates the EDA panel draws, read off the names the seam actually produced for a
+    // destination this test chose: `publish orders` becomes `publish <destination>` in the picture.
+    foreach ([SpanKind::Producer, SpanKind::Consumer] as $kind) {
+        $template = str_replace('orders', '<destination>', $firstOf($kind)->name);
+        expect(str_contains($svg, strtoupper($kind->name).' `'.$template.'`'))->toBeTrue(
+            "tracing-propagation.svg no longer draws the {$kind->name} span as `{$template}`, which is what "
+            .'TracerEdaTracing names it today',
+        );
+    }
+
+    // The traceparent really does ride in the envelope headers, and really is written onto the PSR-7 request —
+    // the two arrows the picture draws between the boxes rather than inside them.
+    expect(array_key_exists(W3CTraceContextPropagator::TRACEPARENT, $envelopeHeaders))->toBeTrue(
+        'TracerEdaTracing no longer injects a traceparent into the envelope headers, which is the figure’s '
+        .'whole claim about how a PRODUCER and a CONSUMER span become one trace',
+    )->and($sent?->hasHeader(W3CTraceContextPropagator::TRACEPARENT))->toBeTrue(
+        'HttpClientTracingMiddleware no longer writes a traceparent onto the outbound PSR-7 request',
+    );
+
+    // `url.path, never url.full` is a security claim, not a stylistic one: the query string is where tokens
+    // live. It is asserted against the attributes the middleware actually set.
+    $clientAttributes = $firstOf(SpanKind::Client)->attributes;
+    expect(array_key_exists('url.path', $clientAttributes))->toBeTrue('the CLIENT span carries no url.path')
+        ->and(array_key_exists('url.full', $clientAttributes))->toBeFalse(
+            'the CLIENT span now carries url.full; the figure and docs/modules/tracing.md both promise the '
+            .'query string never reaches a span',
+        );
+
+    // And the two CQRS attributes the left panel writes, off the span the real seam produced.
+    foreach (array_keys($firstOf(SpanKind::Internal)->attributes) as $attribute) {
+        expect(str_contains($svg, (string) $attribute))->toBeTrue(
+            "tracing-propagation.svg no longer writes the CQRS span attribute '{$attribute}'",
+        );
     }
 });

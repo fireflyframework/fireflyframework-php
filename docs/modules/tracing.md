@@ -51,6 +51,8 @@ instrumentation site can test `$span->context()->isValid()` before publishing id
 
 ## Propagation
 
+![One traceparent entering at the TracingFilter and flowing through Laravel Context, the CQRS bus, the EDA envelope and the outbound Http client, landing on every log line, on /actuator/httpexchanges and on the dashboard](../assets/diagrams/tracing-propagation.svg)
+
 `Firefly\Observability\Tracing\W3CTraceContextPropagator` speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/)
 over a plain header map, with no SDK involved: `extract(array $carrier): ?SpanContext` follows the receiver
 rules (version `ff` and all-zero ids rejected, a future version read for its first four fields, names matched
