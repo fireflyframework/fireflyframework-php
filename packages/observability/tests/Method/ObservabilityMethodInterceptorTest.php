@@ -6,8 +6,15 @@ use Firefly\Config\Config;
 use Firefly\Data\Proxy\MethodInvocation;
 use Firefly\Observability\Method\ObservabilityMethodDescriptor;
 use Firefly\Observability\Method\ObservabilityMethodInterceptor;
+use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\SimpleMeterRegistry;
 use Firefly\Observability\Tracing\NoOpTracer;
+use Firefly\Observability\Tracing\Span;
+use Firefly\Observability\Tracing\SpanContext;
+use Firefly\Observability\Tracing\SpanKind;
+use Firefly\Observability\Tracing\SpanStatus;
+use Firefly\Observability\Tracing\Tracer;
+use Firefly\Testing\Double\RecordingTracer;
 use Illuminate\Config\Repository;
 
 /**
@@ -35,15 +42,84 @@ function metricsInvocation(ObservabilityMethodDescriptor $descriptor, callable $
 
 /**
  * SimpleMeterRegistry IS the recorder (it implements MeterRegistry and MetricsRecorder both), so one object
- * is the write port under test and the read port the assertions use.
+ * is the write port under test and the read port the assertions use — which is why the parameter is the
+ * narrow MetricsRecorder rather than the registry: the failure cases below hand it one that only throws.
+ *
+ * The tracer is injectable and defaults to NoOpTracer, because the span half of #[Observed] is half of what
+ * the attribute exists for and a NoOp asserts nothing about it.
  */
-function metricsInterceptor(SimpleMeterRegistry $registry, bool $enabled = true): ObservabilityMethodInterceptor
+function metricsInterceptor(MetricsRecorder $registry, bool $enabled = true, ?Tracer $tracer = null): ObservabilityMethodInterceptor
 {
     return new ObservabilityMethodInterceptor(
         $registry,
-        new NoOpTracer,
+        $tracer ?? new NoOpTracer,
         new Config(new Repository(['firefly' => ['observability' => ['method' => ['enabled' => $enabled]]]])),
     );
+}
+
+/**
+ * A recorder whose every write fails — the cache-backed registry with its store unreachable, which is the
+ * failure mode `firefly.observability.metrics.store` makes possible on EVERY annotated method. Named for
+ * this file because one Pest process shares its global class names.
+ */
+final class ExplodingMethodMetricsRecorder implements MetricsRecorder
+{
+    /** @param array<string, string> $tags */
+    public function increment(string $name, array $tags = [], float $amount = 1.0): void
+    {
+        throw new RuntimeException('metrics store unreachable');
+    }
+
+    /** @param array<string, string> $tags */
+    public function record(string $name, array $tags = [], float $seconds = 0.0): void
+    {
+        throw new RuntimeException('metrics store unreachable');
+    }
+
+    /** @param array<string, string> $tags */
+    public function setGauge(string $name, array $tags, float $value): void
+    {
+        throw new RuntimeException('metrics store unreachable');
+    }
+}
+
+/** The tracer half of the same hazard: an exporter that cannot start a span. */
+final class ExplodingMethodMetricsTracer implements Tracer
+{
+    /** @param array<string, bool|int|float|string|array<mixed>|null> $attributes */
+    public function startSpan(string $name, SpanKind $kind = SpanKind::Internal, array $attributes = [], ?SpanContext $parent = null): Span
+    {
+        throw new RuntimeException('tracer unreachable');
+    }
+
+    public function currentSpan(): ?Span
+    {
+        return null;
+    }
+
+    /**
+     * @template T
+     *
+     * @param  callable(Span): T  $callback
+     * @param  array<string, bool|int|float|string|array<mixed>|null>  $attributes
+     * @return T
+     */
+    public function trace(string $name, callable $callback, SpanKind $kind = SpanKind::Internal, array $attributes = []): mixed
+    {
+        throw new RuntimeException('tracer unreachable');
+    }
+}
+
+/**
+ * The long-task gauge's current reading. The fallback supplier is never the one that answers — setGauge()
+ * registered the meter on entry — so a -1.0 here means "no gauge was ever published", which is a distinct
+ * failure from "the gauge says zero".
+ *
+ * @param  array<string, string>  $tags
+ */
+function metricsGauge(SimpleMeterRegistry $registry, string $name, array $tags): float
+{
+    return $registry->gauge($name, $tags, static fn (): float => -1.0)->value();
 }
 
 it('records a timer around a successful call, tagged exception=none', function (): void {
@@ -115,4 +191,145 @@ it('does nothing at all when the master key is off', function (): void {
 
     expect(metricsInterceptor($registry, enabled: false)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok')))->toBe('ok')
         ->and($registry->meters())->toBe([]);
+});
+
+/*
+ | THE LONG-TASK GAUGE. #[Timed]'s docblock promises "the number of invocations THIS PROCESS has in flight",
+ | and the only coverage this used to have was "it is back at 0 after one completed call" — which a 1/0 flag
+ | passes just as well as a depth counter does. These two read the gauge WHILE work is in flight, which is
+ | the only moment the two semantics differ, and pin the tag set the gauge is published under.
+ */
+
+it('counts the DEPTH of a re-entered long task rather than raising a 1/0 flag', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $interceptor = metricsInterceptor($registry);
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'description' => '', 'longTask' => true]);
+
+    $tags = ['class' => 'OrderService', 'method' => 'importAll'];
+
+    /** @var list<float> $readings */
+    $readings = [];
+
+    // The inner call is the self-invocation a generated proxy really performs: the proxy is a SUBCLASS, so a
+    // `$this->importAll()` inside the body dispatches through this same link a second time.
+    $inner = static function () use ($registry, $tags, &$readings): string {
+        $readings[] = metricsGauge($registry, 'orders.import.active', $tags);
+
+        return 'inner';
+    };
+
+    $outer = static function () use ($interceptor, $descriptor, $registry, $tags, $inner, &$readings): string {
+        $readings[] = metricsGauge($registry, 'orders.import.active', $tags);
+        $interceptor->invoke(metricsInvocation($descriptor, $inner));
+        $readings[] = metricsGauge($registry, 'orders.import.active', $tags);
+
+        return 'outer';
+    };
+
+    expect($interceptor->invoke(metricsInvocation($descriptor, $outer)))->toBe('outer')
+        // 1 inside the outer call, 2 inside the nested one, back to 1 when the nested one returned — a flag
+        // would read 1, 1 and then 0 while the outer invocation was still running.
+        ->and($readings)->toBe([1.0, 2.0, 1.0])
+        ->and(metricsGauge($registry, 'orders.import.active', $tags))->toBe(0.0);
+});
+
+it('publishes the long-task gauge under the TIMER\'s tags, extraTags included', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => ['shard' => 'eu'], 'description' => '', 'longTask' => true]);
+
+    metricsInterceptor($registry)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
+
+    $gauges = array_values(array_map(
+        static fn ($meter): array => $meter->tags(),
+        array_filter($registry->meters(), static fn ($meter): bool => $meter->name() === 'orders.import.active'),
+    ));
+
+    // Exactly ONE gauge, carrying the same tags as the timer it belongs to — not a second series under the
+    // bare class/method pair that no query could join to `orders.import`.
+    expect($gauges)->toBe([['class' => 'OrderService', 'method' => 'importAll', 'shard' => 'eu']]);
+});
+
+/*
+ | THE SPAN HALF OF #[Observed] — half of what the attribute exists for ("ONE name that starts BOTH a span
+ | and a timer"), and until these tests the only tracer that ever walked it was NoOpTracer, which records
+ | nothing and therefore asserts nothing.
+ */
+
+it('starts an INTERNAL span under the contextualName, with the metric tags as attributes, and ends it', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $tracer = new RecordingTracer;
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'ship', null, null, ['name' => 'orders.ship', 'contextualName' => 'ship order', 'tags' => ['carrier' => 'dhl']]);
+
+    metricsInterceptor($registry, tracer: $tracer)->invoke(metricsInvocation($descriptor, static fn (): string => 'shipped'));
+
+    $span = $tracer->recorded()[0];
+
+    expect($tracer->recorded())->toHaveCount(1)
+        ->and($span->name)->toBe('ship order')
+        ->and($span->kind)->toBe(SpanKind::Internal)
+        ->and($span->attributes)->toBe(['class' => 'OrderService', 'method' => 'ship', 'carrier' => 'dhl'])
+        ->and($span->status)->toBe(SpanStatus::Unset)
+        ->and($span->ended)->toBeTrue();
+});
+
+it('names the span after the METRIC when the attribute gives no contextualName', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $tracer = new RecordingTracer;
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'ship', null, null, ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []]);
+
+    metricsInterceptor($registry, tracer: $tracer)->invoke(metricsInvocation($descriptor, static fn (): string => 'shipped'));
+
+    expect($tracer->recorded()[0]->name)->toBe('orders.ship');
+});
+
+it('records the exception on the span and marks it ERROR before ending it', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $tracer = new RecordingTracer;
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'ship', null, null, ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []]);
+
+    $call = fn (): mixed => metricsInterceptor($registry, tracer: $tracer)->invoke(metricsInvocation($descriptor, static fn (): never => throw new RuntimeException('no carrier')));
+
+    expect($call)->toThrow(RuntimeException::class, 'no carrier');
+
+    $span = $tracer->recorded()[0];
+
+    expect($span->status)->toBe(SpanStatus::Error)
+        ->and($span->statusDescription)->toBe('no carrier')
+        ->and($span->exception?->getMessage())->toBe('no carrier')
+        ->and($span->ended)->toBeTrue();
+});
+
+/*
+ | TELEMETRY NEVER CHANGES THE CALL. Every write below runs in a `finally`, where a throw DISCARDS the
+ | exception already on its way to the caller — so an unguarded recorder turns a caught-and-handled domain
+ | exception into a metrics exception no `catch` in the application matches, and every successful #[Timed]
+ | method into a throw. HttpExchangeFilter::record() carries the same guard for the same reason.
+ */
+
+it('returns the method\'s value even when every metric write fails', function (): void {
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'importAll', ['name' => 'orders.import', 'tags' => [], 'description' => '', 'longTask' => true], ['name' => 'orders.counted', 'tags' => [], 'failuresOnly' => false]);
+
+    $result = metricsInterceptor(new ExplodingMethodMetricsRecorder)->invoke(metricsInvocation($descriptor, static fn (): string => 'ok'));
+
+    expect($result)->toBe('ok');
+});
+
+it('lets the method\'s own exception through unchanged when every metric write fails', function (): void {
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'place', ['name' => 'orders.place', 'tags' => [], 'description' => '', 'longTask' => false]);
+
+    $call = fn (): mixed => metricsInterceptor(new ExplodingMethodMetricsRecorder)->invoke(metricsInvocation($descriptor, static fn (): never => throw new OutOfRangeException('out of stock')));
+
+    // The DOMAIN exception, not 'metrics store unreachable' — the swap a throw from the `finally` would make.
+    expect($call)->toThrow(OutOfRangeException::class, 'out of stock');
+});
+
+it('runs the method even when the tracer cannot start a span', function (): void {
+    $registry = new SimpleMeterRegistry;
+    $descriptor = new ObservabilityMethodDescriptor('App\\Orders\\OrderService', 'ship', null, null, ['name' => 'orders.ship', 'contextualName' => '', 'tags' => []]);
+
+    $result = metricsInterceptor($registry, tracer: new ExplodingMethodMetricsTracer)->invoke(metricsInvocation($descriptor, static fn (): string => 'shipped'));
+
+    // …and the timer half still recorded: a tracing failure costs the span, nothing else.
+    expect($result)->toBe('shipped')
+        ->and($registry->timer('orders.ship', ['class' => 'OrderService', 'method' => 'ship', 'exception' => 'none'])->count())->toBe(1);
 });

@@ -7,11 +7,13 @@ use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Cli\Tests\Fixtures\App\DemoConfigProperties;
 use Firefly\Cli\Tests\Fixtures\App\DemoSecuredService;
+use Firefly\Cli\Tests\Fixtures\App\DemoTimedService;
 use Firefly\Cli\Tests\Fixtures\App\DemoTransactionalService;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Data\DataServiceProvider;
 use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
+use Firefly\Observability\Method\ObservabilityAdviceSource;
 use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
 use Firefly\Validation\ValidationServiceProvider;
 use Firefly\Web\Route\RouteDescriptor;
@@ -53,7 +55,7 @@ it('emits proxy class files + a loadable classmap', function () {
  | #[PreAuthorize] was handed out bare — its rule compiled, enforced by nothing, and nothing logged. The plan is
  | now compiled through every AdviceSource, exactly as the uncached boot collects them.
  */
-it('emits proxy-plan.php naming the security-only service beside the transactional one', function () {
+it('emits proxy-plan.php naming the security-only and metric-only services beside the transactional one', function () {
     $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
 
     $report = (new ManifestCacheWriter)->write(cachedBootPsr4(), $dir);
@@ -67,7 +69,13 @@ it('emits proxy-plan.php naming the security-only service beside the transaction
         ->and(array_keys($plan->adviceFor(DemoTransactionalService::class)))->toBe(['tx'])
         ->and($plan->hasProxyFor(DemoSecuredService::class))->toBeTrue()
         ->and(array_keys($plan->adviceFor(DemoSecuredService::class)))->toBe([MethodSecurityAdviceSource::ID])
-        ->and($plan->methodsFor(DemoSecuredService::class)['secret'][0]['row']['expression'])->toBe("hasRole('ADMIN')");
+        ->and($plan->methodsFor(DemoSecuredService::class)['secret'][0]['row']['expression'])->toBe("hasRole('ADMIN')")
+        // …and the same for the metric-only #[Service]: the third source in planner(), which nothing else
+        // in this package's suite exercises. Deleting `new ObservabilityAdviceSource` from planner() used to
+        // leave the whole suite green while a cached app recorded no method meter at all.
+        ->and($plan->hasProxyFor(DemoTimedService::class))->toBeTrue()
+        ->and(array_keys($plan->adviceFor(DemoTimedService::class)))->toBe([ObservabilityAdviceSource::ID])
+        ->and($plan->methodsFor(DemoTimedService::class)['measured'][0]['row']['timed'])->toBe(['name' => 'demo.timed', 'tags' => [], 'description' => '', 'longTask' => false]);
 
     /** @var array<string,string> $map */
     $map = require $dir.'/'.FireflyCachePaths::PROXY_MAP;
@@ -76,6 +84,16 @@ it('emits proxy-plan.php naming the security-only service beside the transaction
     expect($report->proxyCount)->toBe(count($plan->classes()))
         ->and($map)->toHaveKey(DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX)
         ->and((string) file_get_contents($map[DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX]))->toContain('__fireflySecurityInterceptor');
+
+    // ObservabilityAdviceSource::render() is the only thing that emits the descriptor literal into the
+    // generated proxy, and it runs on the CACHED path alone — the observability capstones take the scan
+    // branch by design. Asserting the generated source proves the literal parses and names the right class;
+    // the property name comes from Advice::property() over the id 'metrics'.
+    $timedProxy = (string) file_get_contents($map[DemoTimedService::class.ProxyPlan::PROXY_SUFFIX]);
+
+    expect($map)->toHaveKey(DemoTimedService::class.ProxyPlan::PROXY_SUFFIX)
+        ->and($timedProxy)->toContain('__fireflyMetricsInterceptor')
+        ->and($timedProxy)->toContain('\\Firefly\\Observability\\Method\\ObservabilityMethodDescriptor::fromArray(');
 });
 
 it('boots the fixture app on the CACHED zero-reflection path with a working #[Transactional] proxy', function () {
@@ -145,6 +163,14 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
     $secured = $context->get(DemoSecuredService::class);
     expect($secured::class)->toBe(DemoSecuredService::class.ProxyPlan::PROXY_SUFFIX)
         ->and($secured->secret())->toBe('secret');
+
+    // (c'') and a class planned for METRIC advice alone is proxied and callable on the cached path, inert for
+    // the same reason: no observability provider in this app, so InterceptorRegistry hands the metrics link a
+    // pass-through (the advice declares inertWhenUnbound). Recording is proven in packages/observability.
+    /** @var DemoTimedService $timed */
+    $timed = $context->get(DemoTimedService::class);
+    expect($timed::class)->toBe(DemoTimedService::class.ProxyPlan::PROXY_SUFFIX)
+        ->and($timed->measured())->toBe('measured');
 
     // Category C: the compiled TransactionalManifest is populated (the #[Configuration] #[Bean] loaded it).
     /** @var TransactionalManifest $manifest */

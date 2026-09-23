@@ -1337,11 +1337,18 @@ return [
          | a failure instead of vanishing from the meter.
          |
          | #[Timed(value:, extraTags:, description:, longTask:)] records a timer, tagged `exception` with the
-         | thrown class's short name (`none` on success). `longTask` adds a `<meter>.active` gauge holding
-         | the number of in-flight invocations. #[Counted(value:, extraTags:, recordFailuresOnly:)] counts
-         | invocations, tagged `result`. #[Observed(name:, contextualName:, lowCardinalityKeyValues:)] starts
-         | a span AND a timer under one name — Micrometer's Observation API in one attribute; with tracing
-         | off it degrades to the timer.
+         | thrown class's short name (`none` on success). `longTask` adds a `<meter>.active` gauge carrying
+         | the timer's own tags and holding the number of invocations THIS PROCESS has in flight (a nested or
+         | recursive call reads 2, not 1); with a `metrics.store` configured the shared key is last-writer-
+         | wins like every other set-gauge, so read it as "work in flight somewhere" rather than as a
+         | fleet-wide count. #[Counted(value:, extraTags:, recordFailuresOnly:)] counts invocations, tagged
+         | `result`. #[Observed(name:, contextualName:, lowCardinalityKeyValues:)] starts a span AND a timer
+         | under one name — Micrometer's Observation API in one attribute; with tracing off it degrades to
+         | the timer.
+         |
+         | A failure INSIDE the recording never reaches the caller: the meters and the span are written
+         | best-effort, so a cache-backed registry that cannot reach its store loses the sample rather than
+         | turning a method that returned into a method that threw.
          |
          | #[Timed(percentiles:)] is REFUSED at scan time: this package publishes fixed histogram buckets,
          | not client-side quantile summaries. Configure `metrics.distribution.per-meter` above and compute

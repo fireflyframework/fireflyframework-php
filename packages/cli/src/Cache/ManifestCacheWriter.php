@@ -96,15 +96,10 @@ final class ManifestCacheWriter
     }
 
     /**
-     * The advice every proxy runs, in the order the plan will chain it: security (100) outside transactions
-     * (1000). D4 direct dependency like every other scanner here — the uncached boot collects the same two
-     * sources as #[Component]s through Container::getAll().
-     */
-    /**
      * The advice every proxy runs, in the order the plan will chain it: metrics (50) outside security (100)
-     * outside resilience (200) outside transactions (1000). D4 direct dependency like every other scanner
-     * here — the uncached boot collects the same four sources as #[Component]s through Container::getAll(),
-     * so a cached app and a dev app enforce an identical plan.
+     * outside transactions (1000). D4 direct dependency like every other scanner here — the uncached boot
+     * collects the same three sources as #[Component]s through Container::getAll(), so a cached app and a
+     * dev app enforce an identical plan.
      */
     private function planner(): ProxyPlanner
     {

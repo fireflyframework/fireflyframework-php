@@ -13,9 +13,16 @@ use Attribute;
  * writes; `description` is carried for the exposition's `# HELP` line.
  *
  * `longTask` is Micrometer's LongTaskTimer, reduced to the half this registry can honestly publish: a
- * set-gauge named `<meter>.active` holding the number of in-flight invocations, incremented on entry and
- * decremented in a `finally`. The other half — sampling the duration of a task that has not finished —
- * needs a meter type `MeterRegistry` does not have, so it is documented rather than faked.
+ * set-gauge named `<meter>.active`, tagged exactly as the timer is, holding the number of invocations THIS
+ * PROCESS has in flight — incremented on entry and decremented in a `finally`, so a recursive or re-entered
+ * long task reads 2 rather than dropping to 0 the moment the inner call returns. The other half — sampling
+ * the duration of a task that has not finished — needs a meter type `MeterRegistry` does not have, so it is
+ * documented rather than faked.
+ *
+ * ACROSS PROCESSES the gauge is last-writer-wins, the Known-latent every set-gauge in this package shares:
+ * with `firefly.observability.metrics.store` configured the shared key carries the depth of whichever worker
+ * wrote last, not the fleet's total, because a gauge has no atomic increment to sum one. Read it as "this
+ * meter has work in flight somewhere", not as a fleet-wide count.
  *
  * `percentiles` is ACCEPTED BY THE CONSTRUCTOR AND REFUSED BY THE SCAN, on purpose. Client-side quantile
  * summaries are a documented Known-latent of this package (there is no sliding-window percentile meter), so
