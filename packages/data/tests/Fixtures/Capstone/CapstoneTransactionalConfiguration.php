@@ -40,4 +40,17 @@ final class CapstoneTransactionalConfiguration
     {
         return TransactionalManifest::load(self::manifestPath());
     }
+
+    /**
+     * The OTHER thing a #[Bean] method does, and the one the capstone had never pinned: it makes its declared
+     * return type a post-processed bean. RegisterBeanPostProcessorsPass installs the chain's extender on this
+     * method's binding key with `$bean->returns` as the declared class, so BeanWiredLedger — which carries no
+     * stereotype and could not be autowired even if it did — reaches TransactionalBeanPostProcessor and is
+     * swapped for its generated proxy exactly as a #[Service] is.
+     */
+    #[Bean]
+    public function beanWiredLedger(): BeanWiredLedger
+    {
+        return new BeanWiredLedger('ledger');
+    }
 }

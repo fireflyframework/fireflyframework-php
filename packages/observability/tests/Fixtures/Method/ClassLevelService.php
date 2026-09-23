@@ -16,7 +16,8 @@ use Firefly\Observability\Method\Timed;
  *
  * The two methods the fan-out must NOT reach are here for the same reason: a proxy cannot intercept a static
  * call (there is no instance to wrap) and the `__`-prefixed magic methods are the ones the proxy itself
- * relies on, so both are skipped before the attributes are even read.
+ * relies on. Neither carries an attribute of its own, so the fan-out passes over both in silence — an
+ * attribute written BY HAND on either shape is a refusal, and lives in its own fixture directory.
  */
 #[Service]
 #[Timed('orders.svc', extraTags: ['scope' => 'class'], description: 'Every order operation.')]

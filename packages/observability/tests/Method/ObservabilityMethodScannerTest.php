@@ -105,8 +105,9 @@ it('resolves the three kinds independently, so a method-level #[Counted] keeps t
 
 it('never fans a class-level attribute onto a static or a magic method', function (): void {
     // Neither can be intercepted: a static call has no instance to wrap, and the `__`-prefixed methods are the
-    // ones the proxy machinery itself uses. The skip filter runs BEFORE the attributes are read, so the
-    // class-level rule cannot reach them by the back door.
+    // ones the proxy machinery itself uses. The FAN-OUT is what is skipped here, and silently, because the
+    // author wrote one attribute about the class rather than one about `__invoke()`. An attribute written BY
+    // HAND on either shape is refused instead — see ObservabilityMethodScannerRefusalTest.
     expect(observabilityRules())
         ->not->toHaveKey(ClassLevelService::class.'::skipped')
         ->not->toHaveKey(ClassLevelService::class.'::__invoke');
