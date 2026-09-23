@@ -233,6 +233,60 @@ final readonly class DocBlock
     }
 
     /**
+     * The `@implements` lines — an interface instantiated with this class's arguments — raw, for DocType.
+     *
+     * @return list<string>
+     */
+    public function implementsLines(): array
+    {
+        $lines = [];
+
+        foreach (['phpstan-implements', 'psalm-implements', 'template-implements', 'implements'] as $tag) {
+            foreach ($this->tags[$tag] ?? [] as $line) {
+                $lines[] = trim($line);
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The class's magic properties — `@property`, `@property-read`, `@property-write` — in source order, which
+     * is how an IDE helper documents an Eloquent model's columns, accessors and relations.
+     *
+     * `access` keeps the distinction the tag name makes, because it is the difference between a member that is
+     * always serialised (`both`: a column), one that is serialised only sometimes (`read`: a relation, an
+     * accessor) and one that never is (`write`: a mutator).
+     *
+     * @return list<array{name: string, type: string, description: string, access: 'both'|'read'|'write'}>
+     */
+    public function magicProperties(): array
+    {
+        $properties = [];
+
+        foreach ($this->sequence as [$tag, $text]) {
+            $access = match ($tag) {
+                'property' => 'both',
+                'property-read' => 'read',
+                'property-write' => 'write',
+                default => null,
+            };
+            if ($access === null || preg_match('/^\s*(.*?)\s*\$([A-Za-z_]\w*)(.*)$/s', $text, $matches) !== 1) {
+                continue;
+            }
+
+            $type = trim($matches[1]);
+            if ($type === '') {
+                continue;
+            }
+
+            $properties[] = ['name' => $matches[2], 'type' => $type, 'description' => self::flatten(trim($matches[3])), 'access' => $access];
+        }
+
+        return $properties;
+    }
+
+    /**
      * `@param` lines as member name => description, dropping the type expression and any line with no prose.
      *
      * The name is found by scanning for the first `$identifier` rather than by splitting on whitespace,

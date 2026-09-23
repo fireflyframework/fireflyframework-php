@@ -99,6 +99,12 @@ final class SchemaUnion
         if (isset($schema['type']) && is_string($schema['type']) && ! isset($schema['$ref'])) {
             $schema['type'] = [$schema['type'], 'null'];
 
+            // An enumeration is a closed set, and widening only the type would leave null failing it: a
+            // nullable enum has to list null among its values to admit one at all.
+            if (isset($schema['enum']) && is_array($schema['enum']) && ! in_array(null, $schema['enum'], true)) {
+                $schema['enum'] = [...array_values($schema['enum']), null];
+            }
+
             return $schema;
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\OpenApi\Schema;
 
 use Firefly\OpenApi\Generator\DocBlock;
+use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;
 use ReflectionClass;
 use ReflectionParameter;
@@ -139,7 +140,9 @@ final class ResponseSchemaFactory
      */
     private function build(ReflectionClass $reflection, SchemaRegistry $registry, array $bindings, string $title): array
     {
-        $schema = $this->declaredShape($reflection, $registry, $bindings) ?? $this->reflectedShape($reflection, $registry, $bindings);
+        $schema = $reflection->implementsInterface(Arrayable::class)
+            ? $this->arrayableShape($reflection, $registry, $bindings)
+            : ($this->declaredShape($reflection, $registry, $bindings) ?? $this->reflectedShape($reflection, $registry, $bindings));
 
         $description = DocBlock::parse($reflection->getDocComment())->prose();
 
@@ -174,6 +177,47 @@ final class ResponseSchemaFactory
         [$schema] = DocType::split($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $this->scope($class, $bindings, $declaring, $registry));
 
         return $this->informative($schema) ? $schema : null;
+    }
+
+    /**
+     * What JsonMessageConverter writes for an Arrayable — toArray(), ahead of JsonSerializable and never the
+     * public properties. An Eloquent model is read by EloquentSchema; anything else by its toArray() `@return`,
+     * then by the value type an `@implements Arrayable<K, V>` declares, and otherwise as an object whose
+     * members nothing states — which is less than a property list, and true where a property list is not.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<string, mixed>
+     */
+    private function arrayableShape(ReflectionClass $class, SchemaRegistry $registry, array $bindings): array
+    {
+        if (EloquentSchema::isModel($class->getName())) {
+            return EloquentSchema::shape($class, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments));
+        }
+
+        $method = $class->getMethod('toArray');
+        $line = DocBlock::parse($method->getDocComment())->returnLine();
+
+        if ($line !== null) {
+            $declaring = $method->getDeclaringClass();
+            [$schema] = DocType::split($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $this->scope($class, $bindings, $declaring, $registry));
+
+            if ($this->informative($schema)) {
+                return $schema ?? [];
+            }
+        }
+
+        foreach (DocBlock::parse($class->getDocComment())->implementsLines() as $implements) {
+            if (preg_match('/^\\\\?([A-Za-z_][\\w\\\\]*)/', $implements, $name) !== 1 || ClassNames::resolve($name[1], $class) !== Arrayable::class) {
+                continue;
+            }
+
+            $arguments = DocType::genericArguments($implements, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $class, $bindings);
+
+            return $this->collection($arguments ?? []);
+        }
+
+        return ['type' => 'object'];
     }
 
     /**
