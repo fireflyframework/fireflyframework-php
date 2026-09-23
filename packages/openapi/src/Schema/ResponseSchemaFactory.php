@@ -6,6 +6,7 @@ namespace Firefly\OpenApi\Schema;
 
 use Firefly\OpenApi\Generator\DocBlock;
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Http\Resources\Json\JsonResource;
 use JsonSerializable;
 use ReflectionClass;
 use ReflectionParameter;
@@ -96,6 +97,14 @@ final class ResponseSchemaFactory
             return $this->paginator($paginator, $arguments, $registry);
         }
 
+        // A resource collection is the list of what it collects; its own members are machinery.
+        if (ResourceSchema::isCollection($class)) {
+            /** @var class-string $class */
+            $collects = ResourceSchema::collects(new ReflectionClass($class));
+
+            return $collects === null ? ['type' => 'array'] : ['type' => 'array', 'items' => $this->schema($collects, $registry)];
+        }
+
         $inline = TypeSchema::for($class);
 
         if ($inline !== null) {
@@ -148,9 +157,11 @@ final class ResponseSchemaFactory
      */
     private function build(ReflectionClass $reflection, SchemaRegistry $registry, array $bindings, string $title): array
     {
-        $schema = $reflection->implementsInterface(Arrayable::class)
-            ? $this->arrayableShape($reflection, $registry, $bindings)
-            : ($this->declaredShape($reflection, $registry, $bindings) ?? $this->reflectedShape($reflection, $registry, $bindings));
+        $schema = match (true) {
+            ResourceSchema::isResource($reflection->getName()) => $this->resourceShape($reflection, $registry, $bindings),
+            $reflection->implementsInterface(Arrayable::class) => $this->arrayableShape($reflection, $registry, $bindings),
+            default => $this->declaredShape($reflection, $registry, $bindings) ?? $this->reflectedShape($reflection, $registry, $bindings),
+        };
 
         $description = DocBlock::parse($reflection->getDocComment())->prose();
 
@@ -185,6 +196,57 @@ final class ResponseSchemaFactory
         [$schema] = DocType::split($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $this->scope($class, $bindings, $declaring, $registry));
 
         return $this->informative($schema) ? $schema : null;
+    }
+
+    /**
+     * The envelope a returned $class is sent in: a Laravel API resource's `$wrap` around $schema, or $schema
+     * itself. Applied by whoever documents a RESPONSE, never inside a component — see ResourceSchema.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    public function envelope(string $class, array $schema): array
+    {
+        $wrap = ResourceSchema::wrap($class);
+
+        return $wrap === null ? $schema : ['type' => 'object', 'properties' => [$wrap => $schema], 'required' => [$wrap]];
+    }
+
+    /**
+     * A resource's bare shape — what resolve() returns. Its own toArray() `@return` when it overrides the
+     * method; JsonResource's inherited toArray() hands back the underlying resource's own array, so then the
+     * class it `@mixin`s; and otherwise an object nothing describes.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<string, mixed>
+     */
+    private function resourceShape(ReflectionClass $class, SchemaRegistry $registry, array $bindings): array
+    {
+        $method = $class->getMethod('toArray');
+        $declaring = $method->getDeclaringClass();
+
+        if (ResourceSchema::isResource($declaring->getName()) && $declaring->getName() !== JsonResource::class) {
+            $line = DocBlock::parse($method->getDocComment())->returnLine();
+            if ($line !== null) {
+                [$schema] = DocType::split($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $this->scope($class, $bindings, $declaring, $registry));
+
+                if ($this->informative($schema)) {
+                    return $schema ?? [];
+                }
+            }
+
+            return ['type' => 'object'];
+        }
+
+        foreach (DocBlock::parse($class->getDocComment())->tag('mixin') as $mixin) {
+            $mixed = ClassNames::resolve((string) strtok(trim($mixin), " \t\n"), $class);
+            if ($mixed !== null) {
+                return $this->schema($mixed, $registry);
+            }
+        }
+
+        return ['type' => 'object'];
     }
 
     /**

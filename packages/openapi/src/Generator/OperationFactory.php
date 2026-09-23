@@ -6,6 +6,7 @@ namespace Firefly\OpenApi\Generator;
 
 use Firefly\OpenApi\Attributes\ApiParameter;
 use Firefly\OpenApi\Attributes\ApiResponse;
+use Firefly\OpenApi\Schema\ClassNames;
 use Firefly\OpenApi\Schema\DocType;
 use Firefly\OpenApi\Schema\DtoSchemaFactory;
 use Firefly\OpenApi\Schema\ElementTypes;
@@ -381,6 +382,13 @@ final class OperationFactory
             ?? TypeSchema::for($declared->type)
             ?? ['type' => 'object'];
 
+        // A bare class name is the one type expression that can name a Laravel API resource, whose response is
+        // its envelope rather than its bare shape.
+        $class = ClassNames::resolve(trim($declared->type), $declaring);
+        if ($class !== null) {
+            $schema = $this->responses->envelope($class, $schema);
+        }
+
         $response['content'] = ['application/json' => ['schema' => $schema]];
 
         return $response;
@@ -512,6 +520,10 @@ final class OperationFactory
         [$documented, $prose] = $this->documentedReturn($method, $registry);
 
         $schema = $documented ?? $this->declaredReturnSchema($method, $registry);
+
+        if ($type !== null && (class_exists($type) || interface_exists($type))) {
+            $schema = $this->responses->envelope($type, $schema);
+        }
 
         return [$route->status, [
             'description' => $prose === '' ? 'Successful response.' : $prose,

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Resources\Json\JsonResource;
 use JsonSerializable;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -26,7 +27,8 @@ use Symfony\Component\HttpFoundation\StreamedJsonResponse;
  *      status, were decided by the action, so the declared class is all there is to go on: a JsonResponse is
  *      JSON of a shape the action built, a file is a binary download, a redirect is a 302 with a Location,
  *      and anything else is a body of whatever media type it set.
- *   2. A Responsable builds its own response, of a media type only it knows.
+ *   2. A Responsable builds its own response, of a media type only it knows — except a Laravel API resource,
+ *      whose response is JSON of a shape ResourceSchema can read, and which therefore takes the JSON path.
  *   3. A ModelAndView, or a View / Renderable / Htmlable that is not ALSO data, is rendered as text/html. The
  *      "not also data" is ResponseFactory's own rule — a Laravel paginator is Htmlable and Arrayable, and is
  *      data.
@@ -70,7 +72,9 @@ final readonly class RenderedResponse
             ]),
             is_a($class, BinaryFileResponse::class, true) => new self(null, $body('application/octet-stream', ['type' => 'string', 'format' => 'binary'])),
             is_a($class, JsonResponse::class, true), is_a($class, StreamedJsonResponse::class, true) => new self(null, $body('application/json', [])),
-            is_a($class, Response::class, true), is_a($class, Responsable::class, true) => new self(null, $body('*/*', [])),
+            is_a($class, Response::class, true) => new self(null, $body('*/*', [])),
+            // A Laravel API resource is the one Responsable whose response is knowable: ResourceSchema reads it.
+            is_a($class, Responsable::class, true) && ! is_a($class, JsonResource::class, true) => new self(null, $body('*/*', [])),
             is_a($class, ModelAndView::class, true), self::markup($class) => new self(null, $body('text/html', ['type' => 'string'])),
             default => null,
         };
