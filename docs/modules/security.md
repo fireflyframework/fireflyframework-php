@@ -272,12 +272,20 @@ quote are rejected outright (expression injection).
 
 `HttpSecurityFilter` (`-70`) keeps deny-by-default. An **unauthenticated** denial is handed to the
 `AuthenticationEntryPoint` chosen by `firefly.security.http.entry_point`: `auto` sends a browser (the request names
-`text/html`, is not an XMLHttpRequest and is not under `firefly.web.error-page.json-paths` — the error page's own
-negotiation, `ErrorPageRenderer::prefersHtml()`, independent of `firefly.web.error-page.enabled`) to the login page
-with the request saved when form login is on, answers `401` + `WWW-Authenticate: Basic` when HTTP Basic is on, and
-otherwise throws the 401 for firefly/web to render as before (problem+json, or the HTML 401 page); `login`,
-`challenge` and `problem` force one. An **authenticated** denial stays the 403 page/problem and publishes
-`AuthorizationDeniedEvent`.
+`text/html`, is neither an XMLHttpRequest nor a `wantsJson()` call, and is not under
+`firefly.web.error-page.json-paths` — the error page's own negotiation, `ErrorPageRenderer::prefersHtml()`,
+independent of `firefly.web.error-page.enabled`) to the login page with the request saved when form login **or
+OAuth2 login** is on (`FormLoginSettings::$pageEnabled` is true for either), answers `401` +
+`WWW-Authenticate: Basic` when HTTP Basic is on, and otherwise throws the 401 for firefly/web to render as before
+(problem+json, or the HTML 401 page); `login`, `challenge` and `problem` force one — and `login` is refused at boot
+when neither login is enabled, because there would be no page to send anyone to. An **authenticated** denial stays
+the 403 page/problem and publishes `AuthorizationDeniedEvent`.
+
+Two callers reach this bean: `HttpSecurityFilter`'s anonymous denial, and firefly/security-oauth2-server's
+`AuthorizationEndpoint` when `/oauth2/authorize` needs the person signed in first. `HttpBasicFilter` does **not** —
+it answers with `BasicAuthenticationEntryPoint` whatever `entry_point` says, exactly as Spring's
+`BasicAuthenticationFilter` keeps its own: a caller that presented Basic credentials has already chosen its
+mechanism, and redirecting it to an HTML login page is the wrong answer to an API client.
 
 ### Principal injection
 
@@ -303,6 +311,13 @@ is a 401 for any other.
 
 ### Filter order
 
+![The security filter chain, from Laravel's global middleware stack down to the controller dispatcher, with every filter's real #[Order] value and the entry point that decides between a login redirect, a Basic challenge and a 401](../assets/diagrams/security-filter-chain.svg)
+
+The table below is this package's own filters. The diagram is the whole chain a request really walks: firefly/web
+prepends `RequestContextFilter` and `CorrelationIdFilter` — neither carries an `#[Order]`, both are unconditional —
+and firefly/observability's `TracingFilter` (`-110`), `HttpExchangeFilter` (`-100`) and `MetricsFilter` (`-100`) sit
+outside everything here when those packages are installed.
+
 | Order | Filter |
 |---|---|
 | -95 | `SecurityHeadersFilter` |
@@ -319,10 +334,21 @@ is a 401 for any other.
 | -80 | `CsrfFilter` |
 | -70 | `HttpSecurityFilter` |
 
-Every filter clears `SecurityContextHolder` on exit in a `finally`, so nothing bleeds into the next request under
-Octane; the persistence filter is the outermost and the last to clear. The authorization server's filter answers
-its endpoints ahead of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none
-of its endpoints needs an `http.rules` entry.
+Every filter that can ESTABLISH a principal clears `SecurityContextHolder` on exit in a `finally` —
+`SecurityContextPersistenceFilter`, `FormLoginFilter`, `HttpBasicFilter`, `JwtAuthenticationFilter`,
+`OAuth2ResourceServerFilter`, `RememberMeAuthenticationFilter` and firefly/security-oauth2-client's
+`OAuth2LoginAuthenticationFilter` — so nothing bleeds into the next request under Octane; the persistence filter is
+the outermost and the last to clear. (`LogoutFilter` clears the holder too, but as a step of signing out inside
+`LogoutHandler`, not in a `finally`; the filters that establish no principal — headers, CSRF, `HttpSecurityFilter`,
+the authorization server — never touch the holder.) The authorization server's filter answers its endpoints ahead
+of the CSRF and URL-rule filters, so its token endpoint needs no `csrf.except` entry and none of its endpoints
+needs an `http.rules` entry.
+
+`FilterChainRegistrar::orderedFilters()` is what decides all of this: it sorts every `WebFilter` bean by
+`BeanDescriptor::order` — read from the manifest, never from a resolved instance — breaks ties with `strcmp` on the
+class name (which is why `HttpExchangeFilter` precedes `MetricsFilter` at the same `-100`), and only then prepends
+the two framework filters. An `#[Order]` here is therefore a published contract: a `WebFilter` of your own inserts
+itself between two of these by picking a number between them.
 
 ## Configuration (`firefly.security.*`, snake_case)
 

@@ -4,11 +4,11 @@
 
 declare(strict_types=1);
 
-it('ships five well-formed, referenced SVG diagrams', function () {
+it('ships six well-formed, referenced SVG diagrams', function () {
     $root = dirname(__DIR__);
     $svgs = [
         'boot-pipeline.svg', 'di-autoconfig.svg', 'request-lifecycle.svg',
-        'outbox-flow.svg', 'cqrs-eda-bridge.svg',
+        'outbox-flow.svg', 'cqrs-eda-bridge.svg', 'security-filter-chain.svg',
     ];
     $docsBlob = '';
     foreach (glob($root.'/docs/**/*.md') ?: [] as $md) {
@@ -31,5 +31,12 @@ it('ships five well-formed, referenced SVG diagrams', function () {
 
         expect($xml->getName())->toBe('svg', "root of {$name} is not <svg>")
             ->and(str_contains($docsBlob, $name))->toBeTrue("{$name} not embedded in any doc page");
+
+        // A diagram is also a piece of prose for someone who cannot see it: exactly one <title> names the
+        // figure and exactly one <desc> says what it shows, which is what a screen reader reads out and what
+        // MkDocs' own accessibility story rests on. Two of either is as broken as none — the reader is told
+        // the picture is called two different things.
+        expect($xml->title->count())->toBe(1, "{$name} has no single <title>")
+            ->and($xml->desc->count())->toBe(1, "{$name} has no single <desc>");
     }
 });

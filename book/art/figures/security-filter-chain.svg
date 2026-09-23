@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 900" font-family="sans-serif">
+  <title>Security filter chain</title>
+  <desc>The ordered WebFilter chain on Laravel's global middleware stack — the two prepended framework filters, tracing, HTTP exchanges and metrics, security headers, session context persistence, logout, the five authentication mechanisms, the OAuth2 client and authorization-server filters, CSRF and the deny-by-default URL rules — with each filter's real #[Order] value, and the DelegatingAuthenticationEntryPoint that decides between a login redirect, a Basic challenge and a 401.</desc>
+  <defs>
+    <marker id="sfc-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1238" height="898" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+
+  <text x="620" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">The security filter chain: every filter, in the order the registrar sorts it</text>
+  <text x="620" y="49" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/web/src/Filter/{FilterChainRegistrar.php, RequestContextFilter.php, CorrelationIdFilter.php} · packages/observability/src/Web/{TracingFilter.php, HttpExchangeFilter.php, MetricsFilter.php}</text>
+  <text x="620" y="62" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/security/src/{Web,Web/Basic,Web/Login,Web/Logout,Web/RememberMe,Web/EntryPoint,Session,OAuth2}/*.php</text>
+  <text x="620" y="75" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/security-oauth2-client/src/Web/*.php · packages/security-oauth2-server/src/Web/OAuth2AuthorizationServerFilter.php</text>
+
+  <rect x="40" y="84" width="690" height="24" rx="6" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="385" y="100" text-anchor="middle" font-size="12" fill="#1f2937">Laravel's global middleware stack · FilterChainRegistrar::orderedFilters()</text>
+
+  <g font-size="11.8" fill="#1f2937">
+    <rect x="40" y="112" width="690" height="30" rx="6" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="118" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="131" text-anchor="middle" font-size="10.5" fill="#374151">prepend</text>
+    <text x="118" y="132" font-size="11.8">RequestContextFilter</text>
+    <text x="402" y="132" font-size="10.5" fill="#374151">seeds firefly.request_id into Laravel's Context</text>
+    <rect x="40" y="148" width="690" height="30" rx="6" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="154" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="167" text-anchor="middle" font-size="10.5" fill="#374151">prepend</text>
+    <text x="118" y="168" font-size="11.8">CorrelationIdFilter</text>
+    <text x="402" y="168" font-size="10.5" fill="#374151">reads or mints X-Correlation-Id, echoes it back</text>
+    <rect x="40" y="184" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="190" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="203" text-anchor="middle" font-size="10.5" fill="#374151">-110</text>
+    <text x="118" y="204" font-size="11.8">TracingFilter</text>
+    <text x="402" y="204" font-size="10.5" fill="#374151">SERVER span; continues an inbound traceparent</text>
+    <rect x="40" y="220" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="226" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="239" text-anchor="middle" font-size="10.5" fill="#374151">-100</text>
+    <text x="118" y="240" font-size="11.8">HttpExchangeFilter</text>
+    <text x="402" y="240" font-size="10.5" fill="#374151">records the row /actuator/httpexchanges serves</text>
+    <rect x="40" y="256" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="262" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="275" text-anchor="middle" font-size="10.5" fill="#374151">-100</text>
+    <text x="118" y="276" font-size="11.8">MetricsFilter</text>
+    <text x="402" y="276" font-size="10.5" fill="#374151">the http_server_requests_seconds timer</text>
+    <rect x="40" y="292" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="298" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="311" text-anchor="middle" font-size="10.5" fill="#374151">-95</text>
+    <text x="118" y="312" font-size="11.8">SecurityHeadersFilter</text>
+    <text x="402" y="312" font-size="10.5" fill="#374151">HSTS, CSP, frame, nosniff and referrer headers</text>
+    <rect x="40" y="328" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="334" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="347" text-anchor="middle" font-size="10.5" fill="#374151">-94</text>
+    <text x="118" y="348" font-size="11.8">SecurityContextPersistenceFilter</text>
+    <text x="402" y="348" font-size="10.5" fill="#374151">loads the context from the session; saves it after</text>
+    <rect x="40" y="364" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="370" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="383" text-anchor="middle" font-size="10.5" fill="#374151">-93</text>
+    <text x="118" y="384" font-size="11.8">LogoutFilter</text>
+    <text x="402" y="384" font-size="10.5" fill="#374151">POST /logout: CSRF, then the LogoutHandler</text>
+    <rect x="40" y="400" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="406" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="419" text-anchor="middle" font-size="10.5" fill="#374151">-92</text>
+    <text x="118" y="420" font-size="11.8">FormLoginFilter</text>
+    <text x="402" y="420" font-size="10.5" fill="#374151">POST /login: CSRF, then the AuthenticationManager</text>
+    <rect x="40" y="436" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="442" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="455" text-anchor="middle" font-size="10.5" fill="#374151">-91</text>
+    <text x="118" y="456" font-size="11.8">HttpBasicFilter</text>
+    <text x="402" y="456" font-size="10.5" fill="#374151">Authorization: Basic — its OWN entry point on failure</text>
+    <rect x="40" y="472" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="478" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="491" text-anchor="middle" font-size="10.5" fill="#374151">-90</text>
+    <text x="118" y="492" font-size="11.8">JwtAuthenticationFilter</text>
+    <text x="402" y="492" font-size="10.5" fill="#374151">Authorization: Bearer, verified by JwtService</text>
+    <rect x="40" y="508" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="514" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="527" text-anchor="middle" font-size="10.5" fill="#374151">-89</text>
+    <text x="118" y="528" font-size="10.8">OAuth2AuthorizationRequestRedirectFilter</text>
+    <text x="402" y="528" font-size="10.5" fill="#374151">/oauth2/authorization/{id} → the provider</text>
+    <rect x="40" y="544" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="550" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="563" text-anchor="middle" font-size="10.5" fill="#374151">-88</text>
+    <text x="118" y="564" font-size="11.2">OAuth2LoginAuthenticationFilter</text>
+    <text x="402" y="564" font-size="10.5" fill="#374151">/login/oauth2/code/{id} → the code exchange</text>
+    <rect x="40" y="580" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="586" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="599" text-anchor="middle" font-size="10.5" fill="#374151">-85</text>
+    <text x="118" y="600" font-size="11.8">OAuth2ResourceServerFilter</text>
+    <text x="402" y="600" font-size="10.5" fill="#374151">a Bearer JWT checked against the issuer's JWKS</text>
+    <rect x="40" y="616" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="622" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="635" text-anchor="middle" font-size="10.5" fill="#374151">-83</text>
+    <text x="118" y="636" font-size="11.2">RememberMeAuthenticationFilter</text>
+    <text x="402" y="636" font-size="10.5" fill="#374151">the cookie, once per session, not per request</text>
+    <rect x="40" y="652" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="658" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="671" text-anchor="middle" font-size="10.5" fill="#374151">-82</text>
+    <text x="118" y="672" font-size="11.2">OAuth2AuthorizationServerFilter</text>
+    <text x="402" y="672" font-size="10.5" fill="#374151">/oauth2/authorize, /token, /jwks, /.well-known/*</text>
+    <rect x="40" y="688" width="690" height="30" rx="6" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+    <rect x="50" y="694" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="707" text-anchor="middle" font-size="10.5" fill="#374151">-80</text>
+    <text x="118" y="708" font-size="11.8">CsrfFilter</text>
+    <text x="402" y="708" font-size="10.5" fill="#374151">the token for every unsafe method</text>
+    <rect x="40" y="724" width="690" height="30" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+    <rect x="50" y="730" width="58" height="18" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="79" y="743" text-anchor="middle" font-size="10.5" fill="#374151">-70</text>
+    <text x="118" y="744" font-size="11.8" font-weight="bold">HttpSecurityFilter</text>
+    <text x="402" y="744" font-size="10.5" fill="#374151">deny-by-default URL rules, first match wins</text>
+  </g>
+
+  <line x1="385" y1="754" x2="385" y2="768" stroke="#4b5563" stroke-width="1.5" marker-end="url(#sfc-arrow)"/>
+
+  <rect x="40" y="770" width="690" height="42" rx="6" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="385" y="788" text-anchor="middle" font-size="12" fill="#1f2937">ControllerDispatcher → the #[RestController] action</text>
+  <text x="385" y="804" text-anchor="middle" font-size="10.5" fill="#374151">MethodSecurityControllerGuard enforces a controller's own #[PreAuthorize] here, at dispatch</text>
+
+  <polyline points="730,739 741,739 741,441 750,441" fill="none" stroke="#4b5563" stroke-width="1.5" marker-end="url(#sfc-arrow)"/>
+
+  <rect x="752" y="112" width="448" height="360" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="976" y="134" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">DelegatingAuthenticationEntryPoint</text>
+  <text x="976" y="151" text-anchor="middle" font-size="10.5" fill="#6b7280">firefly.security.http.entry_point · default auto</text>
+  <g font-size="11" fill="#374151">
+    <text x="766" y="176" font-weight="bold" fill="#1f2937">auto</text>
+    <text x="826" y="176">a BROWSER — ErrorPageRenderer::prefersHtml(): the request</text>
+    <text x="826" y="192">names text/html, is neither an XHR nor a wantsJson() call,</text>
+    <text x="826" y="208">and its path is not in firefly.web.error-page.json-paths —</text>
+    <text x="826" y="224">is sent to the login page when form login or OAuth2 login</text>
+    <text x="826" y="240">is on; else a Basic challenge when HTTP Basic is on; else</text>
+    <text x="826" y="256">the 401, rendered by firefly/web.</text>
+    <text x="766" y="280" font-weight="bold" fill="#1f2937">login</text>
+    <text x="826" y="280">always the login page — refused at boot when neither</text>
+    <text x="826" y="296">form login nor OAuth2 login is enabled.</text>
+    <text x="766" y="320" font-weight="bold" fill="#1f2937">challenge</text>
+    <text x="826" y="320">always WWW-Authenticate: Basic.</text>
+    <text x="766" y="344" font-weight="bold" fill="#1f2937">problem</text>
+    <text x="826" y="344">always the exception, rendered by firefly/web.</text>
+  </g>
+  <text x="766" y="372" font-size="10.5" fill="#6b7280" font-style="italic">prefersHtml(), never handles(): error-page.enabled is a branding</text>
+  <text x="766" y="387" font-size="10.5" fill="#6b7280" font-style="italic">choice and must never decide whether a person is asked to sign in.</text>
+  <text x="766" y="411" font-size="10.5" fill="#374151">Reached from HttpSecurityFilter's anonymous denial, and from the</text>
+  <text x="766" y="426" font-size="10.5" fill="#374151">authorization server's /oauth2/authorize. HttpBasicFilter answers</text>
+  <text x="766" y="441" font-size="10.5" fill="#374151">with BasicAuthenticationEntryPoint instead — never this one, because</text>
+  <text x="766" y="456" font-size="10.5" fill="#374151">a caller that presented Basic has already chosen its mechanism.</text>
+
+  <rect x="752" y="488" width="448" height="128" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="976" y="510" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">How the order is decided</text>
+  <g font-size="11" fill="#374151">
+    <text x="766" y="532">orderedFilters() sorts every WebFilter bean by its</text>
+    <text x="766" y="548">BeanDescriptor::order and breaks ties with strcmp on the class</text>
+    <text x="766" y="564">name — which is why HttpExchangeFilter precedes MetricsFilter at</text>
+    <text x="766" y="580">the same -100 — then PREPENDS RequestContextFilter and</text>
+    <text x="766" y="596">CorrelationIdFilter, which carry no #[Order] and are never sorted.</text>
+  </g>
+
+  <rect x="752" y="632" width="448" height="152" rx="8" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="976" y="654" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">What is NOT in this chain</text>
+  <g font-size="11" fill="#374151">
+    <text x="766" y="676">#[PreAuthorize] on a controller action is enforced at dispatch by</text>
+    <text x="766" y="692">MethodSecurityControllerGuard, asked by web's ControllerDispatcher.</text>
+    <text x="766" y="714">#[PreAuthorize] on any OTHER stereotyped bean is enforced by</text>
+    <text x="766" y="730">MethodSecurityInterceptor inside that bean's own proxy.</text>
+    <text x="766" y="752">A filter whose package is not installed, or whose</text>
+    <text x="766" y="768">#[ConditionalOnProperty] is off, is simply absent.</text>
+  </g>
+
+  <text x="620" y="840" text-anchor="middle" font-size="11.5" fill="#374151">Every DISCOVERED filter extends OncePerRequestFilter and is an ordinary #[Component] behind at least one #[ConditionalOnProperty]: installing a package</text>
+  <text x="620" y="857" text-anchor="middle" font-size="11.5" fill="#374151">adds its link, and switching the feature off removes it. Nothing here is a hard-coded list — only the two prepended framework filters are unconditional.</text>
+  <text x="620" y="880" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">Order values are the literal #[Order(...)] arguments on the classes named; they are the contract a WebFilter of your own inserts itself against.</text>
+</svg>
