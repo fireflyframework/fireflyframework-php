@@ -68,13 +68,13 @@ wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty d
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
 (it boots and its tests pass against this framework version, `26.09.2`).
 
-The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fourteen chapters**
+The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fifteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
-Coordinating & Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security), and
-Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache) — plus a
-Laravel→LaraFly cheat-sheet and a glossary. **The English edition is the reference**: every chapter exists in
-both languages, but recent waves landed in `book/src/` first, so chapters 4, 5, 9, 10, 11 and 12 carry
-material in English that the Spanish edition has not received yet — read the English PDF when the two
+Coordinating & Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security, OAuth2 and
+OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache)
+— plus a Laravel→LaraFly cheat-sheet and a glossary. **The English edition is the reference**: every chapter
+exists in both languages, but recent waves landed in `book/src/` first, so chapters 4, 5, 9, 10, 11 and 12
+carry material in English that the Spanish edition has not received yet — read the English PDF when the two
 disagree. Every fenced PHP listing in the English manuscript carries a `source:` marker naming the repository
 file it was excerpted from — compared against it line for line by `tests/DocsCodeIsRealTest.php` — or an
 `illustrative:` marker saying it is the reader's own code, which is what `php -l` checks; the Spanish

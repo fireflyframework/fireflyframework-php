@@ -35,6 +35,12 @@ labels:
 # argues against: its whole design point is that `firefly.admin.data.enabled` deliberately does NOT inherit
 # the `app.debug` default the section above it justifies, and separating the two would have removed the
 # comparison that makes the decision legible.
+# Task R12: firefly/security-oauth2-client and firefly/security-oauth2-server added as Chapter 10A, immediately
+# after the security chapter whose session, filter chain and method security they build on. Slotted exactly the
+# way 4A was, and for the same reason: `num` is a free-form label, the order comes from THIS list, and
+# renumbering Chapters 11-13 would have invalidated every "Chapter N" cross-reference in both manuscripts and in
+# book/README.md. One chapter rather than two because the two packages are the two directions of one protocol,
+# and a reader who installs either needs the round trip in front of them to know which one they are holding.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -62,6 +68,7 @@ parts:
       - {id: ch08, file: 08-eda-outbox.md, num: 8, title: "Event-Driven Architecture and the Transactional Outbox"}
       - {id: ch09, file: 09-transactions.md, num: 9, title: "Transactions and the #[Transactional] Proxy"}
       - {id: ch10, file: 10-security.md, num: 10, title: "Security: Authentication and Authorization"}
+      - {id: ch10a, file: 10a-oauth2.md, num: "10A", title: "OAuth2 and OpenID Connect: Signing In, and Being the Provider"}
   - title: "Part IV — Observability, Testing & Delivery"
     chapters:
       - {id: ch11, file: 11-observability-actuator.md, num: 11, title: "Observability: Health, Metrics, and the Actuator"}

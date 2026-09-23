@@ -461,6 +461,23 @@ it('pins both diagrams, the security table and the OAuth2 prose to the real #[Or
             OAuth2AuthorizationServerFilter::class,
             OAuth2LoginAuthenticationFilter::class,
         ],
+        // Chapter 10A is where the two OAuth2 packages are actually TAUGHT — Chapter 10 names the three
+        // filters in one paragraph beside the figure, 10A opens on them and returns to them in every section
+        // — so leaving it off this list would have left the numbers a reader is most likely to copy as the
+        // only hand-transcribed ones nothing checks. Both editions carry the identical pairs, because the
+        // Spanish chapter is a translation of the English one and an order is never translated.
+        'book/src/10a-oauth2.md' => [
+            HttpBasicFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2AuthorizationServerFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
+        'book/src-es/10a-oauth2.md' => [
+            HttpBasicFilter::class,
+            OAuth2AuthorizationRequestRedirectFilter::class,
+            OAuth2AuthorizationServerFilter::class,
+            OAuth2LoginAuthenticationFilter::class,
+        ],
         'docs/modules/security.md' => [],
         'README.md' => [],
         'docs/architecture.md' => [],
