@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 900" font-family="sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 940" font-family="sans-serif">
   <title>Trace context propagation</title>
-  <desc>A W3C traceparent entering at the server filter and flowing outward: the SERVER span published to Laravel Context as firefly.trace_id and firefly.span_id, an INTERNAL span on each CQRS message, a PRODUCER and CONSUMER span around an in-memory or queued EDA envelope whose headers carry the traceparent (the broker publishers build their envelopes themselves and do not reach the seam yet; their deliveries still do, through SubscriberRegistrySink), and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the dashboard.</desc>
+  <desc>A W3C traceparent entering at the server filter and flowing outward: the SERVER span published to Laravel Context as firefly.trace_id and firefly.span_id, an INTERNAL span on each CQRS message, a PRODUCER span on publish and a CONSUMER span on delivery around an EDA envelope whose headers carry the traceparent — the in-memory and queue buses, the RabbitMQ, Kafka and Postgres publishers and the outbox relay all reach that seam, while SubscriberRegistrySink traces the delivery side for every broker consumer — and a CLIENT span on every outbound Http call that injects it again, landing on every log line, on the httpexchanges endpoint and on the dashboard.</desc>
   <defs>
     <marker id="tpp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
     </marker>
   </defs>
 
-  <rect x="1" y="1" width="1238" height="898" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1398" height="938" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 
-  <text x="620" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">One traceparent, five boundaries, three places you can read it</text>
-  <text x="620" y="48" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/observability/src/Web/{TracingFilter.php, HttpClientTracingMiddleware.php} · packages/observability/src/Tracing/W3CTraceContextPropagator.php</text>
-  <text x="620" y="61" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/observability/src/{Cqrs/TracerCqrsTracing.php, Eda/TracerEdaTracing.php, Logging/TraceContextLogProcessor.php, Boot/HttpClientTracingPass.php}</text>
+  <text x="700" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">One traceparent, five boundaries, three places you can read it</text>
+  <text x="700" y="48" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/observability/src/Web/{TracingFilter.php, HttpClientTracingMiddleware.php} · packages/observability/src/Tracing/W3CTraceContextPropagator.php</text>
+  <text x="700" y="61" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/observability/src/{Cqrs/TracerCqrsTracing.php, Eda/TracerEdaTracing.php, Logging/TraceContextLogProcessor.php, Boot/HttpClientTracingPass.php} · packages/eda/src/Tracing/BrokerTracing.php</text>
 
   <rect x="40" y="82" width="480" height="44" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.25"/>
   <text x="280" y="102" text-anchor="middle" font-size="12" fill="#1f2937">Inbound request header</text>
@@ -20,86 +20,95 @@
 
   <line x1="280" y1="126" x2="280" y2="142" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
 
-  <rect x="40" y="144" width="1160" height="74" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="620" y="165" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">TracingFilter — #[Order(-110)], the outermost ordered filter in the chain</text>
-  <text x="620" y="184" text-anchor="middle" font-size="11.5" fill="#374151">W3CTraceContextPropagator::extract($request-&gt;headers-&gt;all()) → the remote parent · startSpan($method, SpanKind::Server, …, $parent)</text>
-  <text x="620" y="201" text-anchor="middle" font-size="11.5" fill="#374151">renamed to `GET /orders/{id}` once the router has matched · http.request.method, url.path, url.scheme, server.address, http.route, http.response.status_code, firefly.correlation_id · ERROR on 5xx</text>
+  <rect x="40" y="144" width="1320" height="74" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="700" y="165" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2937">TracingFilter — #[Order(-110)], the outermost ordered filter in the chain</text>
+  <text x="700" y="184" text-anchor="middle" font-size="11.5" fill="#374151">W3CTraceContextPropagator::extract($request-&gt;headers-&gt;all()) → the remote parent · startSpan($method, SpanKind::Server, …, $parent)</text>
+  <text x="700" y="201" text-anchor="middle" font-size="11.5" fill="#374151">renamed to `GET /orders/{id}` once the router has matched · http.request.method, url.path, url.scheme, server.address, http.route, http.response.status_code, firefly.correlation_id · ERROR on 5xx</text>
 
-  <line x1="620" y1="218" x2="620" y2="234" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="700" y1="218" x2="700" y2="234" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
 
-  <rect x="300" y="236" width="640" height="52" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="257" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Laravel Context and Request::$attributes</text>
-  <text x="620" y="275" text-anchor="middle" font-size="11.5" fill="#374151">firefly.trace_id · firefly.span_id — the one place everything downstream reads the ids from</text>
+  <rect x="380" y="236" width="640" height="52" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="700" y="257" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Laravel Context and Request::$attributes</text>
+  <text x="700" y="275" text-anchor="middle" font-size="11.5" fill="#374151">firefly.trace_id · firefly.span_id — the one place everything downstream reads the ids from</text>
 
-  <line x1="420" y1="288" x2="230" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
-  <line x1="620" y1="288" x2="620" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
-  <line x1="820" y1="288" x2="1010" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="500" y1="288" x2="230" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="700" y1="288" x2="700" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="900" y1="288" x2="1170" y2="326" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
 
-  <rect x="40" y="328" width="380" height="118" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <rect x="40" y="328" width="380" height="174" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
   <text x="230" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">CQRS · in-process</text>
   <text x="52" y="370" font-size="11" fill="#374151">CqrsTracing seam in firefly/cqrs (NoOpCqrsTracing by</text>
   <text x="52" y="386" font-size="11" fill="#374151">default), filled by TracerCqrsTracing.</text>
-  <text x="52" y="406" font-size="11" fill="#1f2937">INTERNAL span per command and per query</text>
-  <text x="52" y="422" font-size="11" fill="#374151">firefly.cqrs.kind · firefly.cqrs.message</text>
-  <text x="52" y="438" font-size="10.5" fill="#6b7280" font-style="italic">nothing to carry — it nests under whatever is current</text>
+  <text x="52" y="406" font-size="11" fill="#1f2937">INTERNAL span per command and per query,</text>
+  <text x="52" y="422" font-size="11" fill="#1f2937">named by the message's short class name</text>
+  <text x="52" y="438" font-size="11" fill="#374151">firefly.cqrs.kind · firefly.cqrs.message</text>
+  <text x="52" y="458" font-size="10.5" fill="#6b7280" font-style="italic">nothing to carry — it nests under whatever is current</text>
+  <text x="52" y="474" font-size="10.5" fill="#6b7280" font-style="italic">gated by firefly.observability.tracing.cqrs.enabled, which</text>
+  <text x="52" y="489" font-size="10.5" fill="#6b7280" font-style="italic">is on by default under the master tracing gate.</text>
 
-  <rect x="432" y="328" width="376" height="118" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">EDA · across the transport</text>
-  <text x="444" y="370" font-size="11" fill="#374151">EdaTracing seam in firefly/eda, filled by TracerEdaTracing:</text>
-  <text x="444" y="386" font-size="11" fill="#374151">the in-memory and queue buses, and SubscriberRegistrySink.</text>
-  <text x="444" y="406" font-size="11" fill="#1f2937">PRODUCER `publish &lt;destination&gt;` on the way out</text>
-  <text x="444" y="422" font-size="11" fill="#1f2937">CONSUMER `process &lt;destination&gt;` on delivery</text>
-  <text x="444" y="438" font-size="10.5" fill="#6b7280" font-style="italic">traceparent/tracestate ride in an in-memory or queued envelope</text>
+  <rect x="432" y="328" width="536" height="174" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="700" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">EDA · across the transport</text>
+  <text x="444" y="370" font-size="11" fill="#374151">EdaTracing seam in firefly/eda, filled by TracerEdaTracing. Reached from the in-memory</text>
+  <text x="444" y="386" font-size="11" fill="#374151">and queue buses, from SubscriberRegistrySink (the sink every broker consumer feeds), from</text>
+  <text x="444" y="402" font-size="11" fill="#374151">RabbitMqEventPublisher, KafkaEventPublisher and PostgresEventPublisher (both its writers),</text>
+  <text x="444" y="418" font-size="11" fill="#374151">and from OutboxRelay, whose traceConsume() keeps the relay hop on the row's own trace.</text>
+  <text x="444" y="438" font-size="11" fill="#1f2937">PRODUCER `publish &lt;destination&gt;` writes traceparent/tracestate into the headers</text>
+  <text x="444" y="454" font-size="11" fill="#1f2937">CONSUMER `process &lt;destination&gt;` on delivery reads them back and continues that trace</text>
+  <text x="444" y="474" font-size="10.5" fill="#6b7280" font-style="italic">gated by firefly.observability.tracing.eda.enabled; firefly.eda.tracing.brokers.enabled=false</text>
+  <text x="444" y="489" font-size="10.5" fill="#6b7280" font-style="italic">downgrades the three broker publishers alone to the no-op, so none of ours is stamped.</text>
 
-  <rect x="820" y="328" width="380" height="118" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="1010" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Outbound HTTP</text>
-  <text x="832" y="370" font-size="11" fill="#374151">HttpClientTracingMiddleware, installed on the Http</text>
-  <text x="832" y="386" font-size="11" fill="#374151">factory by HttpClientTracingPass at boot.</text>
-  <text x="832" y="406" font-size="11" fill="#1f2937">CLIENT span · inject() writes traceparent on the</text>
-  <text x="832" y="422" font-size="11" fill="#1f2937">PSR-7 request — url.path, never url.full</text>
-  <text x="832" y="438" font-size="10.5" fill="#6b7280" font-style="italic">works under Http::fake(): global middleware is outermost</text>
+  <rect x="980" y="328" width="380" height="174" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="1170" y="349" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Outbound HTTP</text>
+  <text x="992" y="370" font-size="11" fill="#374151">HttpClientTracingMiddleware, installed on the Http</text>
+  <text x="992" y="386" font-size="11" fill="#374151">factory by HttpClientTracingPass at boot.</text>
+  <text x="992" y="406" font-size="11" fill="#1f2937">CLIENT span · inject() writes traceparent on the</text>
+  <text x="992" y="422" font-size="11" fill="#1f2937">PSR-7 request — url.path, never url.full</text>
+  <text x="992" y="438" font-size="11" fill="#374151">ERROR at ≥ 400 or on a rejection</text>
+  <text x="992" y="458" font-size="10.5" fill="#6b7280" font-style="italic">works under Http::fake(): global middleware is outermost</text>
+  <text x="992" y="474" font-size="10.5" fill="#6b7280" font-style="italic">gated by firefly.observability.tracing.http-client.enabled,</text>
+  <text x="992" y="489" font-size="10.5" fill="#6b7280" font-style="italic">read by the boot pass rather than by a bean condition.</text>
 
-  <line x1="230" y1="446" x2="230" y2="470" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
-  <line x1="620" y1="446" x2="620" y2="470" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
-  <line x1="1010" y1="446" x2="1010" y2="470" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="230" y1="502" x2="230" y2="526" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="700" y1="502" x2="700" y2="526" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
+  <line x1="1170" y1="502" x2="1170" y2="526" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tpp-arrow)"/>
 
-  <rect x="40" y="472" width="1160" height="46" rx="8" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="492" text-anchor="middle" font-size="12.5" fill="#1f2937">The next service's own TracingFilter extracts the same traceparent — and the trace continues, across the process boundary, with no shared code</text>
-  <text x="620" y="509" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">The propagator speaks W3C Trace Context over a plain header map, with no SDK involved: version `ff` and all-zero ids are rejected, a future version is read for its first four fields.</text>
+  <rect x="40" y="528" width="1320" height="46" rx="8" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="700" y="548" text-anchor="middle" font-size="12.5" fill="#1f2937">The next service's own TracingFilter extracts the same traceparent — and the trace continues, across the process boundary, with no shared code</text>
+  <text x="700" y="565" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">The propagator speaks W3C Trace Context over a plain header map, with no SDK involved: version `ff` and all-zero ids are rejected, a future version is read for its first four fields.</text>
 
-  <text x="620" y="556" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">Where the ids land</text>
+  <text x="700" y="612" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f2937">Where the ids land</text>
 
-  <rect x="40" y="572" width="380" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="230" y="593" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Every log line</text>
-  <text x="52" y="614" font-size="11" fill="#374151">TraceContextLogProcessor adds trace_id and span_id</text>
-  <text x="52" y="630" font-size="11" fill="#374151">to each record, beside the correlation and request ids.</text>
-  <text x="52" y="650" font-size="11" fill="#1f2937">firefly.logging.structured.format: json · ecs · logstash</text>
-  <text x="52" y="670" font-size="10.5" fill="#6b7280" font-style="italic">attached per channel at resolution time, so a channel</text>
-  <text x="52" y="685" font-size="10.5" fill="#6b7280" font-style="italic">built after boot with Log::build() gets neither.</text>
+  <rect x="40" y="628" width="380" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="230" y="649" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">Every log line</text>
+  <text x="52" y="670" font-size="11" fill="#374151">TraceContextLogProcessor adds trace_id and span_id</text>
+  <text x="52" y="686" font-size="11" fill="#374151">to each record, beside the correlation and request ids.</text>
+  <text x="52" y="706" font-size="11" fill="#1f2937">firefly.logging.structured.format: json · ecs · logstash</text>
+  <text x="52" y="726" font-size="10.5" fill="#6b7280" font-style="italic">attached per channel at resolution time, so a channel</text>
+  <text x="52" y="741" font-size="10.5" fill="#6b7280" font-style="italic">built after boot with Log::build() gets neither.</text>
 
-  <rect x="432" y="572" width="376" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="620" y="593" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">/actuator/httpexchanges</text>
-  <text x="444" y="614" font-size="11" fill="#374151">HttpExchangeFilter (-100) runs INSIDE the tracing</text>
-  <text x="444" y="630" font-size="11" fill="#374151">filter, so the span already exists when it records</text>
-  <text x="444" y="646" font-size="11" fill="#374151">the exchange, and reads the traceId off</text>
-  <text x="444" y="662" font-size="11" fill="#374151">Request::$attributes.</text>
-  <text x="444" y="684" font-size="10.5" fill="#6b7280" font-style="italic">every row carries the trace it belonged to</text>
+  <rect x="432" y="628" width="536" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="700" y="649" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">/actuator/httpexchanges</text>
+  <text x="444" y="670" font-size="11" fill="#374151">HttpExchangeFilter (-100) runs INSIDE the tracing filter, so the span already exists</text>
+  <text x="444" y="686" font-size="11" fill="#374151">when it records the exchange, and it reads the traceId TracingFilter published off</text>
+  <text x="444" y="702" font-size="11" fill="#374151">Request::$attributes rather than off Context.</text>
+  <text x="444" y="724" font-size="10.5" fill="#6b7280" font-style="italic">every row carries the trace it belonged to</text>
+  <text x="444" y="739" font-size="10.5" fill="#6b7280" font-style="italic">a ring of the last 100 by default — httpexchanges.capacity, clamped to [1, 10000]</text>
 
-  <rect x="820" y="572" width="380" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="1010" y="593" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">The admin dashboard</text>
-  <text x="832" y="614" font-size="11" fill="#374151">firefly/admin renders the same exchanges page</text>
-  <text x="832" y="630" font-size="11" fill="#374151">server-side from the actuator registries — no</text>
-  <text x="832" y="646" font-size="11" fill="#374151">second data path, no JavaScript fetch.</text>
-  <text x="832" y="668" font-size="10.5" fill="#6b7280" font-style="italic">read its access model before exposing it: the</text>
-  <text x="832" y="683" font-size="10.5" fill="#6b7280" font-style="italic">dashboard ships no authentication of its own.</text>
+  <rect x="980" y="628" width="380" height="122" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="1170" y="649" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">The admin dashboard</text>
+  <text x="992" y="670" font-size="11" fill="#374151">firefly/admin renders the same exchanges page</text>
+  <text x="992" y="686" font-size="11" fill="#374151">server-side from the actuator registries — no</text>
+  <text x="992" y="702" font-size="11" fill="#374151">second data path, no JavaScript fetch.</text>
+  <text x="992" y="724" font-size="10.5" fill="#6b7280" font-style="italic">read its access model before exposing it: the</text>
+  <text x="992" y="739" font-size="10.5" fill="#6b7280" font-style="italic">dashboard ships no authentication of its own.</text>
 
-  <rect x="40" y="716" width="1160" height="72" rx="8" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="737" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">What is actually recording</text>
-  <text x="620" y="756" text-anchor="middle" font-size="11.5" fill="#374151">The shipped default is NoOpTracer: non-recording spans, an invalid SpanContext, currentSpan() of null — every instrumentation site tests</text>
-  <text x="620" y="773" text-anchor="middle" font-size="11.5" fill="#374151">$span-&gt;context()-&gt;isValid() before publishing ids. The OpenTelemetry adapter binds itself when the SDK is installed and firefly.observability.tracing.enabled is on.</text>
+  <rect x="40" y="772" width="1320" height="72" rx="8" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
+  <text x="700" y="793" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">What is actually recording</text>
+  <text x="700" y="812" text-anchor="middle" font-size="11.5" fill="#374151">The shipped default is NoOpTracer: non-recording spans, an invalid SpanContext, currentSpan() of null — every instrumentation site tests</text>
+  <text x="700" y="829" text-anchor="middle" font-size="11.5" fill="#374151">$span-&gt;context()-&gt;isValid() before publishing ids. The OpenTelemetry adapter binds itself when the SDK is installed and firefly.observability.tracing.enabled is on.</text>
 
-  <text x="620" y="822" text-anchor="middle" font-size="11.5" fill="#374151">Both seams follow the CqrsMetrics shape: an interface in the owning package with a no-op default behind #[ConditionalOnMissingBean], and observability's</text>
-  <text x="620" y="839" text-anchor="middle" font-size="11.5" fill="#374151">#[Order(500)] auto-configuration registering the real implementation first. Neither firefly/cqrs nor firefly/eda depends on firefly/observability.</text>
-  <text x="620" y="864" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">A span whose end is deferred past the frame that started it — the CLIENT span of an Http call ends in the promise's then() — calls deactivate() as soon as its</text>
-  <text x="620" y="879" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">synchronous part is over, which is what keeps every request of an Http::pool() a sibling rather than a chain.</text>
+  <text x="700" y="878" text-anchor="middle" font-size="11.5" fill="#374151">Both seams follow the CqrsMetrics shape: an interface in the owning package with a no-op default behind #[ConditionalOnMissingBean], and observability's</text>
+  <text x="700" y="895" text-anchor="middle" font-size="11.5" fill="#374151">#[Order(500)] auto-configuration registering the real implementation first. Neither firefly/cqrs nor firefly/eda depends on firefly/observability.</text>
+  <text x="700" y="920" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">A span whose end is deferred past the frame that started it — the CLIENT span of an Http call ends in the promise's then() — calls deactivate() as soon as its</text>
+  <text x="700" y="935" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">synchronous part is over, which is what keeps every request of an Http::pool() a sibling rather than a chain.</text>
 </svg>

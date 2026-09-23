@@ -306,7 +306,7 @@ constrains it — would have documented an unbounded string.
 ```php
 public function required(): bool
 {
-    return ! $this->hasDefault && ! $this->nullable && $this->type !== null;
+    return ! $this->hasDefault && ! $this->nullable && ($this->type !== null || $this->union !== null);
 }
 ```
 
@@ -315,6 +315,10 @@ splats only the keys the body actually carried, so a missing one raises `Argumen
 — a 500, *after* validation has already passed. Documenting it as optional would hand every generated client a
 legal-looking request the server cannot serve. So the PHP signature is treated as the requirement it genuinely is,
 alongside whatever `#[NotNull]`/`#[NotBlank]` say.
+
+A **union**-typed parameter counts for the same reason, and that is the second half of the test: a union has no
+single type *name* for `$type` to hold, so `MemberType` carries it whole in `$union` instead — asking `$type`
+alone would have published `int|string $id` as an optional member the server in fact cannot do without.
 
 JSON Schema states requiredness on the **parent** object, never on the member, which is why the mapper returns a
 `PropertySchema` — a schema *plus* that one boolean — rather than a schema alone.
@@ -878,9 +882,22 @@ failure mode this whole section exists to rule out. Write `api/orders/*`.
 
 Two ports let another package add what configuration cannot state:
 
+<!-- source: packages/openapi/src/Security/SecuritySchemeContributor.php -->
 ```php
-interface SecuritySchemeContributor { /** @return list<SecurityScheme> */ public function schemes(): array; }
-interface SecurityRequirementContributor { /** @return list<SecurityRequirement>|null */ public function requirementsFor(RouteDescriptor $route): ?array; }
+interface SecuritySchemeContributor
+{
+    /** @return list<SecurityScheme> */
+    public function schemes(): array;
+}
+```
+
+<!-- source: packages/openapi/src/Security/SecurityRequirementContributor.php -->
+```php
+interface SecurityRequirementContributor
+{
+    /** @return list<SecurityRequirement>|null */
+    public function requirementsFor(RouteDescriptor $route): ?array;
+}
 ```
 
 **Three implementations ship**, and the two beyond `ConfiguredSecurity` are exactly the case the interfaces were
@@ -939,10 +956,15 @@ have no opinion" and "I require nothing here" are the same contribution to an AN
 first-writer-wins and sort by name, so the document does not reshuffle with container iteration order.
 
 **A scheme may carry default scopes.** `SecurityScheme`'s third argument is the scope list a requirement *naming
-that scheme* is published with when it states none of its own:
+that scheme* is published with when it states none of its own — no scheme the framework ships sets it, so what
+follows is the contributor fixture the package's own container test registers:
 
+<!-- source: packages/openapi/tests/ContributorFixture/ScannedSchemeContributor.php -->
 ```php
-new SecurityScheme('oauth2AuthorizationCode', ['type' => 'oauth2', 'flows' => [...]], ['orders.read']);
+public function schemes(): array
+{
+    return [new SecurityScheme('oauth2AuthorizationCode', ['type' => 'oauth2', 'flows' => ['authorizationCode' => []]], ['orders.read', 'orders.write'])];
+}
 ```
 
 `SecurityModel` is the only thing that reads it, and it reads it in that one case — a requirement that states its

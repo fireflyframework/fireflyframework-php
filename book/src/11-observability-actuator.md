@@ -182,7 +182,7 @@ Notice `DbHealthIndicator` depends directly on Illuminate's own `ConnectionResol
 
 ## Aggregating health: `HealthEndpoint` and probe groups
 
-`HealthEndpoint` is itself a `#[Component]` (not a plain framework internal — it has to be discoverable like any other bean) that reads every registered indicator, runs each one fail-safe, and folds the results down to the single most-severe status:
+`HealthEndpoint` is itself a `#[Component]` (not a plain framework internal — it has to be discoverable like any other bean) that reads every registered indicator, runs each one fail-safe, and folds the results down to the single most-severe status — and, since `26.09.4`, takes one collaborator more than that, a `HealthDetailsAuthorizer` it asks before publishing any per-component detail:
 
 <!-- source: packages/actuator/src/Health/HealthEndpoint.php -->
 ```php
@@ -193,6 +193,7 @@ final class HealthEndpoint implements ActuatorEndpoint
         private readonly HealthContributorRegistry $registry,
         private readonly StatusAggregator $aggregator,
         private readonly Config $config,
+        private readonly HealthDetailsAuthorizer $authorizer,
     ) {}
 
     public function endpointId(): string
@@ -257,9 +258,20 @@ final class HealthEndpoint implements ActuatorEndpoint
         ));
     }
 
+    /**
+     * `always` publishes details to every caller; `never` to none; `when-authorized` asks the
+     * HealthDetailsAuthorizer, which is the deny-by-default port firefly/security fills when its master flag
+     * is on (see that interface for why the question lives here and the answer lives there). Anything else —
+     * including a typo — is `never`: the fail-closed reading, because the cost of withholding a detail is a
+     * support question and the cost of publishing one is a disclosure.
+     */
     private function showDetails(): bool
     {
-        return $this->config->string('firefly.management.endpoint.health.show-details', 'never') === 'always';
+        return match ($this->config->string('firefly.management.endpoint.health.show-details', 'never')) {
+            'always' => true,
+            'when-authorized' => $this->authorizer->mayReadDetails(),
+            default => false,
+        };
     }
 }
 ```
@@ -288,7 +300,12 @@ return [
 
 Configured this way, `GET /actuator/health/liveness` aggregates only `ping` (so a healthy-but-momentarily-database-less process still reports alive) and `GET /actuator/health/readiness` folds in `db` too — but the mechanism underneath is the exact same `group()` lookup and the exact same `Health`/`Status` types the rest of this section already showed you. A group name nobody configured returns `null` from `group()`, which `handle()` turns into a plain `404`, not a `200` with an empty body.
 
-`show-details` (`never`/`when-authorized`/`always`, default `never`) governs whether the response includes the per-component `details` map at all — with `never`, an unauthenticated caller sees only the aggregate `status`, never *which* indicator failed or why. `when-authorized` is a real, accepted config value, but — because `firefly/actuator` has no code dependency on `firefly/security` at all — it degrades to the same behavior as `never`; a details-only-when-authenticated policy is something you build yourself in front of the endpoint, not something the value switches on.
+`show-details` (`never`/`when-authorized`/`always`, default `never`) governs whether the response includes the per-component `details` map at all — with `never`, an unauthenticated caller sees only the aggregate `status`, never *which* indicator failed or why. Anything else, *including a typo*, reads as `never`: the fail-closed direction, because the cost of withholding a detail is a support question and the cost of publishing one is a disclosure.
+
+And `when-authorized` now means what its name says. For two releases it degraded to `never`, because `firefly/actuator` has no code edge to `firefly/security` and therefore could not say *who was asking* — safe, and also a documented lie about what the value did. `26.09.4` closed it with a shape this book has already shown you — Chapter 7's `CqrsMetrics` port and its no-op default are the same move: the package that owns the **question** declares a port and ships the conservative answer, and the package that owns the **answer** fills it. The port is `Firefly\Actuator\Health\HealthDetailsAuthorizer`, a deliberately argument-less `mayReadDetails(): bool`; actuator's own implementation is `DenyHealthDetailsAuthorizer`, which refuses everybody and is the old behavior by another name. Install `firefly/security` with `firefly.security.enabled` on and `PrincipalHealthDetailsAuthorizer` takes over: it reads the session-held principal from the same `SecurityContextHolder` Chapter 10's rules read, and matches it against `firefly.management.endpoint.health.roles` through the same `RoleHierarchy`, so `ROLE_ADMIN > ROLE_ACTUATOR` grants what it says. An empty `roles` is Spring's "any authenticated principal"; a non-empty one (a list, or Spring's CSV string — a bare `ADMIN` is read as `ROLE_ADMIN`) narrows it further, and a value that cannot be read as a role list at all refuses everybody rather than admitting them. The new dependency edge is `Security → Actuator` and only that direction: `firefly/actuator` still names no principal type and still works in an application with no security at all. Both beans are `#[ConditionalOnMissingBean]`, so your own `HealthDetailsAuthorizer` displaces either one.
+
+!!! warning "Breaking change in `26.09.4` — see `CHANGELOG.md` under `[26.09.4]`"
+    Two things moved, and both are recorded there under **BREAKING**. First, **an application already running `show-details: when-authorized` with security on starts disclosing what it used to withhold**: at the default `roles` (`[]`, "any authenticated principal"), every authenticated caller now reads the component details — which name database drivers, disk paths, broker hosts and indicator error messages. Decide rather than inherit: set `show-details: never`, or list the roles that may read them in `firefly.management.endpoint.health.roles`, or bind your own `HealthDetailsAuthorizer`. Second, **`HealthEndpoint`'s constructor gained a required fourth parameter**, `HealthDetailsAuthorizer $authorizer`, so code that constructs the endpoint directly instead of resolving the bean must now pass one — `new DenyHealthDetailsAuthorizer` reproduces the old behavior exactly. An application with `firefly/security` absent, or its master flag off, is unaffected: the deny default stands and the response body is byte for byte what it was.
 
 ---
 
@@ -737,7 +754,7 @@ Finally, a `Tracer` port rounds out the package — and it is no longer the plac
 
 What the port buys is one id that survives every boundary a request crosses. `W3CTraceContextPropagator` speaks [W3C Trace Context](https://www.w3.org/TR/trace-context/) over a plain header map, with no SDK involved — `extract(array $carrier): ?SpanContext` on the way in, `inject(SpanContext): array<string,string>` on the way out — so propagation works identically under an SDK-backed tracer and under a test one.
 
-Five boundaries are instrumented, and the figure is all five at once. `TracingFilter` (`#[Order(-110)]`, outermost of the discovered filters) continues an inbound `traceparent` as a remote parent and opens a `SERVER` span, then publishes its ids to Laravel `Context` and to `Request::$attributes` as `firefly.trace_id` and `firefly.span_id`. `TracerCqrsTracing` opens an `INTERNAL` span around every command and every query — nothing to carry, since the bus is in-process, so the span simply nests under whatever is current. `TracerEdaTracing` opens a `PRODUCER` span named `publish <destination>` on the way out, writing the `traceparent` into the envelope headers, and a `CONSUMER` span named `process <destination>` on delivery, reading it back — which is what joins a queue worker's span to the request that published. Three callers reach that seam today: `InMemoryEventBus`, `QueueEventBus`, and the shared `SubscriberRegistrySink` every broker consumer delivers through. The `eda-rabbitmq`, `eda-kafka` and `eda-postgres` publishers still build their envelopes themselves, so a broker *publish* opens no `PRODUCER` span and stamps no `traceparent` — their consume side is traced all the same, through that sink. And `HttpClientTracingMiddleware`, which `HttpClientTracingPass` installs on Laravel's `Http` factory at boot, opens a `CLIENT` span on every outbound call and injects the header onto the PSR-7 request.
+Five boundaries are instrumented, and the figure is all five at once. `TracingFilter` (`#[Order(-110)]`, outermost of the discovered filters) continues an inbound `traceparent` as a remote parent and opens a `SERVER` span, then publishes its ids to Laravel `Context` and to `Request::$attributes` as `firefly.trace_id` and `firefly.span_id`. `TracerCqrsTracing` opens an `INTERNAL` span around every command and every query — nothing to carry, since the bus is in-process, so the span simply nests under whatever is current. `TracerEdaTracing` opens a `PRODUCER` span named `publish <destination>` on the way out, writing the `traceparent` into the envelope headers, and a `CONSUMER` span named `process <destination>` on delivery, reading it back — which is what joins a queue worker's span to the request that published. Six callers reach that seam today: `InMemoryEventBus`, `QueueEventBus`, the shared `SubscriberRegistrySink` every broker consumer delivers through, and — since 26.09.4 — the three broker publishers themselves, `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher`, each of which routes `publish()` through `tracePublish()` rather than building its envelope alone. A broker *publish* therefore opens a `PRODUCER` span and stamps a `traceparent` of the framework's own making. `firefly.eda.tracing.brokers.enabled` downgrades those three to the no-op without touching the in-memory and queue buses, which is the one thing that can still leave a broker record unstamped. And `HttpClientTracingMiddleware`, which `HttpClientTracingPass` installs on Laravel's `Http` factory at boot, opens a `CLIENT` span on every outbound call and injects the header onto the PSR-7 request.
 
 Both seams are the `CqrsMetrics` shape you have just read: `CqrsTracing` lives in `firefly/cqrs` and `EdaTracing` in `firefly/eda`, each with a no-op default behind `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration registers the real implementation first. Neither `firefly/cqrs` nor `firefly/eda` depends on `firefly/observability` — check their `composer.json` files if you want to see it.
 
@@ -1117,7 +1134,7 @@ return [
 It also backs off silently in one more case that is easy to miss. Blade is required to render the dashboard and is not a dependency of the package, so a JSON-only deployment with no view factory bound gets no routes rather than routes that would fatal on first request; the JSON actuator remains the management surface there.
 
 !!! warning "Three things the dashboard can only show you about *this* process"
-    Under PHP-FPM every request is a different process, and three pages inherit that. **Changing a log level** calls the same endpoint `POST /actuator/loggers/{name}` does, which mutates the current process's Monolog handlers — the next request is a different process, so change `logging.channels` for anything that must persist. **Metrics** are only as durable as the registry: the default `SimpleMeterRegistry` keeps meters in process memory, so the dashboard sees only its own request unless `firefly.observability.metrics.store` points at a cache store. And **health details** stay hidden on the JSON `/actuator/health` response until `firefly.management.endpoint.health.show-details` is `always`, even though the dashboard's own Health page reads the indicators directly.
+    Under PHP-FPM every request is a different process, and three pages inherit that. **Changing a log level** calls the same endpoint `POST /actuator/loggers/{name}` does, which mutates the current process's Monolog handlers — the next request is a different process, so change `logging.channels` for anything that must persist. **Metrics** are only as durable as the registry: the default `SimpleMeterRegistry` keeps meters in process memory, so the dashboard sees only its own request unless `firefly.observability.metrics.store` points at a cache store. And **health details** stay hidden on the JSON `/actuator/health` response until `firefly.management.endpoint.health.show-details` is `always` — or is `when-authorized` and the `HealthDetailsAuthorizer` admits the caller — even though the dashboard's own Health page reads the indicators directly.
 
 ### The data browser, and why it does not inherit that default
 

@@ -180,7 +180,12 @@ final class ManifestCacheWriter
     // …
     private function planner(): ProxyPlanner
     {
-        return new ProxyPlanner([new TransactionalAdviceSource, new MethodSecurityAdviceSource]);
+        return new ProxyPlanner([
+            new ObservabilityAdviceSource,
+            new MethodSecurityAdviceSource,
+            new ResilienceAdviceSource,
+            new TransactionalAdviceSource,
+        ]);
     }
 // …
 }

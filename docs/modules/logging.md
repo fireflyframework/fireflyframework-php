@@ -44,6 +44,7 @@ plain text), `json`, `ecs` or `logstash`, and anything else refuses to boot; `ch
         'format' => env('FIREFLY_LOG_FORMAT', ''),
         // …
         // 'channels' => ['stack', 'stderr'],
+        // …
     ],
 ],
 ```

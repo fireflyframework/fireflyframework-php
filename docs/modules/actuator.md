@@ -42,8 +42,11 @@ indicators. A throwing indicator degrades to DOWN — never a 500.
 `components` block, and it has **three** literals. `always` publishes the details to every caller, `never` to
 none, and `when-authorized` asks a bean:
 
+<!-- source: packages/actuator/src/Health/HealthDetailsAuthorizer.php -->
 ```php
-interface HealthDetailsAuthorizer   // Firefly\Actuator\Health
+namespace Firefly\Actuator\Health;
+// …
+interface HealthDetailsAuthorizer
 {
     public function mayReadDetails(): bool;
 }

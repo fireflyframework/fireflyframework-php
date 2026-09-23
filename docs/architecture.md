@@ -249,12 +249,14 @@ header map, with no SDK involved. `TracingFilter` (`-110`), the outermost ordere
 request arriving with a `traceparent` continues that trace and one arriving without starts a new root — then
 publishes `firefly.trace_id` and `firefly.span_id` onto Laravel's `Context` and `Request::$attributes`. From
 there the same trace crosses five boundaries: inbound HTTP, an `INTERNAL` span per CQRS message, a
-`PRODUCER` span stamping `traceparent` into the envelope's headers on the in-memory and queue buses, a
+`PRODUCER` span stamping `traceparent` into the envelope's headers, a
 `CONSUMER` span on every delivery — a broker's included, through the shared `SubscriberRegistrySink` — and a
 `CLIENT` span on every outbound `Http` call, which injects the header again for the next service's own filter
-to extract. The producer half is the narrower one on purpose: `eda-rabbitmq`, `eda-kafka` and `eda-postgres`
-build their envelopes themselves and do not reach the publish seam yet, so a `traceparent` reaches a broker
-only when something upstream put it there — see [Known-latent](modules/tracing.md#known-latent).
+to extract. Since 26.09.4 the producer half is as wide as the consumer half: `RabbitMqEventPublisher`,
+`KafkaEventPublisher` and `PostgresEventPublisher` route `publish()` through the same seam the in-memory and
+queue buses have always used, so a broker record carries a `traceparent` of the framework's own making.
+`firefly.eda.tracing.brokers.enabled` sends those three back to the no-op without touching the other two; what
+no gate reaches is a relay downstream you wrote yourself — see [Known-latent](modules/tracing.md#known-latent).
 
 The CQRS and EDA seams follow the `CqrsMetrics` shape: an interface in the owning package with a no-op
 default behind `#[ConditionalOnMissingBean]`, and observability's `#[Order(500)]` auto-configuration

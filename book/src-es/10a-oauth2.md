@@ -586,6 +586,7 @@ Dale la vuelta al cuadro. `firefly/security-oauth2-server` es el modelo de Sprin
         // 'enabled' => false,
         // 'max_tokens' => 60,
         // 'refill_rate' => 1.0,
+        // 'idle_ttl' => 2592000,
     ],
 ],
 ```

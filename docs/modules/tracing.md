@@ -4,11 +4,12 @@
 `SpanKind`, `SpanStatus`, `SpanContext` — with `NoOpTracer` as the shipped default and an OpenTelemetry
 adapter that binds itself when the SDK is installed and `firefly.observability.tracing.enabled` is on. With it
 on, every request gets a SERVER span continued from an inbound W3C `traceparent`, every Laravel `Http` client
-call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and an event
-published through the in-memory or queue bus carries `traceparent` in its envelope with a PRODUCER span on
-publish; every delivery gets a CONSUMER span, a broker's included, through the shared `SubscriberRegistrySink`
-(see [Known-latent](#known-latent) for the broker publishers that do not stamp the header yet). The trace and
-span ids reach Laravel `Context` (`firefly.trace_id`,
+call gets a CLIENT span and sends `traceparent`, every command and query gets an INTERNAL span, and a published
+event gets a PRODUCER span that writes `traceparent` into the envelope headers — from the in-memory and queue
+buses and from all three broker publishers (`RabbitMqEventPublisher`, `KafkaEventPublisher`,
+`PostgresEventPublisher`), with `firefly:outbox:relay` forwarding a claimed row under that row's own trace
+rather than starting a new one. Every delivery gets a CONSUMER span, a broker's included, through the shared
+`SubscriberRegistrySink`. The trace and span ids reach Laravel `Context` (`firefly.trace_id`,
 `firefly.span_id`), every log line (see [Logging](logging.md)), and `/actuator/httpexchanges`.
 
 ## The port
@@ -71,7 +72,7 @@ case-insensitively, list or string values) and `inject(SpanContext): array<strin
 | Inbound HTTP | `TracingFilter` — a `#[Component] WebFilter` at `#[Order(-110)]`, the outermost discovered filter (right after `RequestContextFilter` and `CorrelationIdFilter`, wrapping `HttpExchangeFilter`/`MetricsFilter`) | `SERVER`, named `GET /orders/{id}` once the router has matched; `http.request.method`, `url.path`, `url.scheme`, `server.address`, `http.route`, `http.response.status_code`, `firefly.correlation_id`; `ERROR` on 5xx or a throw | `traceparent`/`tracestate` read from the request; ids published to `Context` and to `Request::$attributes` (where `HttpExchangeFilter` reads the `traceId` for the exchange row) |
 | Outbound HTTP | `HttpClientTracingMiddleware`, a Guzzle middleware `HttpClientTracingPass` installs on the `Http` factory at boot (`Http::globalMiddleware()`) | `CLIENT`, named by the method; `http.request.method`, `url.scheme`, `server.address`, `server.port`, `url.path` (never `url.full` — the query string is where tokens live), `http.response.status_code`; `ERROR` at ≥ 400 or on a rejection | `traceparent`/`tracestate` set on the PSR-7 request; works under `Http::fake()` (global middleware is outermost) |
 | CQRS | `CqrsTracing` seam in `firefly/cqrs` (`NoOpCqrsTracing` default), filled by `TracerCqrsTracing` | `INTERNAL`, named by the message's short class; `firefly.cqrs.kind`, `firefly.cqrs.message` | nothing to carry — in-process; the span nests under whatever is current |
-| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`), `SubscriberRegistrySink` (every broker consumer), the three broker publishers — `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` (both its writers: the bean and the in-tx `OutboxPreCommitHook`) — and `OutboxRelay`, which wraps its forward in `traceConsume()` so the relay hop continues the row's trace instead of rooting a new one | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
+| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`), `SubscriberRegistrySink` (every broker consumer), the three broker publishers — `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` (both its writers: the bean and the in-tx `OutboxPreCommitHook`) — and `OutboxRelay`, which wraps its forward in `traceConsume()` so the relay hop continues the row's trace instead of rooting a new one | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id`; `firefly.eda.tracing.brokers.enabled=false` keeps the in-process spans while the three broker publishers stamp nothing on the transport (see [EDA](eda.md#config-keys)) |
 
 **The id a person quotes is the trace id.** `firefly/web` reads the ids `TracingFilter` publishes above
 (`Firefly\Web\Trace\TraceContext`, which owns the two attribute/`Context` keys the filter's own constants
@@ -159,7 +160,7 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 |---|---|---|
 | Request tracing | third-party packages, each with its own middleware and header format | `TracingFilter`, W3C `traceparent`, one `Tracer` port |
 | Outbound propagation | manual `withHeaders()` at every call site | a Guzzle middleware on the `Http` factory, once, at boot |
-| Async correlation | none first-party | `traceparent` in an in-memory or queued `EventEnvelope`, CONSUMER spans on every delivery |
+| Async correlation | none first-party | a PRODUCER span and a `traceparent` on the envelope the in-memory bus, the queue bus and the RabbitMQ/Kafka/Postgres publishers hand the transport; CONSUMER spans on every delivery |
 | Vendor lock | the tracing package's | OpenTelemetry API/SDK, OTLP to any collector; `RecordingTracer` needs no SDK |
 
 ## Known-latent

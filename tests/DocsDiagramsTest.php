@@ -1339,10 +1339,15 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         .'EDA panel that is true of a broker at all, and the reason the CONSUMER half of it is not overclaimed',
     );
 
-    // The other side of the same claim. While these three starters build their envelopes themselves there is
-    // no PRODUCER span and no traceparent for a broker publish, which is why the panel scopes the header line
-    // to an in-memory or queued envelope and why docs/modules/tracing.md carries a "Known-latent" bullet. The
-    // day one of them does go through the seam, this turns red and both have to widen with it.
+    // The other side of the same claim, and the one assertion in this file whose PREMISE has flipped. Until
+    // 26.09.4 the three broker starters built their envelopes themselves: no PRODUCER span and no traceparent
+    // for a broker publish, so the panel scoped its header line to an in-memory or queued envelope and the
+    // module page carried a "Known-latent" bullet saying so. This loop asserted the ABSENCE of the seam and
+    // said, in its own failure message, that the day a starter went through it the figure and the bullet had
+    // to widen with it. All three went through it at once, the figure widened, and the assertion was inverted
+    // rather than deleted: the scoping was only ever true because of what the code did, so the same reflection
+    // that licensed the narrow figure now licenses the wide one. If a starter stops reaching the seam, the
+    // widened panel starts overclaiming and this turns red again — in the other direction.
     $seam = (new ReflectionClass(EdaTracing::class))->getShortName();
     foreach (['eda-kafka', 'eda-postgres', 'eda-rabbitmq'] as $starter) {
         $sources = '';
@@ -1357,12 +1362,21 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
         }
 
         expect($sources)->not->toBe('', "packages/{$starter}/src holds no PHP at all — this guard reads nothing")
-            ->and(str_contains($sources, $seam))->toBeFalse(
-                "packages/{$starter} now reaches the {$seam} seam. That is the follow-up docs/modules/tracing.md "
-                .'lists under "Known-latent": widen the EDA panel of tracing-propagation.svg (and its byte-identical '
-                .'book/art/figures mirror) past the in-memory and queue buses, and retire the bullet',
+            ->and(str_contains($sources, $seam))->toBeTrue(
+                "packages/{$starter} no longer reaches the {$seam} seam, but the EDA panel of "
+                .'tracing-propagation.svg (and its byte-identical book/art/figures mirror) draws a PRODUCER span '
+                .'over broker publishes on the premise that all three do. Narrow the panel back, or restore the '
+                .'seam — the figure and the code have to say the same thing',
             );
     }
+
+    // And the gate that keeps the widened panel honest: the brokers reach the seam, but an application can
+    // send them back to the no-op on its own, which is why the panel names the key rather than promising a
+    // traceparent unconditionally. The figure's claim is exactly as true as this key's existence.
+    expect(str_contains($svg, 'firefly.eda.tracing.brokers.enabled'))->toBeTrue(
+        'the EDA panel draws broker publishes as traced without naming firefly.eda.tracing.brokers.enabled, '
+        .'the key that downgrades the three broker publishers alone to the no-op',
+    );
 
     expect(str_contains($prose[$modulePage], '## Known-latent'))->toBeTrue(
         'docs/modules/tracing.md no longer carries the Known-latent section the EDA panel is scoped against; '
@@ -1392,6 +1406,15 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     // past it while its own docblock claimed these sentences were held out of all three documents. A guard
     // that names only the wordings it has already seen has to grow one entry every time a new wording of the
     // same false claim is found; these are the two the summary was written with.
+    //
+    // 26.09.4 narrowed WHY this list exists without emptying it. The three broker publishers now reach the
+    // publish seam, so the original reason — a broker publish is structurally untraced — is retired, and the
+    // loop above asserts the opposite of what it used to. What survives is smaller and still real: the three
+    // are gated by firefly.eda.tracing.brokers.enabled, and a relay downstream an application wrote itself
+    // reaches no gate at all. A sentence that sweeps over every envelope is therefore still wrong, for a
+    // reason the failure message now states rather than the one it was written for. The list is kept as it
+    // stands: each entry is a wording the documentation has actually been written with, and a wording that was
+    // wrong once is the wording it will be wrong in again.
     $overclaims = [
         'every eda envelope',
         'every envelope',
@@ -1462,9 +1485,12 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
     foreach ($paragraphs as $relative => $plain) {
         foreach ($overclaims as $overclaim) {
             expect(str_contains($plain, $overclaim))->toBeFalse(
-                "{$relative} says '{$overclaim}' again, which the Known-latent bullet of "
-                .'docs/modules/tracing.md contradicts: a broker publish opens no PRODUCER span and stamps no '
-                .'traceparent. Scope the sentence to an in-memory or queued envelope, exactly as the figure does',
+                "{$relative} says '{$overclaim}' again. Since 26.09.4 the reason is no longer that a broker "
+                .'publish is untraced — all three publishers reach the seam — but that the sweep is still '
+                .'wider than the code: firefly.eda.tracing.brokers.enabled sends those three back to the no-op, '
+                .'and a relay downstream of your own reaches no gate at all, which is the entry '
+                .'docs/modules/tracing.md still carries under Known-latent. Enumerate the buses the way the '
+                .'figure does, and name the gate, instead of sweeping over all of them',
             );
         }
     }

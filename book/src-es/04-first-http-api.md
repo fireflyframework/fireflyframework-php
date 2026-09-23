@@ -423,19 +423,29 @@ final class ProblemDetailsRenderer
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
 
         $correlationId = CorrelationIdFilter::of($request);
-        $exception = ProblemMapper::toFireflyException($e, $disclose, $correlationId);
+        $reference = TraceContext::referenceFor($request);
+        $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
+        // …
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
-            traceId: $correlationId,
+            traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
+            correlationId: $correlationId,
         )->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',
             CorrelationIdFilter::HEADER => $correlationId,
         ];
+
+        $traceHeader = TraceContext::header();
+        $traceId = TraceContext::traceId($request);
+        if ($traceHeader !== '' && $traceId !== null) {
+            $headers[$traceHeader] = $traceId;
+        }
+
         // …
         return new Response(
             json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
@@ -446,7 +456,9 @@ final class ProblemDetailsRenderer
 }
 ```
 
-`application/problem+json` se fija aquí, en cada respuesta que este renderizador produce — ese tipo de medio *es* el contrato del RFC-7807, y un cliente tiene todo el derecho a ramificar sobre él. A su lado va el identificador de correlación de la petición, tanto como cabecera `X-Correlation-Id` como en el `traceId` de la carga útil, de modo que el cuerpo del que alguien hace una captura y la línea de log que un operador filtra con grep comparten un valor.
+`application/problem+json` se fija aquí, en cada respuesta que este renderizador produce — ese tipo de medio *es* el contrato del RFC-7807, y un cliente tiene todo el derecho a ramificar sobre él. A su lado viajan dos identificadores, y son dos a propósito. `X-Correlation-Id` lleva el identificador que `CorrelationIdFilter` acuña o lee en el borde de la petición, y el documento repite ese mismo valor en `correlationId`, de modo que quien llama puede casar el cuerpo que tiene delante con su propio registro de peticiones. El `traceId` del documento es lo que responda `TraceContext::referenceFor()` — el identificador de traza W3C de la petición cuando el trazado está activado y esta petición trae uno válido, y el identificador de correlación cuando no lo trae —, así que la referencia que alguien cita nunca está vacía, y activar el trazado es lo único que cambia cuál de los dos lleva. Cuando de verdad hay un identificador de traza, además se hace eco de él en una cabecera propia (`X-Trace-Id` por defecto; un nombre de cabecera vacío desactiva ese eco). Ambos identificadores pasan *a través* de `ErrorResponse` en vez de escribirse sobre el array después, porque la lista de miembros del DTO es de donde se genera el componente OpenAPI publicado — un miembro añadido aquí sería uno que ningún cliente generado sabe decodificar.
+
+El corte que hay encima del `return` oculta el resto del trabajo con cabeceras: las cabeceras que una `HttpExceptionInterface` ya trae se copian sobre la respuesta — el `Allow` de un `405`, entre ellas — y un `503` gana además `Retry-After: 5`.
 
 Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se convierte un throwable cualquiera. Esa regla vive una clase más allá, en `Firefly\Web\Error\ProblemMapper`, porque la página de error HTML del Capítulo 10 necesita la respuesta idéntica y dos copias de ella acabarían dándole a un navegador y a un cliente de API códigos distintos para el mismo fallo:
 
@@ -480,7 +492,7 @@ Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se
 
 Cinco brazos que cubren cuatro casos — el `405` tiene un brazo propio solo para que los verbos que permite puedan sacarse de la frase del enrutador y llevarse a un miembro `allowed` y a la cabecera `Allow` — y todos ellos terminan de vuelta en la misma llamada `ErrorResponse::fromException(...)->toArray()`, así que la forma de la carga útil nunca depende de qué brazo la produjo.
 
-Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra el identificador de correlación, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
+Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra la misma referencia que lleva el `traceId` del documento, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
 
 Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: es `$request->path()`, que Laravel devuelve **sin** barra inicial, así que es `api/v1/wallets/wlt-999` y no `/api/v1/wallets/wlt-999` — una cosa pequeña, y exactamente el tipo de cosa pequeña que un cliente que compara cadenas hace mal.
 
@@ -493,7 +505,8 @@ Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: 
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
   "instance": "api/v1/wallets/wlt-999",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
@@ -509,7 +522,8 @@ Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id`
   "severity": "warning",
   "detail": "Validation failed",
   "instance": "api/v1/wallets",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
   "errors": [
     {"field": "owner_id", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": ""}
@@ -530,7 +544,8 @@ Un intento de retiro se rechaza por dos vías distintas, y las dos **no dan el m
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
   "instance": "api/v1/wallets/wlt-1/withdraw",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
@@ -546,7 +561,8 @@ El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
   "instance": "api/v1/wallets/wlt-1/withdraw",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
   "requiredAuthorities": ["ROLE_ADMIN", "ROLE_WALLET_OWNER"]
 }

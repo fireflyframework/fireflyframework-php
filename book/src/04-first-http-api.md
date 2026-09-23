@@ -423,19 +423,29 @@ final class ProblemDetailsRenderer
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
 
         $correlationId = CorrelationIdFilter::of($request);
-        $exception = ProblemMapper::toFireflyException($e, $disclose, $correlationId);
+        $reference = TraceContext::referenceFor($request);
+        $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
+        // …
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
-            traceId: $correlationId,
+            traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
+            correlationId: $correlationId,
         )->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',
             CorrelationIdFilter::HEADER => $correlationId,
         ];
+
+        $traceHeader = TraceContext::header();
+        $traceId = TraceContext::traceId($request);
+        if ($traceHeader !== '' && $traceId !== null) {
+            $headers[$traceHeader] = $traceId;
+        }
+
         // …
         return new Response(
             json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
@@ -446,7 +456,9 @@ final class ProblemDetailsRenderer
 }
 ```
 
-`application/problem+json` is set here, on every response this renderer produces — that media type *is* the RFC-7807 contract, and a client is entitled to switch on it. Beside it goes the request's correlation id, both as the `X-Correlation-Id` header and as the payload's `traceId`, so the body a person screenshots and the log line an operator greps share a value.
+`application/problem+json` is set here, on every response this renderer produces — that media type *is* the RFC-7807 contract, and a client is entitled to switch on it. Beside it travel two identifiers, and they are two on purpose. `X-Correlation-Id` carries the id `CorrelationIdFilter` minted or read at the edge of the request, and the document repeats that same value as `correlationId`, so a caller can match the body it is holding to its own request log. The document's `traceId` is whatever `TraceContext::referenceFor()` answers — the request's W3C trace id when tracing is on and this request carries a valid one, and the correlation id when it does not — so the reference a person quotes is never empty, and switching tracing on is the only thing that changes which of the two it holds. Where there really is a trace id, it is echoed on a header of its own as well (`X-Trace-Id` by default; an empty header name turns that echo off). Both ids are passed *through* `ErrorResponse` rather than written onto the array afterwards, because the DTO's member list is what the published OpenAPI component is generated from — a member appended here would be one no generated client decodes.
+
+The cut above the `return` hides the rest of the header work: the headers an `HttpExceptionInterface` already carries are copied onto the response — a `405`'s `Allow` among them — and a `503` additionally gains `Retry-After: 5`.
 
 What `render()` deliberately does **not** decide is which `FireflyException` an arbitrary throwable becomes. That rule lives one class along, in `Firefly\Web\Error\ProblemMapper`, because the HTML error page of Chapter 10 needs the identical answer and two copies of it would eventually hand a browser and an API client different codes for the same failure:
 
@@ -480,7 +492,7 @@ What `render()` deliberately does **not** decide is which `FireflyException` an 
 
 Five arms covering four cases — the `405` has an arm of its own only so the verbs it permits can be lifted out of the router's sentence and into an `allowed` member and the `Allow` header — and every one of them ends back at the same `ErrorResponse::fromException(...)->toArray()` call, so the payload's shape never depends on which arm produced it.
 
-A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the correlation id, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
+A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the same reference the document's `traceId` carries, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
 
 Requesting a wallet that was never opened renders like this. Note `instance`: it is `$request->path()`, which Laravel returns **without** a leading slash, so it is `api/v1/wallets/wlt-999` and not `/api/v1/wallets/wlt-999` — a small thing, and exactly the kind of small thing a client that compares strings gets wrong.
 
@@ -493,7 +505,8 @@ Requesting a wallet that was never opened renders like this. Note `instance`: it
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
   "instance": "api/v1/wallets/wlt-999",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
@@ -509,7 +522,8 @@ A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — 
   "severity": "warning",
   "detail": "Validation failed",
   "instance": "api/v1/wallets",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
   "errors": [
     {"field": "owner_id", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": ""}
@@ -530,7 +544,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
   "instance": "api/v1/wallets/wlt-1/withdraw",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
 }
 ```
@@ -546,7 +561,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
   "instance": "api/v1/wallets/wlt-1/withdraw",
-  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
   "requiredAuthorities": ["ROLE_ADMIN", "ROLE_WALLET_OWNER"]
 }

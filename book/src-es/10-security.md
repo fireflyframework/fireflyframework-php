@@ -225,7 +225,7 @@ La primera invariante se dispara en la **construcción**, no en el primer uso: u
 ```php
 public function requestMatcher(string $pattern): self
 {
-    $this->pending = $pattern;
+    $this->pending = self::normalisePattern($pattern);
 
     return $this;
 }
@@ -264,9 +264,18 @@ public function hasScope(string $scope): self
 {
     return $this->finalise("hasScope('".self::assertSafeValue($scope)."')");
 }
+// …
+private static function normalisePattern(string $pattern): string
+{
+    $normalised = ltrim($pattern, '/');
+
+    return $normalised === '' ? '/' : $normalised;
+}
 ```
 
 Cada regla compila hacia la **exacta misma gramática de expresiones** que usa `#[PreAuthorize]` más abajo — `HttpSecurity` es un constructor que emite cadenas con la forma `permitAll()`/`hasRole('ADMIN')`, no un segundo motor de autorización. `HttpSecurityFilter` evalúa las reglas compiladas contra la ruta de la petición y, en la primera coincidencia de patrón, comprueba la expresión de la regla; una petición que no coincide con **ninguna** regla se deniega — de fallo seguro, no de apertura por defecto. Una denegación se renderiza como `401` cuando el contexto es anónimo (autentícate primero) y como `403` cuando está autenticado pero sin privilegios suficientes.
+
+`requestMatcher()` es la única puerta por la que pasa toda regla — `anyRequest()` y `fromConfig()` la llaman las dos — y normaliza el patrón antes de guardarlo. El filtro compara con `Str::is($rule->pattern, $request->path())`, y el `path()` de Laravel nunca lleva barra inicial, así que `normalisePattern()` la quita: `/api/*` y `api/*` son la **misma** regla. Un `'/actuator/health'` escrito como lo escribe medio mundo — como lo deletrea cada ruta de un `RouteManifest` — es una regla viva, no la regla silenciosamente muerta que antes era, en la que la petición no coincidía con nada, la denegación por defecto la rechazaba y el operador leía un `401` en la única ruta que había abierto explícitamente. La ruta raíz es la única excepción que conserva su barra, porque `path()` responde `'/'` para ella y nunca `''`. Lo que la normalización **no** hace es reescribir una plantilla de ruta: un patrón se compara contra `api/orders/7`, nunca contra `api/orders/{id}`, así que un patrón que lleva un marcador de posición sigue siendo una regla muerta que ninguna normalización puede rescatar — `api/orders/*` es la grafía que lo cubre.
 
 `assertSafeValue()` rechaza cualquier valor de rol/autoridad que contenga una comilla simple, por una razón que importa muchísimo en cuanto leas la siguiente sección: una cadena de rol o autoridad legítima nunca contiene una, pero un valor que sí lo hiciera podría, si no, empalmar gramática adicional dentro del literal de expresión fijo en el que se interpola.
 

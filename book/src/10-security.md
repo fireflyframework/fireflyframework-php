@@ -225,7 +225,7 @@ The first invariant fires at **construction**, not at first use: a secret shorte
 ```php
 public function requestMatcher(string $pattern): self
 {
-    $this->pending = $pattern;
+    $this->pending = self::normalisePattern($pattern);
 
     return $this;
 }
@@ -264,9 +264,18 @@ public function hasScope(string $scope): self
 {
     return $this->finalise("hasScope('".self::assertSafeValue($scope)."')");
 }
+// …
+private static function normalisePattern(string $pattern): string
+{
+    $normalised = ltrim($pattern, '/');
+
+    return $normalised === '' ? '/' : $normalised;
+}
 ```
 
 Every rule compiles to the **exact same expression grammar** `#[PreAuthorize]` uses below — `HttpSecurity` is a builder that emits `permitAll()`/`hasRole('ADMIN')`-shaped strings, not a second authorization engine. `HttpSecurityFilter` evaluates the compiled rules against the request path and, on the first pattern match, checks the rule's expression; a request matching **no** rule at all is denied — fail-closed, not fail-open. A denial renders as a `401` when the context is anonymous (authenticate first) and a `403` when authenticated but under-privileged.
+
+`requestMatcher()` is the one door every rule comes through — `anyRequest()` and `fromConfig()` both call it — and it normalises the pattern before storing it. The filter matches `Str::is($rule->pattern, $request->path())`, and Laravel's `path()` never carries a leading slash, so `normalisePattern()` strips one: `/api/*` and `api/*` are the **same** rule. A `'/actuator/health'` written the way half the world writes it — the way every route in a `RouteManifest` spells it — is a live rule, not the silently dead one it used to be, where the request matched nothing, deny-by-default refused it, and the operator read a `401` on the one path they had explicitly opened. The root path is the single exception that keeps its slash, because `path()` answers `'/'` for it and never `''`. What normalisation does **not** do is rewrite a route template: a pattern is matched against `api/orders/7`, never against `api/orders/{id}`, so a pattern carrying a placeholder is still a dead rule no normalisation can rescue — `api/orders/*` is the spelling that covers it.
 
 `assertSafeValue()` rejects any role/authority value containing a single quote, for a reason that matters a great deal once you've read the next section: a legitimate role or authority string never contains one, but a value that did could otherwise splice extra grammar into the fixed expression literal it gets interpolated into.
 

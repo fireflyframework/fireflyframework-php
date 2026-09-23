@@ -481,7 +481,7 @@ default is `NoOpTracer`, and every instrumentation site checks `$span->context()
 publishing an id:
 
 <p align="center">
-  <img src="docs/assets/diagrams/tracing-propagation.svg" alt="One W3C traceparent entering at the TracingFilter at order -110 and flowing outward across five boundaries — the SERVER span published to Laravel Context, an INTERNAL span per CQRS message, PRODUCER and CONSUMER spans around an in-memory or queued EDA envelope whose headers carry the traceparent (the broker publishers build their envelopes themselves and do not reach the seam yet; their deliveries still do, through SubscriberRegistrySink), and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the admin dashboard." width="100%">
+  <img src="docs/assets/diagrams/tracing-propagation.svg" alt="One W3C traceparent entering at the TracingFilter at order -110 and flowing outward across five boundaries — the SERVER span published to Laravel Context, an INTERNAL span per CQRS message, PRODUCER and CONSUMER spans around an in-memory, queued or broker EDA envelope whose headers carry the traceparent (the RabbitMQ, Kafka and Postgres publishers reach the same seam since 26.09.4, gated by firefly.eda.tracing.brokers.enabled; deliveries arrive through SubscriberRegistrySink), and a CLIENT span on every outbound Http call that injects it again — landing on every log line, on the httpexchanges endpoint and on the admin dashboard." width="100%">
 </p>
 
 ---

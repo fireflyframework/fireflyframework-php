@@ -424,29 +424,33 @@ final class PostgresEventPublisher implements EventPublisher
     // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
     {
-        $id = $this->connection->table(OutboxSchema::TABLE)->insertGetId([
-            'destination' => $destination,
-            'channel' => $this->channel,
-            'event_type' => $eventType,
-            'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
-            'headers' => json_encode($headers === [] ? new stdClass : $headers, JSON_THROW_ON_ERROR),
-            'transaction_id' => $headers['x-correlation-id'] ?? null,
-            'status' => OutboxSchema::STATUS_PENDING,
-            'attempts' => 0,
-            'created_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
-        ]);
+        $this->tracing->tracePublish($destination, $eventType, $headers, function (array $headers) use ($destination, $eventType, $payload): void {
+            $id = $this->connection->table(OutboxSchema::TABLE)->insertGetId([
+                'destination' => $destination,
+                'channel' => $this->channel,
+                'event_type' => $eventType,
+                'payload' => json_encode($payload, JSON_THROW_ON_ERROR),
+                'headers' => json_encode($headers === [] ? new stdClass : $headers, JSON_THROW_ON_ERROR),
+                'transaction_id' => $headers['x-correlation-id'] ?? null,
+                'status' => OutboxSchema::STATUS_PENDING,
+                'attempts' => 0,
+                'created_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
+            ]);
 
-        if ($this->emitNotify) {
-            // In-tx pg_notify: Postgres queues it and delivers on COMMIT, so the consumer's LISTEN wakes exactly
-            // …
-            $this->connection->statement('SELECT pg_notify(?, ?)', [$this->channel, (string) $id]);
-        }
+            if ($this->emitNotify) {
+                // In-tx pg_notify: Postgres queues it and delivers on COMMIT, so the consumer's LISTEN wakes exactly
+                // …
+                $this->connection->statement('SELECT pg_notify(?, ?)', [$this->channel, (string) $id]);
+            }
+        });
     }
 // …
 }
 ```
 
-Because `publish()` runs on **whatever connection it was constructed with**, and that connection is mid-transaction when `OutboxPreCommitHook` calls it, the `INSERT` enlists in the aggregate's own transaction: it commits when the aggregate commits, and it rolls back when the aggregate rolls back. When the driver is `pgsql`, the same statement also fires `SELECT pg_notify(?, ?)` — **inside the same transaction**. Postgres queues a `NOTIFY` raised inside a transaction and only actually delivers it once that transaction commits, so a listening consumer wakes with low latency at exactly the moment the row becomes visible to other connections — and never wakes for a row that gets rolled back.
+Because `publish()` runs on **whatever connection it was constructed with**, and that connection is mid-transaction when `OutboxPreCommitHook` calls it, the `INSERT` enlists in the aggregate's own transaction: it commits when the aggregate commits, and it rolls back when the aggregate rolls back. When the driver is `pgsql`, the same closure also fires `SELECT pg_notify(?, ?)` — **inside the same transaction**. Postgres queues a `NOTIFY` raised inside a transaction and only actually delivers it once that transaction commits, so a listening consumer wakes with low latency at exactly the moment the row becomes visible to other connections — and never wakes for a row that gets rolled back.
+
+The whole of that body sits inside `EdaTracing::tracePublish()` — the single port all three broker publishers now route through, `eda-rabbitmq` and `eda-kafka` alongside this one. Because propagation means *writing* something on the envelope, the port hands the send closure the headers to carry and the adapter builds the row out of those, so the `traceparent` the producer span stamps is on the row that commits with the aggregate — this is the one adapter where the producer span and the durable record are genuinely atomic, rather than a span that ends the moment a socket accepted the message. With tracing off the bound `EdaTracing` is `NoOpEdaTracing`, which calls the closure with the caller's headers unchanged, so the path is byte-for-byte what it was; and `transaction_id` is still read from `x-correlation-id`, never from a traceparent, so the relay's idempotency key does not change just because a request happened to be traced.
 
 The outbox table (`firefly_eda_outbox`, one schema shared by the migration, the publisher, the consumer, and the relay) carries: `id, destination, channel, event_type, payload, headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at`, with `status` one of `PENDING` / `PUBLISHED` / `FAILED`.
 

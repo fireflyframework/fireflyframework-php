@@ -308,6 +308,8 @@ beside the correlation and request ids, and one key chooses the line format:
         // …
 
         // 'channels' => ['stack', 'stderr'],
+
+        // …
     ],
 ],
 ```

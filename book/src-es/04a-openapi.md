@@ -186,12 +186,12 @@ Dentro de una operación, el plan de enlace hace el trabajo de verdad. `Operatio
         }
 
         $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
-
+        // …
         return $operation;
     }
 ```
 
-El único `// …` corta el bloque que compone la prosa de cara al humano de la operación — su `summary`, su `description`, su bandera `deprecated` y sus `tags`, los cuatro cubiertos justo debajo. Todo lo que se imprime es lo que decide el *plan de enlace*. Leer el plan en lugar de releer la firma del método es lo que hace inequívoco el mapeo. `#[PathVariable]`, `#[QueryParam]` y `#[RequestHeader]` se convierten en Parameter Objects; `#[UploadedFile]` se convierte en una parte `multipart/form-data` tipada como `format: binary`; `#[RequestBody]` se convierte en el Request Body Object; y el sexto `kind`, `service` — el colaborador inyectado por el contenedor sin atributo que presentó el Capítulo 4 — no forma parte del contrato HTTP en absoluto y nunca aparece en el documento. Derivar esa lista de forma independiente tendría que volver a decidir cada uno de esos casos y podría discrepar del dispatcher; leer el plan no puede.
+Los dos `// …` cortan las partes sobre las que el plan de enlace no decide nada: el bloque que compone la prosa de cara al humano de la operación — su `summary`, su `description`, su bandera `deprecated` y sus `tags`, los cuatro cubiertos justo debajo — y el bloque `security` a nivel de operación, cuyos requisitos provienen de las reglas de seguridad de la aplicación y no de la firma del método. Todo lo demás que se imprime es lo que decide el *plan de enlace*. Leer el plan en lugar de releer la firma del método es lo que hace inequívoco el mapeo. `#[PathVariable]`, `#[QueryParam]` y `#[RequestHeader]` se convierten en Parameter Objects; `#[UploadedFile]` se convierte en una parte `multipart/form-data` tipada como `format: binary`; `#[RequestBody]` se convierte en el Request Body Object; y el sexto `kind`, `service` — el colaborador inyectado por el contenedor sin atributo que presentó el Capítulo 4 — no forma parte del contrato HTTP en absoluto y nunca aparece en el documento. Derivar esa lista de forma independiente tendría que volver a decidir cada uno de esos casos y podría discrepar del dispatcher; leer el plan no puede.
 
 Cuatro decisiones menores rematan una operación:
 

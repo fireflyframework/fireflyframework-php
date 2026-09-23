@@ -586,6 +586,7 @@ Turn the picture around. `firefly/security-oauth2-server` is Spring Authorizatio
         // 'enabled' => false,
         // 'max_tokens' => 60,
         // 'refill_rate' => 1.0,
+        // 'idle_ttl' => 2592000,
     ],
 ],
 ```

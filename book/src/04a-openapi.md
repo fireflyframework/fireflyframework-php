@@ -186,12 +186,12 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
         }
 
         $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
-
+        // …
         return $operation;
     }
 ```
 
-The single `// …` cuts the block that assembles the operation's human-facing prose — its `summary`, `description`, `deprecated` flag and `tags`, all four covered just below. Everything printed is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
+The two `// …` cuts drop the parts the binding plan has no say in: the block that assembles the operation's human-facing prose — its `summary`, `description`, `deprecated` flag and `tags`, all four covered just below — and the operation-level `security` block, whose requirements come from the application's security rules rather than from the method signature. Everything else printed is what the *binding plan* decides. Reading the plan rather than re-reading the method signature is what makes the mapping unambiguous. `#[PathVariable]`, `#[QueryParam]` and `#[RequestHeader]` become Parameter Objects; `#[UploadedFile]` becomes a `multipart/form-data` part typed `format: binary`; `#[RequestBody]` becomes the Request Body Object; and the sixth `kind`, `service` — the no-attribute container-injected collaborator Chapter 4 introduced — is not part of the HTTP contract at all and never appears in the document. Deriving that list independently would have to re-decide every one of those cases and could disagree with the dispatcher; reading the plan cannot.
 
 Four smaller decisions finish an operation:
 

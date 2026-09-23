@@ -138,6 +138,7 @@ Auto-instrumentation covers the seams the framework owns. `#[Timed]`, `#[Counted
 Micrometer's three, ported — cover the method an application owns, on any stereotyped bean, with no recorder
 injected and no `try`/`finally` written by hand:
 
+<!-- illustrative: `OrderService` and the `Basket`, `Order` and `Money` types it trades in are the reader's own domain, so no file in this repository can own these meter names; the framework ships the three attributes, not the class that carries them. -->
 ```php
 #[Service]
 class OrderService

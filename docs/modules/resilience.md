@@ -58,7 +58,7 @@ several of those example values are deliberately not the framework default (the 
     'store' => [
         'lock-block-timeout' => '500ms',
     ],
-
+    // …
     // 'retry' => [
     //     'payments' => ['max-attempts' => 3, 'wait-duration' => '250ms', 'backoff-multiplier' => 2.0],
     // ],
@@ -70,10 +70,16 @@ several of those example values are deliberately not the framework default (the 
     //         'wait-duration-in-open' => '30s',
     //         'half-open-max-calls' => 1,
     //         'half-open-probe-timeout' => '30s',
+    //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
     //     ],
     // ],
     // 'rate-limiter' => [
-    //     'api' => ['max-tokens' => 10, 'refill-rate' => 10.0, 'timeout' => 0],
+    //     'api' => [
+    //         'max-tokens' => 10,
+    //         'refill-rate' => 10.0,
+    //         'timeout' => 0,
+    //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
+    //     ],
     // ],
     // 'bulkhead' => [
     //     'db' => ['max-concurrent' => 10, 'max-wait' => 0, 'permit-ttl' => '60s'],
@@ -252,8 +258,11 @@ The **attributes are the opposite**: their nesting is fixed, and it is Resilienc
 
 The same six patterns, applied to a method. `#[Retry]`, `#[CircuitBreaker]`, `#[RateLimiter]`,
 `#[Bulkhead]` and `#[TimeLimiter]` each name an instance configured under `firefly.resilience.*`;
-`#[Fallback]` names a method on the same class to call when the guarded call finally fails.
+`#[Fallback]` names a method on the same class to call when the guarded call finally fails. The shape, taken
+from the framework's own fixture — `charge()` throws on purpose there, so what the listing shows is the
+recovery path:
 
+<!-- source: packages/resilience/tests/Fixtures/Method/PaymentService.php -->
 ```php
 #[Service]
 class PaymentService
@@ -264,15 +273,16 @@ class PaymentService
     #[CircuitBreaker('payments')]
     #[Retry('payments')]
     #[Fallback(method: 'chargeUnavailable')]
-    public function charge(string $account, int $cents): Receipt
+    public function charge(string $account, int $cents): string
     {
-        return $this->client->charge($account, $cents);
+        throw new RuntimeException('gateway down');
     }
 
-    public function chargeUnavailable(string $account, int $cents, ?Throwable $cause = null): Receipt
+    public function chargeUnavailable(string $account, int $cents, ?Throwable $cause = null): string
     {
-        return Receipt::queued($account, $cents);
+        return 'queued';
     }
+    // …
 }
 ```
 
