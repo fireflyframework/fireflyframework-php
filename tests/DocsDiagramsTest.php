@@ -5,9 +5,16 @@
 declare(strict_types=1);
 
 use Firefly\Container\Attributes\Order;
+use Firefly\Data\Proxy\Advice;
+use Firefly\Data\Proxy\TransactionalAdviceSource;
+use Firefly\Data\Transaction\TransactionalDescriptor;
+use Firefly\Data\Transaction\TransactionInterceptor;
 use Firefly\Observability\Web\HttpExchangeFilter;
 use Firefly\Observability\Web\MetricsFilter;
 use Firefly\Observability\Web\TracingFilter;
+use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
+use Firefly\Security\Access\Method\MethodSecurityInterceptor;
+use Firefly\Security\Access\Method\SecurityMethodDescriptor;
 use Firefly\Security\OAuth2\Client\OAuth2ClientSettings;
 use Firefly\Security\OAuth2\Client\Web\OAuth2AuthorizationRequestRedirectFilter;
 use Firefly\Security\OAuth2\Client\Web\OAuth2LoginAuthenticationFilter;
@@ -635,4 +642,180 @@ it('routes every front-channel leg of the authorization-code figure through the 
         .'back-channel pair, but those are the two arrows it draws straight between the relying party and the '
         .'authorization server',
     );
+});
+
+/**
+ * method-interceptor-chain.svg has exactly the property that made the other two figures dangerous: its
+ * load-bearing content is a pair of integers — the advice orders `100` and `1000` — transcribed by hand, and
+ * this repository now spells them out in SEVEN places. The figure draws both (twice each: in the AdviceSource
+ * boxes and again on the interceptor badges), `book/art/figures` holds a byte-identical second copy of the
+ * file, both language chapters repeat them in prose AND in the figure caption, `docs/modules/transactional.md`
+ * writes them in the `Advice` bullet and again in the image's alt text, `docs/modules/security.md` writes them
+ * where it sends the reader here, and `docs/assets/README.md`'s provenance row writes them while promising the
+ * picture was drawn from the source. Nothing above this test looks at a single one of them: the roster in
+ * the first test buys the new figure four structural checks — well-formed, one `<title>`/`<desc>`, embedded
+ * somewhere, mirrored into the book — and none of those would notice a `100` that should read `250`.
+ *
+ * So the same treatment the filter chain and the authorization-code figure already get. The source of truth
+ * is not an `#[Order]` attribute here but the `Advice` each `AdviceSource` returns — the very object
+ * `ProxyPlanner` sorts the sources by and `InterceptorRegistry` resolves an interceptor for — and NO integer
+ * is typed into this file: every number asserted against a document is interpolated from the reflected advice,
+ * so moving an order in code turns this test red and names the documents that still spell the old one.
+ *
+ * The badges are read as a SEQUENCE, the way the filter chain's rows are, because the ordering is the whole
+ * claim the picture makes. Two advices trading orders while both documents keep saying `100` and `1000` would
+ * satisfy containment of either number on its own, and it is exactly the invariant the chapter sells: lower
+ * runs outer, so a refusal is thrown before a transaction is ever opened.
+ */
+it('pins the interceptor-chain figure and its prose to the Advice each AdviceSource declares', function () {
+    $root = dirname(__DIR__);
+
+    // The two shipped advices, taken from the sources themselves rather than reconstructed here: these are the
+    // objects ProxyPlanner sorts, ProxyClassGenerator names members from, and InterceptorRegistry resolves.
+    $security = (new MethodSecurityAdviceSource)->advice();
+    $transactional = (new TransactionalAdviceSource)->advice();
+
+    expect($security->id)->toBe(MethodSecurityAdviceSource::ID)
+        ->and($security->interceptorClass)->toBe(MethodSecurityInterceptor::class)
+        ->and($security->descriptorClass)->toBe(SecurityMethodDescriptor::class)
+        ->and($security->inertWhenUnbound)->toBeTrue(
+            'the figure and both chapters say security is the advice that goes inert when its interceptor bean '
+            .'is absent, because it exists only under firefly.security.enabled',
+        )
+        ->and($transactional->id)->toBe(Advice::TRANSACTIONAL)
+        ->and($transactional->interceptorClass)->toBe(TransactionInterceptor::class)
+        ->and($transactional->descriptorClass)->toBe(TransactionalDescriptor::class)
+        ->and($transactional->inertWhenUnbound)->toBeFalse(
+            'the figure draws the transactional advice as one that fails the boot when its interceptor has '
+            .'vanished — the fail-loud default every advice but security keeps',
+        );
+
+    // The one sentence the whole picture exists to make true.
+    expect($security->order)->toBeLessThan(
+        $transactional->order,
+        'method security no longer runs OUTSIDE the transaction: the figure, both chapters and both module '
+        .'pages all claim a refusal is thrown before a transaction is ever opened',
+    );
+
+    // Short names come from the classes the advices NAME, so a class renamed or moved is a red test too.
+    $securityInterceptor = (new ReflectionClass($security->interceptorClass))->getShortName();
+    $securityDescriptor = (new ReflectionClass($security->descriptorClass))->getShortName();
+    $transactionalInterceptor = (new ReflectionClass($transactional->interceptorClass))->getShortName();
+    $transactionalDescriptor = (new ReflectionClass($transactional->descriptorClass))->getShortName();
+    $adviceSource = (new ReflectionClass(MethodSecurityAdviceSource::class))->getShortName();
+    $securityOrder = (string) $security->order;
+    $transactionalOrder = (string) $transactional->order;
+
+    // Exactly ProxyPlanner's comparator, on the real advices: order ascending, ties broken by id.
+    $chain = [$security, $transactional];
+    usort($chain, static fn (Advice $a, Advice $b): int => $a->order <=> $b->order ?: strcmp($a->id, $b->id));
+
+    /** @var list<array{string, string}> $expectedChain */
+    $expectedChain = array_map(
+        static fn (Advice $advice): array => [
+            (string) $advice->order,
+            (new ReflectionClass($advice->interceptorClass))->getShortName(),
+        ],
+        $chain,
+    );
+
+    // Each link of the runtime half of the figure is an order badge — a `<text x="187">` inside a small rect —
+    // immediately followed by the `<text x="236">` naming the interceptor that runs there. Reading the pairs in
+    // document order gives the chain the picture draws, top to bottom, which is the order MethodInvocation
+    // walks the list in.
+    $svg = (string) file_get_contents($root.'/docs/assets/diagrams/method-interceptor-chain.svg');
+    preg_match_all(
+        '/<text x="187"[^>]*>order (\d+)<\/text>\s*<text x="236"[^>]*>([A-Za-z]+) /',
+        $svg,
+        $badges,
+        PREG_SET_ORDER,
+    );
+
+    $drawnChain = array_map(
+        static fn (array $badge): array => [trim((string) $badge[1]), trim((string) $badge[2])],
+        $badges,
+    );
+    expect($drawnChain)->toBe(
+        $expectedChain,
+        'method-interceptor-chain.svg no longer draws the chain the shipped Advice orders describe',
+    );
+
+    // And every other number the figure writes next to the word "order" is one of those two — the AdviceSource
+    // boxes at the top and the <desc> a screen reader hears both repeat them, and neither is covered above.
+    preg_match_all('/\border (\d+)\b/', $svg, $written, PREG_SET_ORDER);
+    expect(count($written))->toBeGreaterThan(count($expectedChain), 'method-interceptor-chain.svg writes no order outside its badges');
+    foreach ($written as $occurrence) {
+        expect(in_array((string) $occurrence[1], [$securityOrder, $transactionalOrder], true))->toBeTrue(
+            "method-interceptor-chain.svg writes 'order {$occurrence[1]}', which is neither shipped advice's order "
+            ."({$securityOrder} for {$security->id}, {$transactionalOrder} for {$transactional->id})",
+        );
+    }
+
+    // The rest of what the figure spells out about the two advices, each fragment built from the advice rather
+    // than typed: the descriptor and interceptor class names the boxes name, the inert flag, and the member
+    // names the generated proxy carries — which are Advice::property()/factory() output, not a convention a
+    // reader could re-derive.
+    $figureFragments = [
+        "advice(): Advice('{$security->id}', {$securityInterceptor},",
+        "{$securityDescriptor}, order {$securityOrder}, inertWhenUnbound: "
+            .($security->inertWhenUnbound ? 'true' : 'false').')',
+        "Advice('{$transactional->id}',",
+        "{$transactionalInterceptor}, {$transactionalDescriptor}, order {$transactionalOrder})",
+        'private MethodInterceptor $'.$security->property().';',
+        'private MethodInterceptor $'.$transactional->property().';',
+        'static '.$security->factory()."('m') / ".$transactional->factory()."('m')",
+        '[$this-&gt;'.$security->property().', $this-&gt;'.$transactional->property().'],',
+        $securityDescriptor.'::class =&gt; self::'.$security->factory()."('transfer')",
+    ];
+
+    foreach ($figureFragments as $fragment) {
+        expect(str_contains($svg, $fragment))->toBeTrue(
+            "method-interceptor-chain.svg no longer draws '{$fragment}', which is what the shipped advices declare",
+        );
+    }
+
+    // The prose copies. Each fragment carries the neighbouring words the document writes the number WITH, for
+    // the same two reasons the OAuth2 paths are pinned with theirs: a bare `100` is a prefix of `1000`, and an
+    // unattributed integer is one a reader cannot check either. Rewording a sentence is therefore a deliberate
+    // visit to this list — which is the point, because the sentence is the claim.
+    $prose = [
+        'book/src/09-transactions.md' => [
+            $adviceSource."'s advice is {$securityOrder} and the transactional one is {$transactionalOrder},",
+            "advice order {$securityOrder} before the transaction at {$transactionalOrder}.",
+        ],
+        'book/src-es/09-transactions.md' => [
+            "el advice de {$adviceSource} es {$securityOrder} y el transaccional es {$transactionalOrder},",
+            "orden de advice {$securityOrder} antes que la transacción en {$transactionalOrder}.",
+        ],
+        'docs/modules/transactional.md' => [
+            "The transactional advice is {$transactionalOrder} and security's is {$securityOrder},",
+            "advice order {$securityOrder} before the transaction at order {$transactionalOrder}]",
+        ],
+        'docs/modules/security.md' => [
+            "{$securityInterceptor} runs at advice order {$securityOrder}, "
+                ."ahead of the transactional link at {$transactionalOrder},",
+        ],
+        // The provenance row is a claim about the picture, so it repeats the integers too — and it is the row
+        // the README's own preamble points at when it promises every diagram was "drawn directly from the
+        // shipped source, not invented".
+        'docs/assets/README.md' => [
+            "{$securityInterceptor} at advice order {$securityOrder} "
+                ."outside {$transactionalInterceptor} at {$transactionalOrder},",
+        ],
+    ];
+
+    foreach ($prose as $relative => $fragments) {
+        // One normalised form for five files with three different wrapping habits: prose backticks and bolds
+        // the numbers, an image's alt text carries no markup at all, and docs/modules/*.md hard-wraps its
+        // paragraphs — so a sentence there is split across lines that this test must not have an opinion about.
+        $plain = str_replace(['`', '**'], '', (string) file_get_contents($root.'/'.$relative));
+        $plain = trim((string) preg_replace('/\s+/', ' ', $plain));
+
+        foreach ($fragments as $fragment) {
+            expect(str_contains($plain, $fragment))->toBeTrue(
+                "{$relative} no longer writes '{$fragment}' — the advice orders it repeats are "
+                ."{$securityOrder} for {$security->id} and {$transactionalOrder} for {$transactional->id}",
+            );
+        }
+    }
 });
