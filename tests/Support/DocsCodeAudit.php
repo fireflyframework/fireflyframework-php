@@ -84,7 +84,17 @@ final class DocsCodeAudit
     public const string HASH_ELISION = '# …';
 
     /**
-     * Repo-relative files and directories whose every fenced block is audited.
+     * Repo-relative files and directories whose every fenced block is audited — and, since wave R's last
+     * task, everything the repository publishes: the README anyone lands on first, every page of the
+     * documentation site, and both editions of the book.
+     *
+     * The list was staged while the wave ran, one surface per commit, and it is a directory list now
+     * precisely so that it cannot go back to being staged. A page added under `docs/` tomorrow is audited
+     * the day it lands rather than the day somebody remembers to name it here, and
+     * `tests/DocsCodeIsRealTest.php`'s *audits every Markdown file that ships* case fails the moment an
+     * entry is taken out, naming every page that left with it.
+     *
+     * `markdownFiles()` skips `docs/superpowers/`, which is git-ignored by policy and ships to nobody.
      *
      * @var list<string>
      */
@@ -92,20 +102,7 @@ final class DocsCodeAudit
         'README.md',
         'book/src',
         'book/src-es',
-        'docs/README.md',
-        'docs/architecture.md',
-        'docs/cli.md',
-        'docs/contributing.md',
-        'docs/getting-started.md',
-        'docs/index.md',
-        'docs/installation.md',
-        'docs/laravel-comparison.md',
-        'docs/modules',
-        'docs/modules.md',
-        'docs/publishing.md',
-        'docs/tutorial.es.md',
-        'docs/tutorial.md',
-        'docs/versioning.md',
+        'docs',
     ];
 
     /**

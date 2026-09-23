@@ -50,6 +50,62 @@ it('audits a surface that only ever grows', function () {
 });
 
 /**
+ * The staging ends here.
+ *
+ * Wave R turned the guard on one surface at a time so that every commit in between could be green — the
+ * README first, then the cross-cutting pages, then the thirty-two module guides, then each manuscript. That
+ * is a good way to land a guard and a terrible thing to leave behind, because a staged list and a permanent
+ * exemption are the same three lines of PHP: a page nobody got to and a page somebody took out read
+ * identically once the wave is over, and the second one is how the whole guard quietly stops holding the
+ * document that most needed it.
+ *
+ * So this asserts the surface is now everything the repository publishes: `README.md`, every page of the
+ * documentation site and both manuscripts. A Markdown file added later is audited the day it lands — it
+ * fails here until it is — and a directory dropped out of `AUDITED` fails here too, naming every page it
+ * took with it.
+ *
+ * The walk is recursive rather than a two-level glob on purpose: the answer this test gives has to be "every
+ * Markdown file that ships", and a depth limit would make it "every Markdown file that ships, so far, at the
+ * depths we happened to have on the day". `docs/superpowers/` is the one exclusion, and it is not an
+ * exemption — it is git-ignored by policy and ships to nobody, which is the same reason
+ * `DocsCodeAudit::markdownFiles()` skips it.
+ */
+it('audits every Markdown file that ships', function () {
+    $root = dirname(__DIR__);
+    $audited = array_flip((new DocsCodeAudit($root))->markdownFiles());
+
+    $shipped = ['README.md'];
+
+    foreach (['docs', 'book/src', 'book/src-es'] as $tree) {
+        /** @var iterable<SplFileInfo> $walk */
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/'.$tree, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($walk as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'md') {
+                continue;
+            }
+
+            $relative = substr($file->getPathname(), strlen($root) + 1);
+
+            if (! str_starts_with($relative, 'docs/superpowers/')) {
+                $shipped[] = $relative;
+            }
+        }
+    }
+
+    $missing = array_values(array_filter(
+        array_unique($shipped),
+        static fn (string $file): bool => ! isset($audited[$file]),
+    ));
+    sort($missing);
+
+    expect($missing)->toBe([], 'a Markdown file ships without being audited; audit it, do not exempt it: '
+        .implode(', ', $missing));
+});
+
+/**
  * A `source:` marker is a HANDOVER, not a decoration, and this asserts that somebody is on the other end.
  *
  * The two halves of the book's gate own different listings. `book/build/verify_code.py` hands every ```php

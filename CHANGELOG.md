@@ -4,6 +4,27 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.3] - 2026-09-22
+
+Seven waves of Spring parity, and the documentation that finally tells the truth about them. Tracing is
+OpenTelemetry-shaped and propagates W3C `traceparent` through the web filter chain, the `Http` client, both
+CQRS buses and every EDA envelope, and structured `json`/`ecs`/`logstash` logging carries the same trace and
+span ids onto every record. `firefly/data` reaches Spring Data parity — the kernel's typed
+`DataAccessException` family in place of driver errors, query by example behind `Specification`,
+`#[Modifying]`, `#[Projection]`, `#[Lock]` and `#[EntityGraph]` compiled into the manifest, `Slice`,
+a `#[Transactional(timeout:)]` that is enforced rather than carried, `#[TransactionalEventListener]` in four
+phases, and `db` health on by default. `firefly/security` reaches Spring Security parity — a
+session-persisted security context, form login on the framework's own page, HTTP Basic, logout, remember-me,
+an entry point that negotiates a login redirect against a bare 401, method security on any stereotyped bean
+through a generalised interceptor chain rather than on controllers alone, principal injection through a new
+`HandlerMethodArgumentResolver` port, and the authentication event family — and two new packages,
+`firefly/security-oauth2-client` and `firefly/security-oauth2-server`, sign an application in with a provider
+and let it be one. Constraint violations are Spring-shaped, each carrying the `constraint` that failed, and
+`#[Valid]` cascades into list elements. Tests reach the browser: a Pest 4 + Playwright harness with a CI job
+of its own. And the documentation caught up with all of it — a guard that holds every fenced listing in the
+README, both manuscripts and every page of the site to the file it came from, four new diagrams drawn from
+that same source, a redesigned site, and a fifteenth chapter in both editions.
+
 Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
 application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught
 at a hundred and forty-four sites, three exception renderables registered ahead of the framework's, a

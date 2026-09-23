@@ -14,7 +14,7 @@
   <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.2-brightgreen" alt="Version: 26.09.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.3-brightgreen" alt="Version: 26.09.3"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
@@ -66,7 +66,7 @@
 [*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
-(it boots and its tests pass against this framework version, `26.09.2`).
+(it boots and its tests pass against this framework version, `26.09.3`).
 
 The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fifteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
@@ -418,9 +418,10 @@ own global middleware stack. `FilterChainRegistrar::orderedFilters()` prepends `
 Authentication is not one filter but five — form login (`-92`), HTTP Basic (`-91`), JWT (`-90`), the OAuth2
 resource server (`-85`) and remember-me (`-83`) — each writing into the same `SecurityContext`, with the two
 OAuth2 packages adding three more filters of their own when installed. `HttpSecurityFilter` (`-70`) has the
-last word, applying the deny-by-default URL rules first-match-wins. When it denies an anonymous request it does not simply throw — it
-asks the `DelegatingAuthenticationEntryPoint`, whose default `auto` mode sends a browser to the login page, an
-HTTP-Basic-configured API a `WWW-Authenticate` challenge, and everything else the 401 problem document:
+last word, applying the deny-by-default URL rules first-match-wins. When it denies an anonymous request it
+does not simply throw — it asks the `DelegatingAuthenticationEntryPoint`, whose default `auto` mode sends a
+browser to the login page, an HTTP-Basic-configured API a `WWW-Authenticate` challenge, and everything else
+the 401 problem document:
 
 <p align="center">
   <img src="docs/assets/diagrams/security-filter-chain.svg" alt="The LaraFly security filter chain: two prepended framework filters, then every WebFilter sorted by its real #[Order] value — tracing at -110, HTTP exchanges and metrics at -100, security headers, session context persistence, logout, the five authentication mechanisms, the two OAuth2 packages' filters, CSRF, and the deny-by-default HttpSecurity rules at -70 — ending in the DelegatingAuthenticationEntryPoint that chooses between a login redirect, a Basic challenge and a 401." width="100%">
@@ -488,8 +489,8 @@ publishing an id:
 ## Featured Patterns
 
 Eleven showcases below, each an accurate snippet lifted straight from `samples/lumen/` (the wallet-and-ledger
-sample), the skeleton's own configuration reference, or the framework itself — no invented API. Every attribute and class shown here compiles against the
-shipped `26.09.2` release.
+sample), the skeleton's own configuration reference, or the framework itself — no invented API. Every
+attribute and class shown here compiles against the shipped `26.09.3` release.
 
 That is a checked claim, not a promise — and here is exactly how far it reaches. Every **PHP** listing below
 carries an HTML comment naming the file it was copied from, and `tests/DocsCodeIsRealTest.php` fails the build
@@ -925,14 +926,14 @@ $span = $this->tracer->startSpan($request->getMethod(), SpanKind::Server, [
 The last attribute is the correlation id `CorrelationIdFilter` minted or accepted a moment earlier, so a span
 and a `problem+json` body can always be tied to each other. The fourth argument is the whole trick:
 `W3CTraceContextPropagator::extract()` reads the inbound `traceparent` and hands back the remote parent, so a
-request that arrives with a trace *continues* it and one that arrives without starts a new root. The span is renamed to `GET /orders/{id}` once the router has matched,
-its ids are published onto Laravel's `Context` and `Request::$attributes` as `firefly.trace_id` and
-`firefly.span_id`, and from there the same trace crosses five boundaries — inbound HTTP, the CQRS buses, an
-in-memory or queued EDA envelope on the way out, every delivery on the way in (a broker's included, through
-`SubscriberRegistrySink`), and every outbound `Http` call, which injects the header again. It is free until
-you opt in: the shipped default is `NoOpTracer`, whose spans record nothing and whose context is invalid, and
-the OpenTelemetry adapter binds itself only when the SDK is installed and
-`firefly.observability.tracing.enabled` is on. **Highlights:** the `Tracer`/`Span` port, the propagation
+request that arrives with a trace *continues* it and one that arrives without starts a new root. The span is
+renamed to `GET /orders/{id}` once the router has matched, its ids are published onto Laravel's `Context` and
+`Request::$attributes` as `firefly.trace_id` and `firefly.span_id`, and from there the same trace crosses
+five boundaries — inbound HTTP, the CQRS buses, an in-memory or queued EDA envelope on the way out, every
+delivery on the way in (a broker's included, through `SubscriberRegistrySink`), and every outbound `Http`
+call, which injects the header again. It is free until you opt in: the shipped default is `NoOpTracer`, whose
+spans record nothing and whose context is invalid, and the OpenTelemetry adapter binds itself only when the
+SDK is installed and `firefly.observability.tracing.enabled` is on. **Highlights:** the `Tracer`/`Span` port, the propagation
 table boundary by boundary, and `firefly.logging.structured.format` for putting the same ids on every log
 line — see [Tracing](docs/modules/tracing.md) and [Logging](docs/modules/logging.md).
 
