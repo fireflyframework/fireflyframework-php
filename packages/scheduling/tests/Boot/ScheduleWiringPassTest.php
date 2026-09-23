@@ -13,15 +13,21 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Scheduling\Boot\ScheduleWiringPass;
 use Firefly\Scheduling\Lock\DistributedLock;
 use Firefly\Scheduling\Lock\NoneLock;
+use Firefly\Scheduling\Schedule\InitialDelayGate;
 use Firefly\Scheduling\Schedule\ScheduledDescriptor;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Firefly\Scheduling\Tests\Fixtures\ScheduledJobs;
+use Firefly\Scheduling\Tests\Support\RecordingLogger;
 use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\NullStore;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Config\Repository;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Factory as CacheFactoryContract;
+use Illuminate\Contracts\Cache\Repository as CacheRepositoryContract;
+use Illuminate\Foundation\Application;
+use Psr\Log\LoggerInterface;
 
 function scheduleWiringContext(Container $container): BootContext
 {
@@ -179,17 +185,26 @@ it('keeps the minute-and-above buckets as they were', function () {
 /**
  * @param  list<ScheduledDescriptor>  $descriptors
  */
-function scheduleWithInitialDelayGate(array $descriptors, bool $enabled): Schedule
-{
+function scheduleWithInitialDelayGate(
+    array $descriptors,
+    bool $enabled,
+    ?LoggerInterface $logger = null,
+    ?CacheRepositoryContract $anchorStore = null,
+): Schedule {
     $container = new Container;
     Container::setInstance($container);
-    $container->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
+    $container->instance(CacheFactoryContract::class, new class($anchorStore ?? new CacheRepository(new ArrayStore)) implements CacheFactoryContract
     {
+        public function __construct(private readonly CacheRepositoryContract $anchorStore) {}
+
         public function store($name = null)
         {
-            return new CacheRepository(new ArrayStore);
+            return $this->anchorStore;
         }
     });
+    if ($logger !== null) {
+        $container->instance(LoggerInterface::class, $logger);
+    }
     $container->instance(DistributedLock::class, new NoneLock);
     $container->instance(ScheduledManifest::class, new ScheduledManifest($descriptors));
 
@@ -252,4 +267,104 @@ it('boots with the gate off when no descriptor asks for an initial delay', funct
 
     expect($schedule->events())->toHaveCount(1)
         ->and($schedule->events()[0]->expression)->toBe('* * * * *');
+});
+
+/*
+ * A FILTER THAT THROWS DOES NOT SKIP A TASK, IT STOPS THE SCHEDULER. `ScheduleRunCommand::handle()` calls
+ * `$event->filtersPass($this->laravel)` in its own loop with no try/catch around it — only `$event->run()`
+ * is wrapped — so anything escaping the initial-delay predicate takes every remaining due task of that
+ * minute with it. Neither the attribute nor the scanner validates `initialDelay`, and `Duration::parse()`
+ * throws, so the string is proved at boot and the predicate is wrapped as well.
+ */
+
+it('REFUSES TO BOOT on an initialDelay that is not a duration, rather than throwing from a tick', function () {
+    $refuse = fn () => scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m', initialDelay: 'ten minutes'),
+    ], enabled: true);
+
+    expect($refuse)->toThrow(
+        ConfigurationException::class,
+        "#[Scheduled(initialDelay: 'ten minutes')] on ".ScheduledJobs::class.'::reconcile',
+    );
+});
+
+it('never lets the predicate throw out of filtersPass(), whatever the anchor store does', function () {
+    $exploding = new CacheRepository(new class extends NullStore
+    {
+        /**
+         * @param  string  $key
+         * @return never
+         */
+        public function get($key)
+        {
+            throw new RuntimeException('Connection refused [tcp://127.0.0.1:6379]');
+        }
+    });
+
+    // A REAL Foundation application, not the bare container the tests above use: `Event::filtersPass()`
+    // takes one, and the whole point of this test is to go through the very method ScheduleRunCommand calls
+    // outside its try/catch.
+    $app = new Application(__DIR__);
+    Container::setInstance($app);
+    $app->instance(CacheFactoryContract::class, new class($exploding) implements CacheFactoryContract
+    {
+        public function __construct(private readonly CacheRepositoryContract $anchorStore) {}
+
+        public function store($name = null)
+        {
+            return $this->anchorStore;
+        }
+    });
+    $app->instance(LoggerInterface::class, new RecordingLogger);
+    $app->instance(DistributedLock::class, new NoneLock);
+    $app->instance(ScheduledManifest::class, new ScheduledManifest([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m', initialDelay: '10m'),
+    ]));
+
+    $config = new Config(new Repository(['firefly' => ['scheduling' => ['initial-delay' => ['enabled' => true]]]]));
+    $profiles = new Profiles([]);
+
+    (new ScheduleWiringPass)->run(new BootContext(
+        container: $app,
+        definitions: new BeanDefinitionRegistry,
+        config: $config,
+        profiles: $profiles,
+        conditions: new ConditionEvaluator($config, $profiles),
+        report: new ConditionEvaluationReport,
+    ));
+
+    /** @var Schedule $schedule */
+    $schedule = $app->make(Schedule::class);
+
+    // Fails OPEN: the task runs ungated this minute, which is a smaller wrong than a `schedule:run` that
+    // aborted before reaching every other task due in the same minute.
+    expect($schedule->events()[0]->filtersPass($app))->toBeTrue();
+});
+
+it('WARNS when the anchor store cannot outlive the process, because cron would never fire the task', function () {
+    // A fresh `schedule:run` process every minute over an `array` store re-anchors every tick: both the
+    // write and the read succeed, so the gate sees nothing wrong and the task simply never becomes due. The
+    // only place that can tell is here, where the store was resolved.
+    $logger = new RecordingLogger;
+
+    scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m', initialDelay: '10m'),
+    ], enabled: true, logger: $logger);
+
+    $warnings = $logger->mentioning('does not survive the process');
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0]['level'])->toBe('warning')
+        ->and($warnings[0]['message'])->toContain(InitialDelayGate::STORE_KEY)
+        ->and($warnings[0]['message'])->toContain(ScheduledJobs::class.'::reconcile');
+});
+
+it('says nothing about the anchor store when no task carries an initial delay', function () {
+    $logger = new RecordingLogger;
+
+    scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', fixedRate: '1m'),
+    ], enabled: true, logger: $logger);
+
+    expect($logger->records)->toBe([]);
 });

@@ -1902,13 +1902,20 @@ return [
          | `schedule:run` — a fresh process every minute, whose own start time would restart the window
          | forever and hang the task silently.
          |
-         | `store` names the cache store the anchor lives in ('' = the default store). A store that does not
-         | persist between requests (`array`, `null`) means the delay elapses once per process: right under a
-         | resident scheduler, harmless in tests, wrong under cron.
+         | `store` names the cache store the anchor lives in ('' = the default store). AN INITIAL DELAY NEEDS
+         | A STORE SHARED ACROSS PROCESSES wherever the scheduler is cron-driven. `schedule:run` is a fresh
+         | process every minute, so a store that starts empty (`array`) writes a new anchor on every tick,
+         | reads back `now`, and the window never elapses: the task does not run early, it NEVER RUNS. A
+         | resident scheduler (`schedule:work`, Octane) is the exception — it keeps one process, so `array`
+         | there measures the window from its first tick and honours it. Use redis/memcached/database under
+         | cron; the framework warns as the Schedule is built when it sees a delay anchored in a store that
+         | cannot outlive the process. The `null` driver stores nothing at all: the gate notices it cannot
+         | read back its own write, logs it once and ADMITS the tick rather than hanging the task in silence.
          |
          | Setting `enabled` to false REFUSES TO BOOT an application whose manifest carries an initialDelay,
          | rather than accepting the parameter and ignoring it — which is what happened for two releases and
-         | is the behaviour this key exists to make impossible.
+         | is the behaviour this key exists to make impossible. An unparseable duration is refused at boot
+         | too, for the same reason: the predicate runs where Laravel does not contain a throw.
          |
          | Defaults: enabled true, store ''.
         */
