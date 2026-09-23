@@ -449,7 +449,23 @@ Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id`
 }
 ```
 
-Y un intento de retiro sin ningún principal autenticado `ADMIN` o `WALLET_OWNER` — denegado por el `#[PreAuthorize]` de `WithdrawHandler` antes de que el cuerpo del manejador siquiera se ejecute — se renderiza en 403, sin ningún cambio de código en `WalletController::withdraw()`:
+Un intento de retiro se rechaza por dos vías distintas, y las dos **no dan el mismo estado**. Sin ningún principal autenticado, el `#[PreAuthorize]` de `WithdrawHandler` — aplicado en el bus, antes de que el cuerpo del manejador se ejecute — responde `401`: *autentícate primero*.
+
+```json
+{
+  "status": 401,
+  "title": "Unauthorized",
+  "code": "AUTHENTICATION_FAILED",
+  "category": "security",
+  "severity": "warning",
+  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
+  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00"
+}
+```
+
+El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun así no tiene `ROLE_ADMIN` ni `ROLE_WALLET_OWNER` — *volver a autenticarse no ayudaría* — y ese documento nombra las autoridades que la expresión pedía:
 
 ```json
 {
@@ -458,10 +474,15 @@ Y un intento de retiro sin ningún principal autenticado `ADMIN` o `WALLET_OWNER
   "code": "ACCESS_DENIED",
   "category": "security",
   "severity": "warning",
-  "detail": "Access is denied",
-  "instance": "/api/v1/wallets/wlt-1/withdraw"
+  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
+  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "traceId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
+  "timestamp": "2026-06-07T10:30:00+00:00",
+  "requiredAuthorities": ["ROLE_ADMIN", "ROLE_WALLET_OWNER"]
 }
 ```
+
+Los dos se producen sin ningún cambio de código en `WalletController::withdraw()`: el bus envuelve la excepción de seguridad que haya levantado el evaluador en una `CommandProcessingException` que copia el código, el estado y la categoría de la causa, así que el cable lleva la identidad de la causa y no un error genérico del bus. El Capítulo 10 vuelve sobre este par — y sobre las dos pruebas distribuidas que lo fijan — en detalle.
 
 ### Manejar una excepción tú mismo
 

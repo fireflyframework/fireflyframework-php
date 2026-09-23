@@ -454,25 +454,38 @@ Un mensaje sin manejador registrado, o un manejador sin regla de seguridad compi
 
 ## Prueba de extremo a extremo
 
-Dos archivos de prueba reales y distribuidos ejercitan la cadena completa — petición HTTP de entrada, `SecurityCommandAuthorizer` haciendo cumplir el `#[PreAuthorize]` de `WithdrawHandler` en el bus, salida como una respuesta RFC-7807. `samples/lumen/tests/Web/WalletRestTest.php`, sin ningún principal establecido en absoluto:
+Dos archivos de prueba reales y distribuidos ejercitan la cadena completa — petición HTTP de entrada, `SecurityCommandAuthorizer` haciendo cumplir el `#[PreAuthorize]` de `WithdrawHandler` en el bus, salida como una respuesta RFC-9457. Y lo primero que demuestran es que **una denegación no es una respuesta, sino dos.**
+
+`samples/lumen/tests/Web/WalletRestTest.php`, sin ningún principal establecido en absoluto:
 
 ```php
-it('denies an unauthenticated withdraw as 403 problem+json (the endpoint IS secured)', function () {
-    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3', 'currency' => 'EUR'])->json('wallet_id');
-    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(401)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 401)
+        ->assertJsonPath('code', 'AUTHENTICATION_FAILED')
+        ->assertJsonPath('category', 'security');
 
+    // Proof the refusal happened BEFORE the handler touched the balance.
+    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
+```
+
+**401, no 403** — y la distinción es justo el punto. `MethodSecurityEvaluator` responde a un llamante **anónimo** con una `AuthenticationException`: *autentícate primero*. Reserva el 403 para un llamante que *sí* ha iniciado sesión y aun así carece de la autoridad, que es la siguiente prueba del mismo archivo:
+
+```php
     $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
         ->assertStatus(403)
         ->assertHeader('Content-Type', 'application/problem+json')
-        ->assertJsonPath('code', 'COMMAND_PROCESSING_ERROR')
+        ->assertJsonPath('status', 403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
         ->assertJsonPath('category', 'security');
-
-    // Proof the denial happened BEFORE the handler touched the balance.
-    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
-});
 ```
 
-Un `SecurityContextHolder::getContext()` anónimo falla tanto `hasRole('ADMIN')` como `hasRole('WALLET_OWNER')`, así que `MethodSecurityMessageEnforcer` lanza antes de que `WithdrawHandler::handle()` llegue a ejecutarse — la aserción sobre el saldo, después, demuestra que el débito genuinamente nunca ocurrió, no solo que la respuesta HTTP tuviera apariencia de rechazo. Concede la autoridad correcta y el mismo comando tiene éxito:
+Las tres costuras de aplicación dan el mismo par de respuestas, porque comparten el mismo evaluador: 401 significa *iniciar sesión ayudaría*, 403 significa *no ayudaría*. Un cliente puede distinguirlas y actuar en consecuencia.
+
+El bus envuelve cualquiera de las dos en una `CommandProcessingException`, que copia el código de error, el estado HTTP y la categoría de la causa — así que el cable lleva `AUTHENTICATION_FAILED` o `ACCESS_DENIED` y no el código genérico del bus. Y en las dos pruebas la aserción sobre el saldo, después, hace trabajo real: demuestra que el débito genuinamente nunca ocurrió, no solo que la respuesta HTTP tuviera apariencia de rechazo.
+
+Concede la autoridad correcta y el mismo comando tiene éxito:
 
 ```php
 it('allows an authorized withdraw and renders an overdraw as 409 problem+json', function () {

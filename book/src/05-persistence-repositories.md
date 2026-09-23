@@ -364,13 +364,16 @@ public function findBySpecificationPaged(Specification $specification, Pageable 
 }
 ```
 
-Three private helpers carry everything those two bodies do not spell out, and every read in the class goes
-through the same three. `reading(__FUNCTION__)` opens the query and applies whatever `#[EntityGraph]` the
-compiled manifest holds *for this repository class and this method*, which is why annotating an override is
-the whole recipe. `pageOf()` counts over a clone of the builder and then windows it, so the count and the
-slice see the same predicate. `translating()` wraps the terminal call so a driver failure leaves the
-repository as a typed `DataAccessException` rather than a raw `QueryException` — the subject of this
-chapter's last section.
+Four helpers carry everything those two bodies do not spell out, and the split in their visibility is the
+point. `reading()` and `translating()` are **`protected`** — they are the seam a subclass repository reaches
+for, which is what makes the "annotate an override" recipe below available to you at all — while `pageOf()`
+and `narrow()` are `private` plumbing. `reading(__FUNCTION__)` opens the query and applies whatever
+`#[EntityGraph]` the compiled manifest holds *for this repository class and this method*, which is why
+annotating an override is the whole recipe. `narrow()` is the one the paged body above does not call: it keeps
+only the rows that really are `TModel` and hands back a `list<TModel>`. `pageOf()` counts over a clone
+of the builder and then windows it, so the count and the slice see the same predicate. And `translating()`
+wraps the terminal call so a driver failure leaves the repository as a typed `DataAccessException` rather
+than a raw `QueryException` — the subject of this chapter's last section.
 
 A specification for wallets above a minimum balance, composed with a currency filter, reads exactly like the rule it expresses:
 
@@ -657,7 +660,7 @@ public function findByStatusOrderByIdDesc(string $status): array
 }
 ```
 
-It maps to Eloquent's `with()`, and it is the one attribute that reaches methods you did not write. Every inherited read — `findById`, `findAll`, `findAllById`, `findPaged`, `findSorted`, `findSlice`, `findBySpecification`, `findByExample`, `findByIdForUpdate` and the rest — starts from `reading(__FUNCTION__)`, which asks the manifest for the graph registered against *this repository class and that method name*. So annotating an override that does nothing but `return parent::findAll();` is the entire recipe, exactly as it is in Spring. A named graph the repository never declared in `$entityGraphs` is a `ConfigurationException` at first use.
+It maps to Eloquent's `with()`, and it is the one attribute that reaches methods you did not write. Every inherited read that **opens a builder** — `findById`, `findAll`, `findAllById`, `findPaged`, `findSorted`, `findSlice`, `findBySpecification`, `findByExample`, `findOneByExample`, `findByIdForUpdate` and the rest — starts from `reading(__FUNCTION__)`, which asks the manifest for the graph registered against *this repository class and that method name*. So annotating an override that does nothing but `return parent::findAll();` is the entire recipe, exactly as it is in Spring. The four reads that answer a question *about* rows rather than returning them — `existsById()`, `count()`, `existsByExample()`, `countByExample()` — go straight to `query()` and deliberately never touch `reading()`: an entity graph means nothing to a `COUNT(*)`, and eager-loading relations to throw them away would be pure cost. A named graph the repository never declared in `$entityGraphs` is a `ConfigurationException` at first use.
 
 !!! warning "Two combinations that do not work the way you would hope"
     A `#[Projection]` and a trailing `Pageable` **do not combine** — the projection returns the whole, unpaged result. Page the entities, or put a `LIMIT` in the `#[Query]`. And `#[Query]` binds **positionally**: named `:placeholders` are rewritten to `?` in order of first appearance, so a placeholder used twice needs the argument passed twice.

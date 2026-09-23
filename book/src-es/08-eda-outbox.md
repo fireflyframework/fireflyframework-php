@@ -160,12 +160,12 @@ final class OrderService
 
     public function place(int $orderId): void
     {
-        $this->events->publish('firefly.events', 'order.placed', ['id' => $orderId]);
+        $this->events->publish('orders', 'order.placed', ['id' => $orderId]);
     }
 }
 ```
 
-Aquí el destino (`'firefly.events'`) y el tipo de evento (`'order.placed'`) son cadenas deliberadamente distintas, y el patrón `'order.*'` coincide con la **segunda** — precisamente para que este ejemplo no pueda confundirse con evidencia de que los patrones alguna vez miran el destino.
+Aquí el destino (`'orders'`) y el tipo de evento (`'order.placed'`) son cadenas deliberadamente distintas, y el patrón `'order.*'` coincide con la **segunda** — precisamente para que este ejemplo no pueda confundirse con evidencia de que los patrones alguna vez miran el destino.
 
 `EventListenerScanner` (`packages/eda/src/Scanner/EventListenerScanner.php`) es el único sitio de reflexión en `firefly/eda`, recorre una vez las raíces PSR-4 de la aplicación y compila cada método `#[EventListener]` en un `EventListenerDescriptor`; `EventListenerManifest` carga el resultado sin reflexión alguna, exactamente el mismo idioma de `HandlerManifest` que te mostró el Capítulo 7. `firefly:cache` ejecuta este escáner como uno de sus doce pares, escribiendo `bootstrap/cache/firefly/event-listeners.php`; `FireflyCacheServiceProvider` lo vincula, sustituyendo el valor por defecto vacío con el que arrancaría una aplicación sin caché. `EventListenerWiringPass` recorre después ese manifiesto al arrancar — en *todo* proceso, tanto en la petición web como en el worker de cola — envuelve cada invocación de destino en el decorador de reintento/DLQ de más abajo, y llama a `$bus->subscribe($pattern, $wrapped)` por cada patrón, resolviendo el bean de destino **fresco desde el contenedor en cada despacho**.
 

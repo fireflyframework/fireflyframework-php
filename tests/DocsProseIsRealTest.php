@@ -8,6 +8,7 @@ use Composer\Semver\Semver;
 use Composer\Semver\VersionParser;
 use Firefly\Actuator\Endpoint\ExposureModel;
 use Firefly\Actuator\Health\DbHealthIndicator;
+use Firefly\Actuator\Introspection\SensitiveValueMasker;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Config\Config;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
@@ -18,6 +19,7 @@ use Firefly\Data\Repository\Locking\HasOptimisticLock;
 use Firefly\Data\Repository\Locking\OptimisticLockException;
 use Firefly\Installer\CapabilityCatalog;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
+use Firefly\Observability\HttpExchanges\HeaderMasker;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
@@ -349,6 +351,87 @@ function fireflyRemoveDirectory(string $dir): void
     }
 
     rmdir($dir);
+}
+
+/**
+ * Every DbHealthIndicator sentence in the manuscript, judged against a given `matchIfMissing`.
+ *
+ * Split out of the guard below so the guard's own PROMISE is testable. The promise is that both rules are
+ * *conditional on the indicator still being on by default*: the day somebody makes it opt-in again, the
+ * sentences these rules refuse become the true ones, and a documentation test that went red at that moment
+ * would be blaming the book for a decision the framework made. Taking `$onByDefault` as a parameter is what
+ * lets the guard assert that — it runs the scan a second time with the opposite answer and checks that the
+ * refusals really do fall silent, rather than trusting a docblock that says they do.
+ *
+ * @return array{quoting: int, failures: list<string>}
+ */
+function fireflyDbHealthIndicatorProse(bool $onByDefault): array
+{
+    $quoting = 0;
+    $failures = [];
+
+    if (! $onByDefault) {
+        return ['quoting' => $quoting, 'failures' => $failures];
+    }
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (! str_contains($paragraph, 'DbHealthIndicator')) {
+                continue;
+            }
+
+            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+            $namesTheDefault = str_contains($paragraph, 'matchIfMissing: true');
+
+            // A paragraph that QUOTES the condition must quote the value it really carries. "#[ConditionalOnProperty]
+            // with no matchIfMissing" was the sentence that shipped, in two languages, beside the attribute that has it.
+            if (str_contains($paragraph, 'ConditionalOnProperty')) {
+                $quoting++;
+
+                if (! $namesTheDefault) {
+                    $failures[] = $where;
+                }
+            }
+
+            // And a paragraph that calls the indicator optional, in either language, has to be EXPLAINING the
+            // mechanism rather than asserting the retired default — so it must also name one of the two things
+            // that make it on-by-default-and-still-silent-without-a-database. The recap rows said "opt-in
+            // `SELECT 1` DB check" and named neither.
+            $callsItOptional = str_contains($paragraph, 'opt-in') || str_contains($paragraph, 'opcional');
+
+            if ($callsItOptional && ! $namesTheDefault && ! str_contains($paragraph, 'ConditionalHealthIndicator')) {
+                $failures[] = $where;
+            }
+        }
+    }
+
+    return ['quoting' => $quoting, 'failures' => $failures];
+}
+
+/**
+ * The words one masking regex alternates over, read off the class by reflection and sorted.
+ *
+ * Reflection rather than a literal, because the list IS the thing under test: a copy of it in this file would
+ * be a second place for the same enumeration to go stale, which is exactly the failure the guard that calls
+ * this one exists to refuse. An empty result means the constant is no longer a pattern this can read, and the
+ * caller turns that into a named failure rather than a silently passing check.
+ *
+ * @param  class-string  $class
+ * @return list<string>
+ */
+function fireflyMaskingWords(string $class): array
+{
+    $pattern = (new ReflectionClassConstant($class, 'SENSITIVE'))->getValue();
+
+    if (! is_string($pattern)) {
+        return [];
+    }
+
+    $bare = trim((string) preg_replace('#^/|/[a-z]*$#', '', $pattern));
+    $split = explode('|', $bare);
+    sort($split);
+
+    return $split;
 }
 
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
@@ -1387,48 +1470,30 @@ it('pins every DbHealthIndicator sentence to the matchIfMissing its own attribut
     // DERIVED: the attribute is read off the shipped class, and both rules fire only while matchIfMissing is
     // TRUE. The day the framework makes the indicator opt-in again they go quiet, which is correct — the
     // sentences they refuse become the true ones, and the opposite pair would be what needs writing.
+    //
+    // THE PRESENCE CHECK IS CONDITIONAL ON THE SAME DERIVATION, and that is not a detail. It shipped above
+    // the guard clause instead of below it, so an opt-in indicator produced quoting = 0 and the canary went
+    // red with a message blaming the book for deleting a paragraph that was still there — a guard whose whole
+    // subject is a stale claim about a default, itself making one. The scan now lives in a function that
+    // takes matchIfMissing as an argument, so the "they go quiet" promise is asserted rather than asserted-in-prose.
     $attributes = (new ReflectionClass(DbHealthIndicator::class))->getAttributes(ConditionalOnProperty::class);
 
     expect($attributes)->not->toBeEmpty('DbHealthIndicator no longer carries a #[ConditionalOnProperty] at all');
 
     $onByDefault = $attributes[0]->newInstance()->matchIfMissing;
 
-    $quoting = 0;
-    $failures = [];
+    ['quoting' => $quoting, 'failures' => $failures] = fireflyDbHealthIndicatorProse($onByDefault);
 
-    foreach (fireflyProsePages() as $page => $paragraphs) {
-        foreach ($paragraphs as $paragraph) {
-            if (! str_contains($paragraph, 'DbHealthIndicator') || ! $onByDefault) {
-                continue;
-            }
+    expect($failures)->toBe([]);
 
-            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
-            $namesTheDefault = str_contains($paragraph, 'matchIfMissing: true');
-
-            // A paragraph that QUOTES the condition must quote the value it really carries. "#[ConditionalOnProperty]
-            // with no matchIfMissing" was the sentence that shipped, in two languages, beside the attribute that has it.
-            if (str_contains($paragraph, 'ConditionalOnProperty')) {
-                $quoting++;
-
-                if (! $namesTheDefault) {
-                    $failures[] = $where;
-                }
-            }
-
-            // And a paragraph that calls the indicator optional, in either language, has to be EXPLAINING the
-            // mechanism rather than asserting the retired default — so it must also name one of the two things
-            // that make it on-by-default-and-still-silent-without-a-database. The recap rows said "opt-in
-            // `SELECT 1` DB check" and named neither.
-            $callsItOptional = str_contains($paragraph, 'opt-in') || str_contains($paragraph, 'opcional');
-
-            if ($callsItOptional && ! $namesTheDefault && ! str_contains($paragraph, 'ConditionalHealthIndicator')) {
-                $failures[] = $where;
-            }
-        }
+    if ($onByDefault) {
+        expect($quoting)->toBeGreaterThan(0, 'no page quotes DbHealthIndicator\'s #[ConditionalOnProperty] any more, so this canary holds nothing');
     }
 
-    expect($quoting)->toBeGreaterThan(0, 'no page quotes DbHealthIndicator\'s #[ConditionalOnProperty] any more, so this canary holds nothing')
-        ->and($failures)->toBe([]);
+    // The promise, exercised rather than described: with the indicator opt-in, the same walk over the same
+    // pages must refuse nothing and hold nothing to be missing. A presence assertion left outside this
+    // branch is exactly the failure this line exists to catch.
+    expect(fireflyDbHealthIndicatorProse(false))->toBe(['quoting' => 0, 'failures' => []]);
 });
 
 it('pins every page that explains the book\'s gate to what that gate now really does', function () {
@@ -1518,4 +1583,336 @@ it('pins every page that explains the book\'s gate to what that gate now really 
     expect($listings)->toBeGreaterThan(0, 'the walk found no php listing under book/src at all')
         ->and($failures)->toBe([])
         ->and($silent)->toBe([], 'a page that explains the book\'s gate no longer mentions `php -l`: '.implode(', ', $silent));
+});
+
+it('refuses any page that still ships CachedTransactionalConfiguration as application code', function () {
+    // The thirteenth, and the first BILINGUAL one — written because an English correction and a Spanish page
+    // disagreed inside a single release. `App\Support\CachedTransactionalConfiguration` was real for exactly one
+    // version: a hand-written #[Configuration] whose only #[Bean] loaded the compiled TransactionalManifest,
+    // because DataAutoConfiguration bound an unconditional empty one and #[Transactional] was otherwise a silent
+    // no-op. The framework fixed that at the source, the skeleton deleted the file, docs/modules/transactional.md
+    // and the CHANGELOG said so, and book/src/09-transactions.md was rewritten to say so — while
+    // book/src-es/02-dependency-injection.md went on PRINTING the class as "un archivo real que el proyecto
+    // firefly/skeleton distribuye de fábrica" and book/src-es/09-transactions.md repeated the claim twice more.
+    //
+    // A reader following the Spanish edition would create a class the framework now steps around, pinning their
+    // application to a workaround for a bug it no longer has. Neither verify_code.py (which only lints) nor
+    // DocsCodeIsRealTest (book/src-es carries no `source:` markers) can see a sentence, which is why it is here.
+    //
+    // DERIVED, twice over. The first fact is that the skeleton ships no such file — a walk, not a literal, so the
+    // day someone re-adds it both rules go quiet by themselves. The second is that no class by that name exists
+    // outside a test fixture, which is what makes PRINTING its body as shipped application code wrong.
+    $root = dirname(__DIR__);
+
+    $skeletonShipsIt = is_file($root.'/skeleton/app/Support/CachedTransactionalConfiguration.php');
+
+    $outsideTests = [];
+    $walk = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root.'/packages', FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($walk as $file) {
+        if ($file instanceof SplFileInfo && $file->getBasename() === 'CachedTransactionalConfiguration.php' && ! str_contains($file->getPathname(), '/tests/')) {
+            $outsideTests[] = substr($file->getPathname(), strlen($root) + 1);
+        }
+    }
+
+    $isFixtureOnly = ! $skeletonShipsIt && $outsideTests === [];
+
+    // A sentence that names the class beside the skeleton has to be RETIRING it, not shipping it. These are the
+    // two editions' ways of saying "gone", plus a pointer at the test fixtures that legitimately still carry one.
+    $retirementMarkers = ['deleted', 'drops', 'ships no', 'no longer', 'no distribuye', 'ya no', 'tests/'];
+
+    $named = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (! str_contains($paragraph, 'CachedTransactionalConfiguration')) {
+                continue;
+            }
+
+            $named++;
+            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+
+            // Printing the class body is the strongest form of the claim: a listing is read as code to copy.
+            if ($isFixtureOnly && preg_match('/(?:final\s+)?class\s+CachedTransactionalConfiguration\b/', $paragraph) === 1) {
+                $failures[] = $where;
+
+                continue;
+            }
+
+            $mentionsTheSkeleton = str_contains($paragraph, 'skeleton') || str_contains($paragraph, 'andamiaje');
+
+            if (! $skeletonShipsIt && $mentionsTheSkeleton) {
+                $retires = false;
+                foreach ($retirementMarkers as $marker) {
+                    if (str_contains($paragraph, $marker)) {
+                        $retires = true;
+
+                        break;
+                    }
+                }
+
+                if (! $retires) {
+                    $failures[] = $where;
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([]);
+
+    if ($isFixtureOnly) {
+        expect($named)->toBeGreaterThan(0, 'no page mentions CachedTransactionalConfiguration any more, so this canary holds nothing');
+    }
+});
+
+it('pins every anonymous-withdraw paragraph to the status samples/lumen really asserts', function () {
+    // The fourteenth. `samples/lumen/tests/Web/WalletRestTest.php` is the book's worked security example, and it
+    // answers an anonymous withdraw with 401/AUTHENTICATION_FAILED — a deliberate distinction the evaluator makes
+    // (401 means signing in would help; 403 means it would not). book/src-es/04-first-http-api.md rendered that
+    // same refusal as 403/ACCESS_DENIED, and book/src-es/10-security.md printed a listing ATTRIBUTED to this very
+    // file asserting 403 and COMMAND_PROCESSING_ERROR — neither of which the file has ever contained since the
+    // pair was split. Spanish has no `source:` markers, so the verbatim guard never compared them.
+    //
+    // DERIVED from the test's own body, so the day the sample changes its mind the book is told which pages have
+    // to change with it. The trigger is narrow on purpose: a paragraph is only judged when it is about a withdraw
+    // AND about an unauthenticated caller AND already names a 403 — a page is free to explain the 403 half on its
+    // own without owing the 401.
+    $sample = (string) file_get_contents(dirname(__DIR__).'/samples/lumen/tests/Web/WalletRestTest.php');
+
+    $blocks = preg_split('/\n(?=it\()/', $sample);
+    $anonymous = null;
+    foreach ($blocks === false ? [] : $blocks as $block) {
+        if (str_contains($block, 'unauthenticated withdraw')) {
+            $anonymous = $block;
+
+            break;
+        }
+    }
+
+    expect($anonymous)->not->toBeNull('samples/lumen no longer has a test for an unauthenticated withdraw');
+
+    preg_match('/->assertStatus\((\d{3})\)/', (string) $anonymous, $status);
+    preg_match("/->assertJsonPath\('code', '([A-Z_]+)'\)/", (string) $anonymous, $code);
+
+    $expected = $status[1] ?? '';
+    $expectedCode = $code[1] ?? '';
+
+    expect($expected)->not->toBe('', 'the unauthenticated-withdraw test asserts no status at all')
+        ->and($expectedCode)->not->toBe('', 'the unauthenticated-withdraw test asserts no error code at all');
+
+    $anonymousMarkers = [
+        'unauthenticated', 'no authenticated principal', 'not signed in', 'anonymous',
+        'principal autenticado', 'sin ningún principal', 'sin autenticar', 'anónimo',
+    ];
+
+    $judged = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $aboutAWithdraw = stripos($paragraph, 'withdraw') !== false || stripos($paragraph, 'retiro') !== false;
+
+            if (! $aboutAWithdraw) {
+                continue;
+            }
+
+            $anonymousHere = false;
+            foreach ($anonymousMarkers as $marker) {
+                if (stripos($paragraph, $marker) !== false) {
+                    $anonymousHere = true;
+
+                    break;
+                }
+            }
+
+            if (! $anonymousHere) {
+                continue;
+            }
+
+            $judged++;
+
+            // The status is what a reader acts on, and it is the one thing every such paragraph names — the
+            // error code often lives in the JSON document a paragraph away. So the status is required, and a
+            // code is only refused when the paragraph names the WRONG one.
+            $namesAnotherCode = preg_match('/\b[A-Z][A-Z_]{4,}\b/', $paragraph, $named) === 1
+                && $named[0] !== $expectedCode
+                && str_contains($sample, "'".$named[0]."'");
+
+            if (! str_contains($paragraph, $expected) || $namesAnotherCode) {
+                $failures[] = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+            }
+        }
+    }
+
+    expect($failures)->toBe([], sprintf(
+        'a page describes an unauthenticated withdraw without the %s/%s the sample test asserts: %s',
+        $expected,
+        $expectedCode,
+        implode(' | ', $failures),
+    ))->and($judged)->toBeGreaterThan(0, 'no page describes an anonymous withdraw any more, so this canary holds nothing');
+});
+
+it('pins every masking enumeration to the regex the masker really carries', function () {
+    // The fifteenth, and the one whose staleness is a SECURITY claim. `SensitiveValueMasker` grew two words after
+    // an audit — `authorization` and `headers` — because firefly.observability.tracing.otlp.headers documents
+    // `authorization=Bearer …` as its contents and none of the six original words appear in `headers`, so /env
+    // rendered a vendor credential verbatim. The same commit inverted the ordering so the KEY decides before the
+    // value's type, closing an array-valued bypass that rendered a whole JWT keyring in full.
+    //
+    // book/src/11-observability-actuator.md was rewritten around the shipped class. book/src-es was not: it went
+    // on printing the PRE-FIX EnvEndpoint — six words, is_array() first — as shipped framework code, and its recap
+    // row enumerated six. A Spanish reader was shown a masker that leaks a keyring and told their tracing headers
+    // were not masked. Nothing caught it; no canary pinned the word list.
+    //
+    // DERIVED from both maskers the framework ships, by reflection over the private constant, and the subject of
+    // each enumeration is read from the paragraph rather than assumed — docs/modules/observability.md is about
+    // HeaderMasker, which has its own list. A run may name fewer words than its list only when the paragraph names
+    // the rest as inline code beside it, which is how that page legitimately writes `authorization` and `cookie`
+    // out in front of the pattern.
+    $envWords = fireflyMaskingWords(SensitiveValueMasker::class);
+    $headerWords = fireflyMaskingWords(HeaderMasker::class);
+
+    expect($envWords)->not->toBeEmpty('SensitiveValueMasker::SENSITIVE parsed to no words at all')
+        ->and($headerWords)->not->toBeEmpty('HeaderMasker::SENSITIVE parsed to no words at all');
+
+    $runs = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            // A markdown table escapes the alternation's pipes; a code fence does not. Both are the same claim.
+            if (preg_match_all('/password((?:\\\\?\|[a-z]+)+)/', $paragraph, $matches) === 0) {
+                continue;
+            }
+
+            $target = str_contains($paragraph, 'HeaderMasker') ? $headerWords : $envWords;
+            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+
+            foreach ($matches[1] as $tail) {
+                $runs++;
+                $named = explode('|', 'password'.str_replace('\\', '', $tail));
+                sort($named);
+
+                $invented = array_values(array_diff($named, $target));
+                $missing = array_values(array_filter(
+                    array_diff($target, $named),
+                    static fn (string $word): bool => ! str_contains($paragraph, '`'.$word.'`'),
+                ));
+
+                if ($invented !== [] || $missing !== []) {
+                    $failures[] = $where.' [missing: '.implode(',', $missing).'] [invented: '.implode(',', $invented).']';
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($runs)->toBeGreaterThan(0, 'no page enumerates a masking pattern any more, so this canary holds nothing');
+});
+
+it('pins every EloquentRepository helper sentence to the visibility and the coverage the class really has', function () {
+    // The sixteenth. Chapter 5 said "Three private helpers carry everything those two bodies do not spell out, and
+    // every read in the class goes through the same three." Three errors in one sentence: reading() and
+    // translating() are PROTECTED — the deliberate seam a subclass repository overrides, which is the very thing
+    // this chapter's "annotate an override that does nothing but return parent::findAll();" recipe rests on, so
+    // calling them private tells a reader the recipe is out of reach; the two listed bodies use FOUR helpers, with
+    // narrow() called in the excerpt directly above the sentence; and existsById()/count()/existsByExample()/
+    // countByExample() go straight to query() and never touch reading() at all.
+    //
+    // DERIVED: the visibilities come from reflection, the helper count from the two method bodies the chapter
+    // actually prints, and the bypassing reads from a walk of the class's own source. Every rule below is
+    // conditional on the fact it protects, so a framework that makes reading() private again — or routes count()
+    // through it — silences the rule that would then be wrong instead of forcing a lie into the book.
+    $file = (new ReflectionClass(EloquentRepository::class))->getFileName();
+
+    expect($file)->toBeString('EloquentRepository has no source file');
+
+    $source = (string) file_get_contents((string) $file);
+
+    $visibility = static function (string $method): string {
+        $reflected = new ReflectionMethod(EloquentRepository::class, $method);
+
+        return $reflected->isPrivate() ? 'private' : ($reflected->isProtected() ? 'protected' : 'public');
+    };
+
+    $seams = ['reading', 'translating'];
+    $seamsAreProtected = true;
+    foreach ($seams as $seam) {
+        $seamsAreProtected = $seamsAreProtected && $visibility($seam) === 'protected';
+    }
+
+    // The two bodies the chapter prints side by side, and every $this->helper() they reach for.
+    $helpers = [];
+    foreach (['findBySpecification', 'findBySpecificationPaged'] as $method) {
+        preg_match('/\n    public function '.$method.'\(.*?\n    \}/s', $source, $body);
+
+        expect($body[0] ?? '')->not->toBe('', 'EloquentRepository no longer declares '.$method.'()');
+
+        preg_match_all('/\$this->(\w+)\(/', $body[0] ?? '', $calls);
+        $helpers = array_merge($helpers, $calls[1]);
+    }
+    $helperCount = count(array_unique($helpers));
+
+    // Reads that answer a question ABOUT rows: they open no builder through reading(), on purpose. A read that
+    // merely delegates to another read (getById() -> findById()) is not one of them — it reaches reading() by
+    // proxy — so a body that calls a sibling finder is excluded rather than counted as a bypass.
+    preg_match_all('/\n    public function (\w+)\(.*?\n    \}/s', $source, $methods, PREG_SET_ORDER);
+    $bypassing = [];
+    foreach ($methods as [$whole, $name]) {
+        $isARead = preg_match('/^(?:find|exists|count|get)/', $name) === 1;
+        $delegates = preg_match('/\$this->(?:find|get)\w*\(/', $whole) === 1;
+
+        if ($isARead && ! $delegates && ! str_contains($whole, 'reading(')) {
+            $bypassing[] = $name;
+        }
+    }
+
+    $judged = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $aboutTheHelpers = str_contains($paragraph, 'reading(') || str_contains($paragraph, 'translating(');
+
+            if (! $aboutTheHelpers) {
+                continue;
+            }
+
+            $judged++;
+            $where = $page.': '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 140);
+
+            // Calling the two seams private, with no mention of the protected half, is the claim that shipped.
+            $saysPrivate = str_contains($paragraph, 'private') || str_contains($paragraph, 'privad');
+            $saysProtected = str_contains($paragraph, 'protected') || str_contains($paragraph, 'protegid');
+
+            if ($seamsAreProtected && $saysPrivate && ! $saysProtected) {
+                $failures[] = $where.' [calls the protected seam private]';
+            }
+
+            // "Three helpers" / "Tres ayudantes": a count of a set this test has already derived.
+            if (preg_match('/(\p{L}+)\s+(?:private\s+|protected\s+|privados\s+|protegidos\s+)?(?:helpers?|ayudantes|auxiliares)\b/u', $paragraph, $counted) === 1) {
+                $written = fireflyWrittenNumber($counted[1]);
+
+                if ($written !== null && $written !== $helperCount) {
+                    $failures[] = $where.' [counts '.$written.' helpers, the two bodies use '.$helperCount.']';
+                }
+            }
+
+            // And an exhaustive claim has to carry the qualifier that makes it true, because some reads do not.
+            $claimsEveryRead = str_contains($paragraph, 'and the rest')
+                || str_contains($paragraph, 'every read in the class')
+                || str_contains($paragraph, 'y el resto')
+                || str_contains($paragraph, 'toda lectura de la clase');
+            $qualified = str_contains($paragraph, 'opens a builder') || str_contains($paragraph, 'abre un builder');
+
+            if ($bypassing !== [] && $claimsEveryRead && ! $qualified) {
+                $failures[] = $where.' [claims every read, but '.implode(', ', $bypassing).' bypass reading()]';
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page explains EloquentRepository\'s read helpers any more, so this canary holds nothing');
 });

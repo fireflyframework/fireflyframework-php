@@ -2,7 +2,7 @@
 
 # Transacciones y el Proxy `#[Transactional]` {.chtitle}
 
-Al terminar este capítulo sabrás exactamente qué hace `#[Transactional]` — sus siete modos de propagación, sus ajustes de aislamiento/solo-lectura/rollback, y el proxy generado que le da dientes — cómo la auto-invocación esquiva ese proxy (y qué hacer en su lugar), cómo `firefly:cache` cierra el círculo que el Capítulo 2 abrió con `CachedTransactionalConfiguration`, y el hecho más consecuente de todo este libro hasta ahora: **un evento de dominio se publica únicamente porque `TransactionTemplate` — la maquinaria detrás de `#[Transactional]`— es el único que llama al despacho post-confirmación.** Sin `#[Transactional]`, no hay publicación, sin importar con cuánta corrección un agregado haya lanzado su evento.
+Al terminar este capítulo sabrás exactamente qué hace `#[Transactional]` — sus siete modos de propagación, sus ajustes de aislamiento/solo-lectura/rollback, y el proxy generado que le da dientes — cómo la auto-invocación esquiva ese proxy (y qué hacer en su lugar), cómo `firefly:cache` y el escaneo en proceso dan juntos a toda aplicación un proxy funcional sin cableado propio, y el hecho más consecuente de todo este libro hasta ahora: **un evento de dominio se publica únicamente porque `TransactionTemplate` — la maquinaria detrás de `#[Transactional]`— es el único que llama al despacho post-confirmación.** Sin `#[Transactional]`, no hay publicación, sin importar con cuánta corrección un agregado haya lanzado su evento.
 
 !!! note "Término nuevo: demarcación declarativa de transacciones"
     En vez de escribir `DB::beginTransaction()` / `DB::commit()` / `DB::rollBack()` a mano dentro del cuerpo de un método, *declaras* la frontera con un atributo y dejas que un proxy generado la haga cumplir. Este es el modelo `@Transactional` de Spring, y es por lo que los Capítulos 6 y 7 ya pudieron mostrarte `#[Transactional]` sobre `OpenWalletHandler`, `DepositHandler`, `WithdrawHandler` y `TransferHandler` sin una sola llamada explícita a `DB::` dentro de ninguno de sus cuerpos `handle()`.
@@ -273,31 +273,48 @@ Ese proxy ya no va solo de transacciones. Cualquier paquete puede aportar un tip
 
 ---
 
-## Cerrando el círculo desde el Capítulo 2: cómo una aplicación real consigue de verdad un proxy funcional
+## Cómo una aplicación real consigue de verdad un proxy funcional
 
-El Capítulo 2 te mostró `App\Support\CachedTransactionalConfiguration` — un archivo real que el proyecto `firefly/skeleton` distribuye de fábrica — y prometió que no necesitarías `#[Transactional]` en sí "hasta un capítulo posterior". Este es ese capítulo, y aquí está exactamente por qué existe ese archivo.
+El Capítulo 2 te enseñó la forma de una clase `#[Configuration]` y sus métodos fábrica `#[Bean]`. Durante una versión de este framework, toda aplicación LaraFly tuvo que escribir una de ellas a mano — un `#[Configuration]` cuyo único `#[Bean]` cargaba el `TransactionalManifest` cacheado — o `#[Transactional]` no hacía absolutamente nada. **Ya no necesitas esa clase**, y merece una página: el fallo que aquella clase sorteaba fue de los más afilados que ha tenido este framework, y su arreglo es una pequeña lección sobre cómo se resuelve cada artefacto compilado.
 
-`php artisan firefly:cache` emite **tres** artefactos separados que lee la maquinaria de proxies. Ejecuta `TransactionalScanner`/`TransactionalManifestCompiler` — uno de los doce pares scanner/compiler — para escribir los datos del manifiesto en `bootstrap/cache/firefly/transactional.php`. Ejecuta `ProxyPlanCompiler` sobre el `ProxyPlan` fusionado para escribir `bootstrap/cache/firefly/proxy-plan.php` — el artefacto que `DataAutoConfiguration::proxyPlan()` carga *antes* que el puente de `transactional.php`, y el que decide qué beans reciben siquiera un proxy y qué advice ejecuta cada uno de sus métodos. Y ejecuta `ProxyClassGenerator` para emitir un archivo fuente `{Target}__FireflyTransactionalProxy` **por cada clase que el plan nombra** — cada clase que reclama algún `AdviceSource`, así que un bean que solo lleva reglas de seguridad de método también recibe uno — en un directorio `proxies/`, más un classmap `proxies.php`. `FireflyCacheServiceProvider` registra un autoloader para ese classmap incondicionalmente, así que cada clase proxy generada es cargable en el momento en que el contenedor la pide.
+`php artisan firefly:cache` emite **tres** artefactos separados que lee la maquinaria de proxies. Ejecuta `TransactionalScanner`/`TransactionalManifestCompiler` — uno de los doce pares scanner/compiler — para escribir los datos del manifiesto en `bootstrap/cache/firefly/transactional.php`. Ejecuta `ProxyPlanCompiler` sobre el `ProxyPlan` fusionado para escribir `bootstrap/cache/firefly/proxy-plan.php` — el artefacto que decide qué beans reciben siquiera un proxy y qué advice ejecuta cada uno de sus métodos. Y ejecuta `ProxyClassGenerator` para emitir un archivo fuente `{Target}__FireflyTransactionalProxy` **por cada clase que el plan nombra** — cada clase que reclama algún `AdviceSource`, así que un bean que solo lleva reglas de seguridad de método también recibe uno — en un directorio `proxies/`, más un classmap `proxies.php`.
 
-Eso resuelve las **clases proxy**. No hace, por sí solo, que `TransactionalBeanPostProcessor` realmente intercambie nada — para eso, el contenedor necesita los *datos* compilados de `TransactionalManifest` vinculados como un bean, y aquí es donde `TransactionalManifest` se comporta de forma distinta a cualquier otro manifiesto que este libro te haya mostrado. `HandlerManifest` (Capítulo 7), `EventListenerManifest` (Capítulo 8) y `SecurityMethodManifest` (Capítulo 10) están todos vinculados mediante un valor por defecto de proveedor protegido por `bound()` — `$app->instance()` desde `FireflyCacheServiceProvider` lo sobrescribe incondicionalmente, sin importar el orden de registro. El valor por defecto vacío de `TransactionalManifest`, en cambio, es un `#[Bean]` `#[Configuration]` genuino sobre `DataAutoConfiguration`, condicionado con `#[ConditionalOnMissingBean(TransactionalManifest::class)]` — y esa condición se evalúa contra el **registro de definiciones de bean**, no contra las vinculaciones del contenedor de Laravel. Una simple llamada `$app->instance(TransactionalManifest::class, ...)` es *invisible* para ella: el propio `#[Bean]` del valor por defecto vacío igual dispara más tarde y sobrescribe lo que se hubiera vinculado por instancia.
+Durante mucho tiempo, nada cargaba el primero de esos tres. `DataAutoConfiguration` vinculaba un `TransactionalManifest` *vacío* incondicionalmente, el `transactional.php` compilado solo lo referenciaba su propia declaración, y por eso `hasProxyFor()` era siempre falso y `TransactionalBeanPostProcessor` devolvía cada bean sin envolver. `#[Transactional]` era un **no-op silencioso** en cualquier aplicación que no escribiera a mano su propia configuración de manifiesto — que es exactamente lo que aquel `#[Configuration]` manuscrito existía para hacer, y exactamente el modo de fallo del que avisaba la sección anterior, llegando desde el propio lado del framework.
 
-La única costura de anulación real es una **definición de bean competidora** — otra clase `#[Configuration]` que suministra su propio `#[Bean] transactionalManifest(): TransactionalManifest`, registrada en un `#[Order]` por debajo del `1000` de `DataAutoConfiguration`. Eso es todo el contenido del archivo que el Capítulo 2 ya te mostró:
+Está arreglado en el origen. Los dos beans resuelven ahora su artefacto como se resuelve en este framework todo artefacto de Categoría B — **archivo compilado primero, escaneo en proceso después, vacío al final**:
 
 ```php
-#[Configuration]
-final class CachedTransactionalConfiguration
+final class DataAutoConfiguration
 {
     #[Bean]
-    public function transactionalManifest(): TransactionalManifest
+    #[ConditionalOnMissingBean(TransactionalManifest::class)]
+    public function transactionalManifest(Container $container): TransactionalManifest
     {
-        $file = base_path('bootstrap/cache/firefly/transactional.php');
+        if (($file = AppScan::cachedFile($container, AppScan::TRANSACTIONAL)) !== null) {
+            ProxyMaterializer::classmap($container);
 
-        return is_file($file) ? TransactionalManifest::load($file) : new TransactionalManifest([], []);
+            return TransactionalManifest::load($file);
+        }
+
+        $paths = AppScan::paths($container);
+        if ($paths === []) {
+            return new TransactionalManifest([], []);
+        }
+
+        return (new TransactionalScanner)->scan($paths);
     }
+    // …
 }
 ```
 
-Porque `firefly/skeleton` distribuye ya este archivo, en `app/Support/`, descubierto por el escaneo de componentes corriente como cualquier otro `#[Configuration]`, una aplicación LaraFly construida como el Inicio Rápido te hizo construir una obtiene un proxy `#[Transactional]` **completamente funcional** en el momento en que ejecutas `firefly:cache` — sin paso extra, sin cableado manual. Las propias suites de pruebas del framework, que no arrancan a través del skeleton, suministran el equivalente en línea: `packages/data/tests/Fixtures/Capstone/CapstoneTransactionalConfiguration` para el fixture `AccountService` de arriba, y `samples/lumen/tests/Support/LumenTransactionalConfiguration` para cada manejador que este libro te ha mostrado de `samples/lumen`. Los tres tienen la misma forma por la misma razón.
+Tres cosas de ese método merecen leerse despacio. El archivo compilado gana cuando existe, que es la ruta de producción cacheada. Cuando no existe, el escáner corre en proceso sobre `firefly.scan.paths`, que es la ruta de desarrollo — no hace falta `firefly:cache` para tener un proxy funcional mientras escribes código. Y `ProxyMaterializer::classmap()` se llama **antes** de devolver el manifiesto, así que las clases proxy generadas son cargables antes de que nada pueda pedir una; `TransactionalBeanPostProcessor` lanza una `ConfigurationException` ante un manifiesto que promete una clase proxy que no encuentra, de modo que una caché a medio escribir falla ruidosamente al arrancar en lugar de correr sin proxy en silencio.
+
+`proxyPlan()` se sienta a su lado con la misma forma y un peldaño extra: `proxy-plan.php` primero, luego — para una caché escrita por un `firefly:cache` anterior a la existencia de los planes de proxy — un plan solo-transaccional puenteado desde el manifiesto, luego el escaneo en proceso a través de cada bean `AdviceSource`, y por último, sin ninguna ruta de escaneo, un plan solo-transaccional a partir del `TransactionalManifest` que esté vinculado. Ese último peldaño es lo que permite que los propios fixtures capstone del framework compilen un manifiesto a mano y aun así envuelvan sus beans `#[Transactional]`.
+
+Así que el skeleton **no distribuye** ningún `CachedTransactionalConfiguration`, y tu aplicación tampoco debería. Una aplicación LaraFly obtiene un proxy `#[Transactional]` funcional en desarrollo desde el escaneo y en producción desde la caché, sin cableado propio. Las suites de pruebas del framework sí suministran un `#[Configuration]` equivalente en línea — `packages/data/tests/Fixtures/Capstone/CapstoneTransactionalConfiguration` para el fixture `AccountService` de arriba, y `samples/lumen/tests/Support/LumenTransactionalConfiguration` para los manejadores que este libro toma de `samples/lumen` — porque esas suites no arrancan a través de una aplicación en absoluto y no tienen ningún `firefly.scan.paths` que escanear.
+
+!!! tip "Si escribiste una de estas clases, bórrala"
+    Un `TransactionalManifest` vinculado a mano sigue funcionando — `#[ConditionalOnMissingBean]` hace que el framework se aparte ante cualquier definición de bean competidora — pero ahora ata tu aplicación a lo que haga esa clase, y nunca fue más que un apaño.
 
 ---
 
@@ -418,7 +435,7 @@ La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corri�
 | `shouldRollBack()` | `noRollbackFor` gana sobre `rollbackFor`; no coincidir con ninguna de las dos listas también confirma |
 | El proxy generado | `{Target}__FireflyTransactionalProxy extends {Target}`; enruta cada llamada a través de `TransactionInterceptor::run()` y luego `parent::` |
 | Esquive por auto-invocación | `$this->otro()` dentro de la clase proxificada se salta el interceptor por completo — usa el `TransactionTemplate` inyectado en su lugar |
-| `CachedTransactionalConfiguration` | El único `#[Bean]` competidor que realmente activa el `TransactionalManifest` cacheado — distribuido por el skeleton |
+| `DataAutoConfiguration::transactionalManifest()`/`proxyPlan()` | Artefacto compilado primero, escaneo en proceso después, vacío al final — la razón por la que ninguna aplicación necesita vincular un manifiesto a mano |
 | La lección clave | `TransactionTemplate` es el **único** que llama a `dispatchAfterCommit()` — sin `#[Transactional]`, no hay publicación de eventos de dominio, en silencio |
 | `Transfer` | Débito + crédito + ambos `save()` en una sola frontera — una rama de crédito fallida revierte también el débito ya ejecutado |
 

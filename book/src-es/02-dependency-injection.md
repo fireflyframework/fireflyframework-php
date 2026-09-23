@@ -147,41 +147,34 @@ Nada en `samples/lumen` vincula nunca `WalletRepository` a `EloquentWalletReposi
 
 No todo lo que necesitas inyectar es una clase de tu propiedad. `#[Configuration]` marca una clase como una **fuente de métodos fábrica `#[Bean]`** — el tipo de retorno de cada método se convierte en el tipo registrado del bean, y sus parámetros se resuelven e inyectan exactamente igual que los de un constructor. `#[Configuration]` es en sí mismo un `#[Component]`, así que la clase de configuración también es un bean gestionado.
 
-El proyecto de andamiaje que generaste en el Inicio rápido ya distribuye uno, real y ya empaquetado:
+Los propios paquetes del framework están construidos con ellas, y la más corta es la que `firefly/validation` usa para ensamblar el validador que el Capítulo 4 pondrá a trabajar:
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Support;
-
-use Firefly\Container\Attributes\Bean;
-use Firefly\Container\Attributes\Configuration;
-use Firefly\Data\Transaction\TransactionalManifest;
-
-/**
- * Category C: the app-side #[Configuration] that firefly:cache generates/ships. It LOADS the app's compiled
- * TransactionalManifest as a bean — the only override seam for it, because binding it directly on the Laravel
- * container is invisible to DataAutoConfiguration's #[ConditionalOnMissingBean] (which consults the
- * BeanDefinitionRegistry). Its default #[Order] 0 sorts strictly before DataAutoConfiguration's #[Order(1000)],
- * so the empty default steps aside. On a cached boot this #[Configuration] is discovered from the compiled
- * component/context manifests (never scanned); until firefly:cache has run, it returns an empty manifest.
- */
 #[Configuration]
-final class CachedTransactionalConfiguration
+#[Order(1000)]
+final class ValidationAutoConfiguration
 {
     #[Bean]
-    public function transactionalManifest(): TransactionalManifest
+    #[ConditionalOnMissingBean(ValidationSettings::class)]
+    public function validationSettings(Config $config): ValidationSettings
     {
-        $file = base_path('bootstrap/cache/firefly/transactional.php');
+        return ValidationSettings::fromConfig($config);
+    }
 
-        return is_file($file) ? TransactionalManifest::load($file) : new TransactionalManifest([], []);
+    #[Bean]
+    #[ConditionalOnMissingBean(Validator::class)]
+    public function validator(Factory $factory, ValidationSettings $settings): Validator
+    {
+        return new IlluminateValidator($factory, $settings);
     }
 }
 ```
 
-`transactionalManifest()` devuelve `TransactionalManifest` — así que ese es el tipo bajo el que se registra el bean, y cualquier constructor que pida un `TransactionalManifest` recibe lo que este método devuelva. No necesitarás `#[Transactional]` en sí hasta un capítulo posterior, pero la *forma* — clase `#[Configuration]`, método `#[Bean]`, tipo de retorno como clave de registro — es una que volverás a ver cada vez que este libro presente un paquete nuevo que necesite entregarte un objeto ya construido en lugar de una clase que construyes directamente.
+Lee los dos métodos `#[Bean]` y tienes el mecanismo entero. `validationSettings()` declara `ValidationSettings` como tipo de retorno, así que `ValidationSettings` es el tipo bajo el que se registra su bean. `validator()` declara `Validator`, y sus dos parámetros — la `Factory` de validación propia de Illuminate y el `ValidationSettings` que produce el método de encima — se resuelven del contenedor exactamente igual que se resolverían los de un constructor. Tipo de retorno adentro, clave de registro afuera; tipos de parámetro adentro, inyección afuera.
+
+Los dos atributos extra pertenecen al Capítulo 3 y se nombran aquí solo para que no se lean como magia. `#[Order(1000)]` ordena esta clase *después* de cualquier cosa que declare tu aplicación, y `#[ConditionalOnMissingBean]` hace que cada valor por defecto se aparte en el momento en que una aplicación vincula un `Validator` propio — la regla de retirada que convierte un `#[Configuration]` corriente en una **auto-configuración**, que es como cada paquete Firefly distribuye un valor por defecto funcional que eres libre de reemplazar.
+
+Nada de la forma cambia cuando la clase es tuya en lugar del framework: un `#[Configuration]` bajo tu propio `app/` se escanea, se ordena y se cablea en la misma pasada. Es la forma que volverás a ver cada vez que este libro presente un paquete que necesita entregarte un objeto ya construido en lugar de una clase que construyes directamente.
 
 !!! laravel "Paridad con Laravel"
     `#[Configuration]` + `#[Bean]` es el equivalente directo de que el método `register()` de un proveedor de servicios Laravel llame a `$this->app->singleton(SomeType::class, fn () => ...)` — salvo que el *tipo* que devuelve el cierre se lee de la propia declaración de tipo de retorno del método, así que no hay nada que mantener sincronizado a mano.

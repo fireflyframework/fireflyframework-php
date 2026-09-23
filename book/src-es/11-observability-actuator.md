@@ -322,51 +322,55 @@ final readonly class ExposureModel
 
 El `include` por defecto es `"health,info"` — cualquier otro id de endpoint (`env`, `beans`, `conditions`, `mappings`, `loggers`, `scheduledtasks`, y las `metrics`/`prometheus` de observabilidad una vez instalado ese paquete) **no está expuesto** hasta que lo añadas explícitamente, y `ActuatorDispatchAction` renderiza un id no expuesto o desconocido como un `404` simple a través del mismo `ProblemDetailsRenderer` que presentó el Capítulo 4 — nunca un error de framework en bruto, y nunca un `200` silencioso con un cuerpo que un llamante no autenticado no debería ver. `.exclude` siempre gana sobre `.include`, de modo que `include: '*'` más una lista corta de `exclude` es una política legítima de "expón todo excepto…".
 
-`/actuator/env` superpone una segunda red de seguridad, independiente, encima de la exposición: incluso una vez expuesta, cualquier clave cuyo nombre coincida con `password|secret|token|key|credential|passwd` (sin distinguir mayúsculas, recursivamente a través de arrays anidados) se enmascara antes de construir la respuesta — defensa en profundidad para un endpoint que solo es alcanzable en absoluto una vez que has optado por él:
+`/actuator/env` superpone una segunda red de seguridad, independiente, encima de la exposición: incluso una vez expuesta, cualquier clave cuyo nombre parezca una credencial se enmascara antes de construir la respuesta. El endpoint en sí son cuatro líneas, porque la regla vive en una única clase compartida:
 
 ```php
-#[Component]
 final class EnvEndpoint implements ActuatorEndpoint
 {
-    private const MASK = '******';
-
-    private const SENSITIVE = '/password|secret|token|key|credential|passwd/i';
-
-    public function __construct(private readonly Repository $config) {}
-
-    public function endpointId(): string
-    {
-        return 'env';
-    }
-
-    public function enabled(): bool
-    {
-        return true;
-    }
-
     public function handle(EndpointRequest $request): EndpointResponse
     {
+        /** @var array<string, mixed> $firefly */
         $firefly = (array) $this->config->get('firefly', []);
 
-        return EndpointResponse::json(['firefly' => $this->mask($firefly)]);
+        return EndpointResponse::json(['firefly' => SensitiveValueMasker::mask($firefly)]);
     }
+    // …
+}
+```
 
-    private function mask(array $values): array
+```php
+final class SensitiveValueMasker
+{
+    public const string MASK = '******';
+
+    private const string SENSITIVE = '/password|secret|token|key|credential|passwd|authorization|headers/i';
+
+    public static function mask(array $values): array
     {
         $masked = [];
         foreach ($values as $key => $value) {
-            if (is_array($value)) {
-                $masked[$key] = $this->mask($value);
+            if (self::isSensitive($key)) {
+                $masked[$key] = self::MASK;
 
                 continue;
             }
-            $masked[$key] = preg_match(self::SENSITIVE, (string) $key) === 1 ? self::MASK : $value;
+
+            $masked[$key] = is_array($value) ? self::mask($value) : $value;
         }
 
         return $masked;
     }
+    // …
 }
 ```
+
+Que la regla viva en una clase propia en lugar de dentro del endpoint no es pulcritud. `/configprops` necesita la *misma* regla, y una segunda copia es como se pudre una regla de enmascarado: las dos listas divergen en la siguiente palabra que a alguien se le ocurra añadir, y el endpoint que se perdió la adición filtra.
+
+El orden dentro de `mask()` es la parte que merece estudiarse, porque es un arreglo de fallo que puedes leer. La regla, tal como se escribió primero, probaba la clave **solo** en la rama donde el valor era un escalar — una clave con valor de array se recorría hacia dentro y cada hoja se juzgaba luego por su propia clave. Así que `firefly.security.jwt.keys => ['active' => 'PRIVATE…', 'previous' => '…']` renderizaba las dos claves privadas enteras: `keys` coincidía con el patrón pero era un array, y `active` y `previous` no coincidían con nada. Toda forma real de un secreto — un llavero, un par de credenciales, un mapa de tokens por inquilino — es exactamente esa forma, así que el bypass cubría justo los casos que más importaban. Aquí la **clave decide primero**, y una clave sensible enmascara todo su subárbol sea cual sea el tipo del valor.
+
+Un array sensible se enmascara al escalar `******` y no a un array de la misma forma lleno de máscaras, y eso también es deliberado: la forma de un secreto es información en sí misma — cuántas claves hay en el llavero, qué inquilinos tienen token — y un llamante que no puede ver los valores tampoco tiene por qué contarlos.
+
+`authorization` y `headers` están en la lista porque el propio framework introdujo una clave que lleva una credencial: `firefly.observability.tracing.otlp.headers` documenta `authorization=Bearer …` como su contenido previsto, y ninguna de las seis palabras originales aparece en `headers`. Una bolsa de cabeceras es donde viaja la credencial de un cliente saliente, se llame como se llame la cabecera concreta — que es exactamente por qué debe decidir la clave de la **bolsa** y no las hojas.
 
 Más allá de la exposición y el enmascaramiento, el `HttpSecurity` de `firefly/security` (Capítulo 10) es lo que realmente asegura la superficie para el tráfico real, y no necesita **ningún** cambio de código para hacerlo — `HttpSecurityFilter` es un middleware global, de modo que se ejecuta para las propias rutas registradas directamente por el actuator exactamente igual que se ejecuta para tus controladores:
 
@@ -1038,7 +1042,7 @@ Es un *interruptor de funcionalidad*, no un endpoint de configuración remota: l
 | `PingHealthIndicator` / `DiskSpaceHealthIndicator` / `DbHealthIndicator` | Sondeo de liveness siempre-arriba; comprobación de disco basada en umbral; comprobación de BD `SELECT 1` activa por defecto, que declina su registro mediante `ConditionalHealthIndicator::available()` cuando no hay conexión por defecto configurada |
 | `HealthEndpoint` | Agrega al estado más severo; un **grupo** de sondeo es solo un subconjunto de indicadores con nombre y configurado — no hay una clase de endpoint liveness/readiness separada |
 | `ExposureModel` | Puerta CSV `include`/`exclude`; por defecto `"health,info"`; todo lo demás es un 404 simple hasta que se exponga |
-| `EnvEndpoint` | Enmascara las claves `password\|secret\|token\|key\|credential\|passwd` con `******`, independientemente de la exposición |
+| `EnvEndpoint` / `SensitiveValueMasker` | Una única regla compartida enmascara las claves `password\|secret\|token\|key\|credential\|passwd\|authorization\|headers` con `******`, independientemente de la exposición — la **clave** decide primero, así que una clave sensible enmascara todo su subárbol |
 | `MeterRegistry` / `MetricsRecorder` | Puertos de métricas de lectura/escritura; `SimpleMeterRegistry` es idempotente por `type\|name\|tags` y falla ruidosamente ante un conflicto de tipo |
 | `PrometheusTextFormat` | Exposición a prueba de locale — `number_format()`, nunca `sprintf('%f')` |
 | `MetricsFilter` | Filtro de cronometraje más externo `#[Order(-100)]`; etiqueta por la **plantilla** de la ruta, nunca la ruta en bruto — cardinalidad acotada |
