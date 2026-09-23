@@ -11,6 +11,7 @@ use Firefly\Observability\Tests\Fixtures\ClassLevelBase\BaseGateway as ClassLeve
 use Firefly\Observability\Tests\Fixtures\ClassLevelBase\StripeGateway as ClassLevelStripeGateway;
 use Firefly\Observability\Tests\Fixtures\InheritedBase\StripeGateway;
 use Firefly\Observability\Tests\Fixtures\MeterTypeCollision\CollidingMeterService;
+use Firefly\Observability\Tests\Fixtures\MixedSubclasses\OverridingGateway as MixedOverridingGateway;
 use Firefly\Observability\Tests\Fixtures\SharedTimerName\SharedTimerNameService;
 use Firefly\Observability\Tests\Fixtures\SiblingSubclass\StripeGateway as SiblingStripeGateway;
 
@@ -84,6 +85,18 @@ it('refuses a CLASS-level metric on an ABSTRACT base, which no scan would otherw
 it('refuses a metric on a base method the post-processed child overrides without repeating it', function (): void {
     (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\OverriddenBase' => __DIR__.'/../Fixtures/OverriddenBase']);
 })->throws(ConfigurationException::class, 'OVERRIDES charge() without repeating the attribute');
+
+/*
+ | …and the drop has to hold for EVERY post-processed child, not for one of them. With two — one that merely
+ | INHERITS the annotated method and one that OVERRIDES it — a covered-methods set unioned over the children
+ | let the inheriting one vouch for the sibling: the base's row was dropped as losing nothing, the overriding
+ | bean was left unmetered, and the refusal above was never reached. No other fixture here has two
+ | post-processed subclasses, which is exactly why the union survived the rest of this file.
+ */
+
+it('refuses when one post-processed child inherits the metered method and a sibling overrides it', function (): void {
+    (new ObservabilityMethodScanner)->scan(['Firefly\\Observability\\Tests\\Fixtures\\MixedSubclasses' => __DIR__.'/../Fixtures/MixedSubclasses']);
+})->throws(ConfigurationException::class, MixedOverridingGateway::class.' OVERRIDES charge() without repeating the attribute');
 
 /*
  | The other half of the per-method rule: a class is only refused for the rules it is RESPONSIBLE for. A second

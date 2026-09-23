@@ -50,7 +50,9 @@ use ReflectionNamedType;
  *   - …and it does not fire for a CONCRETE BASE CLASS whose post-processed child COMPILES THE SAME ROW.
  *     Writing the attribute on a template-method base and stereotyping the leaf is a mainstream shape, and
  *     the metric does record there — but only through the one door PHP leaves open, so the drop is decided
- *     PER METHOD against the rows the post-processed subclasses really compiled, never per class. That door
+ *     PER METHOD against the rows the post-processed subclasses really compiled, never per class, and
+ *     against ALL of them: one child that merely inherits the annotated method does not vouch for a sibling
+ *     that overrides it, which would leave that sibling's bean unmetered with nothing said. That door
  *     is the METHOD-level attribute on a method the child does not override: `ReflectionMethod::getAttributes()`
  *     reads the DECLARING class, so the child sees it, compiles its own row for it and the child's proxy
  *     overrides the inherited body. The base's copy is then dropped rather than refused — the base is not a
@@ -423,8 +425,8 @@ final class ObservabilityMethodScanner
     }
 
     /**
-     * The method names those subclasses REALLY COMPILED A ROW FOR — the per-method premise the drop rests on,
-     * read off the first pass rather than re-derived from the shape of the hierarchy.
+     * The method names EVERY ONE of those subclasses REALLY COMPILED A ROW FOR — the per-method premise the
+     * drop rests on, read off the first pass rather than re-derived from the shape of the hierarchy.
      *
      * Asking it per CLASS ("a post-processed subclass exists, therefore the child already has its own row,
      * therefore nothing is lost") is true for exactly one of the two ways an attribute reaches a method.
@@ -434,21 +436,35 @@ final class ObservabilityMethodScanner
      * own, empty, attribute list. In those two shapes the child compiles nothing, and a per-class drop threw
      * the author's `#[Timed]` away in silence.
      *
+     * And it is an INTERSECTION over the subclasses rather than a union, for the same reason it is per method
+     * rather than per class: a flat set of names unioned over them let ONE child that merely inherits the
+     * annotated method vouch for a SIBLING that overrides it without repeating the attribute. The base's row
+     * was dropped as losing nothing, the overriding bean was left unmetered — no row, no exception, no
+     * warning, on a `#[Timed]` somebody wrote — and refuseUnenforceable()'s "OVERRIDES … without repeating
+     * the attribute" was never reached, although it is exactly the sentence that case needs. A method is
+     * covered only when EVERY post-processed subclass compiled a row for it; the first one that did not sends
+     * the base's row to the refusal, which names that subclass.
+     *
      * @param  list<class-string>  $subclasses
      * @param  array<class-string, list<ObservabilityMethodDescriptor>>  $compiled
      * @return array<string, true>
      */
     private function coveredMethods(array $subclasses, array $compiled): array
     {
-        $covered = [];
+        /** @var array<string, true>|null $covered */
+        $covered = null;
 
         foreach ($subclasses as $subclass) {
+            /** @var array<string, true> $own */
+            $own = [];
             foreach ($compiled[$subclass] ?? [] as $rule) {
-                $covered[$rule->method] = true;
+                $own[$rule->method] = true;
             }
+
+            $covered = $covered === null ? $own : array_intersect_key($covered, $own);
         }
 
-        return $covered;
+        return $covered ?? [];
     }
 
     /**
