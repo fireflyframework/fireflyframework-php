@@ -97,7 +97,15 @@ final class InMemoryListing
      */
     private static function order(array $rows, string $column, string $direction, string $tiebreak): array
     {
-        usort($rows, static function (array $a, array $b) use ($column, $direction, $tiebreak): int {
+        // ONE COMPARISON PER COLUMN, chosen before the first pair is looked at. A column that mixes numbers
+        // with anything else has no consistent answer pair by pair — see RowComparator::forColumn() for the
+        // cycle — and usort() then returns whatever the arrival order suggested, which is the unstable page
+        // this class's tiebreak exists to prevent. The tiebreak is a column too, and is chosen the same way:
+        // an inconsistent tiebreak breaks the whole ordering just as thoroughly as an inconsistent primary.
+        $compare = RowComparator::forColumn(self::valuesOf($rows, $column));
+        $breakTie = RowComparator::forColumn(self::valuesOf($rows, $tiebreak));
+
+        usort($rows, static function (array $a, array $b) use ($column, $direction, $tiebreak, $compare, $breakTie): int {
             $left = $a[$column] ?? null;
             $right = $b[$column] ?? null;
 
@@ -106,7 +114,7 @@ final class InMemoryListing
             $comparison = RowComparator::rankEmpty($left, $right);
 
             if ($comparison === 0) {
-                $comparison = RowComparator::compare($left, $right);
+                $comparison = $compare($left, $right);
 
                 if ($direction === 'desc') {
                     $comparison = -$comparison;
@@ -115,9 +123,22 @@ final class InMemoryListing
 
             return $comparison !== 0
                 ? $comparison
-                : RowComparator::compare($a[$tiebreak] ?? null, $b[$tiebreak] ?? null);
+                : $breakTie($a[$tiebreak] ?? null, $b[$tiebreak] ?? null);
         });
 
         return $rows;
+    }
+
+    /**
+     * One column of the listing, missing cells included as the `null` the ordering will see — `array_column()`
+     * DROPS a row that lacks the key, and a column is judged numeric or not by what the comparison will
+     * actually be handed.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<mixed>
+     */
+    private static function valuesOf(array $rows, string $key): array
+    {
+        return array_map(static fn (array $row): mixed => $row[$key] ?? null, $rows);
     }
 }

@@ -330,9 +330,18 @@ final class DataQueryEngine
         if ($sort !== null) {
             // The same ordering the actuator listings use, from the same class — a sort drifts as quietly as
             // a filter does, and the drift would show as one column header meaning two different orders on
-            // two pages of one dashboard. Emptiness is ranked OUTSIDE the direction flip: an em-dash is the
-            // absence of a value rather than a value that sorts low, so it stays last under `desc` too.
-            usort($matched, static function (array $a, array $b) use ($sort, $direction): int {
+            // two pages of one dashboard. It is asked for the COLUMN, once, rather than pair by pair: a
+            // column that mixes numbers with anything else has no consistent pairwise answer (see
+            // RowComparator::forColumn()), and an inconsistent comparison here reorders the rows that
+            // straddle a page boundary between one request and the next. Emptiness is ranked OUTSIDE the
+            // direction flip: an em-dash is the absence of a value rather than a value that sorts low, so it
+            // stays last under `desc` too.
+            $compare = RowComparator::forColumn(array_map(
+                static fn (array $row): mixed => $row['values'][$sort] ?? null,
+                $matched,
+            ));
+
+            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare): int {
                 $left = $a['values'][$sort] ?? null;
                 $right = $b['values'][$sort] ?? null;
 
@@ -342,7 +351,7 @@ final class DataQueryEngine
                     return $rank;
                 }
 
-                $comparison = RowComparator::compare($left, $right);
+                $comparison = $compare($left, $right);
 
                 return $direction === 'desc' ? -$comparison : $comparison;
             });

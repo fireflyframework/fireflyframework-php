@@ -18,16 +18,39 @@ function beanRows(): array
     ];
 }
 
-/** @param array<string,mixed> $parameters */
-function rowQuery(array $parameters = [], ?string $defaultSort = null): ListingQuery
+/**
+ * @param  array<string,mixed>  $parameters
+ * @param  list<string>  $sortable
+ */
+function rowQuery(array $parameters = [], ?string $defaultSort = null, array $sortable = ['class', 'scope', 'order']): ListingQuery
 {
     return ListingQuery::fromRequest(
         Request::create('/firefly/beans', 'GET', $parameters),
         new TableSettings(pageSize: 2, pageSizes: [2, 3]),
         '/firefly/beans',
-        ['class', 'scope', 'order'],
+        $sortable,
         defaultSort: $defaultSort,
     );
+}
+
+/**
+ * The same rows in a shuffled arrival order, listed once per shuffle.
+ *
+ * @param  list<array<string,mixed>>  $rows
+ * @return list<list<mixed>>
+ */
+function orderingsOf(array $rows, string $column, int $times = 12): array
+{
+    $orderings = [];
+    for ($attempt = 0; $attempt < $times; $attempt++) {
+        $shuffled = $rows;
+        shuffle($shuffled);
+
+        $slice = InMemoryListing::page($shuffled, rowQuery(['sort' => $column, 'size' => '3'], sortable: [$column]), [], $column);
+        $orderings[] = array_column($slice->rows, $column);
+    }
+
+    return $orderings;
 }
 
 it('slices the rows to the requested page and reports the grand total', function () {
@@ -118,6 +141,35 @@ it('breaks a tie on a stable secondary key, so no row is seen twice or never acr
     }
 
     expect($seen)->toBe(array_map(static fn (int $n): string => 'App\\Bean'.$n, range(1, 9)));
+});
+
+/**
+ * ONE ORDER, WHATEVER ORDER THE PAYLOAD ARRIVED IN — the property the tiebreak above is only half of.
+ *
+ * A tiebreak makes the order of EQUAL rows definite; it cannot help when the comparison itself disagrees
+ * with itself. Choosing arithmetic or natural comparison per PAIR does exactly that on a column that mixes
+ * the two: `1.10 < 1.9` as numbers, `1.9 < 1.9-beta` as text, `1.9-beta < 1.10` as text — a cycle, so
+ * `usort()` is free to answer differently for each arrival order, and these three rows really did come back
+ * in three different orders across the six permutations of one payload. The payload is rebuilt per request,
+ * so that is the same "a row is seen twice, and another never" across pages, arriving through the primary
+ * comparison where no tiebreak can reach it. The column decides once instead, so every shuffle agrees.
+ */
+it('orders a column that mixes numbers and text identically however the payload arrived', function () {
+    $rows = array_map(static fn (string $version): array => ['version' => $version], ['1.10', '1.9', '1.9-beta']);
+
+    expect(orderingsOf($rows, 'version'))->each->toBe(['1.9', '1.9-beta', '1.10']);
+});
+
+/**
+ * …and the column-wide decision does NOT cost a nullable numeric column its arithmetic. The empties are
+ * skipped by the scan rather than counted as "not a number", because they are ranked out of the ordering
+ * before any comparison sees them. Negative numbers are what makes the difference visible: `-12` precedes
+ * `-3` as a number and follows it as natural text, where the digits after the sign are read on their own.
+ */
+it('still compares a numeric column arithmetically when some of its rows are empty', function () {
+    $rows = array_map(static fn (?string $delta): array => ['delta' => $delta], ['-3', '-12', null]);
+
+    expect(orderingsOf($rows, 'delta'))->each->toBe(['-12', '-3', null]);
 });
 
 it('orders by the tiebreak when nothing was requested and no default was declared', function () {

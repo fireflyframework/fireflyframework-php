@@ -157,6 +157,39 @@ it('keeps null and empty values last in both directions on the in-PHP fallback',
 });
 
 /**
+ * The OTHER half of the shared comparator, on the engine that sorts a repository which cannot page: the
+ * answer must not depend on the order `findAll()` handed the rows over in.
+ *
+ * A column that mixes numbers with anything else — `1.10`, `1.9`, `1.9-beta`, which no schema forbids —
+ * has no consistent pairwise answer, and `usort()` over an inconsistent comparison returns whatever the
+ * arrival order suggested. Here the arrival order is the repository's `orderBy('id')`, so the same three
+ * bodies are re-inserted under three different id orders; a per-pair choice between arithmetic and natural
+ * comparison gives three different listings, which is a row moving across a page boundary between two
+ * requests for no reason the reader can see. The column is judged once, so all three agree.
+ */
+it('orders the in-PHP fallback identically whatever order the repository returned the rows in', function () {
+    /** @var DataBrowserTestCase $this */
+    $bodies = ['1.10', '1.9', '1.9-beta'];
+
+    $listings = [];
+    foreach ([[0, 1, 2], [2, 1, 0], [1, 2, 0]] as $arrival) {
+        DB::table('admin_notes')->delete();
+        foreach ($arrival as $position => $index) {
+            DB::table('admin_notes')->insert([
+                'id' => $position + 1,
+                'title' => 'Note '.$index,
+                'body' => $bodies[$index],
+                'pinned' => 0,
+            ]);
+        }
+
+        $listings[] = array_column($this->browser()->list('plain-note', sort: 'body')->rows, 'body');
+    }
+
+    expect($listings)->each->toBe(['1.9', '1.9-beta', '1.10']);
+});
+
+/**
  * `greater than` and `less than` over a BOOLEAN column, on BOTH engines, because a bool is exactly where the
  * two can disagree without anything failing.
  *
