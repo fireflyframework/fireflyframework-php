@@ -136,6 +136,25 @@ it('sorts and filters the in-PHP fallback without touching SQL', function () {
         ->and(Schema::hasTable('admin_notes'))->toBeTrue();
 });
 
+/**
+ * The em-dash rule, on the OTHER engine that orders rows in PHP. `null` and `''` are the absence of an answer
+ * rather than an answer that sorts low, so they sit at the end of the listing in BOTH directions instead of
+ * filling the first page of a descending sort. Both paths compare through `Firefly\Admin\RowComparator`,
+ * which is what stops one column header from meaning two different orders on two pages of one dashboard.
+ */
+it('keeps null and empty values last in both directions on the in-PHP fallback', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->seedNotes();
+    DB::table('admin_notes')->insert(['id' => 4, 'title' => 'Delta', 'body' => '', 'pinned' => 0]);
+
+    $ascending = $this->browser()->list('plain-note', sort: 'body', direction: 'asc');
+    $descending = $this->browser()->list('plain-note', sort: 'body', direction: 'desc');
+
+    // Gamma has a null body and Delta an empty one; both stay behind the rows that have something to show.
+    expect(array_column($ascending->rows, 'title'))->toBe(['Alpha', 'Beta', 'Gamma', 'Delta'])
+        ->and(array_column($descending->rows, 'title'))->toBe(['Beta', 'Alpha', 'Gamma', 'Delta']);
+});
+
 it('clamps the page size to the configured ceiling', function () {
     /** @var DataBrowserTestCase $this */
     $this->seedRecords();

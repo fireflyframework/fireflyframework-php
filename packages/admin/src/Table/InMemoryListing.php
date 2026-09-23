@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Table;
 
+use Firefly\Admin\RowComparator;
+
 /**
  * Search, order and slice a payload that is already in memory.
  *
@@ -22,7 +24,13 @@ namespace Firefly\Admin\Table;
  * mirroring it would make the tie order depend on the direction it was breaking a tie inside.
  *
  * NULL AND EMPTY SORT LAST, in both directions, so a nullable column does not bury its values under a block
- * of em-dashes on the first page of a descending sort.
+ * of em-dashes on the first page of a descending sort. Emptiness is therefore decided BEFORE the direction is
+ * applied and is never mirrored with it — for the same reason the tiebreak is not. Deciding it inside the
+ * value comparison and negating the result for `desc` flips the rule along with the ordering, which is
+ * precisely the page of em-dashes the rule exists to prevent.
+ *
+ * The comparison itself is `Firefly\Admin\RowComparator`'s, shared with the data browser's unpaged path, so
+ * one column header cannot mean two different orders on two pages of one dashboard.
  */
 final class InMemoryListing
 {
@@ -72,7 +80,7 @@ final class InMemoryListing
 
         return array_values(array_filter($rows, static function (array $row) use ($needle, $searchable): bool {
             foreach ($searchable as $key) {
-                if (str_contains(mb_strtolower(self::text($row[$key] ?? null)), $needle)) {
+                if (str_contains(mb_strtolower(RowComparator::text($row[$key] ?? null)), $needle)) {
                     return true;
                 }
             }
@@ -90,43 +98,26 @@ final class InMemoryListing
     private static function order(array $rows, string $column, string $direction, string $tiebreak): array
     {
         usort($rows, static function (array $a, array $b) use ($column, $direction, $tiebreak): int {
-            $comparison = self::compare($a[$column] ?? null, $b[$column] ?? null);
+            $left = $a[$column] ?? null;
+            $right = $b[$column] ?? null;
 
-            if ($direction === 'desc') {
-                $comparison = -$comparison;
+            // Emptiness OUTSIDE the direction: an em-dash is the absence of a value, not a value that sorts
+            // low, so it stays at the end of the listing whichever way the column was asked to run.
+            $comparison = RowComparator::rankEmpty($left, $right);
+
+            if ($comparison === 0) {
+                $comparison = RowComparator::compare($left, $right);
+
+                if ($direction === 'desc') {
+                    $comparison = -$comparison;
+                }
             }
 
-            return $comparison !== 0 ? $comparison : self::compare($a[$tiebreak] ?? null, $b[$tiebreak] ?? null);
+            return $comparison !== 0
+                ? $comparison
+                : RowComparator::compare($a[$tiebreak] ?? null, $b[$tiebreak] ?? null);
         });
 
         return $rows;
-    }
-
-    private static function compare(mixed $a, mixed $b): int
-    {
-        $aEmpty = $a === null || $a === '';
-        $bEmpty = $b === null || $b === '';
-
-        if ($aEmpty || $bEmpty) {
-            return $aEmpty && $bEmpty ? 0 : ($aEmpty ? 1 : -1);
-        }
-
-        if (is_numeric($a) && is_numeric($b)) {
-            return (float) $a <=> (float) $b;
-        }
-
-        // Natural, case-insensitive: `Bean2` before `Bean10`, and a class list that does not split on case.
-        return strnatcasecmp(self::text($a), self::text($b));
-    }
-
-    private static function text(mixed $value): string
-    {
-        return match (true) {
-            $value === null => '',
-            is_bool($value) => $value ? 'true' : 'false',
-            is_scalar($value) => (string) $value,
-            is_array($value) => (string) json_encode($value, JSON_UNESCAPED_SLASHES),
-            default => get_debug_type($value),
-        };
     }
 }

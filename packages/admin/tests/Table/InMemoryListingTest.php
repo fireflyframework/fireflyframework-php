@@ -70,10 +70,32 @@ it('compares numbers as numbers, not as strings', function () {
     expect(array_column($slice->rows, 'n'))->toBe([9, 20, 100]);
 });
 
+/**
+ * BOTH DIRECTIONS IS THE WHOLE CLAIM, so both are asserted. `null` and `''` render as an em-dash: they are
+ * the absence of an answer, not an answer that sorts low, so they belong at the END either way. A descending
+ * sort that mirrors the empty rank along with the values opens the listing on a page of em-dashes — which is
+ * exactly what the rule exists to prevent, and it looks green if only the ascending half is asserted. The
+ * empty row is added here rather than to `beanRows()` so the page arithmetic the other tests assert over that
+ * fixture keeps saying what it says.
+ */
 it('sorts nulls and empty strings last in both directions', function () {
-    $ascending = InMemoryListing::page(beanRows(), rowQuery(['sort' => 'scope', 'size' => '3']), [], 'class');
+    $rows = [...beanRows(), ['class' => 'App\\Jobs\\Weekly', 'scope' => '', 'order' => 50]];
 
-    expect(array_column($ascending->rows, 'scope'))->toBe(['prototype', 'singleton', 'singleton']);
+    $ascending = InMemoryListing::page($rows, rowQuery(['sort' => 'scope', 'size' => '3']), [], 'class');
+    $descending = InMemoryListing::page($rows, rowQuery(['sort' => 'scope', 'dir' => 'desc', 'size' => '3']), [], 'class');
+    $tail = InMemoryListing::page($rows, rowQuery(['sort' => 'scope', 'dir' => 'desc', 'page' => '2', 'size' => '3']), [], 'class');
+
+    expect(array_column($ascending->rows, 'scope'))->toBe(['prototype', 'singleton', 'singleton'])
+        ->and(array_column($descending->rows, 'scope'))->toBe(['singleton', 'singleton', 'prototype'])
+        // The tiebreak stays ascending under `desc`, so the two singletons keep their class order.
+        ->and(array_column($descending->rows, 'class'))->toBe([
+            'App\\Http\\GreetingController',
+            'App\\Http\\OrderController',
+            'App\\Jobs\\Nightly',
+        ])
+        // …and the em-dashes are on the LAST page of the descending sort, not the first.
+        ->and(array_column($tail->rows, 'class'))->toBe(['App\\Jobs\\Hourly', 'App\\Jobs\\Weekly'])
+        ->and(array_column($tail->rows, 'scope'))->toBe([null, '']);
 });
 
 /**

@@ -7,6 +7,7 @@ namespace Firefly\Admin\Data;
 use BackedEnum;
 use DateTimeInterface;
 use Firefly\Actuator\Introspection\SensitiveValueMasker;
+use Firefly\Admin\RowComparator;
 use Firefly\Data\Repository\CrudRepository;
 use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Page;
@@ -327,8 +328,21 @@ final class DataQueryEngine
         }
 
         if ($sort !== null) {
-            usort($matched, function (array $a, array $b) use ($sort, $direction): int {
-                $comparison = $this->compare($a['values'][$sort] ?? null, $b['values'][$sort] ?? null);
+            // The same ordering the actuator listings use, from the same class — a sort drifts as quietly as
+            // a filter does, and the drift would show as one column header meaning two different orders on
+            // two pages of one dashboard. Emptiness is ranked OUTSIDE the direction flip: an em-dash is the
+            // absence of a value rather than a value that sorts low, so it stays last under `desc` too.
+            usort($matched, static function (array $a, array $b) use ($sort, $direction): int {
+                $left = $a['values'][$sort] ?? null;
+                $right = $b['values'][$sort] ?? null;
+
+                $rank = RowComparator::rankEmpty($left, $right);
+
+                if ($rank !== 0) {
+                    return $rank;
+                }
+
+                $comparison = RowComparator::compare($left, $right);
 
                 return $direction === 'desc' ? -$comparison : $comparison;
             });
@@ -543,24 +557,18 @@ final class DataQueryEngine
         return mb_substr($value, 0, $limit).self::ELLIPSIS;
     }
 
-    /** Null-last ordering, so a nullable column does not sort its empties into the middle of the values. */
+    /**
+     * How `greater than` and `less than` compare on the unpaged path.
+     *
+     * It is RowComparator's value comparison and nothing else — no empty-last rank. The paged sibling of this
+     * predicate is `where(col, '>', ?)` in SQL, where the empty string is simply the smallest string, and a
+     * filter that meant two things depending on whether the repository could page is the drift the search
+     * predicate above already warns about. Where empties go is a question about a LISTING's order, which is
+     * asked in the sort, not here.
+     */
     private function compare(mixed $a, mixed $b): int
     {
-        if ($a === null && $b === null) {
-            return 0;
-        }
-        if ($a === null) {
-            return 1;
-        }
-        if ($b === null) {
-            return -1;
-        }
-
-        if (is_scalar($a) && is_scalar($b)) {
-            return is_numeric($a) && is_numeric($b) ? ($a + 0) <=> ($b + 0) : strnatcasecmp((string) $a, (string) $b);
-        }
-
-        return 0;
+        return RowComparator::compare($a, $b);
     }
 
     /**
