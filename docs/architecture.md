@@ -33,14 +33,22 @@ table, your own bean wins regardless of which provider Laravel instantiated firs
 - **`Firefly\Kernel\Exception\*`** — a product-agnostic typed exception taxonomy.
 - **`Firefly\Kernel\Error\*`** — the RFC-7807 `ErrorResponse` model.
 - **`Firefly\Kernel\Exception\Infrastructure\*`** — the `DataAccessException` family, Spring's ported into PHP. This
-  is what `firefly/data`'s `PersistenceExceptionTranslator` throws: it reads the driver's SQLSTATE and error
-  code and produces `DataIntegrityViolationException`, `DuplicateKeyException`,
-  `OptimisticLockingFailureException`, `CannotAcquireLockException`, `DeadlockLoserDataAccessException`,
-  `QueryTimeoutException`, `BadSqlGrammarException`, `EmptyResultDataAccessException` and the rest. Each
-  carries the HTTP status its failure implies — a duplicate key is the client's 409, an unreachable database
-  the platform's 503 — so `problem+json` needs no per-controller mapping. The translated message is a *fixed
-  sentence*; the driver's own text, which has the statement and its bindings interpolated into it, stays on
-  `previous` for the log and never reaches the wire.
+  is what `firefly/data`'s `PersistenceExceptionTranslator` throws. It reads the driver's own error code first and
+  the SQLSTATE second — `DriverErrorTable` holds both tables, because the same SQLSTATE hides different failures
+  — and produces exactly eight kinds: `DuplicateKeyException`, `DataIntegrityViolationException`,
+  `DeadlockLoserDataAccessException`, `CannotAcquireLockException`, `QueryTimeoutException`,
+  `TransientDataAccessResourceException`, `DataAccessResourceFailureException` and `BadSqlGrammarException`, with a
+  generic `DataAccessException` for a code neither table classifies. It is applied at three seams and nowhere else
+  — every `EloquentRepository` method, `TransactionTemplate::execute()`, and every `#[Transactional]` proxy, which
+  delegates to that template — so a raw `DB::` call outside all three still throws Laravel's `QueryException`
+  exactly as before, and `firefly.data.exception-translation.enabled` turns the translation off wholesale.
+  Two members of the family never come from a driver code at all: `firefly/data` raises `OptimisticLockException`
+  (a subclass of `OptimisticLockingFailureException`) from the `HasOptimisticLock` version check when the guarded
+  `UPDATE` matches zero rows, and `EmptyResultDataAccessException` from `getById()`, the `orElseThrow`-shaped
+  finder. Each member carries the HTTP status its failure implies — a duplicate key is the client's 409, an
+  unreachable database the platform's 503, a missing row its 404 — so `problem+json` needs no per-controller
+  mapping. The translated message is a *fixed sentence*; the driver's own text, which has the statement and its
+  bindings interpolated into it, stays on `previous` for the log and never reaches the wire.
 - **`Firefly\Kernel\Version`** — the CalVer constant every other package agrees with.
   `tests/VersionConsistencyTest.php` checks it against the CHANGELOG's latest heading and the README's
   version badge, so the three cannot drift apart.
@@ -212,8 +220,8 @@ Method security is not a controller feature. `#[PreAuthorize]`, `#[PostAuthorize
 they hold on **any stereotyped bean** — a `#[Service]`, a `#[CommandHandler]`, a `#[Repository]` — wherever
 it is called from, and additionally at the controller dispatcher through `MethodSecurityControllerGuard`.
 The expression evaluator is a closed, no-`eval` whitelist tokenizer: `hasRole`, `hasAnyRole`, `hasAuthority`,
-`hasPermission`, `hasScope`, `isAuthenticated`, `permitAll`, `denyAll` and `#param` references, and nothing
-else.
+`hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll` and
+`#param` references, and nothing else.
 
 Both halves of OAuth2 are **separate installs** that light up more filters in the same chain.
 `firefly/security-oauth2-client` adds `OAuth2AuthorizationRequestRedirectFilter` (`-89`) and

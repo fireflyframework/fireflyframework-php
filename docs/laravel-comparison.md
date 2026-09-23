@@ -245,12 +245,12 @@ authorization server, both, or neither. See [OAuth2 Client](modules/security-oau
 Laravel ships no health-check or metrics endpoint out of the box — most teams either hand-roll one or reach
 for a package. `firefly/actuator` mounts `health`, `info`, `env`, `beans`, `conditions`, `mappings`,
 `loggers`, `scheduledtasks`, `caches` and `configprops` under `/actuator`, secured entirely by ordinary
-`HttpSecurity` configuration and unexposed (404) until named in
-`firefly.management.endpoints.web.exposure.include`; `firefly/observability` adds `metrics`, `prometheus`,
-`process` and `httpexchanges` — a first-party Prometheus-0.0.4 + Micrometer-JSON exposition, HTTP
-auto-instrumentation, and the real `CqrsMetrics` recorder. They are the Spring Boot Actuator and Micrometer
-analogues respectively, both opt-in Composer packages, both secure-by-default, and
-`firefly.management.server.port` puts the whole surface on a second listener. See
+`HttpSecurity` configuration and — apart from `health` and `info`, the two the default include list already
+names — unexposed (404) until added to `firefly.management.endpoints.web.exposure.include`;
+`firefly/observability` adds `metrics`, `prometheus`, `process` and `httpexchanges` — a first-party
+Prometheus-0.0.4 + Micrometer-JSON exposition, HTTP auto-instrumentation, and the real `CqrsMetrics` recorder.
+They are the Spring Boot Actuator and Micrometer analogues respectively, both opt-in Composer packages, both
+secure-by-default, and `firefly.management.server.port` puts the whole surface on a second listener. See
 [Actuator](modules/actuator.md) and [Observability](modules/observability.md).
 
 ## Tracing and logs: Telescope vs. a propagated trace

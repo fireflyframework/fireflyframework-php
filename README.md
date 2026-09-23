@@ -276,7 +276,8 @@ once and compiled to a cached manifest — never re-reflected on a production re
 ### Secure and Production-Ready by Default
 
 `firefly/security`'s HTTP rule chain is **deny-by-default**: an unmatched URL is denied, not silently allowed.
-`firefly/actuator` ships health/info/metrics endpoints that are **unexposed (404) until you opt in**. A cached
+`firefly/actuator` exposes `health` and `info` and **nothing else**: every other endpoint it ships answers
+**404 until you name it** in `firefly.management.endpoints.web.exposure.include`. A cached
 `firefly:cache` boot is the *supported* way to run in production — reflection only ever happens once, at build
 time, never per request.
 
@@ -798,9 +799,10 @@ rules hold on the controller dispatcher and on **any stereotyped bean**, through
 `#[Transactional]` already used — so a `#[Service]` method carrying `#[PreAuthorize]`, `#[PostAuthorize]`,
 `#[PreFilter]` or `#[PostFilter]` is guarded wherever it is called from, and a refusal never opens a
 transaction. The expression evaluator is a closed, no-`eval` whitelist tokenizer (`hasRole`, `hasAnyRole`,
-`hasAuthority`, `hasPermission`, `hasScope`, `isAuthenticated`, `permitAll`, `denyAll`, `#param` references
-only). **Highlights:** the deny-by-default `HttpSecurity` URL DSL, form/basic/session login with remember-me,
-`JwtService`/OAuth2 resource server, CSRF + security headers — see [Security](docs/modules/security.md).
+`hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`,
+`denyAll`, `#param` references only). **Highlights:** the deny-by-default `HttpSecurity` URL DSL,
+form/basic/session login with remember-me, `JwtService`/OAuth2 resource server, CSRF + security headers — see
+[Security](docs/modules/security.md).
 
 ### OAuth2 — signing in with a provider
 
