@@ -229,6 +229,8 @@ The pieces, all in `Firefly\Data\Proxy`:
   sources and renders the generator's inputs; `InterceptorRegistry` resolves each advice's interceptor bean at wrap
   time, degrading to a `PassThroughInterceptor` when that capability is switched off.
 
+![One proxy per bean: every AdviceSource contributes rows to one compiled ProxyPlan, and a call then runs method security at advice order 100 before the transaction at order 1000](../assets/diagrams/method-interceptor-chain.svg)
+
 The plan is resolved like every manifest: the compiled `proxy-plan.php`; else — a cache from before that file
 existed, holding `transactional.php` and its proxies but no plan — a transactional-only plan bridged from the
 `TransactionalManifest` that loaded it (a cached app trusts its artifacts and never falls back to the scan; an

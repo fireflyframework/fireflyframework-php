@@ -223,17 +223,24 @@ Un bean `#[Transactional]` nunca se llama directamente. `TransactionalBeanPostPr
 ```php
 final class TransferService__FireflyTransactionalProxy extends TransferService
 {
+    private \Firefly\Data\Proxy\MethodInterceptor $__fireflyTxInterceptor;
+
     public function transfer(int $amount): int
     {
-        return $this->__fireflyTxInterceptor->run(
-            fn () => parent::transfer($amount),
-            self::__fireflyTxDescriptor('transfer'),
-        );
+        return (new \Firefly\Data\Proxy\MethodInvocation(
+            $this,
+            TransferService::class,
+            'transfer',
+            [$amount],
+            [$this->__fireflyTxInterceptor],
+            [\Firefly\Data\Transaction\TransactionalDescriptor::class => self::__fireflyTxDescriptor('transfer')],
+            fn (array $__fireflyArgs) => parent::transfer(...$__fireflyArgs),
+        ))->proceed();
     }
 }
 ```
 
-— enrutando la llamada real a través de `TransactionInterceptor::run()` (que delega directamente en `TransactionTemplate::execute()`) antes de caer hacia `parent::`. Una prueba capstone real confirma que el intercambio realmente ocurrió — la clase del bean resuelto **no** es en absoluto la clase de servicio plana:
+— entregando la llamada a `MethodInvocation::proceed()`, que recorre los interceptores que el plan compilado nombró para ese método y termina en la closure terminal que llama a `parent::`. Para un bean cuyo único advice es `#[Transactional]` esa lista tiene un solo eslabón: `TransactionInterceptor::invoke()` lee el `TransactionalDescriptor` horneado desde la invocación y le pasa `fn () => $invocation->proceed()` a su inalterado `run()`, que delega directamente en `TransactionTemplate::execute()`. Una prueba capstone real confirma que el intercambio realmente ocurrió — la clase del bean resuelto **no** es en absoluto la clase de servicio plana:
 
 ```php
 it('proxies the #[Service] and rolls back BOTH inserts when the method throws', function () {
@@ -255,6 +262,14 @@ it('proxies the #[Service] and rolls back BOTH inserts when the method throws', 
 
 !!! warning "La auto-invocación esquiva el proxy"
     Un método que llama a `$this->otroMetodo()` desde *dentro* de la clase proxificada llama directamente a través de `parent::`, saltándose `__fireflyTxInterceptor` por completo — la misma limitación bien conocida de Spring. Esto es exactamente por qué `AccountService::outerWithNested()` de arriba no simplemente llama a algún hipotético método `$this->innerNested()` — en su lugar pasa por el **`TransactionTemplate` inyectado**, que es la vía de escape correcta para obtener semántica transaccional en una unidad de trabajo interna desde dentro de otro método de la misma instancia.
+
+---
+
+## Un proxy, muchos advices
+
+Ese proxy ya no va solo de transacciones. Cualquier paquete puede aportar un tipo de advice publicando un `#[Component]` que implemente `AdviceSource` — `advice()` nombra su bean interceptor, su clase descriptora y un **orden**; `scan()` devuelve las filas que reclama; `render()` convierte una fila de vuelta en el literal PHP que la clase generada hornea dentro. `ProxyPlanner` fusiona las filas de cada fuente en un único `ProxyPlan`, aplicando las fuentes en `Advice::order`, así que la lista de advices de cada método queda de fuera hacia dentro por construcción. La clase generada conserva el nombre que siempre ha tenido, `{Target}__FireflyTransactionalProxy`, pero ahora declara una propiedad interceptora privada y una fábrica estática de descriptores horneada **por cada tipo de advice** que la clase usa, y `MethodInvocation::proceed()` recorre esa lista antes de llegar a la closure terminal `fn (array $__fireflyArgs) => parent::m(...$__fireflyArgs)`. Un `Advice` de orden menor se ejecuta *más afuera*: el advice de `MethodSecurityAdviceSource` es `100` y el transaccional es `1000`, así que un rechazo se lanza antes de que llegue a abrirse una transacción. Un advice cuyo bean interceptor no está presente hace fallar el arranque con una `ConfigurationException` salvo que haya declarado `inertWhenUnbound` — el de seguridad lo hace, porque «las anotaciones son inertes hasta que `firefly.security.enabled` esté activo» es su estado documentado — y entonces `InterceptorRegistry` le entrega al proxy un `PassThroughInterceptor` en su lugar.
+
+::: figure art/figures/method-interceptor-chain.svg | Figura 9.1 — Cada AdviceSource aporta filas a un único ProxyPlan compilado; una llamada ejecuta entonces la seguridad de método en el orden de advice 100 antes que la transacción en 1000.
 
 ---
 

@@ -223,17 +223,24 @@ A `#[Transactional]` bean is never called directly. `TransactionalBeanPostProces
 ```php
 final class TransferService__FireflyTransactionalProxy extends TransferService
 {
+    private \Firefly\Data\Proxy\MethodInterceptor $__fireflyTxInterceptor;
+
     public function transfer(int $amount): int
     {
-        return $this->__fireflyTxInterceptor->run(
-            fn () => parent::transfer($amount),
-            self::__fireflyTxDescriptor('transfer'),
-        );
+        return (new \Firefly\Data\Proxy\MethodInvocation(
+            $this,
+            TransferService::class,
+            'transfer',
+            [$amount],
+            [$this->__fireflyTxInterceptor],
+            [\Firefly\Data\Transaction\TransactionalDescriptor::class => self::__fireflyTxDescriptor('transfer')],
+            fn (array $__fireflyArgs) => parent::transfer(...$__fireflyArgs),
+        ))->proceed();
     }
 }
 ```
 
-— routing the real call through `TransactionInterceptor::run()` (which delegates straight to `TransactionTemplate::execute()`) before falling through to `parent::`. A real capstone test confirms the swap actually happened — the resolved bean's class is **not** the plain service class at all:
+— handing the call to `MethodInvocation::proceed()`, which walks the interceptors the compiled plan named for this method and finishes in the terminal closure that calls `parent::`. For a bean whose only advice is `#[Transactional]` that list holds one link: `TransactionInterceptor::invoke()` reads the baked `TransactionalDescriptor` off the invocation and passes `fn () => $invocation->proceed()` to its unchanged `run()`, which delegates straight to `TransactionTemplate::execute()`. A real capstone test confirms the swap actually happened — the resolved bean's class is **not** the plain service class at all:
 
 ```php
 it('proxies the #[Service] and rolls back BOTH inserts when the method throws', function () {
@@ -255,6 +262,14 @@ it('proxies the #[Service] and rolls back BOTH inserts when the method throws', 
 
 !!! warning "Self-invocation bypasses the proxy"
     A method calling `$this->otherMethod()` from *inside* the proxied class calls straight through `parent::`, skipping `__fireflyTxInterceptor` entirely — the same well-known Spring limitation. This is exactly why `AccountService::outerWithNested()` above doesn't just call some hypothetical `$this->innerNested()` method — it goes through the **injected `TransactionTemplate`** instead, which is the correct escape hatch for getting transactional semantics on an inner unit of work from within another method on the same instance.
+
+---
+
+## One proxy, many advices
+
+That proxy is no longer only about transactions. Any package can contribute a kind of advice by shipping one `#[Component]` implementing `AdviceSource` — `advice()` names its interceptor bean, its descriptor class and an **order**; `scan()` returns the rows it claims; `render()` turns a row back into the PHP literal the generated class bakes in. `ProxyPlanner` merges every source's rows into one `ProxyPlan`, applying the sources in `Advice::order`, so each method's advice list is outermost-first by construction. The generated class keeps the name it has always had, `{Target}__FireflyTransactionalProxy`, but it now declares one private interceptor property and one baked static descriptor factory **per advice kind** the class uses, and `MethodInvocation::proceed()` walks that list before reaching the terminal `fn (array $__fireflyArgs) => parent::m(...$__fireflyArgs)`. Lower `Advice` order runs *outer*: `MethodSecurityAdviceSource`'s advice is `100` and the transactional one is `1000`, so a refusal is thrown before a transaction is ever opened. An advice whose interceptor bean is absent fails the boot with a `ConfigurationException` unless it declared `inertWhenUnbound` — security's does, because "annotations are inert until `firefly.security.enabled` is on" is its documented state — and `InterceptorRegistry` then hands the proxy a `PassThroughInterceptor` in its place.
+
+::: figure art/figures/method-interceptor-chain.svg | Figure 9.1 — Every AdviceSource contributes rows to one compiled ProxyPlan; a call then runs method security at advice order 100 before the transaction at 1000.
 
 ---
 

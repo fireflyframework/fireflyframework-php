@@ -27,12 +27,12 @@ use Firefly\Security\Web\Settings\FormLoginSettings;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Filter\RequestContextFilter;
 
-it('ships seven well-formed, referenced SVG diagrams', function () {
+it('ships eight well-formed, referenced SVG diagrams', function () {
     $root = dirname(__DIR__);
     $svgs = [
         'boot-pipeline.svg', 'di-autoconfig.svg', 'request-lifecycle.svg',
         'outbox-flow.svg', 'cqrs-eda-bridge.svg', 'security-filter-chain.svg',
-        'oauth2-authorization-code.svg',
+        'oauth2-authorization-code.svg', 'method-interceptor-chain.svg',
     ];
     $docsBlob = '';
     foreach (glob($root.'/docs/**/*.md') ?: [] as $md) {
@@ -64,7 +64,7 @@ it('ships seven well-formed, referenced SVG diagrams', function () {
             ->and($xml->desc->count())->toBe(1, "{$name} has no single <desc>");
     }
 
-    // The list above is exhaustive on purpose: an eighth SVG dropped into the directory without a line here
+    // The list above is exhaustive on purpose: a ninth SVG dropped into the directory without a line here
     // would ship unchecked — no well-formedness, no <title>/<desc>, no page embedding it, and no provenance
     // row (see the test below). Comparing the two sets is what turns adding a diagram into a deliberate act.
     $shipped = array_map('basename', glob($root.'/docs/assets/diagrams/*.svg') ?: []);
