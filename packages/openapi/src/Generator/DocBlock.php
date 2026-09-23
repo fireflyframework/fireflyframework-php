@@ -47,12 +47,15 @@ final readonly class DocBlock
      * which is a change to a sentence nobody wrote in two parts.
      *
      * @param  array<string, list<string>>  $tags  tag name (without `@`) => each occurrence's raw text
+     * @param  list<array{0: string, 1: string}>  $sequence  the same tags as [name, text] pairs, in source
+     *                                                       order — which $tags loses across two tag names
      */
     private function __construct(
         public string $body,
         public string $summary,
         public string $description,
         public array $tags,
+        private array $sequence = [],
     ) {}
 
     public static function empty(): self
@@ -70,12 +73,12 @@ final readonly class DocBlock
             return self::empty();
         }
 
-        [$raw, $tags] = self::split(self::lines($comment));
+        [$raw, $tags, $sequence] = self::split(self::lines($comment));
 
         $paragraphs = self::paragraphs($raw);
         [$summary, $description] = self::sentence($paragraphs);
 
-        return new self(implode("\n\n", $paragraphs), $summary, $description, $tags);
+        return new self(implode("\n\n", $paragraphs), $summary, $description, $tags, $sequence);
     }
 
     /**
@@ -180,6 +183,56 @@ final readonly class DocBlock
     }
 
     /**
+     * The class's template parameter NAMES, in the order a type argument binds to them.
+     *
+     * Order is the whole point, and it is why this reads the source sequence rather than $tags: Laravel's
+     * paginators declare `@template TKey` and then `@template-covariant TValue`, two different tag names,
+     * and `LengthAwarePaginator<int, Order>` binds `int` to the FIRST of them whichever spelling it used.
+     * A tool-prefixed spelling (`@phpstan-template`) replaces the plain ones when present, as PHPStan itself
+     * reads them; the variance and the `of` bound are not part of the name and are dropped.
+     *
+     * @return list<string>
+     */
+    public function templates(): array
+    {
+        $plain = [];
+        $prefixed = [];
+
+        foreach ($this->sequence as [$tag, $text]) {
+            if (preg_match('/^(?:(phpstan|psalm)-)?template(?:-covariant|-contravariant)?$/', $tag, $matches) !== 1) {
+                continue;
+            }
+            if (preg_match('/^\s*([A-Za-z_]\w*)/', $text, $name) !== 1) {
+                continue;
+            }
+
+            if (($matches[1] ?? '') === '') {
+                $plain[] = $name[1];
+            } else {
+                $prefixed[] = $name[1];
+            }
+        }
+
+        return $prefixed !== [] ? $prefixed : $plain;
+    }
+
+    /**
+     * The `@extends` line — the parent class instantiated with this class's own arguments — raw, for DocType
+     * to parse. A tool-prefixed spelling wins over the plain one, as it does for templates().
+     */
+    public function extendsLine(): ?string
+    {
+        foreach (['phpstan-extends', 'psalm-extends', 'template-extends', 'extends'] as $tag) {
+            $lines = $this->tags[$tag] ?? [];
+            if ($lines !== []) {
+                return trim($lines[0]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * `@param` lines as member name => description, dropping the type expression and any line with no prose.
      *
      * The name is found by scanning for the first `$identifier` rather than by splitting on whitespace,
@@ -240,18 +293,20 @@ final readonly class DocBlock
      * at the one place a single-line value is actually needed.
      *
      * @param  list<string>  $lines
-     * @return array{string, array<string, list<string>>}
+     * @return array{string, array<string, list<string>>, list<array{0: string, 1: string}>}
      */
     private static function split(array $lines): array
     {
         $body = [];
         $tags = [];
+        $sequence = [];
         $current = null;
 
         foreach ($lines as $line) {
             if (preg_match('/^@([A-Za-z][\w-]*)\s*(.*)$/', $line, $matches) === 1) {
                 $current = $matches[1];
                 $tags[$current][] = $matches[2];
+                $sequence[] = [$current, $matches[2]];
 
                 continue;
             }
@@ -266,7 +321,7 @@ final readonly class DocBlock
             $tags[$current][$last] = rtrim($tags[$current][$last]."\n".$line);
         }
 
-        return [trim(implode("\n", $body)), $tags];
+        return [trim(implode("\n", $body)), $tags, $sequence];
     }
 
     /**

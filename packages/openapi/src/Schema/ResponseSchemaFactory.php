@@ -51,13 +51,37 @@ use ReflectionProperty;
 final class ResponseSchemaFactory
 {
     /**
+     * Laravel's collection contract — Collection, LazyCollection, Eloquent's Collection. Named rather than
+     * imported: illuminate/collections arrives with illuminate/support, but is_a() on a string is all this
+     * needs and costs nothing when the class is absent.
+     */
+    private const string ENUMERABLE = 'Illuminate\Support\Enumerable';
+
+    /**
+     * Generic instantiations currently being built INLINE (see schema()), so one that refers to itself
+     * degrades to the plain component instead of expanding forever. Empty between calls.
+     *
+     * @var array<string, true>
+     */
+    private array $building = [];
+
+    /**
      * The fragment that stands for $class in a response position: an inline one for the types that have a
      * scalar spelling (a backed enum, a DateTimeInterface), a `$ref` for anything reflectable, and the
      * any-value schema for a class this process cannot look at.
      *
+     * GENERIC INSTANTIATIONS. $arguments are the schemas of a generic spelling's type arguments — the `Order`
+     * in `Page<Order>` — and they are bound to the class's own `@template` parameters, so the `list<T>` its
+     * constructor documents becomes a list of Order. An instantiation gets a component of its own, named the
+     * way springdoc names one (`PageOrder`), whenever every argument has a name to give it; one whose
+     * arguments have none (`Page<list<Order>>`) is written in place rather than under a name no reader could
+     * predict; and one whose arguments say nothing (`Page<mixed>`) is simply the plain component. A Laravel
+     * Collection is not a component at all: it serialises as its elements.
+     *
+     * @param  list<array<string, mixed>>  $arguments
      * @return array<string, mixed>
      */
-    public function schema(string $class, SchemaRegistry $registry): array
+    public function schema(string $class, SchemaRegistry $registry, array $arguments = []): array
     {
         $inline = TypeSchema::for($class);
 
@@ -65,30 +89,63 @@ final class ResponseSchemaFactory
             return $inline;
         }
 
-        return ['$ref' => $this->ref($class, $registry)];
+        if (is_a($class, self::ENUMERABLE, true)) {
+            return $this->collection($arguments);
+        }
+
+        /** @var class-string $class */
+        $reflection = new ReflectionClass($class);
+        $bindings = $this->bind($reflection, $arguments);
+
+        if (array_filter($bindings, static fn (array $schema): bool => $schema !== []) === []) {
+            return ['$ref' => $this->ref($class, $registry)];
+        }
+
+        $names = $this->argumentNames($bindings);
+        if ($names !== null) {
+            return ['$ref' => $registry->refSpecialised(
+                $class,
+                implode('', array_map(ucfirst(...), $names)),
+                fn (): array => $this->build($reflection, $registry, $bindings, $reflection->getShortName().'<'.implode(', ', $names).'>'),
+            )];
+        }
+
+        $key = $class.'<'.json_encode($bindings).'>';
+        if (isset($this->building[$key])) {
+            return ['$ref' => $this->ref($class, $registry)];
+        }
+
+        $this->building[$key] = true;
+        try {
+            return $this->build($reflection, $registry, $bindings, $reflection->getShortName());
+        } finally {
+            unset($this->building[$key]);
+        }
     }
 
     /** @return string the `$ref` pointer to this class's component schema */
     public function ref(string $class, SchemaRegistry $registry): string
     {
-        return $registry->ref($class, fn (): array => $this->build($class, $registry));
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function build(string $class, SchemaRegistry $registry): array
-    {
         /** @var class-string $class */
         $reflection = new ReflectionClass($class);
 
-        $schema = $this->declaredShape($reflection, $registry) ?? $this->reflectedShape($reflection, $registry);
+        return $registry->ref($class, fn (): array => $this->build($reflection, $registry, $this->bind($reflection, []), $reflection->getShortName()));
+    }
+
+    /**
+     * @param  ReflectionClass<object>  $reflection
+     * @param  array<string, array<string, mixed>>  $bindings  the class's template parameters, bound
+     * @return array<string, mixed>
+     */
+    private function build(ReflectionClass $reflection, SchemaRegistry $registry, array $bindings, string $title): array
+    {
+        $schema = $this->declaredShape($reflection, $registry, $bindings) ?? $this->reflectedShape($reflection, $registry, $bindings);
 
         $description = DocBlock::parse($reflection->getDocComment())->prose();
 
         return [
-            'title' => $reflection->getShortName(),
-            'description' => $description === '' ? 'Response payload serialised from '.$class.'.' : $description,
+            'title' => $title,
+            'description' => $description === '' ? 'Response payload serialised from '.$reflection->getName().'.' : $description,
             ...$schema,
         ];
     }
@@ -97,21 +154,24 @@ final class ResponseSchemaFactory
      * The shape a JsonSerializable class states for itself, when it states one worth having.
      *
      * @param  ReflectionClass<object>  $class
+     * @param  array<string, array<string, mixed>>  $bindings
      * @return array<string, mixed>|null
      */
-    private function declaredShape(ReflectionClass $class, SchemaRegistry $registry): ?array
+    private function declaredShape(ReflectionClass $class, SchemaRegistry $registry, array $bindings): ?array
     {
         if (! $class->implementsInterface(JsonSerializable::class) || ! $class->hasMethod('jsonSerialize')) {
             return null;
         }
 
-        $line = DocBlock::parse($class->getMethod('jsonSerialize')->getDocComment())->returnLine();
+        $method = $class->getMethod('jsonSerialize');
+        $line = DocBlock::parse($method->getDocComment())->returnLine();
 
         if ($line === null) {
             return null;
         }
 
-        [$schema] = DocType::split($line, fn (string $c): array => $this->schema($c, $registry), $class);
+        $declaring = $method->getDeclaringClass();
+        [$schema] = DocType::split($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $this->scope($class, $bindings, $declaring, $registry));
 
         return $this->informative($schema) ? $schema : null;
     }
@@ -141,9 +201,10 @@ final class ResponseSchemaFactory
      * The public properties, which is exactly what `json_encode` walks for a plain object.
      *
      * @param  ReflectionClass<object>  $class
+     * @param  array<string, array<string, mixed>>  $bindings
      * @return array<string, mixed>
      */
-    private function reflectedShape(ReflectionClass $class, SchemaRegistry $registry): array
+    private function reflectedShape(ReflectionClass $class, SchemaRegistry $registry, array $bindings): array
     {
         $constructor = $class->getConstructor();
         $constructorDoc = DocBlock::parse($constructor?->getDocComment());
@@ -172,7 +233,12 @@ final class ResponseSchemaFactory
                 ? MemberDoc::forParameter($parameters[$name], $constructorDoc)
                 : MemberDoc::forProperty($property);
 
-            $properties[$name] = $doc->apply($this->property($property, $promotedTypes[$name] ?? null, $class, $registry));
+            // A member is read in the scope of the class that DECLARES it — that file's imports and that
+            // class's template parameters — which for an inherited one is an ancestor, not $class.
+            $declaring = $property->getDeclaringClass();
+            $templates = $this->scope($class, $bindings, $declaring, $registry);
+
+            $properties[$name] = $doc->apply($this->property($property, $promotedTypes[$name] ?? null, $declaring, $templates, $registry));
             $required[] = $name;
         }
 
@@ -194,15 +260,16 @@ final class ResponseSchemaFactory
      * `int` property is a comment that has drifted from the code, and the code is what serialises.
      *
      * @param  ReflectionClass<object>  $declaring
+     * @param  array<string, array<string, mixed>>  $templates
      * @return array<string, mixed>
      */
-    private function property(ReflectionProperty $property, ?string $promotedType, ReflectionClass $declaring, SchemaRegistry $registry): array
+    private function property(ReflectionProperty $property, ?string $promotedType, ReflectionClass $declaring, array $templates, SchemaRegistry $registry): array
     {
         $expression = DocBlock::parse($property->getDocComment())->varType() ?? $promotedType;
 
         $schema = null;
         if ($expression !== null) {
-            $schema = DocType::schema($expression, fn (string $c): array => $this->schema($c, $registry), $declaring);
+            $schema = DocType::schema($expression, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $declaring, $templates);
         }
 
         if ($this->informative($schema)) {
@@ -213,5 +280,109 @@ final class ResponseSchemaFactory
             $property->getType(),
             fn (string $type): array => TypeSchema::for($type) ?? ['$ref' => $this->ref($type, $registry)],
         );
+    }
+
+    /**
+     * A collection serialises as its elements: a list, or — keyed by anything but integers — a map.
+     * `Collection<int, Order>` is the list of orders; `Collection<string, Money>` an object of Money.
+     *
+     * @param  list<array<string, mixed>>  $arguments
+     * @return array<string, mixed>
+     */
+    private function collection(array $arguments): array
+    {
+        $keyed = count($arguments) >= 2;
+        $value = $arguments[$keyed ? 1 : 0] ?? [];
+        $key = $keyed ? ($arguments[0]['type'] ?? null) : 'integer';
+
+        if ($key !== 'integer' && $key !== ['integer']) {
+            return $value === [] ? ['type' => 'object'] : ['type' => 'object', 'additionalProperties' => $value];
+        }
+
+        return $value === [] ? ['type' => 'array'] : ['type' => 'array', 'items' => $value];
+    }
+
+    /**
+     * The class's template parameters paired with the arguments of an instantiation, in declaration order.
+     * A parameter no argument reaches is bound to the any-value schema, which is what an unbound one means —
+     * and binding it at all is what keeps `T` from being looked up as a class named T.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  list<array<string, mixed>>  $arguments
+     * @return array<string, array<string, mixed>>
+     */
+    private function bind(ReflectionClass $class, array $arguments): array
+    {
+        $bindings = [];
+
+        foreach (DocBlock::parse($class->getDocComment())->templates() as $position => $name) {
+            $bindings[$name] = $arguments[$position] ?? [];
+        }
+
+        return $bindings;
+    }
+
+    /**
+     * The template scope of $declaring, given $class's bindings: $class's own when they are the same class,
+     * otherwise each ancestor's in turn, through the arguments every `@extends` line up the chain passes to
+     * its parent. `final class OrderEnvelope extends Envelope` with `@extends Envelope<Order>` is what makes
+     * Envelope's `TData $data` an Order.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @param  ReflectionClass<object>  $declaring
+     * @return array<string, array<string, mixed>>
+     */
+    private function scope(ReflectionClass $class, array $bindings, ReflectionClass $declaring, SchemaRegistry $registry): array
+    {
+        $current = $class;
+
+        while ($current->getName() !== $declaring->getName()) {
+            $parent = $current->getParentClass();
+            if ($parent === false) {
+                return [];
+            }
+
+            $line = DocBlock::parse($current->getDocComment())->extendsLine();
+            $arguments = $line === null ? [] : (DocType::genericArguments($line, fn (string $c, array $arguments = []): array => $this->schema($c, $registry, $arguments), $current, $bindings) ?? []);
+
+            $bindings = $this->bind($parent, $arguments);
+            $current = $parent;
+        }
+
+        return $bindings;
+    }
+
+    /**
+     * What each bound argument is CALLED, for the name of the instantiation's component — its own component
+     * name, or its JSON type for a scalar — or null when any of them has no name worth building one from.
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return list<string>|null
+     */
+    private function argumentNames(array $bindings): ?array
+    {
+        $names = [];
+
+        foreach ($bindings as $schema) {
+            $ref = $schema['$ref'] ?? null;
+
+            if (is_string($ref) && count($schema) === 1) {
+                $names[] = substr($ref, strrpos($ref, '/') + 1);
+
+                continue;
+            }
+
+            $type = $schema['type'] ?? null;
+            if (count($schema) === 1 && in_array($type, ['string', 'integer', 'number', 'boolean'], true)) {
+                $names[] = $type;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        return $names;
     }
 }

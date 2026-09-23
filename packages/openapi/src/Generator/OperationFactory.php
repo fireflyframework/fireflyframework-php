@@ -376,7 +376,7 @@ final class OperationFactory
         // 'list<Shipment>')]` means whatever `Shipment` means in that file's imports, exactly as it would in
         // a docblock three lines below. Without it only a fully-qualified name would resolve, which is the
         // one spelling nobody writes.
-        $schema = DocType::schema($declared->type, fn (string $class): array => $this->responses->schema($class, $registry), $declaring)
+        $schema = DocType::schema($declared->type, fn (string $class, array $arguments = []): array => $this->responses->schema($class, $registry, $arguments), $declaring)
             ?? TypeSchema::for($declared->type)
             ?? ['type' => 'object'];
 
@@ -525,7 +525,7 @@ final class OperationFactory
 
         [$schema, $prose] = DocType::split(
             $line,
-            fn (string $class): array => $this->responses->schema($class, $registry),
+            fn (string $class, array $arguments = []): array => $this->responses->schema($class, $registry, $arguments),
             new ReflectionClass($method->getDeclaringClass()->getName()),
         );
 

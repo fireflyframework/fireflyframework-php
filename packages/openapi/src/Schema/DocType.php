@@ -31,11 +31,16 @@ use ReflectionClass;
  * (the same trade DocBlock's docblock explains for prose).
  *
  * WHAT IT DELIBERATELY DOES NOT DO. It does not verify that the expression matches the code — PHPStan does
- * that, and doing it again here would be a second, weaker implementation of a job already done. It does not
- * resolve generics over user classes (`Page<Order>` documents as `Page`), because a schema cannot express a
- * type parameter and inventing `PageOfOrder` would mint component names no source file contains. And an
+ * that, and doing it again here would be a second, weaker implementation of a job already done. And an
  * expression it cannot make anything of yields NULL rather than a guess, so every caller falls back to the
  * declared PHP type instead of publishing a shape derived from a misread comment.
+ *
+ * GENERICS OVER A CLASS ARE NOT RESOLVED HERE, but they are no longer dropped either. `Page<Order>` hands the
+ * class AND its argument schemas to the caller's resolver, which is what decides that a Laravel Collection is
+ * a list and that a Page instantiation is a component of its own. It used to pass the class alone, so every
+ * `Page<X>` in a codebase documented as one `Page` whose items were anything — see ResponseSchemaFactory.
+ * The inverse direction is here: inside a generic class, its template parameters (`T`) resolve to whatever
+ * the caller bound them to.
  *
  * NULL VERSUS THE EMPTY SCHEMA is the distinction the whole class turns on. `[]` is JSON Schema's "any
  * value", a real answer that `mixed` genuinely deserves. `null` here means "this expression told me
@@ -47,28 +52,64 @@ final class DocType
     private int $at = 0;
 
     /**
-     * @param  Closure(string): (array<string, mixed>|null)  $schemaForClass  a resolved FQCN to the fragment
-     *                                                                        that stands for it, normally a
-     *                                                                        `$ref`; null when it has none
+     * @param  Closure(string, list<array<string, mixed>>): (array<string, mixed>|null)  $schemaForClass  a
+     *                                                                                                    resolved FQCN, and the argument schemas
+     *                                                                                                    of a generic spelling of it, to the
+     *                                                                                                    fragment that stands for it; null when
+     *                                                                                                    it has none
      * @param  ReflectionClass<object>|null  $context  the class the expression was written inside, which is
      *                                                 what makes `OrderLine` resolvable at all
+     * @param  array<string, array<string, mixed>>  $templates  the context's template parameters, bound — a
+     *                                                          name here shadows any class of the same name,
+     *                                                          as it does for PHPStan
      */
     private function __construct(
         private readonly string $source,
         private readonly Closure $schemaForClass,
         private readonly ?ReflectionClass $context,
+        private readonly array $templates = [],
     ) {}
 
     /**
      * The schema for a type expression, or null when it says nothing useful.
      *
-     * @param  Closure(string): (array<string, mixed>|null)  $schemaForClass
+     * @param  Closure(string, list<array<string, mixed>>): (array<string, mixed>|null)  $schemaForClass
      * @param  ReflectionClass<object>|null  $context
+     * @param  array<string, array<string, mixed>>  $templates
      * @return array<string, mixed>|null
      */
-    public static function schema(string $expression, Closure $schemaForClass, ?ReflectionClass $context = null): ?array
+    public static function schema(string $expression, Closure $schemaForClass, ?ReflectionClass $context = null, array $templates = []): ?array
     {
-        return (new self($expression, $schemaForClass, $context))->parseAll();
+        return (new self($expression, $schemaForClass, $context, $templates))->parseAll();
+    }
+
+    /**
+     * The argument schemas of a generic spelling — the `Parcel` in `Envelope<Parcel>` — or null when the
+     * expression is not one. This is how an `@extends` line binds a parent's template parameters: the class
+     * named is known already, and what matters is what it was instantiated WITH.
+     *
+     * @param  Closure(string, list<array<string, mixed>>): (array<string, mixed>|null)  $schemaForClass
+     * @param  ReflectionClass<object>|null  $context
+     * @param  array<string, array<string, mixed>>  $templates
+     * @return list<array<string, mixed>>|null
+     */
+    public static function genericArguments(string $expression, Closure $schemaForClass, ?ReflectionClass $context = null, array $templates = []): ?array
+    {
+        $parser = new self($expression, $schemaForClass, $context, $templates);
+
+        if ($parser->name() === '') {
+            return null;
+        }
+
+        $parser->spaces();
+        if ($parser->peek() !== '<') {
+            return null;
+        }
+        $parser->at++;
+
+        $arguments = $parser->arguments('>');
+
+        return $arguments === null ? null : array_map(static fn (?array $argument): array => $argument ?? [], $arguments);
     }
 
     /**
@@ -80,13 +121,14 @@ final class DocType
      * prose. That prose is worth recovering rather than discarding — it is the only description a response
      * has that an author actually wrote.
      *
-     * @param  Closure(string): (array<string, mixed>|null)  $schemaForClass
+     * @param  Closure(string, list<array<string, mixed>>): (array<string, mixed>|null)  $schemaForClass
      * @param  ReflectionClass<object>|null  $context
+     * @param  array<string, array<string, mixed>>  $templates
      * @return array{0: array<string, mixed>|null, 1: string}
      */
-    public static function split(string $line, Closure $schemaForClass, ?ReflectionClass $context = null): array
+    public static function split(string $line, Closure $schemaForClass, ?ReflectionClass $context = null, array $templates = []): array
     {
-        $parser = new self($line, $schemaForClass, $context);
+        $parser = new self($line, $schemaForClass, $context, $templates);
         $schema = $parser->parseUnion();
 
         return [$schema, trim(substr($line, $parser->at))];
@@ -274,18 +316,25 @@ final class DocType
         };
     }
 
-    /** @return array<string, mixed>|null */
-    private function classNamed(string $name): ?array
+    /**
+     * @param  list<array<string, mixed>>  $arguments  a generic spelling's argument schemas; empty for a bare name
+     * @return array<string, mixed>|null
+     */
+    private function classNamed(string $name, array $arguments = []): ?array
     {
+        if (array_key_exists($name, $this->templates)) {
+            return $this->templates[$name];
+        }
+
         $lower = strtolower($name);
 
         if ($lower === 'self' || $lower === 'static' || $lower === '$this') {
-            return $this->context === null ? null : ($this->schemaForClass)($this->context->getName());
+            return $this->context === null ? null : ($this->schemaForClass)($this->context->getName(), $arguments);
         }
 
         $resolved = ClassNames::resolve($name, $this->context);
 
-        return $resolved === null ? null : ($this->schemaForClass)($resolved);
+        return $resolved === null ? null : ($this->schemaForClass)($resolved, $arguments);
     }
 
     /**
@@ -340,11 +389,14 @@ final class DocType
             return $schema;
         }
 
-        // A user generic (`Page<Order>`, `Collection<int, Order>` over an app's own class). The type
-        // parameters are dropped: a component schema has no way to say "Page of Order" without minting a
-        // name — `PageOfOrder` — that appears in no source file and would change the moment a second
-        // instantiation showed up.
-        return $this->classNamed($name);
+        // A generic over a class (`Page<Order>`, a fully-qualified `Collection<int, Order>`): the resolver
+        // gets the arguments too, and decides what the instantiation means — see the class docblock.
+        $bound = [];
+        foreach ($arguments as $argument) {
+            $bound[] = $argument ?? [];
+        }
+
+        return $this->classNamed($name, $bound);
     }
 
     /**

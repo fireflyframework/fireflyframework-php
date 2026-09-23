@@ -43,7 +43,27 @@ final class SchemaRegistry
      */
     public function ref(string $class, Closure $build): string
     {
-        $name = $this->nameFor($class);
+        return $this->claim($class, $this->shortName($class), str_replace('\\', '.', $class), $build);
+    }
+
+    /**
+     * A component for one INSTANTIATION of a generic class — `Page<Order>` — named the way springdoc names
+     * it: the class's short name followed by its arguments' (`PageOrder`). Keyed apart from the plain class,
+     * so `Page` and `PageOrder` are two components, and every `Page<Order>` in the document shares the one.
+     *
+     * @param  Closure(): array<string, mixed>  $build
+     */
+    public function refSpecialised(string $class, string $suffix, Closure $build): string
+    {
+        return $this->claim($class.'<'.$suffix.'>', $this->shortName($class).$suffix, str_replace('\\', '.', $class).$suffix, $build);
+    }
+
+    /**
+     * @param  Closure(): array<string, mixed>  $build
+     */
+    private function claim(string $owner, string $short, string $qualified, Closure $build): string
+    {
+        $name = $this->nameFor($owner, $short, $qualified);
 
         if (! array_key_exists($name, $this->schemas)) {
             // Reserve BEFORE building — see the class docblock's recursion note. The placeholder is only
@@ -79,16 +99,19 @@ final class SchemaRegistry
         return $schemas;
     }
 
-    private function nameFor(string $class): string
+    private function nameFor(string $owner, string $short, string $qualified): string
     {
-        $short = str_contains($class, '\\') ? substr($class, strrpos($class, '\\') + 1) : $class;
-
-        if (($this->owners[$short] ?? $class) === $class) {
-            $this->owners[$short] = $class;
+        if (($this->owners[$short] ?? $owner) === $owner) {
+            $this->owners[$short] = $owner;
 
             return $short;
         }
 
-        return str_replace('\\', '.', $class);
+        return $qualified;
+    }
+
+    private function shortName(string $class): string
+    {
+        return str_contains($class, '\\') ? substr($class, strrpos($class, '\\') + 1) : $class;
     }
 }

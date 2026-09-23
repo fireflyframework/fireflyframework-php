@@ -100,3 +100,33 @@ it('is empty for an absent comment, which is what every getDocComment() returns 
         ->and(DocBlock::parse('')->isEmpty())->toBeTrue()
         ->and(DocBlock::parse(false)->params())->toBe([]);
 });
+
+it('lists template parameters in the order an argument binds to them, across variance spellings', function () {
+    // Laravel's paginators write `@template TKey` and then `@template-covariant TValue`: two tag names, one
+    // order. Reading each tag name as its own bucket would bind `LengthAwarePaginator<int, Order>` backwards
+    // whenever the covariant one came first.
+    $doc = DocBlock::parse(<<<'DOC'
+        /**
+         * @template-covariant TValue of object
+         * @template TKey of array-key
+         * @extends Base<TKey, TValue> the parent
+         */
+        DOC);
+
+    expect($doc->templates())->toBe(['TValue', 'TKey'])
+        ->and($doc->extendsLine())->toBe('Base<TKey, TValue> the parent');
+});
+
+it('lets tool-prefixed template tags replace the plain ones, as PHPStan reads them', function () {
+    $doc = DocBlock::parse(<<<'DOC'
+        /**
+         * @template T
+         * @phpstan-template TItem
+         * @phpstan-extends Base<TItem>
+         * @extends Base<T>
+         */
+        DOC);
+
+    expect($doc->templates())->toBe(['TItem'])
+        ->and($doc->extendsLine())->toBe('Base<TItem>');
+});
