@@ -158,9 +158,43 @@ it('pages the two conditions panels independently and carries each other positio
         ->toContain('neg_sort=class');
 });
 
-it('pages the scheduled tasks and gives the numeric intervals a numeric column', function () {
+/**
+ * The trigger normaliser has two halves and this pins both, because the column TYPES prove neither:
+ * `class="t-num"` is the `<th>` the head partial emits from the column definition and says nothing about
+ * what the cells under it hold — those render `class="t-num dim"`.
+ *
+ * What it keeps: all three triggers are STRINGS (`ScheduledDescriptor` types them `?string` and Cadence
+ * parses the intervals through `Duration::parse()`), so `0 2 * * *` and `30s` are what the endpoint
+ * publishes and what the page has to draw. A normaliser rewritten around `is_numeric()` — the obvious
+ * shape, and the one the plan carried — turns every interval on the page into an em-dash without failing
+ * a single assertion about a colgroup or a pager. What it drops: an absent trigger, which becomes the
+ * empty string the view draws as `—`, and every row of the fixture carries exactly one trigger.
+ */
+it('renders the scheduled triggers the scanner publishes and an em-dash for the ones a task lacks', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $body = (string) $this->get('/firefly/scheduled')->assertStatus(200)->getContent();
 
-    expect($body)->toContain('<table class="ftable">')->toContain('class="t-num"');
+    expect($body)->toContain('<table class="ftable">')
+        ->toContain('class="t-num"')
+        ->toContain('>0 2 * * *<')
+        ->toContain('>UTC<')
+        ->toContain('>30s<')
+        ->toContain('<td class="t-num dim">—</td>');
+});
+
+/**
+ * A Number column is a RENDERING here, not an ordering. `30s`, `5m` and `1h` are duration strings, so the
+ * comparison the column would get is `strnatcasecmp` and ascending by rate answers `1h, 5m, 30s, 250ms` —
+ * so the page does not offer the ordering at all: no link in the two interval headers, and a hand-written
+ * `?sort=` on one of them is refused like any other column the listing did not publish.
+ */
+it('offers no ordering by the interval columns it cannot order', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/scheduled')
+        ->assertStatus(200)
+        ->assertSee('sort=cron', false)
+        ->assertDontSee('sort=fixedRate', false)
+        ->assertDontSee('sort=fixedDelay', false);
+
+    $this->get('/firefly/scheduled?sort=fixedRate')->assertStatus(200)->assertDontSee('sort=fixedRate', false);
 });

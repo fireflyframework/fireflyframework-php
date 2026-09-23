@@ -470,8 +470,8 @@ final readonly class AdminAction
                 TableView::of(
                     TableColumn::qualified('runnable', 'Runnable', weight: 5),
                     TableColumn::token('cron', 'Cron', weight: 3),
-                    TableColumn::number('fixedRate', 'Fixed rate', ch: 11),
-                    TableColumn::number('fixedDelay', 'Fixed delay', ch: 11),
+                    TableColumn::number('fixedRate', 'Fixed rate', ch: 11, sortable: false),
+                    TableColumn::number('fixedDelay', 'Fixed delay', ch: 11, sortable: false),
                     TableColumn::token('zone', 'Zone', weight: 2),
                 ),
                 ['runnable', 'cron', 'zone'],
@@ -699,9 +699,23 @@ final readonly class AdminAction
      * types `cron`, `fixedRate` and `fixedDelay` as `?string` and Cadence parses the two intervals through
      * `Duration::parse()`, so what the endpoint publishes is `10s` or `5m`, never a count of milliseconds.
      * A normaliser that kept only `is_numeric()` values would blank every interval the scanner has ever
-     * produced. The two interval columns are still Number columns: right-aligned tabular mono is the right
-     * rendering for `30s` over `5m` in a stack, and the ordering a Number column offers compares them the
-     * same way the rest of the vocabulary compares anything else.
+     * produced.
+     *
+     * THAT SAME FACT IS WHY THE TWO INTERVAL COLUMNS ARE NUMBER COLUMNS THAT DO NOT SORT. Number is the right
+     * RENDERING — right-aligned tabular figures line `30s` up over `5m` in a stack — and the wrong
+     * ORDERING, because what those cells hold is text. `RowComparator::forColumn()` scans the column,
+     * finds a value that is not numeric on its first row, and commits every pair of it to `strnatcasecmp`,
+     * which orders a duration by its leading digit: ascending by Fixed rate over `250ms`, `30s`, `5m`,
+     * `1h` answers `1h, 5m, 30s, 250ms`, the hour first and the quarter-second last — the real ordering
+     * turned inside out under a header that promised it. A header that offers an ordering has to deliver
+     * one, so these two do not offer it, the same `sortable: false` `meter()` and `actions()` carry for a
+     * column with nothing to order by.
+     *
+     * Delivering it would take a comparable magnitude per row, and the parser that produces one is
+     * `Firefly\Resilience\Duration` — a layer Admin may not reach (Deptrac gives it Kernel, Container,
+     * Config, Context, AutoConfigure, Web, Actuator and Data). A second duration parser kept here to order
+     * a page that lists a handful of tasks is precisely the drift `RowComparator` exists to prevent, so the
+     * ordering stays unoffered rather than reimplemented.
      */
     private function trigger(mixed $value): string
     {
