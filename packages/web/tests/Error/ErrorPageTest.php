@@ -13,6 +13,7 @@ use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -426,6 +427,33 @@ it('carries the authored sentence for a sub-500 failure, so the page and the doc
         // The router's own sentence is replaced by the product's, exactly as it is in problem+json.
         ->and(ErrorReport::of(new NotFoundHttpException('The route nope could not be found.'), Request::create('/nope'), $settings, dirname(__DIR__, 4), 404, 'Not Found', '2026-01-01T00:00:00+00:00')->publicDetail)
         ->toBe(ProblemMapper::NOTHING_HERE);
+});
+
+it('never publishes the 404 sentences LARAVEL generates, which name a model class and a primary key', function () {
+    // Handler::prepareException() rewrites a ModelNotFoundException and a BackedEnumCaseNotFoundException
+    // into `new NotFoundHttpException($e->getMessage(), $e)` before any renderable callback runs, so what
+    // arrives here is an ordinary 404 carrying the FRAMEWORK's sentence and indistinguishable by class from
+    // an author's abort(404, '…'). Only its SHAPE tells them apart. The model sentence is spelled as a
+    // literal because firefly/web does not depend on illuminate/database — on this path the string IS the
+    // interface — while the enum one is taken from the real class, which illuminate/routing supplies.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $detail = static fn (string $message): string => ErrorReport::of(
+        new NotFoundHttpException($message),
+        Request::create('/orders/42'),
+        $settings,
+        dirname(__DIR__, 4),
+        404,
+        'Not Found',
+        '2026-01-01T00:00:00+00:00',
+    )->publicDetail;
+
+    expect($detail('No query results for model [App\Models\Order] 42'))->toBe(ProblemMapper::NOTHING_HERE)
+        // With no ids Laravel ends the sentence with a period instead; both spellings name the class.
+        ->and($detail('No query results for model [App\Models\Order].'))->toBe(ProblemMapper::NOTHING_HERE)
+        ->and($detail((new BackedEnumCaseNotFoundException('App\Enums\Status', 'pending'))->getMessage()))
+        ->toBe(ProblemMapper::NOTHING_HERE)
+        // And an author's own 404 still stands: this is a test of three generated shapes, not a gag on 404s.
+        ->and($detail('No such tenant.'))->toBe('No such tenant.');
 });
 
 it('trims the stack to the configured budget BEFORE markup, and never trims your own frames away', function () {

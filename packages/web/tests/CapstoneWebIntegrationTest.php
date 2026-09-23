@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Tests\Support\WebCapstoneTestCase;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -146,4 +147,25 @@ it('withholds an unhandled exception from problem+json even though the test app 
     expect($response->headers->get('X-Correlation-Id'))->toBe($traceId)
         ->and($detail)->toContain($traceId)
         ->and($detail)->not->toContain('kaboom');
+});
+
+it('withholds the 404 sentence LARAVEL generates, after its own handler has rewritten the exception', function () {
+    /** @var WebCapstoneTestCase $this */
+    // The whole point of driving this through the real pipeline: Handler::prepareException() turns
+    // BoomController::enumCase()'s BackedEnumCaseNotFoundException into a plain NotFoundHttpException
+    // carrying "Case [pending] not found on Backed Enum [App\Enums\Status]." BEFORE renderViaCallbacks()
+    // reaches LaraFly's renderable — a ModelNotFoundException, the ordinary route-model-binding miss, takes
+    // the identical path. A unit test that constructs the mapper's input by hand cannot prove that ordering;
+    // this one fails the moment Laravel moves the rewrite or changes the wording.
+    $response = $this->getJson('/boom/enum-case');
+
+    $response->assertStatus(404)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
+        ->assertJsonPath('detail', ProblemMapper::NOTHING_HERE);
+
+    // The class name is the disclosure, so the assertion is against the RAW body and not the decoded member:
+    // a sentence smuggled into `title` or an extension would satisfy the path assertion above.
+    expect((string) $response->getContent())->not->toContain('Enums')
+        ->and((string) $response->getContent())->not->toContain('Backed Enum');
 });

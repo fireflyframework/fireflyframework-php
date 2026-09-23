@@ -29,11 +29,13 @@ use Throwable;
  * limit is named next, because a reader can act on it: the request was not wrong, the server stopped it,
  * and a 503 with `Retry-After` says so where a 500 with the engine's sentence says "your fault, no idea
  * why". A Symfony/Illuminate HttpExceptionInterface keeps its REAL status; its message is the author's when
- * `abort(404, '…')` supplied one, and the ROUTER's when the router raised it — and the router's sentences
+ * `abort(404, '…')` supplied one, and the FRAMEWORK's otherwise — and every framework-generated sentence
  * ("The route api/x could not be found.", "The GET method is not supported for route api/x. Supported
- * methods: POST.") are replaced with ones written for a person, because "route" is the framework's word,
- * the path is already in `instance`, and the allowed methods belong in an `allowed` extension member and
- * the `Allow` header, not inside a sentence a client would have to parse.
+ * methods: POST.", and the route-model-binding 404s Laravel's handler rewrites into the router's own
+ * exception class) is replaced with one written for a person, because "route" is the framework's word, the
+ * path is already in `instance`, a model class and a primary key are nobody's business but the log's, and
+ * the allowed methods belong in an `allowed` extension member and the `Allow` header, not inside a sentence
+ * a client would have to parse. See httpMessage() for which shapes are generated and where each comes from.
  *
  * ANYTHING ELSE IS AN ACCIDENT, AND ITS MESSAGE IS NOT FOR THE CLIENT. A QueryException stringifies the
  * failing SQL *and its bindings*; a TypeError names an absolute path on the server; a PDOException names the
@@ -110,8 +112,10 @@ final class ProblemMapper
      * HttpException and not a FireflyException, so testing for the taxonomy alone would withhold exactly the
      * sentences an application took the trouble to write. At 500 and above nothing is authored: a
      * QueryException's message is the failing SQL and its bindings, and toFireflyException() has already
-     * replaced it with the opaque one. The mapping is reused rather than restated so the router's 404 and
-     * 405 sentences come out here exactly as they go onto the wire.
+     * replaced it with the opaque one. The mapping is reused rather than restated so the sentences the
+     * FRAMEWORK generates — the router's 404 and 405, and the route-model-binding 404s Laravel rewrites
+     * into the router's own exception class — come out here exactly as they go onto the wire, withheld on
+     * both surfaces or published on both.
      */
     public static function authoredDetail(Throwable $e): string
     {
@@ -138,10 +142,25 @@ final class ProblemMapper
     }
 
     /**
-     * An HttpException's message is the author's when abort() supplied one and the router's when the router
-     * raised it. Laravel's router has phrased its 404 as "The route {uri} could not be found." for its whole
-     * life; that exact shape is the only one replaced, so `abort(404, 'No such tenant.')` still reaches the
-     * client verbatim.
+     * An HttpException's message is the AUTHOR's when abort() supplied one and the FRAMEWORK's when the
+     * framework raised it, and only the framework's is replaced — so `abort(404, 'No such tenant.')` still
+     * reaches the client verbatim. The replacement lives here, in the one mapping both renderers go
+     * through, so the problem document's `detail` and the page's lede are fixed by a single rule and cannot
+     * come to disagree about the same 404.
+     *
+     * THREE GENERATED SHAPES, AND TWO OF THEM DISCLOSE. Laravel's router has phrased its miss as "The route
+     * {uri} could not be found." for its whole life; "route" is the framework's word for something the
+     * caller never named, and the path is already in `instance`. The other two do not come from the router
+     * at all: Handler::prepareException() rewrites a ModelNotFoundException and a
+     * BackedEnumCaseNotFoundException into `new NotFoundHttpException($e->getMessage(), $e)` BEFORE any
+     * renderable callback is consulted, which puts "No query results for model [App\Models\Order] 42" and
+     * "Case [pending] not found on Backed Enum [App\Enums\Status]." — an application FQCN and a primary
+     * key — on the wire to whoever followed a stale link. A missed route-model binding is the most ORDINARY
+     * 404 an application has, so leaving these two out would make the disclosing case the common one.
+     *
+     * Laravel's remaining rewrites are deliberately left alone because they name nothing: a
+     * RecordsNotFoundException becomes a flat "Not found.", a RequestExceptionInterface a flat "Bad
+     * request.", and either is already a sentence a person can read.
      */
     private static function httpMessage(HttpExceptionInterface $e): string
     {
@@ -152,6 +171,13 @@ final class ProblemMapper
         }
 
         if ($e->getStatusCode() === 404 && str_starts_with($message, 'The route ') && str_ends_with($message, ' could not be found.')) {
+            return self::NOTHING_HERE;
+        }
+
+        if ($e->getStatusCode() === 404 && (
+            str_starts_with($message, 'No query results for model [')
+            || (str_starts_with($message, 'Case [') && str_contains($message, '] not found on Backed Enum ['))
+        )) {
             return self::NOTHING_HERE;
         }
 

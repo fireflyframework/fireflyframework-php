@@ -36,11 +36,22 @@ use Illuminate\Support\Str;
  * person who wants a driver message inside a JSON `detail` says so with `firefly.web.problem.disclose=true`;
  * nothing infers it. The two gates are independent so that turning one on never opens the other.
  *
- * WHAT PRODUCTION SEES with `trace` off is the status, the reason phrase and the stable error code — the
- * same `code` the problem+json carries, so a user can quote it into a support ticket and an operator can
- * find it in the log. Not the message: an exception message is written for a developer and routinely names
- * a table, a column, a class or an id. And not the footer's own advice about turning the trace on, which is
- * useful on a staging box and is a free hint about the stack to anyone else — see `hints`.
+ * WHAT PRODUCTION SEES with `trace` off is the status, the reason phrase, the stable error code and the
+ * request's reference — the same `code` and `traceId` the problem+json carries, so a user can quote them
+ * into a support ticket and an operator can find them in the log. Never the RAW exception message: that
+ * sentence was written for a developer and routinely names a table, a column, a class or an id. And not the
+ * footer's own advice about turning the trace on, which is useful on a staging box and is a free hint about
+ * the stack to anyone else — see `hints`.
+ *
+ * THE ONE ADDITION IS AUTHORED, AND IT HAS ITS OWN KEY. With `authored-detail` on (the default) a sub-500
+ * failure also carries the sentence the application ITSELF wrote for a caller — a FireflyException's "Order
+ * 42 does not exist.", or an `abort(404, 'No such tenant.')` — because that is exactly what the problem
+ * document beside it publishes as `detail`, and one failure reading two ways depending on which surface
+ * answered is its own kind of bug. It is not an exemption from the paragraph above: ProblemMapper decides
+ * what counts as authored, withholds everything at 500 and above, and replaces the sentences the FRAMEWORK
+ * generated — the router's "The route … could not be found." and the route-model-binding 404s Laravel
+ * rewrites into it, which name a model class and a primary key. Turn the key off and there is no authored
+ * sentence to print at all.
  */
 final readonly class ErrorPageSettings
 {
@@ -89,7 +100,9 @@ final readonly class ErrorPageSettings
         // HOW MANY FRAMES THE PAGE BUILDS AT ALL. Applied as a trim in ErrorReport, before markup: a page
         // that renders a hundred frames and hides ninety has still escaped and shipped a hundred.
         public int $maxFrames = 40,
-        // Whether the production page uses the sentence the problem document publishes as its lede.
+        // Whether the report CARRIES the sentence the problem document publishes, so a page can use it as
+        // its lede. Off, `ErrorReport::$publicDetail` is '' and there is nothing for a renderer to print.
+        // What counts as authored is ProblemMapper's decision, not this key's — see the class comment.
         public bool $authoredDetail = true,
     ) {
         $this->home = self::url($home);

@@ -13,6 +13,7 @@ use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
 use Symfony\Component\ErrorHandler\Error\FatalError;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -205,6 +206,28 @@ it('leaves an author\'s abort(404, …) sentence alone while replacing the route
 
     expect($author->getMessage())->toBe('No such tenant.')
         ->and($router->getMessage())->toBe(ProblemMapper::NOTHING_HERE);
+});
+
+it('keeps a model class and a primary key out of `detail` when Laravel rewrote the 404 itself', function () {
+    // The router is not the only source of a generated 404. Handler::prepareException() turns a
+    // ModelNotFoundException — the ordinary route-model-binding miss, the most common 404 an application
+    // has — into `new NotFoundHttpException($e->getMessage(), $e)` before renderViaCallbacks() is reached,
+    // so this document was publishing an application FQCN and a row id to whoever followed a stale link.
+    $response = (new ProblemDetailsRenderer)->render(
+        new NotFoundHttpException('No query results for model [App\Models\Order] 42'),
+        Request::create('/orders/42'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true);
+
+    expect($response->getStatusCode())->toBe(404)
+        ->and($payload['detail'])->toBe(ProblemMapper::NOTHING_HERE)
+        // Asserted against the RAW body too: a sentence smuggled into another member is the same leak.
+        ->and((string) $response->getContent())->not->toContain('Models')
+        ->and(ProblemMapper::toFireflyException(
+            new NotFoundHttpException((new BackedEnumCaseNotFoundException('App\Enums\Status', 'pending'))->getMessage()),
+        )->getMessage())->toBe(ProblemMapper::NOTHING_HERE);
 });
 
 it('spreads a FireflyException\'s extension members and title into the document', function () {
