@@ -942,6 +942,28 @@ return [
     //         'excerpt-lines' => 7,
     //
     //         /*
+    //          | WHERE A READER CAN GO NEXT. The page offers the action that fits the status — a 401 gets
+    //          | `sign-in`, a 5xx gets "Try again" (a plain link to the same path), everything gets `home`
+    //          | and `support` when they are set — and offers nothing it was not given: no route name is
+    //          | guessed, and an empty value simply produces no link.
+    //          |
+    //          | EACH OF THESE IS A SCHEME-GUARDED URL. They reach an `href`, and htmlspecialchars escapes
+    //          | quotes and brackets and nothing about a SCHEME — so a `javascript:` value arriving from a
+    //          | templated environment variable would be stored XSS on the framework's own error page. An
+    //          | absolute path (`/login`) or an `http(s)://` URL is kept; everything else — `data:`,
+    //          | `vbscript:`, `file:`, `mailto:`, a protocol-relative `//host/…` or its backslash spelling
+    //          | `/\host/…`, and anything carrying a tab, LF or CR (characters a URL parser DELETES, so
+    //          | `/<TAB>/host` is `//host` to a browser) — is dropped to '' when the settings object is
+    //          | built, whoever built it, so it cannot hold an unsafe value at all.
+    //          |
+    //          | Defaults: home '/', sign-in '', support '', actions true.
+    //         */
+    //         'home' => env('FIREFLY_WEB_ERROR_PAGE_HOME', '/'),
+    //         'sign-in' => env('FIREFLY_WEB_ERROR_PAGE_SIGN_IN', '/login'),
+    //         'support' => env('FIREFLY_WEB_ERROR_PAGE_SUPPORT', 'https://support.example.test'),
+    //         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
+    //
+    //         /*
     //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
     //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
     //          | the path says what the URL is.

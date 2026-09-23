@@ -45,6 +45,27 @@ use Illuminate\Support\Str;
 final readonly class ErrorPageSettings
 {
     /**
+     * WHERE A READER CAN GO NEXT — and the three values this class refuses to hold a hostile spelling of.
+     *
+     * THESE THREE ARE NOT PROMOTED, AND THAT IS THE WHOLE POINT. Each one is destined for an `href` on a
+     * page the framework hands itself, so the guard has to run on every construction path rather than on
+     * the one that happens to read configuration: `firefly/security` builds an ErrorPageSettings by hand
+     * for its login page, and a dozen tests construct one directly. A promoted property would put the
+     * caller's string into the object with nothing in between, and the guarantee this class advertises —
+     * that it cannot HOLD an unsafe URL, whoever built it — would have been true only of fromConfig(). The
+     * constructor body assigns each of them through self::url(), so it is true of all of them.
+     *
+     * NOTHING PRINTS THEM YET. The action row that will is not in this tree; these values arrive first,
+     * deliberately, so that the row is written against a property that is already safe instead of against a
+     * guard somebody has to remember to call at the point of printing. See self::url() for the vocabulary.
+     */
+    public string $home;
+
+    public string $signIn;
+
+    public string $support;
+
+    /**
      * @param  list<string>  $jsonPaths  path patterns that are answered as problem+json whatever the client asked for
      * @param  array<string, string>  $views  status (or `default`) => the Blade view to render instead
      * @param  string  $home  the "Go home" target; '' offers no link. Guarded: see self::url()
@@ -61,14 +82,15 @@ final readonly class ErrorPageSettings
         public array $jsonPaths = ['api/*'],
         public array $views = [],
         public bool $disclose = false,
-        // WHERE A READER CAN GO NEXT. Every one of these reaches an `href`, so every one of them is passed
-        // through url() in fromConfig() before it is stored — see that method for what a 'javascript:' value
-        // out of a templated environment variable does to a page the framework hands itself.
-        public string $home = '/',
-        public string $signIn = '',
-        public string $support = '',
+        string $home = '/',
+        string $signIn = '',
+        string $support = '',
         public bool $actions = true,
-    ) {}
+    ) {
+        $this->home = self::url($home);
+        $this->signIn = self::url($signIn);
+        $this->support = self::url($support);
+    }
 
     /**
      * Whether $path is one this application serves as an API, and therefore must answer with a problem
@@ -129,11 +151,12 @@ final readonly class ErrorPageSettings
             // Explicit, and only explicit: no fallback to app.debug, no fallback to `trace`. See the class
             // comment for the leak that a shared gate produced.
             disclose: $config->bool('firefly.web.problem.disclose', false),
-            // A relative path or an http(s) URL, and nothing else — see url(). The default home is the site
-            // root, because a page with no way off it is the state every one of these screenshots was in.
-            home: self::url($config->string('firefly.web.error-page.home', '/')),
-            signIn: self::url($config->string('firefly.web.error-page.sign-in', '')),
-            support: self::url($config->string('firefly.web.error-page.support', '')),
+            // Handed over RAW: the constructor runs each of these through url(), so this call site cannot
+            // be the one that forgets. The default home is the site root, because a page with no way off it
+            // is the state every one of these screenshots was in.
+            home: $config->string('firefly.web.error-page.home', '/'),
+            signIn: $config->string('firefly.web.error-page.sign-in', ''),
+            support: $config->string('firefly.web.error-page.support', ''),
             actions: $config->bool('firefly.web.error-page.actions', true),
         );
     }
@@ -176,17 +199,34 @@ final readonly class ErrorPageSettings
      * the normal answer and cannot carry a scheme. An `http(s)://` URL is the other one. Everything else is
      * dropped: `data:` and `vbscript:` are the other two script-bearing schemes, `file:` is not a link a
      * browser should follow from here, `mailto:` is a legitimate wish that this page does not serve (put the
-     * address behind an https support URL), and a protocol-relative `//host/…` is refused because it silently
-     * leaves the origin — which on an error page is indistinguishable from a phishing redirect.
+     * address behind an https support URL), and a protocol-relative `//host/…` is refused because it
+     * silently leaves the origin — which on an error page is indistinguishable from a phishing redirect.
      *
-     * The check is on the RAW value with no trimming and no normalisation. `java\tscript:` is only a
-     * javascript: URL because a browser strips the tab; a guard that stripped it first would be deciding
-     * what the browser means, and the answer here is simply "that is not an absolute path and not http(s)".
+     * A PATH IS ONLY A PATH IF A BROWSER READS IT AS ONE, and two rules of the URL standard make that a
+     * narrower set than "begins with a slash". For a special scheme the parser's relative-slash state treats
+     * `\` EXACTLY LIKE `/`, so `/\host/…` is the protocol-relative case wearing a different separator:
+     * Chrome, Firefox and Safari all resolve `/\evil.test/phish` against this origin as
+     * `https://evil.test/phish`, which is the classic bypass of a filter that only looks for `//`. And
+     * before any of that the parser DELETES every ASCII tab, LF and CR from the input, so `/<TAB>/evil.test`
+     * IS `//evil.test` by the time anything reads it. Both are refused: the second character of a path may
+     * not open an authority, and a value carrying a character the parser would delete is DROPPED rather than
+     * normalised — a guard that keeps a string the browser will re-read differently has decided nothing. `/`
+     * alone, the default home, is the one path with no second character and is kept by name.
+     *
+     * Refusing those characters instead of stripping them is also what keeps the scheme test honest.
+     * `java\tscript:` is only a javascript: URL because a browser strips the tab; this method never has to
+     * decide what the browser means by it, because the value is gone before either branch runs.
      */
     private static function url(string $value): string
     {
-        return $value !== '' && ! str_starts_with($value, '//') && (str_starts_with($value, '/') || preg_match('#^https?://#i', $value) === 1)
-            ? $value
-            : '';
+        if ($value === '' || preg_match('/[\t\n\r]/', $value) === 1) {
+            return '';
+        }
+
+        if (preg_match('#^https?://#i', $value) === 1) {
+            return $value;
+        }
+
+        return $value === '/' || preg_match('#^/[^/\\\\]#', $value) === 1 ? $value : '';
     }
 }
