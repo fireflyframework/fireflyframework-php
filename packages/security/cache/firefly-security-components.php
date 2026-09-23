@@ -44,6 +44,7 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Firefly\\Security\\Access\\RoleHierarchy',
+                    2 => 'Psr\\Log\\LoggerInterface',
                 ],
             ],
         ],

@@ -17,7 +17,7 @@ uses(TestCase::class);
 afterEach(fn () => SecurityContextHolder::clearContext());
 
 /**
- * @param  list<string>  $roles  the value of firefly.management.endpoint.health.roles
+ * @param  list<mixed>  $roles  the value of firefly.management.endpoint.health.roles, junk entries included
  * @param  list<string>  $rules  the role-hierarchy rules
  */
 function principalHealthAuthorizer(array $roles, bool $securityEnabled = true, array $rules = []): PrincipalHealthDetailsAuthorizer
@@ -93,4 +93,20 @@ it('drops a blank entry without widening the check it sits beside', function () 
     healthPrincipal('ada', ['ROLE_USER']);
 
     expect(principalHealthAuthorizer(['  ', 'ACTUATOR'])->mayReadDetails())->toBeFalse();
+});
+
+it('refuses everyone when a configured list survives normalisation as nothing', function () {
+    healthPrincipal('ada', ['ROLE_USER']);
+
+    expect(principalHealthAuthorizer([''])->mayReadDetails())->toBeFalse()
+        ->and(principalHealthAuthorizer(['   '])->mayReadDetails())->toBeFalse()
+        ->and(principalHealthAuthorizer([null])->mayReadDetails())->toBeFalse()
+        ->and(principalHealthAuthorizer([123])->mayReadDetails())->toBeFalse()
+        ->and(principalHealthAuthorizer([['ACTUATOR']])->mayReadDetails())->toBeFalse();
+});
+
+it('refuses the ADMIN too, because an unusable list is a broken rule and not a role mismatch', function () {
+    healthPrincipal('root', ['ROLE_ADMIN']);
+
+    expect(principalHealthAuthorizer([null], rules: ['ROLE_ADMIN > ROLE_ACTUATOR'])->mayReadDetails())->toBeFalse();
 });

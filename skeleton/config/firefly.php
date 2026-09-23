@@ -788,6 +788,11 @@ return [
                  | roles. A bare name is read as `ROLE_<name>`, the same spelling `hasRole:` uses, and the
                  | configured role hierarchy applies.
                  |
+                 | An entry that is not a usable role name — a blank string, a null left by a dangling key,
+                 | a number — is dropped, and a list whose entries ALL drop REFUSES every caller instead of
+                 | being read as the empty list: a typo must never widen the surface it was written to
+                 | narrow. The refusal is logged once per boot, naming this key.
+                 |
                  | Defaults: show-details 'never', roles [].
                 */
                 'show-details' => env('FIREFLY_HEALTH_SHOW_DETAILS', 'never'),

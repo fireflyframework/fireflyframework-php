@@ -13,6 +13,7 @@ use Firefly\Context\Condition\Attributes\ConditionalOnClass;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Security\Access\RoleHierarchy;
+use Psr\Log\LoggerInterface;
 
 /**
  * The one bean firefly/security contributes to firefly/actuator, in its own #[Configuration] so the whole
@@ -32,11 +33,17 @@ use Firefly\Security\Access\RoleHierarchy;
 #[ConditionalOnClass(HealthDetailsAuthorizer::class)]
 final class SecurityActuatorAutoConfiguration
 {
+    /**
+     * The logger is OPTIONAL and last, the shape every other logging bean in this package uses
+     * (methodSecurityEvaluator, rememberMeServices): the authorizer works without one, and the single thing
+     * it has to say — `roles` was configured but nothing in it is a role name, so everybody is refused — is
+     * worth a line in the application's own log rather than a silence an operator has to reverse-engineer.
+     */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
     #[ConditionalOnMissingBean(HealthDetailsAuthorizer::class)]
-    public function healthDetailsAuthorizer(Config $config, RoleHierarchy $roles): HealthDetailsAuthorizer
+    public function healthDetailsAuthorizer(Config $config, RoleHierarchy $roles, ?LoggerInterface $logger = null): HealthDetailsAuthorizer
     {
-        return new PrincipalHealthDetailsAuthorizer($config, $roles);
+        return new PrincipalHealthDetailsAuthorizer($config, $roles, $logger);
     }
 }
