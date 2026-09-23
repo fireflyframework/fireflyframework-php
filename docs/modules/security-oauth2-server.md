@@ -317,6 +317,7 @@ did not publish and publishes none nothing names. It is the only place in the tr
 | `rate_limit.enabled` | `false` | A token bucket per client id (else IP) at the token endpoint, over firefly/resilience's store; `429 temporarily_unavailable` + `Retry-After`. |
 | `rate_limit.max_tokens` | `60` | The burst. |
 | `rate_limit.refill_rate` | `1.0` | Tokens per second. |
+| `rate_limit.idle_ttl` | `2592000` (30 days) | Seconds of idleness after which a bucket's cache key may be reclaimed, refreshed on every acquisition. These buckets are keyed by client id — or by IP address when no client id was presented — so, alone among the framework's limiters, their number grows with traffic; a public token endpoint facing a wide address space is the case for setting this far lower. The reclaim is invisible: a bucket refills at `refill_rate` per second, so `max_tokens / refill_rate` seconds after the last request (a minute at the defaults) a reclaimed bucket and a surviving one are the same full bucket. `0` writes them with no expiry at all. |
 
 ## Testing
 

@@ -17,13 +17,6 @@ use Throwable;
  */
 final class ResilienceRegistry
 {
-    /**
-     * How long a cache-backed record may sit untouched before the store may reclaim it, when the instance
-     * says nothing: thirty days. See CircuitBreaker's and RateLimiter's class docblocks for why that number
-     * is indistinguishable from "never" for any live instance.
-     */
-    private const float DEFAULT_IDLE_TTL = 2592000.0; // 30 days
-
     /** @var array<string, Retry> */
     private array $retries = [];
 
@@ -78,7 +71,7 @@ final class ResilienceRegistry
             recordOn: $this->classList($c, 'record-on'),
             minimumNumberOfCalls: $this->int($c, 'minimum-number-of-calls', 0),
             halfOpenProbeTimeout: $this->seconds($c, 'half-open-probe-timeout', 30.0),
-            idleTtl: $this->idleTtl($c),
+            idleTtl: $this->idleTtl($c, CircuitBreaker::DEFAULT_IDLE_TTL),
         );
     }
 
@@ -90,7 +83,7 @@ final class ResilienceRegistry
             maxTokens: $this->int($c = $this->instance('rate-limiter', $name), 'max-tokens', 10),
             refillRate: $this->float($c, 'refill-rate', 10.0),
             timeout: $this->seconds($c, 'timeout', 0.0),
-            idleTtl: $this->idleTtl($c),
+            idleTtl: $this->idleTtl($c, RateLimiter::DEFAULT_IDLE_TTL),
         );
     }
 
@@ -163,20 +156,27 @@ final class ResilienceRegistry
     }
 
     /**
-     * The idle TTL for a cache-backed record: the configured `idle-ttl` duration, thirty days when the key
-     * is absent, and null — no expiry — when it is explicitly null. `array_key_exists` rather than `??`,
-     * because `'idle-ttl' => null` is a DELIBERATE choice ("never expire") and must not be read as "not
-     * configured".
+     * The idle TTL for a cache-backed record: the configured `idle-ttl` duration, the pattern's own
+     * DEFAULT_IDLE_TTL (thirty days) when the key is absent, and null — no expiry — when it is explicitly
+     * null. `array_key_exists` rather than `??`, because `'idle-ttl' => null` is a DELIBERATE choice ("never
+     * expire") and must not be read as "not configured".
+     *
+     * A configured `0` (or `'0s'`, or a negative number) reaches the pattern as written and IS an expiry of
+     * "never" too — CircuitBreaker::recordTtl() and RateLimiter::recordTtl() own that reading, so it holds
+     * for an instance somebody constructs by hand as much as for one this registry builds. The normalisation
+     * deliberately lives there and not here: it is a property of what a store does with a non-positive TTL
+     * (Laravel's cache repository DELETES the key), not of how configuration is spelled.
      *
      * @param  array<string, mixed>  $config
+     * @param  float  $default  the pattern's DEFAULT_IDLE_TTL, so each pattern keeps owning its own default
      */
-    private function idleTtl(array $config): ?float
+    private function idleTtl(array $config, float $default): ?float
     {
         if (! array_key_exists('idle-ttl', $config)) {
-            return self::DEFAULT_IDLE_TTL;
+            return $default;
         }
 
-        return $config['idle-ttl'] === null ? null : $this->seconds($config, 'idle-ttl', self::DEFAULT_IDLE_TTL);
+        return $config['idle-ttl'] === null ? null : $this->seconds($config, 'idle-ttl', $default);
     }
 
     /** @param  array<string, mixed>  $c */

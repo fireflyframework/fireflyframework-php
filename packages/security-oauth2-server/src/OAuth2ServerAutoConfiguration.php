@@ -188,7 +188,10 @@ final class OAuth2ServerAutoConfiguration
 
     /**
      * Bound ONLY while `rate_limit.enabled`: the token endpoint takes it as an optional dependency and is inert
-     * without it. It needs firefly/resilience's store; with the package absent the boot refuses naming it.
+     * without it. It needs firefly/resilience's store; with the package absent the boot refuses naming it. The
+     * buckets it writes carry `rate_limit.idle_ttl` (thirty days by default), because this is the one set of
+     * cache keys in the framework that grows with TRAFFIC — one per client id, one per IP address — rather than
+     * with the number of instances somebody configured.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
@@ -204,7 +207,12 @@ final class OAuth2ServerAutoConfiguration
         /** @var ResilienceStore $store */
         $store = $container->make(ResilienceStore::class);
 
-        return new TokenEndpointRateLimiter($store, $settings->rateLimitMaxTokens, $settings->rateLimitRefillRate);
+        return new TokenEndpointRateLimiter(
+            $store,
+            $settings->rateLimitMaxTokens,
+            $settings->rateLimitRefillRate,
+            $settings->rateLimitIdleTtl,
+        );
     }
 
     /**

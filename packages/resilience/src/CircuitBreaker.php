@@ -38,13 +38,15 @@ use Throwable;
  * ignores — an ignored exception is neither a success nor a failure (Resilience4j's semantics), so the
  * episode stays HALF_OPEN and simply regains its slot.
  *
- * THE RECORD NOW EXPIRES WHEN NOTHING TOUCHES IT. Every write refreshes `idleTtl` (default thirty days), so
- * an active breaker's record can never expire — the TTL is always further away than the next call — while a
- * breaker nobody has called for a month stops occupying a cache key forever. That was a real, unbounded
- * growth characteristic: one integration retired and its key outlives the code that created it. Thirty days
- * is chosen to be indistinguishable from "never" for any live breaker: `wait-duration-in-open` defaults to
- * thirty SECONDS, so a breaker idle for thirty days would have left OPEN eighty-six thousand times over and
- * a fresh CLOSED record is the same state a reclaimed key rebuilds. `null` restores the old unbounded
+ * THE RECORD NOW EXPIRES WHEN NOTHING TOUCHES IT. Every write refreshes `idleTtl` (DEFAULT_IDLE_TTL, thirty
+ * days — the CONSTRUCTOR's default, so a breaker built by hand is bounded exactly like one the registry
+ * builds), so an active breaker's record can never expire — the TTL is always further away than the next
+ * call — while a breaker nobody has called for a month stops occupying a cache key forever. That was a real,
+ * unbounded growth characteristic: one integration retired and its key outlives the code that created it.
+ * Thirty days is chosen to be indistinguishable from "never" for any live breaker: `wait-duration-in-open`
+ * defaults to thirty SECONDS, so a breaker idle for thirty days would have left OPEN eighty-six thousand
+ * times over and a fresh CLOSED record is the same state a reclaimed key rebuilds. `null` — and, on purpose,
+ * ANY non-positive duration, which recordTtl() reads as the same instruction — restores the old unbounded
  * behaviour for a deployment that wants it. Bulkhead already worked this way through `permit-ttl`.
  */
 final class CircuitBreaker
@@ -66,10 +68,20 @@ final class CircuitBreaker
     private const LOCK_TTL = 5.0;
 
     /**
+     * How long a breaker's record may sit untouched before the store may reclaim it, when nobody says
+     * otherwise: thirty days, the same number `firefly.resilience.circuit-breaker.<name>.idle-ttl` defaults
+     * to. It is the CONSTRUCTOR's default rather than only the registry's, because a breaker built by hand
+     * is the one shape configuration cannot bound — and an unbounded key space should be something a caller
+     * chooses (`idleTtl: null`), not something it inherits by not passing an argument.
+     */
+    public const float DEFAULT_IDLE_TTL = 2592000.0; // 30 days
+
+    /**
      * @param  list<class-string<Throwable>>  $recordOn
      * @param  float|null  $idleTtl  seconds of idleness after which the store may reclaim this breaker's
-     *                               record, refreshed by every write; null never expires. Appended last so
-     *                               every existing construction keeps compiling unchanged.
+     *                               record, refreshed by every write; null — and any non-positive duration,
+     *                               see recordTtl() — never expires. Appended last so every existing
+     *                               construction keeps compiling unchanged.
      */
     public function __construct(
         private readonly string $key,
@@ -82,7 +94,7 @@ final class CircuitBreaker
         private readonly array $recordOn = [Throwable::class],
         private readonly int $minimumNumberOfCalls = 0,
         private readonly float $halfOpenProbeTimeout = 30.0,
-        private readonly ?float $idleTtl = null,
+        private readonly ?float $idleTtl = self::DEFAULT_IDLE_TTL,
     ) {}
 
     /**
@@ -328,7 +340,27 @@ final class CircuitBreaker
      */
     private function save(array $record): void
     {
-        $this->store->put($this->key, $record, $this->idleTtl);
+        $this->store->put($this->key, $record, $this->recordTtl());
+    }
+
+    /**
+     * The TTL every write hands the store — with the one normalisation no store can make for us: a
+     * NON-POSITIVE idle TTL means "never expire", never "expire immediately".
+     *
+     * The distinction is not academic. `Illuminate\Cache\Repository::put()` turns a TTL of zero or less into
+     * `forget($key)`, so passing a parsed `0` straight through would make every state write a cache DELETE:
+     * the breaker would re-read a fresh CLOSED record on every call, five consecutive failures would all
+     * surface as the raw exception, and the one gate whose job is to stop calling a dead dependency would
+     * have been silently disabled by a value that looks like it turns off an expiry. And `0` is exactly the
+     * value someone writes to mean "do not expire this" — it is Memcached's convention, it is what
+     * `permit-ttl: 0` already does in Bulkhead::savePermits(), and `half-open-probe-timeout: 0` one argument
+     * above is documented as switching a behaviour OFF rather than as an instant deadline, so a zero in this
+     * package has never meant "now". A negative number arrives the same way (`is_numeric` accepts `-1`, so
+     * Duration::parse never sees it to refuse it) and is read the same way.
+     */
+    private function recordTtl(): ?float
+    {
+        return $this->idleTtl !== null && $this->idleTtl > 0.0 ? $this->idleTtl : null;
     }
 
     /**

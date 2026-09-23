@@ -660,10 +660,20 @@ return [
                 // A token bucket per client id (else per IP) at the token endpoint, over firefly/resilience's
                 // store: `max_tokens` burst, `refill_rate` tokens per second. A refused request is
                 // 429 temporarily_unavailable with Retry-After.
+                //
+                // `idle_ttl` is seconds of idleness after which a bucket's cache key may be reclaimed,
+                // refreshed on every acquisition, default 2592000 (30 days). These buckets are the one set of
+                // framework cache keys that grows with TRAFFIC rather than with configuration — one per client
+                // id, one per IP address — so a public token endpoint facing a wide address space is the case
+                // for setting it far lower. It costs nothing: a bucket refills at `refill_rate` per second, so
+                // `max_tokens / refill_rate` seconds after the last request (a minute at the defaults) a
+                // reclaimed bucket and a surviving one are the same full bucket. 0 writes them with no expiry
+                // at all, which is what this did before the key existed.
                 'rate_limit' => [
                     // 'enabled' => false,
                     // 'max_tokens' => 60,
                     // 'refill_rate' => 1.0,
+                    // 'idle_ttl' => 2592000,
                 ],
             ],
         ],
@@ -1751,9 +1761,13 @@ return [
     | pushed further away than the next call — while an instance nobody has touched for a month stops
     | occupying a cache key forever, which is what a retired integration used to do. A reclaimed key rebuilds
     | in the state an idle instance was already in (a CLOSED breaker, a full bucket), so the reclaim is
-    | invisible. Set `idle-ttl` to null for the old unbounded behaviour — the right choice for a rate limiter
-    | with `refill-rate` 0, which is a hard quota rather than a rate and must not be handed back. Durations
-    | use the framework grammar (ms/s/m/h or a bare number of seconds): 30 days is `'720h'`.
+    | invisible. Set `idle-ttl` to null — or to 0, or to any negative duration, all of which are read as the
+    | same instruction — for the old unbounded behaviour: the right choice for a rate limiter with
+    | `refill-rate` 0, which is a hard quota rather than a rate and must not be handed back. A non-positive
+    | value means NEVER EXPIRE and never "expire immediately", the reading `permit-ttl` already has, because
+    | the cache deletes a key written with a TTL of zero and that would silently retire the breaker or the
+    | limit itself. Durations use the framework grammar (ms/s/m/h or a bare number of seconds): 30 days is
+    | `'720h'`.
     |
     | See docs/modules/resilience.md for the full key-by-key tables.
     |
@@ -1812,7 +1826,7 @@ return [
         //         'wait-duration-in-open' => '30s',
         //         'half-open-max-calls' => 1,
         //         'half-open-probe-timeout' => '30s',
-        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null = never expire (the pre-wave-N behaviour)
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
         //     ],
         // ],
         // 'rate-limiter' => [
@@ -1820,7 +1834,7 @@ return [
         //         'max-tokens' => 10,
         //         'refill-rate' => 10.0,
         //         'timeout' => 0,
-        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null = never expire (the pre-wave-N behaviour)
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null or 0 = never expire (the pre-wave-N behaviour)
         //     ],
         // ],
         // 'bulkhead' => [

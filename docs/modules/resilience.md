@@ -125,6 +125,7 @@ read-decide-write is atomic and a trip on one FPM worker is visible to the next.
 | `half-open-max-calls` | int | `1` | Probe calls admitted per HALF_OPEN episode. |
 | `half-open-probe-timeout` | duration | `30s` | Lease length of a half-open probe permit. An expired permit is pruned before permits are counted, so a probe whose worker died does not consume a slot forever. `0` disables permit holding entirely. |
 | `record-on` | list\<class-string\<Throwable\>\> | `[Throwable::class]` | Only these exceptions count as failures; anything else propagates without affecting the breaker's state — and explicitly *returns* the probe permit it took, so an ignored exception leaves the episode exactly as it found it. |
+| `idle-ttl` | duration\|null | `720h` (30 days) | How long the breaker's record may sit untouched before the cache may reclaim it, **refreshed on every write**, so an active breaker's record can never expire. A reclaimed key rebuilds CLOSED — the state an idle breaker was already in — which is why thirty days is indistinguishable from "never" here (`wait-duration-in-open` is thirty *seconds*). `null`, `0` or a negative duration all mean **never expire**, never "expire immediately". It is also the constructor's default, so a `CircuitBreaker` built by hand is bounded unless it passes `idleTtl: null`. |
 
 #### Probe permits are leases, and `state()` reports the effective state
 
@@ -158,6 +159,7 @@ callers that want to check admission without invoking a callable.
 | `max-tokens` | int | `10` | Bucket capacity. |
 | `refill-rate` | float | `10.0` | Tokens added per second (capped at `max-tokens`). |
 | `timeout` | duration | `0` | How long to poll for a token before rejecting (`0` = fail fast). |
+| `idle-ttl` | duration\|null | `720h` (30 days) | How long the bucket may sit untouched before the cache may reclaim it, **refreshed on every acquisition** — granted or refused — so a limiter under load can never lose its bucket. The reclaim is invisible: the bucket refills at `refill-rate` per second and a missing record reads as a FULL bucket, so after `max-tokens / refill-rate` seconds of silence a reclaimed bucket and a live one are the same bucket. The exception is `refill-rate: 0`, a hard quota rather than a rate, where reclaiming the key hands the quota back — set `idle-ttl` to `null` for that one. `null`, `0` or a negative duration all mean **never expire**, never "expire immediately". It is also the constructor's default, so a `RateLimiter` built by hand (one bucket per client id, per IP, …) is bounded unless it passes `idleTtl: null`. |
 
 ### Bulkhead
 
@@ -396,9 +398,13 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   cross-request behaviour. The `null` cache driver's locks are no-ops (`withLock()` degrades to running the
   callback without a critical section whenever the driver isn't a `LockProvider`), so it must not be used in
   production for these patterns either.
-- **`CircuitBreaker` and `RateLimiter` records have no idle TTL.** Their cache records are written with no
-  expiry, so an idle key (a payment integration nobody calls for a month) lingers in the cache store
-  indefinitely rather than being reclaimed. This is inert — the next call simply reads whatever state is
-  there — but it is a known, un-bounded cache-growth characteristic worth knowing about for capacity
-  planning. `Bulkhead` is the exception: its permit-set record carries `permit-ttl` and is refreshed on
-  every write, so it disappears once nothing has touched the bulkhead for a full lease.
+- **An idle record is reclaimed on the cache's schedule, not on a sweep the framework runs.** Every
+  cache-backed pattern now writes its record with an expiry refreshed on every write — `idle-ttl` for
+  [`CircuitBreaker`](#circuitbreaker) and [`RateLimiter`](#ratelimiter), `permit-ttl` for
+  [`Bulkhead`](#bulkhead) — so a retired integration's key stops living in the cache forever, which is what
+  it used to do. What remains latent is that this is the ONLY reclamation there is: nothing enumerates or
+  prunes `firefly:resilience:*` keys, so a driver whose expiry is lazy (the `file` and `database` stores
+  delete an expired entry when it is next read) keeps the bytes on disk until something asks for that key
+  again, and a key whose name your code stopped using is never asked for. The bound is on a record's
+  LIFETIME, not on the store's size. Set `idle-ttl` to `null` (or `0`) to opt a specific instance out of even
+  that bound — the right choice for a `refill-rate: 0` hard quota, which must not be handed back.
