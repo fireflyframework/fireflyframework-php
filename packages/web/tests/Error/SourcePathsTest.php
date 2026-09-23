@@ -75,12 +75,42 @@ it('normalises the base path through realpath, so a symlinked deployment still s
     $roots = SourcePaths::roots(new RuntimeException('x'), $link);
 
     expect(SourcePaths::shorten($real.'/app/Service.php', $roots))->toBe('app/Service.php')
-        ->and(SourcePaths::shorten($link.'/app/Service.php', $roots))->toBe('app/Service.php');
+        ->and(SourcePaths::shorten($link.'/app/Service.php', $roots))->toBe('app/Service.php')
+        // The realpath-derived root is spelled with both separators, exactly like the literal one. Asserted
+        // here because this is the only test that reaches the realpath branch at all, and that branch had
+        // the same hardcoded forward slash: fixing the literal prefix while leaving its twin behind would
+        // have left the symlinked deployment broken on Windows and nothing would have said so.
+        ->and($roots)->toContain($real.'\\');
 
     unlink($link);
     unlink($real.'/app/Service.php');
     rmdir($real.'/app');
     rmdir($real);
+});
+
+it('strips a Windows base path, whose separator is the other one', function () {
+    // THE REGRESSION THIS PINS. `Application::basePath()` answers `C:\srv\app` on Windows and PHP reports
+    // trace files as `C:\srv\app\Http\Controllers\OrderController.php`, so a root built by appending a
+    // forward slash is a string no path on that machine can start with — the literal-prefix answer and the
+    // realpath()-normalised one were both dead by construction. The three lines of `str_starts_with` this
+    // class replaced returned `Http\Controllers\OrderController.php` here, so this is behaviour owed.
+    //
+    // And it failed INVISIBLY: the `\vendor\`-derived root is spelled by the frame itself, so it survived
+    // and shortened every dimmed dependency row, leaving precisely the APPLICATION rows — the ones that
+    // carry excerpts — printing absolute paths and wrapping. CI is ubuntu-only; only an assertion written
+    // in backslashes can see it, and before this file had one there was not a single backslash path in it.
+    $roots = SourcePaths::roots(new RuntimeException('x'), 'C:\\srv\\app');
+
+    expect($roots)->toContain('C:\\srv\\app\\')
+        ->and(SourcePaths::shorten('C:\\srv\\app\\Http\\Controllers\\OrderController.php', $roots))
+        ->toBe('Http\\Controllers\\OrderController.php')
+        ->and(SourcePaths::shorten('C:\\srv\\app\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php', $roots))
+        ->toBe('vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php');
+
+    // The other spelling is inert rather than merely harmless: a '/'-separated frame never matches a
+    // '\'-suffixed root and vice versa, so a POSIX base path shortens exactly as it did before.
+    expect(SourcePaths::shorten('/srv/app/app/Http/OrderController.php', SourcePaths::roots(new RuntimeException('x'), '/srv/app')))
+        ->toBe('app/Http/OrderController.php');
 });
 
 it('learns the project root from the trace itself when the base path is of no use', function () {

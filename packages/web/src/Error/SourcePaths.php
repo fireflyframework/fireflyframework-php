@@ -59,14 +59,14 @@ final class SourcePaths
         $roots = [];
 
         if ($basePath !== '') {
-            $roots[] = rtrim($basePath, '/\\').'/';
+            array_push($roots, ...self::spellings($basePath));
 
             // realpath() ONCE, for the base — never per frame, because this runs on a page that is already
             // rendering under duress and a stat per stack frame is a hundred syscalls for cosmetics. It
             // answers false for a path that no longer exists, and a false is simply not a root.
             $real = realpath($basePath);
             if ($real !== false) {
-                $roots[] = rtrim($real, '/\\').'/';
+                array_push($roots, ...self::spellings($real));
             }
         }
 
@@ -94,6 +94,39 @@ final class SourcePaths
         usort($roots, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
 
         return $roots;
+    }
+
+    /**
+     * A directory contributed as a root under BOTH separator spellings, because it does not reveal its own.
+     *
+     * A base path is a configured string, not a parsed path, and it arrives without the one fact this
+     * function would need in order to pick a separator. Guessing cost the class everything on Windows:
+     * `Application::basePath()` answers `C:\srv\app`, PHP reports trace files as
+     * `C:\srv\app\Http\Controllers\OrderController.php`, and appending a forward slash built the mixed root
+     * `C:\srv\app/` — a string that no path on that machine can start with. Both of the first two answers
+     * the class docblock promises, the literal prefix AND the realpath()-normalised one, were dead by
+     * construction there, and the three lines of `str_starts_with` this class replaced got the case right,
+     * so it is behaviour owed rather than a new promise.
+     *
+     * WHY IT LOOKED FINE. The third answer, the root derived from a `\vendor\` segment, is spelled by the
+     * frame itself and so survives — and it rescues exactly the rows nobody reads. Every Laravel trace
+     * passes through framework frames, so the dimmed dependency rows shortened while the APPLICATION rows,
+     * the ones that carry excerpts and are the whole reason the page exists, each printed a full absolute
+     * path and wrapped. Not a missing feature: the 10,108-pixel page, inverted and reproduced on the other
+     * platform, masked by the one answer that still worked.
+     *
+     * Spelling both rather than detecting one keeps the platform out of the question. shorten() skips any
+     * root that does not prefix the file, so the spelling that is wrong for this machine costs a failed
+     * `str_starts_with` and nothing else, and the two are the same length, so neither can displace the
+     * other in the longest-first order the rest of the class is built on.
+     *
+     * @return list<string>
+     */
+    private static function spellings(string $path): array
+    {
+        $trimmed = rtrim($path, '/\\');
+
+        return [$trimmed.'/', $trimmed.'\\'];
     }
 
     /**
