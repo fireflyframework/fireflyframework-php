@@ -4,9 +4,15 @@
 
 declare(strict_types=1);
 
+use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Container\Attributes\Order;
 use Firefly\Data\Proxy\Advice;
+use Firefly\Data\Proxy\MethodInterceptor;
+use Firefly\Data\Proxy\MethodInvocation;
+use Firefly\Data\Proxy\ProxyClassGenerator;
+use Firefly\Data\Proxy\ProxyPlanner;
 use Firefly\Data\Proxy\TransactionalAdviceSource;
+use Firefly\Data\Tests\Fixtures\Chain\ChainedLedger;
 use Firefly\Data\Transaction\TransactionalDescriptor;
 use Firefly\Data\Transaction\TransactionInterceptor;
 use Firefly\Observability\Web\HttpExchangeFilter;
@@ -22,6 +28,7 @@ use Firefly\Security\OAuth2\OAuth2ResourceServerFilter;
 use Firefly\Security\OAuth2\Server\Settings\AuthorizationServerSettings;
 use Firefly\Security\OAuth2\Server\Web\OAuth2AuthorizationServerFilter;
 use Firefly\Security\Session\SecurityContextPersistenceFilter;
+use Firefly\Security\Tests\Fixtures\Advice\ReportService;
 use Firefly\Security\Web\Basic\HttpBasicFilter;
 use Firefly\Security\Web\CsrfFilter;
 use Firefly\Security\Web\HttpSecurityFilter;
@@ -31,6 +38,7 @@ use Firefly\Security\Web\Logout\LogoutFilter;
 use Firefly\Security\Web\RememberMe\RememberMeAuthenticationFilter;
 use Firefly\Security\Web\SecurityHeadersFilter;
 use Firefly\Security\Web\Settings\FormLoginSettings;
+use Firefly\Tests\Fixtures\Advice\BothAdviceService;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Filter\RequestContextFilter;
 
@@ -815,6 +823,129 @@ it('pins the interceptor-chain figure and its prose to the Advice each AdviceSou
             expect(str_contains($plain, $fragment))->toBeTrue(
                 "{$relative} no longer writes '{$fragment}' — the advice orders it repeats are "
                 ."{$securityOrder} for {$security->id} and {$transactionalOrder} for {$transactional->id}",
+            );
+        }
+    }
+});
+
+/**
+ * Chapter 9 makes two claims about bytes this repository emits, and both had already drifted once. Exercise 3
+ * still sent the reader to match a `__fireflyTxInterceptor->run(...)` call "back to the two things
+ * ProxyClassGenerator renders" — no generated proxy has contained that call since the override became a
+ * MethodInvocation, and the generator renders four kinds of member, not two. The artifact paragraph still said
+ * firefly:cache writes TWO artifacts, one proxy "per scanned class", after ManifestCacheWriter began writing
+ * proxy-plan.php as a third and generating one proxy per PLANNED class — every class any AdviceSource claims,
+ * so a bean the transactional scanner never saw gets one. Nothing above this test reads either sentence, and
+ * the figure test next door pins the advice ORDERS, never the member names or the file names.
+ *
+ * So the same treatment, and nothing typed in: the member names are Advice::property()/factory() output, the
+ * artifact names are FireflyCachePaths constants, and the proxy sources both sentences describe are generated
+ * HERE through the real ProxyPlanner (ManifestCacheWriter's own two sources) and the real ProxyClassGenerator
+ * over three real fixtures — one bean only the transactional source claims, one only the security source
+ * claims (the case the artifact paragraph now promises gets a proxy of its own), and one both claim (the
+ * comparison exercise 3 now asks the reader to make). A shape change in the generator fails this test on the
+ * emitted source and names every sentence in both language trees that still describes the old shape.
+ */
+it('pins chapter 9 exercise 3 and the firefly:cache artifact list to the proxy source the generator emits', function () {
+    $root = dirname(__DIR__);
+
+    $security = (new MethodSecurityAdviceSource)->advice();
+    $transactional = (new TransactionalAdviceSource)->advice();
+
+    // Exactly ManifestCacheWriter::planner(): the two shipped sources, merged into one plan.
+    $planner = new ProxyPlanner([new TransactionalAdviceSource, new MethodSecurityAdviceSource]);
+    $plan = $planner->plan([
+        'Firefly\\Data\\Tests\\Fixtures\\Chain\\' => $root.'/packages/data/tests/Fixtures/Chain',
+        'Firefly\\Security\\Tests\\Fixtures\\Advice\\' => $root.'/packages/security/tests/Fixtures/Advice',
+        'Firefly\\Tests\\Fixtures\\Advice\\' => $root.'/tests/Fixtures/Advice',
+    ]);
+
+    // The claim the artifact paragraph now makes, checked against a plan instead of repeated in prose: a bean
+    // carrying only method-security rules is named by the plan, so firefly:cache writes it a proxy too.
+    expect(in_array(ReportService::class, $plan->classes(), true))->toBeTrue(
+        'the proxy plan no longer names a #[Service] whose only rules are method security — which is the class '
+        .'of bean both chapters now promise gets a proxy source file of its own',
+    );
+
+    $methods = $planner->proxyMethods($plan);
+    $generator = new ProxyClassGenerator;
+    $emitted = [
+        'transactional-only' => $generator->generate(ChainedLedger::class, $methods[ChainedLedger::class]),
+        'security-only' => $generator->generate(ReportService::class, $methods[ReportService::class]),
+        'two-advice' => $generator->generate(BothAdviceService::class, $methods[BothAdviceService::class]),
+    ];
+
+    // The members exercise 3 sends the reader to find, read off emitted source rather than described.
+    foreach ($emitted as $label => $source) {
+        expect(str_contains($source, '(new \\'.MethodInvocation::class.'('))->toBeTrue(
+            "the {$label} proxy no longer opens its override with a MethodInvocation, which is the first thing "
+            .'exercise 3 tells the reader to look for',
+        );
+        expect(str_contains($source, '))->proceed();'))->toBeTrue(
+            "the {$label} proxy no longer finishes its override with ->proceed()",
+        );
+        expect(str_contains($source, 'public static function __fireflyAdvice(): array'))->toBeTrue(
+            "the {$label} proxy no longer renders the __fireflyAdvice() table the ProxyFactory reads",
+        );
+        expect(str_contains($source, 'Interceptor->run('))->toBeFalse(
+            "the {$label} proxy calls an interceptor's run() directly again — exercise 3 described that shape "
+            .'for two waves after it stopped being emitted, which is why this assertion exists',
+        );
+    }
+
+    // One private interceptor property and one private static descriptor factory PER ADVICE KIND — and only
+    // for the kinds that class actually uses, which is what makes the two single-advice proxies comparable.
+    $property = static fn (Advice $advice): string => 'private \\'.MethodInterceptor::class.' $'.$advice->property().';';
+
+    expect(str_contains($emitted['transactional-only'], $property($transactional)))->toBeTrue()
+        ->and(str_contains($emitted['transactional-only'], 'self::'.$transactional->factory().'('))->toBeTrue()
+        ->and(str_contains($emitted['transactional-only'], $security->property()))->toBeFalse(
+            'a bean with no method-security rules now carries the security advice members anyway',
+        )
+        ->and(str_contains($emitted['security-only'], $property($security)))->toBeTrue()
+        ->and(str_contains($emitted['security-only'], 'self::'.$security->factory().'('))->toBeTrue()
+        ->and(str_contains($emitted['security-only'], $transactional->property()))->toBeFalse(
+            'a bean with no #[Transactional] now carries the transactional advice members anyway',
+        );
+
+    // And the sentence the exercise ends on: the interceptor array of a method carrying BOTH advices, in the
+    // order the plan built it — security outermost, which is the invariant the figure next door draws.
+    $chain = '[$this->'.$security->property().', $this->'.$transactional->property().'],';
+    expect(str_contains($emitted['two-advice'], $chain))->toBeTrue(
+        "the two-advice proxy no longer emits '{$chain}' — exercise 3 tells the reader to read exactly this "
+        .'line off the generated source and confirm the order Figure 9.1 draws',
+    );
+
+    // The prose copies, in both language trees. Every fragment is a member name the generator just emitted or
+    // a path FireflyCachePaths declares, so a rename lands here as well as on the assertions above.
+    $fragments = [
+        '(new \\'.MethodInvocation::class.'(...))->proceed()',
+        '$'.$transactional->property(),
+        $transactional->factory()."('m')",
+        '__fireflyAdvice()',
+        '$'.$security->property(),
+        $security->factory()."('m')",
+        '[$this->'.$security->property().', $this->'.$transactional->property().']',
+        'bootstrap/cache/firefly/'.FireflyCachePaths::TRANSACTIONAL,
+        'bootstrap/cache/firefly/'.FireflyCachePaths::PROXY_PLAN,
+        FireflyCachePaths::PROXY_MAP,
+        FireflyCachePaths::PROXY_DIR.'/',
+    ];
+
+    foreach (['book/src/09-transactions.md', 'book/src-es/09-transactions.md'] as $relative) {
+        // Same normalisation as the figure test: strip the wrappers prose puts round code and collapse the
+        // hard wrapping, so a fragment is matched as a reader reads it.
+        $plain = str_replace(['`', '**', '*'], '', (string) file_get_contents($root.'/'.$relative));
+        $plain = trim((string) preg_replace('/\s+/', ' ', $plain));
+
+        expect(str_contains($plain, 'Interceptor->run('))->toBeFalse(
+            "{$relative} sends the reader at an interceptor's run() call again; the generated proxy hands the "
+            .'call to MethodInvocation::proceed() and never calls run() itself',
+        );
+
+        foreach ($fragments as $fragment) {
+            expect(str_contains($plain, $fragment))->toBeTrue(
+                "{$relative} no longer writes '{$fragment}', which is what the proxy pipeline emits today",
             );
         }
     }
