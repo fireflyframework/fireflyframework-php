@@ -389,8 +389,10 @@ final class DataQueryEngine
                 DataFilter::NE => $string !== $filter->value,
                 DataFilter::CONTAINS => $string !== null && str_contains(mb_strtolower($string), mb_strtolower($filter->value)),
                 DataFilter::STARTS => $string !== null && str_starts_with(mb_strtolower($string), mb_strtolower($filter->value)),
-                DataFilter::GT => $string !== null && $this->compare($value, $filter->value) > 0,
-                DataFilter::LT => $string !== null && $this->compare($value, $filter->value) < 0,
+                // The SCALAR STRING, not the raw value: see compare() for why a bool must reach it as the
+                // `'1'`/`''` the driver would have bound and not as the word the listing renders.
+                DataFilter::GT => $string !== null && $this->compare($string, $filter->value) > 0,
+                DataFilter::LT => $string !== null && $this->compare($string, $filter->value) < 0,
                 DataFilter::NULL => $value === null,
                 DataFilter::NOT_NULL => $value !== null,
                 default => $string === $filter->value,
@@ -560,13 +562,21 @@ final class DataQueryEngine
     /**
      * How `greater than` and `less than` compare on the unpaged path.
      *
-     * It is RowComparator's value comparison and nothing else — no empty-last rank. The paged sibling of this
-     * predicate is `where(col, '>', ?)` in SQL, where the empty string is simply the smallest string, and a
-     * filter that meant two things depending on whether the repository could page is the drift the search
-     * predicate above already warns about. Where empties go is a question about a LISTING's order, which is
-     * asked in the sort, not here.
+     * IT IS GIVEN THE CELL'S SCALAR STRING, NEVER THE RAW VALUE, and the difference is not cosmetic. The
+     * paged sibling of this predicate is `where(col, '>', ?)` in SQL: the driver binds a bool as `1`/`0`, so
+     * `pinned > 0` selects the pinned rows. RowComparator renders a bool for a READER — `true`/`false` — and
+     * a word is not numeric, so the pair would fall to the natural-text comparison where `t` and `f` sort
+     * after every digit: `greater than 0` would match EVERY row and `less than 1` none, on a repository that
+     * cannot page, while the identical filter over a pageable resource answered correctly. `(string) true`
+     * is `'1'` and `(string) false` is `''`, which are the shapes the binding has, so passing the string
+     * keeps one filter meaning one thing on both paths. That is the same drift the search predicate above
+     * warns about, arriving through the operand rather than through a second implementation.
+     *
+     * It is RowComparator's value comparison and nothing else — no empty-last rank. In SQL the empty string
+     * is simply the smallest string, and ranking empties last here would be the same drift again. Where
+     * empties go is a question about a LISTING's order, which is asked in the sort, not here.
      */
-    private function compare(mixed $a, mixed $b): int
+    private function compare(string $a, string $b): int
     {
         return RowComparator::compare($a, $b);
     }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Actuator\Introspection\SensitiveValueMasker;
+use Firefly\Admin\Data\DataFilter;
 use Firefly\Admin\Data\DataQueryEngine;
 use Firefly\Admin\Tests\Data\Support\DataBrowserTestCase;
 use Illuminate\Support\Facades\DB;
@@ -153,6 +154,38 @@ it('keeps null and empty values last in both directions on the in-PHP fallback',
     // Gamma has a null body and Delta an empty one; both stay behind the rows that have something to show.
     expect(array_column($ascending->rows, 'title'))->toBe(['Alpha', 'Beta', 'Gamma', 'Delta'])
         ->and(array_column($descending->rows, 'title'))->toBe(['Beta', 'Alpha', 'Gamma', 'Delta']);
+});
+
+/**
+ * `greater than` and `less than` over a BOOLEAN column, on BOTH engines, because a bool is exactly where the
+ * two can disagree without anything failing.
+ *
+ * The unpaged path reads `pinned` off a promoted property and holds a real `bool`; its paged sibling reads a
+ * tinyint out of the driver and asks SQL `where(pinned, '>', ?)` with `0` bound. What keeps those two
+ * answers the same is that the in-PHP comparison is made on the SCALAR STRING of the cell — `'1'` and `''`,
+ * the same shapes the driver binds — and not on the value as the listing would RENDER it. A bool rendered as
+ * the word `true` is not a number, so it would fall to the natural-text comparison, where `t` sorts after
+ * every digit: `greater than 0` would then match every row on the repository that cannot page and the right
+ * rows on the one that can, and one filter in one URL would mean opposite things on two resources.
+ */
+it('compares a boolean column the same way on the in-PHP and the SQL filter paths', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->seedNotes();
+    $this->seedRecords();
+
+    $pinned = $this->browser()->list('plain-note', filters: [new DataFilter('pinned', DataFilter::GT, '0')]);
+    $unpinned = $this->browser()->list('plain-note', filters: [new DataFilter('pinned', DataFilter::LT, '1')]);
+
+    // Alpha is the only pinned note, and `less than 1` is its complement — not every row, and not none.
+    expect(array_column($pinned->rows, 'title'))->toBe(['Alpha'])
+        ->and(array_column($unpinned->rows, 'title'))->toBe(['Beta', 'Gamma']);
+
+    // The same two comparisons over the Eloquent resource, where a driver answers them.
+    $active = $this->browser()->list('admin-record', filters: [new DataFilter('active', DataFilter::GT, '0')]);
+    $inactive = $this->browser()->list('admin-record', filters: [new DataFilter('active', DataFilter::LT, '1')]);
+
+    expect(array_column($active->rows, 'id'))->toBe([1, 2, 4])
+        ->and(array_column($inactive->rows, 'id'))->toBe([3, 5]);
 });
 
 it('clamps the page size to the configured ceiling', function () {
