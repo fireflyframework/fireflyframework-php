@@ -1757,12 +1757,16 @@ return [
     |
     | IDLE TTL — the cache-backed patterns (circuit-breaker, rate-limiter; bulkhead has always had its own
     | `permit-ttl`) write their state with an expiry of `idle-ttl`, default 30 days, REFRESHED BY EVERY
-    | WRITE. An instance that is being called therefore can never lose its record — the expiry is always
-    | pushed further away than the next call — while an instance nobody has touched for a month stops
-    | occupying a cache key forever, which is what a retired integration used to do. A reclaimed key rebuilds
-    | in the state an idle instance was already in (a CLOSED breaker, a full bucket), so the reclaim is
-    | invisible. Set `idle-ttl` to null — or to 0, or to any negative duration, all of which are read as the
-    | same instruction — for the old unbounded behaviour: the right choice for a rate limiter with
+    | CALL — including the ones the gate REFUSES: a breaker rejecting while OPEN and a limiter refusing an
+    | acquisition both rewrite their record, because those are the moments losing it would hand the traffic
+    | back to exactly what the gate exists to protect. An instance that is being called therefore can never
+    | lose its record — the expiry is always pushed further away than the next call — while an instance
+    | nobody has touched for a month stops occupying a cache key forever, which is what a retired integration
+    | used to do. A reclaimed key rebuilds in the state a genuinely idle instance was already in (a CLOSED
+    | breaker, a full bucket), so the reclaim is invisible — keep `idle-ttl` comfortably above
+    | `wait-duration-in-open` if you lower it, so that "idle" cannot mean "OPEN with no callers". Set
+    | `idle-ttl` to null — or to 0, or to any negative duration, all of which are read as the same
+    | instruction — for the old unbounded behaviour: the right choice for a rate limiter with
     | `refill-rate` 0, which is a hard quota rather than a rate and must not be handed back. A non-positive
     | value means NEVER EXPIRE and never "expire immediately", the reading `permit-ttl` already has, because
     | the cache deletes a key written with a TTL of zero and that would silently retire the breaker or the

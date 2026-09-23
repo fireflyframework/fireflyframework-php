@@ -38,16 +38,30 @@ use Throwable;
  * ignores — an ignored exception is neither a success nor a failure (Resilience4j's semantics), so the
  * episode stays HALF_OPEN and simply regains its slot.
  *
- * THE RECORD NOW EXPIRES WHEN NOTHING TOUCHES IT. Every write refreshes `idleTtl` (DEFAULT_IDLE_TTL, thirty
+ * THE RECORD NOW EXPIRES WHEN NOTHING TOUCHES IT. Every CALL refreshes `idleTtl` (DEFAULT_IDLE_TTL, thirty
  * days — the CONSTRUCTOR's default, so a breaker built by hand is bounded exactly like one the registry
- * builds), so an active breaker's record can never expire — the TTL is always further away than the next
- * call — while a breaker nobody has called for a month stops occupying a cache key forever. That was a real,
- * unbounded growth characteristic: one integration retired and its key outlives the code that created it.
+ * builds), so a breaker that is being used can never lose its record — the TTL is always further away than
+ * the next call — while a breaker nobody has called for a month stops occupying a cache key forever. That
+ * was a real, unbounded growth characteristic: one integration retired and its key outlives the code that
+ * created it.
+ *
+ * "Every CALL" is the exact claim, and it is stronger than "every transition" on purpose. A call that
+ * admit() REJECTS writes too (see admit()), because the alternative is a gate that fails open at the worst
+ * possible moment: an OPEN breaker shedding load performs no transition, so with transition-only writes its
+ * record would sit untouched for the whole outage, be reclaimed once `idleTtl` elapsed, and read back as a
+ * fresh CLOSED record — re-admitting traffic to the dependency the breaker had already ruled dead, once per
+ * `idleTtl`, for as long as the outage lasted. RateLimiter::consume() writes on a refused acquisition for
+ * the same reason. The only path that deliberately does NOT write is state(), which is a pure read an
+ * observer may poll at any frequency.
+ *
  * Thirty days is chosen to be indistinguishable from "never" for any live breaker: `wait-duration-in-open`
  * defaults to thirty SECONDS, so a breaker idle for thirty days would have left OPEN eighty-six thousand
- * times over and a fresh CLOSED record is the same state a reclaimed key rebuilds. `null` — and, on purpose,
- * ANY non-positive duration, which recordTtl() reads as the same instruction — restores the old unbounded
- * behaviour for a deployment that wants it. Bulkhead already worked this way through `permit-ttl`.
+ * times over and a fresh CLOSED record is the same state a reclaimed key rebuilds. That equivalence is what
+ * an `idleTtl` comfortably above `waitDurationInOpen` (and above `halfOpenProbeTimeout`) buys: below it, a
+ * reclaim can still land on a breaker that has genuinely received no calls for `idleTtl` and that would
+ * have decided OPEN, and such a breaker forgets it was open. `null` — and, on purpose, ANY non-positive
+ * duration, which recordTtl() reads as the same instruction — restores the old unbounded behaviour for a
+ * deployment that wants it. Bulkhead already worked this way through `permit-ttl`.
  */
 final class CircuitBreaker
 {
@@ -79,9 +93,9 @@ final class CircuitBreaker
     /**
      * @param  list<class-string<Throwable>>  $recordOn
      * @param  float|null  $idleTtl  seconds of idleness after which the store may reclaim this breaker's
-     *                               record, refreshed by every write; null — and any non-positive duration,
-     *                               see recordTtl() — never expires. Appended last so every existing
-     *                               construction keeps compiling unchanged.
+     *                               record, refreshed by every call — admitted or rejected; null — and any
+     *                               non-positive duration, see recordTtl() — never expires. Appended last so
+     *                               every existing construction keeps compiling unchanged.
      */
     public function __construct(
         private readonly string $key,
@@ -147,6 +161,24 @@ final class CircuitBreaker
         return $record['state'];
     }
 
+    /**
+     * Decides whether this call may proceed, and writes on EVERY outcome — including the two that reject.
+     *
+     * A REJECTED call refreshes the idle TTL just as an admitted one does. The write is the whole reason the
+     * TTL is safe: a breaker that is rejecting is the busiest a breaker ever is, and it is the one moment
+     * losing the record is catastrophic rather than free. Let an OPEN breaker's key be reclaimed mid-window
+     * and record() reads back a fresh CLOSED record: the wait window never completes, and the traffic the
+     * breaker already ruled the dependency unable to serve is admitted to it again, once per idle-ttl, for
+     * the whole outage. RateLimiter::consume() takes exactly this decision for a refused acquisition and for
+     * exactly this reason; the two patterns must not disagree about what "refreshed on every call" means.
+     *
+     * Neither rejecting write CHANGES state. The OPEN one persists the record verbatim — in particular
+     * `openedAt` is untouched, so refreshing the TTL can never postpone the OPEN -> HALF_OPEN transition —
+     * and the HALF_OPEN one persists the same record with dead probe permits already pruned out, which is
+     * the view every reader of that list takes anyway. They are TTL refreshes that happen to be spelled as
+     * writes, and they are free of an extra round trip in the sense that matters: both already run inside
+     * the withLock critical section this method was going to take regardless.
+     */
     private function admit(): void
     {
         $this->store->withLock($this->key, self::LOCK_TTL, function (): void {
@@ -157,6 +189,8 @@ final class CircuitBreaker
                     $record['state'] = self::HALF_OPEN;
                     $record['halfOpenProbes'] = [];
                 } else {
+                    $this->save($record);
+
                     throw new CircuitBreakerOpenException;
                 }
             }
@@ -167,6 +201,9 @@ final class CircuitBreaker
                 $probes = $this->livingProbes($record['halfOpenProbes']);
 
                 if (count($probes) >= $this->halfOpenMaxCalls) {
+                    $record['halfOpenProbes'] = $probes;
+                    $this->save($record);
+
                     throw new CircuitBreakerOpenException;
                 }
 
@@ -333,8 +370,9 @@ final class CircuitBreaker
     }
 
     /**
-     * The one write site, so the idle TTL is refreshed by every transition without a single caller having to
-     * remember it: admit(), onSuccess(), onFailure() and releaseProbe() all land here.
+     * The one write site, so the idle TTL is refreshed by every call without a single caller having to
+     * remember it: admit() — on all four of its outcomes, the two that admit and the two that reject —
+     * onSuccess(), onFailure() and releaseProbe() all land here.
      *
      * @param  array{state: string, openedAt: float, halfOpenProbes: list<float>, outcomes: list<bool>}  $record
      */
