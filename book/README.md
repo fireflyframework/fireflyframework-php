@@ -50,7 +50,9 @@ file — no execution) unless it carries a `<!-- source: … -->` marker. A mark
 block is a verbatim excerpt of the repository file it names — a fragment that
 does not parse on its own — and is checked by line-for-line comparison in
 `DocsCodeIsRealTest` instead. Every listing in `src/` carries one marker or the
-other; `src-es/` carries none yet, so all of it is linted:
+other. In `src-es/` only `10a-oauth2.md` is converted so far — it is named in
+`DocsCodeAudit::AUDITED`, so its marked listings are held to the comparison —
+and the rest of `src-es/` carries no markers, so all of it is linted:
 
 ```bash
 book/.venv/bin/python book/build/verify_code.py book/src
@@ -141,8 +143,10 @@ chapter walks the real `samples/lumen` project. Every fenced ` ```php ` listing
 in `src/` carries either a `source:` marker naming the repository file it was
 excerpted from — compared line for line by the repository's own documentation
 guard — or an `illustrative:` marker saying it is the reader's own code, which
-is the kind `php -l` checks; `src-es/` is `php -l`-clean throughout
-(`verify_code.py`). Both editions build to `book/dist/` as PDF + EPUB.
+is the kind `php -l` checks. `src-es/` is `php -l`-clean throughout
+(`verify_code.py`) except `10a-oauth2.md`, whose listings carry the same markers
+and are under the same provenance contract. Both editions build to `book/dist/`
+as PDF + EPUB.
 
 **The English edition is the reference, and the Spanish one currently trails it.**
 Every chapter exists in both, but recent waves landed in `src/` first, so

@@ -1512,10 +1512,19 @@ it('pins every page that explains the book\'s gate to what that gate now really 
     // marker. A sentence is only refused while the thing it denies is true, so the day one of these decisions
     // is reversed the corresponding check goes quiet instead of forcing a lie in the other direction.
     //
+    // A SECOND ROUND, for the same reason one wave later. Chapter 10A landed in book/src-es carrying sixteen
+    // `source:` markers — the first Spanish page ever to have any — and four more sentences went false in the
+    // opposite direction, each of them now DENYING a conversion that had already happened: README.md and
+    // book/README.md called the Spanish manuscript `php -l`-verified "throughout", book/README.md said
+    // `src-es/` "carries none yet", and docs/contributing.md said it "carries no markers". A reader trusting
+    // those would believe sixteen listings were linted when the marker is exactly what stops them being.
+    //
     // WHAT THIS CANNOT SEE, stated plainly: it knows the sentences that WERE wrong, not every sentence that
     // COULD be. A newly invented false claim about the gate is not in the list. What the pairing buys is that
-    // these five cannot come back, and that the three pages cannot quietly stop describing the gate at all —
-    // which the presence check below is for.
+    // these nine cannot come back, and that the three pages cannot quietly stop describing the gate at all —
+    // which the presence check below is for. The structural half — that a page carrying markers must also be
+    // in AUDITED, or neither the lint nor the comparison reads it — is asserted in tests/DocsCodeIsRealTest.php,
+    // because it is a fact about the gate rather than about a sentence.
     $root = dirname(__DIR__);
 
     $script = (string) file_get_contents($root.'/book/build/verify_code.py');
@@ -1551,6 +1560,17 @@ it('pins every page that explains the book\'s gate to what that gate now really 
 
     $everyListingDeclaresItsOrigin = $listings > 0 && $marked === $listings;
 
+    // Derived the same way, in the other tree: the day any Spanish page carries a marker, every sentence that
+    // says the Spanish manuscript is linted end to end is false, because the marker is what ends the lint.
+    $spanishConverted = false;
+    foreach ((array) glob($root.'/book/src-es/*.md') as $path) {
+        if (str_contains((string) file_get_contents((string) $path), '<!-- source:')) {
+            $spanishConverted = true;
+
+            break;
+        }
+    }
+
     /** @var list<array{0: string, 1: string, 2: bool}> $retired  page, the sentence fragment, the derived fact that makes it false */
     $retired = [
         ['docs/contributing.md', 'write every fenced', $exempts],
@@ -1563,6 +1583,10 @@ it('pins every page that explains the book\'s gate to what that gate now really 
         ['book/README.md', 'lints with `php -l`', $exempts],
         ['book/README.md', 'listing is `php -l`-clean (enforced by', $exempts],
         ['README.md', 'Every fenced PHP listing is `php -l`-verified', $exempts],
+        ['README.md', '`php -l`-verified throughout.', $spanishConverted],
+        ['book/README.md', 'carries none yet', $spanishConverted],
+        ['book/README.md', "`php -l`-clean throughout\n(`verify_code.py`).", $spanishConverted],
+        ['docs/contributing.md', 'is the surface still to convert. It carries no markers', $spanishConverted],
     ];
 
     $failures = [];
@@ -1597,7 +1621,8 @@ it('refuses any page that still ships CachedTransactionalConfiguration as applic
     //
     // A reader following the Spanish edition would create a class the framework now steps around, pinning their
     // application to a workaround for a bug it no longer has. Neither verify_code.py (which only lints) nor
-    // DocsCodeIsRealTest (book/src-es carries no `source:` markers) can see a sentence, which is why it is here.
+    // DocsCodeIsRealTest (whose audited surface reaches one Spanish chapter, and which compares listings, never
+    // sentences) can see a sentence, which is why it is here.
     //
     // DERIVED, twice over. The first fact is that the skeleton ships no such file — a walk, not a literal, so the
     // day someone re-adds it both rules go quiet by themselves. The second is that no class by that name exists
@@ -2200,4 +2225,88 @@ it('pins every "complete in both languages" claim to how far apart the two manus
 
     expect($failures)->toBe([])
         ->and($judged)->toBe(2, 'one of README.md / book/README.md no longer says how complete the book is in each language, so this canary is only half holding');
+});
+
+it('pins every chapter count to the chapters the manuscript really has', function () {
+    // The twentieth, and the one the wave's own diff created THREE TIMES IN ONE FILE. Chapter 10A was slotted
+    // in after the security chapter, taking the book from fourteen chapters to fifteen. The task that added it
+    // corrected the one sentence the plan had noticed — README.md's "**fifteen chapters**" — and left two more
+    // counts on the same page spelled as a numeral: "the complete bilingual book (14 chapters + appendices)"
+    // in the documentation index, and "(14 chapters + appendices, EN + ES, PDF + EPUB)" in the roadmap. The
+    // first file anyone reads then said fifteen in one paragraph and fourteen in two others.
+    //
+    // NOTHING COULD SEE IT. DocsCodeIsRealTest audits fenced blocks, and README.md is in its surface, so the
+    // page was green while contradicting itself in prose — a count is a claim, and the cheapest one to get
+    // wrong, which is the premise this whole file was written on.
+    //
+    // DERIVED FROM THE MANUSCRIPT, in words and in digits, in English and in Spanish. A chapter is a file in
+    // book/src whose name opens with a number between 01 and 89 — 00 is the quick start, 90 and 94 are the
+    // appendices — so 04a and 10a count themselves and the next slotted-in chapter needs no edit here. Every
+    // page that writes a number immediately before "chapters" or "capítulos" is held against it; a token that
+    // is not a number ("Later chapters", "los Capítulos 7 y 8") reads as no claim at all and is skipped, which
+    // is why the canary below insists the walk still found some.
+    $root = dirname(__DIR__);
+
+    $chapters = static function (string $tree) use ($root): array {
+        $found = [];
+
+        foreach ((array) glob($root.'/'.$tree.'/*.md') as $path) {
+            if (preg_match('/^(\d{2})[a-z]?-/', basename((string) $path), $matched) === 1) {
+                $number = (int) $matched[1];
+
+                if ($number >= 1 && $number <= 89) {
+                    $found[] = basename((string) $path);
+                }
+            }
+        }
+
+        sort($found);
+
+        return $found;
+    };
+
+    $english = $chapters('book/src');
+    $spanish = $chapters('book/src-es');
+    $count = count($english);
+
+    $pages = fireflyProsePages();
+    // book/README.md is outside fireflyProsePages() — that walk covers README.md, docs/ and the two
+    // manuscripts — and it carries two of the six counts, so it is read here explicitly. The nineteenth canary
+    // learnt the same lesson about the same file.
+    $split = preg_split('/\n\s*\n/', (string) file_get_contents($root.'/book/README.md'));
+    $pages['book/README.md'] = $split === false ? [] : $split;
+
+    $failures = [];
+    $judged = 0;
+
+    foreach ($pages as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (preg_match_all('/([\p{L}\d]+)\**\s+\**(chapters|cap[ií]tulos)\b/iu', $paragraph, $claims, PREG_SET_ORDER) === 0) {
+                continue;
+            }
+
+            foreach ($claims as $claim) {
+                $written = fireflyWrittenNumber($claim[1]);
+
+                if ($written === null) {
+                    continue;
+                }
+
+                $judged++;
+
+                if ($written !== $count) {
+                    $failures[] = $page.' counts the book at '.$claim[1].' '.$claim[2].', and book/src holds '
+                        .$count.': '.implode(', ', $english);
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        // A count claimed of "EN + ES" is only true while both trees hold the same chapters, so the day one
+        // edition gains a chapter alone, the sentences above become half-true rather than false — which is the
+        // shape of drift this file exists to refuse.
+        ->and($spanish)->toBe($english, 'the two manuscripts no longer hold the same chapters, so every "N chapters, EN + ES" sentence is only true of one edition')
+        ->and($count)->toBeGreaterThan(0, 'book/src holds no numbered chapter at all, so this canary holds nothing')
+        ->and($judged)->toBeGreaterThan(0, 'no page counts the book\'s chapters any more, so this canary holds nothing');
 });

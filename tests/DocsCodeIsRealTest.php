@@ -50,6 +50,65 @@ it('audits a surface that only ever grows', function () {
 });
 
 /**
+ * A `source:` marker is a HANDOVER, not a decoration, and this asserts that somebody is on the other end.
+ *
+ * The two halves of the book's gate own different listings. `book/build/verify_code.py` hands every ```php
+ * block to `php -l` EXCEPT one carrying a `source:` marker, because a verbatim fragment of a real file — one
+ * method out of its class, an interface's signatures — does not parse on its own. What it stops linting, this
+ * file is supposed to pick up and compare against the file the marker names. That handover only happens for a
+ * page inside `DocsCodeAudit::AUDITED`.
+ *
+ * So a manuscript page that gains markers WITHOUT joining the audited surface is checked by neither half: the
+ * lint steps over it and the comparison never sees it. It ships green while nothing at all has read it. That
+ * is strictly worse than the unconverted state, where at least `php -l` ran. It happened once, to
+ * `book/src-es/10a-oauth2.md` — the first Spanish chapter ever written with markers, added while `AUDITED`
+ * still named only `book/src` — and sixteen listings spent a commit unverified by anything.
+ *
+ * DERIVED FROM THE MARKERS THEMSELVES, in both trees, so the next chapter converted cannot re-open the hole
+ * and no list here has to be kept in step with the manuscript. The fix a failure asks for is always the same
+ * one line: name the file (or its directory) in `AUDITED`.
+ */
+it('audits every manuscript page that carries a source: marker', function () {
+    $root = dirname(__DIR__);
+
+    $audited = array_flip((new DocsCodeAudit($root))->markdownFiles());
+
+    $marked = [];
+    $orphaned = [];
+
+    foreach (['book/src', 'book/src-es'] as $tree) {
+        /** @var iterable<SplFileInfo> $walk */
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/'.$tree, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($walk as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'md') {
+                continue;
+            }
+
+            if (! str_contains((string) file_get_contents($file->getPathname()), '<!-- source:')) {
+                continue;
+            }
+
+            $relative = substr($file->getPathname(), strlen($root) + 1);
+            $marked[] = $relative;
+
+            if (! isset($audited[$relative])) {
+                $orphaned[] = $relative;
+            }
+        }
+    }
+
+    sort($orphaned);
+
+    expect($marked)->not->toBe([], 'no manuscript page carries a `source:` marker any more, so this guard holds nothing')
+        ->and($orphaned)->toBe([], 'a manuscript page carries `source:` markers, which take its listings out of '
+            .'`php -l`, while DocsCodeAudit::AUDITED does not reach it — so nothing checks them at all. Add it '
+            .'to AUDITED: '.implode(', ', $orphaned));
+});
+
+/**
  * A throwaway repository for the PROVENANCE cases.
  *
  * The verbatim comparison is the one contract whose fixtures must not be the framework's own sources: a test

@@ -77,8 +77,9 @@ exists in both languages, but recent waves landed in `book/src/` first, so chapt
 carry material in English that the Spanish edition has not received yet — read the English PDF when the two
 disagree. Every fenced PHP listing in the English manuscript carries a `source:` marker naming the repository
 file it was excerpted from — compared against it line for line by `tests/DocsCodeIsRealTest.php` — or an
-`illustrative:` marker saying it is the reader's own code, which is what `php -l` checks; the Spanish
-manuscript is `php -l`-verified throughout. The sources live under
+`illustrative:` marker saying it is the reader's own code, which is what `php -l` checks. The Spanish
+manuscript is `php -l`-verified throughout except chapter 10A, which arrived already marked and is held to
+the same line-for-line comparison as the English edition. The sources live under
 [`book/`](book/README.md) ([EN manuscript](book/src/) · [ES manuscript](book/src-es/)) and build to PDF + EPUB
 in both languages via [`book/build/run.sh`](book/README.md). `samples/lumen/` is the fastest way to see the
 whole stack fit together end to end, and the [Featured Patterns](#featured-patterns) section below walks
@@ -1109,7 +1110,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*LaraFly by Example*](book/README.md) — the complete bilingual book (14 chapters + appendices, PDF + EPUB).
+- [*LaraFly by Example*](book/README.md) — the complete bilingual book (15 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -1148,7 +1149,7 @@ still ahead, accurately:
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
-  [book](book/README.md) (14 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [book](book/README.md) (15 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 
