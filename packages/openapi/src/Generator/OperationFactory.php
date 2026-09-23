@@ -318,7 +318,8 @@ final class OperationFactory
         $responses['default'] = ['$ref' => ProblemSchema::RESPONSE_REF];
 
         foreach ($doc->responses as $declared) {
-            $responses[(string) $declared->status] = $this->declaredResponse($declared, $registry, $this->method($route)?->getDeclaringClass());
+            $status = (string) $declared->status;
+            $responses[$status] = $this->declaredResponse($declared, $responses[$status] ?? null, $registry, $this->method($route)?->getDeclaringClass());
         }
 
         return $this->sortStatuses($responses);
@@ -330,9 +331,20 @@ final class OperationFactory
      * without one is invalid, and defaulting it to '' would produce a document that validates as a technicality
      * and reads as a blank.
      *
-     * An omitted `type` documents a BODILESS response, which is the honest shape for a 204 or a 304 and the
-     * common case for the error statuses this attribute mostly documents — those render through
-     * ProblemDetailsRenderer, whose shape the shared problem component already states.
+     * AN OMITTED `type` IS NOT ALWAYS "NO BODY", and treating it as one was wrong for the two statuses an
+     * author most often declares:
+     *
+     *   - A status the generator already DERIVED with a body — the success status, above all — keeps that
+     *     body and takes the author's description. Re-declaring the 200 is how prose reaches a success
+     *     response, and it used to replace the derived entry wholesale, so adding a sentence to a 200 erased
+     *     the schema of everything the action returns.
+     *   - An ERROR status (4xx, 5xx, a `4XX`/`5XX` range, or `default`) carries the problem document, because
+     *     every FireflyException renders through ProblemDetailsRenderer as application/problem+json. A
+     *     documented 404 with no content told a client generator the 404 was empty — and to discard the
+     *     `code` it exists to branch on.
+     *
+     * Anything else — a 202 or a 304 the author mentions only in prose — has nothing to borrow a body from and
+     * nothing the framework renders for it, and stays bodiless.
      *
      * `type` is a full PHPDoc type EXPRESSION, not only a class or a scalar name: `'list<Shipment>'`,
      * `'array<string, Money>'` and `'?Consignment'` all resolve, through the same parser that reads a
@@ -340,14 +352,23 @@ final class OperationFactory
      * response degrades the same PHP type to `type: object` — not an inconsistency, but the difference
      * between a declared type that cannot say which it is and an author who has said.
      *
+     * @param  mixed  $derived  the entry the generator derived for the same status, if it derived one
      * @param  ReflectionClass<object>|null  $declaring
      * @return array<string, mixed>
      */
-    private function declaredResponse(ApiResponse $declared, SchemaRegistry $registry, ?ReflectionClass $declaring = null): array
+    private function declaredResponse(ApiResponse $declared, mixed $derived, SchemaRegistry $registry, ?ReflectionClass $declaring = null): array
     {
         $response = ['description' => $declared->description];
 
         if ($declared->type === null) {
+            if (is_array($derived) && isset($derived['content'])) {
+                return [...$response, 'content' => $derived['content']];
+            }
+
+            if ($this->isError($declared->status)) {
+                $response['content'] = [ProblemSchema::MEDIA_TYPE => ['schema' => ['$ref' => ProblemSchema::REF]]];
+            }
+
             return $response;
         }
 
@@ -362,6 +383,20 @@ final class OperationFactory
         $response['content'] = ['application/json' => ['schema' => $schema]];
 
         return $response;
+    }
+
+    /**
+     * Whether a declared status is one ProblemDetailsRenderer answers: a 4xx or 5xx, the `4XX`/`5XX` ranges
+     * OpenAPI allows in their place, or `default` — which in this document already stands for "every
+     * problem the handler raises".
+     */
+    private function isError(int|string $status): bool
+    {
+        if (is_int($status)) {
+            return $status >= 400;
+        }
+
+        return strtolower($status) === 'default' || preg_match('/^[45]xx$/i', $status) === 1 || (ctype_digit($status) && (int) $status >= 400);
     }
 
     /**

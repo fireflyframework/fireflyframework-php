@@ -82,8 +82,12 @@ it('adds an #[ApiResponse] and lets one replace a derived response of the same s
             'description' => 'The current stock level.',
             'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/StockLevel']]],
         ])
-        // No `type`, so the response is documented as bodiless rather than given an invented shape.
-        ->and($responses[404])->toBe(['description' => 'No such stock-keeping unit.']);
+        // No `type` on an error status: the body is the problem document every FireflyException renders as,
+        // not an invented shape and not — as it once was — no body at all.
+        ->and($responses[404])->toBe([
+            'description' => 'No such stock-keeping unit.',
+            'content' => ['application/problem+json' => ['schema' => ['$ref' => '#/components/schemas/ProblemDetails']]],
+        ]);
 });
 
 it('registers an #[ApiResponse] payload type as a component like any body DTO', function () {
