@@ -50,3 +50,27 @@ it('names the caller\'s trace id in the Reference row and the correlation id bes
         ->and($html)->toContain('<dt>Reference</dt><dd>4bf92f3577b34da6a3ce929d0e0e4736</dd>')
         ->toContain('<dt>Correlation</dt><dd>'.$correlationId.'</dd>');
 });
+
+/**
+ * THE 200s, which nothing else here reaches — and which are the traffic of a running application.
+ *
+ * Every assertion above is on an error response, and on an error response the trace header is written by
+ * ProblemDetailsRenderer itself: deleting CorrelationIdFilter's echo would leave all four of them green
+ * while every successful response silently lost the header the documentation promises on it. So this asks
+ * for an ordinary 200 through the same chain, with the trace id made KNOWN by an inbound `traceparent` so
+ * the header is matched against a literal rather than against itself, and with a correlation id the CALLER
+ * chose so the other half of the design — the trace id never overwrites it — is asserted rather than
+ * assumed.
+ */
+it('echoes the trace id on an ordinary 200, beside the correlation id the caller sent', function () {
+    /** @var TraceIdEverywhereCapstoneTestCase $this */
+    $response = $this->withHeaders([
+        'traceparent' => '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+        CorrelationIdFilter::HEADER => 'caller-chose-this-one',
+    ])->get('/demo/7');
+
+    $response->assertOk();
+
+    expect($response->headers->get('X-Trace-Id'))->toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+        ->and($response->headers->get(CorrelationIdFilter::HEADER))->toBe('caller-chose-this-one');
+});

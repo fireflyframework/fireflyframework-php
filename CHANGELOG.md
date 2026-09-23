@@ -48,6 +48,22 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   message is kept verbatim. **Migration:** assert on `code` (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`),
   not on the router's sentence.
 
+- **`packages/web` — problem+json's `traceId` is the W3C trace id, and the correlation id is its own member.**
+  A member named after a trace carried a uuid no trace backend had ever heard of, so the one action a problem
+  document invites — quote this id — resolved nothing in a trace search. `Firefly\Web\Trace\TraceContext`
+  now decides the id three surfaces publish at once: the document's **`traceId`**, the HTML error page's
+  **`Reference`** row, and a new **`X-Trace-Id`** response header written by `CorrelationIdFilter` on every
+  response (and by the problem renderer on the ones it builds). A request with no valid span — every request
+  in a deployment with tracing off — puts the correlation id back in the document and on the page, byte for
+  byte what both carried before, and gets no `X-Trace-Id` at all: turning tracing on is the only thing that
+  changes any of the three. The correlation id is NOT absorbed: `X-Correlation-Id` echoes it untouched, the
+  document gains a **`correlationId`** member holding it, and the page carries a **`Correlation`** fact row
+  beside `Reference` when the two differ. **Migration:** a client that reads `traceId` and matches it against
+  `X-Correlation-Id` matches `correlationId` instead; `firefly.web.trace-id.enabled => false`
+  (`FIREFLY_WEB_TRACE_ID_ENABLED=false`) restores the previous value in all three surfaces and writes no new
+  header, and `firefly.web.trace-id.header => ''` drops only the header. It is deliberately not W3C
+  `traceresponse`, which LaraFly does not implement.
+
 - **`packages/security` — a method-security refusal no longer names the PHP class on the wire.** `Access is
   denied for [App\Ctrl::admin].` becomes `You do not have permission to do this.` with the authorities the
   rule asked for in a `requiredAuthorities` extension member; the class, method, principal and authorities go
@@ -280,11 +296,14 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   common statuses. The OpenAPI problem schema declares `additionalProperties: true` so a generated client
   keeps the members an application put there.
 
-- **`packages/web` — every problem document carries `traceId` and `X-Correlation-Id`.** The request's
-  correlation id (`CorrelationIdFilter::of()`: Context, then the header, then minted) is in the body and on
-  the response, and an opaque 5xx names it: `An unexpected error occurred. It has been logged; quote
-  reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum execution time of N
-  seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500 quoting the engine.
+- **`packages/web` — every problem document carries `traceId`, `correlationId` and both id headers.**
+  `traceId` is the id a person quotes — the request's **W3C trace id** when tracing gave it a valid span, the
+  correlation id when it did not — and it is echoed on `X-Trace-Id`; `correlationId` is always the correlation
+  id (`CorrelationIdFilter::of()`: Context, then the header, then minted), echoed on `X-Correlation-Id` and
+  untouched by any of this. An opaque 5xx names the first of the two: `An unexpected error occurred. It has
+  been logged; quote reference <id> if you report it.` A 503 carries `Retry-After`; PHP's own `Maximum
+  execution time of N seconds exceeded` is answered as `503 EXECUTION_TIME_EXCEEDED` rather than a 500
+  quoting the engine.
 
 - **`packages/web` — `#[PathVariable(pattern:, notFoundCode:, notFoundMessage:)]`.** The segment's shape is
   checked by `ArgumentResolver` before the controller runs, and a miss is the entity's own 404 (default
@@ -333,7 +352,10 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 - **`packages/web` — the HTML error page publishes the request reference.** The production 500 now reads
   "quote reference `<id>` if you report it" and every page carries a `Reference` fact — the same value
-  problem+json publishes as `traceId` and the `X-Correlation-Id` header. Found by the browser suite.
+  problem+json publishes as `traceId` and the response echoes on `X-Trace-Id`: the W3C trace id when the
+  request had a valid span, the correlation id when it did not. A `Correlation` fact row holding the
+  `X-Correlation-Id` value sits beside it, and is omitted when the two ids are the same string. Found by the
+  browser suite.
 
 - **Cross-wave browser scenarios (`tests/Browser/LoginFlowTest.php`, `ObservabilityTest.php`,
   `DataSurfacesTest.php`).** The framework's real form login replaces the harness's `?as=user` stand-in
