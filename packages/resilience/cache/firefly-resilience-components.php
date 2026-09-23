@@ -6,6 +6,23 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Resilience\\Method\\ResilienceAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Resilience\\ResilienceAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -40,6 +57,19 @@ return [
                 'dependencies' => [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Firefly\\Resilience\\Store\\ResilienceStore',
+                ],
+            ],
+            2 => [
+                'method' => 'resilienceMethodInterceptor',
+                'returns' => 'Firefly\\Resilience\\Method\\ResilienceMethodInterceptor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Resilience\\ResilienceRegistry',
+                    1 => 'Firefly\\Config\\Config',
                 ],
             ],
         ],

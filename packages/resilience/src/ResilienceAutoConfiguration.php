@@ -9,6 +9,8 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Resilience\Method\ResilienceMethodInterceptor;
 use Firefly\Resilience\Store\CacheResilienceStore;
 use Firefly\Resilience\Store\ResilienceStore;
 use Illuminate\Contracts\Cache\Repository;
@@ -34,6 +36,20 @@ final class ResilienceAutoConfiguration
     public function resilienceRegistry(Config $config, ResilienceStore $store): ResilienceRegistry
     {
         return ResilienceRegistry::fromConfig($config, $store);
+    }
+
+    /**
+     * The chain link behind the six resilience attributes. Gated on `firefly.resilience.method.enabled`
+     * (default true — an attribute is itself the opt-in, so the key exists to switch the mechanism OFF in
+     * one place). When it is off the advice is inert and the proxies run a pass-through link: the patterns
+     * are never half-applied.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.resilience.method.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnMissingBean(ResilienceMethodInterceptor::class)]
+    public function resilienceMethodInterceptor(ResilienceRegistry $registry, Config $config): ResilienceMethodInterceptor
+    {
+        return new ResilienceMethodInterceptor($registry, $config);
     }
 
     /**

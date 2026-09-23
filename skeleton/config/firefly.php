@@ -1646,6 +1646,34 @@ return [
             'lock-block-timeout' => '500ms',
         ],
 
+        /*
+         | Resilience as ATTRIBUTES. #[Retry], #[CircuitBreaker], #[RateLimiter], #[Bulkhead] and
+         | #[TimeLimiter] each name an instance configured below and are applied to any #[Service]/
+         | #[Component]/#[Repository] method through the same proxy chain #[Transactional] uses; #[Fallback]
+         | names a method on the same class to call when the guarded call finally fails. Every attribute
+         | delegates to the programmatic component documented below — there is one implementation of each
+         | pattern, and the attribute is a second way to reach it.
+         |
+         | The composition is Resilience4j's, outermost first:
+         |
+         |     Fallback ( Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( method ) ) ) ) ) )
+         |
+         | so a fallback sees what the retry gave up on, each retry attempt is judged by the breaker, an OPEN
+         | breaker refuses without spending a token, and a bulkhead permit is held for the work alone.
+         |
+         | The advice runs INSIDE method security and OUTSIDE the transaction: a call #[PreAuthorize] refuses
+         | never consumes a retry budget or trips a breaker, and a retry opens a new transaction per attempt.
+         |
+         | A #[Fallback] naming a method the class does not have, or one whose signature cannot receive the
+         | guarded call, REFUSES TO COMPILE — never a surprise inside the catch block handling the outage.
+         |
+         | Default: true. Off makes every resilience attribute inert (a pass-through proxy link), never
+         | half-applied.
+        */
+        'method' => [
+            'enabled' => env('FIREFLY_RESILIENCE_METHOD_ENABLED', true),
+        ],
+
         // 'retry' => [
         //     'payments' => ['max-attempts' => 3, 'wait-duration' => '250ms', 'backoff-multiplier' => 2.0],
         // ],
