@@ -161,6 +161,4 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
   continued. Routing the three `publish()` methods through the seam is a small, contained follow-up.
 - **`#[Timed]`/`#[Counted]`/`#[Observed]` method attributes** wait for the method-interceptor chain the
   security wave generalises from the transactional proxy.
-- **No `traceresponse`**: the W3C response header is a separate, unshipped thing and nothing writes it. The
-  trace id that IS echoed on the way out goes on the de-facto `X-Trace-Id` (`firefly.web.trace-id.header`)
-  that a gateway or a browser agent already reads, and implies nothing about `traceresponse`.
+- **No `traceresponse`**: W3C defines no response header yet; nothing is written on the way out.
