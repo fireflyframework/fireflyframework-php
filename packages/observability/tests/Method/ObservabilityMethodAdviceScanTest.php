@@ -34,7 +34,7 @@ it('groups the rows by class and sorts both the classes and each class\'s method
     $advice = (new ObservabilityMethodScanner)->scanProxyAdvice(observabilityAdvicePsr4());
 
     expect(array_keys($advice))->toBe([ClassLevelService::class, CountedService::class, ObservedService::class, TimedService::class])
-        ->and(array_keys($advice[TimedService::class]))->toBe(['importAll', 'place'])
+        ->and(array_keys($advice[TimedService::class]))->toBe(['explode', 'importAll', 'place'])
         ->and(array_keys($advice[ClassLevelService::class]))->toBe(['alsoCounted', 'inherited', 'overridden']);
 });
 

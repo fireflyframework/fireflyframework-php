@@ -1329,6 +1329,45 @@ return [
         ],
 
         /*
+         | Micrometer's method attributes: #[Timed], #[Counted] and #[Observed] on any #[Service]/
+         | #[Component]/#[Repository] method, enforced through the SAME proxy chain #[Transactional] and
+         | #[PreAuthorize] use. The metric advice is the OUTERMOST link (order 50, ahead of security's 100
+         | and the transaction's 1000), so a timer measures the authorization refusal and the COMMIT as well
+         | as the method body — the latency a caller actually waited for — and a refused call is counted as
+         | a failure instead of vanishing from the meter.
+         |
+         | #[Timed(value:, extraTags:, description:, longTask:)] records a timer, tagged `exception` with the
+         | thrown class's short name (`none` on success). `longTask` adds a `<meter>.active` gauge holding
+         | the number of in-flight invocations. #[Counted(value:, extraTags:, recordFailuresOnly:)] counts
+         | invocations, tagged `result`. #[Observed(name:, contextualName:, lowCardinalityKeyValues:)] starts
+         | a span AND a timer under one name — Micrometer's Observation API in one attribute; with tracing
+         | off it degrades to the timer.
+         |
+         | #[Timed(percentiles:)] is REFUSED at scan time: this package publishes fixed histogram buckets,
+         | not client-side quantile summaries. Configure `metrics.distribution.per-meter` above and compute
+         | the quantile in the query instead.
+         |
+         | Turning `enabled` off makes every one of the three inert (the proxies run a pass-through link);
+         | it never leaves them half-enforced. The three `name` keys are the meter names used when an
+         | attribute does not name its own.
+         |
+         | Defaults: enabled true, timed.name 'method.timed', counted.name 'method.counted',
+         | observed.name 'method.observed'.
+        */
+        'method' => [
+            'enabled' => env('FIREFLY_OBSERVABILITY_METHOD_ENABLED', true),
+            'timed' => [
+                // 'name' => 'method.timed',
+            ],
+            'counted' => [
+                // 'name' => 'method.counted',
+            ],
+            'observed' => [
+                // 'name' => 'method.observed',
+            ],
+        ],
+
+        /*
          | The rolling buffer behind /actuator/httpexchanges (and the request counter in /actuator/process)
          | — the last N requests this application answered, newest first.
          |

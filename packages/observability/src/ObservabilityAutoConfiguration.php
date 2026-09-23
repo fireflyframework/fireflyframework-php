@@ -20,6 +20,7 @@ use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\InMemoryHttpExchangeRecorder;
+use Firefly\Observability\Method\ObservabilityMethodInterceptor;
 use Firefly\Observability\Metrics\CacheMeterRegistry;
 use Firefly\Observability\Metrics\DistributionStatisticConfig;
 use Firefly\Observability\Metrics\MeterRegistry;
@@ -172,6 +173,23 @@ final class ObservabilityAutoConfiguration
     public function cqrsMetrics(MetricsRecorder $recorder): CqrsMetrics
     {
         return new MeterRegistryCqrsMetrics($recorder);
+    }
+
+    /**
+     * The chain link behind #[Timed]/#[Counted]/#[Observed]. Gated on the metrics master switch AND on
+     * `firefly.observability.method.enabled` (default true): an attribute is itself the opt-in, so the key
+     * exists to switch the whole mechanism OFF in one place — in which case the advice is inert and the
+     * proxies run a PassThroughInterceptor, never a half-enforced state. It takes the Tracer because
+     * #[Observed] is a span and a timer under one name; with tracing off that Tracer is the NoOp and the
+     * attribute degrades to a timer, which is the honest reading of an Observation with no tracer.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnProperty(name: 'firefly.observability.method.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnMissingBean(ObservabilityMethodInterceptor::class)]
+    public function observabilityMethodInterceptor(MetricsRecorder $recorder, Tracer $tracer, Config $config): ObservabilityMethodInterceptor
+    {
+        return new ObservabilityMethodInterceptor($recorder, $tracer, $config);
     }
 
     /**
