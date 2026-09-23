@@ -98,9 +98,10 @@ DOM-level regression test beside the existing ones — the browser scenario is t
 
 Documentation is held to the same gate as code, by seven Pest tests and a strict site build.
 
-**Every code listing names the file it came from.** A fenced `php` block in `README.md`, on any page under
-`docs/`, or in the English manuscript under `book/src` — `DocsCodeAudit::AUDITED` is the list, and adding a
-path to it is how a surface joins the gate — must carry one of two HTML comments on the line above it:
+**Every code listing names the file it came from.** A fenced `php` block in any Markdown file this repository
+ships — `README.md`, `CHANGELOG.md`, every page under `docs/`, both manuscripts under `book/`, and the
+`README.md` of each package, of `skeleton/` and of `samples/lumen/` — must carry one of two HTML comments on
+the line above it:
 
 ```markdown
 <!-- source: packages/web/src/Filter/FilterChainRegistrar.php -->
@@ -116,6 +117,13 @@ checked for the `firefly.*` keys, `php artisan firefly:*` commands and `composer
 names. `tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.php` is the engine, and its
 docblock is the full contract. **A red run is fixed by making the document true**, never by deleting an
 assertion or by marking a framework excerpt `illustrative:`.
+
+`DocsCodeAudit::AUDITED` is the list of trees the engine walks, but it is not what decides the surface:
+`DocsCodeIsRealTest`'s *audits every Markdown file that ships* case asks `git ls-files '*.md'` what this
+repository publishes and fails naming every tracked file `AUDITED` does not reach. So a new page, a new
+package README or a whole new tree of documentation is audited the day it is committed, and taking an entry
+out fails the same case rather than quietly shrinking the gate. `docs/superpowers/` is the one exclusion, and
+only because it is git-ignored by policy and ships to nobody.
 
 **The English manuscript is inside that contract.** `book/src` is an entry in `DocsCodeAudit::AUDITED`, every
 one of its `php` listings carries a `source:` or an `illustrative:` marker, and each `source:` one is compared

@@ -21,9 +21,12 @@ through a generalised interceptor chain rather than on controllers alone, princi
 `firefly/security-oauth2-client` and `firefly/security-oauth2-server`, sign an application in with a provider
 and let it be one. Constraint violations are Spring-shaped, each carrying the `constraint` that failed, and
 `#[Valid]` cascades into list elements. Tests reach the browser: a Pest 4 + Playwright harness with a CI job
-of its own. And the documentation caught up with all of it — a guard that holds every fenced listing in the
-README, both manuscripts and every page of the site to the file it came from, four new diagrams drawn from
-that same source, a redesigned site, and a fifteenth chapter in both editions.
+of its own. And the documentation caught up with all of it — a guard over every Markdown file this
+repository ships, in three parts: a listing that names a source file is compared **verbatim** against that
+file, a listing showing code the reader writes in their own application is marked illustrative and is still
+parsed and resolved against real class names, and every listing, marked or not, is held to the `firefly.*`
+keys, artisan signatures and `composer` scripts it names. Four new diagrams drawn from that same source, a
+redesigned site, and a fifteenth chapter in both editions.
 
 Eight defects found by building a second real application on `26.09.2`, every one of them a place where the
 application had to work AROUND the framework rather than with it — a refusal type outside the taxonomy caught

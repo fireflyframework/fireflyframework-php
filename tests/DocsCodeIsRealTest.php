@@ -59,41 +59,50 @@ it('audits a surface that only ever grows', function () {
  * identically once the wave is over, and the second one is how the whole guard quietly stops holding the
  * document that most needed it.
  *
- * So this asserts the surface is now everything the repository publishes: `README.md`, every page of the
- * documentation site and both manuscripts. A Markdown file added later is audited the day it lands — it
- * fails here until it is — and a directory dropped out of `AUDITED` fails here too, naming every page it
- * took with it.
+ * So this asserts the surface is everything the repository publishes — and it does NOT ask a list in this
+ * file which trees those are. THE REPOSITORY IS ASKED: `git ls-files '*.md'` is the definition of "ships",
+ * because a file the index carries is a file that lands in the tarball Packagist serves, in the directory
+ * `create-project` copies, or on the site. A Markdown file added later is audited the day it lands — it
+ * fails here until it is — a directory dropped out of `AUDITED` fails here too, naming every page it took
+ * with it, and so does a whole new top-level tree of documentation that nobody thought to name.
  *
- * The walk is recursive rather than a two-level glob on purpose: the answer this test gives has to be "every
- * Markdown file that ships", and a depth limit would make it "every Markdown file that ships, so far, at the
- * depths we happened to have on the day". `docs/superpowers/` is the one exclusion, and it is not an
- * exemption — it is git-ignored by policy and ships to nobody, which is the same reason
- * `DocsCodeAudit::markdownFiles()` skips it.
+ * That last case is why the enumeration moved out of this file. It used to walk a literal
+ * `['docs', 'book/src', 'book/src-es']` plus `'README.md'`, which is a fine description of what wave R had
+ * converted and a poor description of what ships: thirty-three tracked Markdown files sat outside it —
+ * every `packages/*\/README.md`, which is the front page Packagist prints for that package, `skeleton/`'s and
+ * `samples/lumen/`'s, `book/README.md`, and this repository's own CHANGELOG. Four of their listings were
+ * untrue by the guard's own rules while a case named *audits every Markdown file that ships* stayed green
+ * over them, which is the failure this test exists to make impossible.
+ *
+ * `docs/superpowers/` is the one exclusion, and it is not an exemption — it is git-ignored by policy, so
+ * `git ls-files` never names it in the first place and the filter below is belt and braces. The floor on the
+ * count is there so that a `git` that is missing, or a checkout that is not a repository, fails loudly
+ * instead of asserting nothing at all.
  */
 it('audits every Markdown file that ships', function () {
     $root = dirname(__DIR__);
     $audited = array_flip((new DocsCodeAudit($root))->markdownFiles());
 
-    $shipped = ['README.md'];
+    $tracked = [];
+    $status = 0;
+    // `core.quotePath=false` so a path with a non-ASCII character comes back as itself rather than as an
+    // escaped, double-quoted string that would match nothing in the audited set and read as a missing file.
+    exec(
+        sprintf('git -C %s -c core.quotePath=false ls-files -- %s', escapeshellarg($root), escapeshellarg('*.md')),
+        $tracked,
+        $status,
+    );
 
-    foreach (['docs', 'book/src', 'book/src-es'] as $tree) {
-        /** @var iterable<SplFileInfo> $walk */
-        $walk = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root.'/'.$tree, FilesystemIterator::SKIP_DOTS)
-        );
+    expect($status)->toBe(0, 'git ls-files must run here: what ships is what the repository tracks, and this '
+        .'test is worthless if it cannot ask');
 
-        foreach ($walk as $file) {
-            if (! $file->isFile() || $file->getExtension() !== 'md') {
-                continue;
-            }
+    $shipped = array_values(array_filter(
+        $tracked,
+        static fn (string $file): bool => $file !== '' && ! str_starts_with($file, 'docs/superpowers/'),
+    ));
 
-            $relative = substr($file->getPathname(), strlen($root) + 1);
-
-            if (! str_starts_with($relative, 'docs/superpowers/')) {
-                $shipped[] = $relative;
-            }
-        }
-    }
+    expect(count($shipped))->toBeGreaterThan(100, 'git ls-files returned implausibly few Markdown files, so '
+        .'this case is not auditing what it claims to');
 
     $missing = array_values(array_filter(
         array_unique($shipped),

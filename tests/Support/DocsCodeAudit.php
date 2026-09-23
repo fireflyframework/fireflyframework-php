@@ -61,9 +61,11 @@ use SplFileInfo;
  * module-docs task. The reference file is likewise NOT a source of truth for what a key is: it is a nested
  * array whose dotted strings are all prose, `firefly.trace_id` among them.
  *
- * The audited surface is a list, not "everything", and it only ever GROWS: wave R turned the guard on one
- * surface at a time so that every commit could be green, and its last task asserts the list reaches every
- * Markdown file the walk can see. Removing an entry is never a fix.
+ * The audited surface is written as a list, but it is not JUDGED against one: wave R turned the guard on a
+ * surface at a time so that every commit could be green, and `tests/DocsCodeIsRealTest.php` now asks the
+ * repository — `git ls-files '*.md'` — what ships and fails until AUDITED reaches all of it. So the list only
+ * ever grows, a new tree of documentation joins the guard the day it lands, and removing an entry is never a
+ * fix.
  */
 final class DocsCodeAudit
 {
@@ -84,26 +86,58 @@ final class DocsCodeAudit
     public const string HASH_ELISION = '# …';
 
     /**
-     * Repo-relative files and directories whose every fenced block is audited — and, since wave R's last
-     * task, everything the repository publishes: the README anyone lands on first, every page of the
-     * documentation site, and both editions of the book.
+     * Repo-relative files and directories whose every fenced block is audited — and it is now every Markdown
+     * file the repository tracks: the README anyone lands on first, the changelog, every page of the
+     * documentation site, both editions of the book, the README Packagist prints as the front page of each
+     * of the twenty-nine packages, and the two READMEs that ship inside an application (`skeleton/`, which
+     * `create-project` copies, and `samples/lumen/`).
      *
-     * The list was staged while the wave ran, one surface per commit, and it is a directory list now
-     * precisely so that it cannot go back to being staged. A page added under `docs/` tomorrow is audited
-     * the day it lands rather than the day somebody remembers to name it here, and
-     * `tests/DocsCodeIsRealTest.php`'s *audits every Markdown file that ships* case fails the moment an
-     * entry is taken out, naming every page that left with it.
+     * The list was staged while wave R ran, one surface per commit, and it is a directory list now precisely
+     * so that it cannot go back to being staged. A page added under `docs/` or a README added under
+     * `packages/` tomorrow is audited the day it lands rather than the day somebody remembers to name it
+     * here.
      *
-     * `markdownFiles()` skips `docs/superpowers/`, which is git-ignored by policy and ships to nobody.
+     * WHAT KEEPS THIS TOTAL IS NOT THIS LIST. `tests/DocsCodeIsRealTest.php`'s *audits every Markdown file
+     * that ships* case derives the shipped surface from `git ls-files '*.md'` — from the repository itself —
+     * and fails naming every file this list does not reach. So an entry taken out fails there, and so does a
+     * whole new top-level tree of documentation that nobody thought to add: the two cannot be told apart by
+     * reading a literal list, which is exactly why the answer is no longer written as one.
+     *
+     * `markdownFiles()` skips `docs/superpowers/` and the build trees named in UNSHIPPED.
      *
      * @var list<string>
      */
     public const array AUDITED = [
+        'CHANGELOG.md',
         'README.md',
+        'book/README.md',
         'book/src',
         'book/src-es',
         'docs',
+        'packages',
+        'samples',
+        'skeleton',
     ];
+
+    /**
+     * Directory names the walk never descends into, because what is under them is not published by this
+     * repository and is frequently not in it at all.
+     *
+     * AUDITED names whole trees, and a tree on a working copy is not the tree in the index: `composer
+     * install` inside a package writes `packages/<name>/vendor/**\/README.md`, an `npm install` writes
+     * `node_modules/`, and the book's Python toolchain writes `book/.venv/` and `book/.pytest_cache/`, each
+     * of them full of third-party Markdown with fenced listings this repository did not write and cannot
+     * make true. Auditing those would turn a developer's local install into a red build, and a red build
+     * nobody can fix by editing a document is how a guard gets switched off. Every dot-prefixed segment is
+     * skipped for the same reason, which covers the two the book's toolchain creates without naming them.
+     *
+     * This is NOT an exemption mechanism for the repository's own documents: `git ls-files '*.md'` never
+     * lists any of these paths, so a file skipped here is a file that ships to nobody, and a tracked file
+     * hidden behind one of these names would fail the shipped-surface case rather than disappear from it.
+     *
+     * @var list<string>
+     */
+    public const array UNSHIPPED = ['node_modules', 'vendor'];
 
     /**
      * Prefixes whose NEXT segment is chosen by the application, not by the framework: a feature switch's own
@@ -196,7 +230,7 @@ final class DocsCodeAudit
 
                 $relative = substr($file->getPathname(), strlen($this->root) + 1);
 
-                if (str_starts_with($relative, 'docs/superpowers/')) {
+                if ($this->unshipped($relative)) {
                     continue;
                 }
 
@@ -208,6 +242,29 @@ final class DocsCodeAudit
         sort($files);
 
         return $files;
+    }
+
+    /**
+     * Whether a repo-relative Markdown path is one this repository does not publish: the git-ignored design
+     * docs, or anything inside a build tree (see UNSHIPPED). The basename is never consulted — only the
+     * directories a file sits under — so a file at the repository root is always shipped.
+     */
+    private function unshipped(string $relative): bool
+    {
+        if (str_starts_with($relative, 'docs/superpowers/')) {
+            return true;
+        }
+
+        $segments = explode('/', $relative);
+        array_pop($segments);
+
+        foreach ($segments as $segment) {
+            if (in_array($segment, self::UNSHIPPED, true) || str_starts_with($segment, '.')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
