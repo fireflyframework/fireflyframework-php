@@ -37,6 +37,15 @@ use Throwable;
  * after a bounded delay, and call() explicitly returns the permit when the probe throws something recordOn
  * ignores — an ignored exception is neither a success nor a failure (Resilience4j's semantics), so the
  * episode stays HALF_OPEN and simply regains its slot.
+ *
+ * THE RECORD NOW EXPIRES WHEN NOTHING TOUCHES IT. Every write refreshes `idleTtl` (default thirty days), so
+ * an active breaker's record can never expire — the TTL is always further away than the next call — while a
+ * breaker nobody has called for a month stops occupying a cache key forever. That was a real, unbounded
+ * growth characteristic: one integration retired and its key outlives the code that created it. Thirty days
+ * is chosen to be indistinguishable from "never" for any live breaker: `wait-duration-in-open` defaults to
+ * thirty SECONDS, so a breaker idle for thirty days would have left OPEN eighty-six thousand times over and
+ * a fresh CLOSED record is the same state a reclaimed key rebuilds. `null` restores the old unbounded
+ * behaviour for a deployment that wants it. Bulkhead already worked this way through `permit-ttl`.
  */
 final class CircuitBreaker
 {
@@ -56,7 +65,12 @@ final class CircuitBreaker
      */
     private const LOCK_TTL = 5.0;
 
-    /** @param  list<class-string<Throwable>>  $recordOn */
+    /**
+     * @param  list<class-string<Throwable>>  $recordOn
+     * @param  float|null  $idleTtl  seconds of idleness after which the store may reclaim this breaker's
+     *                               record, refreshed by every write; null never expires. Appended last so
+     *                               every existing construction keeps compiling unchanged.
+     */
     public function __construct(
         private readonly string $key,
         private readonly ResilienceStore $store,
@@ -68,6 +82,7 @@ final class CircuitBreaker
         private readonly array $recordOn = [Throwable::class],
         private readonly int $minimumNumberOfCalls = 0,
         private readonly float $halfOpenProbeTimeout = 30.0,
+        private readonly ?float $idleTtl = null,
     ) {}
 
     /**
@@ -305,10 +320,15 @@ final class CircuitBreaker
         return ['state' => self::CLOSED, 'openedAt' => 0.0, 'halfOpenProbes' => [], 'outcomes' => []];
     }
 
-    /** @param  array{state: string, openedAt: float, halfOpenProbes: list<float>, outcomes: list<bool>}  $record */
+    /**
+     * The one write site, so the idle TTL is refreshed by every transition without a single caller having to
+     * remember it: admit(), onSuccess(), onFailure() and releaseProbe() all land here.
+     *
+     * @param  array{state: string, openedAt: float, halfOpenProbes: list<float>, outcomes: list<bool>}  $record
+     */
     private function save(array $record): void
     {
-        $this->store->put($this->key, $record);
+        $this->store->put($this->key, $record, $this->idleTtl);
     }
 
     /**

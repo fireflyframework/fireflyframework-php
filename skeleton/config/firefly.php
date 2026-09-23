@@ -1745,6 +1745,16 @@ return [
     | minimum-number-of-calls 0; time-limiter timeout 30s). Only `store.lock-block-timeout` below is written
     | at its true default.
     |
+    | IDLE TTL — the cache-backed patterns (circuit-breaker, rate-limiter; bulkhead has always had its own
+    | `permit-ttl`) write their state with an expiry of `idle-ttl`, default 30 days, REFRESHED BY EVERY
+    | WRITE. An instance that is being called therefore can never lose its record — the expiry is always
+    | pushed further away than the next call — while an instance nobody has touched for a month stops
+    | occupying a cache key forever, which is what a retired integration used to do. A reclaimed key rebuilds
+    | in the state an idle instance was already in (a CLOSED breaker, a full bucket), so the reclaim is
+    | invisible. Set `idle-ttl` to null for the old unbounded behaviour — the right choice for a rate limiter
+    | with `refill-rate` 0, which is a hard quota rather than a rate and must not be handed back. Durations
+    | use the framework grammar (ms/s/m/h or a bare number of seconds): 30 days is `'720h'`.
+    |
     | See docs/modules/resilience.md for the full key-by-key tables.
     |
     */
@@ -1802,10 +1812,16 @@ return [
         //         'wait-duration-in-open' => '30s',
         //         'half-open-max-calls' => 1,
         //         'half-open-probe-timeout' => '30s',
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null = never expire (the pre-wave-N behaviour)
         //     ],
         // ],
         // 'rate-limiter' => [
-        //     'api' => ['max-tokens' => 10, 'refill-rate' => 10.0, 'timeout' => 0],
+        //     'api' => [
+        //         'max-tokens' => 10,
+        //         'refill-rate' => 10.0,
+        //         'timeout' => 0,
+        //         'idle-ttl' => '720h', // 30 days, refreshed on every write; null = never expire (the pre-wave-N behaviour)
+        //     ],
         // ],
         // 'bulkhead' => [
         //     'db' => ['max-concurrent' => 10, 'max-wait' => 0, 'permit-ttl' => '60s'],

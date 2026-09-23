@@ -17,6 +17,13 @@ use Throwable;
  */
 final class ResilienceRegistry
 {
+    /**
+     * How long a cache-backed record may sit untouched before the store may reclaim it, when the instance
+     * says nothing: thirty days. See CircuitBreaker's and RateLimiter's class docblocks for why that number
+     * is indistinguishable from "never" for any live instance.
+     */
+    private const float DEFAULT_IDLE_TTL = 2592000.0; // 30 days
+
     /** @var array<string, Retry> */
     private array $retries = [];
 
@@ -71,6 +78,7 @@ final class ResilienceRegistry
             recordOn: $this->classList($c, 'record-on'),
             minimumNumberOfCalls: $this->int($c, 'minimum-number-of-calls', 0),
             halfOpenProbeTimeout: $this->seconds($c, 'half-open-probe-timeout', 30.0),
+            idleTtl: $this->idleTtl($c),
         );
     }
 
@@ -82,6 +90,7 @@ final class ResilienceRegistry
             maxTokens: $this->int($c = $this->instance('rate-limiter', $name), 'max-tokens', 10),
             refillRate: $this->float($c, 'refill-rate', 10.0),
             timeout: $this->seconds($c, 'timeout', 0.0),
+            idleTtl: $this->idleTtl($c),
         );
     }
 
@@ -151,6 +160,23 @@ final class ResilienceRegistry
         $value = $c[$key] ?? null;
 
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * The idle TTL for a cache-backed record: the configured `idle-ttl` duration, thirty days when the key
+     * is absent, and null — no expiry — when it is explicitly null. `array_key_exists` rather than `??`,
+     * because `'idle-ttl' => null` is a DELIBERATE choice ("never expire") and must not be read as "not
+     * configured".
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function idleTtl(array $config): ?float
+    {
+        if (! array_key_exists('idle-ttl', $config)) {
+            return self::DEFAULT_IDLE_TTL;
+        }
+
+        return $config['idle-ttl'] === null ? null : $this->seconds($config, 'idle-ttl', self::DEFAULT_IDLE_TTL);
     }
 
     /** @param  array<string, mixed>  $c */
