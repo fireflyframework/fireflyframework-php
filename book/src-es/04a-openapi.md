@@ -753,7 +753,7 @@ El visor trae la especificación desde la ruta hermana en lugar de tener el docu
 
 ## Configuración, y asegurar la superficie
 
-Todo lo que el documento y sus rutas necesitan vive bajo una sola clave de configuración:
+Todo lo que el documento y sus rutas necesitan vive bajo una sola clave de configuración. El bloque de abajo está escrito como PHP vivo para que se lea mejor; `skeleton/config/firefly.php` entrega esas mismas claves **comentadas**, con su valor por defecto al lado, porque `firefly/openapi` es un paquete opcional y un bloque sin comentar sería una decisión tomada por ti:
 
 <!-- illustrative: a live-PHP rendering of the `openapi` block that skeleton/config/firefly.php ships commented out, so there is no uncommented copy in the repository to excerpt -->
 ```php

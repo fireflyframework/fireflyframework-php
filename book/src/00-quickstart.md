@@ -206,7 +206,9 @@ use Firefly\Web\Attributes\RestController;
 /**
  * The sample Firefly slice: a #[RestController] whose routes are discovered by the RouteScanner and served
  * from the compiled RouteManifest. GreetingService is autowired via constructor DI.
- // …
+ *
+ * `/` belongs to App\Http\WelcomeController, a #[Controller] that renders HTML — this one returns a value
+ * the ResponseFactory negotiates into JSON, which is the difference between the two stereotypes.
  */
 #[RestController]
 final class GreetingController
@@ -234,15 +236,7 @@ Start the development server:
 php artisan firefly:serve
 ```
 
-`firefly:serve` is a thin wrapper: it calls `artisan serve` (or `octane:start`, if `laravel/octane` happens to be installed) — it does not reimplement anything of its own. In another terminal, hit the two routes you just read:
-
-```bash
-curl -s localhost:8000/
-```
-
-```json
-{"message":"Hello, World!"}
-```
+`firefly:serve` is a thin wrapper: it calls `artisan serve` (or `octane:start`, if `laravel/octane` happens to be installed) — it does not reimplement anything of its own. In another terminal, hit the route you just read:
 
 ```bash
 curl -s localhost:8000/greetings/Ada
@@ -253,6 +247,8 @@ curl -s localhost:8000/greetings/Ada
 ```
 
 `"Hello"` is `GreetingProperties`'s default `$salutation` — nothing in `config/greeting.php` overrides it yet, so the constructor default is what you see. Change that default, or bind `greeting.salutation` in your own config, and every response reflects it — with no code change to either the service or the controller.
+
+`/` is not this controller's route, and the docblock above says which class owns it: `App\Http\WelcomeController`, a `#[Controller]` rather than a `#[RestController]`, whose `index()` returns a view. Open `localhost:8000/` in a browser and what comes back is the skeleton's HTML welcome page, not JSON — that difference between the two stereotypes is exactly what the docblock is there to warn you about.
 
 ::: figure art/figures/request-lifecycle.svg | Figure 0.1 — A request travels through the web filter chain and the controller dispatcher before your handler method ever runs.
 

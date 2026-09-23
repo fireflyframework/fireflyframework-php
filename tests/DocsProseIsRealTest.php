@@ -9,6 +9,8 @@ use Composer\Semver\VersionParser;
 use Firefly\Actuator\Endpoint\ExposureModel;
 use Firefly\Actuator\Health\DbHealthIndicator;
 use Firefly\Actuator\Introspection\SensitiveValueMasker;
+use Firefly\Admin\AdminSettings;
+use Firefly\Admin\Data\DataFilter;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Config\Config;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
@@ -20,6 +22,7 @@ use Firefly\Data\Repository\Locking\OptimisticLockException;
 use Firefly\Installer\CapabilityCatalog;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Observability\HttpExchanges\HeaderMasker;
+use Firefly\OpenApi\OpenApiProperties;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
@@ -2684,4 +2687,509 @@ it('pins every OAuth2 install-footprint sentence to the two composer.json requir
         // "both depend only on `firefly/security`" would be true as written, and the same walk over the same
         // pages must refuse no sentence for saying it.
         ->and(fireflyOAuth2InstallProse(['firefly/security'], ['firefly/security'])['exclusivity'])->toBe([]);
+});
+
+/**
+ * Every fenced block of a Markdown page, in order, with the provenance comment that introduces it.
+ *
+ * `tests/DocsCodeIsRealTest.php` already reads these blocks to compare a listing against the file it names.
+ * What it cannot see is the OTHER edition: the two manuscripts are separate trees, each green on its own,
+ * and nothing had ever put a Spanish block beside the English one it translates. That is the gap this
+ * parser exists to close, so it is deliberately the simplest thing that can pair two trees — blocks in
+ * document order, the marker line that precedes a fence carried along with it, and the fence's info string
+ * kept because `php` is half of what the claim below is scoped to.
+ *
+ * A blank line between the marker and the fence is tolerated; any other non-empty line drops the marker,
+ * because a `<!-- source: … -->` comment two paragraphs up is not a claim about this listing.
+ *
+ * @return list<array{line: int, info: string, marker: string, code: string}>
+ */
+function fireflyFencedBlocks(string $path): array
+{
+    $lines = explode("\n", (string) file_get_contents($path));
+    $total = count($lines);
+
+    /** @var list<array{line: int, info: string, marker: string, code: string}> $blocks */
+    $blocks = [];
+    $marker = '';
+
+    for ($index = 0; $index < $total; $index++) {
+        $line = $lines[$index];
+
+        if (preg_match('/^\s*<!--\s*(?:source|illustrative):/', $line) === 1) {
+            $marker = trim($line);
+
+            continue;
+        }
+
+        if (preg_match('/^\s*(`{3,})(.*)$/', $line, $opened) !== 1) {
+            if (trim($line) !== '') {
+                $marker = '';
+            }
+
+            continue;
+        }
+
+        $fence = '/^\s*'.preg_quote($opened[1], '/').'\s*$/';
+        $start = $index;
+        /** @var list<string> $code */
+        $code = [];
+
+        while (++$index < $total && preg_match($fence, $lines[$index]) !== 1) {
+            $code[] = $lines[$index];
+        }
+
+        $blocks[] = [
+            'line' => $start + 1,
+            'info' => trim($opened[2]),
+            'marker' => $marker,
+            'code' => implode("\n", $code),
+        ];
+        $marker = '';
+    }
+
+    return $blocks;
+}
+
+/**
+ * The chapter-opening promise of a manuscript page — the paragraph that starts with $opener — or null.
+ *
+ * Both editions open every chapter on one: "By the end of this chapter you will know…" and "Al terminar
+ * este capítulo…". It is the first sentence a reader of that chapter reads and the only one that claims
+ * what the WHOLE chapter covers, which is what makes it the paragraph most worth holding the two editions
+ * to and the one that went stale in five chapters at once.
+ */
+function fireflyChapterPromise(string $path, string $opener): ?string
+{
+    $split = preg_split('/\n\s*\n/', (string) file_get_contents($path));
+
+    foreach ($split === false ? [] : $split as $paragraph) {
+        if (str_starts_with(ltrim($paragraph), $opener)) {
+            return $paragraph;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The distinct backticked spans of a paragraph, sorted.
+ *
+ * An identifier, a config key, an endpoint path or an attribute is written in backticks throughout both
+ * manuscripts and — by the promise `book/README.md` makes — is never translated. So the set of backticked
+ * spans is the part of a paragraph that must survive translation unchanged, which makes it a claim-for-claim
+ * comparison two languages can actually be held to without a translation memory.
+ *
+ * @return list<string>
+ */
+function fireflyCodeSpans(string $paragraph): array
+{
+    preg_match_all('/`([^`\n]+)`/u', $paragraph, $found);
+
+    /** @var list<string> $spans */
+    $spans = array_values(array_unique($found[1]));
+    sort($spans);
+
+    return $spans;
+}
+
+/**
+ * Every HTTP route the shipped skeleton declares with an attribute, as the route scan would read them.
+ *
+ * DERIVED FROM THE SKELETON, because the skeleton is what `composer create-project` hands a reader and what
+ * the quick start walks them through. A class-level `#[RequestMapping]` prefixes the method paths exactly as
+ * the real scan composes them, a verb attribute with no path of its own lands on the prefix, and the
+ * STEREOTYPE is kept as written — `#[RestController]` returns a value the `ResponseFactory` negotiates into
+ * JSON, `#[Controller]` renders a view — because telling those two apart is the whole point of the canary
+ * that calls this.
+ *
+ * @return list<array{path: string, stereotype: string, class: string}>
+ */
+function fireflySkeletonRoutes(): array
+{
+    /** @var list<array{path: string, stereotype: string, class: string}>|null $routes */
+    static $routes = null;
+
+    if ($routes !== null) {
+        return $routes;
+    }
+
+    /** @var list<array{path: string, stereotype: string, class: string}> $found */
+    $found = [];
+
+    $walk = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator(dirname(__DIR__).'/skeleton/app', FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($walk as $file) {
+        if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $source = (string) file_get_contents($file->getPathname());
+
+        if (preg_match('/^#\[(RestController|Controller)\]\s*$/m', $source, $stereotype) !== 1) {
+            continue;
+        }
+
+        $base = preg_match("/^#\\[RequestMapping\\(\\s*'([^']*)'/m", $source, $mapped) === 1 ? $mapped[1] : '';
+
+        preg_match_all("/#\\[(?:Get|Post|Put|Patch|Delete)Mapping\\(\\s*(?:'([^']*)')?/", $source, $verbs, PREG_SET_ORDER);
+
+        foreach ($verbs as $verb) {
+            $path = rtrim($base.($verb[1] ?? ''), '/');
+
+            $found[] = [
+                'path' => $path === '' ? '/' : $path,
+                'stereotype' => $stereotype[1],
+                'class' => $file->getBasename('.php'),
+            ];
+        }
+    }
+
+    usort($found, static fn (array $a, array $b): int => $a['path'] <=> $b['path']);
+
+    return $routes = $found;
+}
+
+it('pins the "character for character" claim to the blocks the two editions really share', function () {
+    // The twenty-third, and the first to hold one manuscript against the other. Wave R's Spanish task closed
+    // by deleting the "the Spanish edition trails" caveat — correctly, the trees were level — and replacing
+    // it with an absolute: "every listing in the Spanish edition is the English one character for character".
+    // That sentence is false, and the task's own report says why: four listings deliberately keep Spanish
+    // comments, because a `# escribe el fichero` beside a `composer require` is a sentence a reader READS,
+    // not code they run. Four blocks out of several hundred, on the repository's front page, with no test
+    // between the claim and the tree it describes.
+    //
+    // DERIVED, AND IN BOTH DIRECTIONS. The blocks are paired in document order and compared byte for byte:
+    // a `php` listing or a `source:`-marked excerpt that differs is a failure, because those are the two
+    // things the sentence now promises; a block that differs and is NEITHER is the translated shell comment
+    // the sentence now excludes, counted rather than refused. And the sentence itself is read back off the
+    // page — a paragraph that says "character for character" without naming what it covers is the absolute
+    // this canary exists to keep out, whichever of the two READMEs it is written on.
+    $root = dirname(__DIR__);
+
+    $failures = [];
+    $pairs = 0;
+    $compared = 0;
+    /** @var list<string> $translated */
+    $translated = [];
+
+    foreach ((array) glob($root.'/book/src/*.md') as $path) {
+        $name = basename((string) $path);
+        $spanish = $root.'/book/src-es/'.$name;
+
+        if (! is_file($spanish)) {
+            continue;
+        }
+
+        $pairs++;
+
+        $english = fireflyFencedBlocks((string) $path);
+        $edition = fireflyFencedBlocks($spanish);
+
+        if (count($english) !== count($edition)) {
+            $failures[] = $name.': the English edition holds '.count($english).' fenced blocks and the Spanish '
+                .'one '.count($edition).', so the two no longer pair listing for listing at all';
+
+            continue;
+        }
+
+        foreach ($english as $index => $block) {
+            $other = $edition[$index];
+
+            $verbatim = str_starts_with($block['info'], 'php')
+                || str_starts_with($other['info'], 'php')
+                || str_contains($block['marker'], 'source:')
+                || str_contains($other['marker'], 'source:');
+
+            if ($verbatim) {
+                $compared++;
+            }
+
+            if ($block['code'] === $other['code'] && $block['info'] === $other['info']) {
+                continue;
+            }
+
+            if ($verbatim) {
+                $failures[] = 'book/src/'.$name.':'.$block['line'].' and book/src-es/'.$name.':'.$other['line']
+                    .' are the same `php` or `source:`-marked listing and their bytes differ — both READMEs '
+                    .'promise those are identical, and a `source:` block that differs also stops matching the '
+                    .'file it names in one of the two trees';
+
+                continue;
+            }
+
+            $translated[] = $name.':'.$block['line'];
+        }
+    }
+
+    // book/README.md is outside fireflyProsePages() — that walk covers README.md, docs/ and the two
+    // manuscripts — and it makes this claim in its own words, which is how the same absolute shipped twice.
+    $pages = fireflyProsePages();
+    $split = preg_split('/\n\s*\n/', (string) file_get_contents($root.'/book/README.md'));
+    $pages['book/README.md'] = $split === false ? [] : $split;
+
+    $claiming = 0;
+
+    foreach ($pages as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (! str_contains($paragraph, 'character for character')) {
+                continue;
+            }
+
+            $claiming++;
+
+            if (str_contains($paragraph, '`php`') && str_contains($paragraph, '`source:`')) {
+                continue;
+            }
+
+            $failures[] = $page.' promises the two editions match "character for character" without saying '
+                .'which listings that covers, and '.count($translated).' block(s) differ — '
+                .implode(', ', $translated).'. Scope the claim to `php` listings and `source:`-marked '
+                .'excerpts, which is what this canary compares.';
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($pairs)->toBeGreaterThan(0, 'no chapter exists in both trees any more, so this canary holds nothing')
+        ->and($compared)->toBeGreaterThan(0, 'no chapter pair shares a `php` or `source:`-marked listing any more, so this canary holds nothing')
+        ->and($claiming)->toBeGreaterThan(0, 'no page claims the two editions match character for character any more, so this canary holds nothing');
+});
+
+it('pins every Spanish chapter-opening promise to the identifiers the English one names', function () {
+    // The twenty-fourth, and the one that catches a whole wave of work stopping one paragraph short. The
+    // Spanish task brought five chapter BODIES level with the English ones — query by example, the four
+    // method attributes, `timeout:` enforcement, `#[TransactionalEventListener]`, form login and remember-me,
+    // histogram buckets, structured logging, the Pest 4 browser suite — and left the five chapter-opening
+    // promises above them at their pre-wave text. The result was a chapter that taught material its own first
+    // sentence said it would not cover, and the worst of the five told a Spanish reader that `#[PreAuthorize]`
+    // "se hace cumplir en el bus de CQRS" and stopped there, which has not been true since method security
+    // grew a proxy — a reader would have been told the feature they were about to use does not exist.
+    //
+    // NOTHING COULD SEE IT. The parity canary above compares per-chapter LINE COUNTS, and five paragraphs are
+    // not a line count: chapter 11's ratio never dropped below the threshold at all.
+    //
+    // DERIVED FROM THE TWO PARAGRAPHS, via the one thing translation may not touch. Identifiers, config keys,
+    // endpoint paths and attributes are written in backticks and never translated — book/README.md promises
+    // exactly that — so the SET of backticked spans is what the two promises must share. A clause the Spanish
+    // opener dropped took `#[EntityGraph]`, `BEFORE_COMMIT`, `firefly.security.http.entry_point`,
+    // `histogram_quantile()` and `assertNoJavaScriptErrors()` with it, and every one of those is named in the
+    // Spanish chapter BELOW the promise that forgot it.
+    $root = dirname(__DIR__);
+
+    $failures = [];
+    $judged = 0;
+
+    foreach ((array) glob($root.'/book/src/*.md') as $path) {
+        $name = basename((string) $path);
+        $spanish = $root.'/book/src-es/'.$name;
+
+        if (! is_file($spanish)) {
+            continue;
+        }
+
+        $english = fireflyChapterPromise((string) $path, 'By the end of this chapter');
+        $translated = fireflyChapterPromise($spanish, 'Al terminar este capítulo');
+
+        if ($english === null && $translated === null) {
+            continue;
+        }
+
+        if ($english === null || $translated === null) {
+            $failures[] = $name.': only one of the two editions opens on a "By the end of this chapter" '
+                .'promise, so the chapter no longer tells both readers the same thing about itself';
+
+            continue;
+        }
+
+        $judged++;
+
+        $missing = array_values(array_diff(fireflyCodeSpans($english), fireflyCodeSpans($translated)));
+        $extra = array_values(array_diff(fireflyCodeSpans($translated), fireflyCodeSpans($english)));
+
+        if ($missing !== []) {
+            $failures[] = 'book/src-es/'.$name.': the chapter-opening promise does not name '
+                .implode(', ', $missing).', which the English one promises — translate the clause rather '
+                .'than dropping it, or the chapter teaches what its first sentence says it will not';
+        }
+
+        if ($extra !== []) {
+            $failures[] = 'book/src-es/'.$name.': the chapter-opening promise names '.implode(', ', $extra)
+                .', which the English one does not — a promise made to one reader only is the bilingual '
+                .'shape of the defect this file exists to remove';
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no chapter opens on a promise in both editions any more, so this canary holds nothing');
+});
+
+it('pins every quick-start curl transcript to the route the shipped skeleton really serves', function () {
+    // The twenty-fifth, and the one whose defect a reader hits in the first ten minutes. The quick start told
+    // them to "hit the two routes you just read", printed `curl -s localhost:8000/` and showed
+    // `{"message":"Hello, World!"}` coming back. The listing above it shows ONE route, `/greetings/{name}`,
+    // and `/` in the shipped skeleton is App\Http\WelcomeController — a `#[Controller]` whose index() returns
+    // a view, so the real answer is an HTML page. Both editions carried it at the same line numbers.
+    //
+    // WORSE, THE FIX WAS ALREADY IN THE FILE. GreetingController's docblock says in so many words that `/`
+    // belongs to WelcomeController and renders HTML — and the excerpt's `// …` elision cut exactly those two
+    // lines, so the one sentence that would have corrected the reader was the sentence the listing hid.
+    //
+    // DERIVED FROM THE SKELETON'S ATTRIBUTES. Every `curl … localhost:8000/<path>` is resolved against the
+    // routes fireflySkeletonRoutes() reads out of skeleton/app, and the fence of the transcript BESIDE it is
+    // held to the stereotype that serves it: `json` needs a `#[RestController]`, `html` needs a `#[Controller]`.
+    // A path no skeleton route claims is skipped rather than failed — the actuator, the dashboard and the
+    // OpenAPI surface are mounted by the framework and not by an attribute, and those three prefixes are
+    // derived below so that a MISSING route is still caught anywhere else.
+    $root = dirname(__DIR__);
+    $routes = fireflySkeletonRoutes();
+
+    $config = new Config(new ConfigRepository([]));
+    $openApi = OpenApiProperties::fromConfig($config);
+    // The three surfaces the framework mounts natively, as their own settings objects resolve them with no
+    // configuration at all — so the day a default path moves, the exemption moves with it.
+    $framework = [
+        '/'.ExposureModel::fromConfig($config)->basePath,
+        AdminSettings::fromConfig($config)->url(),
+        '/'.$openApi->specPath,
+        '/'.$openApi->viewerPath,
+    ];
+
+    $failures = [];
+    $judged = 0;
+
+    foreach (['book/src', 'book/src-es', 'docs'] as $tree) {
+        $walk = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root.'/'.$tree, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($walk as $file) {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'md') {
+                continue;
+            }
+
+            if (str_contains($file->getPathname(), '/docs/superpowers/')) {
+                continue;
+            }
+
+            $page = substr($file->getPathname(), strlen($root) + 1);
+            $blocks = fireflyFencedBlocks($file->getPathname());
+
+            foreach ($blocks as $index => $block) {
+                $calls = preg_match_all('/curl\s+[^\n]*localhost:8000(\S*)/', $block['code'], $found);
+
+                // A block holding several calls cannot be tied to the one transcript beside it, so only a
+                // single-call block is judged. Every transcript in either manuscript is written that way.
+                if ($calls !== 1) {
+                    continue;
+                }
+
+                // A bare `localhost:8000` (or one with only a query string) is the root, which is exactly
+                // the route the quick start got wrong, so it must resolve rather than be skipped.
+                $requested = strtok($found[1][0], '?');
+                $requested = $requested === false ? '/' : $requested;
+
+                foreach ($framework as $prefix) {
+                    if (str_starts_with($requested, $prefix)) {
+                        continue 3;
+                    }
+                }
+
+                /** @var list<array{path: string, stereotype: string, class: string}> $matched */
+                $matched = array_values(array_filter(
+                    $routes,
+                    static fn (array $route): bool => preg_match(
+                        '#^'.preg_replace('/\\\\\{[^}]*\\\\\}/', '[^/]+', preg_quote($route['path'], '#')).'$#',
+                        $requested,
+                    ) === 1,
+                ));
+
+                $judged++;
+
+                if ($matched === []) {
+                    $failures[] = $page.':'.$block['line'].' calls `localhost:8000'.$requested.'`, and the '
+                        .'shipped skeleton serves no such route — it declares '
+                        .implode(', ', array_column($routes, 'path'));
+
+                    continue;
+                }
+
+                $fence = $blocks[$index + 1]['info'] ?? '';
+                $expected = str_starts_with($fence, 'json') ? 'RestController' : null;
+
+                if ($expected === null || in_array($expected, array_column($matched, 'stereotype'), true)) {
+                    continue;
+                }
+
+                $failures[] = $page.':'.$block['line'].' shows a `json` transcript for `localhost:8000'
+                    .$requested.'`, and the skeleton serves that path from '.$matched[0]['class'].', a `#['
+                    .$matched[0]['stereotype'].']` — an HTML page, not JSON. Fix the walkthrough rather than '
+                    .'the transcript: the reader runs this command.';
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page walks the reader through a request to the skeleton any more, so this canary holds nothing');
+});
+
+it('pins every filter-operator enumeration to the labels DataFilter really declares', function () {
+    // The twenty-sixth, and the one that catches a translation going one identifier too far. The Spanish
+    // chapter rendered the data browser's eight comparisons as `es`, `no es`, `contiene`, `empieza por`,
+    // `mayor que`, `menor que`, `está vacío`, `no está vacío` — invented labels, presented as the ones the
+    // reader will see. DataFilter::operators() ships English labels only, the dashboard has no localisation
+    // layer at all, and DataFilter::isOperator() DROPS an operator it does not know without a word. A Spanish
+    // reader looking for "empieza por" in the dropdown, or typing it into a hand-edited URL, finds nothing.
+    // The same paragraph in English had its own smaller version of the defect: `greater` and `less` where the
+    // class declares 'greater than' and 'less than'.
+    //
+    // DERIVED FROM THE CLASS, in both trees at once. A paragraph is judged when it COUNTS the comparisons and
+    // ENUMERATES them — a comma-separated run of backticked spans — which is what an operator list looks like
+    // in either language and what a recap-table row or a passing reference to "the same eight comparisons" is
+    // not. Every label must then be spelled the way operators() declares it, and the count must be the number
+    // of operators there really are.
+    $operators = DataFilter::operators();
+    $labels = array_values($operators);
+    sort($labels);
+
+    $failures = [];
+    $judged = 0;
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            if (preg_match('/([\p{L}\d]+)\s+(?:comparisons|comparaciones)\b/u', $paragraph, $counted) !== 1) {
+                continue;
+            }
+
+            $written = fireflyWrittenNumber($counted[1]);
+
+            // A run of four or more comma-separated code spans is an enumeration in either language, and is
+            // the shape a translated list keeps — which is the point, since a fully translated list contains
+            // none of the labels this canary is looking for and would otherwise never be judged at all.
+            if ($written === null || preg_match('/`[^`\n]+`(?:\s*,\s*`[^`\n]+`){3,}/u', $paragraph) !== 1) {
+                continue;
+            }
+
+            $judged++;
+
+            if ($written !== count($operators)) {
+                $failures[] = $page.' enumerates '.$counted[1].' data-browser comparisons, and '
+                    .'DataFilter::operators() declares '.count($operators);
+            }
+
+            $missing = array_values(array_diff($labels, fireflyCodeSpans($paragraph)));
+
+            if ($missing !== []) {
+                $failures[] = $page.' enumerates the data browser\'s comparisons without spelling `'
+                    .implode('`, `', $missing).'` the way DataFilter::operators() declares '
+                    .(count($missing) === 1 ? 'it' : 'them').' — the dashboard ships no localisation, and '
+                    .'DataFilter::isOperator() drops an operator it does not know in silence, so a label a '
+                    .'reader cannot find in the dropdown is a label that does not exist';
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page enumerates the data browser\'s comparisons any more, so this canary holds nothing');
 });

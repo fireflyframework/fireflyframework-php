@@ -148,8 +148,12 @@ the reader's own code, which is the kind `php -l` checks. Both editions build to
 `book/dist/` as PDF + EPUB.
 
 **The two editions are the same book, line for line.** Every chapter file has
-the same sections in the same order at the same line numbers, and the Spanish
-edition's listings are the English ones character for character — identifiers,
-config keys, endpoint paths and HTTP transcripts are never translated. The
-repository's own prose guard derives that parity from the two trees' per-chapter
-sizes and fails the build the moment one edition stops matching the other.
+the same sections in the same order at the same line numbers, and every `php`
+listing and every `source:`-marked excerpt in the Spanish edition is the English
+one character for character — identifiers, config keys, endpoint paths and HTTP
+transcripts are never translated. What a Spanish fence does translate is the
+trailing comment on a shell or tree listing: that is prose the reader reads, not
+code they run, and no `php` or `source:` block carries one. The repository's own
+prose guard derives both halves of that parity — the per-chapter sizes, and the
+blocks themselves, byte for byte — and fails the build the moment one edition
+stops matching the other.

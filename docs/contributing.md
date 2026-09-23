@@ -149,12 +149,18 @@ precisely so a new chapter cannot slip in unaudited; `DocsCodeIsRealTest` refuse
 not audit.
 
 **The two editions must stay level, listing for listing and claim for claim.** `book/src` is where a wave
-lands first, and `tests/DocsProseIsRealTest.php` measures the per-chapter size of both trees: while any pair
-diverges, `README.md` and `book/README.md` must say so beside their "complete in both languages" sentence,
-and when none does, the warning has to go. A change to a fact both editions state (a count, a default, a
-retired claim) belongs in **both** trees in the same commit: the prose guard walks `src-es` too, and a
-correction that reaches one edition only is the bilingual version of the defect this whole gate exists to
-remove.
+lands first, and `tests/DocsProseIsRealTest.php` holds the two trees together three ways. It measures the
+per-chapter size of both: while any pair diverges, `README.md` and `book/README.md` must say so beside their
+"complete in both languages" sentence, and when none does, the warning has to go. It pairs the **fenced
+blocks** themselves, so a `php` listing or a `source:`-marked excerpt whose bytes differ between the editions
+is a failure — a Spanish fence may translate a trailing shell or tree comment, which is prose a reader reads,
+and a page claiming the two match "character for character" has to say that is what it covers. And it holds
+the two **chapter-opening promises** to the same set of backticked identifiers, because that paragraph is
+what a wave forgets when it brings a chapter body level and stops one sentence short — five of them shipped
+describing the pre-wave chapter, one of them telling a Spanish reader that method security lives only at the
+CQRS bus. A change to a fact both editions state (a count, a default, a retired claim) belongs in **both**
+trees in the same commit: the prose guard walks `src-es` too, and a correction that reaches one edition only
+is the bilingual version of the defect this whole gate exists to remove.
 
 **Every claim a sentence makes is derived, not typed.** `tests/DocsProseIsRealTest.php` is the other half of
 the listing guard and the larger one: a wrong listing cannot ship, but a wrong *sentence* can, and several
@@ -178,7 +184,11 @@ status `samples/lumen` really asserts when a wallet command arrives with no cred
 masker's own regex really covers, the visibility and the coverage `EloquentRepository`'s read helpers really
 have, the recording doubles `packages/testing` really ships (a chapter promised ten beside a directory of
 eleven, and the missing one was the double six new sections were calling), the `@method` tags
-`RecordRepository` really carries beside every paragraph that counts its derived methods, and how far apart the
+`RecordRepository` really carries beside every paragraph that counts its derived methods, the route the shipped
+skeleton really serves beside every `curl … localhost:8000/…` transcript — a `json` body printed under a path
+`WelcomeController` renders as HTML is a command the reader runs and watches fail — the eight comparison
+labels `DataFilter::operators()` really declares wherever a page enumerates the data browser's filters (the
+dashboard ships no localisation, so a translated label is a label that does not exist), and how far apart the
 two manuscripts really are wherever a page calls the book complete in both languages. The triggers are
 deliberately narrow — a page may mention `hasRole()` or `/actuator/env` in passing without owing the full
 enumeration — so **a red run here is fixed by correcting the sentence**, never by loosening the trigger that
