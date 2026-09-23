@@ -428,7 +428,20 @@ final readonly class AdminAction
             'health' => ['indicators' => $this->reader->healthIndicators(), 'aggregate' => $this->aggregateStatus()],
             'metrics' => ['metrics' => $this->metrics()],
             'http' => ['exchanges' => $this->exchanges()],
-            'beans' => ['beans' => $this->listOf('beans', 'beans')],
+            'beans' => $this->listing(
+                $request,
+                'beans',
+                $this->beanRows(),
+                TableView::of(
+                    TableColumn::qualified('class', 'Class', weight: 5),
+                    TableColumn::token('stereotype', 'Stereotype', weight: 2),
+                    TableColumn::token('scope', 'Scope', weight: 1.5),
+                    TableColumn::token('name', 'Name', weight: 2),
+                    TableColumn::text('interfaces', 'Implements', weight: 3, sortable: true),
+                ),
+                ['class', 'stereotype', 'scope', 'name', 'interfaces'],
+                'class',
+            ),
             // #[ConfigProperties] DTOs are bound and injectable but are neither scanned as components nor
             // produced by a factory, so the beans catalogue alone cannot see them — they arrived as
             // unresolved dependencies instead of as the beans they are.
@@ -436,7 +449,7 @@ final readonly class AdminAction
                 $this->listOf('beans', 'beans'),
                 $this->subArray($this->payload('configprops'), 'beans'),
             )],
-            'conditions' => $this->payload('conditions') + ['positiveMatches' => [], 'negativeMatches' => []],
+            'conditions' => $this->conditionsPage($request),
             'mappings' => $this->listing(
                 $request,
                 'mappings',
@@ -450,7 +463,20 @@ final readonly class AdminAction
                 ['path', 'handler', 'name'],
                 'path',
             ),
-            'scheduled' => ['tasks' => $this->listOf('scheduledtasks', 'tasks')],
+            'scheduled' => $this->listing(
+                $request,
+                'scheduled',
+                $this->taskRows(),
+                TableView::of(
+                    TableColumn::qualified('runnable', 'Runnable', weight: 5),
+                    TableColumn::token('cron', 'Cron', weight: 3),
+                    TableColumn::number('fixedRate', 'Fixed rate', ch: 11),
+                    TableColumn::number('fixedDelay', 'Fixed delay', ch: 11),
+                    TableColumn::token('zone', 'Zone', weight: 2),
+                ),
+                ['runnable', 'cron', 'zone'],
+                'runnable',
+            ),
             'oauth2' => $this->oauth2(),
             'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
@@ -520,6 +546,45 @@ final readonly class AdminAction
     }
 
     /**
+     * The two listings the Conditions page shows side by side.
+     *
+     * Each takes a QUALIFIER, so its parameters are `pos_page`/`neg_page` rather than one shared `page` —
+     * the same shape Spring gives a controller resolving two Pageables with `@Qualifier`. Each then
+     * CARRIES the other's parameters, which is the half that is easy to forget: without it, paging the
+     * Applied panel rebuilds a URL with no `neg_page` in it and the Backed-off panel silently jumps back
+     * to its first page while the reader was looking somewhere else.
+     *
+     * THE SLICES ARE REBUILT ON THE CARRYING QUERIES, and that is not ceremony. A ListingPage holds the
+     * query it was BUILT with and `_pager` draws every page link through `$slice->link()`, so a page
+     * rebuilt from the plain query would carry the panel's own position and drop its sibling's — exactly
+     * the bug the carrying is there to prevent, one mechanism further down. Rebuilding is free: the rows
+     * and the total are already computed, and `sliced()` re-derives the same effective page from them.
+     *
+     * @return array<string,mixed>
+     */
+    private function conditionsPage(Request $request): array
+    {
+        $view = TableView::of(
+            TableColumn::qualified('class', 'Class', weight: 5),
+            TableColumn::token('condition', 'Condition', weight: 3),
+        );
+
+        $applied = $this->listing($request, 'conditions', $this->conditionRows('positiveMatches'), $view, ['class', 'condition'], 'class', qualifier: 'pos');
+        $backed = $this->listing($request, 'conditions', $this->conditionRows('negativeMatches'), $view, ['class', 'condition'], 'class', qualifier: 'neg');
+
+        $appliedQuery = $applied['query']->carrying($backed['query']->own());
+        $backedQuery = $backed['query']->carrying($applied['query']->own());
+
+        return [
+            'appliedQuery' => $appliedQuery,
+            'applied' => ListingPage::sliced($applied['slice']->rows, $applied['slice']->total, $appliedQuery),
+            'backedQuery' => $backedQuery,
+            'backed' => ListingPage::sliced($backed['slice']->rows, $backed['slice']->total, $backedQuery),
+            'view' => $view,
+        ];
+    }
+
+    /**
      * The route table as rows the listing engine can sort and search.
      *
      * Normalised here rather than in the view for two reasons: an actuator payload is `array<mixed>` and
@@ -546,6 +611,101 @@ final readonly class AdminAction
         }
 
         return $rows;
+    }
+
+    /**
+     * The bean catalogue as rows. `interfaces` is flattened to a space-joined string so the column is
+     * searchable and orderable by the same rules as every other one — a list is neither.
+     *
+     * @return list<array{class: string, stereotype: string, scope: string, name: string, interfaces: string}>
+     */
+    private function beanRows(): array
+    {
+        $rows = [];
+        foreach ($this->listOf('beans', 'beans') as $bean) {
+            if (! is_array($bean)) {
+                continue;
+            }
+
+            $interfaces = [];
+            foreach (is_array($bean['interfaces'] ?? null) ? $bean['interfaces'] : [] as $interface) {
+                $interfaces[] = Format::leafOf(is_string($interface) ? $interface : '');
+            }
+
+            $rows[] = [
+                'class' => is_string($bean['class'] ?? null) ? $bean['class'] : '',
+                'stereotype' => is_string($bean['stereotype'] ?? null) ? $bean['stereotype'] : '',
+                'scope' => is_string($bean['scope'] ?? null) ? $bean['scope'] : '',
+                'name' => is_string($bean['name'] ?? null) ? $bean['name'] : '',
+                'interfaces' => implode(' ', $interfaces),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * One side of the condition report as rows.
+     *
+     * @param  string  $key  `positiveMatches` or `negativeMatches`
+     * @return list<array{class: string, condition: string}>
+     */
+    private function conditionRows(string $key): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('conditions'), $key) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $rows[] = [
+                'class' => is_string($row['class'] ?? null) ? $row['class'] : '',
+                'condition' => is_string($row['condition'] ?? null) ? $row['condition'] : '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The scheduled manifest as rows.
+     *
+     * @return list<array{runnable: string, cron: string, fixedRate: string, fixedDelay: string, zone: string}>
+     */
+    private function taskRows(): array
+    {
+        $rows = [];
+        foreach ($this->listOf('scheduledtasks', 'tasks') as $task) {
+            if (! is_array($task)) {
+                continue;
+            }
+
+            $rows[] = [
+                'runnable' => is_string($task['runnable'] ?? null) ? $task['runnable'] : '',
+                'cron' => $this->trigger($task['cron'] ?? null),
+                'fixedRate' => $this->trigger($task['fixedRate'] ?? null),
+                'fixedDelay' => $this->trigger($task['fixedDelay'] ?? null),
+                'zone' => is_string($task['zone'] ?? null) ? $task['zone'] : '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * One #[Scheduled] trigger as a string, with an absent one as the empty string the view draws as `—`.
+     *
+     * ALL THREE TRIGGERS ARE STRINGS, which is the thing worth writing down here: `ScheduledDescriptor`
+     * types `cron`, `fixedRate` and `fixedDelay` as `?string` and Cadence parses the two intervals through
+     * `Duration::parse()`, so what the endpoint publishes is `10s` or `5m`, never a count of milliseconds.
+     * A normaliser that kept only `is_numeric()` values would blank every interval the scanner has ever
+     * produced. The two interval columns are still Number columns: right-aligned tabular mono is the right
+     * rendering for `30s` over `5m` in a stack, and the ordering a Number column offers compares them the
+     * same way the rest of the vocabulary compares anything else.
+     */
+    private function trigger(mixed $value): string
+    {
+        return $value === null || $value === '' ? '' : $this->scalar($value);
     }
 
     /**

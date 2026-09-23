@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Tests\Support;
 
+use Firefly\Context\Condition\ConditionEvaluationReport;
+use Firefly\Context\Condition\ConditionOutcome;
+use Firefly\Scheduling\Schedule\ScheduledDescriptor;
+use Firefly\Scheduling\Schedule\ScheduledManifest;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
 use Illuminate\Foundation\Application;
@@ -29,6 +33,19 @@ use Illuminate\Foundation\Application;
  * smallest size the rows-per-page control offers by default is 25, so `lastPage()` is 1 and the pager's
  * whole paged branch — the window, Previous/Next, the first/last jumps — never renders. A subclass that
  * needs more than one page overrides `routes()` and appends; see AdminTablePagedCapstoneTestCase.
+ *
+ * ROUTES ARE NOT THE ONLY LISTING THIS HARNESS HAS TO FEED. Three of the wiring pages are listings too, and
+ * two of them are EMPTY in a bare capstone: the scheduled manifest the parent stubs holds no tasks, and the
+ * condition report an auto-configured testbench produces has matches but no NON-matches — nothing backs off
+ * when nothing was overridden. An empty listing renders its empty state, which is a branch that proves the
+ * empty state and nothing about a colgroup, a sort link or a pager, so this case seeds both:
+ *
+ * - the tasks go in through `defineFireflyEnvironment`, because ScheduledTasksEndpoint is a singleton that
+ *   takes the manifest in its CONSTRUCTOR and is resolved once during the boot passes — a manifest rebound
+ *   from a test body arrives after the endpoint has already captured the empty one;
+ * - the non-matches go in after boot, because ConditionEvaluationReport is bound by ActuatorRouteRegistrar
+ *   from the BootContext and is MUTABLE: the endpoint holds the same instance, so recording an outcome on
+ *   it is visible to the next request. There is no earlier seam — the report does not exist until boot.
  */
 abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
 {
@@ -37,6 +54,17 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
         parent::defineFireflyEnvironment($app);
 
         $app->instance(RouteManifest::class, new RouteManifest($this->routes()));
+        $app->instance(ScheduledManifest::class, new ScheduledManifest($this->tasks()));
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $report = $this->app()->make(ConditionEvaluationReport::class);
+        foreach ($this->backedOff() as [$class, $attribute, $reason]) {
+            $report->record($class, $attribute, ConditionOutcome::noMatch($reason));
+        }
     }
 
     /**
@@ -52,6 +80,50 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
             new RouteDescriptor('POST', '/orders', 'App\Http\OrderController', 'store', 201, 'orders.store', []),
             new RouteDescriptor('PUT', '/orders/{id}', 'App\Http\OrderController', 'update', 200, 'orders.update', []),
             new RouteDescriptor('DELETE', '/orders/{id}', 'App\Http\OrderController', 'destroy', 204, 'orders.destroy', []),
+        ];
+    }
+
+    /**
+     * Two #[Scheduled] methods, one on each trigger the page has a column for.
+     *
+     * `fixedRate` IS A DURATION STRING, not a number of milliseconds — ScheduledDescriptor types all three
+     * triggers as `?string` and Cadence parses the intervals through Duration::parse — so `30s` is what the
+     * endpoint publishes and what the Fixed rate column has to render. One task carries a cron expression
+     * and no interval, the other an interval and no cron, which is also the pair that proves the em-dash:
+     * every row has exactly one trigger and three empty cells beside it.
+     *
+     * @return list<ScheduledDescriptor>
+     */
+    protected function tasks(): array
+    {
+        return [
+            new ScheduledDescriptor('App\Jobs\NightlyReconciliation', 'run', cron: '0 2 * * *', zone: 'UTC'),
+            new ScheduledDescriptor('App\Jobs\HeartbeatProbe', 'ping', fixedRate: '30s'),
+        ];
+    }
+
+    /**
+     * Conditions that did NOT match, so the Conditions page has two panels worth listing rather than one.
+     *
+     * The shape mirrors what auto-configuration records for real: a class, the attribute FQCN that judged
+     * it, and the reason naming the value observed. Two of them, because one row cannot show that the
+     * Backed-off panel sorts and pages on its OWN qualifier rather than on its neighbour's.
+     *
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    protected function backedOff(): array
+    {
+        return [
+            [
+                'App\Cache\RedisCacheAutoConfiguration',
+                'Firefly\Context\Condition\Attributes\ConditionalOnMissingBean',
+                'a CacheManager bean is already defined by the application',
+            ],
+            [
+                'App\Mail\SmtpMailerAutoConfiguration',
+                'Firefly\Context\Condition\Attributes\ConditionalOnProperty',
+                '(firefly.mail.enabled=false) did not match required value \'true\'',
+            ],
         ];
     }
 }

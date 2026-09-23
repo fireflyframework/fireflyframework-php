@@ -126,3 +126,41 @@ it('says nothing matches, and offers a way back, when a search empties the listi
         ->assertSee('Nothing matches', false)
         ->assertSee('href="/firefly/mappings"', false);
 });
+
+it('pages the beans catalogue on the server and types its columns', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/beans?size=25')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<table class="ftable">')
+        ->toContain('class="t-qual"')
+        ->toContain('total</span>')
+        ->not->toContain('data-filter="beans-body"');
+});
+
+it('orders the beans by a column the page draws, and refuses one it does not', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/beans?sort=scope')->assertStatus(200)->assertSee('dir=desc', false);
+    $this->get('/firefly/beans?sort=secret')->assertStatus(200)->assertDontSee('sort=secret', false);
+});
+
+/**
+ * Two listings share the Conditions page, so each takes a qualifier — Spring's `@Qualifier("pos") Pageable`
+ * in one parameter name. Paging one must not page the other, and each one's links must carry the other's
+ * position or the panel a reader is not looking at silently jumps back to page 1.
+ */
+it('pages the two conditions panels independently and carries each other position', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/conditions?pos_page=2&neg_page=3')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('pos_page=2')
+        ->toContain('neg_page=3')
+        ->toContain('pos_sort=class')
+        ->toContain('neg_sort=class');
+});
+
+it('pages the scheduled tasks and gives the numeric intervals a numeric column', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/scheduled')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<table class="ftable">')->toContain('class="t-num"');
+});

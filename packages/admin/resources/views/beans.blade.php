@@ -10,39 +10,34 @@
 
     <div class="panel">
         @include('firefly-admin::_panel-head', [
-            'title' => 'Container', 'count' => count($beans),
-            'filter' => 'beans-body', 'placeholder' => 'Filter by class, stereotype or interface…',
+            'title' => 'Container', 'count' => $slice->total, 'query' => $query,
+            'placeholder' => 'Search by class, stereotype or interface…',
         ])
-        @if ($beans === [])
-            @include('firefly-admin::_empty', [
-                'title' => 'No beans registered',
-                'body' => 'Check <code>firefly.scan.paths</code> points at your application namespace.',
-            ])
+        @if ($slice->isEmpty())
+            @include('firefly-admin::_empty', $query->isFiltered()
+                ? ['title' => 'Nothing matches', 'body' => 'No bean\'s class, stereotype, scope, name or interfaces contain that. <a href="'.e($query->link(['q' => null, 'page' => null])).'">Show them all</a>.']
+                : ['title' => 'No beans registered', 'body' => 'Check <code>firefly.scan.paths</code> points at your application namespace.'])
         @else
             <div class="tw">
-                <table>
-                    <thead><tr><th>Class</th><th>Stereotype</th><th>Scope</th><th>Name</th><th>Implements</th></tr></thead>
-                    <tbody id="beans-body">
-                    @foreach ($beans as $bean)
-                        @php $class = is_string($bean['class'] ?? null) ? $bean['class'] : ''; @endphp
+                <table class="ftable">
+                    @include('firefly-admin::_table-head', ['view' => $view, 'query' => $query])
+                    <tbody>
+                    @foreach ($slice->rows as $bean)
                         <tr>
-                            <td class="cls"><span class="nm">{{ Format::shortClass($class) }}</span><span class="ns">{{ rtrim(Format::namespaceOf($class), '\\') }}</span></td>
-                            <td class="mono dim tight">{{ $bean['stereotype'] ?? '' }}</td>
-                            <td class="mono dim tight">{{ $bean['scope'] ?? '' }}</td>
-                            <td class="mono dim tight">{{ $bean['name'] ?: '—' }}</td>
-                            <td class="mono dim wrap">
-                                @php $interfaces = is_array($bean['interfaces'] ?? null) ? $bean['interfaces'] : []; @endphp
-                                @forelse ($interfaces as $interface)
-                                    <div>{{ Format::shortClass((string) $interface) }}</div>
-                                @empty
-                                    —
-                                @endforelse
+                            <td class="t-qual" title="{{ $bean['class'] }}">
+                                <span class="nm">{{ Format::leafOf($bean['class']) }}</span>
+                                <span class="ns stem">{{ Format::stemOf($bean['class']) }}</span>
                             </td>
+                            <td class="t-token dim">{{ $bean['stereotype'] ?: '—' }}</td>
+                            <td class="t-token dim">{{ $bean['scope'] ?: '—' }}</td>
+                            <td class="t-token dim" title="{{ $bean['name'] }}">{{ $bean['name'] ?: '—' }}</td>
+                            <td class="t-text dim" title="{{ $bean['interfaces'] }}">{{ $bean['interfaces'] ?: '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+            @include('firefly-admin::_pager', ['slice' => $slice, 'query' => $query])
         @endif
     </div>
 @endsection
