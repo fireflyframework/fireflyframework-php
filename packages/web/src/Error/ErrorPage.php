@@ -20,11 +20,12 @@ namespace Firefly\Web\Error;
  * welcome page's: centred, generous, a single column. A person meets this page in the same session in which
  * they meet those two, and a third visual language would just be noise.
  *
- * THE SIGNATURE IS THE TRACE, because that is what the page is FOR. A raw PHP trace is forty frames of which
- * four are yours; here the application's frames carry the accent rail and open by default with their source
- * excerpt, and the vendor frames collapse to one dim line each. That distinction is the entire difference
- * between scrolling a trace and reading one, and it is drawn with `<details>` and CSS — no JavaScript, so it
- * works with scripts disabled and in whatever a container's minimal browser turns out to be.
+ * THE SIGNATURE IS THE TRACE, because that is what the page is FOR. A raw PHP trace is a hundred frames of
+ * which ten are yours; here the application's frames are the list — accented, one line each, the first one
+ * with its source already open — and every dependency frame sits behind a single closed disclosure below
+ * them. That split is the entire difference between scrolling a trace and reading one, and it is drawn with
+ * `<details>` and CSS — no JavaScript, so it works with scripts disabled and in whatever a container's
+ * minimal browser turns out to be.
  */
 final class ErrorPage
 {
@@ -134,6 +135,17 @@ final class ErrorPage
     }
 
     /**
+     * The trace, split into the frames a reader came for and the ones they came through.
+     *
+     * A raw PHP trace is a hundred frames of which ten are the application's, and interleaving them is what
+     * makes a trace something to scroll rather than something to read. So the application's frames are the
+     * LIST — accented, in stack order, the first one with source already open — and the dependencies are a
+     * single closed disclosure underneath. Nothing is hidden: the count is on both, and one click or one
+     * Enter opens the whole set.
+     *
+     * Every frame keeps its position in the UNTRIMMED stack (`#37`), so a split list still reads as a stack
+     * and a budgeted one still says where its gaps are.
+     *
      * THE HEADER COUNTS THE STACK, NOT THE ROWS. `max-frames` trims the list in the report, before any
      * markup exists, so counting what is rendered would answer "7 of 40 in your code" for a stack of 104
      * and say nothing at all about the sixty-four frames that were dropped — a label that was honest
@@ -147,42 +159,98 @@ final class ErrorPage
             return '';
         }
 
+        $own = [];
+        $vendor = [];
+        foreach ($report->frames as $frame) {
+            if ($frame->vendor) {
+                $vendor[] = $frame;
+            } else {
+                $own[] = $frame;
+            }
+        }
+
         $shown = count($report->frames);
         $summary = $shown === $report->frameCount
             ? $report->frameCount.' frames · '.$report->appFrameCount.' in your code'
             : $shown.' of '.$report->frameCount.' frames · '.$report->appFrameCount.' in your code';
 
-        $html = '<section class="panel"><h2>Stack trace <span class="n">'
-            .self::e($summary).'</span></h2><ol class="frames">';
+        $html = '<section class="panel trace"><h2>Stack trace <span class="n">'.self::e($summary).'</span></h2>';
 
-        $opened = 0;
-        foreach ($report->frames as $frame) {
-            $html .= self::frame($frame, $opened);
+        if ($own !== []) {
+            $html .= '<ol class="frames">';
+            $opened = false;
+            foreach ($own as $frame) {
+                $html .= self::frame($frame, ! $opened && $frame->excerpt !== []);
+                $opened = $opened || $frame->excerpt !== [];
+            }
+            $html .= '</ol>';
         }
 
-        return $html.'</ol></section>';
+        return $html.self::dependencies($vendor, $report->frameCount - $report->appFrameCount).'</section>';
     }
 
-    private static function frame(ErrorFrame $frame, int &$opened): string
+    /**
+     * One application frame: a disclosure when there is source to disclose, a plain row when there is not.
+     *
+     * `name="firefly-frame"` is HTML's own exclusive accordion — opening one closes the rest, with no
+     * JavaScript and no CSS — and `<summary>` is focusable and Enter/Space-operable because it is a real
+     * control. A browser too old for the attribute simply lets several be open, which is the behaviour this
+     * page had before and is not a failure.
+     */
+    private static function frame(ErrorFrame $frame, bool $open): string
     {
-        $where = $frame->shortFile.($frame->line === null ? '' : ':'.$frame->line);
-        $summary = '<summary><span class="where">'.self::e($where).'</span>'
-            .'<span class="call">'.self::e($frame->call).'</span></summary>';
-
         if ($frame->excerpt === []) {
-            // No body to expand into, so it renders as a plain row rather than as a control that does
-            // nothing when clicked.
-            return '<li class="'.($frame->vendor ? 'vendor' : 'own').'"><div class="row">'
-                .'<span class="where">'.self::e($where).'</span>'
-                .'<span class="call">'.self::e($frame->call).'</span></div></li>';
+            // No body to expand into, so it renders as a row rather than as a control that does nothing.
+            return '<li class="own"><div class="row">'.self::row($frame).'</div></li>';
         }
 
-        // The first two frames with source are opened; past that the page becomes a wall of code and the
-        // reader loses the shape of the stack.
-        $open = $opened < 2 ? ' open' : '';
-        $opened++;
+        return '<li class="own"><details name="firefly-frame"'.($open ? ' open' : '').'>'
+            .'<summary>'.self::row($frame).'</summary>'
+            .self::excerpt($frame).'</details></li>';
+    }
 
-        return '<li class="own"><details'.$open.'>'.$summary.self::excerpt($frame).'</details></li>';
+    /**
+     * A frame on ONE LINE, whatever the width.
+     *
+     * The order is the order a reader scans: where in the stack, whose code, which directory, WHICH FILE,
+     * which line, what was called. Only `.dir` and `.call` may be clipped, because only they have a
+     * discardable end; the file name and the line number are the answer and are never shortened.
+     */
+    private static function row(ErrorFrame $frame): string
+    {
+        $package = $frame->package();
+
+        return '<span class="ix">'.self::e('#'.$frame->index).'</span>'
+            .($package === null ? '' : '<span class="pkg">'.self::e($package).'</span>')
+            .'<span class="dir">'.self::e($frame->dir()).'</span>'
+            .'<span class="base">'.self::e($frame->base()).'</span>'
+            .'<span class="ln">'.($frame->line === null ? '' : self::e(':'.$frame->line)).'</span>'
+            .'<span class="call">'.self::e($frame->call).'</span>';
+    }
+
+    /**
+     * Every dependency frame behind one disclosure, with an honest count of what the budget left out.
+     *
+     * @param  list<ErrorFrame>  $vendor
+     * @param  int  $total  dependency frames in the UNTRIMMED stack
+     */
+    private static function dependencies(array $vendor, int $total): string
+    {
+        if ($vendor === []) {
+            return '';
+        }
+
+        $label = $total.' frame'.($total === 1 ? '' : 's').' in your dependencies';
+        $note = count($vendor) === $total ? '' : '<span class="dn">'.self::e(count($vendor).' shown').'</span>';
+
+        $html = '<details class="deps"><summary><span class="dsum">'.self::e($label).'</span>'.$note.'</summary>'
+            .'<ol class="frames deps-list">';
+
+        foreach ($vendor as $frame) {
+            $html .= '<li class="vendor"><div class="row">'.self::row($frame).'</div></li>';
+        }
+
+        return $html.'</ol></details>';
     }
 
     private static function excerpt(ErrorFrame $frame): string
@@ -256,7 +324,7 @@ final class ErrorPage
 :root{
   color-scheme:light;
   --bg:#f7f6f3; --panel:#fff; --panel-2:#faf9f6; --line:#e7e3db; --line-2:#d6d0c4;
-  --ink:#20242a; --ink-2:#5f6672; --ink-3:#8d95a1;
+  --ink:#20242a; --ink-2:#5f6672; --ink-3:#696f7d;
   --brand:#e07a17;
   /* The brand as TEXT. #e07a17 is a 3.01:1 foreground on white — fine for a 9px dot or a 3px rail, and
      unreadable for the exception class it was being used on. Shapes and text need different oranges. */
@@ -271,7 +339,7 @@ final class ErrorPage
   :root{
     color-scheme:dark;
     --bg:#0f1214; --panel:#15191c; --panel-2:#181d21; --line:#252c32; --line-2:#333c44;
-    --ink:#e8ecef; --ink-2:#9aa5af; --ink-3:#6c7883;
+    --ink:#e8ecef; --ink-2:#9aa5af; --ink-3:#828e99;
     --brand:#ff9d3c;
     --brand-ink:#ff9d3c;
     --down:#ff8a7a; --down-bg:#2a1614; --warn:#ffc266; --warn-bg:#2a2114;
@@ -305,23 +373,38 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .chain .cls{margin:0;font-family:var(--mono);font-size:12.5px;color:var(--brand-ink);overflow-wrap:anywhere}
 .chain .msg{margin:3px 0 0;overflow-wrap:anywhere}
 .chain .loc{margin:3px 0 0;font-family:var(--mono);font-size:12px;color:var(--ink-3);overflow-wrap:anywhere}
-.frames{list-style:none;margin:0;padding:0;counter-reset:f}
+.frames{list-style:none;margin:0;padding:0}
 .frames li{border-bottom:1px solid var(--line)}
 .frames li:last-child{border-bottom:0}
-.frames .row,.frames summary{display:flex;gap:14px;align-items:baseline;padding:8px 16px;min-width:0;flex-wrap:wrap}
+/* ONE LINE PER FRAME. The old rule was flex-wrap:wrap with overflow-wrap:anywhere on the path and
+   margin-left:auto on the call, so every row became a wrapped path plus a third line for the call — an
+   87px pitch that made a hundred-frame trace 10,108 pixels tall. Only .dir and .call may shrink. */
+.frames .row,.frames summary{display:flex;gap:8px;align-items:baseline;padding:7px 16px;min-width:0;flex-wrap:nowrap;white-space:nowrap}
 .frames summary{cursor:pointer;list-style:none}
 .frames summary::-webkit-details-marker{display:none}
-.frames summary::before{content:"▸";color:var(--ink-3);font-size:10px;margin-right:-6px}
+.frames summary::before{content:"▸";color:var(--ink-3);font-size:10px;flex:none}
 .frames details[open] summary::before{content:"▾"}
-.frames .where{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
-.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);overflow-wrap:anywhere;margin-left:auto}
-/* The application's own frames are the point of the page; the vendor ones are context. */
+.frames summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.frames .ix{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:none;min-width:2.8em;text-align:right}
+.frames .pkg{font-size:11px;line-height:1.7;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:0 5px;flex:none;max-width:13em;overflow:hidden;text-overflow:ellipsis}
+.frames .dir{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+.frames .base{font-family:var(--mono);font-size:12.5px;color:var(--ink);flex:none}
+.frames .ln{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);flex:none}
+.frames .call{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:auto;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+/* The application's own frames are the point of the page; the dependency ones are context. */
 .frames li.own{border-left:3px solid var(--brand);background:var(--panel)}
-.frames li.own .where{color:var(--ink);font-weight:600}
+.frames li.own .base{font-weight:600}
 .frames li.vendor{border-left:3px solid transparent;background:var(--panel-2)}
-/* De-emphasised by weight, ground and the missing rail — NOT by fading the text below readable contrast.
-   A vendor frame's path is still the thing a reader came for once they have ruled their own code out. */
-.frames li.vendor .where{color:var(--ink-2);font-weight:400}
+/* De-emphasised by weight, ground and the missing rail — NOT by fading text below readable contrast. */
+.frames li.vendor .base{font-weight:400;color:var(--ink-2)}
+.deps{border-top:1px solid var(--line);background:var(--panel-2)}
+.deps>summary{display:flex;gap:12px;align-items:baseline;padding:10px 16px;cursor:pointer;list-style:none;font-size:12.5px;color:var(--ink-2)}
+.deps>summary::-webkit-details-marker{display:none}
+.deps>summary::before{content:"▸";color:var(--ink-3);font-size:10px}
+.deps[open]>summary::before{content:"▾"}
+.deps>summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.deps .dn{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.deps-list{border-top:1px solid var(--line)}
 .src{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px;background:var(--panel-2);border-top:1px solid var(--line);display:block;overflow-x:auto}
 .src tr{display:table;width:100%;table-layout:fixed}
 .src td{padding:2px 10px;white-space:pre;vertical-align:top}
@@ -334,7 +417,9 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 @media (max-width:560px){
   .sheet{padding:32px 14px 48px}
   .status b{font-size:48px}
-  .frames .call{margin-left:0;width:100%}
+  .frames .pkg{display:none}
+  .frames .call{max-width:38%}
+  .frames .ix{min-width:2.2em}
 }
 CSS;
     }
