@@ -23,10 +23,18 @@ use Firefly\Observability\HttpExchanges\HeaderMasker;
 use Firefly\Security\Access\Expression\ExpressionParseException;
 use Firefly\Security\Access\Expression\SecurityExpressionEvaluator;
 use Firefly\Security\Access\Expression\SecurityExpressionRoot;
+use Firefly\Security\OAuth2\Client\Discovery\OidcDiscovery;
+use Firefly\Security\OAuth2\Client\OAuth2ClientSettings;
+use Firefly\Security\OAuth2\Client\Registration\CommonOAuth2Provider;
+use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
+use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
 use Firefly\Tests\Support\DocsCodeAudit;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Config\Repository as ConfigRepository;
+use Illuminate\Container\Container;
 use Illuminate\Http\Request;
 
 /**
@@ -432,6 +440,71 @@ function fireflyMaskingWords(string $class): array
     sort($split);
 
     return $split;
+}
+
+/**
+ * Every paragraph that presents the OAuth2 client presets and says what one of them settles, held against the
+ * two facts the package really carries: WHICH presets name a client-authentication method, and what the mapper
+ * deduces for the ones that do not.
+ *
+ * @param  list<string>  $builtIn  preset ids whose registration() names a `client_authentication_method`
+ * @param  list<string>  $deduced  preset ids that leave the method to the registration
+ * @param  list<string>  $outcomes  the methods OAuth2ClientPropertiesMapper really produces for a $deduced preset
+ * @return array{quoting: int, failures: list<string>}
+ */
+function fireflyOAuth2PresetProse(array $builtIn, array $deduced, array $outcomes): array
+{
+    $quoting = 0;
+    $failures = [];
+
+    // The rule exists only while the two sets are both inhabited. If every preset named a method, "the presets'
+    // client-authentication method is built in" would be true as written and there would be nothing to qualify;
+    // if none did, no page would be attributing one to them. Either way this walk must refuse nothing and hold
+    // nothing — the promise the guard below exercises rather than describes.
+    if ($builtIn === [] || $deduced === [] || $outcomes === []) {
+        return ['quoting' => $quoting, 'failures' => $failures];
+    }
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $lower = mb_strtolower($paragraph);
+
+            // The trigger is narrow on purpose: the paragraph has to be presenting the presets AS A SET — the
+            // word plus every id, so a page may name `google` or quote one registration in passing without
+            // owing the whole rule — and it has to be saying something about the client-authentication method.
+            if (! str_contains($lower, 'preset')) {
+                continue;
+            }
+
+            foreach ([...$builtIn, ...$deduced] as $id) {
+                if (! str_contains($lower, $id)) {
+                    continue 2;
+                }
+            }
+
+            if (preg_match('/client[-_ ]authentication[-_ ]method|m[eé]todo de autenticaci[oó]n de cliente/u', $lower) !== 1) {
+                continue;
+            }
+
+            $quoting++;
+
+            // Then it owes the derivation, in full. A paragraph that lists the method among what a preset
+            // supplies and stops there tells a reader that `keycloak` comes with one; the only way to be
+            // reading a true paragraph is to find, in it, every method the mapper really lands on when the
+            // preset supplies none — which is why these are read off the mapper rather than typed here.
+            foreach ($outcomes as $outcome) {
+                if (preg_match('/\b'.preg_quote($outcome, '/').'\b/', $lower) === 1) {
+                    continue;
+                }
+
+                $failures[] = $page.' credits the presets with a client-authentication method without saying that '
+                    .implode(', ', $deduced).' leave it to the registration, where the mapper deduces `'.$outcome
+                    .'`: '.mb_substr((string) preg_replace('/\s+/', ' ', trim($paragraph)), 0, 160);
+            }
+        }
+    }
+
+    return ['quoting' => $quoting, 'failures' => $failures];
 }
 
 it('pins every whitelist enumeration to the functions SecurityExpressionEvaluator really dispatches', function () {
@@ -2309,4 +2382,93 @@ it('pins every chapter count to the chapters the manuscript really has', functio
         ->and($spanish)->toBe($english, 'the two manuscripts no longer hold the same chapters, so every "N chapters, EN + ES" sentence is only true of one edition')
         ->and($count)->toBeGreaterThan(0, 'book/src holds no numbered chapter at all, so this canary holds nothing')
         ->and($judged)->toBeGreaterThan(0, 'no page counts the book\'s chapters any more, so this canary holds nothing');
+});
+
+it('pins every OAuth2 preset paragraph to the client-authentication methods the presets really carry', function () {
+    // The twenty-first, and the second to catch a stale DEFAULT rather than a stale count — this one a default
+    // that never existed. Chapter 10A shipped, in both editions, with "five names are **presets** … whose
+    // endpoints, default scopes, `client_name` and client-authentication method are built in", and
+    // docs/modules/security-oauth2-client.md had been saying the same thing since the module was written.
+    // CommonOAuth2Provider says the opposite, in capitals, in its own class docblock: only Google and GitHub
+    // name a method, because neither provider issues a web client without a secret, and the three per-tenant
+    // presets leave it to the registration precisely because Okta, Keycloak and Entra host public clients as a
+    // matter of course. A reader configuring a secret-less Keycloak registration was being promised
+    // `client_secret_basic` by three documents and handed `none` — a public client — by the mapper.
+    //
+    // NOTHING COULD SEE IT. The listing above the sentence is audited byte for byte and was innocent: the
+    // falsehood lives in the paragraph beside it, in two languages, worded identically. A green gate with a
+    // false sentence in it is a failed wave.
+    //
+    // DERIVED TWICE OVER, and neither half is typed out here. Which presets settle the method is read off
+    // CommonOAuth2Provider::registration(); what the others land on instead is read off the MAPPER, by running
+    // it — a per-tenant registration with a secret and the same one without, through the real
+    // OAuth2ClientPropertiesMapper, with every endpoint spelled out so no discovery request is made. The day
+    // Keycloak's preset gains a method, or the deduction changes, the derived values change and the sentences
+    // that quote them go red.
+    $builtIn = [];
+    $deduced = [];
+
+    foreach (CommonOAuth2Provider::cases() as $preset) {
+        $named = $preset->registration()['client_authentication_method'] ?? null;
+
+        if (is_string($named)) {
+            $builtIn[] = $preset->value;
+
+            continue;
+        }
+
+        $deduced[] = $preset->value;
+    }
+
+    expect($builtIn)->not->toBeEmpty('no OAuth2 preset names a client-authentication method any more, so this canary holds nothing');
+
+    /**
+     * The method a per-tenant registration really ends up presenting, read out of the mapper rather than
+     * restated: the plan's own three-step resolution (configured, else the preset's, else deduced from the
+     * secret) is the sentence under test, so nothing here may anticipate its answer.
+     *
+     * @param  array<string, mixed>  $registration
+     */
+    $method = static function (string $preset, array $registration): string {
+        $issuer = 'https://sso.example.test/realms/corp';
+        $config = new Config(new ConfigRepository(['firefly' => ['security' => ['oauth2' => ['client' => [
+            'registration' => [$preset => $registration],
+            // Every endpoint spelled out: with nothing left to discover, resolve() never reaches OidcDiscovery,
+            // so this derivation is as request-free as the boot validation it is reading the answer out of.
+            'provider' => [$preset => [
+                'issuer_uri' => $issuer,
+                'authorization_uri' => $issuer.'/protocol/openid-connect/auth',
+                'token_uri' => $issuer.'/protocol/openid-connect/token',
+                'jwk_set_uri' => $issuer.'/protocol/openid-connect/certs',
+                'user_info_uri' => $issuer.'/protocol/openid-connect/userinfo',
+            ]],
+        ]]]]]));
+        $settings = new OAuth2ClientSettings;
+
+        $mapper = new OAuth2ClientPropertiesMapper(
+            OAuth2ClientProperties::fromConfig($config),
+            new OidcDiscovery(new Container, new CacheRepository(new ArrayStore), $settings),
+            $settings,
+        );
+
+        return $mapper->registration($preset)->clientAuthenticationMethod->value;
+    };
+
+    $tenant = $deduced[0] ?? throw new RuntimeException('every OAuth2 preset now settles the method, so there is no deduction left to derive');
+    $withSecret = $method($tenant, ['client_id' => 'portal', 'client_secret' => 'kc-secret']);
+    $withoutSecret = $method($tenant, ['client_id' => 'portal']);
+
+    // The fact the documents were getting wrong, asserted before it is used to judge them: a per-tenant preset
+    // does not settle the method, and the two answers a reader can actually get are different from each other.
+    expect($withSecret)->not->toBe($withoutSecret);
+
+    $outcomes = [$withSecret, $withoutSecret];
+
+    ['quoting' => $quoting, 'failures' => $failures] = fireflyOAuth2PresetProse($builtIn, $deduced, $outcomes);
+
+    expect($failures)->toBe([])
+        ->and($quoting)->toBeGreaterThan(0, 'no page presents the OAuth2 presets any more, so this canary holds nothing')
+        // The promise, exercised rather than described: with every preset settling the method there is nothing
+        // to qualify, and the same walk over the same pages must refuse nothing and hold nothing.
+        ->and(fireflyOAuth2PresetProse([...$builtIn, ...$deduced], [], $outcomes))->toBe(['quoting' => 0, 'failures' => []]);
 });

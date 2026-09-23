@@ -62,8 +62,11 @@ shape verbatim, read by `OAuth2ClientProperties` and turned into immutable `Clie
 | `user_name_attribute` | `sub` | The claim / userinfo attribute that names the principal (`id` for GitHub). |
 
 **Presets** (`CommonOAuth2Provider`): a `provider` value — or a registration id — of `google`, `github`, `okta`,
-`keycloak` or `microsoft` (alias `entra`) starts from the preset's endpoints, scopes, `client_name` and
-`client_authentication_method`, and your `provider.{id}` keys overlay it. Google and GitHub are complete; Okta, Keycloak
+`keycloak` or `microsoft` (alias `entra`) starts from the preset's endpoints, scopes and `client_name`, and your
+`provider.{id}` keys overlay it. Only `google` and `github` also carry a `client_authentication_method`
+(`client_secret_basic` — neither provider issues a web client without a secret); on the other three the method is
+deduced instead: `client_authentication_method` when the registration sets one, `client_secret_basic` when it carries
+a secret, `none` — a public client, PKCE mandatory — when it does not. Google and GitHub are complete; Okta, Keycloak
 and Microsoft are per-tenant and **require `issuer_uri`**, from which discovery learns the rest.
 
 **Validation happens at boot**, statically and without a request: a missing `client_id`, a secret-less registration
