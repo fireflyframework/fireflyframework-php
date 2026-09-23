@@ -1,6 +1,10 @@
 """Extract fenced listings from the manuscript, verify they lint, and (optionally)
 verify that every PHP listing declares where it came from.
 
+The lint applies to every ```php listing EXCEPT one carrying a `<!-- source: -->` marker:
+that listing is a verbatim fragment of a file the repository already lints, and a fragment
+(one method, a docblock, an interface's signatures) does not parse alone.
+
 Unlike PyFly's Python-native `ast.parse`, LaraFly's listings are real PHP, so
 this shells out to the PHP CLI's own linter (`php -l`) via a temp file. Used
 standalone:
@@ -113,10 +117,19 @@ def main(root: str, require_provenance: bool = False) -> int:
     for f in files:
         for lst in extract_php_listings(f):
             checked += 1
-            ok, err = lint_php(lst.code)
-            if not ok:
-                failures += 1
-                print(f"FAIL {f}:{lst.line} [php] {err}")
+            # A `source:` listing is a VERBATIM fragment of a file this repository already lints on
+            # every build — one method lifted out of its class, a docblock, an interface's signatures.
+            # Such a fragment cannot parse on its own, and the only way to make it parse is to add
+            # lines the source file does not have, which is precisely the untrue listing the
+            # provenance rule exists to stop. The PHP guard (tests/DocsCodeIsRealTest.php) draws the
+            # same line for the same reason and compares the excerpt against the named file instead.
+            # Everything else is still linted: an `illustrative:` listing is the reader's own class,
+            # backed by no file, so a syntax error in it would ship to a reader unchallenged.
+            if lst.origin is None:
+                ok, err = lint_php(lst.code)
+                if not ok:
+                    failures += 1
+                    print(f"FAIL {f}:{lst.line} [php] {err}")
             if require_provenance and lst.origin is None and lst.illustrative is None:
                 unprovenanced += 1
                 print(f"FAIL {f}:{lst.line} [php] no provenance: add "

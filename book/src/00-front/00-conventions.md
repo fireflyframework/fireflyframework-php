@@ -6,21 +6,23 @@ This page explains the typographic and structural conventions used throughout th
 
 Real code is set in a plain fenced block tagged `php`. Every one of these blocks is both syntax-highlighted here and linted with the real PHP CLI (`php -l`) by the book's own build tooling — nothing you read is unparseable, invented, or out of date. For example, this excerpt is the `Money` value object from `samples/lumen`:
 
+<!-- source: samples/lumen/src/Domain/Money.php -->
 ```php
 <?php
 
 declare(strict_types=1);
 
 namespace Lumen\Domain;
-
-final readonly class Money
+// …
 {
+    // …
     public function __construct(public int $minorUnits, public Currency $currency) {}
 
     public static function zero(Currency $currency): self
     {
         return new self(0, $currency);
     }
+// …
 }
 ```
 

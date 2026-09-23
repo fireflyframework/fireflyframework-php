@@ -13,12 +13,14 @@ By the end of this chapter you will know all four stereotype attributes, how con
 
 A **bean** is any object the container manages on your behalf — built once (by default) and handed out on request. You mark a class as a bean with a **stereotype** attribute. LaraFly ships four:
 
+<!-- illustrative: the imports a reader writes at the top of their own stereotyped class -->
 ```php
 use Firefly\Container\Attributes\{Component, Configuration, Repository, Service};
 ```
 
 `#[Component]` is the base attribute; `#[Service]`, `#[Repository]`, and `#[Configuration]` are all specialisations of it — literally, each one `extends Firefly\Container\Attributes\Component` in PHP. A component scan finds every one of them with a single reflection call:
 
+<!-- illustrative: the one reflection call the scanner makes, shown on its own to explain IS_INSTANCEOF -->
 ```php
 $reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF);
 ```
@@ -27,6 +29,7 @@ $reflection->getAttributes(Component::class, ReflectionAttribute::IS_INSTANCEOF)
 
 You already met the simplest stereotype in the Quick Start:
 
+<!-- source: skeleton/app/GreetingService.php -->
 ```php
 <?php
 
@@ -58,6 +61,7 @@ final class GreetingService
 
 `#[Repository]` marks a persistence-facing bean, and it is where stereotypes start to show their real value: disambiguating between an interface and the class that implements it. `samples/lumen` defines the *port* — the interface the domain and application layers depend on — with no framework attribute on it at all, because an interface is never itself a bean:
 
+<!-- source: samples/lumen/src/Infrastructure/WalletRepository.php -->
 ```php
 <?php
 
@@ -85,6 +89,7 @@ interface WalletRepository
 
 The *adapter* — the class that actually talks to Eloquent — is what carries `#[Repository]`:
 
+<!-- source: samples/lumen/src/Infrastructure/EloquentWalletRepository.php -->
 ```php
 <?php
 
@@ -100,10 +105,9 @@ use Lumen\Domain\Wallet;
 /**
  * The Eloquent ADAPTER for the `WalletRepository` port, bound to the `Wallet` aggregate model.
  *
- * (The real file's docblock explains, in full, a PHP parameter-variance constraint this class must respect
- * because it both `extends EloquentRepository` and `implements WalletRepository` — see the shipped source
- * under `samples/lumen/src/Infrastructure/EloquentWalletRepository.php` for the complete rationale.)
+ // …
  *
+ // …
  * @extends EloquentRepository<Wallet>
  */
 #[Repository]
@@ -149,24 +153,18 @@ Not everything you need to inject is a class you own. `#[Configuration]` marks a
 
 The skeleton project you scaffolded in the Quick Start already ships one, real, shipped example:
 
+<!-- source: packages/cli/tests/Fixtures/App/CachedTransactionalConfiguration.php -->
 ```php
 <?php
 
 declare(strict_types=1);
-
-namespace App\Support;
-
+// …
 use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Data\Transaction\TransactionalManifest;
 
 /**
- * Category C: the app-side #[Configuration] that firefly:cache generates/ships. It LOADS the app's compiled
- * TransactionalManifest as a bean — the only override seam for it, because binding it directly on the Laravel
- * container is invisible to DataAutoConfiguration's #[ConditionalOnMissingBean] (which consults the
- * BeanDefinitionRegistry). Its default #[Order] 0 sorts strictly before DataAutoConfiguration's #[Order(1000)],
- * so the empty default steps aside. On a cached boot this #[Configuration] is discovered from the compiled
- * component/context manifests (never scanned); until firefly:cache has run, it returns an empty manifest.
+ // …
  */
 #[Configuration]
 final class CachedTransactionalConfiguration
@@ -174,9 +172,7 @@ final class CachedTransactionalConfiguration
     #[Bean]
     public function transactionalManifest(): TransactionalManifest
     {
-        $file = base_path('bootstrap/cache/firefly/transactional.php');
-
-        return is_file($file) ? TransactionalManifest::load($file) : new TransactionalManifest([], []);
+    // …
     }
 }
 ```
@@ -195,6 +191,7 @@ final class CachedTransactionalConfiguration
 
 You have now seen this twice without a full explanation. `OpenWalletHandler`, the command handler that opens a new wallet in `samples/lumen`, is the clearest example — its whole job is to receive the *port*, not the adapter:
 
+<!-- source: samples/lumen/src/Application/Command/OpenWalletHandler.php -->
 ```php
 <?php
 
@@ -210,6 +207,7 @@ use Lumen\Infrastructure\WalletRepository;
 /**
  * Handles OpenWallet: mints a new wallet id, opens the aggregate, and persists it. The handled command type is
  * inferred from the sole handle() parameter (HandlerScanner param inference) — no explicit #[CommandHandler(...)].
+ // …
  */
 #[CommandHandler]
 class OpenWalletHandler
@@ -241,6 +239,7 @@ class OpenWalletHandler
 
 Every component is a **singleton** by default: the container builds it once, and every resolution after the first returns the same instance. Choose a different lifetime with the `scope` argument any stereotype attribute accepts:
 
+<!-- illustrative: the reader's own transient #[Service] -->
 ```php
 use Firefly\Container\Attributes\Service;
 use Firefly\Container\Scope;
@@ -251,14 +250,22 @@ final class RequestId {}
 
 `Scope` is a plain PHP enum with three cases:
 
+<!-- source: packages/container/src/Scope.php -->
 ```php
 enum Scope
 {
-    case Singleton;  // one instance for the life of the application (the default)
-    case Transient;  // a new instance every resolution
-    case Scoped;     // one instance per Laravel request/scope
-}
+    case Singleton;
+    case Transient;
+    case Scoped;
 ```
+
+| Case | Lifetime |
+|---|---|
+| `Singleton` | one instance for the life of the application — the default |
+| `Transient` | a new instance on every resolution |
+| `Scoped` | one instance per Laravel request or scope |
+
+Session scope is deliberately absent: it belongs to `firefly/session`, not to the container.
 
 Use `Scope::Transient` for anything that must never be shared — a per-operation correlation id, a mutable builder. Use the default `Scope::Singleton` for everything else, which is almost everything: services, repositories, and configuration DTOs are all naturally shareable, and a singleton is cheaper to resolve.
 
@@ -271,37 +278,17 @@ Use `Scope::Transient` for anything that must never be shared — a per-operatio
 
 Interface auto-binding, described earlier in this chapter, has a simple rule for the common case: exactly one scanned implementation of an interface gets bound to it automatically. But real applications often have *more* than one implementation of the same interface — a production adapter and a stub, or two genuinely different strategies. `#[Primary]` and `#[Qualifier]` are how you tell the container which one you mean:
 
+<!-- source: packages/container/tests/Fixtures/Greeter.php -->
 ```php
-use Firefly\Container\Attributes\{Primary, Qualifier, Service};
-
 interface Greeter
 {
     public function greet(): string;
-}
-
-#[Service]
-#[Primary]
-final class EnglishGreeter implements Greeter
-{
-    public function greet(): string
-    {
-        return 'Hello';
-    }
-}
-
-#[Service('spanish')]
-#[Qualifier('spanish')]
-final class SpanishGreeter implements Greeter
-{
-    public function greet(): string
-    {
-        return 'Hola';
-    }
 }
 ```
 
 With both beans registered, the container resolves the interface three different ways depending on what you ask for:
 
+<!-- illustrative: the three calls a reader makes against the container port from their own code -->
 ```php
 $container->get(Greeter::class);      // EnglishGreeter — the #[Primary] one
 $container->getByName('spanish');     // SpanishGreeter — resolved by its bean name
@@ -317,16 +304,13 @@ $container->getAll(Greeter::class);   // [EnglishGreeter, SpanishGreeter] — ev
 
 `getAll(Greeter::class)` above returns every implementation — and it returns them **sorted by `#[Order]`**, lower first, exactly like Spring's `@Order` convention:
 
+<!-- source: packages/container/tests/Fixtures/EnglishGreeter.php -->
 ```php
 use Firefly\Container\Attributes\Order;
-
+// …
 #[Service]
+// …
 #[Order(10)]
-final class EnglishGreeter implements Greeter { /* ... */ }
-
-#[Service]
-#[Order(20)]
-final class SpanishGreeter implements Greeter { /* ... */ }
 ```
 
 The default order is `0` when the attribute is omitted, so anything you explicitly order with a positive number sorts after every un-ordered bean, and anything you order negatively sorts before them. `#[Order]` also targets `#[Bean]` factory methods, not just classes — the attribute works identically wherever a list of beans needs a deterministic sequence.
@@ -337,6 +321,7 @@ The default order is `0` when the attribute is omitted, so anything you explicit
 
 Sometimes what you need injected is not a bean at all, but a single scalar — a configuration value or a small computed expression. `#[Value]` targets one constructor parameter directly:
 
+<!-- illustrative: the reader's own #[Value]-injected configuration class -->
 ```php
 use Firefly\Container\Attributes\Value;
 
@@ -364,6 +349,7 @@ Every stereotype, every `#[Bean]`, every `#[Primary]`/`#[Qualifier]`/`#[Order]` 
 
 `ManifestCompiler` takes that array and writes it to disk with nothing more exotic than PHP's own `var_export()`:
 
+<!-- illustrative: the shape of the file firefly/container writes at cache time, quoted as a PHP string rather than excerpted from a generated artifact no repository holds -->
 ```php
 "<?php\n\ndeclare(strict_types=1);\n\n// Generated by firefly/container. Do not edit.\n\nreturn "
     .var_export($rows, true)

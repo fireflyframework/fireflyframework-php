@@ -833,8 +833,12 @@ it('pins every prefersHtml() paragraph to the order and the media types ErrorPag
         }
     }
 
-    // docs/architecture.md's entry-point bullet, and docs/modules/security.md's prose and its settings table.
-    expect($paragraphs)->toBe(3);
+    // docs/architecture.md's entry-point bullet, docs/modules/security.md's prose and its settings table,
+    // and — since the English manuscript grew the entry-point section — book/src/10-security.md's own
+    // paragraph and its recap row. The canary counts PARAGRAPHS, not pages, so a new page that explains the
+    // browser test raises it by however many paragraphs it spends on it; what the count protects is the
+    // opposite case, a paragraph that stops matching `prefersHtml` and silently stops being checked.
+    expect($paragraphs)->toBe(5);
 });
 
 it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {

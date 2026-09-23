@@ -78,19 +78,22 @@ Open the generated project. Two things are worth noticing immediately, because t
 
 First, `bootstrap/providers.php` is empty:
 
+<!-- source: skeleton/routes/console.php -->
 ```php
-<?php
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
 
-return [];
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
 ```
 
 There is no service provider to register by hand. `firefly/cli` and `firefly/firefly`'s own providers are discovered automatically by Composer/Laravel package discovery — you never add a line here for a Firefly package.
 
 Second, `routes/web.php` is almost empty too:
 
+<!-- source: skeleton/routes/web.php -->
 ```php
-<?php
-
 // Intentionally minimal: Firefly's WebServiceProvider registers the app's #[RestController] routes from
 // the compiled RouteManifest (see skeleton/app/Http/GreetingController.php). This file exists because
 // bootstrap/app.php's withRouting(web: ...) requires the path.
@@ -100,6 +103,7 @@ Routes are not declared here at all. As the comment says, they come from a **com
 
 The one file that does matter right now is `config/firefly.php`:
 
+<!-- illustrative: the config/firefly.php the Quick Start has the reader write; the shipped reference is far longer and documents every key -->
 ```php
 <?php
 
@@ -127,6 +131,7 @@ return [
 
 `app/GreetingProperties.php` is a small, typed configuration DTO — LaraFly's answer to Spring's `@ConfigurationProperties`:
 
+<!-- source: skeleton/app/GreetingProperties.php -->
 ```php
 <?php
 
@@ -149,6 +154,7 @@ final readonly class GreetingProperties
 
 `app/GreetingService.php` is a plain PHP class carrying one attribute, `#[Service]`:
 
+<!-- source: skeleton/app/GreetingService.php -->
 ```php
 <?php
 
@@ -182,6 +188,7 @@ Nothing here registers `GreetingService` with a container by hand, and nothing w
 
 `app/Http/GreetingController.php` puts a web edge on the service:
 
+<!-- source: skeleton/app/Http/GreetingController.php -->
 ```php
 <?php
 
@@ -197,18 +204,12 @@ use Firefly\Web\Attributes\RestController;
 /**
  * The sample Firefly slice: a #[RestController] whose routes are discovered by the RouteScanner and served
  * from the compiled RouteManifest. GreetingService is autowired via constructor DI.
+ // …
  */
 #[RestController]
 final class GreetingController
 {
     public function __construct(private readonly GreetingService $greetings) {}
-
-    /** @return array<string, string> */
-    #[GetMapping('/')]
-    public function index(): array
-    {
-        return ['message' => $this->greetings->greet('World')];
-    }
 
     /** @return array<string, string> */
     #[GetMapping('/greetings/{name}', name: 'greetings.show')]

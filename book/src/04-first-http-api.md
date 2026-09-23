@@ -15,6 +15,7 @@ You already know, from Chapter 2, that `#[RestController]` is itself a `#[Compon
 
 Here is Lumen's whole wallet API — the running example for the rest of this chapter — in one real, shipped listing:
 
+<!-- source: samples/lumen/src/Web/WalletController.php -->
 ```php
 <?php
 
@@ -84,9 +85,7 @@ final class WalletController
     /**
      * Debits `amount_minor` from the wallet. Guarded upstream at the bus: WithdrawHandler carries
      * #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-     * SecurityCommandAuthorizer BEFORE the handler runs. Without an authorized principal in the
-     * SecurityContextHolder, the bus denies the command and the AuthorizationException it wraps renders
-     * as a 403 problem-details response — this endpoint is secured, not broken.
+     // …
      *
      * @return array{wallet_id: string, balance_minor: int}
      */
@@ -169,6 +168,7 @@ Each method carries exactly one verb attribute, and all five implement the same 
 
 Every one of the five accepts the same three constructor arguments — a relative `path` (joined to the class-level base), an integer `status` (the default response status: 200 for the read verbs, and `status: 201` on `WalletController::open()` above, since opening a wallet is a creation), and an optional route `name`:
 
+<!-- source: packages/web/src/Attributes/GetMapping.php -->
 ```php
 #[Attribute(Attribute::TARGET_METHOD)]
 final class GetMapping implements Mapping
@@ -183,6 +183,7 @@ final class GetMapping implements Mapping
     {
         return 'GET';
     }
+// …
 }
 ```
 
@@ -216,6 +217,7 @@ Path and query values are coerced to the parameter's declared scalar type — `i
 
 Every write endpoint in `WalletController` accepts a small, real Pydantic-style — here, plain-PHP — DTO. All three live in `samples/lumen/src/Web/Dto/` and are pure constructor-promoted classes with per-property validation constraints:
 
+<!-- source: samples/lumen/src/Web/Dto/OpenWalletRequest.php -->
 ```php
 <?php
 
@@ -243,6 +245,7 @@ final class OpenWalletRequest
 }
 ```
 
+<!-- source: samples/lumen/src/Web/Dto/AmountRequest.php -->
 ```php
 <?php
 
@@ -266,6 +269,7 @@ final class AmountRequest
 }
 ```
 
+<!-- source: samples/lumen/src/Web/Dto/TransferRequest.php -->
 ```php
 <?php
 
@@ -301,31 +305,53 @@ final class TransferRequest
 
 `#[Valid]`, from `firefly/validation`, is what turns those per-property attributes from inert metadata into an enforced gate. Stacking it onto a `#[RequestBody]` parameter — as every write method on `WalletController` does — tells the dispatcher: validate the *raw decoded body* against this DTO class's compiled constraint rules **before** constructing the DTO at all.
 
+<!-- source: packages/validation/src/Valid.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Valid {}
 ```
 
 The validation itself runs through `Firefly\Validation\Constraint\BeanValidator`, which delegates to a `Validator` port (`IlluminateValidator` by default) using rules a `ConstraintManifest` compiled ahead of time from each constraint attribute's `toRules()` method:
 
+<!-- source: packages/validation/src/Constraint/NotBlank.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class NotBlank implements Constraint
+final class NotBlank implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     public function toRules(): array
     {
+        // required rejects null/''/[]; string constrains the type; regex:/\S/ requires a non-whitespace
+        // char so an all-whitespace string is rejected (JSR-380 @NotBlank's trimmed-length > 0).
         return ['required', 'string', 'regex:/\S/'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must not be blank');
     }
 }
 ```
 
+<!-- source: packages/validation/src/Constraint/Positive.php -->
 ```php
 #[Attribute(Attribute::TARGET_PARAMETER | Attribute::TARGET_PROPERTY)]
-final class Positive implements Constraint
+final class Positive implements Constraint, HasMessage
 {
+    use MessageElement;
+
+    public function __construct(public readonly ?string $message = null) {}
+
     public function toRules(): array
     {
         return ['numeric', 'gt:0'];
+    }
+
+    public function message(): ?string
+    {
+        return ConstraintMessage::resolve($this->message, 'must be greater than 0');
     }
 }
 ```
@@ -363,6 +389,7 @@ A well-designed API never leaks a raw stack trace, and never returns a bare 500 
 
 `WalletController::balance()` raises the first of these directly, exactly the way any handler should:
 
+<!-- illustrative: the one line a reader writes in their own handler -->
 ```php
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 
@@ -375,41 +402,25 @@ Chapter 6's `Wallet` aggregate raises `ConflictException` for an overdraft or a 
 
 `Firefly\Web\Exception\ProblemDetailsRenderer` is where every one of those exceptions actually becomes bytes on the wire:
 
+<!-- source: packages/web/src/Exception/ProblemDetailsRenderer.php -->
 ```php
 final class ProblemDetailsRenderer
 {
+    // …
     public function render(Throwable $e, Request $request): Response
     {
-        $exception = match (true) {
-            $e instanceof FireflyException => $e,
-            $e instanceof HttpExceptionInterface => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : self::statusText($e->getStatusCode()),
-                self::errorCode($e->getStatusCode()),
-                $e->getStatusCode(),
-                ErrorCategory::Framework,
-                ErrorSeverity::Warning,
-                $e,
-            ),
-            default => new FireflyException(
-                $e->getMessage() !== '' ? $e->getMessage() : 'Internal Server Error',
-                'INTERNAL_ERROR',
-                500,
-                ErrorCategory::Internal,
-                ErrorSeverity::Error,
-                $e,
-            ),
-        };
-
+        // …
         $payload = ErrorResponse::fromException(
             $exception,
             instance: $request->path(),
+            // …
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
         )->toArray();
-
+        // …
         return new Response(
             json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             $exception->httpStatus(),
-            ['Content-Type' => 'application/problem+json'],
+        // …
         );
     }
 }
@@ -467,6 +478,7 @@ And a withdraw attempt with no authenticated `ADMIN` or `WALLET_OWNER` principal
 
 Before an exception reaches the generic renderer, LaraFly gives your application a chance to answer it directly. `#[ExceptionHandler(SomeException::class)]` marks a method as the renderer for one exception class (or any subclass) — either declared **on the controller that threw it**, or on a dedicated `#[ControllerAdvice]` bean for a **global** handler shared across every controller:
 
+<!-- illustrative: the reader's own #[ControllerAdvice] over an exception their domain declares -->
 ```php
 use Firefly\Web\Attributes\ControllerAdvice;
 use Firefly\Web\Attributes\ExceptionHandler;
