@@ -31,9 +31,16 @@ use Illuminate\Http\Request;
  *
  * The technique is the one the diagram guard already uses: the truth is DERIVED from the framework at test
  * time — the evaluator's own parser decides which function names exist, ExposureModel's own default decides
- * which endpoints answer on a fresh install, the translator's own match decides which exceptions it builds —
- * and the documents are then held against that. Nothing here types out an answer that the source could
- * contradict, so the day the code changes, the failure names the sentence that has to change with it.
+ * which endpoints answer on a fresh install, every endpointId() in the tree decides how many endpoints there
+ * are to count, the translator's own match decides which exceptions it builds — and the documents are then
+ * held against that. Nothing here types out an answer that the source could contradict, so the day the code
+ * changes, the failure names the sentence that has to change with it.
+ *
+ * A COUNT IS A CLAIM, and the cheapest one to get wrong. "Eight function names, total" outlived two additions
+ * to the whitelist, and "Fifteen ship today" is one new endpoint away from being false with nothing edited.
+ * So wherever a page counts a set this file has already derived, the number is read and compared — see
+ * fireflyWrittenNumber(), which reads the word as well as the digit because that is how these sentences are
+ * written.
  *
  * Scope: every `docs/**.md`, every `book/src/**.md` and `book/src-es/**.md`, plus `README.md` — see
  * fireflyProsePages(), which says what the book cost while it was outside. The triggers are deliberately
@@ -250,7 +257,7 @@ it('pins every whitelist enumeration to the functions SecurityExpressionEvaluato
     expect($counted)->toBe(4);
 });
 
-it('pins every 404-until-exposed claim to the endpoints ExposureModel really ships exposed', function () {
+it('pins every 404-until-exposed claim and every actuator inventory to the endpoints the tree really mounts', function () {
     $root = dirname(__DIR__);
 
     // The default include list, read off the model an application without any firefly.management config gets.
@@ -328,6 +335,64 @@ it('pins every 404-until-exposed claim to the endpoints ExposureModel really shi
     }
 
     expect($claims)->toBeGreaterThanOrEqual(4);
+
+    // ── The inventory, which is the other exhaustive claim the same $ids can settle ─────────────────────────
+    //
+    // Both first-impression documents now count the actuator out loud — README.md's roadmap bullet opens
+    // "Fifteen ship today" and lists all fifteen paths, docs/architecture.md says "Fifteen `ActuatorEndpoint`
+    // implementations ship" and lists the same fifteen ids — and until this block nothing read either one.
+    // That is the worst kind of number to leave unguarded: a SIXTEENTH endpoint makes both sentences false
+    // with no edit to either file and no failing test anywhere, and the README's very next bullet names
+    // `/refresh`, `/threaddump` and `/shutdown` as the ones still to come, so the sixteenth is planned.
+    //
+    // $ids is already the whole truth, read off every endpointId() in the tree a few lines above, so the
+    // check costs nothing: the number the sentence writes must be count($ids), and every id must be in it.
+    // The trigger is the counting clause itself, not the word "ActuatorEndpoint" — the book implements that
+    // interface in two listings and names it in a recap row without ever claiming to have the whole list, and
+    // a paragraph that makes no inventory claim owes no inventory.
+    $inventories = 0;
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $plain = str_replace(['`', '**'], '', $paragraph);
+            $counted = preg_match(
+                '/([\p{L}\d]+)\s+(?:ActuatorEndpoint\s+implementations?\s+ship|(?:actuator\s+)?endpoints?\s+ship|ship\s+today)/iu',
+                $plain,
+                $written,
+            );
+            if ($counted !== 1) {
+                continue;
+            }
+
+            $quantity = fireflyWrittenNumber($written[1]);
+            if ($quantity === null) {
+                continue; // "More endpoints ship as the framework grows" — a promise, not a count.
+            }
+
+            $inventories++;
+            expect($quantity)->toBe(count($ids), sprintf(
+                '%s counts the shipped actuator endpoints at %s, and packages/*/src mounts %d of them: %s.',
+                $page,
+                $written[1],
+                count($ids),
+                implode(', ', $ids),
+            ));
+
+            $unnamed = array_values(array_filter(
+                $ids,
+                static fn (string $id): bool => preg_match('/\b'.$id.'\b/', $plain) !== 1,
+            ));
+            expect($unnamed)->toBe([], sprintf(
+                '%s says how many actuator endpoints ship and then lists them, but never names %s — each of '
+                .'which has an endpointId() under packages/*/src.',
+                $page,
+                implode(', ', $unnamed),
+            ));
+        }
+    }
+
+    // README.md's roadmap bullet and docs/architecture.md's observability section. A rewrite that drops the
+    // count instead of correcting it lands here rather than shipping an inventory nothing reads.
+    expect($inventories)->toBe(2);
 });
 
 it('pins every translator enumeration to the exceptions PersistenceExceptionTranslator really builds', function () {
