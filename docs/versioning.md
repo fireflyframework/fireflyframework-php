@@ -16,16 +16,21 @@ No `composer.json` in this monorepo — not the aggregator, not any `packages/*/
 
 The single place the current version *is* asserted in code is:
 
+<!-- source: packages/kernel/src/Version.php -->
+
 ```php
-// packages/kernel/src/Version.php
 final class Version
 {
     public const string VERSION = '26.09.2';
 }
 ```
 
-`Firefly\Kernel\Version::VERSION` is read by `firefly:about` (actuator-over-CLI) and the `/actuator/info`
-endpoint. Consistency across the three human-visible surfaces that *should* always agree with it — the
+`Firefly\Kernel\Version::VERSION` has exactly two readers in the shipped packages, and `grep -rn
+'Version::VERSION' packages` is the whole list: `AboutCommand`, which prints `LaraFly <version>` as the first
+line of `php artisan firefly:about`, and `RuntimeInfoContributor`, which puts it at
+`runtime.firefly.version` in `/actuator/info`.
+
+Consistency across the three human-visible surfaces that *should* always agree with it — the
 `Version::VERSION` constant, the CHANGELOG's latest `## [x.y.z]` heading, and the README version badge — is
 enforced by `tests/VersionConsistencyTest.php`, which fails the build the moment any of the three drifts from
 the others. A release always updates all three together. Work merged between releases therefore accumulates
@@ -33,12 +38,18 @@ under a `## [Unreleased]` heading in the CHANGELOG — the test reads the first 
 unreleased section is invisible to it and the constant stays the single source of truth until the release is
 actually cut.
 
+The listing above is itself held to the constant: it carries a `<!-- source: -->` marker, so
+`tests/DocsCodeIsRealTest.php` compares it line for line against `packages/kernel/src/Version.php` and this
+page cannot quote a version the framework does not ship. See [Contributing](contributing.md#documentation).
+
 ## Reading the version at runtime
+
+<!-- illustrative: the two lines an application writes in its own code to print the framework version -->
 
 ```php
 use Firefly\Kernel\Version;
 
-echo Version::VERSION; // "26.09.2"
+echo Version::VERSION;
 ```
 
 This is the only version string LaraFly itself exposes; there is no runtime version-detection mechanism
@@ -52,12 +63,12 @@ current month, e.g.:
 ```json
 {
     "require": {
-        "firefly/firefly": "^26.07"
+        "firefly/firefly": "^26.09"
     }
 }
 ```
 
-`^26.07` allows any patch release within `26.07.x` but not a `26.08.x` release — the same "pin to the
+`^26.09` allows any patch release within `26.09.x` but not a `26.10.x` release — the same "pin to the
 release line, accept patches" posture CalVer projects generally recommend, since CalVer numbers don't carry
 semver's guarantee that a bump in the last segment is always backward compatible.
 

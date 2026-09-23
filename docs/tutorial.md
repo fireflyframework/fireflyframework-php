@@ -59,23 +59,31 @@ The scaffolded project looks like this:
 ```
 my-app/
 ├── app/
-│   ├── GreetingProperties.php     # #[ConfigProperties('greeting')] DTO
-│   ├── GreetingService.php        # #[Service] bean
-│   └── Http/
-│       └── GreetingController.php # #[RestController]
+│   ├── GreetingProperties.php      # #[ConfigProperties('greeting')] DTO
+│   ├── GreetingService.php         # #[Service] bean
+│   ├── Http/
+│   │   ├── AddressPayload.php      # a nested #[Valid] payload
+│   │   ├── GreetingController.php  # #[RestController] — JSON
+│   │   ├── OrderController.php     # #[RestController] — the full CRUD sample
+│   │   ├── OrderLinePayload.php
+│   │   ├── OrderRequest.php        # the #[RequestBody] DTO, with constraints
+│   │   └── WelcomeController.php   # #[Controller] — the HTML welcome page at /
+│   └── Orders/                     # the sample's domain + repositories
 ├── bootstrap/
 │   ├── app.php
 │   ├── cache/firefly/              # compiled manifests — already populated
 │   └── providers.php
 ├── config/
-│   ├── app.php
-│   ├── database.php
-│   └── firefly.php                 # scan paths + cache paths
+│   ├── app.php, cache.php, database.php, logging.php, queue.php, session.php
+│   └── firefly.php                 # every firefly.* key, with its default and why
 ├── database/
-│   └── database.sqlite
+│   ├── database.sqlite
+│   └── migrations/                 # the sample's orders tables
+├── resources/views/welcome.blade.php
 ├── routes/
 │   ├── console.php
 │   └── web.php
+├── tests/
 ├── artisan
 └── composer.json
 ```
@@ -83,38 +91,49 @@ my-app/
 | File/Directory | Purpose |
 |---|---|
 | `app/` | Your application code — controllers, services, domain classes, everything LaraFly scans. |
-| `config/firefly.php` | Tells LaraFly's component scan and `firefly:cache` where your classes live. |
+| `app/Orders/` + `app/Http/Order*.php` | The sample vertical slice: a `#[RestController]` over `#[Repository]` beans, with a validated `#[RequestBody]`. Delete it when you no longer need it. |
+| `config/firefly.php` | The full, commented reference of every `firefly.*` key the framework reads — starting with where your classes live. |
 | `bootstrap/cache/firefly/` | The compiled manifests `firefly:cache` writes — the zero-reflection boot path. |
 | `database/database.sqlite` | The default database — no external services required to boot. |
 
-Open `config/firefly.php`:
+Open `config/firefly.php`. It is long — it documents every `firefly.*` key the framework reads, each with
+its default and the reason it has that default — but only two blocks matter before you write a line of code,
+and they are the first two in the file:
+
+<!-- source: skeleton/config/firefly.php -->
 
 ```php
-return [
-    'scan' => [
-        'paths' => [
-            'App\\' => app_path(),
-        ],
+'scan' => [
+    'paths' => [
+        'App\\' => app_path(),
     ],
-    'cache' => [
-        'path' => base_path('bootstrap/cache/firefly'),
-        'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
-        'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
-    ],
-];
+],
+// …
+'cache' => [
+    'path' => base_path('bootstrap/cache/firefly'),
+    'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
+    'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
+],
 ```
 
 `scan.paths` is a PSR-4 map (prefix → directory) — every `#[Component]`-family attribute (`#[Service]`,
 `#[Repository]`, `#[RestController]`, `#[CommandHandler]`, …) under `app_path()` is discovered from here,
-either by an in-process scan during development or, once compiled, from the `cache` manifests. The
-skeleton ships one slice already wired end-to-end: `app/Http/GreetingController.php`, backed by
-`app/GreetingService.php` and `app/GreetingProperties.php`. The rest of this tutorial grows that slice.
+either by an in-process scan during development or, once compiled, from the `cache` manifests. This is the
+one key an application must get right: leave it empty and the app boots with no routes, handlers, listeners,
+scheduled tasks, constraints or method-security rules at all.
+
+The skeleton ships two slices already wired end-to-end. `app/Http/GreetingController.php`, backed by
+`app/GreetingService.php` and `app/GreetingProperties.php`, is the small one, and it is the one this
+tutorial grows. `app/Http/OrderController.php` over `app/Orders/` is the larger one — a full CRUD resource
+with a validated request body — and you can read it when you want to see where this tutorial ends up.
 
 ---
 
 ## Step 2: Your First Endpoint — `#[RestController]`
 
-Open `app/Http/GreetingController.php` — this is what `firefly new` already generated for you:
+Open `app/Http/GreetingController.php` — this is what the template already generated for you, in full:
+
+<!-- source: skeleton/app/Http/GreetingController.php -->
 
 ```php
 <?php
@@ -128,17 +147,17 @@ use Firefly\Web\Attributes\GetMapping;
 use Firefly\Web\Attributes\PathVariable;
 use Firefly\Web\Attributes\RestController;
 
+/**
+ * The sample Firefly slice: a #[RestController] whose routes are discovered by the RouteScanner and served
+ * from the compiled RouteManifest. GreetingService is autowired via constructor DI.
+ *
+ * `/` belongs to App\Http\WelcomeController, a #[Controller] that renders HTML — this one returns a value
+ * the ResponseFactory negotiates into JSON, which is the difference between the two stereotypes.
+ */
 #[RestController]
 final class GreetingController
 {
     public function __construct(private readonly GreetingService $greetings) {}
-
-    /** @return array<string, string> */
-    #[GetMapping('/')]
-    public function index(): array
-    {
-        return ['message' => $this->greetings->greet('World')];
-    }
 
     /** @return array<string, string> */
     #[GetMapping('/greetings/{name}', name: 'greetings.show')]
@@ -154,13 +173,18 @@ Element by element:
 - **`#[RestController]`** — a stereotype that extends `Firefly\Container\Attributes\Component`. Because
   the component scan discovers stereotypes with `ReflectionAttribute::IS_INSTANCEOF`, a `#[RestController]`
   class is *both* auto-registered as a singleton DI bean *and* routed — no separate route registration.
-- **`#[GetMapping('/')]`** — maps `GET /` to `index()`. `#[GetMapping]`/`#[PostMapping]`/`#[PutMapping]`/
-  `#[PatchMapping]`/`#[DeleteMapping]` each accept `path`, `status` (default response status), and an
-  optional Laravel route `name`.
-- **`#[GetMapping('/greetings/{name}', name: 'greetings.show')]`** with **`#[PathVariable]`** — the
-  `{name}` route segment is bound to the `$name` parameter automatically.
+- **`#[GetMapping('/greetings/{name}', name: 'greetings.show')]`** with **`#[PathVariable]`** — maps
+  `GET /greetings/{name}` to `show()`, and binds the `{name}` route segment to the `$name` parameter
+  automatically. `#[GetMapping]`/`#[PostMapping]`/`#[PutMapping]`/`#[PatchMapping]`/`#[DeleteMapping]` each
+  accept `path`, `status` (the default response status) and an optional Laravel route `name`.
 - A **plain array return** (`array<string, string>`) is JSON-encoded by the framework's content negotiation
   — no `Response` object to build by hand.
+
+The docblock names the one thing worth knowing before you go looking for `GET /`: it is not here.
+`/` is served by `app/Http/WelcomeController.php`, which carries **`#[Controller]`** — the HTML stereotype,
+Spring's `@Controller` to this one's `@RestController`. The same route scan finds both (`#[RestController]`
+extends `#[Controller]`); the difference is that a `#[Controller]` action returns a view and this one returns
+a value to negotiate.
 
 A separate `RouteScanner` pass reads the routing metadata off the same class the component scan already
 found — a `#[RestController]` never registers its own routes.
@@ -171,6 +195,8 @@ found — a `#[RestController]` never registers its own routes.
 
 Open `app/GreetingService.php` — also already generated:
 
+<!-- source: skeleton/app/GreetingService.php -->
+
 ```php
 <?php
 
@@ -180,6 +206,10 @@ namespace App;
 
 use Firefly\Container\Attributes\Service;
 
+/**
+ * A #[Service] stereotype: auto-registered as a singleton bean and resolved through the container, so its
+ * GreetingProperties dependency is autowired.
+ */
 #[Service]
 final class GreetingService
 {
@@ -204,6 +234,8 @@ manual `bind()` call. `GreetingController`'s own constructor works the same way:
 
 Open `app/GreetingProperties.php`:
 
+<!-- source: skeleton/app/GreetingProperties.php -->
+
 ```php
 <?php
 
@@ -213,6 +245,10 @@ namespace App;
 
 use Firefly\Config\Attributes\ConfigProperties;
 
+/**
+ * Binds the `greeting.*` configuration subtree onto this readonly DTO and registers it as a container
+ * singleton, so it can be constructor-injected wherever GreetingProperties is requested.
+ */
 #[ConfigProperties('greeting')]
 final readonly class GreetingProperties
 {
@@ -228,6 +264,8 @@ binder falls back to each constructor parameter's own default (`'Hello'`) rather
 the endpoint already greets with "Hello" out of the box.
 
 To override it, add a real Laravel config file — `config/greeting.php`:
+
+<!-- illustrative: a Laravel config file the reader adds to their own application; the skeleton deliberately ships without one, which is what makes the constructor default visible -->
 
 ```php
 <?php
@@ -264,16 +302,21 @@ php artisan firefly:serve
 installed), listening on `127.0.0.1:8000` by default. In another terminal:
 
 ```bash
-curl http://127.0.0.1:8000/
-# {"message":"Hello, World!"}
-
 curl http://127.0.0.1:8000/greetings/Ada
 # {"message":"Hello, Ada!"}
+
+curl -s http://127.0.0.1:8000/ | head -n 1
+# <!DOCTYPE html>   <- the welcome page, rendered by the #[Controller] stereotype
 ```
 
+Open `http://127.0.0.1:8000/` in a browser too: the welcome page is not a static placeholder. It reads the
+real `BootPhase` enum, the same `BeansCatalog` and `ConditionEvaluationReport` that `/actuator/beans` and
+`/actuator/conditions` serve, and the same `RouteManifest` the dispatcher reads — so it shows your
+application's actual routes, its bean count and whether this boot was compiled or scanned.
+
 If you set `GREETING_SALUTATION="Howdy"` in [Step 4](#step-4-typed-configuration-configproperties), the
-same two requests now return `"Howdy, World!"` and `"Howdy, Ada!"` — no restart required, since
-`config('greeting')` is re-read from the environment on each request.
+greeting request now returns `"Howdy, Ada!"` — no restart required, since `config('greeting')` is re-read
+from the environment on each request.
 
 ---
 
@@ -288,6 +331,8 @@ php artisan make:migration create_greetings_table
 ```
 
 Edit the generated `database/migrations/..._create_greetings_table.php`:
+
+<!-- illustrative: a migration the reader generates and edits in their own application; the skeleton's own migrations create the sample orders tables, not this one -->
 
 ```php
 <?php
@@ -330,6 +375,8 @@ INFO  Running migrations.
 
 Now add the Eloquent model, `app/Domain/Greeting.php`:
 
+<!-- illustrative: an Eloquent model the reader writes in their own application -->
+
 ```php
 <?php
 
@@ -347,6 +394,8 @@ final class Greeting extends Model
 ```
 
 And a repository, `app/Infrastructure/GreetingRepository.php`:
+
+<!-- illustrative: a #[Repository] bean the reader writes in their own application -->
 
 ```php
 <?php
@@ -386,6 +435,8 @@ Element by element:
 
 Wire the repository into the service, updating `app/GreetingService.php`:
 
+<!-- illustrative: the reader's own App\GreetingService after this step edits it; the skeleton ships the version shown in Step 3 -->
+
 ```php
 <?php
 
@@ -424,12 +475,17 @@ final class GreetingService
 
 And expose it, adding a `store()` method to `app/Http/GreetingController.php`:
 
+<!-- illustrative: the reader's own App\Http\GreetingController after this step adds a method to it; the skeleton ships the version shown in Step 2 -->
+
 ```php
 use App\Web\Dto\CreateGreetingRequest;
 use Firefly\Web\Attributes\PostMapping;
 use Firefly\Web\Attributes\RequestBody;
 
-// ...inside GreetingController...
+#[RestController]
+final class GreetingController
+{
+    // … the constructor and show() from Step 2 …
 
     /** @return array<string, string> */
     #[PostMapping('/greetings', status: 201)]
@@ -439,9 +495,12 @@ use Firefly\Web\Attributes\RequestBody;
 
         return ['name' => $greeting->name, 'message' => $greeting->message];
     }
+}
 ```
 
 with a plain request DTO, `app/Web/Dto/CreateGreetingRequest.php`:
+
+<!-- illustrative: a request DTO the reader writes in their own application -->
 
 ```php
 <?php
@@ -485,6 +544,8 @@ We'll fix that next.
 
 Add constraints to `app/Web/Dto/CreateGreetingRequest.php`:
 
+<!-- illustrative: the reader's own request DTO after this step adds constraints to it -->
+
 ```php
 <?php
 
@@ -509,8 +570,15 @@ final class CreateGreetingRequest
 
 And gate the controller parameter with `#[Valid]`, in `app/Http/GreetingController.php`:
 
+<!-- illustrative: the reader's own App\Http\GreetingController after this step adds #[Valid] to the parameter it added in Step 6 -->
+
 ```php
 use Firefly\Validation\Valid;
+
+#[RestController]
+final class GreetingController
+{
+    // …
 
     #[PostMapping('/greetings', status: 201)]
     public function store(#[Valid] #[RequestBody] CreateGreetingRequest $body): array
@@ -519,6 +587,7 @@ use Firefly\Validation\Valid;
 
         return ['name' => $greeting->name, 'message' => $greeting->message];
     }
+}
 ```
 
 Element by element:
@@ -563,8 +632,15 @@ covers in detail. The valid request from Step 6 still works exactly as before.
 
 Add a lookup endpoint for a saved greeting, in `app/Http/GreetingController.php`:
 
+<!-- illustrative: the reader's own App\Http\GreetingController after this step adds a lookup action to it -->
+
 ```php
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+
+#[RestController]
+final class GreetingController
+{
+    // …
 
     /** @return array<string, string> */
     #[GetMapping('/greetings/{name}/record')]
@@ -577,6 +653,7 @@ use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 
         return ['name' => $greeting->name, 'message' => $greeting->message];
     }
+}
 ```
 
 Every framework exception extends `Firefly\Kernel\Exception\FireflyException`, which fixes an HTTP status,
@@ -625,6 +702,8 @@ candidate for `firefly/cqrs`: it gets transactional semantics and domain-event p
 
 First, teach the `Greeting` model to raise a domain event when renamed. Update `app/Domain/Greeting.php`:
 
+<!-- illustrative: the reader's own Eloquent model after this step teaches it to record a domain event -->
+
 ```php
 <?php
 
@@ -661,6 +740,8 @@ domain object would `extend AggregateRoot` directly instead — see [Domain (DDD
 
 Add the event, `app/Domain/Event/GreetingRenamed.php`:
 
+<!-- illustrative: a DomainEvent the reader writes in their own application -->
+
 ```php
 <?php
 
@@ -689,6 +770,8 @@ destination once it's bridged onto the eda bus after commit (see [Step 10](#step
 
 Now the write side — a command and its handler. `app/Application/Command/RenameGreeting.php`:
 
+<!-- illustrative: a command message the reader writes in their own application -->
+
 ```php
 <?php
 
@@ -703,6 +786,8 @@ final readonly class RenameGreeting
 ```
 
 `app/Application/Command/RenameGreetingHandler.php`:
+
+<!-- illustrative: a #[CommandHandler] the reader writes in their own application -->
 
 ```php
 <?php
@@ -740,6 +825,8 @@ class RenameGreetingHandler
 
 And the read side — a query and its handler. `app/Application/Query/GetGreeting.php`:
 
+<!-- illustrative: a query message the reader writes in their own application -->
+
 ```php
 <?php
 
@@ -754,6 +841,8 @@ final readonly class GetGreeting
 ```
 
 `app/Application/Query/GetGreetingHandler.php`:
+
+<!-- illustrative: a #[QueryHandler] the reader writes in their own application -->
 
 ```php
 <?php
@@ -796,6 +885,8 @@ Element by element:
 Wire both buses into the controller and swap `showRecord()` over to `QueryBus::ask()`, updating
 `app/Http/GreetingController.php`:
 
+<!-- illustrative: the reader's own App\Http\GreetingController once every step of this tutorial has been applied to it -->
+
 ```php
 <?php
 
@@ -827,13 +918,6 @@ final class GreetingController
         private readonly CommandBus $commands,
         private readonly QueryBus $queries,
     ) {}
-
-    /** @return array<string, string> */
-    #[GetMapping('/')]
-    public function index(): array
-    {
-        return ['message' => $this->greetings->greet('World')];
-    }
 
     /** @return array<string, string> */
     #[GetMapping('/greetings/{name}', name: 'greetings.show')]
@@ -880,6 +964,8 @@ final class GreetingController
 
 with one more small DTO, `app/Web/Dto/RenameGreetingRequest.php`:
 
+<!-- illustrative: a request DTO the reader writes in their own application -->
+
 ```php
 <?php
 
@@ -921,6 +1007,8 @@ event's short class name (`"GreetingRenamed"`), and `destination` comes from `#[
 (`"greeting.events"`).
 
 Add a listener, `app/Listener/GreetingRenamedListener.php`:
+
+<!-- illustrative: an #[EventListener] bean the reader writes in their own application -->
 
 ```php
 <?php
@@ -982,19 +1070,25 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 12 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
-This single command drives *every* settled package's existing scanner → compiler pair over
+The manifest count is fixed at fourteen, because `ManifestCacheWriter` writes every artifact unconditionally
+— an application with no `#[Scheduled]` method still gets an empty `scheduled.php`, which is what lets the
+boot path treat "the file is missing" as "nobody has compiled yet" rather than as "there is nothing to
+load". This single command drives *every* settled package's existing scanner → compiler pair over
 `config('firefly.scan.paths')` and writes, into `bootstrap/cache/firefly/`: the DI/context/config-properties
-manifests, the compiled route table, the validation constraint manifest, the CQRS handler manifest, the
-event/message-listener manifests, the scheduled-task manifest, the security-method manifest, the
-`#[Transactional]` manifest, **and** a generated `RenameGreetingHandler__FireflyTransactionalProxy` class
-file (the "1 proxy" above — one per `#[Transactional]` target in your app). A
-`FireflyCacheServiceProvider` binds these compiled manifests ahead of any bean resolution, so every request
-after this runs against plain PHP arrays — no runtime reflection on the hot path. Run it again any time you
-add or change an annotated class; `php artisan firefly:clear` deletes the cache and falls back to the
-in-process scanner.
+manifests, the compiled route table, the `#[ControllerAdvice]` handler manifest, the validation constraint
+manifest, the CQRS handler manifest, the event/message-listener manifests, the scheduled-task manifest, the
+security-method manifest, the `#[Transactional]` manifest, the **proxy plan** (`proxy-plan.php` — which
+beans get a proxy and which advice each of their methods runs) and the proxy classmap, **and** a generated
+`RenameGreetingHandler__FireflyTransactionalProxy` class file (the "1 proxy" above). A proxy is emitted per
+class the *plan* claims, which is every class any advice source names — so a `#[Service]` carrying only
+`#[PreAuthorize]` is proxied exactly like a `#[Transactional]` one; in this application `RenameGreetingHandler`
+happens to be the only one. A `FireflyCacheServiceProvider` binds these compiled manifests ahead of any bean
+resolution, so every request after this runs against plain PHP arrays — no runtime reflection on the hot
+path. Run it again any time you add or change an annotated class; `php artisan firefly:clear` deletes the
+cache and falls back to the in-process scanner.
 
 Now introspect the running app at the terminal, in-process — no HTTP round trip:
 
@@ -1065,9 +1159,15 @@ shipped attributes. From here:
 
 ### Production
 
-- [Security](modules/security.md) — authentication, deny-by-default `HttpSecurity`, and `#[PreAuthorize]`.
+- [Security](modules/security.md) — session-persisted authentication, form login, HTTP Basic, JWT,
+  deny-by-default `HttpSecurity` URL rules, and `#[PreAuthorize]` on any stereotyped bean.
+- [OAuth2 Client](modules/security-oauth2-client.md) and
+  [OAuth2 Authorization Server](modules/security-oauth2-server.md) — signing users in with Google, GitHub,
+  Okta, Keycloak or Entra, and issuing your own tokens.
 - [Actuator](modules/actuator.md) and [Observability](modules/observability.md) — the full endpoint set and
   the Prometheus/Micrometer-style metrics core.
+- [Tracing](modules/tracing.md) and [Logging](modules/logging.md) — a W3C `traceparent` carried across HTTP,
+  the CQRS buses and the event bus, and the same ids on every structured log record.
 - [Resilience](modules/resilience.md) and [Scheduling](modules/scheduling.md) — `Retry`/`CircuitBreaker`/
   `Bulkhead` and `#[Scheduled]`.
 - [Testing](modules/testing.md) — the `firefly/testing` boot harness and recording doubles for every port

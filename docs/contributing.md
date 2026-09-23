@@ -6,8 +6,10 @@
 
 - **`packages/*`** — one directory per package (`kernel`, `container`, `config`, `context`, `autoconfigure`,
   `validation`, `web`, `resilience`, `scheduling`, `scheduling-postgres`, `domain`, `data`, `eda` + its three
-  broker adapters, `messaging`, `cqrs`, `security`, `actuator`, `observability`, `testing`, `cli`, `firefly`,
-  `installer`), each with its own `composer.json`, `src/`, and `tests/`.
+  broker adapters, `messaging`, `cqrs`, `security`, `security-oauth2-client`, `security-oauth2-server`,
+  `actuator`, `observability`, `admin`, `openapi`, `testing`, `cli`, `firefly`, `installer`), each with its
+  own `composer.json`, `src/`, and `tests/`. `ls packages` is the list that cannot go stale;
+  `.github/workflows/release.yml`'s split matrix is the one that has to name every one of them.
 - **`skeleton/`** — the `firefly/skeleton` `type: project` create-project template, at the top level, outside
   `packages/*`.
 - The root `composer.json` is a `type: project` aggregator: it wires every `packages/*` directory as a local
@@ -44,7 +46,10 @@ bash scripts/check-no-sensitive-tracked.sh   # the pre-push guard, run directly
 ```
 
 `composer check` is itself the composition of four scripts (`pint-test`, `stan`, `test`, `deptrac`) — see
-`composer.json`'s `scripts` block. Any one of them failing fails the gate.
+`composer.json`'s `scripts` block. Any one of them failing fails the gate. It does **not** include
+`composer test:browser`: `test` runs the `unit` testsuite, which excludes `tests/Browser`, so the default gate
+never needs Node. The documentation tests *are* in it — they are ordinary Pest files under `tests/` — so a
+stale code listing or an unlinked module guide fails `composer check` like any other regression.
 
 ## Browser tests
 
@@ -89,6 +94,58 @@ Screenshots land in `tests/Browser/Screenshots/` (git-ignored; CI uploads them a
 `composer test:browser -- --filter=AdminDashboard`. A page that fails here is fixed in the package that owns it, with a
 DOM-level regression test beside the existing ones — the browser scenario is the proof, not the only test.
 
+## Documentation
+
+Documentation is held to the same gate as code, by four Pest tests and a strict site build.
+
+**Every code listing names the file it came from.** A fenced `php` block in `README.md`, under `docs/` or in
+either manuscript must carry one of two HTML comments on the line above it:
+
+```markdown
+<!-- source: packages/web/src/Filter/FilterChainRegistrar.php -->
+<!-- illustrative: a controller the reader writes in their own application -->
+```
+
+A `source:` block is compared **verbatim** against that file, line for line — one constant indentation offset
+is allowed (a method excerpted out of its class sits at column 0), and whole lines may be cut with a line that
+is exactly `// …` (or `# …` in a file whose comments start with a hash). An `illustrative:` block is for code
+that *cannot* exist in this repository — an application's own class — and still has to parse, import only
+framework classes that exist and use only attributes that exist. Every block, marked or not, is additionally
+checked for the `firefly.*` keys, `php artisan firefly:*` commands and `composer <script>` invocations it
+names. `tests/DocsCodeIsRealTest.php` is the test; `tests/Support/DocsCodeAudit.php` is the engine, and its
+docblock is the full contract. **A red run is fixed by making the document true**, never by deleting an
+assertion or by marking a framework excerpt `illustrative:`.
+
+The book's own listings are held to the same contract, and are additionally linted by
+`book/build/verify_code.py <dir> --require-provenance`, which runs `php -l` over each one and refuses a `php`
+listing that carries no marker at all.
+
+**Diagrams are hand-written SVG.** No Mermaid, no PlantUML, no raster: plain `<rect>`/`<line>`/`<text>` on a
+white rounded panel, `font-family="sans-serif"`, exactly one `<title>` and one `<desc>`, marker ids prefixed
+per file, and no `<script>`, `<image>`, `@font-face` or external reference of any kind — so the file is safe
+to view straight from GitHub. `docs/assets/README.md` documents the palette and lists, per diagram, the
+sources it was drawn from. Each one ships twice and byte-identically, as
+`docs/assets/diagrams/<name>.svg` and `book/art/figures/<name>.svg`; `tests/DocsDiagramsTest.php` holds the
+pair identical, holds each file to the rules above, and fails if a diagram is embedded nowhere.
+`tests/BannerAssetTest.php` does the same for the banner, the logo, the favicon and the stylesheet, and also
+checks that `mkdocs.yml` still *names* each of them, because the way a brand asset rots is that a theme key is
+renamed and the file is orphaned with nothing going red.
+
+**Build the site locally before you push docs.** CI's `docs` job installs exactly `mkdocs-material` and runs
+`mkdocs build --strict`; no plugin needing a native library (the `social` plugin's cairo/pango among them) may
+be added, because that job would stop working. Reproduce it with a throwaway virtualenv — `.venv-docs/` is
+already git-ignored:
+
+```bash
+python3 -m venv .venv-docs
+.venv-docs/bin/pip install mkdocs-material
+.venv-docs/bin/mkdocs build --strict
+```
+
+`tests/ModuleDocumentationTest.php` closes the last loop: every `docs/modules/*.md` must appear in
+`mkdocs.yml`'s navigation, in the README's module table, in `docs/index.md` and on `docs/modules.md`, and
+every `docs/modules/<name>.md` a package README promises must exist.
+
 ## Architecture rules
 
 Package boundaries are enforced with **Deptrac** (`deptrac.yaml`): every package is its own layer, and the
@@ -106,7 +163,10 @@ non-frozen seam (a new hook point, a new package) couldn't do the job instead.
 
 ## Conventions
 
-- **Style:** Laravel Pint (`composer pint`/`pint-test`), default preset.
+- **Style:** Laravel Pint (`composer pint`/`pint-test`). `pint.json` sets the `laravel` preset and three rules
+  on top of it: `declare_strict_types` (every file opens with `declare(strict_types=1);`), `final_class: false`
+  (a class is `final` when its author means it, not by fiat — `firefly:cache` generates proxies that `extend`
+  a repository), and alpha-sorted imports. `skeleton/` is excluded.
 - **Static analysis:** PHPStan at `max`-equivalent strictness (`composer stan`).
 - **TDD:** tests are written alongside (generally before) implementation — see the shipped test suites under
   every `packages/*/tests/` for the house style; `firefly/testing` is the shared harness every package's own

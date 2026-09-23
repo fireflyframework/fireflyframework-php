@@ -3,9 +3,15 @@
 `firefly/cli` is LaraFly's developer-experience console — the Spring Boot Maven/Gradle-plugin analogue, built as
 a set of Artisan commands. It compiles the app for a zero-reflection boot (`firefly:cache`), introspects a booted
 app in-process at the terminal (`firefly:about`/`:routes`/`:health`/`:metrics` — actuator-over-CLI, no HTTP
-round-trip), scaffolds every framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own
-`serve`/scheduler/database commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). New Deptrac `Cli` layer — depends on the rest of the
-framework, depended on by nothing.
+round-trip), generates the OAuth2 authorization server's signing key (`firefly:oauth2:keys`), scaffolds every
+framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own `serve`/scheduler/database
+commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). Its own Deptrac `Cli` layer — depends on the rest of
+the framework, depended on by nothing.
+
+Four more `firefly:*` commands ship with the capability they belong to rather than with the console:
+`firefly:management:serve` (`firefly/actuator`), `firefly:openapi` (`firefly/openapi`),
+`firefly:eda:consume` (`firefly/eda`) and `firefly:outbox:relay` (`firefly/eda-postgres`). They are all
+listed at the end of this page.
 
 ## `firefly:cache`
 
@@ -14,8 +20,10 @@ php artisan firefly:cache
 ```
 
 The zero-reflection payoff: it runs every settled package's existing scanner → compiler pair over
-`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes the compiled app manifests
-plus the `#[Transactional]` proxy classes into `bootstrap/cache/firefly/`:
+`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes fourteen compiled
+artifacts — every manifest below, unconditionally, whether or not the application has anything to put in it —
+plus one generated proxy class per planned bean, into `bootstrap/cache/firefly/`. It prints what it wrote:
+`firefly:cache — wrote 14 manifest(s) + N proxy(ies) to <dir>`.
 
 ```
 bootstrap/cache/firefly/
@@ -31,22 +39,30 @@ bootstrap/cache/firefly/
 ├── scheduled.php          # #[Scheduled] manifest
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
+├── proxy-plan.php         # the compiled ProxyPlan: which beans get a proxy, and the advice each method runs
 ├── proxies.php            # FQCN => file classmap for the generated proxies
-└── proxies/               # one generated proxy class file per #[Transactional] target
+└── proxies/               # one generated proxy class file per PLANNED class
 ```
+
+`proxies/` holds one file per class the *plan* claims, not per `#[Transactional]` class:
+`ManifestCacheWriter::writeProxies()` asks the planner for `proxyMethods($plan)`, and the plan is built from
+every `AdviceSource` — so a `#[Service]` carrying only `#[PreAuthorize]` is proxied exactly like a
+`#[Transactional]` one. `proxy-plan.php` is what the cached boot reads (`DataAutoConfiguration::proxyPlan()`);
+`transactional.php` is still written, and from here on only serves a cache compiled before the plan file
+existed.
 
 A `FireflyCacheServiceProvider` (auto-discovered with `firefly/cli`) `instance()`s these compiled manifests over
 whatever the capability packages resolved, registers the `#[ConfigProperties]` bindings, and installs a
 `spl_autoload_register` classmap loader for the proxy classes — all before any bean resolution runs, giving a fully
 cached, reflection-free boot. Three config keys point the boot path at the cache:
 
+<!-- source: skeleton/config/firefly.php -->
+
 ```php
-'firefly' => [
-    'cache' => [
-        'path' => base_path('bootstrap/cache/firefly'),
-        'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
-        'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
-    ],
+'cache' => [
+    'path' => base_path('bootstrap/cache/firefly'),
+    'component_manifest' => base_path('bootstrap/cache/firefly/component.php'),
+    'context_manifest' => base_path('bootstrap/cache/firefly/context.php'),
 ],
 ```
 
@@ -89,16 +105,17 @@ The inverse of `firefly:cache` — recursively deletes `bootstrap/cache/firefly/
 
 ## Actuator-over-CLI: `firefly:about`, `firefly:routes`, `firefly:health`, `firefly:metrics`
 
-These render M12 actuator/observability endpoint data at the terminal, in-process — no HTTP request is made. Each
-resolves the compiled `ActuatorRegistry`, calls the matching endpoint's `handle()`, and prints its response;
-none reimplement actuator logic.
+These render actuator and observability endpoint data at the terminal, in-process — no HTTP request is made.
+Each resolves the compiled `ActuatorRegistry`, calls the matching endpoint's `handle()`, and prints its
+response; none reimplement actuator logic.
 
 ```
 php artisan firefly:about
 ```
 
-Prints the version followed by the `info`, `env`, `beans`, `conditions`, `mappings`, and `scheduledtasks`
-actuator endpoints in sequence — the full Spring Boot `--debug`/actuator introspection story at a glance.
+Prints `LaraFly <version>` — `Firefly\Kernel\Version::VERSION` — and then the `info`, `env`, `beans`,
+`conditions`, `mappings` and `scheduledtasks` endpoints in that order, each under a `# <id>` heading: the full
+Spring Boot `--debug`/actuator introspection story at a glance.
 
 ```
 php artisan firefly:routes
@@ -121,9 +138,40 @@ Renders the observability metrics snapshot (the `metrics` actuator endpoint; req
 Any of these commands prints a warning and exits successfully if the corresponding endpoint is disabled or not
 wired (e.g. `firefly/observability` not installed for `firefly:metrics`).
 
+## `firefly:management:serve`
+
+Contributed by `firefly/actuator`, not by `firefly/cli` — the command is part of the management-port
+capability rather than of the console. Its `$description` says what it is for: *Run a second dev listener for
+the actuator on the management port (`firefly.management.server.port`).*
+
+```bash
+php artisan firefly:management:serve
+```
+
+Two options, both defaulted from configuration:
+
+| Option | Default |
+|---|---|
+| `--host=` | Bind address; defaults to `firefly.management.server.address`, then `127.0.0.1`. |
+| `--port=` | Listen port; defaults to `firefly.management.server.port`. |
+
+`firefly.management.server.port` is only half a mechanism on its own: `ManagementPortGuard` makes the actuator
+refuse the application port, and in production something else — a second PHP-FPM pool, a second container, a
+proxy rule — has to answer on the management port. None of those exist on a laptop, so this command starts a
+second `artisan serve` bound to the configured management address and port, alongside whichever server is
+already serving the application. It delegates to `serve` and never to `octane:start` (unlike `firefly:serve`):
+a low-traffic side channel does not need a second Octane supervisor.
+
+It refuses three things rather than starting a listener that would mislead you: a `--port` that is not a TCP
+port between 1 and 65535, no configured management port and no `--port`, and a management port equal to the
+application port. It then prints the actuator's URL, the bind address, and the fact the feature is
+one-directional — **the actuator is unreachable on the application port, but application routes still answer
+on both**, because one `artisan serve` is one Laravel application. See
+[Actuator](modules/actuator.md).
+
 ## `make:firefly-*` generators
 
-Pyfly's `generate` command family, one Artisan generator per stereotype:
+The analogue of PyFly's `generate` family — one Artisan generator per stereotype:
 
 | Command | Generates |
 |---------|-----------|
@@ -167,6 +215,35 @@ php artisan make:firefly-repository WidgetRepository
 php artisan make:firefly-config-properties GreetingProperties
 ```
 
+## `firefly:oauth2:keys`
+
+The one command `firefly/security-oauth2-server` cannot start without: it generates the private key the
+authorization server signs tokens with, and prints the two lines you need next.
+
+```bash
+php artisan firefly:oauth2:keys
+php artisan firefly:oauth2:keys --algorithm=ES256 --out=storage/oauth2/es256.pem
+php artisan firefly:oauth2:keys --print
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--algorithm=` | `RS256` | `RS256` (an RSA key) or `ES256` (an EC P-256 key). |
+| `--bits=` | `2048` | The RSA modulus size. Ignored for `ES256`. |
+| `--out=` | *(empty)* | Where to write the PEM. Empty means `storage/oauth2/private.pem`. |
+| `--force` | off | Overwrite an existing file. |
+| `--print` | off | Print the PEM to the console instead of writing a file. |
+
+The file is written with owner-only permissions (`0600`, in a directory created `0700`), and **an existing
+file is never overwritten without `--force`**: a key replaced by accident invalidates every token in flight,
+so the refusal says exactly that and exits non-zero. On success the command prints the env variable to set —
+`FIREFLY_OAUTH2_SERVER_SIGNING_KEY`, which feeds `firefly.security.oauth2.server.jwt.signing_key` — and the
+`kid` the JWKS endpoint will publish for that key.
+
+Rotation is not a re-run of this command on its own: move the old key to `jwt.previous_keys` (its public half
+is enough) so tokens already issued keep verifying, then generate the new one here. The full procedure is in
+[OAuth2 Authorization Server](modules/security-oauth2-server.md).
+
 ## Thin passthroughs: `firefly:serve`, `firefly:schedule`, `firefly:db`
 
 ```
@@ -206,5 +283,6 @@ command is part of that capability rather than of the console.
 | Command | Package | What it does |
 |---|---|---|
 | `firefly:openapi` | `firefly/openapi` | Writes the generated OpenAPI 3.1 document to `--output=<file>` (parent directories are created, and a summary line is printed) or **raw** to stdout. Stdout is written with Symfony's `OUTPUT_RAW` so the bytes are exactly the document's — `php artisan firefly:openapi \| <client-generator>` is the intended use — which is also why the confirmation line prints only in `--output` mode. See [OpenAPI](modules/openapi.md#php-artisan-fireflyopenapi). |
-| `firefly:eda:consume` | `firefly/eda` | Binds the configured broker destinations and runs the consumer loop. See [EDA](modules/eda.md). |
-| `firefly:outbox:relay` | `firefly/eda-postgres` | Forwards committed outbox rows to a second broker. See [EDA Brokers](modules/eda-brokers.md). |
+| `firefly:management:serve` | `firefly/actuator` | Runs a second dev listener for the actuator on the management port. `--host=`, `--port=`. See [`firefly:management:serve`](#fireflymanagementserve) above. |
+| `firefly:eda:consume` | `firefly/eda` | Runs the configured broker `EventConsumer`, dispatching to `#[EventListener]` handlers until stopped. `--destination=*` (repeatable; overrides `firefly.eda.destinations`), `--max-messages=`, `--time-limit=`, `--sleep=0` (idle ms between empty polls), `--poll-timeout=5000` (block ms per poll). The bound destinations are echoed at startup, so a worker subscribed to nothing is visible on line one. Errors out when no broker `EventConsumer` is bound — the `memory` and `queue` providers have no consumer loop, and `queue` uses `php artisan queue:work`. See [EDA](modules/eda.md). |
+| `firefly:outbox:relay` | `firefly/eda-postgres` | **Optional.** Forwards committed `firefly_eda_outbox` rows to the downstream broker named by `firefly.eda.postgres.relay.downstream_provider` (claim → publish → mark `PUBLISHED`/`FAILED`). `--max-messages=`, `--time-limit=`, `--sleep=1` (seconds between empty batches), `--batch-size=50`. In-process delivery is `firefly:eda:consume`'s job, not this command's, so an app that only needs `#[EventListener]` handlers never runs it; an unset or misconfigured `downstream_provider` fails loudly before a single row is claimed. See [EDA Brokers](modules/eda-brokers.md). |
