@@ -24,6 +24,11 @@ use Illuminate\Foundation\Application;
  * shipped skeleton in Chromium and asserts the same facts in pixels: `/greetings/{name}` (the path that
  * rendered as six stacked lines), `DELETE /orders/{id}` (the verb that clipped), and a handful of orders
  * routes for `?q=orders` to narrow to. Two assertions about one application beat two applications.
+ *
+ * THE ROWS ARE A HOOK, not a literal in defineFireflyEnvironment, because seven routes cannot page: the
+ * smallest size the rows-per-page control offers by default is 25, so `lastPage()` is 1 and the pager's
+ * whole paged branch — the window, Previous/Next, the first/last jumps — never renders. A subclass that
+ * needs more than one page overrides `routes()` and appends; see AdminTablePagedCapstoneTestCase.
  */
 abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
 {
@@ -31,7 +36,15 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
     {
         parent::defineFireflyEnvironment($app);
 
-        $app->instance(RouteManifest::class, new RouteManifest([
+        $app->instance(RouteManifest::class, new RouteManifest($this->routes()));
+    }
+
+    /**
+     * @return list<RouteDescriptor>
+     */
+    protected function routes(): array
+    {
+        return [
             new RouteDescriptor('GET', '/greetings/{name}', 'App\Http\GreetingController', 'show', 200, 'greetings.show', []),
             new RouteDescriptor('GET', '/', 'App\Http\WelcomeController', 'index', 200, 'welcome', [], html: true),
             new RouteDescriptor('GET', '/orders', 'App\Http\OrderController', 'index', 200, 'orders.index', []),
@@ -39,6 +52,6 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
             new RouteDescriptor('POST', '/orders', 'App\Http\OrderController', 'store', 201, 'orders.store', []),
             new RouteDescriptor('PUT', '/orders/{id}', 'App\Http\OrderController', 'update', 200, 'orders.update', []),
             new RouteDescriptor('DELETE', '/orders/{id}', 'App\Http\OrderController', 'destroy', 204, 'orders.destroy', []),
-        ]));
+        ];
     }
 }

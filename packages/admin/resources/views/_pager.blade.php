@@ -14,6 +14,12 @@
     script failed — on a dashboard whose entire value proposition is working in a network-isolated
     environment with no build step. The onchange stays as a convenience; the button is what makes it a
     control.
+
+    THE PAGED BRANCH AT THE BOTTOM IS THE STATE-CARRYING ONE, and it renders only when there is more than
+    one page — so a seven-row fixture cannot see it at all, and a page link that silently dropped `q` or
+    `sort` would widen the listing back to every row with nothing failing. Every link it draws goes through
+    ListingPage::link(), and packages/admin/tests/AdminTablePagerTest.php asserts that over a fixture built
+    to page (AdminTablePagedCapstoneTestCase: twenty-one rows, a page size of 2, eleven pages).
 --}}
 @php
     /** @var \Firefly\Admin\Table\ListingPage $slice */
@@ -43,20 +49,20 @@
     </form>
     <span class="spacer"></span>
     @if ($slice->isPaged())
-        <a class="act @if (! $slice->hasPrevious()) off @endif"
+        <a class="{{ $slice->hasPrevious() ? 'act' : 'act off' }}"
            @if ($slice->hasPrevious()) href="{{ $slice->link($slice->page - 1) }}" @endif>Previous</a>
         @if ($window[0] > 1)
             <a class="act" href="{{ $slice->link(1) }}">1</a>
             @if ($window[0] > 2)<span class="gap">…</span>@endif
         @endif
         @foreach ($window as $n)
-            <a class="act @if ($n === $slice->page) on @endif" href="{{ $slice->link($n) }}">{{ $n }}</a>
+            <a class="{{ $n === $slice->page ? 'act on' : 'act' }}" href="{{ $slice->link($n) }}">{{ $n }}</a>
         @endforeach
         @if (end($window) < $slice->lastPage())
             @if (end($window) < $slice->lastPage() - 1)<span class="gap">…</span>@endif
             <a class="act" href="{{ $slice->link($slice->lastPage()) }}">{{ number_format($slice->lastPage()) }}</a>
         @endif
-        <a class="act @if (! $slice->hasNext()) off @endif"
+        <a class="{{ $slice->hasNext() ? 'act' : 'act off' }}"
            @if ($slice->hasNext()) href="{{ $slice->link($slice->page + 1) }}" @endif>Next</a>
     @endif
 </div>

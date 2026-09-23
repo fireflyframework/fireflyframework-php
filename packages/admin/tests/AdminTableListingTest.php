@@ -63,9 +63,18 @@ it('renders one page at a time and a pager that carries the search', function ()
         ->assertSee('type="submit"', false);
 });
 
+// `assertSee('Mappings')` proves NOTHING here, which is worth writing down: _panel-head prints the panel's
+// title on every branch, including the empty one, so that assertion holds whether or not the clamp works.
+// What tells a clamped request from an unclamped one is that array_slice() past the end returns no rows at
+// all — drop ListingPage::pageFor() from InMemoryListing::page() and this renders the empty state, with no
+// rows and no pager. (Which page it landed ON needs a listing with more than one; see AdminTablePagerTest.)
 it('clamps a page past the end onto the last one rather than rendering an empty table', function () {
     /** @var AdminTableCapstoneTestCase $this */
-    $this->get('/firefly/mappings?page=9999&size=25')->assertStatus(200)->assertSee('Mappings', false);
+    $this->get('/firefly/mappings?page=9999&size=25')
+        ->assertStatus(200)
+        ->assertSee('OrderController', false)
+        ->assertSee('1–7 of 7', false)
+        ->assertDontSee('No routes mapped', false);
 });
 
 it('says nothing matches, and offers a way back, when a search empties the listing', function () {
