@@ -22,6 +22,13 @@ use Psr\Log\LoggerInterface;
  * (`hasRole:ADMIN` means ROLE_ADMIN) and an operator writing `roles: [ADMIN]` in the management block should
  * not get a silently different answer from the one the URL rule two files away gives.
  *
+ * A LIST AND A CSV STRING ARE THE SAME RESTRICTION. `roles: ['ADMIN', 'ACTUATOR']` and
+ * `roles: 'ADMIN,ACTUATOR'` grant exactly the same thing, because Spring's property is spelled
+ * `management.endpoint.health.roles=ACTUATOR,ADMIN` and because both of this key's neighbours in the same
+ * config block — the web exposure include/exclude lists and each probe group's `include` — are CSV strings.
+ * The alternative was a type mismatch that THREW on a read no fail-safe wraps; see configured() for why an
+ * unreadable value refuses rather than 500s, which is the one failure mode /actuator/health cannot have.
+ *
  * AN UNUSABLE LIST IS NOT AN EMPTY ONE. `roles: []` and `roles: ['']` look alike after normalisation and
  * mean opposite things: the first is the documented "any authenticated principal", the second is an
  * operator who sat down to RESTRICT this surface and mistyped. Reading the second as the first would widen
@@ -64,7 +71,7 @@ final class PrincipalHealthDetailsAuthorizer implements HealthDetailsAuthorizer
 
         // The raw list is kept, not only its normalised form: telling "nobody configured a restriction"
         // apart from "somebody configured one this class could not read" is the whole safety of the gate.
-        $configured = $this->config->array('firefly.management.endpoint.health.roles', []);
+        $configured = $this->configured();
         $required = $this->required($configured);
 
         if ($required === []) {
@@ -83,15 +90,54 @@ final class PrincipalHealthDetailsAuthorizer implements HealthDetailsAuthorizer
     }
 
     /**
+     * The raw `roles` value as a LIST, whichever of its spellings the operator wrote.
+     *
+     * READ THROUGH `get()`, NOT `Config::array()`, AND THAT IS THE WHOLE POINT. The typed accessor THROWS a
+     * ConfigurationException on a type mismatch, and this read happens on every `when-authorized` scrape of
+     * /actuator/health from a call site OUTSIDE HealthEndpoint::readFailSafe() — so the throw escapes
+     * handle() and ActuatorDispatchAction's outer catch renders it as a 500 problem document. A liveness
+     * probe reads 500 as DOWN. `roles: ACTUATOR` instead of `roles: [ACTUATOR]` is a one-bracket typo on a
+     * brand-new key, and it would have taken down the endpoint whose every other read is deliberately
+     * fail-safe. An unusable value must REFUSE, which is a decision this class already knows how to make and
+     * to explain; it must never answer 500, which is not a decision at all.
+     *
+     * A CSV STRING IS A SPELLING, NOT A MISTAKE. Spring's own property is
+     * `management.endpoint.health.roles=ACTUATOR,ADMIN`, and both sibling list keys in this very config block
+     * — `firefly.management.endpoints.web.exposure.include` and
+     * `firefly.management.endpoint.health.group.{name}.include` — are CSV strings read with `explode(',')`.
+     * An operator who writes the spelling every neighbour uses gets the meaning every neighbour gives it,
+     * not a refusal and not an outage. Entry trimming is left to required(), which already does it.
+     *
+     * Anything else — a bool, a number, an object — becomes ONE unusable entry rather than an empty list, so
+     * it falls into the warn-and-refuse path below instead of quietly widening the surface to every
+     * authenticated principal. Only a genuinely ABSENT key is the empty list: `null` is how Laravel's
+     * repository spells a dangling `'roles' =>` with nothing after it, Config::required() has always mapped
+     * that to the default, and nothing was written there to narrow anything.
+     *
+     * The key is spelled in full here, not hidden behind a constant, so tests/ConfigReferenceTest can see it
+     * and hold skeleton/config/firefly.php to documenting it — `get(` is in that test's discovery
+     * alternation exactly as `array(` was.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function configured(): array
+    {
+        $raw = $this->config->get('firefly.management.endpoint.health.roles', []);
+
+        return match (true) {
+            $raw === null => [],
+            is_array($raw) => $raw,
+            is_string($raw) => explode(',', $raw),
+            default => [$raw],
+        };
+    }
+
+    /**
      * The configured roles, normalised to the `ROLE_` spelling and de-duplicated. Entries that are not
      * usable role names — a blank string, a null left by a dangling YAML key, a number, a nested array —
      * are dropped here and COUNTED as dropped by the caller, which is where the decision lives.
      *
-     * The key itself is spelled in full at the read site in mayReadDetails() rather than hidden behind a
-     * constant, so tests/ConfigReferenceTest can see it and hold skeleton/config/firefly.php to documenting
-     * it.
-     *
-     * @param  array<array-key, mixed>  $configured  the raw value of the roles key
+     * @param  array<array-key, mixed>  $configured  the raw value of the roles key, as configured() listed it
      * @return list<string>
      */
     private function required(array $configured): array

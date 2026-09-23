@@ -352,7 +352,10 @@ as anywhere else), and it is compared against **`firefly.management.endpoint.hea
 `firefly.management.*` key, documented in the [Actuator](actuator.md#configuration-fireflymanagement-kebab-case)
 reference — through the configured `RoleHierarchy`, with a bare name read as `ROLE_<name>`. An empty list
 admits any authenticated principal; a list whose entries are all unusable refuses everybody and logs once,
-rather than being read as the empty one.
+rather than being read as the empty one. A CSV string is that same list (`'ADMIN,ACTUATOR'`, Spring's own
+spelling), and a value that is neither list nor string is one unusable entry — read with the untyped `get()`
+rather than `Config::array()` on purpose, because this read runs on every scrape from a path
+`HealthEndpoint`'s fail-safe does not wrap, and a typed mismatch would answer a probe with 500.
 
 ## Configuration (`firefly.security.*`, snake_case)
 

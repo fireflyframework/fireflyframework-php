@@ -788,10 +788,18 @@ return [
                  | roles. A bare name is read as `ROLE_<name>`, the same spelling `hasRole:` uses, and the
                  | configured role hierarchy applies.
                  |
+                 | A CSV STRING IS THE SAME RESTRICTION AS THE LIST: 'ADMIN,ACTUATOR' grants what
+                 | ['ADMIN', 'ACTUATOR'] grants, because that is Spring's own spelling of the property and
+                 | the spelling both neighbouring list keys in this block use (exposure.include, each
+                 | group's include).
+                 |
                  | An entry that is not a usable role name — a blank string, a null left by a dangling key,
                  | a number — is dropped, and a list whose entries ALL drop REFUSES every caller instead of
                  | being read as the empty list: a typo must never widen the surface it was written to
-                 | narrow. The refusal is logged once per boot, naming this key.
+                 | narrow. A value that is neither a list nor a string counts as one unusable entry and
+                 | refuses the same way; it never fails the endpoint, because /actuator/health answering
+                 | 500 to a liveness probe is the one outcome this gate must not cause. The refusal is
+                 | logged once per boot, naming this key.
                  |
                  | Defaults: show-details 'never', roles [].
                 */

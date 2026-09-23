@@ -33,8 +33,9 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   broker hosts and indicator error messages. An application with `firefly/security` absent or its master flag
   off is unaffected: the deny default stands and the body is byte for byte what it was.
   **Migration:** decide, do not inherit. Either set `show-details: never`, or list the roles that may read them
-  in `firefly.management.endpoint.health.roles` (a bare name is read as `ROLE_<name>` and the role hierarchy
-  applies; a list whose entries are all unusable refuses everybody rather than admitting them), or bind your own
+  in `firefly.management.endpoint.health.roles` (a list or Spring's CSV string; a bare name is read as
+  `ROLE_<name>` and the role hierarchy applies; a value whose entries are all unusable refuses everybody rather
+  than admitting them, and never fails the scrape), or bind your own
   `HealthDetailsAuthorizer` bean — actuator's and security's are both `#[ConditionalOnMissingBean]` and back off.
   In the same change the `final` `Firefly\Actuator\Health\HealthEndpoint` gained a required fourth constructor
   parameter (`HealthDetailsAuthorizer $authorizer`), so an application that constructs it directly rather than
