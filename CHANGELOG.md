@@ -546,6 +546,32 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
 
 ### Fixed
 
+- **`packages/openapi` — a success response documents what the action actually returns.** The generator read a
+  declared return type only when it was a single named class it could reflect, and published that class's
+  PUBLIC PROPERTIES whatever it was — so the most useful part of the document was wrong exactly where real
+  applications live. An Eloquent model (what every repository returns) was documented as `incrementing`,
+  `exists`, `timestamps`, `wasRecentlyCreated`… all required and not one column; a `JsonResponse` as `original`,
+  `exception` and a `ResponseHeaderBag`; a Laravel paginator as `onEachSide`; `@return Page<Order>` as one bare
+  `Page` whose `items` were anything; `Parcel|Label` and `int|string` as any value, and `?Parcel` without its
+  null. The document now follows `ResponseFactory` and `JsonMessageConverter` in their own order: a returned
+  Response is documented by its class (JSON, a binary download, a `302` with `Location`, or `*/*`), markup as
+  `text/html`, an `Arrayable` from `toArray()` — an Eloquent model from its `@property` tags or, untagged, from
+  its key, `$fillable`, casts, timestamps, `$appends` and relations, minus `$hidden` — before a
+  `JsonSerializable`, and Laravel's three paginators as the envelopes they write. Generic instantiations are
+  bound to the class's `@template` parameters and become components named springdoc's way (`PageOrder`,
+  `LengthAwarePaginatorOrder`), `@extends` included; union, nullable and intersection types are documented on
+  returns, response members and request members alike (a union-typed request member is also `required` again).
+  An `#[ApiResponse]` without a `type` no longer erases the body: on the success status it keeps the derived
+  schema and only replaces the description, and on an error status it documents the problem+json body the
+  server sends. `X|null` is spelled exactly as `?X`, and a nullable enum lists `null` among its values.
+
+- **`packages/web` — a returned paginator was rendered as pagination links instead of written as data.**
+  `ResponseFactory` checked `Htmlable` before handing a value to the JSON converter, and `AbstractPaginator` is
+  `Htmlable`, so a `#[RestController]` returning `->paginate()` answered with link markup (or a `TypeError` with
+  no view factory bound). A value that is also `Arrayable` or `JsonSerializable` now reaches the converter
+  first, as Laravel's own `Response::shouldBeJson()` decides; a View, Renderable or Htmlable that is neither
+  still renders as `text/html`.
+
 - **`packages/observability` — a traced request handled inside a fiber is no longer a 500.** The OpenTelemetry
   API keeps one context stack per fiber and raises `E_USER_WARNING` (`must attach initial fiber context
   manually`) when a fiber reads its context before anything was attached in it; Laravel's handler turned that
