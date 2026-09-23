@@ -7,6 +7,7 @@ namespace Firefly\Eda\Postgres\Outbox;
 use Firefly\Config\Config;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
+use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Container\Container;
@@ -160,23 +161,38 @@ final class RelayDownstream
      * make part of those classes' public API — so a rename there surfaces here as a loud BindingResolutionException
      * rather than a quietly-defaulted broker address.
      *
+     * `tracing` IS ONE OF THOSE OVERRIDES, and for the same reason as `exchange`. The adapter's own bean method
+     * reads firefly.eda.tracing.brokers.enabled before handing the publisher an EdaTracing; that bean is gated off
+     * here by construction, so the publisher is built by container autowiring instead — and Illuminate returns a
+     * constructor parameter's DEFAULT only when the class is UNBOUND. EdaTracing is bound in every app that has
+     * firefly/eda installed, so `?EdaTracing $tracing = null` was being satisfied with the real tracing whatever
+     * the key said, and `firefly:outbox:relay` wrote traceparents onto the downstream broker with the key false —
+     * the one deployment the key exists for. BrokerTracing::forContainer() makes the same decision the bean
+     * methods make, so the gate holds on every construction path.
+     *
      * @return array<string, mixed>
      */
     private static function parameters(Container $container, Config $config, string $provider): array
     {
         if ($provider === 'rabbitmq') {
-            return ['exchange' => $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events')];
+            return [
+                'exchange' => $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events'),
+                'tracing' => BrokerTracing::forContainer($container, $config),
+            ];
         }
 
         if ($provider === 'kafka') {
             // The broker list lives one level down, on KafkaProducerFactory, so it is built here and injected as the
             // publisher's `factory` argument — parameter overrides do not reach nested dependencies.
-            return ['factory' => self::make(
-                $container,
-                'Firefly\\Eda\\Kafka\\KafkaProducerFactory',
-                ['brokers' => $config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092')],
-                $provider,
-            )];
+            return [
+                'factory' => self::make(
+                    $container,
+                    'Firefly\\Eda\\Kafka\\KafkaProducerFactory',
+                    ['brokers' => $config->string('firefly.eda.kafka.brokers', '127.0.0.1:9092')],
+                    $provider,
+                ),
+                'tracing' => BrokerTracing::forContainer($container, $config),
+            ];
         }
 
         return [];

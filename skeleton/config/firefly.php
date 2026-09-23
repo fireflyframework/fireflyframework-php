@@ -1960,12 +1960,19 @@ return [
          | through the same EdaTracing seam the in-memory and queue buses use, so the envelope that reaches
          | the wire carries a `traceparent` (and `tracestate`) and the consumer on the far side — ours or a
          | third party's — continues the trace instead of starting a new one. The consume side was already
-         | traced; this is the other half.
+         | traced; this is the other half. On Postgres it covers BOTH writers of an outbox row: the
+         | EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path a domain
+         | event takes under provider=postgres — so the traced row is the one that commits with the
+         | aggregate. `firefly:outbox:relay` forwards a claimed row under that row's own trace rather than
+         | starting a new one.
          |
          | It does nothing at all unless `firefly.observability.tracing.enabled` and
          | `firefly.observability.tracing.eda.enabled` are on, because with them off the bound EdaTracing is
          | the no-op. Set this to false to keep in-process spans while refusing to put trace identifiers on
-         | a wire someone else reads.
+         | a wire someone else reads: it is read in ONE place (Firefly\Eda\Tracing\BrokerTracing), by the
+         | three publisher beans AND by the relay's downstream overrides, so it cannot be bypassed by a
+         | publisher the container autowires. A downstream you name by class-string, or bind yourself under
+         | `firefly.eda.relay.downstream`, is yours to construct and therefore yours to gate.
          |
          | Default: true.
         */

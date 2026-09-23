@@ -7,6 +7,7 @@ namespace Firefly\Eda\Postgres\Console;
 use Firefly\Config\Config;
 use Firefly\Eda\Postgres\Outbox\OutboxRelay;
 use Firefly\Eda\Postgres\Outbox\RelayDownstream;
+use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Container\Container;
@@ -62,6 +63,11 @@ final class OutboxRelayCommand extends Command
             (int) $this->option('batch-size'),
             $config->int('firefly.eda.postgres.max_attempts', 3),
             $useSkipLocked,
+            // The UNGATED seam: the relay uses it to CONTINUE the traceparent the claimed row already carries, so
+            // the downstream producer span is that trace's child rather than a new root. Writing to a third party's
+            // wire is the downstream publisher's job, and RelayDownstream has already gated THAT on
+            // firefly.eda.tracing.brokers.enabled.
+            BrokerTracing::bound($container),
         );
 
         $maxMessages = $this->option('max-messages');

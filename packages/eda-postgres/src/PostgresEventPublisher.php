@@ -42,9 +42,19 @@ use stdClass;
  * carrying it is the one that COMMITS WITH THE AGGREGATE. This is the one adapter where the producer span and the
  * durable record are genuinely atomic: a broker adapter's span ends when the socket accepts the message and the
  * two can still disagree, while here either both the aggregate and its traced outbox row exist or neither does.
- * The relay and the in-process consumer already hand a claimed row's headers to SubscriberRegistrySink, which
- * continues whatever traceparent it finds — so with this the trace runs unbroken from the request that changed the
- * aggregate to the listener that reacted to it, across a commit boundary.
+ *
+ * That holds for BOTH writers of an outbox row, which is the only way the sentence above is worth anything: the
+ * bound EventPublisher bean (application code calling publish() by hand) and OutboxPreCommitHook, which builds its
+ * own instance per event and is — under firefly.eda.provider=postgres, where commandEventPublisher() NoOps the
+ * after-commit leg — the ONLY path a DomainEvent takes. Both are handed the same gated EdaTracing by
+ * PostgresOutboxAutoConfiguration.
+ *
+ * Downstream of the row the trace continues two different ways. PostgresEventConsumer, the terminal in-process
+ * path, hands the claimed row's headers to SubscriberRegistrySink, whose traceConsume() continues whatever
+ * traceparent it finds. The OPTIONAL relay hands them to a downstream EventPublisher instead, so OutboxRelay
+ * wraps that forward in traceConsume() itself — otherwise the downstream adapter's own producer span would start
+ * a new root and overwrite the row's traceparent. Either way the trace runs unbroken from the request that
+ * changed the aggregate to the listener (or broker) that reacted to it, across a commit boundary.
  */
 final class PostgresEventPublisher implements EventPublisher
 {

@@ -74,6 +74,7 @@ return [
                     2 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
                     3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
                     4 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    5 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             3 => [

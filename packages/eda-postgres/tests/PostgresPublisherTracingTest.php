@@ -20,10 +20,15 @@ beforeEach(function () {
 
 /**
  * The producer side of the trace, on the outbox row — the RabbitMqPublisherTracingTest sibling, and the one
- * adapter where the producer span and the durable record are genuinely atomic: the INSERT now happens INSIDE
+ * adapter where the producer span and the durable record are genuinely atomic: the INSERT happens INSIDE
  * EdaTracing::tracePublish(), so the traceparent that span produced is on the row that commits with the
- * aggregate. The relay and the in-process consumer already hand a row's headers to SubscriberRegistrySink, which
- * continues the trace, so this closes the loop end to end.
+ * aggregate.
+ *
+ * This file covers the CLASS. Two neighbours cover what the class alone cannot say: OutboxTracingWiringTest boots
+ * the real provider=postgres pipeline and proves BOTH writers of a row (the EventPublisher bean and the in-tx
+ * OutboxPreCommitHook, which is the only path a DomainEvent takes) get the gated seam; OutboxRelayTest pins that
+ * the relay hop continues the row's trace instead of replacing it. The in-process consumer's side was already
+ * traced through SubscriberRegistrySink.
  */
 function postgresStampingTracing(): EdaTracing
 {

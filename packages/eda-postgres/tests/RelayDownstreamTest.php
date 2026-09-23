@@ -8,6 +8,9 @@ use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\RelayDownstream;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
 use Firefly\Eda\Postgres\Tests\Fixtures\SpyDownstreamPublisher;
+use Firefly\Eda\Postgres\Tests\Fixtures\StampingEdaTracing;
+use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
@@ -125,4 +128,70 @@ it('REFUSES a bound object that is not an EventPublisher at all', function () {
 
     expect(fn () => RelayDownstream::resolve($container, $config))
         ->toThrow(ConfigurationException::class, EventPublisher::class);
+});
+
+/**
+ * THE GATE THAT FAILED OPEN EXACTLY WHERE IT MATTERED.
+ *
+ * `firefly.eda.tracing.brokers.enabled` is documented as the way to "keep in-process spans while refusing to put
+ * trace identifiers on a wire someone else reads". It started life as a private helper inside the three adapters'
+ * #[Bean] methods — and the relay's downstream publisher is not built by a bean. Each adapter gates ITS publisher
+ * behind #[ConditionalOnProperty(firefly.eda.provider=<its own name>)], false here by construction, so
+ * RelayDownstream builds the class through the container instead; Illuminate returns a constructor parameter's
+ * DEFAULT only when the class is UNBOUND, and EdaTracing is bound in every app that has firefly/eda installed.
+ * The publisher's `?EdaTracing $tracing = null` was therefore satisfied with the REAL tracing whatever the key
+ * said, so `firefly:outbox:relay` wrote traceparents onto the third-party broker with the control switched off —
+ * the one deployment the control exists for. The fix is a `tracing` constructor override beside `exchange` /
+ * `factory`, computed by the shared BrokerTracing resolver, so every construction path makes one decision.
+ *
+ * Read reflectively for the same reason `exchange` is above: a private readonly constructor property with no
+ * accessor, and the only way to prove which EdaTracing actually reached the publisher.
+ */
+it('hands the shipped rabbitmq downstream the bound EdaTracing when the broker gate is untouched', function () {
+    if (! class_exists('Firefly\\Eda\\Rabbitmq\\RabbitMqEventPublisher')) {
+        Assert::markTestSkipped('firefly/eda-rabbitmq is not installed in this environment.');
+    }
+
+    [$container, $config] = relayEnv(['firefly.eda.postgres.relay.downstream_provider' => 'rabbitmq']);
+    $tracing = new StampingEdaTracing;
+    $container->instance(EdaTracing::class, $tracing);
+
+    $downstream = RelayDownstream::resolve($container, $config);
+
+    expect((new ReflectionProperty($downstream, 'tracing'))->getValue($downstream))->toBe($tracing);
+});
+
+it('REFUSES to give the rabbitmq downstream any tracing when the broker gate is false', function () {
+    if (! class_exists('Firefly\\Eda\\Rabbitmq\\RabbitMqEventPublisher')) {
+        Assert::markTestSkipped('firefly/eda-rabbitmq is not installed in this environment.');
+    }
+
+    [$container, $config] = relayEnv([
+        'firefly.eda.postgres.relay.downstream_provider' => 'rabbitmq',
+        'firefly.eda.tracing.brokers.enabled' => false,
+    ]);
+    $container->instance(EdaTracing::class, new StampingEdaTracing);
+
+    $downstream = RelayDownstream::resolve($container, $config);
+
+    // Autowiring used to win here and hand it the stamping instance regardless of the key.
+    expect((new ReflectionProperty($downstream, 'tracing'))->getValue($downstream))->toBeInstanceOf(NoOpEdaTracing::class);
+});
+
+it('applies the same gate to the shipped kafka downstream, whose brokers it also carries across', function () {
+    if (! class_exists('Firefly\\Eda\\Kafka\\KafkaEventPublisher')) {
+        Assert::markTestSkipped('firefly/eda-kafka is not installed in this environment.');
+    }
+
+    [$container, $config] = relayEnv([
+        'firefly.eda.postgres.relay.downstream_provider' => 'kafka',
+        'firefly.eda.tracing.brokers.enabled' => false,
+    ]);
+    $container->instance(EdaTracing::class, new StampingEdaTracing);
+
+    $downstream = RelayDownstream::resolve($container, $config);
+
+    expect((new ReflectionProperty($downstream, 'tracing'))->getValue($downstream))->toBeInstanceOf(NoOpEdaTracing::class)
+        // The `factory` override still reaches the nested dependency — the gate is additive, not a replacement.
+        ->and((new ReflectionProperty($downstream, 'factory'))->getValue($downstream))->toBeInstanceOf('Firefly\\Eda\\Kafka\\KafkaProducerFactory');
 });

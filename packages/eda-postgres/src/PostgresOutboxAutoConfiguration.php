@@ -20,8 +20,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
+use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Eda\Tracing\EdaTracing;
-use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
@@ -73,34 +73,25 @@ final class PostgresOutboxAutoConfiguration
             $registry,
             $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
             $emitNotify,
-            $this->brokerTracing($config, $tracing),
+            BrokerTracing::resolve($config, $tracing),
         );
-    }
-
-    /**
-     * The EdaTracing the publisher gets: the bound one (the real TracerEdaTracing when observability is
-     * installed and tracing is on, the NoOp otherwise) unless `firefly.eda.tracing.brokers.enabled` says
-     * no. The key exists so an operator can keep CQRS and in-memory spans while refusing to put a
-     * traceparent on a wire a third party consumes — a real request in a regulated deployment, and one
-     * nobody should have to answer by turning tracing off altogether. Here the "wire" is the outbox row,
-     * which the relay may forward to a downstream broker a third party owns.
-     *
-     * $tracing is nullable because a container that has no EdaTracing bound at all must still resolve this
-     * bean rather than fail on a dependency the publisher treats as optional.
-     */
-    private function brokerTracing(Config $config, ?EdaTracing $tracing): EdaTracing
-    {
-        return $config->bool('firefly.eda.tracing.brokers.enabled', true) && $tracing !== null ? $tracing : new NoOpEdaTracing;
     }
 
     /**
      * The in-tx outbox hook. It resolves the aggregate's OWN connection per-event (I1) and carries
      * HandlerManifest::destinations() + CorrelationContext so the in-tx write preserves per-event destinations +
      * transaction_id — matching the after-commit EdaCommandEventPublisher at CqrsAutoConfiguration.php:116-121 (M5).
+     *
+     * IT GETS THE SAME GATED EdaTracing AS eventPublisher() ABOVE, and that is not a nicety. Under this provider
+     * commandEventPublisher() below NoOps the after-commit leg, so this hook is the ONLY writer of a DomainEvent's
+     * outbox row: the flagship rows — the ones that commit with the aggregate — are written by the publisher this
+     * bean builds, not by the bound EventPublisher. Threading the tracing only into eventPublisher() would have
+     * traced the hand-called EventPublisher::publish() path and left the framework's own domain-event path
+     * untraced, which is the opposite of what PostgresEventPublisher's docblock promises.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation, SubscriberRegistry $registry): OutboxPreCommitHook
+    public function outboxPreCommitHook(ConnectionResolverInterface $connections, Config $config, HandlerManifest $manifest, CorrelationContext $correlation, SubscriberRegistry $registry, ?EdaTracing $tracing = null): OutboxPreCommitHook
     {
         return new OutboxPreCommitHook(
             $connections,
@@ -109,6 +100,7 @@ final class PostgresOutboxAutoConfiguration
             $config->string('firefly.cqrs.default_destination', 'cqrs.events'),
             $manifest->destinations(),
             $correlation,
+            BrokerTracing::resolve($config, $tracing),
         );
     }
 

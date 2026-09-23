@@ -14,8 +14,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\JsonSerializer;
+use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Eda\Tracing\EdaTracing;
-use Firefly\Eda\Tracing\NoOpEdaTracing;
 
 /**
  * Binds the RabbitMQ EventPublisher + EventConsumer when firefly.eda.provider=rabbitmq. #[Order(900)] (below
@@ -67,24 +67,8 @@ final class RabbitMqAutoConfiguration
             new JsonSerializer,
             $config->string('firefly.eda.rabbitmq.exchange', 'firefly.events'),
             null,
-            $this->brokerTracing($config, $tracing),
+            BrokerTracing::resolve($config, $tracing),
         );
-    }
-
-    /**
-     * The EdaTracing the publisher gets: the bound one (the real TracerEdaTracing when observability is
-     * installed and tracing is on, the NoOp otherwise) unless `firefly.eda.tracing.brokers.enabled` says
-     * no. The key exists so an operator can keep CQRS and in-memory spans while refusing to put a
-     * traceparent on a wire a third party consumes — a real request in a regulated deployment, and one
-     * nobody should have to answer by turning tracing off altogether.
-     *
-     * $tracing is nullable because a container that has no EdaTracing bound at all (this package booted
-     * without firefly/eda's own auto-configuration, as the gating tests do) must still resolve this bean
-     * rather than fail on a dependency the publisher treats as optional.
-     */
-    private function brokerTracing(Config $config, ?EdaTracing $tracing): EdaTracing
-    {
-        return $config->bool('firefly.eda.tracing.brokers.enabled', true) && $tracing !== null ? $tracing : new NoOpEdaTracing;
     }
 
     #[Bean]

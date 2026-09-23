@@ -62,7 +62,7 @@ case-insensitively, list or string values) and `inject(SpanContext): array<strin
 | Inbound HTTP | `TracingFilter` — a `#[Component] WebFilter` at `#[Order(-110)]`, the outermost discovered filter (right after `RequestContextFilter` and `CorrelationIdFilter`, wrapping `HttpExchangeFilter`/`MetricsFilter`) | `SERVER`, named `GET /orders/{id}` once the router has matched; `http.request.method`, `url.path`, `url.scheme`, `server.address`, `http.route`, `http.response.status_code`, `firefly.correlation_id`; `ERROR` on 5xx or a throw | `traceparent`/`tracestate` read from the request; ids published to `Context` and to `Request::$attributes` (where `HttpExchangeFilter` reads the `traceId` for the exchange row) |
 | Outbound HTTP | `HttpClientTracingMiddleware`, a Guzzle middleware `HttpClientTracingPass` installs on the `Http` factory at boot (`Http::globalMiddleware()`) | `CLIENT`, named by the method; `http.request.method`, `url.scheme`, `server.address`, `server.port`, `url.path` (never `url.full` — the query string is where tokens live), `http.response.status_code`; `ERROR` at ≥ 400 or on a rejection | `traceparent`/`tracestate` set on the PSR-7 request; works under `Http::fake()` (global middleware is outermost) |
 | CQRS | `CqrsTracing` seam in `firefly/cqrs` (`NoOpCqrsTracing` default), filled by `TracerCqrsTracing` | `INTERNAL`, named by the message's short class; `firefly.cqrs.kind`, `firefly.cqrs.message` | nothing to carry — in-process; the span nests under whatever is current |
-| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`) and `SubscriberRegistrySink` (every broker consumer) | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
+| EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`), `SubscriberRegistrySink` (every broker consumer), the three broker publishers — `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` (both its writers: the bean and the in-tx `OutboxPreCommitHook`) — and `OutboxRelay`, which wraps its forward in `traceConsume()` so the relay hop continues the row's trace instead of rooting a new one | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id` |
 
 **The id a person quotes is the trace id.** `firefly/web` reads the ids `TracingFilter` publishes above
 (`Firefly\Web\Trace\TraceContext`, which owns the two attribute/`Context` keys the filter's own constants
@@ -155,10 +155,14 @@ end-to-end suite over the SDK, bind `OpenTelemetry\SDK\Trace\SpanExporter\InMemo
 
 ## Known-latent
 
-- **Broker publishers do not yet stamp `traceparent`.** `eda-rabbitmq`, `eda-kafka` and `eda-postgres`
-  build their envelopes themselves and do not call `EdaTracing::tracePublish()`; their consume path is traced
-  through the shared `SubscriberRegistrySink`, so a `traceparent` a producer DID put in the headers is
-  continued. Routing the three `publish()` methods through the seam is a small, contained follow-up.
+- **A downstream named by class-string skips the broker gate.** `firefly.eda.tracing.brokers.enabled` is
+  applied by `BrokerTracing`, which the three adapters' `#[Bean]` methods and `RelayDownstream`'s
+  `rabbitmq`/`kafka` constructor overrides all call. A relay downstream named by its own class-string (or bound
+  under `firefly.eda.relay.downstream`) is built by the application, so its tracing is the application's to
+  choose — the same rule that already applies to `firefly.eda.rabbitmq.exchange` on that route.
+- **The gate does not strip a `traceparent` a row already carries.** Turning the key off stops our publishers
+  writing one, so a row written while it was off has none. A row written BEFORE it was turned off keeps its
+  `traceparent` and the relay still forwards it, as it forwards a header a foreign producer set.
 - **`#[Timed]`/`#[Counted]`/`#[Observed]` method attributes** wait for the method-interceptor chain the
   security wave generalises from the transactional proxy.
 - **No `traceresponse`**: W3C defines no response header yet; nothing is written on the way out.

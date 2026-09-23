@@ -422,6 +422,21 @@ behind a documented `firefly.data.*` key and tested through the real Testbench p
   application bound stays on the plain path. **`firefly.validation.messages`** (`constraint` | `laravel`,
   default `constraint`) is read into a `ValidationSettings` bean.
 
+- **`packages/eda-rabbitmq`, `packages/eda-kafka`, `packages/eda-postgres` — the three broker publishers stamp
+  `traceparent`.** Their `publish()` methods build the envelope inside `EdaTracing::tracePublish()` instead of
+  beside it, so the message that reaches the exchange, the topic or the `firefly_eda_outbox` row carries the
+  PRODUCER span's `traceparent` and the consumer on the far side continues the trace. The consume side was
+  already traced through `SubscriberRegistrySink`, so until now one of our own traces stopped at the broker
+  while a foreign producer's was continued. On Postgres it covers **both** writers of a row — the
+  `EventPublisher` bean and the in-transaction `OutboxPreCommitHook`, which under `provider=postgres` is the
+  only path a `DomainEvent` takes — so the traced row is the one that commits with the aggregate; and
+  `firefly:outbox:relay` wraps its forward in `traceConsume()` of the claimed row, so the downstream producer
+  span is a child of the trace the row carries rather than a new root that overwrites it. New key
+  **`firefly.eda.tracing.brokers.enabled`** (default `true`) keeps in-process spans while putting no trace
+  identifier on a wire a third party reads; it is read in one place, `Firefly\Eda\Tracing\BrokerTracing`, by the
+  three publisher beans AND by `RelayDownstream`'s constructor overrides, because a gate that lives only in a
+  bean fails open wherever the container autowires a publisher instead.
+
 - **Browser suite — `tests/Browser/ValidationErrorsTest.php`.** The skeleton's `POST /orders` driven from a
   page: a fixture route's button `fetch()`es the API through the in-process server and renders the problem
   document's `errors` on the DOM; the scenario asserts `lines[1].sku — must match "^[A-Z0-9][A-Z0-9-]{2,31}$"

@@ -197,8 +197,12 @@ bytes on a real wire.
 (so a `traceparent` can be stamped on the way out) and `traceConsume()` wraps one delivery. `InMemoryEventBus`,
 `QueueEventBus` (publish, and `deliver()` on the worker) and `SubscriberRegistrySink` (every broker consumer)
 call it; `NoOpEdaTracing` is the default and `firefly/observability` swaps in PRODUCER/CONSUMER spans — see
-[Tracing](tracing.md). The broker packages' own `publish()` methods do not call it yet (a documented
-known-latent there).
+[Tracing](tracing.md). The three broker packages call it from their own `publish()` methods too, so the
+envelope that reaches RabbitMQ, Kafka or the `firefly_eda_outbox` row carries the producer span's
+`traceparent`; `firefly.eda.tracing.brokers.enabled` is the one switch that keeps the in-process spans while
+putting nothing on a wire a third party reads. `Firefly\Eda\Tracing\BrokerTracing` is where that key is read —
+once, by the adapters' `#[Bean]` methods AND by `RelayDownstream`, because a gate that lives only in a bean
+fails open wherever a publisher is built by autowiring instead.
 
 ## Config keys
 
@@ -211,6 +215,7 @@ known-latent there).
 | `firefly.eda.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueEventBus`/`DispatchEventJob` dispatch onto, when `provider=queue`. |
 | `firefly.eda.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
 | `firefly.eda.destinations` | list\<string\> | `[]` | The broker destinations `php artisan firefly:eda:consume` binds when `--destination` is not passed. Read **only** by that command; it must be a list of strings or the command throws a `ConfigurationException`. |
+| `firefly.eda.tracing.brokers.enabled` | bool | `true` | Whether the rabbitmq/kafka/postgres publishers may stamp a `traceparent` on the envelope they hand to the transport. Read in ONE place (`BrokerTracing`), by the adapters' publisher beans and by the relay's downstream overrides. Set it to `false` to keep in-process spans while putting no trace identifier on a third party's wire; it can only ever downgrade the bound `EdaTracing` to the no-op, never switch tracing on. |
 
 !!! note "A publish `destination` is a call-site argument, not a config key"
     `EventPublisher::publish(string $destination, ...)` takes the destination explicitly at the call site —
