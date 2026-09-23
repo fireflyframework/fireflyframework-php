@@ -39,6 +39,14 @@ final class SchemaUnion
             return $parts[0];
         }
 
+        // One arm and null IS a nullable type, and must read as one: `Carbon|null` — how an IDE helper writes
+        // every nullable column — and `?Carbon` are the same type, and only nullable() keeps the arm's
+        // `format` beside a widened `type` instead of burying it in an anyOf.
+        $values = array_values(array_filter($parts, static fn (array $part): bool => $part !== ['type' => 'null']));
+        if (count($values) === 1) {
+            return self::nullable($values[0]);
+        }
+
         $constants = [];
         foreach ($parts as $part) {
             if (array_keys($part) === ['const']) {
