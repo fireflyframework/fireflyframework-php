@@ -20,6 +20,8 @@ use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
+use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\Eda\Tracing\NoOpEdaTracing;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
@@ -59,7 +61,7 @@ final class PostgresOutboxAutoConfiguration
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
-    public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry): EventPublisher
+    public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry, ?EdaTracing $tracing = null): EventPublisher
     {
         $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
         $conn = $connections->connection($name);
@@ -71,7 +73,24 @@ final class PostgresOutboxAutoConfiguration
             $registry,
             $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
             $emitNotify,
+            $this->brokerTracing($config, $tracing),
         );
+    }
+
+    /**
+     * The EdaTracing the publisher gets: the bound one (the real TracerEdaTracing when observability is
+     * installed and tracing is on, the NoOp otherwise) unless `firefly.eda.tracing.brokers.enabled` says
+     * no. The key exists so an operator can keep CQRS and in-memory spans while refusing to put a
+     * traceparent on a wire a third party consumes — a real request in a regulated deployment, and one
+     * nobody should have to answer by turning tracing off altogether. Here the "wire" is the outbox row,
+     * which the relay may forward to a downstream broker a third party owns.
+     *
+     * $tracing is nullable because a container that has no EdaTracing bound at all must still resolve this
+     * bean rather than fail on a dependency the publisher treats as optional.
+     */
+    private function brokerTracing(Config $config, ?EdaTracing $tracing): EdaTracing
+    {
+        return $config->bool('firefly.eda.tracing.brokers.enabled', true) && $tracing !== null ? $tracing : new NoOpEdaTracing;
     }
 
     /**

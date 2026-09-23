@@ -63,6 +63,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Firefly\\Eda\\Rabbitmq\\RabbitMqConnectionFactory',
                     2 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    3 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             4 => [

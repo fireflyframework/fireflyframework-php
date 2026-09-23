@@ -57,6 +57,7 @@ return [
                     0 => 'Firefly\\Config\\Config',
                     1 => 'Illuminate\\Database\\ConnectionResolverInterface',
                     2 => 'Firefly\\Eda\\Bus\\SubscriberRegistry',
+                    3 => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 ],
             ],
             2 => [
