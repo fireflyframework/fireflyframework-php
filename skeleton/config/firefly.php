@@ -1045,6 +1045,18 @@ return [
     //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
     //
     //         /*
+    //          | Whether a caller that named NOTHING acceptable gets `application/problem+json` rather than
+    //          | falling through to Laravel's own error page. `Accept: */*` is what a bare curl and a
+    //          | default fetch() send, and an absent Accept is what a hand-rolled client sends; neither
+    //          | names text/html, so neither is a browser, and both used to receive framework HTML for any
+    //          | non-FireflyException. A browser is never caught by this — it is tested by `prefersHtml()`,
+    //          | so `enabled => false` keeps meaning "use Laravel's page".
+    //          |
+    //          | Default: true.
+    //         */
+    //         'problem-fallback' => env('FIREFLY_WEB_ERROR_PAGE_PROBLEM_FALLBACK', true),
+    //
+    //         /*
     //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
     //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
     //          | the path says what the URL is.

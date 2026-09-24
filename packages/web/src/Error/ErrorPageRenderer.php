@@ -6,6 +6,7 @@ namespace Firefly\Web\Error;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Firefly\Kernel\Exception\FireflyException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -93,6 +94,37 @@ final class ErrorPageRenderer
     public function forcesJson(Request $request): bool
     {
         return $this->settings->enabled && $this->settings->isJsonPath($request->path());
+    }
+
+    /**
+     * Whether this failure is answered with a problem document — the WHOLE of that decision, asked after
+     * `handles()` has already answered "is this a page".
+     *
+     * THE BUG THIS FIXES. The rule used to live in WebServiceProvider as
+     * `$e instanceof FireflyException || $request->expectsJson() || $page->forcesJson($request)`, and its
+     * gap was the commonest client there is. A WILDCARD Accept header is what a bare `curl` sends and what
+     * `fetch()` sends by default; an absent Accept is what a hand-rolled client sends. Neither NAMES
+     * text/html, so neither got the page — and `expectsJson()` is false for both (`wantsJson()` tests the
+     * FIRST acceptable type, and a wildcard is not a JSON type; `ajax()` is false) — so a router 404 on a
+     * path outside `json-paths` fell all the way through to Laravel's stock HTML page. A client that asked
+     * for anything was handed markup, while the documentation had promised it a problem document since the
+     * page shipped.
+     *
+     * THE FALLBACK IS THE LAST TERM, NOT THE FIRST. A FireflyException, a JSON client and a `json-paths` URL
+     * are answered exactly as they were. Only the caller who expressed no preference changes, and only
+     * because "no preference" plus "not a browser" leaves one shape that anything can read.
+     *
+     * A BROWSER IS NEVER CAUGHT BY IT, INCLUDING WHEN THE PAGE IS OFF. `prefersHtml()` — not `handles()` —
+     * is the test, so `firefly.web.error-page.enabled => false`, whose documented meaning is "use Laravel's
+     * own error page", keeps meaning that instead of silently turning every browser 404 into JSON.
+     */
+    public function rendersProblem(Throwable $e, Request $request): bool
+    {
+        if ($e instanceof FireflyException || $request->expectsJson() || $this->forcesJson($request)) {
+            return true;
+        }
+
+        return $this->settings->problemFallback && ! $this->prefersHtml($request);
     }
 
     public function render(Throwable $e, Request $request): Response

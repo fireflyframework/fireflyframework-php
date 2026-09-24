@@ -8,7 +8,6 @@ use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
-use Firefly\Kernel\Exception\FireflyException;
 use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
@@ -224,10 +223,15 @@ final class WebServiceProvider extends FireflyServiceProvider
      *
      * The order is the whole of it. A browser that names `text/html` gets the HTML page — which is what
      * fixes a person clicking a stale link and being shown a raw JSON blob, the behaviour every
-     * FireflyException had. Everything else keeps the previous rule exactly: a FireflyException, or a
-     * request that wants JSON, renders as problem+json. A throwable that is NEITHER — an unrouted URL hit by
-     * a client that asked for neither — still falls through to Laravel's handler, because inventing a
-     * response shape for a caller that expressed no preference is not this package's decision to make.
+     * FireflyException had.
+     *
+     * Everything else keeps the previous rule and gains the case it was missing: a FireflyException, a
+     * request that wants JSON and a `json-paths` URL all render as problem+json, and so now does a caller
+     * that named NOTHING — a wildcard Accept header from a bare curl, or no Accept at all — which used to
+     * fall through to Laravel's stock HTML page. The predicate itself lives in
+     * ErrorPageRenderer::rendersProblem(), beside handles() and prefersHtml(), because it is the same
+     * negotiation asked a third way; this provider keeps only the wiring.
+     * `firefly.web.error-page.problem-fallback => false` restores the fall-through.
      */
     private function registerProblemDetailsRenderable(): void
     {
@@ -243,7 +247,7 @@ final class WebServiceProvider extends FireflyServiceProvider
                     return $page->render($e, $request);
                 }
 
-                if ($e instanceof FireflyException || $request->expectsJson() || $page->forcesJson($request)) {
+                if ($page->rendersProblem($e, $request)) {
                     return $this->app->make(ProblemDetailsRenderer::class)->render($e, $request);
                 }
 

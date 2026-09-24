@@ -23,6 +23,13 @@ use Illuminate\Support\Str;
  * status (or `default`) to the application's own Blade view, so a public 404 can be the product's own page
  * while a 500 in staging is still the framework's diagnostic one.
  *
+ * `problem-paths` IS NOT A KEY AND `problem-fallback` IS. The question `json-paths` answers is "which URLs
+ * are machine surfaces"; the question this one answers is "what does a caller who named nothing get". They
+ * are different questions and only the first is about the URL. With the fallback on — the default, and what
+ * the documentation has always claimed — a request carrying a WILDCARD Accept header, or no Accept at all,
+ * is answered with the problem document, because that is the form a client can read and the page is for a
+ * person who asked for one. Off, such a request falls through to Laravel's handler exactly as it used to.
+ *
  * `trace` DEFAULTS TO `app.debug` and is enforced at render time, not merely at template time — the renderer
  * builds no frame list, opens no source file and copies no exception message when it is off. That is
  * deliberate: a page that assembled the details and then declined to print them would put a stack trace one
@@ -126,6 +133,9 @@ final readonly class ErrorPageSettings
         public bool $authoredDetail = true,
         // Progressive enhancement, and the only script this page has ever carried: see ErrorPage::clipboard().
         public bool $copyButton = true,
+        // Whether a caller that named NOTHING acceptable gets a problem document rather than Laravel's own
+        // page. See ErrorPageRenderer::rendersProblem() for the case this closes.
+        public bool $problemFallback = true,
     ) {
         $this->home = self::url($home);
         $this->signIn = self::url($signIn);
@@ -203,6 +213,7 @@ final readonly class ErrorPageSettings
             maxFrames: max(1, min(500, $config->int('firefly.web.error-page.max-frames', 40))),
             authoredDetail: $config->bool('firefly.web.error-page.authored-detail', true),
             copyButton: $config->bool('firefly.web.error-page.copy-button', true),
+            problemFallback: $config->bool('firefly.web.error-page.problem-fallback', true),
         );
     }
 

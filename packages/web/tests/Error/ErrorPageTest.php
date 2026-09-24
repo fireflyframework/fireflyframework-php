@@ -1283,3 +1283,68 @@ it('says something a reader does not already know, or falls back to the sentence
         ->toContain('Your trial ended on the 3rd.')
         ->not->toContain('You do not have access to that.');
 });
+
+it('answers a wildcard or an absent Accept with a problem document, not Laravel\'s page', function () {
+    // `Accept: */*` is what a bare curl sends and what fetch() sends by default, and an absent Accept is
+    // what a hand-rolled client sends. Neither NAMES text/html, so neither gets the page — and neither
+    // wanted Laravel's stock HTML either, which is what both used to receive for any non-FireflyException.
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: true));
+    $routerMiss = new NotFoundHttpException('The route nope could not be found.');
+
+    $wildcard = Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => '*/*']);
+    // Request::create() PUTS a browser's Accept header on a request that was handed none — a harness
+    // convenience, and the opposite of what a hand-rolled client sends — so the absent case has to be
+    // made absent on purpose. The predicate reads the header bag, which is what is emptied here.
+    $absent = Request::create('/orders/9', 'GET');
+    $absent->headers->remove('Accept');
+    $absent->server->remove('HTTP_ACCEPT');
+    $browser = Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml']);
+
+    expect($renderer->rendersProblem($routerMiss, $wildcard))->toBeTrue()
+        ->and($renderer->rendersProblem($routerMiss, $absent))->toBeTrue()
+        // A browser still gets the page: handles() is asked first, and this predicate agrees with it.
+        ->and($renderer->handles($browser))->toBeTrue()
+        ->and($renderer->rendersProblem($routerMiss, $browser))->toBeFalse();
+});
+
+it('keeps every branch the renderable already had', function () {
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: true, jsonPaths: ['api/*']));
+    $browser = ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml'];
+    $fromABrowser = Request::create('/orders/9', 'GET', server: $browser);
+
+    // A FireflyException is a problem document to THIS predicate whoever asked — the first term of the
+    // boolean this method replaced, carried over unchanged. The browser still gets the PAGE, because the
+    // renderable asks handles() first and never reaches here, and that is asserted on the line below
+    // rather than left to a comment. Answering false here instead would be a second, silent change of
+    // behaviour: with `firefly.web.error-page.enabled => false` a browser hitting a FireflyException would
+    // stop receiving problem+json and start receiving Laravel's stock page, which no key here asked for.
+    expect($renderer->handles($fromABrowser))->toBeTrue()
+        ->and($renderer->rendersProblem(new ResourceNotFoundException('x', 'X'), $fromABrowser))->toBeTrue()
+        ->and($renderer->rendersProblem(new ResourceNotFoundException('x', 'X'), Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => 'application/json'])))->toBeTrue()
+        // json-paths still overrides the header in both directions.
+        ->and($renderer->rendersProblem(new NotFoundHttpException, Request::create('/api/nope', 'GET', server: $browser)))->toBeTrue()
+        // An XMLHttpRequest that names text/html is JavaScript about to read a body.
+        ->and($renderer->rendersProblem(new NotFoundHttpException, Request::create('/orders/9', 'GET', server: [...$browser, 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])))->toBeTrue();
+});
+
+it('leaves a caller that expressed no preference to Laravel when the fallback is switched off', function () {
+    // The escape hatch for an application that has its own opinion about an unrouted URL: with the key off,
+    // a caller who named nothing falls through exactly as it did before, while a FireflyException, a JSON
+    // client and an api/* path are all unaffected.
+    $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: true, jsonPaths: ['api/*'], problemFallback: false));
+    $wildcard = Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => '*/*']);
+
+    expect($off->rendersProblem(new NotFoundHttpException, $wildcard))->toBeFalse()
+        ->and($off->rendersProblem(new ResourceNotFoundException('x', 'X'), $wildcard))->toBeTrue()
+        ->and($off->rendersProblem(new NotFoundHttpException, Request::create('/api/nope', 'GET')))->toBeTrue();
+});
+
+it('claims nothing at all when the page is switched off and the caller is a browser', function () {
+    // `enabled: false` means "use Laravel's stock error page", and it must keep meaning that: a browser
+    // gets Laravel's page, and the fallback does not quietly turn it into JSON.
+    $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: false));
+    $browser = Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => 'text/html']);
+
+    expect($off->handles($browser))->toBeFalse()
+        ->and($off->rendersProblem(new NotFoundHttpException, $browser))->toBeFalse();
+});
