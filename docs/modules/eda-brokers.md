@@ -19,7 +19,7 @@ messages back off the wire — something M9's `start()`/`stop()` never needed.
 |---|---|---|---|---|
 | `firefly/eda-rabbitmq` | `php-amqplib/php-amqplib` (AMQP 0-9-1) | `"exchange/routingKey"` (or a bare routing key against the default exchange) | Broker-native DLX (dead-letter exchange) | `rabbitmq` |
 | `firefly/eda-postgres` | `ext-pdo_pgsql` (via Laravel's `ConnectionInterface`) | a destination string stored on the outbox row | Outbox row `status='FAILED'` | `postgres` |
-| `firefly/eda-kafka` | `ext-rdkafka` (**OPTIONAL**) | a topic name | Dead-letter topic `<topic>.DLT` | `kafka` |
+| `firefly/eda-kafka` | `ext-rdkafka` (**OPTIONAL**) | a topic name | Dead-letter topic `<topic>.DLT`, with `x-dlt-*` provenance headers | `kafka` |
 
 All three implement the same `EventPublisher::publish(string $destination, string $eventType, array
 $payload, array $headers = []): void` signature `firefly/eda` defines, and all three ship an
@@ -276,8 +276,9 @@ decode throws, hands the loop a *poison* `ReceivedEnvelope` (`envelope` null, `r
 `failure`, `destination`). `JsonSerializer` itself checks every member's *type*, not just the six keys, and
 refuses each mismatch as one `SerializationException`; the `Throwable` catch is the backstop for any other
 `Serializer`. The loop never offers it to the sink, logs the destination and the
-failure, and calls `nack(requeue: false)` — Kafka produces the raw bytes to `<topic>.DLT` and commits the
-offset, RabbitMQ's queue routes it to its DLX — and polls the next record. It used to throw out of `poll()`,
+failure, and calls `nack(requeue: false)` — Kafka produces the raw bytes to `<topic>.DLT`, with the three
+provenance headers under [DLQ surface per broker](#dlq-surface-per-broker), and commits the offset; RabbitMQ's
+queue routes it to its DLX — and polls the next record. It used to throw out of `poll()`,
 outside every catch in the process, and a supervisor restarted the worker onto the same offset for ever.
 `poll()` itself stays outside the loop's try on purpose: what can still throw from it is the transport (a lost
 connection, an auth refusal), and for that there is no record in hand to nack — the honest answer is to let
@@ -307,7 +308,26 @@ Each broker's native surface, reached via an explicit `nack(requeue: false)`:
   application code copies the message anywhere.
 - **Kafka**: there is no broker-native DLX equivalent, so `KafkaEventConsumer::nack(requeue: false)`
   re-produces the envelope to a **dead-letter topic** named `"<destination>.DLT"`, then commits the
-  original offset so the exhausted record is never redelivered from its original topic.
+  original offset so the exhausted record is never redelivered from its original topic. A poison record
+  (one whose bytes no `Serializer` would decode) is re-produced from its **raw bytes, verbatim**, so a
+  fixed producer can replay them byte for byte.
+
+  Every record LaraFly writes to a `.DLT` carries three headers, so whoever drains that topic can tell a
+  dead-lettered record from a replayed payload and can find the original in the log:
+
+  | Header | Value |
+  |---|---|
+  | `x-dlt-reason` | the short class name of the throw that refused the bytes (`SerializationException`, `JsonException`, …), or `RetriesExhausted` for a record that decoded and then ran out of retries |
+  | `x-dlt-source-topic` | the topic the record was **consumed** from — not the DLT, and not the envelope's declared destination |
+  | `x-dlt-source-offset` | the offset it sat at |
+
+  The names and the reason's spelling are PyFly's, exactly: a `<topic>.DLT` that both frameworks publish to
+  is only readable if one `kcat -C -t <topic>.DLT -f '%h'` explains every record on it. A header the record
+  cannot answer is left out rather than written empty, because an empty offset reads as an offset.
+
+  RabbitMQ needs none of this and gets none: the broker itself stamps `x-death` — source queue, exchange,
+  reason and count — on every message its `x-dead-letter-exchange` routes, and the framework never
+  republishes a message there to have an opinion about. Postgres keeps the row.
 - **Postgres**: there is no separate DLQ store at all — an exhausted outbox row is simply marked
   `status='FAILED'` (with `error_message` and `failed_at` populated) in place, on the same
   `firefly_eda_outbox` table. Query for `status='FAILED'` rows to inspect or reprocess them.

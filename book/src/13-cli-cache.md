@@ -40,8 +40,11 @@ final class CacheCommand extends Command
             $dir,
         ));
 
+        $this->reportStaleEntries();
+
         return self::SUCCESS;
     }
+    // …
 }
 ```
 
@@ -293,6 +296,30 @@ final class ClearCommand extends Command
 ```
 
 Safe to run at any time: the very next boot simply falls back to the in-process scanner, the same as an application that never ran `firefly:cache` at all.
+
+---
+
+## When the cache names a class you deleted
+
+Both commands above have to boot the application before they can do their work — `firefly:cache` cannot write the manifests without first booting the application whose manifests they are, and `firefly:clear` cannot delete a directory it has not booted past. That circularity turns uncomfortable the moment the cache is *wrong*, and the ordinary way to make it wrong is to delete a `#[Component]` and not recompile: `component.php` still names the class, and no autoloader can find it.
+
+That state used to be unrecoverable by any single command. The deleted class was still in the manifest `ContainerRegistrar` read, so `wireInterfaces()` bound the interface it implemented — and tagged it as an implementation — to a class that was not there. The failure therefore surfaced nowhere near its cause: `Target class [App\Security\ControlPlaneJwksProvider] does not exist` came out of resolving a bean nobody had touched, one that merely injects that interface. `EagerSingletonsPass` skips a definition whose class is gone, and it did not help, because the throw was never raised on the deleted definition. `composer dump-autoload` could not help either — its `package:discover` boots the application too. The recovery was to delete `bootstrap/cache/firefly/*.php` by hand, then `composer dump-autoload`, then `firefly:cache`, in that order.
+
+`Firefly\Context\Scan\AppScan::repairing()` is the seam that closes it: while `firefly:cache` or `firefly:clear` is the running command, `BeanDefinitionRegistry` — the one door every definition enters through — drops a definition whose class cannot be found, so the registrar, the bean-post-processor pass, the lifecycle pass and the event-listener pass never see it. `firefly:cache` then names what it dropped:
+
+```
+php artisan firefly:cache
+```
+
+```
+firefly:cache — wrote 14 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
+```
+
+The manifest it writes no longer mentions the class, so the second run is an ordinary clean one and the line goes away.
+
+!!! warning "Only those two commands drop anything"
+    Under every other command the manifest is trusted exactly as it was, and a class that has gone missing still stops the boot with the container's own error. That is the right answer there: a missing class in a process about to serve traffic is not a stale cache, it is a broken deployment — a truncated artifact, a classmap built from a different tree — and dropping the definition would hand the application an interface quietly rebound to whichever implementation survived. A wrong answer nobody is told about is worse than the boot failure. And only a MISSING class is ever tolerated: a class that exists and cannot be constructed still fails fast, in a repair command as much as anywhere else.
 
 ---
 

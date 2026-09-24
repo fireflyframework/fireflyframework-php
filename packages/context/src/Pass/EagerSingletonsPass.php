@@ -79,6 +79,16 @@ final class EagerSingletonsPass implements BootPass
             // constructor, an unsatisfiable dependency, the registrar's own NoUniqueBeanDefinition guard —
             // still propagates, because those are real defects in code that does exist and failing fast at
             // boot is exactly right for them.
+            //
+            // THIS GUARD IS NO LONGER THE ONLY THING STANDING BETWEEN A DEVELOPER AND `rm -rf
+            // bootstrap/cache/firefly`, and the escape hatch this comment claims was never true while it
+            // was. It protects the pass it is written in; a deleted #[Component] that implemented an
+            // interface breaks the boot somewhere else entirely, because ContainerRegistrar binds the
+            // INTERFACE to the missing class and the throw comes out of resolving a bean that still
+            // exists. BeanDefinitionRegistry::add() now drops a stale definition at the door while
+            // firefly:cache or firefly:clear is running, so the manifest this pass reads has none in it.
+            // What remains here is depth: under every other command the definition is still present, and
+            // skipping it is still the only defensible answer for THIS pass.
             $context->container->make($abstract);
         }
     }

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Firefly\Eda\Kafka;
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
-use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Serializer;
 use RdKafka\KafkaConsumer;
 use RdKafka\Message;
@@ -100,24 +99,89 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         $this->consumer()->commit($deliveryTag);
     }
 
-    public function deadLetter(EventEnvelope $envelope, string $dltTopic): void
+    /**
+     * Why the record died. PyFly writes the exception's own short class name here (its `type(exc).__name__`), and
+     * this side spells the header and the value the same way, because a `<topic>.DLT` both frameworks write to is
+     * only readable if one `kcat -f '%h'` explains every record on it.
+     */
+    public const string REASON_HEADER = 'x-dlt-reason';
+
+    /** The topic the record was CONSUMED from — not the DLT, and not the envelope's declared destination. */
+    public const string SOURCE_TOPIC_HEADER = 'x-dlt-source-topic';
+
+    /** The offset the record sat at, which is the only way back to it in the log. */
+    public const string SOURCE_OFFSET_HEADER = 'x-dlt-source-offset';
+
+    /**
+     * Re-produces the record to $dltTopic WITH the three provenance headers.
+     *
+     * It used to write the bytes and nothing else. dworkers runs LaraFly and PyFly against shared topics, and PyFly
+     * has stamped `x-dlt-reason`, `x-dlt-source-topic` and `x-dlt-source-offset` on every record it dead-letters
+     * since `v26.09.06` — so one `<topic>.DLT` held two kinds of record: PyFly's, which says why it died and where
+     * it came from, and this one's, which was raw bytes with no provenance at all. Whoever drained that topic could
+     * not tell a LaraFly poison record from a replayed payload, and the offset needed to go back and look at the
+     * original was simply not there. The header names and the reason's spelling are PyFly's, exactly, because
+     * parity across the two ends of a shared topic is the whole point of writing them.
+     *
+     * producev() rather than produce(): headers are the only thing this method gained, and produce() cannot carry
+     * them. It has been in ext-rdkafka since 3.1 (librdkafka 0.11), well below the `librdkafka >= 1.5.3` this
+     * package already suggests.
+     */
+    public function deadLetter(ReceivedEnvelope $received, string $dltTopic, string $reason): void
     {
         $producer = $this->producer();
         $topic = $producer->newTopic($dltTopic);
 
         // RD_KAFKA_PARTITION_UA (-1) = librdkafka picks the partition; a dead-lettered record carries no partition
         // key, so there is no "correct" partition to preserve.
-        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $this->serializer->serialize($envelope));
+        $topic->producev(
+            RD_KAFKA_PARTITION_UA,
+            0,
+            self::dltPayload($received, $this->serializer),
+            null,
+            self::dltHeaders($received, $reason),
+        );
         $producer->flush(2000);
     }
 
-    public function deadLetterRaw(string $raw, string $dltTopic): void
+    /**
+     * The bytes the DLT record carries: a poison record's RAW bytes verbatim — so a fixed producer can replay them
+     * byte for byte, which a re-encoded approximation could not — and the re-serialised envelope for anything else.
+     *
+     * Public and static for the same reason received() is: it is the half of deadLetter() that owes nothing to
+     * ext-rdkafka, and it is the half worth asserting on.
+     */
+    public static function dltPayload(ReceivedEnvelope $received, Serializer $serializer): string
     {
-        $producer = $this->producer();
-        $topic = $producer->newTopic($dltTopic);
+        $envelope = $received->envelope;
 
-        $topic->produce(RD_KAFKA_PARTITION_UA, 0, $raw);
-        $producer->flush(2000);
+        return $envelope === null ? (string) $received->raw : $serializer->serialize($envelope);
+    }
+
+    /**
+     * The three provenance headers, from the record alone.
+     *
+     * The offset is read off the delivery tag — the rdkafka Message for the real adapter — through property_exists()
+     * rather than an instanceof, so this stays callable, and testable, on a machine with no ext-rdkafka at all (the
+     * received() precedent). A header whose value the record cannot answer is LEFT OUT rather than written empty: an
+     * `x-dlt-source-offset` of `''` reads as an offset, and sends whoever is draining the topic looking for it.
+     *
+     * @return array<string, string>
+     */
+    public static function dltHeaders(ReceivedEnvelope $received, string $reason): array
+    {
+        $headers = [self::REASON_HEADER => $reason];
+
+        if ($received->destination !== null && $received->destination !== '') {
+            $headers[self::SOURCE_TOPIC_HEADER] = $received->destination;
+        }
+
+        $tag = $received->deliveryTag;
+        if (is_object($tag) && property_exists($tag, 'offset') && is_int($tag->offset)) {
+            $headers[self::SOURCE_OFFSET_HEADER] = (string) $tag->offset;
+        }
+
+        return $headers;
     }
 
     public function close(): void

@@ -1519,13 +1519,14 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
         }
     }
 
-    // docs/cli.md, both tutorials, and the DI and CQRS chapters in both languages; the pair count in chapters
+    // docs/cli.md, both tutorials, and the DI and CQRS chapters in both languages, plus the stale-manifest
+    // recovery block that docs/cli.md and chapter 13 of each manuscript print; the pair count in chapters
     // 3, 7 (twice), 8 and 9 of each manuscript; the artifact tree in chapter 13 of each. The step count is
     // stated twice per manuscript — chapter 13's opening objective and the line over the artifact tree — and
     // the recap row once. These canaries are what turns a REWORDING red: a sentence that stops matching stops
     // being checked, silently, and that is precisely how "(11 steps, 12 artifacts)" survived the correction
     // of the paragraph 277 lines above it.
-    expect($consoleLines)->toBe(7)
+    expect($consoleLines)->toBe(10)
         ->and($pairClaims)->toBe(10)
         ->and($artifactClaims)->toBe(2)
         ->and($stepClaims)->toBe(4)
