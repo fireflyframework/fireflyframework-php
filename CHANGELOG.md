@@ -4,6 +4,19 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Changed
+
+- **`packages/admin` — the data browser's rows-per-page control offers the dashboard's set, and a `?size=`
+  outside it is refused rather than lowered.** `/firefly/data` used to draw its own `<select>` with `10`
+  among the literal options and cap whatever arrived; its listing query is now parsed against the shared
+  `firefly.admin.table.page-sizes` narrowed by `firefly.admin.data.max-page-size`, and that set is **closed**
+  — a size that is not a member falls back to `firefly.admin.data.page-size` instead of being clamped to the
+  nearest permitted one. So `?size=300` renders 25 rows rather than 200, and **a bookmark holding `?size=10`
+  renders 25 rather than 10**, because ten is no longer offered unless a deployment says so
+  (`FIREFLY_ADMIN_TABLE_PAGE_SIZES=10,25,50,100,200`, or `FIREFLY_ADMIN_DATA_PAGE_SIZE=10`, which forces its
+  own default into the set). `firefly.admin.data.max-page-size` is a plain cap only for a direct
+  `Firefly\Admin\Data\DataBrowser::list()` call, which is parsed against no query string.
+
 ## [26.09.4] - 2026-09-23
 
 The gaps a second real application had to work around, closed in the framework instead. Every entry below

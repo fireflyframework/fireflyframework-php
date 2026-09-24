@@ -180,6 +180,45 @@ it('sizes a datetime column for the whole timestamp and the numeric ones for a f
 });
 
 /**
+ * A RIGID COLUMN IS SIZED FOR ITS HEADER TOO, AND ON THIS PAGE ONLY THIS PAGE NEEDS THAT.
+ *
+ * Every other listing on the dashboard writes its own labels beside the widths that hold them — `Level` at
+ * `ch: 11`, `Default` at `ch: 10.5` — so the type's width is the whole answer. Here the label is humanised
+ * from a column name nobody chose for its length: `failed_login_attempts` draws `Failed login attempts`,
+ * twenty-one characters of 10px uppercase header with `.12em` tracking, into a column sized at thirteen for
+ * a five-figure count. Measured in Chromium against these exact rules, that header renders 184px inside a
+ * 126px box and reads `FAILED LOGIN ATTE`, cut mid-glyph — `table.ftable td,th` is `overflow:hidden` and
+ * carries no ellipsis, so nothing on the page says it was cut. Under the `table-layout:auto` this wave
+ * replaced the column simply grew to fit, which is why this is a regression and not a pre-existing gap.
+ *
+ * THE NUMBERS ARE THE ARITHMETIC, NOT A ROUND-UP. 21 characters × 1.25 `ch` + 1.75 for the sortable
+ * header's ordering indicator is 28; 17 × 1.25 + 1.75 is 23, which is wider than the nineteen an ISO
+ * instant needs. `Id` at 2 characters stays at thirteen, because fitting a header never NARROWS a column
+ * below the alphabet its values can hold. See TableColumn::fittingItsHeader().
+ */
+it('widens a rigid column when its humanised header is wider than its values', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->exposeAdminSignIns();
+
+    $html = (string) $this->get('/firefly/data?resource=admin-sign-in')->assertStatus(200)->getContent();
+
+    expect($html)
+        ->toContain('calc(28ch + 2 * var(--row-x))')
+        ->toContain('calc(23ch + 2 * var(--row-x))')
+        // `Id` is short, so its column keeps the width an int column needs and gains nothing.
+        ->toContain('calc(13ch + 2 * var(--row-x))')
+        // Neither long column is left at its type's width.
+        ->not->toContain('calc(19ch + 2 * var(--row-x))')
+        // The header really is the long one, and it is recoverable in full when the estimate falls short.
+        ->toContain('title="Failed login attempts"')
+        ->toContain('<th class="t-datetime " scope="col" title="Last signed in at">');
+
+    // Exactly one rigid column stayed at thirteen: `id`. Two were widened, and the actions column is 9.
+    expect(substr_count($html, 'calc(13ch + 2 * var(--row-x))'))->toBe(1)
+        ->and(substr_count($html, 'calc(9ch + 2 * var(--row-x))'))->toBe(1);
+});
+
+/**
  * ROWS PER PAGE HERE IS THE BROWSER'S OWN KEY, and it stopped being that the moment this page started
  * stating a size on every call: `DataBrowser::list()` was handed `$query->size` — the dashboard-wide
  * `firefly.admin.table.page-size`, 50 — so `DataBrowserSettings::clampPageSize()`'s "null means use the

@@ -1201,11 +1201,16 @@ return [
     //         */
     //         'writable' => env('FIREFLY_ADMIN_DATA_WRITABLE', false),
     //
-    //         // Rows per page on the /firefly/data listing, and the ceiling a `?size=` in the URL may
-    //         // reach. Both are clamped to a hard maximum of 1000 so no query string can ask for the whole
-    //         // table at once. They compose with the dashboard-wide `firefly.admin.table.*` keys above:
-    //         // the rows-per-page control offers that shared set narrowed by `max-page-size`, with
-    //         // `page-size` always among the sizes it offers. Defaults: 25 and 200.
+    //         // Rows per page on the /firefly/data listing, and the ceiling that narrows the set of sizes
+    //         // it offers. Both are clamped to a hard maximum of 1000 so no query string can ask for the
+    //         // whole table at once. They compose with the dashboard-wide `firefly.admin.table.*` keys
+    //         // above: the rows-per-page control offers that shared set narrowed by `max-page-size`, with
+    //         // `page-size` always among the sizes it offers. The offered set is CLOSED — a `?size=` that
+    //         // is not one of its members is refused and the listing falls back to `page-size`, rather
+    //         // than being lowered to the ceiling — so a deployment that wants a size on offer adds it to
+    //         // `firefly.admin.table.page-sizes` or names it here. `max-page-size` is a plain cap only for
+    //         // a direct Firefly\Admin\Data\DataBrowser::list() call, which is parsed against no query
+    //         // string. Defaults: 25 and 200.
     //         'page-size' => 25,
     //         'max-page-size' => 200,
     //

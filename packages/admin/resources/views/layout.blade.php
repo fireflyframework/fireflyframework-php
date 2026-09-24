@@ -440,16 +440,6 @@
         table.datatable thead th.t-int,table.datatable thead th.t-float{text-align:right}
         table.datatable thead th.t-int a,table.datatable thead th.t-float a{justify-content:flex-end}
         table.datatable thead th a{display:inline-flex;align-items:center;gap:3px}
-        /* COLUMNS THAT CANNOT BE LONG SHOULD NOT BE WIDE. Auto-layout splits leftover width evenly, which
-           gave a one-digit `quantity` the same 200px as a timestamp and left the text columns cramped
-           between them. `width:1%` is the table idiom for "shrink to content": the numeric, boolean and
-           datetime columns take exactly what they need and the string and json columns absorb everything
-           left over, which is where a reader actually needs the room. */
-        table.datatable td.t-int,table.datatable td.t-float,table.datatable td.t-bool,table.datatable td.t-datetime,
-        table.datatable thead th.t-int,table.datatable thead th.t-float,table.datatable thead th.t-bool,table.datatable thead th.t-datetime{
-            width:1%;white-space:nowrap;
-        }
-        table.datatable td.t-string,table.datatable td.t-json{width:auto}
         table.datatable td.t-json{color:var(--ink-2)}
         table.datatable td.t-datetime{color:var(--ink-2);white-space:nowrap}
         table.datatable td.nil{text-align:center}

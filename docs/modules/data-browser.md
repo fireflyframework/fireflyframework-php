@@ -421,12 +421,15 @@ class name. The message stays in the exception, where a log can have it.
 | `firefly.admin.data.enabled` | **`false`** | Enable the browser at all — the `/firefly/data` pages, the entity map, and the `DataBrowser` API. Does **not** follow `app.debug` or `firefly.admin.enabled` — see [The two gates](#the-two-gates). |
 | `firefly.admin.data.writable` | **`false`** | Allow `update` and `delete`. Requires `enabled` as well; ineffective alone. |
 | `firefly.admin.data.page-size` | `25` | Default rows per page. Clamped into `[1, max-page-size]`. |
-| `firefly.admin.data.max-page-size` | `200` | Ceiling applied to any caller-supplied page size. Itself capped at **1000**, because `?perPage=1000000` on a resource that cannot page is a request to materialise the table into PHP memory. |
+| `firefly.admin.data.max-page-size` | `200` | The ceiling this browser narrows the **offered set** to — see [Rows per page](#rows-per-page) for what that means on the listing, where a `?size=` outside the set is *refused* rather than lowered. It is a plain cap only for a direct `DataBrowser::list()` call, which has no query string to have been parsed against the set. Itself capped at **1000**, because `?size=1000000` on a resource that cannot page is a request to materialise the table into PHP memory. |
 | `firefly.admin.data.exclude` | `''` | CSV of resource slugs to refuse. A **hard refusal, not a menu preference**: the resource is hidden *and* every operation on it is refused. Hiding `user` because the table holds PII achieves nothing if the row URL still answers. |
 | `firefly.admin.data.relations` | `true` | Discover relations, so records link to what they reference and the [entity map](admin.md#the-entity-map) has edges. Discovery **calls** the model methods that declare one — see [Relations](#relations) — so it is a key rather than a constant. |
 
-The page-size cap is applied to whatever the caller asks for, so the query layer never sees a size it did not
-agree to.
+A size that arrives at `DataBrowser::list()` from application code is clamped into `[1, max-page-size]`, so
+the query layer never sees a size it did not agree to. The listing page is stricter than that, and the rest
+of this section is what it does instead.
+
+### Rows per page
 
 Rows per page on the `/firefly/data` listing is this browser's own `firefly.admin.data.page-size`; the
 dashboard-wide `firefly.admin.table.*` keys govern the [listing tables](admin.md) everywhere else, and **the
@@ -434,6 +437,16 @@ two apply in series**. The pair above is composed into the shared table settings
 read, so the rows-per-page control offers exactly the sizes this listing may serve — the shared set narrowed
 by `max-page-size`, with `page-size` always among them — and a deployment that sets
 `FIREFLY_ADMIN_DATA_PAGE_SIZE=10` is offered ten rows rather than being unable to say where it is.
+
+**That offered set is closed, not merely capped**, which is the one thing to know before reading a `?size=`
+in a URL. The listing's query is parsed against it, and a size that is not a member is **refused** — the
+listing falls back to `page-size` rather than being lowered to the nearest permitted value. So `?size=300`
+renders 25 rows on the defaults above, not 200; and so does `?size=10`, because ten is below the shared
+set's smallest member (`firefly.admin.table.page-sizes`, `25,50,100,200`) rather than above its ceiling.
+A deployment that wants ten rows offered says so — `FIREFLY_ADMIN_TABLE_PAGE_SIZES=10,25,50,100,200`, or
+`FIREFLY_ADMIN_DATA_PAGE_SIZE=10`, which forces its own default into the set. The reasoning is in
+`Firefly\Admin\Table\TableSettings`: the honest answers to a hand-edited "give me 19 999 rows" are a cap or
+a refusal, and a cap silently renders a page nobody asked for.
 
 ## Reflection is confined to one class
 

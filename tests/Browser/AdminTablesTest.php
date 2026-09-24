@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Admin\Table\TableColumn;
 use Firefly\Tests\Browser\Support\AdminDashboardBrowserTestCase;
 
 pest()->extend(AdminDashboardBrowserTestCase::class);
@@ -472,4 +473,79 @@ it('holds a full timestamp in a data-browser datetime column', function (): void
             JS, true)
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'admin-data-datetime-column');
+});
+
+/**
+ * THE HEADERS OF THE ONE LISTING WHOSE LABELS NOBODY WROTE, measured.
+ *
+ * Every other listing on this dashboard has hand-written labels beside hand-tuned widths, and the wave has
+ * a browser test per page saying so — the verb `DELETE`, the widest level name, the `Default` chip. The
+ * data browser humanises a database column name instead, so `failed_login_attempts` draws
+ * `Failed login attempts` and no author ever saw it; sized from the column TYPE alone that header rendered
+ * 184px inside a 126px box and read `FAILED LOGIN ATTE`, cut mid-glyph with nothing saying it was cut.
+ *
+ * THE SECOND HALF IS THE INTERESTING HALF. `TableColumn::fittingItsHeader()` widens such a column from a
+ * CHARACTER COUNT, because PHP cannot measure a font — so the two constants it counts with are a claim
+ * about this stylesheet and this face, and a claim is worth exactly the measurement behind it. The
+ * inequality below is the whole claim: a label's drawn width plus the 13px the ordering indicator occupies
+ * must fit inside the `ch` budget PHP grants it. The labels are the ones a schema really produces,
+ * including the dearest per character (`Amount`, which clears its budget by under 4%) and the longest.
+ */
+it('fits a humanised header inside the width PHP computed for it', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedOrders();
+
+    $perCharacter = TableColumn::HEADER_CH_PER_CHARACTER;
+    $indicator = TableColumn::SORT_INDICATOR_CH;
+
+    visit('/firefly/data?resource=order-entity')
+        ->assertScript(<<<JS
+            (() => {
+                const table = document.querySelector('table.datatable');
+                if (table === null) { return 'no data-browser listing on the page'; }
+
+                // What the page really drew: a <th> is `white-space:nowrap` inside `overflow:hidden`, so
+                // any overflow at all is a header cut mid-glyph.
+                for (const th of table.querySelectorAll('thead th')) {
+                    const over = th.scrollWidth - th.clientWidth;
+                    if (over > 0) {
+                        return 'the header ' + JSON.stringify(th.textContent.trim()) + ' is clipped by ' + over + 'px';
+                    }
+                }
+
+                // One colgroup `ch` in pixels, out of the font the sheet declares on the colgroup — the
+                // unit every number in TableColumn is counted in.
+                const probe = document.createElement('span');
+                document.body.appendChild(probe);
+                probe.style.cssText = 'position:absolute;visibility:hidden;width:1ch;font:'
+                    + getComputedStyle(table.querySelector('colgroup')).font;
+                const ch = probe.getBoundingClientRect().width;
+
+                // What the ordering indicator occupies: a 10px inline-block plus the anchor's 3px gap,
+                // declared in px and paid whether the column is the sorted one or not.
+                const anchor = table.querySelector('thead th a');
+                const header = getComputedStyle(table.querySelector('thead th'));
+                probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:' + header.font
+                    + ';letter-spacing:' + header.letterSpacing + ';text-transform:' + header.textTransform;
+                probe.textContent = anchor.childNodes[0].textContent.trim();
+                const ornament = anchor.getBoundingClientRect().width - probe.getBoundingClientRect().width;
+
+                for (const label of ['Id', 'Meta', 'Total', 'Amount', 'Active', 'Ship to', 'Customer',
+                                     'Quantity', 'Order id', 'Unit price', 'Created at', 'Total amount',
+                                     'Subscription id', 'Warehouse manager', 'Failed login attempts',
+                                     'Two factor recovery codes']) {
+                    probe.textContent = label;
+                    const needed = probe.getBoundingClientRect().width + ornament;
+                    const budget = (label.length * {$perCharacter} + {$indicator}) * ch;
+                    if (needed > budget) {
+                        return 'PHP budgets ' + budget.toFixed(1) + 'px for the header ' + JSON.stringify(label)
+                               + ' and it draws ' + needed.toFixed(1) + 'px (indicator ' + ornament.toFixed(1)
+                               + 'px, 1ch = ' + ch.toFixed(2) + 'px)';
+                    }
+                }
+
+                return true;
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
 });

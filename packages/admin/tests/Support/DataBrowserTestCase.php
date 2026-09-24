@@ -7,6 +7,7 @@ namespace Firefly\Admin\Tests\Support;
 use Firefly\Actuator\Introspection\BeansCatalog;
 use Firefly\Admin\Tests\Data\Fixtures\AdminLinkRepository;
 use Firefly\Admin\Tests\Data\Fixtures\AdminRecordRepository;
+use Firefly\Admin\Tests\Data\Fixtures\AdminSignInRepository;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
@@ -94,6 +95,36 @@ abstract class DataBrowserTestCase extends AdminCapstoneTestCase
         ]);
 
         $this->exposeRepository(AdminLinkRepository::class);
+    }
+
+    /**
+     * The same again, for a resource whose COLUMN NAMES ARE LONGER THAN ITS VALUES — the shape of any audit
+     * or sign-in table, and the one shape a hand-written dashboard listing never has.
+     *
+     * `admin_sign_ins` holds two digits and an instant under the headers `Failed login attempts` and
+     * `Last signed in at`, which `DataColumn::label()` humanised from the column names. A rigid column sized
+     * from its TYPE alone — thirteen characters for a count, nineteen for a timestamp — cannot hold either
+     * of them, and under `table-layout:fixed` it cannot grow to try. See the width assertion in
+     * DataBrowserPageTest.
+     *
+     * Public for the same reason its siblings are: Pest binds the closure's `$this` to a class PHPStan
+     * cannot relate to this one.
+     */
+    public function exposeAdminSignIns(): void
+    {
+        Schema::create('admin_sign_ins', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('email');
+            $table->integer('failed_login_attempts');
+            $table->dateTime('last_signed_in_at')->nullable();
+        });
+
+        DB::table('admin_sign_ins')->insert([
+            ['id' => 1, 'email' => 'ada@example.test', 'failed_login_attempts' => 0, 'last_signed_in_at' => '2026-01-01 10:00:00'],
+            ['id' => 2, 'email' => 'grace@example.test', 'failed_login_attempts' => 12, 'last_signed_in_at' => null],
+        ]);
+
+        $this->exposeRepository(AdminSignInRepository::class);
     }
 
     /**

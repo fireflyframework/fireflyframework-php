@@ -11,7 +11,9 @@ use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
 use Firefly\Admin\Data\ConnectionWizard;
 use Firefly\Admin\Data\DataBrowser;
+use Firefly\Admin\Data\DataColumn;
 use Firefly\Admin\Data\DataFilter;
+use Firefly\Admin\Data\DataListing;
 use Firefly\Admin\Data\DataMap;
 use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
@@ -385,11 +387,72 @@ final readonly class AdminAction
         return $this->html($this->render('data-list', [
             'listing' => $listing,
             'query' => $query,
+            'view' => $this->dataTableView($listing),
             'slice' => ListingPage::sliced($listing->rows, $listing->total, $query),
             'writable' => $this->data->isWritable(),
             'relations' => $this->data->relationsFor($slug),
             'operators' => DataFilter::operators(),
         ]), 200);
+    }
+
+    /**
+     * A listing of a browsable resource as a TableView — the same object the other twelve listings on this
+     * dashboard build, assembled from a resource's SCHEMA instead of from a hand-written column list.
+     *
+     * WHY THIS EXISTS RATHER THAN A SECOND COLGROUP. `data-list.blade.php` used to write its own width
+     * expressions as literal strings: `calc(19ch + 2 * var(--row-x))` for a datetime, thirteen for the
+     * numeric kinds, `auto` for the rest. The nineteen was a COPY of `TableColumn::stamp()`'s default,
+     * under a comment claiming that the two mechanisms sizing a timestamp on this dashboard agreed — which
+     * nothing enforced, no test related, and a change to `stamp()` would have quietly falsified. It is that
+     * default now, so there is one number and moving it moves both. What the view keeps is the
+     * `t-<dbtype>` class on each cell: those are the DATABASE's types — int, float, bool, datetime, string,
+     * json — a fact about the resource DataSchema derived, and ColumnKind models presentation kinds rather
+     * than types. So the widths are shared and the header row is not.
+     *
+     * AND THE RIGID WIDTHS ARE FITTED TO THE HEADERS HERE, which no other listing needs. Every other page's
+     * labels are hand-written beside the width chosen to hold them; this one's are humanised from a column
+     * name nobody picked for its length, so `failed_login_attempts` draws a 21-character header into a
+     * column sized for a five-figure count and `overflow:hidden` takes the rest. See
+     * TableColumn::fittingItsHeader().
+     */
+    private function dataTableView(DataListing $listing): TableView
+    {
+        $sortable = $listing->schema?->sortable() ?? [];
+
+        $columns = array_map(
+            static function (DataColumn $column) use ($sortable): TableColumn {
+                $key = $column->name;
+                $label = $column->label();
+                $orderable = in_array($key, $sortable, true);
+
+                return match ($column->type) {
+                    DataColumn::TYPE_DATETIME => TableColumn::stamp($key, $label, sortable: $orderable),
+                    // THIRTEEN, WHERE A HAND-WRITTEN `number()` TAKES NINE. Nine characters is a
+                    // five-figure count with its thousands separator, which is what a dashboard column an
+                    // author chose holds. This one holds whatever its type admits: a bigint key, a
+                    // `decimal(12,2)` total that arrives as the string `1234567.89`, or the word `false`.
+                    DataColumn::TYPE_INT, DataColumn::TYPE_FLOAT, DataColumn::TYPE_BOOL => TableColumn::number($key, $label, ch: 13, sortable: $orderable),
+                    // Text and json take a SHARE of what the rigid columns leave, which is where a reader
+                    // of a data browser needs the room — and an equal share only because a schema gives no
+                    // ground to prefer one text column over another.
+                    default => TableColumn::text($key, $label, sortable: $orderable),
+                };
+            },
+            $listing->columns(),
+        );
+
+        $columns = array_map(
+            static fn (TableColumn $column): TableColumn => $column->fittingItsHeader(),
+            $columns,
+        );
+
+        if ($listing->schema?->identifierColumn() !== null) {
+            // NINE, WHERE `actions()` DEFAULTS TO ELEVEN: eleven is a column holding a form with a button,
+            // and this one holds a single `Open →` link. Its header is empty, so nothing fits it to.
+            $columns[] = TableColumn::actions(ch: 9);
+        }
+
+        return TableView::of(...$columns);
     }
 
     /**

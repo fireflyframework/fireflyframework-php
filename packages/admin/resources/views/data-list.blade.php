@@ -2,7 +2,6 @@
 @section('title', 'Browse data')
 @section('body')
     @php
-        use Firefly\Admin\Data\DataColumn;
         use Firefly\Admin\Format;
 
         $resource = $listing->resource;
@@ -182,37 +181,30 @@
                          a fact about the resource DataSchema derived rather than a presentation choice this
                          view makes, and which no other page has. --}}
                     <table class="ftable datatable">
-                        {{-- The <colgroup> the rest of the dashboard gets from TableView, computed here
-                             from the SCHEMA instead: this table's columns come from a resource, not from a
-                             hand-written view model. A column whose values have a known maximum width takes
-                             it and no more (the padding is added because box-sizing is border-box), and the
-                             text and json columns share what is left — which is where a reader needs it. --}}
+                        {{-- THE SAME COLGROUP THE SHARED `_table-head` EMITS, off the same TableView — see
+                             AdminAction::dataTableView(), which maps each DataColumn onto the TableColumn
+                             kind that already knows how wide it is, and widens the rigid ones until the
+                             humanised header fits too. What this page cannot take from that partial is the
+                             <thead> under it: the `t-<dbtype>` classes below are the DATABASE's types, a
+                             fact about the resource DataSchema derived, and ColumnKind models presentation
+                             kinds rather than types. So the widths are shared and the header row is not. --}}
                         <colgroup>
-                            @foreach ($columns as $column)
-                                @php
-                                    // A STAMP IS NOT THIRTEEN CHARACTERS WIDE. Every rigid type here has a
-                                    // known maximum, but they do not share one: `2026-01-01 10:00:00` is
-                                    // NINETEEN, which is the number `TableColumn::stamp()` already carries
-                                    // for exactly this string, so the two mechanisms that size a timestamp
-                                    // on this dashboard agree instead of each guessing. Thirteen is what an
-                                    // int, a float and a boolean need, and at thirteen the stamp's own span
-                                    // measures 143px of text inside a 98px box — under `table-layout:fixed`
-                                    // the operator then reads `2026-01-01 10…` as the whole instant.
-                                    $width = match ($column->type) {
-                                        DataColumn::TYPE_DATETIME => 'calc(19ch + 2 * var(--row-x))',
-                                        DataColumn::TYPE_INT, DataColumn::TYPE_FLOAT, DataColumn::TYPE_BOOL => 'calc(13ch + 2 * var(--row-x))',
-                                        default => 'auto',
-                                    };
-                                @endphp
-                                <col style="width:{{ $width }}">
-                            @endforeach
-                            @if ($identifier !== null)<col style="width:calc(9ch + 2 * var(--row-x))">@endif
+                            @foreach ($view->widths() as $width)<col style="width:{{ $width }}">@endforeach
                         </colgroup>
                         <thead>
                         <tr>
                             @foreach ($columns as $column)
-                                {{-- sortable() returns column NAMES, not DataColumn objects. --}}
-                                <th class="t-{{ $column->type }} @if ($column->identifier) idcol @endif">
+                                {{-- sortable() returns column NAMES, not DataColumn objects.
+
+                                     `title` BECAUSE THE WIDTH THAT HOLDS THIS LABEL IS AN ESTIMATE. PHP
+                                     cannot measure a font, so the column was widened from a character
+                                     count (TableColumn::HEADER_CH_PER_CHARACTER) and a label of unusually
+                                     wide glyphs can still outrun it — at which point `overflow:hidden`
+                                     takes the tail off in silence. The full label on hover is what `_cell`
+                                     already gives a clipped value. `scope="col"` is the partial's, and a
+                                     header that announces itself to a screen reader on one listing should
+                                     do it on all of them. --}}
+                                <th class="t-{{ $column->type }} @if ($column->identifier) idcol @endif" scope="col" title="{{ $column->label() }}">
                                     @if (in_array($column->name, $schema->sortable(), true))
                                         <a href="{{ $query->sortLink($column->name) }}">
                                             {{ $column->label() }}<span class="ord">{{ $query->indicator($column->name) }}</span>
@@ -222,7 +214,7 @@
                                     @endif
                                 </th>
                             @endforeach
-                            @if ($identifier !== null)<th></th>@endif
+                            @if ($identifier !== null)<th scope="col"></th>@endif
                         </tr>
                         </thead>
                         <tbody>
