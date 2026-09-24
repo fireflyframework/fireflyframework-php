@@ -4,6 +4,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.5] - 2026-09-24
+
 Two things the same application found, one on a developer's machine and one on a shared Kafka topic. Delete a
 `#[Component]`, forget to recompile, and neither of the two commands that exist to repair the compiled cache
 could run any more. And a `<topic>.DLT` that LaraFly and PyFly both publish to held two kinds of record:
