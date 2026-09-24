@@ -28,7 +28,9 @@ uses(KafkaIntegrationTestCase::class);
  * must see nothing — Kafka's own redelivery would prove the commit did NOT happen.
  *
  * Test 2 proves nack(requeue: false) is Kafka's DEAD-LETTER TOPIC path (no broker-native DLX, unlike RabbitMQ): a
- * forced dead-letter re-produces the envelope to "<topic>.DLT", verified by consuming that topic directly.
+ * forced dead-letter re-produces the envelope to "<topic>.DLT", verified by consuming that topic directly — with the
+ * `x-dlt-reason` / `x-dlt-source-topic` / `x-dlt-source-offset` headers PyFly writes on the same topics, which only a
+ * real broker can prove, because producev() is the one call in this package that no unit test can reach.
  */
 it('round-trips publish -> consume -> handler -> commit against a real Kafka, and commit() prevents redelivery', function () {
     $brokers = (string) getenv('FIREFLY_KAFKA_BROKERS');
@@ -122,6 +124,17 @@ it('routes an exhausted retry (nack requeue:false) to the "<topic>.DLT" dead-let
     }
 
     expect($dltReceived->envelope->payload['id'] ?? null)->toBe(99);
+
+    // AND THE PROVENANCE, on the real broker, which is the only place the producev() call is exercised at all: the
+    // three headers PyFly stamps on the records it dead-letters onto these same topics. Read off the rdkafka Message
+    // the record carries as its delivery tag — the DLT consumer's own poll() decodes the body, not the headers.
+    $tag = $dltReceived->deliveryTag;
+    /** @var array<string, string> $headers */
+    $headers = is_object($tag) && property_exists($tag, 'headers') && is_array($tag->headers) ? $tag->headers : [];
+
+    expect($headers['x-dlt-reason'] ?? null)->toBe(KafkaEventConsumer::REASON_RETRIES_EXHAUSTED)
+        ->and($headers['x-dlt-source-topic'] ?? null)->toBe($topic)
+        ->and($headers['x-dlt-source-offset'] ?? null)->toMatch('/^\d+$/');
 })->skip(
     ! extension_loaded('rdkafka') || getenv('FIREFLY_KAFKA_BROKERS') === false,
     'requires ext-rdkafka + FIREFLY_KAFKA_BROKERS',

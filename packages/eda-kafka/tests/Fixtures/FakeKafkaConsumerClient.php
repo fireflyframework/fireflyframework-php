@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Firefly\Eda\Kafka\Tests\Fixtures;
 
 use Firefly\Eda\Consumer\ReceivedEnvelope;
-use Firefly\Eda\EventEnvelope;
 use Firefly\Eda\Kafka\KafkaConsumerClient;
 
 /**
@@ -25,11 +24,8 @@ final class FakeKafkaConsumerClient implements KafkaConsumerClient
     /** @var list<mixed> every delivery tag commit() was called with, in order */
     public array $committed = [];
 
-    /** @var list<array{0: EventEnvelope, 1: string}> every [envelope, dltTopic] deadLetter() was called with */
+    /** @var list<array{0: ReceivedEnvelope, 1: string, 2: string}> every [record, dltTopic, reason] deadLetter() got */
     public array $deadLettered = [];
-
-    /** @var list<array{0: string, 1: string}> every [raw, dltTopic] deadLetterRaw() was called with */
-    public array $deadLetteredRaw = [];
 
     public int $closeCalls = 0;
 
@@ -48,14 +44,9 @@ final class FakeKafkaConsumerClient implements KafkaConsumerClient
         $this->committed[] = $deliveryTag;
     }
 
-    public function deadLetter(EventEnvelope $envelope, string $dltTopic): void
+    public function deadLetter(ReceivedEnvelope $received, string $dltTopic, string $reason): void
     {
-        $this->deadLettered[] = [$envelope, $dltTopic];
-    }
-
-    public function deadLetterRaw(string $raw, string $dltTopic): void
-    {
-        $this->deadLetteredRaw[] = [$raw, $dltTopic];
+        $this->deadLettered[] = [$received, $dltTopic, $reason];
     }
 
     public function close(): void

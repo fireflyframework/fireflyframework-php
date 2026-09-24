@@ -57,24 +57,74 @@ it('nack(requeue: false) dead-letters the envelope to "<destination>.DLT" THEN c
     $client = new FakeKafkaConsumerClient;
     $consumer = new KafkaEventConsumer($client);
     $envelope = new EventEnvelope('order.created', 'order.events', ['id' => 42]);
+    $received = new ReceivedEnvelope($envelope, 'tag-5');
 
-    $consumer->nack(new ReceivedEnvelope($envelope, 'tag-5'), false);
+    $consumer->nack($received, false);
 
-    expect($client->deadLettered)->toBe([[$envelope, 'order.events.DLT']])
+    // A record that decoded perfectly well and then ran out of retries names no exception, because the transport
+    // never saw one — the listener's error strategy did.
+    expect($client->deadLettered)->toBe([[$received, 'order.events.DLT', KafkaEventConsumer::REASON_RETRIES_EXHAUSTED]])
         ->and($client->committed)->toBe(['tag-5']);
 });
 
-it('dead-letters a POISON record\'s raw bytes to "<topic>.DLT" then commits, so the loop never re-reads it', function () {
+it('dead-letters a POISON record to "<topic>.DLT" naming the throw that refused it, then commits', function () {
     $client = new FakeKafkaConsumerClient;
     $consumer = new KafkaEventConsumer($client);
     $poison = ReceivedEnvelope::poison('{"eventId": 1, "no": "shape"}', 'tag-3', new RuntimeException('shape'), 'order.events');
 
     $consumer->nack($poison, false);
 
-    // The RAW bytes, not a re-encoded approximation, so a fixed producer can be replayed byte for byte.
-    expect($client->deadLetteredRaw)->toBe([['{"eventId": 1, "no": "shape"}', 'order.events.DLT']])
-        ->and($client->deadLettered)->toBe([])
+    // The whole record goes over, so the client still has the RAW bytes (never a re-encoded approximation) AND the
+    // provenance the DLT needs. The reason is the throw's SHORT class name — `type(exc).__name__` on the PyFly side
+    // of the same topic.
+    expect($client->deadLettered)->toBe([[$poison, 'order.events.DLT', 'RuntimeException']])
+        ->and($client->deadLettered[0][0]->raw)->toBe('{"eventId": 1, "no": "shape"}')
         ->and($client->committed)->toBe(['tag-3']);
+});
+
+/*
+ | LARAFLY WROTE A DEAD-LETTER RECORD WITH NO HEADERS AT ALL, AND PYFLY WROTE THREE.
+ |
+ | dworkers runs both frameworks against shared topics, so one `<topic>.DLT` held two kinds of record: PyFly's, which
+ | says why it died and where it came from, and LaraFly's, which was raw bytes with no provenance whatsoever. Whoever
+ | drained that topic could not tell a LaraFly poison record from a replayed payload, and the offset needed to go back
+ | and look at the original was not there to be read. `grep -rn 'x-dlt' packages/` returned nothing.
+ |
+ | The header names and the reason's spelling are PyFly's, exactly (src/pyfly/eda/adapters/kafka.py), because a topic
+ | both frameworks publish to is only readable if one `kcat -C -t <topic>.DLT -f '%h'` explains every record on it.
+ */
+it('stamps the three provenance headers PyFly stamps, spelled the same way', function () {
+    $received = new ReceivedEnvelope(
+        new EventEnvelope('order.created', 'order.events', ['id' => 1]),
+        // The delivery tag is the rdkafka Message in production; this stands in for it, which is the point of
+        // reading the offset off a property rather than off an instanceof.
+        (object) ['offset' => 4207],
+        destination: 'order.events',
+    );
+
+    expect(RdKafkaConsumerClient::dltHeaders($received, 'JsonException'))->toBe([
+        'x-dlt-reason' => 'JsonException',
+        'x-dlt-source-topic' => 'order.events',
+        'x-dlt-source-offset' => '4207',
+    ]);
+});
+
+// An `x-dlt-source-offset` of '' reads as an offset and sends whoever is draining the topic looking for it. A header
+// the record cannot answer is left out instead.
+it('leaves out a provenance header the record cannot answer rather than writing it empty', function () {
+    $headers = RdKafkaConsumerClient::dltHeaders(ReceivedEnvelope::poison('bytes', 'a-string-tag', new RuntimeException('x')), 'RuntimeException');
+
+    expect($headers)->toBe(['x-dlt-reason' => 'RuntimeException']);
+});
+
+it('re-produces a poison record byte for byte and re-encodes anything else', function () {
+    $serializer = new JsonSerializer;
+    $envelope = new EventEnvelope('order.created', 'order.events', ['id' => 7]);
+
+    expect(RdKafkaConsumerClient::dltPayload(ReceivedEnvelope::poison('{"not":"an envelope"}', 'tag', new RuntimeException('x')), $serializer))
+        ->toBe('{"not":"an envelope"}')
+        ->and(RdKafkaConsumerClient::dltPayload(new ReceivedEnvelope($envelope, 'tag'), $serializer))
+        ->toBe($serializer->serialize($envelope));
 });
 
 /*

@@ -4,9 +4,53 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
-One defect, reported by the same application that reported the `26.09.4` list, and it is the one a developer
-hits on an ordinary afternoon: delete a `#[Component]`, forget to recompile, and neither of the two commands
-that exist to repair the compiled cache can run any more. Nothing here changes what a served request does.
+Two things the same application found, one on a developer's machine and one on a shared Kafka topic. Delete a
+`#[Component]`, forget to recompile, and neither of the two commands that exist to repair the compiled cache
+could run any more. And a `<topic>.DLT` that LaraFly and PyFly both publish to held two kinds of record:
+PyFly's, which says why it died and where it came from, and LaraFly's, which was raw bytes with no provenance
+at all. Nothing here changes what a served request does.
+
+### BREAKING
+
+- **`packages/eda-kafka` — `KafkaConsumerClient::deadLetter()` takes the whole record and a reason, and
+  `deadLetterRaw()` is gone.** The port had two dead-letter methods — one taking an `EventEnvelope` for an
+  exhausted retry, one taking raw bytes for a poison record — and both wrote a record with **no headers at
+  all**. That is what a shared dead-letter topic cannot afford. dworkers runs LaraFly and PyFly against the
+  same topics, and PyFly has stamped `x-dlt-reason`, `x-dlt-source-topic` and `x-dlt-source-offset` on every
+  record it dead-letters since `v26.09.06`, so whoever drained a `<topic>.DLT` could not tell a LaraFly poison
+  record from a replayed payload, and the offset needed to go back and look at the original was not there.
+  `grep -rn 'x-dlt' packages/` returned nothing. The two methods are now one —
+  `deadLetter(ReceivedEnvelope $received, string $dltTopic, string $reason)` — because the record already
+  carries everything the provenance needs (the bytes or the envelope, the topic it was read from, and the
+  broker handle its offset hangs off), and only the consumer knows *why*. **Migration:** an application that
+  implements `KafkaConsumerClient` itself — a test double, or a client wrapping a different Kafka extension —
+  replaces its two methods with the one. Nothing else: `KafkaEventConsumer` is the only caller, and an
+  application that merely *uses* the Kafka adapter sees no API change, only three headers it did not have.
+
+### Added
+
+- **`packages/eda-kafka` — every record LaraFly dead-letters to a `<topic>.DLT` carries `x-dlt-reason`,
+  `x-dlt-source-topic` and `x-dlt-source-offset`.** The names and the reason's spelling are PyFly's, exactly:
+  the short class name of the throw that refused the bytes (`SerializationException`, `JsonException`, …,
+  which is PyFly's `type(exc).__name__`), or `RetriesExhausted` for a record that decoded perfectly well and
+  then ran out of retries — a case PyFly does not have, because it deliberately does not dead-letter handler
+  failures. The source topic is the one the record was **consumed** from, not the DLT and not the envelope's
+  declared destination. A header the record cannot answer is left out rather than written empty, because an
+  empty offset reads as an offset. Written with `producev()` (ext-rdkafka ≥ 3.1, well below the
+  `librdkafka >= 1.5.3` this package already suggests); the poison path still re-produces the **raw bytes
+  verbatim**, so a fixed producer can replay them byte for byte. RabbitMQ needs none of this and gets none:
+  the broker itself stamps `x-death` on everything its `x-dead-letter-exchange` routes, and the framework
+  never republishes a message there to have an opinion about.
+- **`packages/context` — `Firefly\Context\Scan\AppScan::repairing()`**, true while `firefly:cache` *or*
+  `firefly:clear` is the running command. Deliberately wider than `regenerating()` and kept separate from it:
+  `regenerating()` also decides whether a capability reads its compiled artifact or re-scans, which is a
+  question `firefly:clear` — which reads nothing and writes nothing — has no business answering.
+- **`packages/context` — `Firefly\Context\Definition\StaleDefinitionReport`**, the append-only record of
+  what a repair boot dropped, bound as a container singleton by `FireflyAutoConfigureServiceProvider` and read
+  by `firefly:cache`. Shaped like `ConditionEvaluationReport`, for the same reason: reporting through a logger
+  would put a `psr/log` edge on the boot engine, which neither `firefly/context` nor `firefly/container`
+  carries. `BeanDefinitionRegistry` takes it, and the drop flag, as constructor arguments that both default to
+  the previous behaviour — an existing `new BeanDefinitionRegistry` filters nothing and reports nothing.
 
 ### Fixed
 
@@ -37,19 +81,6 @@ that exist to repair the compiled cache can run any more. Nothing here changes w
   hand the application an interface quietly rebound to whichever implementation happened to survive, with
   nothing said anywhere. Only a MISSING class is ever tolerated: a class that exists and cannot be constructed
   still fails fast, in a repair command as much as anywhere else.
-
-### Added
-
-- **`packages/context` — `Firefly\Context\Scan\AppScan::repairing()`**, true while `firefly:cache` *or*
-  `firefly:clear` is the running command. Deliberately wider than `regenerating()` and kept separate from it:
-  `regenerating()` also decides whether a capability reads its compiled artifact or re-scans, which is a
-  question `firefly:clear` — which reads nothing and writes nothing — has no business answering.
-- **`packages/context` — `Firefly\Context\Definition\StaleDefinitionReport`**, the append-only record of
-  what a repair boot dropped, bound as a container singleton by `FireflyAutoConfigureServiceProvider` and read
-  by `firefly:cache`. Shaped like `ConditionEvaluationReport`, for the same reason: reporting through a logger
-  would put a `psr/log` edge on the boot engine, which neither `firefly/context` nor `firefly/container`
-  carries. `BeanDefinitionRegistry` takes it, and the drop flag, as constructor arguments that both default to
-  the previous behaviour — an existing `new BeanDefinitionRegistry` filters nothing and reports nothing.
 
 ## [26.09.4] - 2026-09-23
 

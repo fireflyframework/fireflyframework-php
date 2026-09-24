@@ -34,6 +34,11 @@ use Firefly\Eda\Consumer\ReceivedEnvelope;
  * offset — so the exhausted record is never redelivered from its original topic, mirroring RabbitMqEventConsumer's DLX
  * routing outcome with a topic instead of an exchange. The DLT topic is derived from the broker-agnostic
  * EventEnvelope::$destination (the topic the publisher targeted), keeping this layer free of `\RdKafka\Message`.
+ *
+ * WHAT THIS LAYER OWES THE DLT is the REASON, and only the reason. The record already knows the bytes, the topic it
+ * was read from and the broker handle its offset hangs off, so the client can stamp those itself; why the record is
+ * being dead-lettered is a distinction only this method makes — a body the serializer refused, or a body that decoded
+ * and then ran out of retries — and reasonFor() is where it is named.
  */
 final class KafkaEventConsumer implements EventConsumer
 {
@@ -83,18 +88,38 @@ final class KafkaEventConsumer implements EventConsumer
 
         $envelope = $received->envelope;
 
-        if ($envelope === null) {
-            // A poison record: the RAW bytes go to the DLT of the topic they were read from, verbatim, and the
-            // offset is committed so the loop never reads them again. The topic comes from the record because
-            // there is no envelope to read a destination off.
-            $this->client->deadLetterRaw((string) $received->raw, ($received->destination ?? 'unknown').$this->deadLetterSuffix);
-            $this->client->commit($received->deliveryTag);
+        // A poison record has no envelope to read a destination off, so the DLT is derived from the topic the
+        // record was READ from; anything else keeps deriving it from the destination the publisher targeted.
+        $origin = $envelope !== null ? $envelope->destination : ($received->destination ?? 'unknown');
 
-            return;
+        $this->client->deadLetter($received, $origin.$this->deadLetterSuffix, self::reasonFor($received));
+        $this->client->commit($received->deliveryTag);
+    }
+
+    /**
+     * Why this record is being dead-lettered, in the words the record itself supplies.
+     *
+     * A poison record answers with the SHORT class name of the throw that refused its bytes, which is exactly what
+     * PyFly writes into the same header on the same topics (`type(exc).__name__`): a `<topic>.DLT` that both
+     * frameworks publish to is only readable if `JsonException` means the same thing whichever side wrote it.
+     * A record that decoded perfectly well and then ran out of retries has no throw to name — the transport never
+     * saw one, the listener's error strategy did — so it gets the one word that is true of every record on that
+     * path, and is deliberately NOT a stand-in exception name that would read as a decode failure.
+     */
+    public const string REASON_RETRIES_EXHAUSTED = 'RetriesExhausted';
+
+    private static function reasonFor(ReceivedEnvelope $received): string
+    {
+        $failure = $received->failure;
+
+        if ($failure === null) {
+            return self::REASON_RETRIES_EXHAUSTED;
         }
 
-        $this->client->deadLetter($envelope, $envelope->destination.$this->deadLetterSuffix);
-        $this->client->commit($received->deliveryTag);
+        $class = $failure::class;
+        $separator = strrpos($class, '\\');
+
+        return $separator === false ? $class : substr($class, $separator + 1);
     }
 
     public function stop(): void
