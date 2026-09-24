@@ -1115,6 +1115,29 @@ return [
     //          | Default: false. Turn it on deliberately, on a machine where the payload is yours to read.
     //         */
     //         'disclose' => false,
+    //
+    //         /*
+    //          | RFC 9457 §3.1.1's `type` member: the URI reference that says WHAT KIND of problem this is,
+    //          | as opposed to `instance`, which identifies this one occurrence of it.
+    //          |
+    //          | THE RFC MAKES THIS A PRESENTATION CHOICE, NOT A CONFORMANCE ONE: §3.1.1 says an absent
+    //          | `type` is identical to `about:blank`, so a document without one has always been conformant.
+    //          | Spring Boot's ProblemDetail nevertheless serialises `about:blank` explicitly, and that is
+    //          | the default here for the same reason: a client reading `type` always finds a string and
+    //          | never has to know the RFC's equivalence rule to work out what its absence meant.
+    //          |
+    //          | THREE BEHAVIOURS, ONE KEY. 'about:blank' emits the RFC's own "no specific type". '' omits
+    //          | the member entirely, which is the pre-9457 document byte for byte. And a BASE URI derives a
+    //          | real, dereferenceable type from the stable error code every Firefly failure already carries
+    //          | — 'https://api.example.test/problems' turns a RESOURCE_NOT_FOUND into
+    //          | 'https://api.example.test/problems/resource-not-found', which a client can switch on and a
+    //          | person can open, built from the same identifier the log line and the support ticket quote.
+    //          | A code that slugs to nothing falls back to 'about:blank' rather than to the bare base: the
+    //          | base names the COLLECTION of problem types, not a member of it.
+    //          |
+    //          | Default: 'about:blank'.
+    //         */
+    //         'type-uri' => env('FIREFLY_WEB_PROBLEM_TYPE_URI', 'about:blank'),
     //     ],
     //
     //     /*

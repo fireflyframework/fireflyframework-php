@@ -38,7 +38,11 @@ it('renders a FireflyException as 404 application/problem+json', function () {
         ->and($payload['code'])->toBe('RESOURCE_NOT_FOUND')
         ->and($payload['category'])->toBe('business')
         ->and($payload['detail'])->toBe('Account 42 not found')
-        ->and($payload['instance'])->toBe('accounts/42');
+        // RFC 9457 §3.1.5: `instance` is a URI reference, and a RELATIVE one resolves against the document's
+        // base URI — so `accounts/42` served from /accounts/42 identifies /accounts/accounts/42. One
+        // character, and the member stops identifying the occurrence it exists to identify. Spring's
+        // ProblemDetail sets it from the request URI for the same reason.
+        ->and($payload['instance'])->toBe('/accounts/42');
 });
 
 it('converts a generic Throwable to a 500 problem+json', function () {
@@ -330,7 +334,10 @@ it('falls back to a minimal document rather than raising when a member cannot be
         // And the degraded body is still correlatable, which is the one action it exists to make possible.
         ->and($payload['traceId'])->toBe('corr-77')
         ->and($payload['correlationId'])->toBe('corr-77')
-        ->and($payload['instance'])->toBe('api/x')
+        // Root-relative here too, for RFC 9457 §3.1.5's reason — see the first test in this file. The
+        // degraded document carries the SAME member the healthy one would have carried, which is the whole
+        // promise minimal() makes: it diffs against the full document member for member.
+        ->and($payload['instance'])->toBe('/api/x')
         ->and($payload['timestamp'])->toBeString()
         // THE MEMBER STAYS AND SAYS WHAT IT IS. Deleting it published a document a healthy one could not
         // be told apart from, and took every OTHER extension member down with it — including `allowed`,
@@ -580,4 +587,49 @@ it('answers an extension member that refers to itself, instead of recursing unti
         ->and($payload['code'])->toBe('LEDGER_CONFLICT')
         ->and($context)->toBeArray()
         ->and(is_array($context) ? $context['tenant'] : null)->toBe('acme');
+});
+
+it('identifies the occurrence with a root-relative reference, at every depth and at the site root', function () {
+    $renderer = new ProblemDetailsRenderer;
+
+    $deep = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/api/v1/orders/42/lines/7'))->getContent(), true);
+    $root = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/'))->getContent(), true);
+
+    /** @var array<string,mixed> $deep */
+    /** @var array<string,mixed> $root */
+    expect($deep['instance'])->toBe('/api/v1/orders/42/lines/7')
+        ->and($root['instance'])->toBe('/');
+});
+
+it('carries about:blank as its problem type by default, the way Spring\'s ProblemDetail does', function () {
+    $payload = json_decode((string) (new ProblemDetailsRenderer)->render(new ResourceNotFoundException('x'), Request::create('/api/x'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload['type'])->toBe('about:blank')
+        // The member leads the document with the other standard ones, whatever extensions arrived.
+        ->and(array_slice(array_keys($payload), 0, 5))->toBe(['status', 'title', 'code', 'category', 'severity']);
+});
+
+it('derives a dereferenceable type from the stable code when the deployment names a base', function () {
+    $renderer = new ProblemDetailsRenderer(ErrorPageSettings::fromConfig(new Config(new Repository([
+        'firefly' => ['web' => ['problem' => ['type-uri' => 'https://api.example.test/problems']]],
+    ]))));
+
+    $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), Request::create('/api/orders/42'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload['type'])->toBe('https://api.example.test/problems/order-not-found')
+        ->and($payload['code'])->toBe('ORDER_NOT_FOUND')
+        ->and($payload['instance'])->toBe('/api/orders/42');
+});
+
+it('emits no type member at all when a deployment wants the pre-9457 document byte for byte', function () {
+    $renderer = new ProblemDetailsRenderer(ErrorPageSettings::fromConfig(new Config(new Repository([
+        'firefly' => ['web' => ['problem' => ['type-uri' => '']]],
+    ]))));
+
+    $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/api/x'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload)->not->toHaveKey('type');
 });

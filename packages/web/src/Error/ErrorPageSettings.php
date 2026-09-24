@@ -144,6 +144,9 @@ final readonly class ErrorPageSettings
         // Accept at all, or a named type this package renders no error in — gets a problem document rather
         // than Laravel's own page. See ErrorPageRenderer::rendersProblem() for the case this closes.
         public bool $problemFallback = true,
+        // RFC 9457 §3.1.1's `type`: 'about:blank' (the default, and what Spring's ProblemDetail emits), ''
+        // to omit the member, or a BASE URI from which the stable error code derives one. See ProblemType.
+        public string $typeUri = ProblemType::BLANK,
     ) {
         $this->home = self::url($home);
         $this->signIn = self::url($signIn);
@@ -209,6 +212,7 @@ final readonly class ErrorPageSettings
             // Explicit, and only explicit: no fallback to app.debug, no fallback to `trace`. See the class
             // comment for the leak that a shared gate produced.
             disclose: $config->bool('firefly.web.problem.disclose', false),
+            typeUri: $config->string('firefly.web.problem.type-uri', ProblemType::BLANK),
             // Handed over RAW: the constructor runs each of these through url(), so this call site cannot
             // be the one that forgets. The default home is the site root, because a page with no way off it
             // is the state every one of these screenshots was in.

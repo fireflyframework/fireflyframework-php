@@ -12,6 +12,7 @@ use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Kernel\Error\ErrorSeverity;
 use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ProblemMapper;
+use Firefly\Web\Error\ProblemType;
 use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Trace\TraceContext;
 use Illuminate\Http\Request;
@@ -120,13 +121,41 @@ final class ProblemDetailsRenderer
         // It is passed THROUGH ErrorResponse rather than written onto the array afterwards: the DTO's
         // member list is what the published OpenAPI component is generated and guarded from, so a member
         // appended here would be one no generated client decodes.
-        $payload = ErrorResponse::fromException(
+        $problem = ErrorResponse::fromException(
             $exception,
-            instance: $request->path(),
+            // RFC 9457 §3.1.5: `instance` is a URI REFERENCE, and a relative one resolves against the
+            // document's base URI — so the bare `api/orders/42` this used to pass, served from
+            // /api/orders/42, identified /api/api/orders/42. The rule is ProblemMapper's because the HTML
+            // page beside this one builds the same reference, and two spellings of it would eventually
+            // disagree about the same request.
+            instance: ProblemMapper::instanceFor($request),
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             correlationId: $correlationId,
-        )->toArray();
+        );
+
+        // RFC 9457 §3.1.1, carried on the DTO rather than written onto toArray()'s output: `type` is a
+        // DECLARED member of ErrorResponse and of the published ProblemSchema, and the class comment at
+        // ErrorResponse.php:24 is explicit that a member appended downstream is one every generated client
+        // drops. Re-declaring the DTO with one field changed is the honest way to set it on a readonly
+        // value object, and it keeps toArray()'s member ORDER the single source of truth.
+        $problem = new ErrorResponse(
+            status: $problem->status,
+            title: $problem->title,
+            code: $problem->code,
+            category: $problem->category,
+            severity: $problem->severity,
+            detail: $problem->detail,
+            type: ProblemType::of($problem->code, $this->settings instanceof ErrorPageSettings ? $this->settings->typeUri : ProblemType::BLANK),
+            instance: $problem->instance,
+            traceId: $problem->traceId,
+            errors: $problem->errors,
+            timestamp: $problem->timestamp,
+            extensions: $problem->extensions,
+            correlationId: $problem->correlationId,
+        );
+
+        $payload = $problem->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',

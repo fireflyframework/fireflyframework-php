@@ -427,13 +427,16 @@ final class ProblemDetailsRenderer
         $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
         // …
-        $payload = ErrorResponse::fromException(
+        $problem = ErrorResponse::fromException(
             $exception,
-            instance: $request->path(),
+            // …
+            instance: ProblemMapper::instanceFor($request),
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             correlationId: $correlationId,
-        )->toArray();
+        );
+        // …
+        $payload = $problem->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',
