@@ -7,9 +7,12 @@ namespace Firefly\Web\Error;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Firefly\Kernel\Exception\FireflyException;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -40,6 +43,37 @@ final class ErrorPageRenderer
         private readonly string $basePath = '',
         private readonly ?ViewFactory $views = null,
     ) {}
+
+    /**
+     * Whether this package may answer for this throwable AT ALL — asked before either negotiation below,
+     * because both of them look at the REQUEST and neither looks at what was thrown.
+     *
+     * THREE THROWABLES BELONG TO LARAVEL'S OWN HANDLER, AND CLAIMING THEM DESTROYS THE FAILURE.
+     * Handler::render() consults renderViaCallbacks() — where this package's renderable lives — BEFORE its
+     * own `match (true)`, whose arms resolve `HttpResponseException` (which literally CARRIES the response
+     * to return), `AuthenticationException` (401, or the guest redirect to the login page) and
+     * `ValidationException` (422 with the field errors, or a redirect back with them in the session). Not
+     * one of the three is a FireflyException, and not one implements HttpExceptionInterface, so
+     * ProblemMapper::toFireflyException() drops every one of them to its default arm and answers
+     * 500 / `INTERNAL_ERROR` / "An unexpected error occurred." — an opaque internal error in place of a
+     * precisely described one, reported as a 500 into the bargain. A form POST that failed validation came
+     * back as a 500 with no `errors` member in it; a 401 came back as a 500.
+     *
+     * That is exactly the silent failure this whole surface exists to remove, so the rule is the plain one:
+     * a throwable Laravel resolves for itself is not this package's to describe, and the renderable returns
+     * null for it — for the PAGE as well as for the problem document, because `handles()` reads the Accept
+     * header alone and would otherwise draw a diagnostic 500 page over a browser's redirect-back-with-errors.
+     *
+     * The list is named rather than derived because there is nothing to derive it from: the arms are a
+     * literal `match` in Laravel's handler, and a test in ErrorPageTest asserts this predicate against each
+     * of the three so a Laravel release that adds a fourth is a failing test and not a silent 500.
+     */
+    public function describes(Throwable $e): bool
+    {
+        return ! $e instanceof ValidationException
+            && ! $e instanceof AuthenticationException
+            && ! $e instanceof HttpResponseException;
+    }
 
     /** Whether this request should be answered with the HTML page rather than with problem+json. */
     public function handles(Request $request): bool
@@ -114,9 +148,17 @@ final class ErrorPageRenderer
      * are answered exactly as they were. Only the caller who expressed no preference changes, and only
      * because "no preference" plus "not a browser" leaves one shape that anything can read.
      *
-     * A BROWSER IS NEVER CAUGHT BY IT, INCLUDING WHEN THE PAGE IS OFF. `prefersHtml()` — not `handles()` —
-     * is the test, so `firefly.web.error-page.enabled => false`, whose documented meaning is "use Laravel's
-     * own error page", keeps meaning that instead of silently turning every browser 404 into JSON.
+     * IT IS ALSO GATED ON THE FLAG, FOR `forcesJson()`'S REASON. The fallback asks `prefersHtml()`, and
+     * `prefersHtml()` folds `json-paths` in — so without `enabled` on the term, an `api/*` URL hit by a
+     * BROWSER would be claimed here with the page switched off, which is precisely the answer the same flag
+     * on `forcesJson()` was written to withhold (`forces nothing at all when the page is switched off`).
+     * One key would have meant two things: "do not draw the page" for one branch and "draw nothing at all"
+     * for the branch beside it. `firefly.web.error-page.enabled => false` keeps its documented meaning —
+     * this package stops adding answers and Laravel's own handler is left to it — while a FireflyException
+     * and a JSON client, which were never gated on the flag, are still answered exactly as before.
+     *
+     * AND A THROWABLE LARAVEL RESOLVES ITSELF NEVER REACHES HERE: see describes(), which the renderable
+     * asks first, and which is the only part of this negotiation that looks at what was thrown.
      */
     public function rendersProblem(Throwable $e, Request $request): bool
     {
@@ -124,7 +166,7 @@ final class ErrorPageRenderer
             return true;
         }
 
-        return $this->settings->problemFallback && ! $this->prefersHtml($request);
+        return $this->settings->enabled && $this->settings->problemFallback && ! $this->prefersHtml($request);
     }
 
     public function render(Throwable $e, Request $request): Response

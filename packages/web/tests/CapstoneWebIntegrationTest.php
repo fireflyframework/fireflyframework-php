@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Web\Error\ProblemMapper;
+use Firefly\Web\Tests\Fixtures\Filters\CarriedResponseFilter;
 use Firefly\Web\Tests\Support\WebCapstoneTestCase;
 use Illuminate\Support\Facades\Log;
 use Psr\Log\AbstractLogger;
@@ -81,23 +82,89 @@ it('runs the WebFilter chain in order (correlation id echoed + user filters orde
         ->assertHeader('X-Filter-Trail', 'BA');
 });
 
-it('renders a generic Throwable as problem+json ONLY when the request expects JSON (expectsJson gate)', function () {
+it('renders a generic Throwable as a page ONLY for a caller that NAMED text/html, and as problem+json otherwise', function () {
     /** @var WebCapstoneTestCase $this */
-    // GET /boom/generic throws a plain \RuntimeException (NOT a FireflyException). The RFC-7807 renderable is
-    // gated on `$e instanceof FireflyException || $request->expectsJson()`, so a generic error becomes
-    // problem+json for a JSON client and otherwise falls through to Laravel's default handler.
+    // GET /boom/generic throws a plain \RuntimeException (NOT a FireflyException). The renderable asks
+    // ErrorPageRenderer::handles() first — the page is for a caller that NAMED text/html — and
+    // rendersProblem() second, which claims a JSON client, a json-paths URL and, through
+    // `firefly.web.error-page.problem-fallback`, a caller that named nothing acceptable at all.
     $this->getJson('/boom/generic')
         ->assertStatus(500)
         ->assertHeader('Content-Type', 'application/problem+json');
 
-    // Same route, non-JSON Accept: the generic Throwable must NOT be rendered as problem+json. Dropping the
-    // expectsJson() gate (rendering generic Throwables unconditionally) would make this branch wrongly return
-    // problem+json and fail the assertion below.
+    // A WILDCARD is not an opinion. `Accept: */*` is what a bare curl and a default fetch() send, and
+    // `acceptsHtml()` answers true for it — so keying the page off that would hand every unadorned
+    // command-line request a page of markup. It gets the document instead.
+    $this->call('GET', '/boom/generic', server: ['HTTP_ACCEPT' => '*/*'])
+        ->assertStatus(500)
+        ->assertHeader('Content-Type', 'application/problem+json');
+
+    // And so does a caller that sent no Accept at all. '' is as close as this harness gets: Symfony's
+    // Request::create() — which every call() here goes through — REPLACES an absent HTTP_ACCEPT with a
+    // browser's, and the predicate reads `headers->get('Accept', '')`, so an empty header and an absent
+    // one are the same string by the time it is asked. ErrorPageTest covers the genuinely absent one.
+    $this->call('GET', '/boom/generic', server: ['HTTP_ACCEPT' => ''])
+        ->assertStatus(500)
+        ->assertHeader('Content-Type', 'application/problem+json');
+
+    // Same route, a caller that NAMED text/html: this one, and only this one, gets the page. Dropping the
+    // handles() branch (rendering every generic Throwable as a document) would fail the assertion below.
     $html = $this->get('/boom/generic', ['Accept' => 'text/html']);
 
     /** @var Response $base */
     $base = $html->baseResponse;
     expect((string) $base->headers->get('Content-Type'))->not->toContain('application/problem+json');
+});
+
+/*
+ * AND THREE THROWABLES ARE NOT THIS PACKAGE'S TO ANSWER IN EITHER SHAPE. Handler::render() consults
+ * renderViaCallbacks() — where the renderable above is registered — BEFORE the `match (true)` that resolves
+ * HttpResponseException, AuthenticationException and ValidationException. None of the three is a
+ * FireflyException or an HttpExceptionInterface, so ProblemMapper drops each to its default arm and answers
+ * 500 / INTERNAL_ERROR / "An unexpected error occurred." — a described failure replaced by an opaque one,
+ * which is the shape this wave exists to remove. Only the real pipeline can falsify it: a unit test of the
+ * predicate cannot see which exceptions Laravel's own handler would have resolved one arm later.
+ */
+it('leaves a Laravel ValidationException to Laravel, so a 422 keeps its status and its field errors', function () {
+    /** @var WebCapstoneTestCase $this */
+    // POST /boom/validated runs Laravel's own validator, not LaraFly's #[Valid] — an ordinary thing for an
+    // application built on this framework to do.
+    $this->postJson('/boom/validated', ['email' => 'nope'])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.email.0', 'The email field must be a valid email address.');
+
+    // The wildcard caller is the one the fallback introduced and the one it broke: claiming it turned
+    // Laravel's redirect-back-with-errors into a 500 problem+json with no `errors` member in it.
+    $wildcard = $this->call('POST', '/boom/validated', ['email' => 'nope'], server: ['HTTP_ACCEPT' => '*/*']);
+
+    $wildcard->assertStatus(302)->assertSessionHasErrors(['email']);
+    expect((string) $wildcard->headers->get('Content-Type'))->not->toContain('application/problem+json');
+});
+
+it('leaves a Laravel AuthenticationException to Laravel, so a 401 stays a 401 and a person still reaches the login page', function () {
+    /** @var WebCapstoneTestCase $this */
+    $this->getJson('/boom/unauthenticated')
+        ->assertStatus(401)
+        ->assertJsonPath('message', 'Unauthenticated.');
+
+    // Handler::unauthenticated() sends anyone who did not ask for JSON to the login page. Claiming the
+    // exception published a 500 to both, which is a sign-in prompt turned into an internal error.
+    $this->call('GET', '/boom/unauthenticated', server: ['HTTP_ACCEPT' => '*/*'])
+        ->assertStatus(302)
+        ->assertRedirect('/boom/login');
+});
+
+it('leaves an HttpResponseException to Laravel, so the response the application already built survives', function () {
+    /** @var WebCapstoneTestCase $this */
+    // The most literal form of the failure: this exception CARRIES the response to return, and Laravel's
+    // handler returns it verbatim one `match` arm after the renderable. Describing it instead threw that
+    // response away and answered 500. Thrown from the FILTER CHAIN rather than from a controller, because
+    // Illuminate\Routing\Route::run() catches it inside the route and it would never reach the handler at
+    // all — see CarriedResponseFilter.
+    $response = $this->call('GET', '/'.CarriedResponseFilter::PATH, server: ['HTTP_ACCEPT' => '*/*']);
+
+    $response->assertStatus(418);
+    expect((string) $response->getContent())->toBe(CarriedResponseFilter::BODY);
 });
 
 it('answers a malformed #[PathVariable(pattern:)] segment with the entity\'s own 404 through the real pipeline', function () {

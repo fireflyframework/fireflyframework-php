@@ -13,9 +13,16 @@ use Firefly\Web\Error\ErrorReport;
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Exception\ProblemDetailsRenderer;
 use Firefly\Web\Trace\TraceContext;
+use Illuminate\Auth\AuthenticationException as LaravelAuthenticationException;
 use Illuminate\Config\Repository;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Validator;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -1347,4 +1354,48 @@ it('claims nothing at all when the page is switched off and the caller is a brow
 
     expect($off->handles($browser))->toBeFalse()
         ->and($off->rendersProblem(new NotFoundHttpException, $browser))->toBeFalse();
+});
+
+it('does not re-introduce an api/* path through the fallback that forcesJson() withholds when the page is off', function () {
+    // THE HOLE THE FLAG GATE CLOSES. `prefersHtml()` folds `json-paths` in — deliberately, because an api/*
+    // URL is a machine surface whatever header arrived — so an UNGATED fallback answered true for a BROWSER
+    // on an api/* path with the page switched off, which is exactly the answer the `enabled` gate on
+    // forcesJson() withholds two lines above (`forces nothing at all when the page is switched off`). One
+    // key cannot mean "do not draw the page" on one branch and "draw nothing at all" on the branch beside it.
+    $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: false, jsonPaths: ['api/*']));
+    $browser = Request::create('/api/nope', 'GET', server: ['HTTP_ACCEPT' => 'text/html,application/xhtml+xml']);
+
+    expect($off->forcesJson($browser))->toBeFalse()
+        ->and($off->rendersProblem(new NotFoundHttpException, $browser))->toBeFalse()
+        // A wildcard caller on the same switched-off application falls through too: the fallback is one of
+        // the answers this package offers, and the flag withdraws them rather than choosing between them.
+        ->and($off->rendersProblem(new NotFoundHttpException, Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => '*/*'])))->toBeFalse()
+        // What was never gated on the flag stays exactly as it was: a FireflyException and a JSON client
+        // are still answered with a problem document.
+        ->and($off->rendersProblem(new ResourceNotFoundException('x', 'X'), $browser))->toBeTrue()
+        ->and($off->rendersProblem(new NotFoundHttpException, Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => 'application/json'])))->toBeTrue();
+});
+
+it('describes nothing that Laravel\'s own handler resolves after the renderable callbacks run', function () {
+    // THE TERM THAT LOOKS AT WHAT WAS THROWN. handles() and rendersProblem() both read the REQUEST, so
+    // neither can tell a failure this package describes from one Laravel is about to resolve itself.
+    // Handler::render() consults renderViaCallbacks() BEFORE its `match (true)`, and none of the three arms
+    // below is a FireflyException or an HttpExceptionInterface — so ProblemMapper drops every one of them
+    // to its default arm and turns a 422 with field errors, a 401, and a response the application had
+    // already BUILT into 500 / INTERNAL_ERROR / "An unexpected error occurred.".
+    $renderer = new ErrorPageRenderer(new ErrorPageSettings(enabled: true));
+    // Built rather than raised through the facade, because this file boots no application: the predicate
+    // asks only what the throwable IS, and the capstone next door proves the pipeline consequence.
+    $failed = new Validator(new Translator(new ArrayLoader, 'en'), ['email' => 'nope'], ['email' => ['email']]);
+
+    expect($renderer->describes(new ValidationException($failed)))->toBeFalse()
+        ->and($renderer->describes(new LaravelAuthenticationException))->toBeFalse()
+        ->and($renderer->describes(new HttpResponseException(new SymfonyResponse('already built', 418))))->toBeFalse()
+        // And everything this package CAN describe is still its own: the taxonomy, the router's misses and
+        // the accidents, which is the whole population the two negotiations above are asked about.
+        ->and($renderer->describes(new ResourceNotFoundException('x', 'X')))->toBeTrue()
+        ->and($renderer->describes(new AuthenticationException('nope')))->toBeTrue()
+        ->and($renderer->describes(new NotFoundHttpException))->toBeTrue()
+        ->and($renderer->describes(new MethodNotAllowedHttpException(['GET'])))->toBeTrue()
+        ->and($renderer->describes(new RuntimeException('kaboom')))->toBeTrue();
 });

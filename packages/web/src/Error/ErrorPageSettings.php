@@ -28,7 +28,9 @@ use Illuminate\Support\Str;
  * are different questions and only the first is about the URL. With the fallback on — the default, and what
  * the documentation has always claimed — a request carrying a WILDCARD Accept header, or no Accept at all,
  * is answered with the problem document, because that is the form a client can read and the page is for a
- * person who asked for one. Off, such a request falls through to Laravel's handler exactly as it used to.
+ * person who asked for one. Off, such a request falls through to Laravel's handler exactly as it used to,
+ * and so it does whenever `enabled` is off: the fallback is a second answer this package offers, and
+ * `enabled => false` withdraws the answers rather than changing which one is given.
  *
  * `trace` DEFAULTS TO `app.debug` and is enforced at render time, not merely at template time — the renderer
  * builds no frame list, opens no source file and copies no exception message when it is off. That is

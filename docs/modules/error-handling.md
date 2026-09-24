@@ -251,6 +251,18 @@ against an API into an HTML page — a worse regression than the bug being fixed
 path says what the URL *is*. It defaults to `api/*`, because a developer opening an API URL in a browser
 wants the payload their client will receive, not a styled page telling them the endpoint renders HTML.
 
+The wildcard row is `firefly.web.error-page.problem-fallback` (default `true`); set it to `false` to let a
+caller that named nothing fall through to Laravel's handler instead. Like `json-paths`, it is withdrawn
+along with the page when `firefly.web.error-page.enabled` is `false` — that key means "use Laravel's own
+error page", so it stops LaraFly adding answers rather than changing which answer is given.
+
+**Three exceptions are Laravel's own and LaraFly never answers them**, whatever the table above says:
+`ValidationException`, `AuthenticationException` and `HttpResponseException`. Laravel's handler resolves
+each of them itself immediately after it has consulted LaraFly's renderer, and none of the three is a
+`FireflyException` or carries an HTTP status of its own — so describing them would replace a `422` with its
+field errors, a `401`, or a response the application had already built, with an opaque `500`. A failed
+`$request->validate()` in a LaraFly application behaves exactly as it does in a plain Laravel one.
+
 ## The HTML error page
 
 `firefly/web` ships a page in the same visual language as the welcome page and the admin dashboard, showing

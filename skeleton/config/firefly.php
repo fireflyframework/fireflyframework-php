@@ -1049,8 +1049,12 @@ return [
     //          | falling through to Laravel's own error page. `Accept: */*` is what a bare curl and a
     //          | default fetch() send, and an absent Accept is what a hand-rolled client sends; neither
     //          | names text/html, so neither is a browser, and both used to receive framework HTML for any
-    //          | non-FireflyException. A browser is never caught by this — it is tested by `prefersHtml()`,
-    //          | so `enabled => false` keeps meaning "use Laravel's page".
+    //          | non-FireflyException. A browser is never caught by this, and neither is anything while
+    //          | `enabled` is off: the fallback is one of the answers this package offers, and
+    //          | `enabled => false` withdraws them, so it keeps meaning "use Laravel's page".
+    //          |
+    //          | A throwable Laravel's own handler resolves is never answered here whatever this says: a
+    //          | failed validation stays a 422 with its field errors and a 401 stays a 401.
     //          |
     //          | Default: true.
     //         */

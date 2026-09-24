@@ -232,6 +232,12 @@ final class WebServiceProvider extends FireflyServiceProvider
      * ErrorPageRenderer::rendersProblem(), beside handles() and prefersHtml(), because it is the same
      * negotiation asked a third way; this provider keeps only the wiring.
      * `firefly.web.error-page.problem-fallback => false` restores the fall-through.
+     *
+     * BOTH OF THOSE READ THE REQUEST, SO WHAT WAS THROWN IS ASKED FIRST. describes() is the one term that
+     * looks at the throwable, and it is asked ahead of both branches because the three exceptions Laravel's
+     * own `match (true)` resolves AFTER this callback runs — HttpResponseException, AuthenticationException,
+     * ValidationException — are not ours to answer in either shape. Returning null for them is what lets a
+     * 422 stay a 422 with its field errors, and a 401 stay a 401.
      */
     private function registerProblemDetailsRenderable(): void
     {
@@ -242,6 +248,10 @@ final class WebServiceProvider extends FireflyServiceProvider
 
             $handler->renderable(function (Throwable $e, Request $request) {
                 $page = $this->app->make(ErrorPageRenderer::class);
+
+                if (! $page->describes($e)) {
+                    return null;
+                }
 
                 if ($page->handles($request)) {
                     return $page->render($e, $request);
