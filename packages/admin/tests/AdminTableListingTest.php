@@ -520,6 +520,39 @@ it('pages the OAuth2 clients and keeps the process-local caveat', function () {
 });
 
 /**
+ * THE ACTIVE COLUMN ORDERS BY ITS NUMBERS, AND THE COUNTS NO STORE CAN VOUCH FOR SIT LAST IN BOTH
+ * DIRECTIONS.
+ *
+ * That is the whole reason the em-dash in that column is drawn by the VIEW over an empty cell rather than
+ * carried in the row. A row value of `'—'` is neither `null` nor `''`, so `RowComparator::rankEmpty()`
+ * never fires on it; `RowComparator::forColumn()` then meets a non-empty, non-numeric value on its first
+ * pass and commits the whole column to `strnatcasecmp`, which orders counts by their leading digit — and
+ * because an em-dash is three bytes above every digit, a descending Active opens on exactly the page of
+ * em-dashes RowComparator exists to prevent: the clients with nothing to show pushed in front of the
+ * counts the operator asked to see. It is the same trap the Took column on /firefly/http is kept out of by
+ * declining to sort at all.
+ */
+it('orders the Active column by its counts and parks the ones no store can vouch for last', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $leaders = ['desc' => ['mobile-app', 'reporting'], 'asc' => ['reporting', 'mobile-app']];
+
+    foreach ($leaders as $direction => [$first, $second]) {
+        $body = (string) $this->get('/firefly/oauth2?sort=active&dir='.$direction)->assertStatus(200)->getContent();
+
+        preg_match('#<tbody[^>]*>(.*?)</tbody>#s', $body, $rows);
+        $tbody = $rows[1] ?? '';
+        $at = static fn (string $clientId): int => (int) strpos($tbody, '<span class="nm">'.$clientId.'</span>');
+
+        // 7 over 2 descending, 2 over 7 ascending — arithmetic, not the text of the cell.
+        expect($at($first))->toBeGreaterThan(0)
+            ->and($at($first))->toBeLessThan($at($second))
+            // `storefront`'s 0 is the one a per-process store cannot vouch for: behind both of them either
+            // way round, never leading the page the reader asked to open on the busiest clients.
+            ->and($at($second))->toBeLessThan($at('storefront'));
+    }
+});
+
+/**
  * THE THREE RUNTIME PAGES ANSWER "WHAT IS THIS SORTED BY?" THE WAY THE REST OF THE DASHBOARD DOES.
  *
  * Metrics and OAuth2 clients open in their tiebreak's order — the meter name, the client id — so they

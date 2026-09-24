@@ -42,7 +42,12 @@
                             <td class="t-token dim" title="{{ $client['scopes'] }}">{{ $client['scopes'] ?: '—' }}</td>
                             <td class="t-line" title="{{ $client['redirects'] }}">{{ $client['redirects'] ?: '—' }}</td>
                             <td class="t-token dim" title="{{ $client['issuance'] }}">{{ $client['issuance'] }}</td>
-                            <td class="t-num">{{ $client['active'] }}</td>
+                            {{-- The `—` for a count no per-process store can vouch for is DRAWN HERE, over
+                                 the empty string AdminAction leaves in the row, exactly like the absent
+                                 cells above it. The row keeps a number so the column can be ordered as
+                                 one; see AdminAction::clientRows() for the page of em-dashes an em-dash in
+                                 the row would open a descending Active on. --}}
+                            <td class="t-num">{{ $client['active'] !== '' ? $client['active'] : '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>

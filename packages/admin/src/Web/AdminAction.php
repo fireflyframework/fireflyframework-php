@@ -1291,8 +1291,19 @@ final readonly class AdminAction
      *
      * Every multi-valued field is space-joined here rather than in the view, for the reason `beanRows()`
      * joins interfaces: a listing can order and search a string and cannot order a list. The `active`
-     * column keeps the `—`-for-zero rule exactly — see oauth2Page() for why a zero counted in a per-process
-     * store is the one cell that reads as a fact and is not one.
+     * column keeps the `—`-for-zero rule exactly (see oauth2Page() for why a zero counted in a per-process
+     * store is the one cell that reads as a fact and is not one).
+     *
+     * IT KEEPS IT AS THE EMPTY STRING THE VIEW DRAWS AS `—`, NEVER AS THE EM-DASH ITSELF, and that is not a
+     * stylistic preference: `active` is a sortable number column, and the empty string is the only spelling
+     * of an absent cell that orders. `Table\InMemoryListing` ranks `null` and `''` out through
+     * `RowComparator::rankEmpty()` BEFORE the direction is applied, so an unvouchable count sits at the end
+     * of the listing whichever way the reader runs it. A literal `'—'` is neither, so it would ride through
+     * as an ordinary value AND — being non-numeric — commit the whole column to `strnatcasecmp` through
+     * `RowComparator::forColumn()`: live counts ordered by their leading digit, and, an em-dash being three
+     * bytes above every digit, a descending Active opening on a page of em-dashes. That is precisely the
+     * failure RowComparator's docblock is written around, and the one the `Took` column on the HTTP page
+     * sidesteps by declining to sort at all.
      *
      * TAKES THE PAYLOAD IT WAS READ FROM, and does not read its own: this endpoint counts authorizations
      * per client and a second read is a second sweep of the store. The processLocal flag rides in beside it
@@ -1308,7 +1319,7 @@ final readonly class AdminAction
      * print both labels beside it and send the operator checking two requirements that are not there.
      *
      * @param  array<string,mixed>  $payload
-     * @return list<array{clientId: string, clientName: string, authentication: string, grants: string, scopes: string, redirects: string, issuance: string, active: string}>
+     * @return list<array{clientId: string, clientName: string, authentication: string, grants: string, scopes: string, redirects: string, issuance: string, active: int|string}>
      */
     private function clientRows(array $payload, bool $processLocal): array
     {
@@ -1339,9 +1350,11 @@ final readonly class AdminAction
                 // A `0` counted in a per-process store is the one cell that reads as a fact and is not one:
                 // the workers beside this one may be holding a hundred live authorizations for this client,
                 // and an operator who reads "none" goes looking for a token endpoint that is refusing
-                // nobody. Shown as `—` — nothing counted here — while a non-zero count is kept, because
-                // that one is a floor the store can vouch for.
-                'active' => $processLocal && $active === 0 ? '—' : (string) $active,
+                // nobody. Emptied — nothing counted here, and the view draws the `—` — while a non-zero
+                // count is kept as the NUMBER it is, because that one is a floor the store can vouch for
+                // and the column is sortable. See this method's docblock for why the em-dash cannot live
+                // in the row.
+                'active' => $processLocal && $active === 0 ? '' : $active,
             ];
         }
 
