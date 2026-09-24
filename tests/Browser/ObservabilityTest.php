@@ -40,6 +40,59 @@ it('lists the visited pages on the HTTP traffic page, each with the trace id it 
         ->screenshot(filename: 'observability-http-traffic');
 });
 
+/**
+ * THE WHEN COLUMN HAS TO HOLD THE WIDEST THING ITS FORMATTER CAN PUT IN IT, and on a browser suite every
+ * request was served seconds ago — so the page under test never contains that string.
+ *
+ * Format::since gives an age for the first twenty-four hours and then gives up and renders the instant:
+ * `2026-09-22 20:49`, sixteen characters where `2h ago` is six. The exchange ring is cache-backed on
+ * purpose — the traffic page's own empty state tells the operator to configure it that way, so that the
+ * buffer survives a PHP-FPM request — which means a low-traffic or freshly-idle application routinely
+ * lists yesterday's requests. The column was declared twelve characters wide: a 118px box whose text
+ * starts after the 14px left padding and runs 115px, so `table.ftable td{overflow:hidden}` took the last
+ * glyph and a half off and the operator read `2026-09-22 20:` as if it were the whole value.
+ *
+ * THE SCENARIO SEEDS ITS OWN WORST CASE, exactly as the Environment and Health guards in
+ * tests/Browser/AdminTablesTest.php do, and for the same reason they give: what is under test is whether
+ * the DECLARED width covers the formatter's whole alphabet, so the measurement needs that alphabet in the
+ * cell rather than whatever age this run happens to have produced. Everything around the substitution is
+ * real — the colgroup the page emitted, the stylesheet it inlined, the density the deployment configured.
+ */
+it('holds a dated stamp in the When column without clipping it', function (): void {
+    /** @var TracedBrowserTestCase $this */
+    visit('/greetings/Ada')->assertSourceHas('Hello, Ada!');
+
+    visit('/firefly/http')
+        ->assertScript(<<<'JS'
+            (() => {
+                const cell = document.querySelector('#http-body td.t-stamp');
+                if (cell === null) { return 'no exchange rows on the page'; }
+
+                // The instant is on the title whatever the cell drew, because an age is lossy both ways:
+                // `2h ago` does not say which two hours, and the dated arm rounds the seconds off.
+                const title = cell.getAttribute('title');
+                if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(title || '')) {
+                    return 'the stamp cell carries no instant on its title: ' + title;
+                }
+
+                // And it degrades the way every other clipped kind does if it ever outgrows the column
+                // again — an ellipsis says "there was more", a mid-glyph cut says nothing at all.
+                const overflow = getComputedStyle(cell).textOverflow;
+                if (overflow !== 'ellipsis') { return 'td.t-stamp text-overflow is ' + overflow; }
+
+                // The measurement: the widest string Format::since has, in the column as this page laid
+                // it out. Restored afterwards so the screenshot above still shows the real page.
+                const drawn = cell.textContent;
+                cell.textContent = '2026-09-22 20:49';
+                const clipped = cell.scrollWidth - cell.clientWidth;
+                cell.textContent = drawn;
+
+                return clipped <= 0 || 'the When column clips a dated stamp by ' + clipped + 'px';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
 it('serves the exchanges as JSON with a traceId on each row', function (): void {
     /** @var TracedBrowserTestCase $this */
     visit('/greetings/Ada')->assertSourceHas('Hello, Ada!');

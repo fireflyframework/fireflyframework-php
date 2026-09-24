@@ -437,7 +437,16 @@ final readonly class AdminAction
                 'http',
                 $this->exchanges(),
                 TableView::of(
-                    TableColumn::stamp('timestamp', 'When', ch: 12),
+                    // SIXTEEN, BECAUSE THAT IS THE ALPHABET Format::since CAN EMIT — not the six of
+                    // `2h ago`. Past its 86400-second arm the formatter stops giving an age and gives
+                    // `2026-09-22 20:49`, and this ring is cache-backed on purpose (the page's own empty
+                    // state says so), so a low-traffic or freshly-idle application routinely lists
+                    // requests older than a day. Measured against the sheet: at `ch: 12` the column is a
+                    // 118px box whose text starts after the 14px left padding and runs 115px, so the last
+                    // glyph and a half are cut off by `table.ftable td{overflow:hidden}`. 14 is the first
+                    // width that stops clipping and 16 the first that fits without spilling into the right
+                    // padding, at both densities.
+                    TableColumn::stamp('timestamp', 'When', ch: 16),
                     TableColumn::pill('method', 'Method'),
                     TableColumn::path('path', 'Path', weight: 6),
                     TableColumn::pill('status', 'Status', ch: 6),

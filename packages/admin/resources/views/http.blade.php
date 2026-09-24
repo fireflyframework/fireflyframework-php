@@ -30,7 +30,13 @@
                     <tbody id="http-body">
                     @foreach ($slice->rows as $exchange)
                         <tr>
-                            <td class="t-stamp">{{ $exchange['timestamp'] > 0 ? Format::since($exchange['timestamp'], $now) : '—' }}</td>
+                            {{-- The age is lossy both ways — `2h ago` does not say which two hours, and
+                                 the dated arm past 24h rounds the seconds off — so the full instant rides
+                                 on the title, the way the path and the two ids on this row already do.
+                                 Conditional rather than an empty string, because a row with no timestamp
+                                 draws an em-dash and has no instant to offer: `title=""` on it would be a
+                                 tooltip promising a value it does not have. --}}
+                            <td class="t-stamp"@if ($exchange['timestamp'] > 0) title="{{ Format::instant($exchange['timestamp']) }}"@endif>{{ $exchange['timestamp'] > 0 ? Format::since($exchange['timestamp'], $now) : '—' }}</td>
                             <td class="t-pill"><span class="verb">{{ $exchange['method'] }}</span></td>
                             <td class="t-path" title="{{ $exchange['path'] }}">{{ $exchange['path'] }}</td>
                             <td class="t-pill"><span class="code {{ $exchange['status'] < 400 ? 'ok' : ($exchange['status'] < 500 ? 'warn' : 'err') }}">{{ $exchange['status'] ?: '—' }}</span></td>

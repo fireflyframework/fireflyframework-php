@@ -367,7 +367,11 @@
         table.ftable td.t-pill,table.ftable th.t-pill{white-space:nowrap}
         table.ftable td.t-num,table.ftable th.t-num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
         table.ftable th.t-num a{justify-content:flex-end}
-        table.ftable td.t-stamp{font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+        /* `text-overflow` for the same reason the three kinds below carry it. A rigid column is sized from
+           the alphabet its formatter can emit, and the day a formatter grows an arm wider than that, the
+           cell has to SAY it was cut: without this, `overflow:hidden` takes the tail off mid-glyph and a
+           truncated timestamp reads as a complete, wrong one. The full instant is on the cell's title. */
+        table.ftable td.t-stamp{font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap;text-overflow:ellipsis}
         table.ftable td.t-meter{vertical-align:middle}
         table.ftable td.t-actions{white-space:nowrap}
         /* Clipped to one line with the full value on the title: a table whose row height depends on its

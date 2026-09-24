@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Tests\Support;
 
+use DateTimeImmutable;
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Admin\Tests\Support\Fixtures\BillingProperties;
 use Firefly\Admin\Tests\Support\Fixtures\HttpExchangesEndpointStub;
@@ -75,6 +76,15 @@ use Illuminate\Foundation\Application;
  */
 abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
 {
+    /**
+     * The one exchange in the ring whose age is an instant rather than an offset — see `exchanges()`.
+     *
+     * A date in the past, never a relative one, because the branch it exists to reach is the branch that
+     * fires once an exchange is older than a day: a relative age has to be re-chosen every time somebody
+     * decides the fixture is "old enough", and a past date only ever gets older.
+     */
+    protected const string ARCHIVED_EXCHANGE_AT = '2026-09-21T06:14:09.000000Z';
+
     protected function defineFireflyEnvironment(Application $app): void
     {
         parent::defineFireflyEnvironment($app);
@@ -206,11 +216,19 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
     /**
      * The ring the HTTP traffic page lists, newest first and in the endpoint's own row shape.
      *
-     * The ages are RELATIVE to the moment the case boots, because the When column renders through
-     * Format::since: a fixed instant would drift past its 24-hour boundary and start rendering as an ISO
-     * date instead of an age, which is a fixture that changes its own meaning with the calendar. The four
-     * rows cover the three status bands the view colours (`ok`, `warn`, `err`) and give the Method column
-     * something to order by other than its own default.
+     * FOUR OF THE FIVE AGES ARE RELATIVE to the moment the case boots, because the When column renders
+     * through Format::since: a fixed instant would drift past its 24-hour boundary and start rendering as
+     * a dated stamp instead of an age, which is a fixture that changes its own meaning with the calendar.
+     * Those four cover the three status bands the view colours (`ok`, `warn`, `err`) and give the Method
+     * column something to order by other than its own default.
+     *
+     * THE FIFTH IS FIXED, AND IT IS FIXED FOR THE SAME REASON THE OTHERS ARE NOT. Format::since has a
+     * fifth arm nothing relative can hold still on: past 86400 seconds it stops giving an age and gives
+     * `2026-09-22 20:49`, which is SIXTEEN characters where the widest age is eight — and that is the
+     * alphabet the When column is sized from. A fixture whose oldest row was two hours old rendered
+     * `2h ago`, one arm short of the branch that sizes the column, so the column could be declared four
+     * characters too narrow and nothing failed. A fixed past instant is always past the boundary and only
+     * gets further from it, so this row renders the dated arm on every run, forever.
      *
      * @return list<array<string, mixed>>
      */
@@ -228,7 +246,22 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
                 'correlationId' => '2c7d4e3a-5b6c-4d8e-9f0a-4d5e6f7a8b99', 'traceId' => '6df14f5799d56fc8c5ef14bf2f2f6958'],
             ['timestamp' => $at(7200), 'method' => 'POST', 'uri' => '/orders', 'status' => 500, 'durationMs' => 91.7,
                 'correlationId' => '3d6e5f4b-4c7d-4e9f-8a1b-5e6f7a8b9c00', 'traceId' => '7ef25f68aae67fd9d6ff25cf3f3f7a69'],
+            ['timestamp' => self::ARCHIVED_EXCHANGE_AT, 'method' => 'PUT', 'uri' => '/orders/{id}', 'status' => 503, 'durationMs' => 1204.6,
+                'correlationId' => '4e5f6a7b-3d8e-4f0a-9b2c-6f7a8b9c0d11', 'traceId' => '8fa36a79bbf78ae0e7aa36da4a4a8b7a'],
         ];
+    }
+
+    /**
+     * The epoch seconds of ARCHIVED_EXCHANGE_AT, for a test that has to predict what the When cell drew.
+     *
+     * Public, like `seedOrders()`, because it is something a test BODY asks the case for and not a hook a
+     * subclass overrides. It hands back epoch seconds rather than the rendered string so the test formats
+     * it the way the page does — through the process's own timezone — instead of pinning a literal that
+     * would be right only where `app.timezone` happens to be UTC.
+     */
+    public function archivedExchangeEpoch(): int
+    {
+        return (int) (new DateTimeImmutable(self::ARCHIVED_EXCHANGE_AT))->format('U');
     }
 
     /**

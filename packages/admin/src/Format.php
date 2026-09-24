@@ -85,7 +85,16 @@ final class Format
         return self::count($value);
     }
 
-    /** "3 minutes ago" for a unix timestamp, or an ISO instant when it is older than a day. */
+    /**
+     * "3 minutes ago" for a unix timestamp, or a dated instant when it is older than a day.
+     *
+     * THE WIDEST THING THIS EMITS IS SIXTEEN CHARACTERS, not the six of `2h ago`, and a column sized for
+     * the age alphabet clips the date one. Past the 86400-second arm an age stops being informative — "37h
+     * ago" is a number the reader has to do arithmetic on — so the last arm gives the instant itself, and
+     * `2026-09-22 20:49` is what a `Stamp` column has to be wide enough to draw. See
+     * AdminAction::data()'s HTTP listing, whose When column is sized from this method's alphabet, and
+     * FormatStampTest, which pins both widths so a future arm cannot widen one without failing.
+     */
     public static function since(float $timestamp, float $now): string
     {
         $delta = max(0.0, $now - $timestamp);
@@ -97,6 +106,21 @@ final class Format
             $delta < 86400 => (int) ($delta / 3600).'h ago',
             default => date('Y-m-d H:i', (int) $timestamp),
         };
+    }
+
+    /**
+     * The full instant behind a `since()` age — `2026-09-22 20:49:26`, the nineteen characters
+     * `TableColumn::stamp()` takes as its default width.
+     *
+     * This is what a stamp cell carries on its `title`, and it exists because an age is LOSSY in both
+     * directions: `2h ago` does not say which two hours, and the dated arm rounds the seconds off. A reader
+     * correlating an exchange against a log line needs the instant, and a cell whose text is clipped by its
+     * column needs somewhere to recover the value from — the same contract `t-token`, `t-path` and `t-line`
+     * already keep with the full value on the title.
+     */
+    public static function instant(float $timestamp): string
+    {
+        return date('Y-m-d H:i:s', (int) $timestamp);
     }
 
     /** The share one value takes of a maximum, clamped to 0..100 for a bar width. */

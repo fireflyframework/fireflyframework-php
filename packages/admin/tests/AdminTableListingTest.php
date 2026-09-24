@@ -496,11 +496,76 @@ it('flips the HTTP sort to oldest first when the reader asks', function () {
 
     expect($body)->toContain('<span class="ord">↑</span>');
 
-    // Oldest first really is oldest first: the 500 the fixture recorded two hours ago leads, and the 200 it
-    // recorded two seconds ago is behind it.
+    // Oldest first really is oldest first: the archived 503 from a fixed instant days back leads, the 500
+    // recorded two hours ago is behind it, and the 200 from two seconds ago is behind both. An ISO string
+    // and a relative one order against each other correctly because the row carries EPOCH SECONDS — the
+    // parse happens in AdminAction::epoch(), not in the comparator.
     preg_match('#<tbody[^>]*>(.*?)</tbody>#s', $body, $rows);
-    expect(strpos($rows[1] ?? '', 'code err'))->toBeInt()
-        ->toBeLessThan((int) strpos($rows[1] ?? '', 'code ok'));
+    $tbody = $rows[1] ?? '';
+    preg_match('#<td class="t-stamp"[^>]*>(.*?)</td>#', $tbody, $first);
+
+    expect($first[1] ?? '')->toBe(date('Y-m-d H:i', $this->archivedExchangeEpoch()))
+        ->and(strpos($tbody, 'code err'))->toBeInt()
+        ->toBeLessThan((int) strpos($tbody, 'code ok'));
+});
+
+/**
+ * A RIGID COLUMN IS A PROMISE ABOUT ITS FORMATTER, AND THIS IS THE ONE THAT WAS BROKEN.
+ *
+ * The When column was declared `ch: 12` — sized for `2h ago` — while Format::since has a fifth arm that
+ * gives `2026-09-22 20:49`, sixteen characters, as soon as an exchange is older than a day. Measured
+ * against the sheet, twelve characters is a 118px box whose text starts after the 14px left padding and
+ * runs 115px, so `table.ftable td{overflow:hidden}` took the last glyph and a half off the end and
+ * `td.t-stamp` carried neither an ellipsis nor a title to recover the value from: the operator read
+ * `2026-09-22 20:` and had nothing to tell them it was cut. Reachable in ordinary operation, not in a
+ * contrived one — the ring is cache-backed precisely so it survives the process, which is what the page's
+ * own empty state tells the reader to configure.
+ *
+ * THE FIXTURE COULD NOT SEE IT. Its oldest exchange was 7200 seconds old, which renders `2h ago`: one arm
+ * short of the branch that sizes the column. ARCHIVED_EXCHANGE_AT is the row that reaches it.
+ *
+ * What a response-level test can assert is the pair that has to agree — the widest string the formatter
+ * emits, and the width the colgroup declares for it. The pixels are FormatStampTest's arithmetic and the
+ * browser suite's `scrollWidth <= clientWidth`; this is the invariant between them.
+ */
+it('sizes the When column for the dated stamp its formatter falls back to, not for an age', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/http')->assertStatus(200)->getContent();
+    $epoch = $this->archivedExchangeEpoch();
+    $stamp = date('Y-m-d H:i', $epoch);
+
+    expect(strlen($stamp))->toBe(16)
+        // Sixteen characters of column for sixteen characters of stamp. `ch: 12` emitted
+        // `calc(12ch + 2 * var(--row-x))` here, and that is the regression.
+        ->and($body)->toContain('<col style="width:calc(16ch + 2 * var(--row-x))">')
+        // The whole stamp, in the cell, not a prefix of it — and the instant it rounds the seconds off,
+        // on the title, so a reader correlating this exchange against a log line has the seconds back.
+        ->and($body)->toContain('<td class="t-stamp" title="'.date('Y-m-d H:i:s', $epoch).'">'.$stamp.'</td>')
+        // And the relative ages still render as ages: widening the column did not turn the page into a
+        // wall of timestamps. The two-hour row is the one asserted because it is the one whose rendering
+        // cannot drift while the suite runs — an age in seconds or minutes would.
+        ->and($body)->toContain('>2h ago</td>');
+});
+
+/**
+ * THE STAMP DEGRADES THE WAY EVERY OTHER CLIPPED KIND DOES, if it ever outgrows its column again.
+ *
+ * `t-token`, `t-path` and `t-line` all clip to one line and carry the full value on a title, so the reader
+ * sees an ellipsis and can recover what was elided. `t-stamp` had `overflow:hidden` from the shared rule
+ * and neither of those, which is why a column four characters short of its own formatter read as a
+ * complete — and wrong — value rather than as a truncated one. Widening the column fixes today's stamp;
+ * this is what keeps tomorrow's honest.
+ */
+it('gives the stamp cell the ellipsis and the title every other clipped kind has', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/http')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('table.ftable td.t-stamp{')
+        ->toMatch('/table\.ftable td\.t-stamp\{[^}]*text-overflow:ellipsis/')
+        // A row with no timestamp draws an em-dash and has no instant to offer, so it gets no title at
+        // all: `title=""` is a promise of a value that is not there, and tests/Browser/ObservabilityTest
+        // asserts the traffic page never renders one.
+        ->and($body)->not->toContain('<td class="t-stamp" title="">');
 });
 
 it('pages the OAuth2 clients and keeps the process-local caveat', function () {
