@@ -46,7 +46,9 @@ it('renders the production 500 with a reference to quote and the cause withheld'
     visit('/browser-fixture/boom')
         ->assertSee('500')
         ->assertSee('INTERNAL_ERROR')
-        ->assertSee('quote reference')
+        // The lede points at the Reference cell instead of repeating the id into prose, so the words on
+        // the page changed with it; the cell itself is asserted on the line below, as it always was.
+        ->assertSee('quote the reference below')
         ->assertSeeIn('dl.facts', 'Reference')
         // The request path (/browser-fixture/boom) is legitimately shown in the facts, so the cause is
         // proved withheld by its class and message, never by the word "boom".

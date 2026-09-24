@@ -861,6 +861,14 @@ it('ships the copy button hidden and reveals it from the same script that gives 
         // A control that does nothing is worse than no control: with scripts off, with a CSP that refuses
         // an inline script, or on a plain-http origin where navigator.clipboard is undefined, the button
         // stays hidden and the select-all cell is still there.
+        //
+        // AND THE CLICK HAS A REJECTION ARM, because those three are the modes the REVEAL can see.
+        // writeText() rejects with navigator.clipboard present and the guard already passed — an unfocused
+        // document (an ordinary DOMException, and the common one), a denied `clipboard-write` permission, an
+        // embedding Permissions-Policy that omits it — and in every one of those the button has already been
+        // shown. Without this the click does nothing at all, the label stays "Copy", and the quietest page
+        // in the framework writes an unhandled promise rejection to the console.
+        ->toContain('.catch(function(){b.textContent="Copy failed"})')
         ->and(substr_count($html, '<script>'))->toBe(1);
 
     $off = new ErrorPageSettings(trace: false, hints: false, copyButton: false);
@@ -898,4 +906,34 @@ it('gives a 404 the same single reference cell, so one page teaches the other', 
         ->toContain('Quote this if you report the problem.')
         // A 404 is not "something went wrong on our side", so that sentence is not on it.
         ->not->toContain('quote the reference below');
+});
+
+it('keeps the id shared with the problem document and lets the sentence diverge on purpose', function () {
+    // The 5xx lede used to be ProblemMapper::OPAQUE_WITH_REFERENCE's wording, id and all, so a ticket read
+    // the same whichever surface the failure was seen on. It is not any more — and that is a decision, not
+    // drift: naming the id in prose AND in the cell put one uuid on the page twice with no way to copy
+    // either. A problem document has no cell to point at, so it keeps its id inline and keeps its wording.
+    //
+    // What survives as the cross-surface invariant is the ID, not the SENTENCE, and this pins both halves so
+    // neither can be re-decided in silence. The page's clause is read off a real render rather than typed,
+    // so the day the lede changes this test names the sentence that has to change with it.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/x', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-split-7']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    if (preg_match('/It has been logged; ([^.<]+)\./', $html, $matched) !== 1) {
+        throw new RuntimeException('The production 5xx lede no longer carries an "It has been logged; …" clause for this test to read.');
+    }
+    $clause = $matched[1];
+    $document = sprintf(ProblemMapper::OPAQUE_WITH_REFERENCE, $error->reference);
+
+    expect($error->reference)->toBe('ref-split-7')
+        // The id is on both surfaces: in the page's cell, inline in the document.
+        ->and($html)->toContain('<dt>Reference</dt><dd>ref-split-7</dd>')
+        ->and($document)->toContain('ref-split-7')
+        // The sentence is not. The page's clause points at the cell and names no id; the document's names
+        // it, and neither is a substring of the other.
+        ->and($clause)->not->toContain('ref-split-7')
+        ->and($document)->not->toContain($clause);
 });

@@ -32,8 +32,11 @@ use Firefly\Security\OAuth2\Client\Registration\CommonOAuth2Provider;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
 use Firefly\Tests\Support\DocsCodeAudit;
+use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
+use Firefly\Web\Error\ErrorReport;
+use Firefly\Web\Error\ProblemMapper;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Config\Repository as ConfigRepository;
@@ -1135,6 +1138,55 @@ it('pins every prefersHtml() paragraph to the order and the media types ErrorPag
     // paragraphs it spends on it; what the count protects is the opposite case, a paragraph that stops
     // matching `prefersHtml` and silently stops being checked.
     expect($paragraphs)->toBe(7);
+});
+
+it('pins every sentence that says what the 500 page reads to the lede ErrorPage really renders', function () {
+    // The fifth kind of wrong sentence, and the quietest: prose that quoted a surface correctly, and went on
+    // quoting it after the surface changed. `docs/modules/error-handling.md` told a reader the 500 page
+    // reads "quote reference `<id>` if you report it" for a release in which the page had already stopped
+    // naming the id in its lede and started pointing at a Reference cell instead. Nothing compared the
+    // quotation to the page, so the doc suite was green and the sentence was false — which is the exact
+    // shape of failure this file exists to catch, on a page that tells a person what to put in a ticket.
+    //
+    // DERIVED, like the rest: the clause is read off a page rendered HERE, through ErrorPage itself, and the
+    // problem document's sentence off ProblemMapper's own constant. Nothing below types out the answer, so
+    // the day the lede is reworded the failure names the paragraph that has to be reworded with it.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/x', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-prose-1']);
+    $report = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($report, $settings);
+
+    if (preg_match('/It has been logged; ([^.<]+)\./', $html, $matched) !== 1) {
+        throw new RuntimeException('The production 500 page no longer carries an "It has been logged; …" lede for this guard to read.');
+    }
+    $clause = $matched[1];
+
+    // The two surfaces share the ID and deliberately no longer share the SENTENCE: the page prints the id
+    // once, in a cell its lede points at, and the document keeps it inline because a payload has no cell to
+    // point at. So a paragraph may not hand either surface the other's wording.
+    expect($clause)->not->toContain('ref-prose-1')
+        ->and(sprintf(ProblemMapper::OPAQUE_WITH_REFERENCE, 'ref-prose-1'))->toContain('ref-prose-1');
+
+    $paragraphs = 0;
+    foreach (fireflyProsePages() as $page => $pageParagraphs) {
+        foreach ($pageParagraphs as $paragraph) {
+            if (preg_match('/\b(?:500|error) page (?:reads|says)\b/', $paragraph) !== 1) {
+                continue;
+            }
+
+            $paragraphs++;
+
+            expect(str_contains($paragraph, $clause))->toBeTrue(sprintf(
+                '%s says what the 500 page reads without quoting "%s", which is the clause ErrorPage renders.',
+                $page,
+                $clause,
+            ));
+        }
+    }
+
+    // A guard whose trigger matches nothing proves nothing, and this one matched a single paragraph the day
+    // it was written.
+    expect($paragraphs)->toBeGreaterThan(0);
 });
 
 it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {

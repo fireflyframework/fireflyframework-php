@@ -1004,12 +1004,16 @@ return [
     //          | THE REFERENCE IS THE ONE THING A PRODUCTION PAGE ASKS A PERSON TO CARRY AWAY, so it is
     //          | printed ONCE, in a cell a single click selects whole (`user-select:all`) — that much needs
     //          | no JavaScript and works in whatever a container's minimal browser turns out to be. The
-    //          | button is offered on top of it by the page's only script, nine lines that ship the control
+    //          | button is offered on top of it by the page's only script, ten lines that ship the control
     //          | `hidden` and reveal it only once `navigator.clipboard` is known to exist: with scripts off,
     //          | behind a CSP that refuses an inline script, or on a plain-http origin where the clipboard
-    //          | API is undefined, no control appears that would do nothing. Turn this off and the page
-    //          | carries no script at all, which is the answer for a deployment whose CSP blocks rather
-    //          | than merely reports.
+    //          | API is undefined, no control appears that would do nothing. A copy the browser refuses at
+    //          | CLICK time — an unfocused document, a denied `clipboard-write` permission, an embedding
+    //          | Permissions-Policy that omits it — is the fourth case, the one the reveal cannot foresee,
+    //          | so the button reports `Copy failed` rather than doing nothing in silence, and stays
+    //          | clickable because an unfocused document is transient. The cell is `user-select:all` either
+    //          | way, so one click takes the whole id with no script at all. Turn this off for a deployment
+    //          | whose CSP must report zero inline scripts.
     //          |
     //          | Default: true.
     //         */

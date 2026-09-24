@@ -277,6 +277,8 @@ deployment wants to change:
 //         // Default: 7.
 //         'excerpt-lines' => 7,
 // …
+//         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
+// …
 //         'json-paths' => 'api/*,webhooks/*',
 // …
 //         'views' => [
@@ -298,13 +300,23 @@ walks the stack, never opens a source file and never copies the exception messag
 assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
 **reference** — the same id the problem document publishes as `traceId`, which is the W3C trace id when the
 request had a valid span and the correlation id when it did not, and the same value the response echoes on
-`X-Trace-Id` — so the 500 page reads "quote reference `<id>` if you report it" and the id a person
-screenshots is the one a trace search resolves. When the two ids differ the page carries a **Correlation**
-fact row beside the Reference one, holding the `X-Correlation-Id` value; when they are the same string the
-row is omitted, because two rows repeating one value teach a reader the ids are interchangeable. That is
-enough to quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
-advice about *how* to turn traces on is suppressed outside non-production environments too, because naming
-the framework and a config key to an anonymous visitor is a free hint about your stack.
+`X-Trace-Id` — so the 500 page reads "quote the reference below if you report it" and the id a person
+screenshots is the one a trace search resolves. The page prints that id **once**, in a **Reference** cell
+that is `user-select:all`: one click takes the whole of it, with no JavaScript and no dragging a selection
+across a wrapped uuid. The lede points at the cell rather than spelling the id into prose a second time,
+which is why the page's sentence no longer matches the problem document's word for word — a payload has no
+cell to point at, so it keeps the id inline. Both surfaces still carry the same id, and that is the part a
+ticket and a trace search need. A **Copy** button sits beside the cell wherever the browser can honour one,
+behind `firefly.web.error-page.copy-button`: it ships `hidden` and is revealed by the page's only script, so
+scripts off, a Content-Security-Policy that refuses inline scripts, or a plain-http origin
+(`navigator.clipboard` is a secure-context API) leave no control rather than a dead one, and a copy the
+browser refuses at click time says `Copy failed` instead of failing silently. When the two ids differ the
+page carries a **Correlation** cell beside the Reference one, holding the `X-Correlation-Id` value; when
+they are the same string the cell is omitted, because two cells repeating one value teach a reader the ids
+are interchangeable. That is enough to quote into a ticket and grep in a log, and nothing that names a
+class, a file or a row. The page's own advice about *how* to turn traces on is suppressed outside
+non-production environments too, because naming the framework and a config key to an anonymous visitor is a
+free hint about your stack.
 
 **Overriding it.** `views` hands a status — or `default` — to your own Blade view. The view receives the same
 `$error` report the built-in page gets, so it is bound by the same `trace` gate and cannot print a stack

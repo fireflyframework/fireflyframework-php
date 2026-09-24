@@ -147,14 +147,25 @@ final class ErrorPage
     }
 
     /**
-     * Nine lines of progressive enhancement, and the only script this page carries.
+     * Ten lines of progressive enhancement, and the only script this page carries.
      *
      * THE BUTTON SHIPS HIDDEN AND THIS REVEALS IT. A control that does nothing is worse than no control, and
-     * there are three ordinary ways for the clipboard to be unavailable: scripts off, a
+     * there are three ordinary ways for the clipboard to be unavailable BEFORE a click: scripts off, a
      * Content-Security-Policy that refuses an inline script, and a plain-http origin (navigator.clipboard is
      * a secure-context API). In every one of them the button stays hidden, the select-all cell is still
-     * there, and the page is exactly what it was before. `firefly.web.error-page.copy-button` removes it
-     * entirely for a deployment whose CSP reports rather than merely blocks.
+     * there, and the page is exactly what it was before.
+     *
+     * THOSE THREE ARE NOT ALL OF THEM, which is why the click has a rejection arm. `writeText()` rejects
+     * with the API present and the guard already passed — the document is not focused (a plain DOMException,
+     * and the common one), the `clipboard-write` permission is denied, an embedding page's Permissions-Policy
+     * omits it — and those are exactly the cases where the control has already been REVEALED, so a bare
+     * `.then()` leaves the one reader who gets here clicking a button that does nothing, silently, while the
+     * console of the page whose whole job is to be quiet fills with an unhandled rejection. The button says
+     * so instead, and stays clickable: an unfocused document is transient, a second click after the page has
+     * focus succeeds, and the `user-select:all` cell beside it is the affordance that never needed a script.
+     *
+     * `firefly.web.error-page.copy-button` removes the control and this script entirely, for a deployment
+     * whose CSP must report zero inline scripts.
      */
     private static function clipboard(ErrorPageSettings $settings, bool $rendered): string
     {
@@ -165,7 +176,8 @@ final class ErrorPage
         return '<script>(function(){var b=document.querySelector(".copy");'
             .'if(!b||!navigator.clipboard){return}b.hidden=false;'
             .'b.addEventListener("click",function(){navigator.clipboard.writeText(b.getAttribute("data-ref")||"")'
-            .'.then(function(){b.textContent="Copied"})})})();</script>';
+            .'.then(function(){b.textContent="Copied"})'
+            .'.catch(function(){b.textContent="Copy failed"})})})();</script>';
     }
 
     private static function detail(ErrorReport $report): string
@@ -389,12 +401,22 @@ final class ErrorPage
     /**
      * A short, honest sentence for a production page — no message, no internals.
      *
-     * The 5xx sentence names the request reference, because that is the ONE thing a reader of a production
-     * page can do about a failure they cannot see: quote the id, so an operator can find the log line it
-     * stamps. The problem document has said "quote reference <id>" since it carried `traceId`; the page a
-     * person actually looks at said only that the error had been logged, which left them nothing to quote.
-     * The wording mirrors ProblemMapper::OPAQUE_WITH_REFERENCE so a ticket reads the same whichever form
-     * the failure was seen in.
+     * The 5xx sentence POINTS AT the request reference, because that is the ONE thing a reader of a
+     * production page can do about a failure they cannot see: quote the id, so an operator can find the log
+     * line it stamps. The problem document has said "quote reference <id>" since it carried `traceId`; the
+     * page a person actually looks at said only that the error had been logged, which left them nothing to
+     * quote.
+     *
+     * IT NO LONGER MIRRORS ProblemMapper::OPAQUE_WITH_REFERENCE, and the divergence is deliberate rather
+     * than drift. This sentence used to name the id inline, word for word as the document does, so a ticket
+     * read the same whichever form the failure was seen in — but that printed the same uuid twice on every
+     * production page, in prose and in the Reference cell, with no way to copy either. The page now prints
+     * it ONCE, in a cell that is `user-select:all` and may carry a Copy button (see reference()), and the
+     * lede points there. A problem document has no cell to point at, so it keeps the id inline and keeps its
+     * own wording. What the two surfaces still share is the ID ITSELF — the value a trace search resolves
+     * and a ticket is filed with — and it is only the SENTENCE that stopped being a cross-surface
+     * invariant. ErrorPageTest pins that divergence against the constant, so it cannot be quietly re-decided
+     * in either direction.
      */
     private static function reassurance(int $status, string $reference): string
     {
