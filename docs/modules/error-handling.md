@@ -84,6 +84,7 @@ throw (new PaymentRequiredException('The Team edition includes up to five worker
   "category": "business",
   "severity": "warning",
   "detail": "The Team edition includes up to five workers.",
+  "type": "about:blank",
   "field": "workers",
   "limit": 5
 }
@@ -166,8 +167,21 @@ $payload  = $response->toArray(); // omits null/empty optionals
 `firefly/web` ([Web Layer](web.md)) is the concrete renderer this document promised: every
 `FireflyException` thrown while handling a request is turned into an `application/problem+json` response
 by `Firefly\Web\Exception\ProblemDetailsRenderer`, via `ErrorResponse::fromException(...)`, at the
-exception's own `httpStatus()` — the shape is exactly the payload above, produced by the same
-kernel-level `ErrorResponse` this page documents.
+exception's own `httpStatus()` — the same kernel-level `ErrorResponse` this page documents, built by the
+same call.
+
+**The rendered document carries more than the sample above, and every extra member is one only a request can
+supply.** That listing is a kernel call with nothing in hand but an exception and an `instance`; the renderer
+has the request, so it passes `traceId`, `correlationId`, a `timestamp` and RFC 9457 §3.1.1's `type` as well
+— and `type` is on **every** published document (`about:blank` unless `firefly.web.problem.type-uri` says
+otherwise, below), which is the one member the kernel sample above cannot show you, because nothing in it
+sets one. `instance` is the member with a rule of its own: the renderer builds it through
+`Firefly\Web\Error\ProblemMapper::instanceFor()`, which answers a **root-relative** URI reference
+(`/orders/42`, never `orders/42`) — §3.1.5 makes the member a URI *reference*, and a relative one resolves
+against the document's own base URI, so `orders/42` served from `/orders/42` would identify
+`/orders/orders/42`. The four characters that would let the leading slash open an *authority* instead
+(`\`, and the tab, LF and CR a URL parser deletes before it reads anything) are percent-encoded there, so
+the member can never name a different origin however the request target was spelled.
 
 `Firefly\Web\Error\ProblemMapper` owns the rule for turning *any* throwable into that shape, in one place,
 because the HTML page below needs the same answer and two copies of it would eventually tell a browser and a
@@ -192,6 +206,25 @@ client different things about one failure. It has **three** cases, and only the 
     real message stays on the exception, where the log has it beside the same id. When no settings object is
     bound at all — a JSON-only deployment that never constructed one — the default is the **safe** one; an
     absent gate must not mean an open one.
+
+**`firefly.web.problem.type-uri` decides what RFC 9457's `type` says, and it has exactly three positions.**
+§3.1.1 makes an absent `type` *identical* to `about:blank`, which makes emitting it a presentation choice
+rather than a conformance one — and LaraFly makes Spring `ProblemDetail`'s choice, writing `about:blank` out
+by default so a client reading the member always finds a string instead of having to encode the RFC's
+equivalence rule. Point the key at an absolute `http(s)://` base and every document instead carries a
+dereferenceable type derived from the stable `code` — `https://api.example.test/problems/resource-not-found`
+— which is the thing LaraFly can do here that Spring cannot, because that identifier is already on every
+error, in the log line and in the support ticket. Set the key to `''` and the member is omitted entirely:
+the pre-9457 document, byte for byte.
+
+Anything else falls back to `about:blank` rather than to silence, because `''` is a position an operator
+takes deliberately and a typo must not be able to take it for them. The vocabulary is
+`ErrorPageSettings::typeUri()`'s — the two sentinels and an absolute `http(s)://` base, edges trimmed the
+way a URL parser trims them, with a relative base, a `javascript:`/`data:`/`file:` scheme, a
+protocol-relative `//host` and an interior tab, LF or CR all refused. `type` is the one operator-supplied
+URI on this surface that never reaches an `href` on the error page, which is exactly why it needed a guard
+of its own: every API console, IDE HTTP client and documentation viewer that renders a problem document
+turns the member into a link.
 
 Two more things every problem document carries. **The ids — two of them, related and never conflated.**
 **`traceId`** is the id a person quotes: the request's **W3C trace id** when tracing gave it a valid span,

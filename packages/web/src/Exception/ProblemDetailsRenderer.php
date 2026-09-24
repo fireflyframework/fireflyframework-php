@@ -110,6 +110,7 @@ final class ProblemDetailsRenderer
     {
         // An absent settings object means the SAFE answer, not the open one — see the constructor.
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
+        $typeUri = $this->settings instanceof ErrorPageSettings ? $this->settings->typeUri : ProblemType::BLANK;
 
         $correlationId = CorrelationIdFilter::of($request);
         $reference = TraceContext::referenceFor($request);
@@ -132,27 +133,14 @@ final class ProblemDetailsRenderer
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             correlationId: $correlationId,
-        );
-
-        // RFC 9457 §3.1.1, carried on the DTO rather than written onto toArray()'s output: `type` is a
-        // DECLARED member of ErrorResponse and of the published ProblemSchema, and the class comment at
-        // ErrorResponse.php:24 is explicit that a member appended downstream is one every generated client
-        // drops. Re-declaring the DTO with one field changed is the honest way to set it on a readonly
-        // value object, and it keeps toArray()'s member ORDER the single source of truth.
-        $problem = new ErrorResponse(
-            status: $problem->status,
-            title: $problem->title,
-            code: $problem->code,
-            category: $problem->category,
-            severity: $problem->severity,
-            detail: $problem->detail,
-            type: ProblemType::of($problem->code, $this->settings instanceof ErrorPageSettings ? $this->settings->typeUri : ProblemType::BLANK),
-            instance: $problem->instance,
-            traceId: $problem->traceId,
-            errors: $problem->errors,
-            timestamp: $problem->timestamp,
-            extensions: $problem->extensions,
-            correlationId: $problem->correlationId,
+            // RFC 9457 §3.1.1, through the same seam and for the same reason: the member is DECLARED on
+            // ErrorResponse and published by ProblemSchema, so it travels on the DTO rather than being
+            // written onto toArray()'s output, where every generated client would drop it. It arrives here
+            // as an argument rather than through a second `new ErrorResponse(...)` because that second
+            // construction site would have a default for every member — and would therefore drop, in
+            // silence, whatever member this class grows next. An absent settings object means the
+            // documented default, like the gate above it.
+            type: ProblemType::of($exception->errorCode(), $typeUri),
         );
 
         $payload = $problem->toArray();

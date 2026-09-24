@@ -269,24 +269,26 @@ function assertNoEventsPublished(object $publisher): void
 }
 ```
 
-!!! warning "Una limitación real y honesta: `toBeProblemDetails()` y el campo `type`"
-    El propio `Web\WalletRestTest.php` de `samples/lumen` documenta, en un comentario de código justo al lado de las pruebas que afecta, una brecha genuina: `toBeProblemDetails()` afirma que el cuerpo de la respuesta tiene una clave `type`, pero el renderizador RFC-7807 real del framework (`Firefly\Kernel\Error\ErrorResponse::fromException()`, renderizado por `Firefly\Web\Exception\ProblemDetailsRenderer`) nunca rellena `type` — es un campo opcional que solo se emite cuando se pasa explícitamente, cosa que el camino de excepción-a-respuesta nunca hace. Llamar a `toBeProblemDetails()` contra un `404`/`422`/`403`/`409` genuino que este framework realmente produce falla, siempre, por exactamente esa razón.
+!!! note "`toBeProblemDetails()` y el campo `type`: una limitación real, y cómo se cerró"
+    Esta caja describía una brecha genuina, y vale la pena tenerla a la vista porque es la forma que suelen tener estas cosas. `toBeProblemDetails()` afirma que el cuerpo de la respuesta tiene una clave `type` — y el renderizador real del framework, `Firefly\Web\Exception\ProblemDetailsRenderer`, no publicaba ningún `type`. Era un miembro opcional que solo se emitía cuando algo lo pasaba explícitamente, cosa que el camino de excepción-a-respuesta nunca hacía, así que llamar a la aserción entregada contra un `404`/`422`/`403`/`409` genuino fallaba siempre. Un matcher y un renderizador que se entregan en el mismo framework discrepaban sobre la forma del mismo documento.
 
-    Por eso las propias pruebas de Lumen — como la propia suite de pruebas de remate de `firefly/web` — afirman los campos RFC-7807 directamente en su lugar:
+    El RFC 9457 §3.1.1 lo zanjó: un `type` ausente **es** `about:blank`, así que escribirlo no le cuesta nada a un documento conforme y le ahorra a cada cliente tener que saberse la regla. El renderizador ahora lo emite — el `ProblemDetail` de Spring toma la misma decisión — y `firefly.web.problem.type-uri` o bien apunta a una URI base, derivando un tipo abrible a partir del `code` estable (`https://api.example.test/problems/resource-not-found`), o bien se pone a `''` para volver a omitir el miembro en un despliegue que quiera el documento pre-9457 byte por byte. Así que la aserción funciona contra las propias respuestas de error del framework, y `samples/lumen` la ejercita sobre el 404:
 
 <!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
 ```php
 it('returns RFC-7807 problem+json for an unknown wallet', function () {
     // …
-    $this->getJson('/api/v1/wallets/nope/balance')
+    $response = $this->getJson('/api/v1/wallets/nope/balance')
         ->assertStatus(404)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('status', 404)
         ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
         ->assertJsonPath('title', 'Not Found');
+    // …
+    expect($response)->toBeProblemDetails(404);
 ```
 
-Un libro que solo enseñe lo que genuinamente funciona te haría un flaco favor ocultando esto: `toBeProblemDetails()` es real, se entrega, y la propia suite del paquete de pruebas lo ejercita contra un cuerpo que *sí* lleva una clave `type` — simplemente no es la aserción a la que Lumen recurre contra las respuestas de error reales del framework, y ahora sabes por qué, en lugar de toparte con el mismo fallo en frío.
+Las aserciones sobre campos se quedaron, y esa es la parte que conviene copiar: `toBeProblemDetails()` dice que la respuesta es *un* documento de problema de *ese* estado, mientras que `assertJsonPath('code', 'RESOURCE_NOT_FOUND')` dice cuál es el fallo. La segunda es la que una regresión tumba, así que una prueba que pueda permitirse ambas debería tener ambas.
 
 ---
 
@@ -781,7 +783,7 @@ Lee dos veces la última frase, porque es la razón por la que este método exis
 ## Ponlo en práctica {.exercises}
 
 1. **Escribe una prueba de rebanada para uno de los propios controladores de Lumen.** Usando `WebSliceTestCase`, escanea solo `Lumen\Web\` y confirma que puedes servir un endpoint de wallet sin arrancar CQRS, EDA ni seguridad en absoluto — luego anota qué peticiones fallan, y por qué, una vez que entiendas exactamente qué beans dejó fuera la rebanada.
-2. **Reproduce tú mismo la brecha de `toBeProblemDetails()`.** Llámala contra una respuesta `404` real de la propia API REST de Lumen y confirma que falla con el mensaje de clave-`type`-faltante que describió este capítulo — luego reescribe la misma aserción de la manera en que `WalletRestTest.php` realmente lo hace, y confirma que esa pasa.
+2. **Mira cómo se mueve `type` bajo `toBeProblemDetails()`.** Llama a `toBeProblemDetails(404)` contra un `404` real de la propia API REST de Lumen y confirma que pasa — la clave `type` de la que habla la nota de este capítulo es `about:blank`. Luego pon `firefly.web.problem.type-uri` a `https://api.example.test/problems`, vuelve a ejecutarla, y confirma que el miembro pasó a ser `https://api.example.test/problems/resource-not-found` mientras la aserción sigue pasando. Por último pon la clave a `''` y observa cómo esa misma aserción falla con el mensaje de clave-`type`-faltante — el fallo que describe la nota, ahora algo que elige un despliegue en vez de algo que el framework te hace.
 3. **Ejecuta la suite de navegador, y luego rompe una página.** Ejecuta `composer test:browser` y mira `tests/Browser/Screenshots`. Después añade a la vista de bienvenida un `<script>` que lance, y vuelve a ejecutarla: confirma que la página sigue renderizándose, sigue pasando todos los `assertSee`, y que `assertNoJavaScriptErrors()` es la única afirmación que lo atrapa.
 4. **Demuestra que la división en suites importa.** Cronometra `composer test` y confirma que no se descarga ningún Chromium. Después prueba `vendor/bin/pest --exclude-group=browser` y mira cómo Playwright arranca igualmente — la etiqueta de grupo filtra tests, la división en suites es lo que impide que los ficheros se incluyan siquiera.
 5. **Añade una prueba de integración protegida por `RequiresDocker`.** Elige un repositorio respaldado por Eloquent, escribe una prueba `@group integration` contra un testcontainer Postgres real usando `fireflyConfigFor()`, y confirma que `vendor/bin/pest` (sin banderas) la salta por completo mientras que `vendor/bin/pest --group=integration` la ejecuta de verdad.

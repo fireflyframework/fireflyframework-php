@@ -22,6 +22,7 @@ use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
+use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
@@ -542,6 +543,27 @@ it('answers an RFC 9457 `instance` that is root-relative, including at the site 
         // this ever sees it — both are the framework's answer, pinned here because the member depends on it.
         ->and(ProblemMapper::instanceFor(Request::create('/orders/42?include=lines')))->toBe('/orders/42')
         ->and(ProblemMapper::instanceFor(Request::create('/orders/')))->toBe('/orders');
+
+    // AND THE SLASH THIS METHOD ADDS CANNOT OPEN AN AUTHORITY. `\`, tab, LF and CR are the four characters
+    // a URL parser reads past or deletes on its way to a second separator, so `/\evil.example` would resolve
+    // to https://evil.example while the unprefixed `\evil.example` it came from resolves against this
+    // origin. Each is percent-encoded in the METHOD rather than at a call site, because ErrorReport builds
+    // its copy of the member from this same call and would otherwise need its own guard. Request::create()
+    // is the one place Symfony refuses a backslash, so the request has to be built the long way — the
+    // published document is exercised end to end in ProblemDetailsRendererTest.
+    $raw = Request::createFromBase(new SymfonyRequest([], [], [], [], [], [
+        'REQUEST_URI' => "/\\evil.example/ph\tish",
+        'REQUEST_METHOD' => 'GET',
+        'HTTP_HOST' => 'app.test',
+        'SCRIPT_NAME' => '/index.php',
+        'SCRIPT_FILENAME' => '/index.php',
+    ]));
+
+    expect($raw->path())->toBe("\\evil.example/ph\tish")
+        ->and(ProblemMapper::instanceFor($raw))->toBe('/%5Cevil.example/ph%09ish')
+        // And the answer is one this package's own href vocabulary accepts unchanged, which is the same
+        // question ErrorPage::retry() asks of the address it prints.
+        ->and(ErrorPageSettings::url(ProblemMapper::instanceFor($raw)))->toBe('/%5Cevil.example/ph%09ish');
 });
 
 it('renders one <li> per budgeted frame and no more, so the page cannot be a wall', function () {

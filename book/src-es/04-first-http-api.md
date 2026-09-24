@@ -421,6 +421,7 @@ final class ProblemDetailsRenderer
     {
         // An absent settings object means the SAFE answer, not the open one — see the constructor.
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
+        $typeUri = $this->settings instanceof ErrorPageSettings ? $this->settings->typeUri : ProblemType::BLANK;
 
         $correlationId = CorrelationIdFilter::of($request);
         $reference = TraceContext::referenceFor($request);
@@ -434,6 +435,8 @@ final class ProblemDetailsRenderer
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             correlationId: $correlationId,
+            // …
+            type: ProblemType::of($exception->errorCode(), $typeUri),
         );
         // …
         $payload = $problem->toArray();

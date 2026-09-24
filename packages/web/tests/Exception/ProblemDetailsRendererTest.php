@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
 use Psr\Log\AbstractLogger;
 use Symfony\Component\ErrorHandler\Error\FatalError;
+use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -599,6 +600,79 @@ it('identifies the occurrence with a root-relative reference, at every depth and
     /** @var array<string,mixed> $root */
     expect($deep['instance'])->toBe('/api/v1/orders/42/lines/7')
         ->and($root['instance'])->toBe('/');
+});
+
+it('cannot publish an `instance` that leaves this origin, whatever request target arrives', function () {
+    // THE LEADING SLASH IS WHAT MADE THIS A SECURITY QUESTION, and it arrived with the conformance pass
+    // above. `$request->path()` does NOT strip a backslash from a REAL request — Symfony refuses one only
+    // inside Request::create(), never in the prepareRequestUri() path a served request takes, which is the
+    // quirk ErrorPageSettings::url()'s docblock spends nine lines on and the reason this case has to build
+    // its request the long way. So a REQUEST_URI of `/\evil.example/phish` answers `\evil.example/phish`.
+    // UNPREFIXED that is harmless: the URL parser's relative state reads the leading `\` as one separator
+    // and resolves it against this origin. PREFIXED it is `/\evil.example/phish`, which enters
+    // special-authority-ignore-slashes state and resolves to https://evil.example/phish — `//host` wearing
+    // a path's clothes, the exact attack ErrorPageSettings::url() exists to refuse. ASCII tab, LF and CR
+    // are the same hazard by the other rule the parser applies before it reads anything: it DELETES all
+    // three, so `/<TAB>/evil.example` IS `//evil.example` by the time a browser looks at it.
+    //
+    // AND `instance` TRAVELS TO THE SAME READERS AS `type`, which is the argument the sibling guard on
+    // firefly.web.problem.type-uri is written on: every API console, IDE HTTP client and documentation
+    // viewer that renders a problem document turns its URI members into links. The HTML page was never
+    // exposed — ErrorPage::retry() runs its own address through ErrorPageSettings::url() and refuses
+    // anything that method alters — so the published JSON is the whole of it, and ProblemMapper is where
+    // the rule belongs because ErrorReport builds the same member from the same call.
+    $renderer = new ProblemDetailsRenderer;
+
+    $published = static function (string $requestUri) use ($renderer): string {
+        $request = Request::createFromBase(new SymfonyRequest([], [], [], [], [], [
+            'REQUEST_URI' => $requestUri,
+            'REQUEST_METHOD' => 'GET',
+            'HTTP_HOST' => 'app.test',
+            'SCRIPT_NAME' => '/index.php',
+            'SCRIPT_FILENAME' => '/index.php',
+        ]));
+
+        /** @var array<string,mixed> $payload */
+        $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), $request)->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $instance = $payload['instance'] ?? null;
+
+        return is_string($instance) ? $instance : '';
+    };
+
+    expect($published('/\\evil.example/phish'))->toBe('/%5Cevil.example/phish')
+        ->and($published("/\t/evil.example/phish"))->toBe('/%09/evil.example/phish')
+        ->and($published("/\n/evil.example/phish"))->toBe('/%0A/evil.example/phish')
+        ->and($published("/\r/evil.example/phish"))->toBe('/%0D/evil.example/phish')
+        // The `//` spelling never got here: Laravel trims the leading slashes off path() before this method
+        // sees it, so it was already a path. Pinned anyway, because the whole point of this case is that a
+        // value which is safe unprefixed is not safe prefixed.
+        ->and($published('//evil.example/phish'))->toBe('/evil.example/phish')
+        // AND THE ENCODING IS NOT A REFUSAL. RFC 3986 admits none of those four in a path segment, so
+        // percent-encoding is the conformant spelling AND keeps the member identifying the occurrence it
+        // was asked about — a fallback to '/' would throw that away on exactly the requests an operator
+        // most wants to see. An ordinary target is untouched.
+        ->and($published('/api/orders/42?include=lines'))->toBe('/api/orders/42');
+
+    // The rule as a rule rather than as six expected strings: do to each answer what a URL parser does
+    // before it reads anything — delete every tab, LF and CR — and no reference this renderer publishes can
+    // open an authority at its second character.
+    foreach ([
+        '/\\evil.example/phish',
+        "/\t/evil.example/phish",
+        "/\n\\evil.example/phish",
+        "/\r/evil.example/phish",
+        '//evil.example/phish',
+        '/\\\\evil.example/phish',
+        "/\t\\evil.example/phish",
+    ] as $target) {
+        $parsed = str_replace(["\t", "\n", "\r"], '', $published($target));
+
+        expect(preg_match('#^/[/\\\\]#', $parsed))->toBe(0, sprintf(
+            '%s published "%s", which a browser resolves off this origin.',
+            var_export($target, true),
+            $parsed,
+        ));
+    }
 });
 
 it('carries about:blank as its problem type by default, the way Spring\'s ProblemDetail does', function () {

@@ -1277,15 +1277,29 @@ it('pins every published problem document to the `instance` ProblemMapper really
         }
     }
 
-    // And the prose beside them. A paragraph that explains `instance` and names `$request->path()` is
+    // And the prose beside them. A paragraph that explains what `instance` CARRIES and calls it a path is
     // describing the value the renderer stopped passing, so it has to name what passes it instead — which is
     // the correction the shipped paragraphs were missing, in either language, without this file having to
     // read Spanish.
+    //
+    // THE TRIGGER IS THE CLAIM, NOT ONE SPELLING OF IT. Its first form asked for the literal
+    // `$request->path()`, which is the CONJUNCTION the two chapter-4 paragraphs happened to be written with
+    // — and `book/src/04a-openapi.md` said "`instance` carries a request *path* rather than a URI
+    // reference" in prose that names no PHP at all, so the sentence that survived the conformance pass
+    // longest was the one this guard could not see. A reader of a generated client's documentation reads
+    // that page, so it is judged by what it CLAIMS: `instance` plus "request path" in either language, with
+    // Markdown emphasis taken out first because that is how both editions wrote the word.
     $paragraphs = 0;
 
     foreach (fireflyProsePages() as $page => $pageParagraphs) {
         foreach ($pageParagraphs as $paragraph) {
-            if (! str_contains($paragraph, '`instance`') || ! str_contains($paragraph, '$request->path()')) {
+            $plain = str_replace('*', '', $paragraph);
+
+            $claims = str_contains($paragraph, '$request->path()')
+                || str_contains($plain, 'request path')
+                || str_contains($plain, 'ruta de petición');
+
+            if (! str_contains($paragraph, '`instance`') || ! $claims) {
                 continue;
             }
 
@@ -1293,7 +1307,7 @@ it('pins every published problem document to the `instance` ProblemMapper really
 
             if (! str_contains($paragraph, 'instanceFor')) {
                 $failures[] = sprintf(
-                    '%s explains `instance` as `$request->path()` without naming ProblemMapper::instanceFor(), '
+                    '%s explains `instance` as the request path without naming ProblemMapper::instanceFor(), '
                     .'which is what the renderer passes and what makes the published member "%s".',
                     $page,
                     $published,
@@ -1304,10 +1318,10 @@ it('pins every published problem document to the `instance` ProblemMapper really
 
     expect($failures)->toBe([])
         // Canaries, on both halves: a check that stops matching anything proves nothing. Eleven samples and
-        // two paragraphs are what the surface held the day this was written, and the wave still has pages to
-        // add — so the floor is asserted rather than the exact count.
+        // four paragraphs are what the surface held the day the trigger was widened, and the wave still has
+        // pages to add — so the floor is asserted rather than the exact count.
         ->and($samples)->toBeGreaterThanOrEqual(11)
-        ->and($paragraphs)->toBeGreaterThanOrEqual(2);
+        ->and($paragraphs)->toBeGreaterThanOrEqual(4);
 });
 
 it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {

@@ -269,24 +269,26 @@ function assertNoEventsPublished(object $publisher): void
 }
 ```
 
-!!! warning "A real, honest limitation: `toBeProblemDetails()` and the `type` field"
-    `samples/lumen`'s own `Web\WalletRestTest.php` documents, in a code comment right next to the tests it affects, a genuine gap: `toBeProblemDetails()` asserts the response body has a `type` key, but the framework's real RFC-7807 renderer (`Firefly\Kernel\Error\ErrorResponse::fromException()`, rendered by `Firefly\Web\Exception\ProblemDetailsRenderer`) never populates `type` — it is an optional field only emitted when explicitly passed, which the exception-to-response path never does. Calling `toBeProblemDetails()` against a genuine `404`/`422`/`403`/`409` this framework actually produces fails, every time, for exactly that reason.
+!!! note "`toBeProblemDetails()` and the `type` field: a real limitation, and how it was closed"
+    This box used to describe a genuine gap, and the gap is worth keeping in view because it is the shape these things usually have. `toBeProblemDetails()` asserts the response body has a `type` key — and the framework's real renderer, `Firefly\Web\Exception\ProblemDetailsRenderer`, published no `type` at all. It was an optional member emitted only when something explicitly passed one, which the exception-to-response path never did, so calling the shipped expectation against a genuine `404`/`422`/`403`/`409` failed every time. A matcher and a renderer that ship in the same framework disagreed about the shape of the same document.
 
-    This is why Lumen's own tests — like `firefly/web`'s own capstone test suite — assert the RFC-7807 fields directly instead:
+    RFC 9457 §3.1.1 settled it: an absent `type` **is** `about:blank`, so writing it out costs a conformant document nothing and saves every client from having to know the rule. The renderer now emits it — Spring's `ProblemDetail` makes the same choice — and `firefly.web.problem.type-uri` either points at a base URI, deriving a dereferenceable type from the stable `code` (`https://api.example.test/problems/resource-not-found`), or is set to `''` to drop the member again for a deployment that wants the pre-9457 document byte for byte. So the expectation works against the framework's own error responses, and `samples/lumen` exercises it on the 404:
 
 <!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
 ```php
 it('returns RFC-7807 problem+json for an unknown wallet', function () {
     // …
-    $this->getJson('/api/v1/wallets/nope/balance')
+    $response = $this->getJson('/api/v1/wallets/nope/balance')
         ->assertStatus(404)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('status', 404)
         ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
         ->assertJsonPath('title', 'Not Found');
+    // …
+    expect($response)->toBeProblemDetails(404);
 ```
 
-A book that only teaches what genuinely works would be doing you a disservice by hiding this: `toBeProblemDetails()` is real, shipped, and exercised by the testing package's own suite against a body that *does* carry a `type` key — it simply is not the assertion Lumen reaches for against the framework's actual error responses, and now you know why, instead of hitting the same failure cold.
+The field assertions stayed, and that is the part worth copying: `toBeProblemDetails()` says the response is *a* problem document of *that* status, while `assertJsonPath('code', 'RESOURCE_NOT_FOUND')` says which failure it is. The second is the one a regression trips over, so a test that can afford both should have both.
 
 ---
 
@@ -781,7 +783,7 @@ Read the last sentence twice, because it is the reason this method exists at all
 ## Try it yourself {.exercises}
 
 1. **Write a slice test for one of Lumen's own controllers.** Using `WebSliceTestCase`, scan only `Lumen\Web\` and confirm you can serve one wallet endpoint without booting CQRS, EDA, or security at all — then note which requests fail, and why, once you understand exactly which beans the slice left out.
-2. **Reproduce the `toBeProblemDetails()` gap yourself.** Call it against a real `404` response from Lumen's own REST API and confirm it fails with the missing-`type`-key message this chapter described — then rewrite the same assertion the way `WalletRestTest.php` actually does it, and confirm that one passes.
+2. **Watch `type` move under `toBeProblemDetails()`.** Call `toBeProblemDetails(404)` against a real `404` from Lumen's own REST API and confirm it passes — the `type` key this chapter's note is about is `about:blank`. Then set `firefly.web.problem.type-uri` to `https://api.example.test/problems`, re-run, and confirm the member became `https://api.example.test/problems/resource-not-found` while the expectation still passes. Finally set the key to `''` and watch the same expectation fail with the missing-`type`-key message — the failure the note describes, now something a deployment chooses rather than something the framework does to you.
 3. **Run the browser suite, then break a page.** Run `composer test:browser` and look at `tests/Browser/Screenshots`. Then add a `<script>` that throws to the welcome view and re-run: confirm the page still renders, still passes every `assertSee`, and that `assertNoJavaScriptErrors()` is the only assertion that catches it.
 4. **Prove the suite split matters.** Time `composer test` and confirm nothing downloads Chromium. Then try `vendor/bin/pest --exclude-group=browser` and watch Playwright boot anyway — the group label filters tests, the suite split is what stops the files being included at all.
 5. **Add a `RequiresDocker`-gated integration test.** Pick a repository backed by Eloquent, write an `@group integration` test against a real Postgres testcontainer using `fireflyConfigFor()`, and confirm `vendor/bin/pest` (no flags) skips it entirely while `vendor/bin/pest --group=integration` runs it for real.

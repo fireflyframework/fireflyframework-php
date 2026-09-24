@@ -129,7 +129,8 @@ final class ProblemMapper
     }
 
     /**
-     * The request path as an RFC 9457 `instance`: a ROOT-RELATIVE reference, leading slash and all.
+     * The request path as an RFC 9457 `instance`: a ROOT-RELATIVE reference, leading slash and all — with
+     * the four characters that would turn the slash after it into an AUTHORITY percent-encoded.
      *
      * `$request->path()` answers `orders/42`, and a relative reference is resolved against the document's
      * base URI — which for a problem served from /api/orders/42 makes `api/orders/42` mean
@@ -144,10 +145,37 @@ final class ProblemMapper
      * one reference would eventually disagree about one request, and the day the shape changes again it
      * changes once. This paragraph used to record that the renderer had not been moved over yet, and the
      * conformance pass that moved it retired the note, which is what that note promised.
+     *
+     * AND ADDING THAT LEADING SLASH IS EXACTLY WHAT MAKES THE SECOND CHARACTER DANGEROUS, which is why the
+     * encoding is part of the same rule rather than a caller's problem. `$request->path()` does NOT strip a
+     * backslash from a real request — Symfony refuses one only inside `Request::create()`, never in the
+     * `prepareRequestUri()` path a served request takes, which is the quirk
+     * ErrorPageSettings::url()'s docblock spends nine lines on — so a REQUEST_URI of `/\evil.test/phish`
+     * answers `\evil.test/phish` here. UNPREFIXED that is harmless: the URL parser's relative state treats
+     * the leading `\` as a single separator and resolves it against this origin. PREFIXED it is
+     * `/\evil.test/phish`, which enters special-authority-ignore-slashes state and resolves to
+     * `https://evil.test/phish` — `//host` wearing a path's clothes, the attack ErrorPageSettings::url()
+     * exists to refuse, in a member an API console, an IDE HTTP client and a documentation viewer all
+     * render as a link. ASCII tab, LF and CR are the same hazard by the other rule the parser applies
+     * before it reads anything: it DELETES all three, so `/<TAB>/evil.test` IS `//evil.test` by the time a
+     * browser looks at it, and a leading one that used to be stripped along with the rest of the input's
+     * leading whitespace is now safely behind a slash where it is not.
+     *
+     * PERCENT-ENCODING RATHER THAN REFUSING, because RFC 3986 does not admit any of the four in a path
+     * segment in the first place: `%5C`, `%09`, `%0A` and `%0D` are never a separator to any URL parser, so
+     * the reference still identifies the occurrence it was asked about — which a fallback to `/` would
+     * throw away on exactly the requests an operator most wants to see. The rule is applied HERE, at the
+     * one place the reference is built, so ErrorReport's copy of the member is guarded by the same line;
+     * the page's own `href` is a different value with a different vocabulary and is refused outright by
+     * ErrorPage::retry() through ErrorPageSettings::url().
      */
     public static function instanceFor(Request $request): string
     {
-        return '/'.ltrim($request->path(), '/');
+        return '/'.str_replace(
+            ['\\', "\t", "\n", "\r"],
+            ['%5C', '%09', '%0A', '%0D'],
+            ltrim($request->path(), '/'),
+        );
     }
 
     /**
