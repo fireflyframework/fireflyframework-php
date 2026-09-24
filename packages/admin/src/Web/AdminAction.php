@@ -439,7 +439,9 @@ final readonly class AdminAction
                     TableColumn::token('name', 'Name', weight: 2),
                     TableColumn::text('interfaces', 'Implements', weight: 3, sortable: true),
                 ),
-                ['class', 'stereotype', 'scope', 'name', 'interfaces'],
+                // `interfacesQualified` is searched but has no column: it is the same list the Implements
+                // column draws, spelled out, and the cell carries it on its `title`. See beanRows().
+                ['class', 'stereotype', 'scope', 'name', 'interfaces', 'interfacesQualified'],
                 'class',
             ),
             // #[ConfigProperties] DTOs are bound and injectable but are neither scanned as components nor
@@ -614,10 +616,27 @@ final readonly class AdminAction
     }
 
     /**
-     * The bean catalogue as rows. `interfaces` is flattened to a space-joined string so the column is
-     * searchable and orderable by the same rules as every other one — a list is neither.
+     * The bean catalogue as rows. A bean's interfaces are a LIST, and a list is neither searchable nor
+     * orderable by the rules the rest of the table system applies, so each is flattened to a space-joined
+     * string — twice, under two keys, because the two jobs want two different strings.
      *
-     * @return list<array{class: string, stereotype: string, scope: string, name: string, interfaces: string}>
+     * `interfaces` HOLDS THE LEAF NAMES AND IS WHAT THE COLUMN DRAWS. Ordering a column by a value the
+     * reader cannot see is the same defect as sorting Fixed rate by the leading digit of a duration: a
+     * column of `HealthIndicator`, `ActuatorEndpoint`, `Comparable` ordered by its FQCNs comes back grouped
+     * by namespace under a header that promised alphabetical, and nothing about the page says why.
+     *
+     * `interfacesQualified` HOLDS THE FQCNs AND IS WHAT `?q=` ALSO LOOKS INSIDE. The fully qualified name is
+     * the one an operator has to hand, pasted out of the editor they came from, and pasting it used to empty
+     * this page while three beans implemented exactly it — the one search on this dashboard that answered
+     * "nothing matches" to a term that matches. Both halves of the page promise otherwise in words: the
+     * placeholder says "class, stereotype or interface" and the empty state names interfaces outright.
+     *
+     * SEARCHING A VALUE THE READER CANNOT SEE is InMemoryListing's one prohibition, and this does not break
+     * it: the qualified list is drawn on the cell's `title`, the same way the Class column keeps the FQCN
+     * in the row, shows the leaf and puts the whole name on hover. The truncation had emptied that title of
+     * its purpose too — a cell reading `ActuatorEndpoint` carrying `title="ActuatorEndpoint"`.
+     *
+     * @return list<array{class: string, stereotype: string, scope: string, name: string, interfaces: string, interfacesQualified: string}>
      */
     private function beanRows(): array
     {
@@ -627,9 +646,12 @@ final readonly class AdminAction
                 continue;
             }
 
-            $interfaces = [];
+            $leaves = [];
+            $qualified = [];
             foreach (is_array($bean['interfaces'] ?? null) ? $bean['interfaces'] : [] as $interface) {
-                $interfaces[] = Format::leafOf(is_string($interface) ? $interface : '');
+                $name = is_string($interface) ? $interface : '';
+                $leaves[] = Format::leafOf($name);
+                $qualified[] = $name;
             }
 
             $rows[] = [
@@ -637,7 +659,8 @@ final readonly class AdminAction
                 'stereotype' => is_string($bean['stereotype'] ?? null) ? $bean['stereotype'] : '',
                 'scope' => is_string($bean['scope'] ?? null) ? $bean['scope'] : '',
                 'name' => is_string($bean['name'] ?? null) ? $bean['name'] : '',
-                'interfaces' => implode(' ', $interfaces),
+                'interfaces' => implode(' ', $leaves),
+                'interfacesQualified' => implode(' ', $qualified),
             ];
         }
 

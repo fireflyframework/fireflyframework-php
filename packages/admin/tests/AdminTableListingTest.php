@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Actuator\Health\HealthIndicator;
 use Firefly\Admin\Tests\Support\AdminTableCapstoneTestCase;
 use Illuminate\Support\Str;
 
@@ -144,11 +145,49 @@ it('orders the beans by a column the page draws, and refuses one it does not', f
 });
 
 /**
+ * The Beans page promises, in two strings it renders verbatim, that `?q=` looks inside a bean's interfaces
+ * — "Search by class, stereotype or interface…" in the placeholder, and "class, stereotype, scope, name or
+ * interfaces" in the empty state. A qualified interface name is the form an operator actually has to hand,
+ * pasted out of the editor they came from, and it used to answer a confident "Nothing matches" while three
+ * beans in the catalogue implemented exactly it: the row held only the leaf names, because the flattening
+ * that made the column sortable had been applied before the row was built rather than at render time.
+ *
+ * The two are pinned TOGETHER — the leaf reading and the qualified one over the same term — because either
+ * alone passes on a page that searches only the other. The tbody comparison is what says they are the same
+ * catalogue and not merely two non-empty ones.
+ */
+it('narrows the beans catalogue by a qualified interface name, the way the page says it does', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $leaf = (string) $this->get('/firefly/beans?q=HealthIndicator')->assertStatus(200)->getContent();
+    $qualified = (string) $this->get('/firefly/beans?q='.urlencode(HealthIndicator::class))->assertStatus(200)->getContent();
+
+    expect($qualified)->not->toContain('Nothing matches')
+        ->toContain('DbHealthIndicator')
+        // Still a NARROWING, not the whole catalogue back: the ten ActuatorEndpoint beans are not in it.
+        ->not->toContain('MappingsEndpoint');
+
+    expect(Str::between($qualified, '<tbody>', '</tbody>'))->toBe(Str::between($leaf, '<tbody>', '</tbody>'));
+
+    // And the searched value is one the reader can see, which is InMemoryListing's rule for what may be in
+    // `$searchable`: the cell draws the leaves and hovers the qualified list, exactly as the Class column
+    // beside it has kept its FQCN on the title all along. Before this, that title repeated the cell's own
+    // text back at it.
+    expect($qualified)->toContain('<td class="t-text dim" title="'.HealthIndicator::class.'">HealthIndicator</td>');
+});
+
+/**
  * Two listings share the Conditions page, so each takes a qualifier — Spring's `@Qualifier("pos") Pageable`
  * in one parameter name. Paging one must not page the other, and each one's links must carry the other's
  * position or the panel a reader is not looking at silently jumps back to page 1.
+ *
+ * WHAT THIS FIXTURE CAN SEE IS THE QUALIFYING, and the carrying only where it rides on a header link or a
+ * hidden field: nine applied conditions and two backed-off ones fit on every size the rows-per-page control
+ * offers here, so `isPaged()` is false on both panels and `_pager`'s paged branch — the only caller of
+ * `ListingPage::link()` anywhere — never renders. `pos_page=2` below comes back out of the Backed-off
+ * panel's forms, which is the carrying rather than the paging. The page links are pinned over a fixture
+ * built to page, in AdminTableConditionsPagerTest.
  */
-it('pages the two conditions panels independently and carries each other position', function () {
+it('qualifies each conditions panel and carries the other position through its forms and header links', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $body = (string) $this->get('/firefly/conditions?pos_page=2&neg_page=3')->assertStatus(200)->getContent();
 

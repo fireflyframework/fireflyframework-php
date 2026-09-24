@@ -31,7 +31,9 @@
                             <td class="t-token dim">{{ $bean['stereotype'] ?: '—' }}</td>
                             <td class="t-token dim">{{ $bean['scope'] ?: '—' }}</td>
                             <td class="t-token dim" title="{{ $bean['name'] }}">{{ $bean['name'] ?: '—' }}</td>
-                            <td class="t-text dim" title="{{ $bean['interfaces'] }}">{{ $bean['interfaces'] ?: '—' }}</td>
+                            {{-- The leaf names in the cell and the qualified ones on the title, exactly as the
+                                 Class column beside it: the searchable value is the one on hover. --}}
+                            <td class="t-text dim" title="{{ $bean['interfacesQualified'] }}">{{ $bean['interfaces'] ?: '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>
