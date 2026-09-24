@@ -966,6 +966,13 @@ return [
     //          | is the status-and-code-only page a deployment may prefer. An application's own error view
     //          | (`views` below) reads the same sentence as `$error->publicDetail`; this key empties it.
     //          |
+    //          | ONE SENTENCE IS NOT GOVERNED BY THIS KEY: a 405 still names the verbs it accepts ("That
+    //          | address does not accept a GET request. It accepts POST.") with this off. That sentence is
+    //          | the FRAMEWORK's — the verbs come off the `Allow` header the router put on its own
+    //          | exception, and the page writes the words — so there is nothing of YOURS in it for this key
+    //          | to withhold, and the same list is already the `allowed` member of the problem document
+    //          | published for the same failure.
+    //          |
     //          | Only sentences that were WRITTEN for a caller are ever carried: below 500, from a
     //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
     //          | QueryException's message is the failing SQL and its bindings — and nothing is carried.

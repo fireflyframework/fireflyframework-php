@@ -54,6 +54,14 @@ use Illuminate\Support\Str;
  * it, which name a model class and a primary key. Turn the key off and `$publicDetail` is '', the lede
  * goes back to the generic reassurance for the status, and there is no authored sentence for any renderer
  * — this page or an application's own error view, which is handed the same report — to reach for at all.
+ *
+ * WITH ONE EXCEPTION, AND IT IS NOT AN AUTHORED SENTENCE. A 405 the router raised keeps its verb sentence
+ * — "That address does not accept a GET request. It accepts POST." — whichever way this key is set, because
+ * nothing in it came from the application: ProblemMapper reads the verbs off the `Allow` header the ROUTER
+ * put on its own exception, and ErrorPage writes the words. This key governs the DISCLOSURE of what an
+ * application said, and there is none to govern there — the same list of verbs is the `allowed` member of
+ * the problem document published for the same failure. An operator who turns the key off for the
+ * status-and-code page gets it everywhere else and gets this sentence still.
  */
 final readonly class ErrorPageSettings
 {

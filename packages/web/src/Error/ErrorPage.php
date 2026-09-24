@@ -84,6 +84,16 @@ final class ErrorPage
      * what problem+json has always published for the same failure, and a page that said "That page does not
      * exist." instead made one error read two ways. Only when neither applies does the page fall back to its
      * own reassurance, which is all a 5xx can honestly offer.
+     *
+     * THE 405 BRANCH SITS ABOVE THE `authored-detail` GATE, AND IT IS NOT GOVERNED BY IT — which is worth
+     * stating because the ORDER is what decides it. That key exists to say whether the sentence an
+     * APPLICATION wrote may reach a person. Nothing of the application's is in this one: ProblemMapper read
+     * the verbs off the `Allow` header the ROUTER put on its own exception, and methodSentence() below
+     * writes the words. So there is nothing for the key to withhold, and turning it off to get the
+     * status-and-code page leaves this sentence exactly where it was — the page saying about a 405 what the
+     * document beside it already says in its `allowed` member. ErrorPageSettings and
+     * skeleton/config/firefly.php state that where an operator reads about the key, and ErrorPageTest pins
+     * it, because an undocumented exception to a documented key is the same bug as a wrong default.
      */
     private static function lede(ErrorReport $report, ErrorPageSettings $settings): string
     {
@@ -124,9 +134,9 @@ final class ErrorPage
      * Every one of the four production screenshots ends at a fact grid: no link home, no way to sign in
      * after a 401, no way to ask again after a 500. The offers are per STATUS because a wrong offer is worse
      * than none — "Sign in" on a 404 tells a reader they were refused when they were not — and every href is
-     * either the request's own path (built as '/'.ltrim($request->path(), '/'), so it cannot carry a scheme)
-     * or a configured value that ErrorPageSettings::url() has already refused unless it is a path or an
-     * http(s) URL.
+     * either the request's own address (see retry() for how that is spelled and why it is safe) or a
+     * configured value that ErrorPageSettings::url() has already refused unless it is a path or an http(s)
+     * URL.
      */
     private static function actions(ErrorReport $report, ErrorPageSettings $settings): string
     {
@@ -144,7 +154,7 @@ final class ErrorPage
         // A 5xx is the one failure whose reader can act without leaving the page they wanted: ask for it
         // again. A 4xx cannot be retried into success — the address, the verb or the permission is wrong.
         if ($report->status >= 500) {
-            $links[] = ['href' => $report->path, 'label' => 'Try again'];
+            $links[] = ['href' => self::retry($report), 'label' => 'Try again'];
         }
 
         if ($settings->home !== '') {
@@ -166,6 +176,30 @@ final class ErrorPage
         }
 
         return $html.'</nav>';
+    }
+
+    /**
+     * THE REQUEST THAT FAILED, not merely the path it was addressed to.
+     *
+     * "Try again" is the primary action on every 5xx, and in its first spelling it dropped the query string:
+     * `$report->path` comes from Laravel's `path()`, which answers `search` for /search?q=foo&page=2, so a
+     * reader whose SEARCH had failed was handed a link to an empty one and had to retype what they had
+     * already typed. The word "again" is a promise about the request, and a link that re-issues a different
+     * one breaks it silently — the page looks right, and only the reader knows what was lost.
+     *
+     * IT STAYS SAFE FOR THE SAME REASON THE PATH DOES, in two halves. The path is '/'-prefixed and
+     * ltrim()ed, so the href begins with exactly one slash: no scheme, and no protocol-relative `//host`.
+     * The query is Symfony's `getQueryString()`, which percent-encodes to RFC 3986 — `"` is already `%22`
+     * and `<` is `%3C` before this page escapes anything — so it cannot end the attribute, cannot introduce
+     * a second `?`, and passes through htmlspecialchars byte for byte except for the `&` between pairs,
+     * which becomes `&amp;` because that is how an ampersand is spelled inside an HTML attribute value.
+     * Symfony also sorts the pairs, so the link may read `?page=2&q=foo` where the reader typed
+     * `?q=foo&page=2`; it is the same request, and normalising is the price of a spelling this page can
+     * make promises about.
+     */
+    private static function retry(ErrorReport $report): string
+    {
+        return $report->query === '' ? $report->path : $report->path.'?'.$report->query;
     }
 
     /**

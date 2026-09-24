@@ -11,7 +11,11 @@ it('renders the production 404 with the code and a reassurance, and nothing inte
     visit('/does-not-exist')
         ->assertSee('404')
         ->assertSee('RESOURCE_NOT_FOUND')
-        ->assertSee('That page does not exist.')
+        // WAVE UX-E: the production lede is the sentence the problem document publishes for the same
+        // failure, and for a route that matches nothing that sentence is ProblemMapper::NOTHING_HERE. It
+        // used to be the page's own "That page does not exist." — a fourth wording of one error, beside
+        // the document's, the log's and the router's.
+        ->assertSee('There is nothing at this address.')
         ->assertDontSee('Stack trace')
         ->assertDontSee('NotFoundHttpException')
         ->assertDontSee('APP_DEBUG')
@@ -23,7 +27,10 @@ it('keeps the domain code on the production page but not the throw site', functi
     /** @var ProductionBrowserTestCase $this */
     visit('/orders/999999')
         ->assertSee('ORDER_NOT_FOUND')
-        ->assertSee('That page does not exist.')
+        // And here it is the APPLICATION's sentence — OrderService::NOT_FOUND_SENTENCE, the one the
+        // skeleton wrote and problem+json has always published as `detail`. The code was already shared
+        // between the two surfaces; now the sentence is, which is the whole of wave UX-E's Task 6.
+        ->assertSee('That order does not exist.')
         ->assertDontSee('OrderService.php')
         ->assertDontSee('ResourceNotFoundException')
         ->assertNoJavaScriptErrors()
@@ -35,7 +42,9 @@ it('renders the production 405', function (): void {
     visit('/browser-fixture/submit')
         ->assertSee('405')
         ->assertSee('METHOD_NOT_ALLOWED')
-        ->assertSee('That address does not accept this kind of request.')
+        // The verbs, not a shrug. The router named them on its own exception and the problem document has
+        // published them as `allowed` all along; the page is the surface that used to throw them away.
+        ->assertSee('That address does not accept a GET request. It accepts POST.')
         ->assertDontSee('Stack trace')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-405-production');

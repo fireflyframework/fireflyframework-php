@@ -784,6 +784,7 @@ it('shows the frames when not one of them is yours, instead of a heading over a 
         'severity' => 'warning',
         'method' => 'GET',
         'path' => '/does-not-exist',
+        'query' => '',
         'timestamp' => '2026-01-01T00:00:00+00:00',
         'detailed' => true,
         'exceptionClass' => 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException',
@@ -973,8 +974,8 @@ it('offers a 5xx the one action its reader can actually take: ask again', functi
     $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', support: 'https://support.example.test');
 
     expect($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/orders/42'))
-        // A plain link to the same path: it re-issues a GET, it works with scripts off, and it cannot carry
-        // a scheme because $report->path is built as '/'.ltrim($request->path(), '/').
+        // A plain link to the request that failed: it re-issues a GET, it works with scripts off, and it
+        // cannot carry a scheme because $report->path is built as '/'.ltrim($request->path(), '/').
         ->toContain('<a class="act primary" href="/orders/42">Try again</a>')
         ->toContain('<a class="act" href="/">Go home</a>')
         ->toContain('<a class="act" href="https://support.example.test">Contact support</a>');
@@ -1040,4 +1041,53 @@ it('lets an operator switch every action off, and never builds an href it did no
     expect($page(new NotFoundHttpException, $off, 404, 'Not Found'))->not->toContain('class="acts"')
         ->and($page(new NotFoundHttpException, $empty, 404, 'Not Found'))->not->toContain('class="acts"')
         ->and($page(new NotFoundHttpException, $empty, 404, 'Not Found'))->not->toContain('href="javascript:');
+});
+
+it('re-issues the request that failed, query string and all', function () use ($page) {
+    // "AGAIN" IS A PROMISE ABOUT THE REQUEST. Laravel's `path()` answers `search` for /search?q=foo&page=2,
+    // so a link built from it alone hands a reader whose SEARCH failed an empty one and asks them to retype
+    // what they already typed — a loss nothing on the page admits to, because the page looks right.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/');
+
+    expect($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/search?q=foo&page=2'))
+        // The `&` is `&amp;` because that is how an ampersand is spelled inside an attribute value, and the
+        // pairs are sorted because Symfony's getQueryString() normalises them. Same request either way.
+        ->toContain('<a class="act primary" href="/search?page=2&amp;q=foo">Try again</a>')
+        // A path with no query keeps the bare path — no trailing '?' on the overwhelming majority of links.
+        ->and($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/orders/42'))
+        ->toContain('href="/orders/42">Try again</a>')
+        ->not->toContain('href="/orders/42?"');
+});
+
+it('cannot be talked out of the href by a query string, however it is spelled', function () use ($page) {
+    // The query is the one part of this href that comes from the CALLER, so it is the one part worth
+    // proving cannot end the attribute it sits in. getQueryString() percent-encodes to RFC 3986 before the
+    // page escapes anything: `"` is already %22 and `<` is %3C, so there is no quote left to close on.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '');
+
+    $html = $page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/search?q="><script>alert(1)</script>&page=2');
+
+    expect($html)->toContain('href="/search?page=2&amp;q=%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E">')
+        ->not->toContain('<script>alert(1)</script>')
+        // And the fact grid still states the PATH alone: a query string is where a token or a search a
+        // person would rather not screenshot tends to live, and the grid offers no action to justify it.
+        ->toContain('<dd>GET /search</dd>');
+});
+
+it('keeps the 405 verbs when authored detail is off, because they are the framework\'s own', function () use ($page) {
+    // THE KEY GOVERNS DISCLOSURE, AND THERE IS NONE HERE. `authored-detail` decides whether the sentence an
+    // APPLICATION wrote reaches a person. Nothing of the application's is in the verb sentence: the verbs
+    // come off the `Allow` header the ROUTER put on its own exception, the page writes the words, and the
+    // same list is the `allowed` member of the document published for the same failure. Pinned because two
+    // docblocks and the config reference now promise an operator exactly this, and because the behaviour
+    // rests on nothing louder than the ORDER of two branches in lede().
+    $off = new ErrorPageSettings(trace: false, hints: false, authoredDetail: false);
+
+    expect($page(new MethodNotAllowedHttpException(['POST', 'HEAD']), $off, 405, 'Method Not Allowed', 'GET', '/orders'))
+        ->toContain('That address does not accept a GET request. It accepts POST.')
+        // Every other status DOES go back to the reassurance with the key off, which is the status-and-code
+        // page the key exists to offer.
+        ->and($page(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), $off, 404, 'Not Found'))
+        ->toContain('That page does not exist.')
+        ->not->toContain('Order 42 does not exist.');
 });

@@ -44,6 +44,18 @@ final readonly class ErrorReport
      * rows holding one value teach a reader that the ids are interchangeable, which is the confusion the
      * two members exist to prevent.
      *
+     * `path` AND `query` ARE TWO FIELDS BECAUSE THEY ARE TWO PROMISES. `path` is root-relative and built
+     * as '/'.ltrim($request->path(), '/'), which is what makes it safe to put in an href: it begins with
+     * exactly one slash, so it cannot carry a scheme and cannot become protocol-relative. `query` is what
+     * Laravel's `path()` THROWS AWAY — it answers `search` for /search?q=foo&page=2 — and the page's "Try
+     * again" link is the one place that loss is not cosmetic: a 5xx reader who is offered their search
+     * back without their search terms has been handed a different request than the one that failed. It is
+     * Symfony's `getQueryString()`, which is normalised (pairs sorted, empty query answered as null, taken
+     * here as '') and percent-encoded to RFC 3986, so `<`, `>` and `"` are already `%3C`, `%3E` and `%22`
+     * before htmlspecialchars ever sees them and no spelling of it can end the attribute it sits in. The
+     * fact grid still shows `path` alone: the grid is a statement about the request, and a query string is
+     * where a session token or a search a person would rather not screenshot tends to live.
+     *
      * @param  list<ErrorFrame>  $frames
      * @param  list<array{class: string, message: string, location: string}>  $previous
      * @param  list<string>  $allowed
@@ -56,6 +68,7 @@ final readonly class ErrorReport
         public string $severity,
         public string $method,
         public string $path,
+        public string $query,
         public string $timestamp,
         public bool $detailed,
         public string $exceptionClass = '',
@@ -103,6 +116,7 @@ final readonly class ErrorReport
             severity: is_string($payload['severity'] ?? null) ? $payload['severity'] : '',
             method: $request->getMethod(),
             path: '/'.ltrim($request->path(), '/'),
+            query: $request->getQueryString() ?? '',
             timestamp: $timestamp,
             detailed: false,
             reference: $reference,
@@ -136,6 +150,7 @@ final readonly class ErrorReport
             severity: $public->severity,
             method: $public->method,
             path: $public->path,
+            query: $public->query,
             timestamp: $public->timestamp,
             detailed: true,
             exceptionClass: $e::class,
