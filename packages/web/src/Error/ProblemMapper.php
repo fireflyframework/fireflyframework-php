@@ -193,9 +193,57 @@ final class ProblemMapper
     }
 
     /**
-     * The verbs a 405 permits live in the exception's `Allow` header, which the router always sets. HEAD is
-     * dropped from the sentence and the extension because Symfony adds it beside every GET and no person
-     * chooses it; it stays in the header the renderer copies through, where the standard wants it.
+     * What a 405 says, for WHICHEVER surface is asking — the problem document's `detail` and the HTML
+     * page's lede are both built here.
+     *
+     * ONE BUILDER BECAUSE THE VERBS ARE ONE FACT. The list is parsed off the router's `Allow` header once,
+     * HEAD-filtered once (Symfony adds it beside every GET and no person chooses it; it stays in the header
+     * the renderer copies through, where the standard wants it) and joined into prose once. Two copies of
+     * that joining is how a page and a document come to disagree about a failure whose whole content is a
+     * list of three words, and this wave exists because they had already come to disagree about others.
+     *
+     * THE TWO SURFACES STILL SAY DIFFERENT SENTENCES, AND THAT IS WHAT `$refused` IS FOR. A problem
+     * document is built from the throwable alone — toFireflyException() takes a throwable and nothing
+     * else, and is called both from a renderer that has a request and from places that have none — so it
+     * cannot name the verb the caller actually used, and says only what the address accepts. The HTML page
+     * has the request in hand and names both, because a person who has just been refused is owed the
+     * refusal and not only the menu. So the difference between the two sentences is exactly the clause the
+     * document has no way to write; it is one ternary here rather than two wordings in two files, and
+     * ErrorPageTest pins the pair against each other so neither can be reworded alone.
+     *
+     * WITH NO VERBS THERE IS NO MENU, and both surfaces say so the same way: a router that set an empty
+     * `Allow` header has told the caller nothing to act on, and naming the verb that failed on its own
+     * would be a sentence with no next step in it. The page never reaches this arm — lede() takes the 405
+     * branch only when the list is non-empty, and falls through to its own reassurance otherwise — so the
+     * arm exists for the document, which must answer something for every 405 it is handed.
+     *
+     * @param  list<string>  $allowed  the verbs the address accepts, HEAD already dropped
+     * @param  string  $refused  the verb the caller used, when the caller is known; '' when it is not
+     */
+    public static function methodSentence(array $allowed, string $refused = ''): string
+    {
+        if ($allowed === []) {
+            return 'This address does not accept that method.';
+        }
+
+        // Written with "does not" rather than a contraction because that is the page's voice ("That page
+        // does not exist.", "You do not have access to that.") and because an apostrophe here would reach
+        // the markup as `&#039;`.
+        $verbs = count($allowed) === 1
+            ? $allowed[0]
+            : implode(', ', array_slice($allowed, 0, -1)).' or '.$allowed[count($allowed) - 1];
+
+        return $refused === ''
+            ? "This address only accepts {$verbs}."
+            : "That address does not accept a {$refused} request. It accepts {$verbs}.";
+    }
+
+    /**
+     * The verbs a 405 permits live in the exception's `Allow` header, which the router always sets. They
+     * are published as an `allowed` extension member as well as spelled into the sentence, so a client
+     * never has to parse prose to learn them — and so the HTML page beside this document can print the
+     * same list without re-reading the header. The sentence itself comes from methodSentence(), which the
+     * page calls too; see there for why the document's wording is the one that names no refused verb.
      */
     private static function methodNotAllowed(MethodNotAllowedHttpException $e): FireflyException
     {
@@ -205,14 +253,8 @@ final class ProblemMapper
             explode(',', is_string($header) ? $header : ''),
         ), static fn (string $method): bool => $method !== '' && $method !== 'HEAD'));
 
-        $sentence = match (count($allowed)) {
-            0 => 'This address does not accept that method.',
-            1 => "This address only accepts {$allowed[0]}.",
-            default => 'This address only accepts '.implode(', ', array_slice($allowed, 0, -1)).' or '.$allowed[count($allowed) - 1].'.',
-        };
-
         return new FireflyException(
-            $sentence,
+            self::methodSentence($allowed),
             'METHOD_NOT_ALLOWED',
             405,
             ErrorCategory::Framework,

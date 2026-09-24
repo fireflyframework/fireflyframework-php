@@ -1167,6 +1167,102 @@ it('puts the request\'s own address through the guard every other href on the pa
         ->toContain('<a class="act primary" href="/orders/42">Try again</a>');
 });
 
+it('keeps the base path a front controller is served under, so the retry is the request that failed', function () {
+    // `path()` IS `getPathInfo()`, AND IT IS BASE-URL-STRIPPED BY DESIGN: the router matches on the path
+    // info, so the front controller's own prefix is deliberately not in it. Built into an href on its own
+    // it names an address the deployment never serves — which makes the PRIMARY action on every 5xx page a
+    // 404, or a step off the application, on every box served under a base path. The family settled this
+    // spelling before this row existed (`$request->getBaseUrl().$path`, in LoginPageAction and the two
+    // OAuth2 link builders, pinned there by a case with this same name); retry() reuses it rather than
+    // inventing a second one.
+    //
+    // BUILT FROM A RAW $_SERVER ARRAY, like the guard case above, because a base URL exists only when
+    // SCRIPT_NAME is a prefix of REQUEST_URI — which is what a front-controller deployment has and what
+    // `Request::create()` does not produce.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/');
+
+    $render = static function (array $server) use ($settings): string {
+        $request = new Request([], [], [], [], [], $server + [
+            'REQUEST_METHOD' => 'GET',
+            'SERVER_NAME' => 'app.example.com',
+            'HTTP_HOST' => 'app.example.com',
+            'SERVER_PORT' => '80',
+        ]);
+
+        return ErrorPage::render(
+            ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00'),
+            $settings,
+        );
+    };
+
+    $served = [
+        'SCRIPT_NAME' => '/app/index.php',
+        'SCRIPT_FILENAME' => '/var/www/app/index.php',
+        'PHP_SELF' => '/app/index.php',
+    ];
+
+    expect($render(['REQUEST_URI' => '/app/index.php/orders/42'] + $served))
+        ->toContain('<a class="act primary" href="/app/index.php/orders/42">Try again</a>')
+        // The FACT GRID is unchanged and still states the path alone: it says which resource was asked
+        // for, and the front controller is not part of that. Only the href needs the prefix.
+        ->toContain('<dd>GET /orders/42</dd>')
+        // The query string rides on the end of the whole address, not between its halves.
+        ->and($render(['REQUEST_URI' => '/app/index.php/search?q=foo', 'QUERY_STRING' => 'q=foo'] + $served))
+        ->toContain('<a class="act primary" href="/app/index.php/search?q=foo">Try again</a>')
+        // AND THE GUARD IS ASKED ABOUT THE WHOLE HREF, NOT ITS TAIL. `getBaseUrl()` is raw — a prefix of
+        // REQUEST_URI matched against SCRIPT_NAME, not a value this package composed — so a check on the
+        // path alone would have been a question about a string the page does not print. Here the PATH is
+        // innocent and the base is the authority wearing a path's clothes; the offer is withheld whole.
+        ->and($render([
+            'REQUEST_URI' => '/\evil.example/index.php/orders/42',
+            'SCRIPT_NAME' => '/\evil.example/index.php',
+            'SCRIPT_FILENAME' => '/var/www/index.php',
+            'PHP_SELF' => '/\evil.example/index.php',
+        ]))
+        ->not->toContain('Try again')
+        ->not->toContain('href="/\\')
+        ->toContain('<a class="act primary" href="/">Go home</a>');
+});
+
+it('builds the page\'s 405 sentence and the document\'s from one place, and pins where they differ', function () use ($page) {
+    // THE DIVERGENCE IS DECLARED, NOT DISCOVERED. lede() opens by saying the page and the problem document
+    // agree, and for the 405 they do not say the same words: the page names the verb that was REFUSED and
+    // the document cannot, because toFireflyException() is handed a throwable and no request. That is a
+    // real constraint rather than an oversight, so it is pinned here the way the 5xx lede is pinned
+    // against ProblemMapper::OPAQUE_WITH_REFERENCE above — both sentences read off the same exception, so
+    // the day either is reworded this case names the other.
+    //
+    // WHAT THEY DO SHARE IS THE BUILDER. The verb list, the HEAD filtering and the prose that joins three
+    // verbs into "PUT, PATCH or DELETE" live in ProblemMapper::methodSentence() and nowhere else; the two
+    // call sites differ by one argument. Two copies of that joining is exactly how a page and a document
+    // come to disagree about a failure whose whole content is a list of words.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $e = new MethodNotAllowedHttpException(['POST', 'HEAD'], 'The GET method is not supported for route orders.');
+
+    $html = $page($e, $settings, 405, 'Method Not Allowed', 'GET', '/orders');
+    $document = ProblemMapper::authoredDetail($e);
+
+    if (preg_match('#<p class="message">([^<]+)</p>#', $html, $matched) !== 1) {
+        throw new RuntimeException('The production 405 page no longer carries a lede for this test to read.');
+    }
+    $lede = $matched[1];
+
+    expect($lede)->toBe(ProblemMapper::methodSentence(['POST'], 'GET'))
+        ->and($document)->toBe(ProblemMapper::methodSentence(['POST']))
+        // The verbs agree — which is the only thing the docblocks and the config reference claim.
+        ->and($lede)->toContain('POST')
+        ->and($document)->toContain('POST')
+        // The sentences do not, and neither surface carries the other's wording.
+        ->and($lede)->not->toBe($document)
+        ->and($html)->not->toContain($document)
+        // The clause the document has no request to write is the whole of the difference.
+        ->and($lede)->toContain('GET')
+        ->and($document)->not->toContain('GET')
+        // HEAD is dropped once, for both, because Symfony adds it beside every GET and no person picks it.
+        ->and($lede)->not->toContain('HEAD')
+        ->and($document)->not->toContain('HEAD');
+});
+
 it('says something a reader does not already know, or falls back to the sentence that does', function () use ($page) {
     // THE MOST ORDINARY FAILURE A LARAVEL APPLICATION PRODUCES is `abort(403)` with no message, and the
     // problem document needs SOME `detail` for it — ProblemMapper::httpMessage() substitutes statusText(),

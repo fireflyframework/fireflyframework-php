@@ -56,6 +56,20 @@ final readonly class ErrorReport
      * fact grid still shows `path` alone: the grid is a statement about the request, and a query string is
      * where a session token or a search a person would rather not screenshot tends to live.
      *
+     * `baseUrl` IS THE THIRD PIECE OF THE SAME ADDRESS, and it exists because `path` is base-URL-STRIPPED.
+     * Laravel's `path()` is Symfony's `getPathInfo()`, which answers `orders/42` for a request to
+     * /app/index.php/orders/42 — the front controller's own prefix is deliberately not in it, because a
+     * route is matched on the path info and nothing else. The "Try again" link is the one place that
+     * absence is not cosmetic: on a deployment served under a base path, a href built from `path` alone
+     * names a URL the deployment never serves, so the primary action on every 5xx page points off the
+     * application. It is Symfony's `getBaseUrl()` — the same value `LoginPageAction` and the OAuth2 link
+     * builders prepend for exactly this reason — and it is '' for the ordinary rewrite-to-the-root
+     * deployment, where the concatenation is `path` unchanged. The grid is untouched by it for the same
+     * reason it omits the query: it states which resource was asked for, and the front controller is no
+     * more part of that than a search term is. ErrorPage::retry() puts the CONCATENATION through
+     * ErrorPageSettings::url(), never the halves, because a guard that checked the tail and trusted the
+     * head would have been asking about a string the page does not print.
+     *
      * @param  list<ErrorFrame>  $frames
      * @param  list<array{class: string, message: string, location: string}>  $previous
      * @param  list<string>  $allowed
@@ -71,6 +85,10 @@ final readonly class ErrorReport
         public string $query,
         public string $timestamp,
         public bool $detailed,
+        // The front controller's own prefix, '' when there is none — see the `path`/`query` note above.
+        // It carries a default so that a report assembled by hand (a renderer test, an Octane-shaped
+        // fixture) is not obliged to know about a deployment shape it is not exercising.
+        public string $baseUrl = '',
         public string $exceptionClass = '',
         public string $message = '',
         public string $location = '',
@@ -119,6 +137,7 @@ final readonly class ErrorReport
             query: $request->getQueryString() ?? '',
             timestamp: $timestamp,
             detailed: false,
+            baseUrl: $request->getBaseUrl(),
             reference: $reference,
             correlationId: $correlationId,
             allowed: $allowed,
@@ -153,6 +172,7 @@ final readonly class ErrorReport
             query: $public->query,
             timestamp: $public->timestamp,
             detailed: true,
+            baseUrl: $public->baseUrl,
             exceptionClass: $e::class,
             message: $e->getMessage(),
             location: SourcePaths::shorten($e->getFile(), $roots).':'.$e->getLine(),

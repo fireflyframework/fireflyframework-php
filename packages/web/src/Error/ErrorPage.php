@@ -76,7 +76,8 @@ final class ErrorPage
     }
 
     /**
-     * The one sentence a production page says, chosen so that the page and the problem document agree.
+     * The one sentence a production page says, chosen so that the page and the problem document agree —
+     * with one declared exception, which is the 405 and is the last paragraph here.
      *
      * THREE SOURCES, MOST SPECIFIC FIRST. A 405 the ROUTER raised knows something no exception message does
      * — which verb the caller used — so it gets a sentence built from both. Then the AUTHORED sentence:
@@ -88,18 +89,30 @@ final class ErrorPage
      *
      * THE 405 BRANCH SITS ABOVE THE `authored-detail` GATE, AND IT IS NOT GOVERNED BY IT — which is worth
      * stating because the ORDER is what decides it. That key exists to say whether the sentence an
-     * APPLICATION wrote may reach a person. Nothing of the application's is in this one: ProblemMapper read
-     * the verbs off the `Allow` header the ROUTER put on its own exception, and methodSentence() below
-     * writes the words. So there is nothing for the key to withhold, and turning it off to get the
+     * APPLICATION wrote may reach a person. Nothing of the application's is in this one: the verbs come off
+     * the `Allow` header the ROUTER put on its own exception, and the words are written by
+     * ProblemMapper::methodSentence(), which is the framework's own prose for this page and for the
+     * document alike. So there is nothing for the key to withhold, and turning it off to get the
      * status-and-code page leaves this sentence exactly where it was — the page saying about a 405 what the
      * document beside it already says in its `allowed` member. ErrorPageSettings and
      * skeleton/config/firefly.php state that where an operator reads about the key, and ErrorPageTest pins
      * it, because an undocumented exception to a documented key is the same bug as a wrong default.
+     *
+     * AND IT IS THE ONE PLACE THE TWO SURFACES DO NOT SAY THE SAME WORDS, which is stated here rather than
+     * left for a reader to discover, because the headline above would otherwise be read literally. The page
+     * says "That address does not accept a GET request. It accepts POST." where the document says "This
+     * address only accepts POST.", and the difference is a clause the document cannot write: it is built
+     * from the throwable alone and has no request to read the refused verb off. What the two DO share is
+     * the verb list and the prose that joins it, because both sentences come out of one builder —
+     * ProblemMapper::methodSentence(), which this branch calls with the request's method and
+     * methodNotAllowed() calls without one. ErrorPageTest pins the pair against each other, the same way it
+     * pins the 5xx lede against ProblemMapper::OPAQUE_WITH_REFERENCE, so neither wording can be re-decided
+     * on its own.
      */
     private static function lede(ErrorReport $report, ErrorPageSettings $settings): string
     {
         if ($report->status === 405 && $report->allowed !== []) {
-            return self::methodSentence($report->method, $report->allowed);
+            return ProblemMapper::methodSentence($report->allowed, $report->method);
         }
 
         $authored = $settings->authoredDetail ? self::authoredSentence($report) : '';
@@ -140,26 +153,6 @@ final class ErrorPage
         }
 
         return $report->publicDetail === ProblemMapper::statusText($report->status) ? '' : $report->publicDetail;
-    }
-
-    /**
-     * A 405 in the product's words, naming the verb that was refused and the ones that are not.
-     *
-     * The verbs were already in hand: ProblemMapper parses the router's Allow header, drops HEAD (Symfony
-     * adds it beside every GET and no person chooses it) and publishes the rest as an `allowed` extension
-     * member — and the page threw them away and shrugged. Written with "does not" rather than a contraction
-     * because that is this page's voice ("That page does not exist.", "You do not have access to that.") and
-     * because an apostrophe here would reach the markup as `&#039;`.
-     *
-     * @param  list<string>  $allowed
-     */
-    private static function methodSentence(string $method, array $allowed): string
-    {
-        $verbs = count($allowed) === 1
-            ? $allowed[0]
-            : implode(', ', array_slice($allowed, 0, -1)).' or '.$allowed[count($allowed) - 1];
-
-        return "That address does not accept a {$method} request. It accepts {$verbs}.";
     }
 
     /**
@@ -256,6 +249,24 @@ final class ErrorPage
      * link's whole promise is that it is the same one. Anything else, and actions() makes no offer: a link
      * the page cannot spell truthfully is worse than a row with one fewer button on it.
      *
+     * AND THE FRONT CONTROLLER'S OWN PREFIX IS PART OF THE ADDRESS, which the second spelling of this
+     * method also dropped. `$report->path` is Laravel's `path()`, which is Symfony's `getPathInfo()` and is
+     * base-URL-STRIPPED by design: a request for /app/index.php/orders/42 answers `orders/42`, because the
+     * router matches on the path info and the front controller is not part of what was asked for. Prefixed
+     * with a slash that is `/orders/42` — a URL the deployment does not serve, so on every box served under
+     * a base path the PRIMARY action on every 5xx page 404s or leaves the application entirely. The family
+     * has one settled spelling for this and it is `$request->getBaseUrl().$path`, which LoginPageAction,
+     * AuthorizationEndpoint, OAuth2LoginPageLinks and FakeAuthorizationServer all use and which
+     * `it keeps the base path a front controller is served under` pins in firefly/security. The value rides
+     * on the report as `ErrorReport::$baseUrl` and is '' for the ordinary rewrite-to-the-root deployment,
+     * where the concatenation is the path unchanged.
+     *
+     * THE GUARD SEES THE WHOLE HREF, not its tail. `getBaseUrl()` is raw — it is a prefix of REQUEST_URI
+     * matched against SCRIPT_NAME, not a value this package composed — so checking `$report->path` and then
+     * concatenating something in FRONT of it would be asking the question about a string that is not the
+     * one printed. The concatenation is built first and `ErrorPageSettings::url()` is asked about that, so
+     * the `/\evil.example` refusal above holds for the href a browser will actually read.
+     *
      * THE QUERY IS SAFE ON ITS OWN TERMS. It is Symfony's `getQueryString()`, which percent-encodes to
      * RFC 3986 — `"` is already `%22`
      * and `<` is `%3C` before this page escapes anything — so it cannot end the attribute, cannot introduce
@@ -267,11 +278,13 @@ final class ErrorPage
      */
     private static function retry(ErrorReport $report): string
     {
-        if (ErrorPageSettings::url($report->path) !== $report->path) {
+        $target = $report->baseUrl.$report->path;
+
+        if (ErrorPageSettings::url($target) !== $target) {
             return '';
         }
 
-        return $report->query === '' ? $report->path : $report->path.'?'.$report->query;
+        return $report->query === '' ? $target : $target.'?'.$report->query;
     }
 
     /**
