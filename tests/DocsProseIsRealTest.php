@@ -20,6 +20,10 @@ use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Locking\HasOptimisticLock;
 use Firefly\Data\Repository\Locking\OptimisticLockException;
 use Firefly\Installer\CapabilityCatalog;
+use Firefly\Kernel\Error\ErrorCategory;
+use Firefly\Kernel\Error\ErrorResponse;
+use Firefly\Kernel\Error\ErrorSeverity;
+use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Observability\HttpExchanges\HeaderMasker;
 use Firefly\OpenApi\OpenApiProperties;
@@ -1187,6 +1191,123 @@ it('pins every sentence that says what the 500 page reads to the lede ErrorPage 
     // A guard whose trigger matches nothing proves nothing, and this one matched a single paragraph the day
     // it was written.
     expect($paragraphs)->toBeGreaterThan(0);
+});
+
+it('pins every published problem document to the `instance` ProblemMapper really builds', function () {
+    // The twenty-ninth, and the fifth kind of wrong sentence at the one scale that hurts most: a document a
+    // reader COPIES. The RFC 9457 conformance pass made `instance` a root-relative reference — §3.1.5 makes
+    // the member a URI REFERENCE, and a relative one resolves against the document's base URI, so
+    // `api/v1/wallets/wlt-999` served from /api/v1/wallets/wlt-999 identified /api/v1/api/v1/wallets/wlt-999
+    // — and left ten published samples and two explanatory paragraphs stating the behaviour it had just
+    // inverted. Both book editions did not merely show the old value: they SINGLED IT OUT as a lesson ("a
+    // small thing, and exactly the kind of small thing a client that compares strings gets wrong"), in the
+    // very file the pass edited. tests/DocsCodeIsRealTest.php could not see any of it, because a `json`
+    // fence naming no source file and a paragraph of prose are both outside what a listing guard compares.
+    //
+    // DERIVED, like the rest of this file: the reference is built by ProblemMapper::instanceFor() over a
+    // request for the very path the sample publishes, and the member ORDER is read off a real
+    // ErrorResponse::toArray(). Nothing below types out the answer, so the day either shape changes the
+    // failure names the samples that change with it.
+    $published = ProblemMapper::instanceFor(Request::create('/api/v1/wallets/wlt-999'));
+
+    // The guard only has something to say while the two spellings really differ. If `instance` ever goes
+    // back to being the bare path, this stops asserting rather than asserting the wrong thing.
+    expect($published)->toBe('/api/v1/wallets/wlt-999')
+        ->and(Request::create('/api/v1/wallets/wlt-999')->path())->not->toBe($published);
+
+    // The member order a document really carries, taken from the DTO rather than typed out: the standard
+    // members lead in toArray()'s order and every extension follows them.
+    $order = array_values(array_filter(
+        array_keys((new ErrorResponse(404, 'Not Found', 'X', ErrorCategory::Business, ErrorSeverity::Warning,
+            detail: 'd', type: 'about:blank', instance: '/x', traceId: 't',
+            errors: [new FieldError('f', 'm')], timestamp: 'ts',
+            extensions: ['allowed' => ['POST']], correlationId: 'c'))->toArray()),
+        static fn (string $key): bool => in_array($key, ErrorResponse::STANDARD_MEMBERS, true),
+    ));
+
+    $root = dirname(__DIR__);
+    $samples = 0;
+    $failures = [];
+
+    foreach (array_keys(fireflyProsePages()) as $page) {
+        foreach (fireflyFencedBlocks($root.'/'.$page) as $block) {
+            preg_match_all('/"instance"\s*:\s*"([^"]*)"/', $block['code'], $found);
+
+            foreach ($found[1] as $value) {
+                $samples++;
+                $expected = ProblemMapper::instanceFor(Request::create('/'.ltrim($value, '/')));
+
+                if ($value !== $expected) {
+                    $failures[] = sprintf(
+                        '%s:%d publishes "instance": "%s"; the framework publishes "%s" — RFC 9457 §3.1.5 '
+                        .'makes the member a URI reference, and a reader copying this sample gets a document '
+                        .'ProblemMapper::instanceFor() cannot produce.',
+                        $page,
+                        $block['line'],
+                        $value,
+                        $expected,
+                    );
+                }
+            }
+
+            // A sample that is a whole document is also held to the member ORDER toArray() writes, so a
+            // member added to the published shape cannot be pasted into these samples in the wrong place.
+            if ($found[1] === []) {
+                continue;
+            }
+
+            $decoded = json_decode($block['code'], true);
+
+            if (! is_array($decoded)) {
+                continue;
+            }
+
+            $present = array_values(array_filter(array_keys($decoded), static fn (mixed $key): bool => is_string($key) && in_array($key, ErrorResponse::STANDARD_MEMBERS, true)));
+            $wanted = array_values(array_filter($order, static fn (string $key): bool => in_array($key, $present, true)));
+
+            if ($present !== $wanted) {
+                $failures[] = sprintf(
+                    '%s:%d publishes its standard members as %s; ErrorResponse::toArray() writes them as %s.',
+                    $page,
+                    $block['line'],
+                    implode(', ', $present),
+                    implode(', ', $wanted),
+                );
+            }
+        }
+    }
+
+    // And the prose beside them. A paragraph that explains `instance` and names `$request->path()` is
+    // describing the value the renderer stopped passing, so it has to name what passes it instead — which is
+    // the correction the shipped paragraphs were missing, in either language, without this file having to
+    // read Spanish.
+    $paragraphs = 0;
+
+    foreach (fireflyProsePages() as $page => $pageParagraphs) {
+        foreach ($pageParagraphs as $paragraph) {
+            if (! str_contains($paragraph, '`instance`') || ! str_contains($paragraph, '$request->path()')) {
+                continue;
+            }
+
+            $paragraphs++;
+
+            if (! str_contains($paragraph, 'instanceFor')) {
+                $failures[] = sprintf(
+                    '%s explains `instance` as `$request->path()` without naming ProblemMapper::instanceFor(), '
+                    .'which is what the renderer passes and what makes the published member "%s".',
+                    $page,
+                    $published,
+                );
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        // Canaries, on both halves: a check that stops matching anything proves nothing. Eleven samples and
+        // two paragraphs are what the surface held the day this was written, and the wave still has pages to
+        // add — so the floor is asserted rather than the exact count.
+        ->and($samples)->toBeGreaterThanOrEqual(11)
+        ->and($paragraphs)->toBeGreaterThanOrEqual(2);
 });
 
 it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {

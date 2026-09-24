@@ -136,13 +136,14 @@ final class ProblemMapper
      * /api/api/orders/42. One character, and the member stops identifying the occurrence it exists to
      * identify. Spring's ProblemDetail sets `instance` from the request URI for the same reason.
      *
-     * THE PUBLISHED DOCUMENT IS NOT FIXED YET, AND THIS METHOD DOES NOT CLAIM IT IS. ProblemDetailsRenderer
-     * — the one surface that puts `instance` on the wire — still passes `$request->path()`, so a client
-     * still receives the relative form. The only caller here is ErrorReport, which hands the value to
-     * ErrorResponse and reads back the code, the category, the severity and the 405's verbs; the page's own
-     * path is built beside it. The rule arrives before its call sites deliberately, so that the conformance
-     * pass which changes the renderer moves one argument to an answer this package already tests, rather
-     * than restating what a root-relative reference is in a second place.
+     * THE PUBLISHED DOCUMENT IS FIXED, AND BOTH SURFACES NOW ARRIVE HERE. ProblemDetailsRenderer — the one
+     * surface that puts `instance` on the wire — passes this method's answer, so a client receives the
+     * root-relative form; ErrorReport, which hands the value to ErrorResponse and reads back the code, the
+     * category, the severity and the 405's verbs, is the other caller, and the page's own path is built
+     * beside it. That is the point of the rule living here rather than at either call site: two spellings of
+     * one reference would eventually disagree about one request, and the day the shape changes again it
+     * changes once. This paragraph used to record that the renderer had not been moved over yet, and the
+     * conformance pass that moved it retired the note, which is what that note promised.
      */
     public static function instanceFor(Request $request): string
     {

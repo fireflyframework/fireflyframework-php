@@ -111,12 +111,34 @@ final readonly class ErrorPageSettings
     public string $support;
 
     /**
+     * THE FOURTH OPERATOR-SUPPLIED URI, AND THE ONLY ONE THAT NEVER REACHES AN `href`.
+     *
+     * RFC 9457 §3.1.1's `type` is a URI that identifies the KIND of problem, and the RFC's own words for it
+     * are "dereferenceable" — the member exists so that a person can open it. That is what makes it the same
+     * hazard as the three above wearing different clothes: nothing on the error PAGE prints it, so the
+     * `href` audit that produced self::url() looked straight past it, and every API console, every IDE HTTP
+     * client and every documentation viewer that renders a problem document turns `type` into a link. A
+     * `javascript:` base configured here is the same stored XSS the three properties above are guarded
+     * against, published to a wider audience and arriving in a tool the reader trusts more than a 500 page.
+     *
+     * THE SENTINEL IS COMPARED WITH `===`, WHICH IS WHY THE TRIM IS NOT COSMETIC. ProblemType::of() asks
+     * whether the base IS 'about:blank' and whether it IS '', and a Helm block scalar's trailing newline or
+     * a here-doc's trailing space makes both answers false — so the deployment that meant "leave the default
+     * alone" silently entered BASE-URI mode and published `" about:blank/resource-not-found"` as a
+     * dereferenceable URI. Config::string() does not trim, Laravel's Env does not trim a REAL environment
+     * variable, and this was the one configuration-supplied URI in this class that reached its consumer
+     * verbatim. See self::typeUri() for the vocabulary, which is self::url()'s with one member swapped.
+     */
+    public string $typeUri;
+
+    /**
      * @param  list<string>  $jsonPaths  path patterns that are answered as problem+json whatever the client asked for
      * @param  array<string, string>  $views  status (or `default`) => the Blade view to render instead
      * @param  string  $home  the "Go home" target; '' offers no link. Guarded: see self::url()
      * @param  string  $signIn  the 401's sign-in target; '' offers no link. Guarded: see self::url()
      * @param  string  $support  the "Contact support" target; '' offers no link. Guarded: see self::url()
      * @param  bool  $actions  whether the page offers any navigation at all
+     * @param  string  $typeUri  the RFC 9457 `type` base; '' omits the member. Guarded: see self::typeUri()
      */
     public function __construct(
         public bool $enabled = true,
@@ -146,11 +168,13 @@ final readonly class ErrorPageSettings
         public bool $problemFallback = true,
         // RFC 9457 §3.1.1's `type`: 'about:blank' (the default, and what Spring's ProblemDetail emits), ''
         // to omit the member, or a BASE URI from which the stable error code derives one. See ProblemType.
-        public string $typeUri = ProblemType::BLANK,
+        // Guarded like the three above, through the same constructor seam: see the property's docblock.
+        string $typeUri = ProblemType::BLANK,
     ) {
         $this->home = self::url($home);
         $this->signIn = self::url($signIn);
         $this->support = self::url($support);
+        $this->typeUri = self::typeUri($typeUri);
     }
 
     /**
@@ -321,5 +345,49 @@ final readonly class ErrorPageSettings
         }
 
         return $value === '/' || preg_match('#^/[^/\\\\]#', $value) === 1 ? $value : '';
+    }
+
+    /**
+     * A base this class will let ProblemType build a published `type` out of, or the RFC's own sentinel.
+     *
+     * IT IS self::url()'s VOCABULARY WITH ONE MEMBER SWAPPED, and the swap is the whole difference between
+     * the two methods. An `href` on the error page may be an ABSOLUTE PATH, because a page is served from an
+     * origin and a path resolves against it. A problem `type` may not: RFC 9457 §3.1.1 wants a URI that
+     * identifies the problem kind across deployments, ProblemType::of() appends a slug to it, and a relative
+     * base would produce a type that means a different thing read from a different document. So the allowed
+     * set here is `''` (omit the member), the `about:blank` sentinel, and an absolute `http(s)://` base —
+     * nothing else. Everything self::url() refuses is refused for self::url()'s reasons, on top: a
+     * `javascript:` base is the same stored XSS in a member a console renders as a link, and `//evil.test`
+     * is the same silent change of origin.
+     *
+     * THE FALLBACK IS THE DEFAULT, NOT SILENCE. A value this method cannot read becomes 'about:blank' — the
+     * documented default and the RFC's own "no specific type" — rather than '' , because '' is a deliberate
+     * position an operator takes (publish the pre-9457 document byte for byte) and a typo must not be able
+     * to take it for them. A hostile base is answered by removing the hostility, not by removing the member.
+     *
+     * THE EDGES ARE TRIMMED FIRST, for self::url()'s reason and one more that is specific to this key. The
+     * URL standard strips leading and trailing C0 controls and space before it parses, so a padded value is
+     * re-read by every consumer as exactly the value this method allows; and ProblemType::of() compares the
+     * base to its two sentinels with `===`, so an untrimmed `"about:blank\n"` — which is what a Helm block
+     * scalar and a here-doc-rendered `.env` both hand over — would miss BOTH branches and publish
+     * `"about:blank\n/resource-not-found"` as a dereferenceable URI. Trimming is what makes the sentinels
+     * mean what an operator wrote. An INTERIOR tab, LF or CR is the opposite case and is refused, exactly as
+     * in self::url(): the parser deletes those from the middle, which is the whole reason `java<TAB>script:`
+     * is a javascript: URL, and a guard that keeps a string the reader will re-read differently has decided
+     * nothing.
+     */
+    public static function typeUri(string $value): string
+    {
+        $value = trim($value, "\x00..\x20");
+
+        if ($value === '' || $value === ProblemType::BLANK) {
+            return $value;
+        }
+
+        if (strpbrk($value, "\t\n\r") !== false) {
+            return ProblemType::BLANK;
+        }
+
+        return preg_match('#^https?://#i', $value) === 1 ? $value : ProblemType::BLANK;
     }
 }

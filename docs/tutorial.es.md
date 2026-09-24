@@ -696,7 +696,8 @@ Content-Type: application/problem+json
     "category": "business",
     "severity": "warning",
     "detail": "No saved greeting for 'Nowhere'",
-    "instance": "greetings/Nowhere/record"
+    "type": "about:blank",
+    "instance": "/greetings/Nowhere/record"
 }
 ```
 

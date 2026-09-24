@@ -503,7 +503,7 @@ Cinco brazos que cubren cuatro casos — el `405` tiene un brazo propio solo par
 
 Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra la misma referencia que lleva el `traceId` del documento, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
 
-Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: es `$request->path()`, que Laravel devuelve **sin** barra inicial, así que es `api/v1/wallets/wlt-999` y no `/api/v1/wallets/wlt-999` — una cosa pequeña, y exactamente el tipo de cosa pequeña que un cliente que compara cadenas hace mal.
+Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: el RFC 9457 §3.1.5 lo define como una **referencia** URI, y una referencia relativa se resuelve contra la URI base del documento — así que el `api/v1/wallets/wlt-999` pelado que devuelve `$request->path()`, servido desde `/api/v1/wallets/wlt-999`, identificaría `/api/v1/api/v1/wallets/wlt-999`. LaraFly publica la forma relativa a la raíz, que es el único trabajo de `ProblemMapper::instanceFor()`, y un cliente puede compararla con la ruta que pidió. Fíjate también en `type`: el RFC 9457 §3.1.1 dice que un `type` ausente *es* `about:blank`, y LaraFly lo escribe en vez de dejar que el lector tenga que saberlo — apunta `firefly.web.problem.type-uri` a una URI base y el `code` estable deriva uno real y abrible.
 
 ```json
 {
@@ -513,7 +513,8 @@ Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: 
   "category": "business",
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
-  "instance": "api/v1/wallets/wlt-999",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-999",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -530,7 +531,8 @@ Un fallo de comprobación `#[Valid]` en `POST /api/v1/wallets` — un `owner_id`
   "category": "validation",
   "severity": "warning",
   "detail": "Validation failed",
-  "instance": "api/v1/wallets",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
@@ -552,7 +554,8 @@ Un intento de retiro se rechaza por dos vías distintas, y las dos **no dan el m
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -569,7 +572,8 @@ El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",

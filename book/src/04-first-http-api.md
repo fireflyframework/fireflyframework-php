@@ -503,7 +503,7 @@ Five arms covering four cases — the `405` has an arm of its own only so the ve
 
 A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the same reference the document's `traceId` carries, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
 
-Requesting a wallet that was never opened renders like this. Note `instance`: it is `$request->path()`, which Laravel returns **without** a leading slash, so it is `api/v1/wallets/wlt-999` and not `/api/v1/wallets/wlt-999` — a small thing, and exactly the kind of small thing a client that compares strings gets wrong.
+Requesting a wallet that was never opened renders like this. Note `instance`: RFC 9457 §3.1.5 makes it a URI **reference**, and a relative reference resolves against the document's base URI — so the bare `api/v1/wallets/wlt-999` that `$request->path()` answers, served from `/api/v1/wallets/wlt-999`, would identify `/api/v1/api/v1/wallets/wlt-999`. LaraFly publishes the root-relative form, `ProblemMapper::instanceFor()`'s one job, and a client may compare it to the path it asked for. Note `type` too: RFC 9457 §3.1.1 says an absent `type` *is* `about:blank`, and LaraFly writes it out rather than leaving the reader to know that — point `firefly.web.problem.type-uri` at a base URI instead and the stable `code` derives a real, openable one.
 
 ```json
 {
@@ -513,7 +513,8 @@ Requesting a wallet that was never opened renders like this. Note `instance`: it
   "category": "business",
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
-  "instance": "api/v1/wallets/wlt-999",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-999",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -530,7 +531,8 @@ A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — 
   "category": "validation",
   "severity": "warning",
   "detail": "Validation failed",
-  "instance": "api/v1/wallets",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
@@ -552,7 +554,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -569,7 +572,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",

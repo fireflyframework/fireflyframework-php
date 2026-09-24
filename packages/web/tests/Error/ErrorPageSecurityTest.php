@@ -96,6 +96,76 @@ it('trims the whitespace a deployment adds at the edges, and still refuses it in
     }
 });
 
+/**
+ * The fifth configuration-supplied URI, and the first one that is not an `href`.
+ *
+ * `firefly.web.problem.type-uri` is the base ProblemType builds RFC 9457's `type` out of, and the RFC's own
+ * word for that member is "dereferenceable" — it exists so a person can open it. Nothing on the error PAGE
+ * prints it, which is exactly why it went unguarded while the four beside it did not: the audit that
+ * produced ErrorPageSettings::url() followed hrefs, and this value leaves by a different door. Every API
+ * console, IDE HTTP client and documentation viewer that renders a problem document turns `type` into a
+ * link, so `javascript:` here is the same stored XSS in front of a wider audience.
+ *
+ * AND THE SENTINELS ARE COMPARED WITH `===`, which makes the trim load-bearing rather than cosmetic.
+ * ProblemType::of() asks whether the base IS 'about:blank' and whether it IS ''; Config::string() does not
+ * trim and Laravel's Env does not touch a real environment variable, so the Helm block scalar and the
+ * here-doc-rendered `.env` this class's other guard was written for made BOTH answers false and quietly
+ * moved the deployment from the default into base-URI mode — publishing `" about:blank/resource-not-found"`
+ * as a URI a console invites a reader to click.
+ */
+$problemType = static fn (string $value): string => ErrorPageSettings::fromConfig(
+    new Config(new Repository(['firefly' => ['web' => ['problem' => ['type-uri' => $value]]]])),
+)->typeUri;
+
+it('keeps the two sentinels and an absolute http(s) base, which is the whole legitimate vocabulary', function () use ($problemType) {
+    expect($problemType('about:blank'))->toBe('about:blank')
+        ->and($problemType(''))->toBe('')
+        ->and($problemType('https://api.example.test/problems'))->toBe('https://api.example.test/problems')
+        ->and($problemType('HTTP://legacy.example.test/p'))->toBe('HTTP://legacy.example.test/p')
+        // The default is the sentinel, for a settings object read from an empty configuration and for one
+        // built by hand — the guard runs in the constructor, like the four above it.
+        ->and(ErrorPageSettings::fromConfig(new Config(new Repository([])))->typeUri)->toBe('about:blank')
+        ->and((new ErrorPageSettings)->typeUri)->toBe('about:blank');
+});
+
+it('trims the padding a deployment adds at the edges, so the RFC sentinel still reads as the sentinel', function () use ($problemType) {
+    // Each of these used to flip the key out of default mode: ProblemType::of() compares with ===, so a
+    // padded sentinel matched neither branch and became a base URI with a space or a newline inside it.
+    expect($problemType(' about:blank'))->toBe('about:blank')
+        ->and($problemType("about:blank\n"))->toBe('about:blank')
+        ->and($problemType("\tabout:blank\r\n"))->toBe('about:blank')
+        ->and($problemType("https://api.example.test/problems\n"))->toBe('https://api.example.test/problems')
+        ->and($problemType(' https://api.example.test/problems '))->toBe('https://api.example.test/problems')
+        // Whitespace and nothing else is the value an operator left blank, and '' is what it means: the
+        // member is omitted, which is the pre-9457 document byte for byte.
+        ->and($problemType("  \n "))->toBe('');
+});
+
+it('refuses a hostile or relative base and falls back to the documented default rather than to silence', function () use ($problemType) {
+    foreach ([
+        'javascript:alert(document.cookie)',
+        'JavaScript:alert(1)',
+        "java\tscript:alert(1)",
+        'data:text/html;base64,PHN2Zy9vbmxvYWQ9YWxlcnQoMSk+',
+        'vbscript:msgbox(1)',
+        'file:///etc/passwd',
+        '//evil.test/problems',
+        '/\\evil.test/problems',
+        '/problems',
+        'problems',
+        'about:blank/',
+        "https://api.example.test/pro\nblems",
+        "https://api.example.test/pro\tblems",
+    ] as $value) {
+        // 'about:blank' and not '': '' is a position an operator takes deliberately, and a typo must not be
+        // able to take it for them. The answer to a hostile base is to remove the hostility, not the member.
+        expect($problemType($value))->toBe('about:blank', sprintf('%s reached the published `type`', var_export($value, true)));
+    }
+
+    expect((new ErrorPageSettings(typeUri: 'javascript:alert(document.cookie)'))->typeUri)->toBe('about:blank')
+        ->and((new ErrorPageSettings(typeUri: ' about:blank'))->typeUri)->toBe('about:blank');
+});
+
 it('defaults home to the site root, offers no sign-in or support link, and renders the action row', function () use ($settings) {
     $defaults = $settings([]);
 

@@ -1135,6 +1135,16 @@ return [
     //          | A code that slugs to nothing falls back to 'about:blank' rather than to the bare base: the
     //          | base names the COLLECTION of problem types, not a member of it.
     //          |
+    //          | GUARDED, LIKE THE HREFS ABOVE, AND FOR A WIDER AUDIENCE. §3.1.1 calls `type`
+    //          | dereferenceable, and every API console, IDE HTTP client and docs viewer that renders a
+    //          | problem document turns it into a link — so a 'javascript:', 'data:' or '//host' base is
+    //          | the same stored XSS the error page's links are guarded against, published to more
+    //          | readers. ErrorPageSettings trims the edges (a Helm block scalar and a here-doc-rendered
+    //          | .env both end in a newline, and an untrimmed sentinel is not the sentinel) and then
+    //          | accepts only '', 'about:blank' or an absolute http(s) base; anything else becomes
+    //          | 'about:blank', because '' is a position you take deliberately and a typo must not take it
+    //          | for you.
+    //          |
     //          | Default: 'about:blank'.
     //         */
     //         'type-uri' => env('FIREFLY_WEB_PROBLEM_TYPE_URI', 'about:blank'),
