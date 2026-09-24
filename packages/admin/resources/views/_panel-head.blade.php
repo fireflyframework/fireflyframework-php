@@ -20,25 +20,38 @@
     readings of it — `7 total` unnarrowed and `5 total` under `?q=orders` — and AdminTablePagerTest pins the
     one reading a single-page fixture cannot: five matches behind a page of two.
 
-    The wording is not free, though: data-list.blade.php still hand-rolls the same words in its own
-    <header>, and that is what tests/Browser/AdminDataBrowserTest.php's `assertSee('3 total')` hits today —
-    nothing in that file touches this branch. Keeping the literal identical is what lets the data browser
-    move onto this partial without rewriting a browser assertion.
+    The wording is not free, though: data-list.blade.php used to hand-roll the same words in its own
+    <header>, and that is what tests/Browser/AdminDataBrowserTest.php's `assertSee('3 total')` hits.
+    Keeping the literal identical is what let the data browser move onto this partial without rewriting a
+    browser assertion.
+
+    A SERVER-NARROWED LISTING CAN STILL HAVE NOTHING TO SEARCH, and `searchable` is how a caller says so
+    WITHOUT losing the grand total. It defaults to true because every actuator listing searches the strings
+    it renders; the data browser is the one caller that has to answer honestly, because
+    `DataSchema::searchable()` keeps only non-sensitive string columns and a join table of ints — or one
+    whose only text column is masked — publishes none. `DataQueryEngine` short-circuits to `[[], 0]` the
+    moment that list is empty, so drawing the box anyway offers a control whose only possible answer is
+    `0 total` and "Nothing matches" over a table that has rows: the operator reads data loss. The count
+    stays in this branch either way, because the number is still the server's grand total — the `filter`
+    and bare branches below print a DIFFERENT thing (a live shown-count, an unformatted tally) and falling
+    through to one of them to hide a form would change what the page says about itself.
 --}}
 <header>
     <h2>{{ $title }}</h2>
     <span class="spacer"></span>
     @isset($query)
-        <form method="get" action="{{ $query->path }}" class="inline" role="search">
-            @foreach ($query->hiddenFields() as $field)
-                <input type="hidden" name="{{ $field['name'] }}" value="{{ $field['value'] }}">
-            @endforeach
-            <input class="filter" type="search" name="{{ $query->qualifier === '' ? 'q' : $query->qualifier.'_q' }}"
-                   value="{{ $query->search }}" placeholder="{{ $placeholder ?? 'Search…' }}"
-                   aria-label="{{ $placeholder ?? 'Search rows' }}">
-            <button class="act" type="submit">Search</button>
-            @if ($query->isFiltered())<a class="act" href="{{ $query->link(['q' => null, 'page' => null]) }}">Clear</a>@endif
-        </form>
+        @if ($searchable ?? true)
+            <form method="get" action="{{ $query->path }}" class="inline" role="search">
+                @foreach ($query->hiddenFields() as $field)
+                    <input type="hidden" name="{{ $field['name'] }}" value="{{ $field['value'] }}">
+                @endforeach
+                <input class="filter" type="search" name="{{ $query->qualifier === '' ? 'q' : $query->qualifier.'_q' }}"
+                       value="{{ $query->search }}" placeholder="{{ $placeholder ?? 'Search…' }}"
+                       aria-label="{{ $placeholder ?? 'Search rows' }}">
+                <button class="act" type="submit">Search</button>
+                @if ($query->isFiltered())<a class="act" href="{{ $query->link(['q' => null, 'page' => null]) }}">Clear</a>@endif
+            </form>
+        @endif
         <span class="meta">{{ number_format($count) }} total</span>
     @elseif (isset($filter))
         <input class="filter" type="search" data-filter="{{ $filter }}"

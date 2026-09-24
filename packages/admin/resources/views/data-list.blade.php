@@ -11,10 +11,31 @@
         $identifier = $schema?->identifierColumn();
 
         // $base names a RECORD, not a listing: `&id=` and `&new=1` leave the table rather than moving
-        // within it, so they carry the resource and nothing else. Every link that stays in the listing goes
-        // through $query->link(), which is why the four "do not forget to carry this" strings that used to
-        // live here are gone.
+        // within it, so they carry the resource and nothing else. Every link that MOVES within the listing
+        // goes through $query->link(), which is why the four "do not forget to carry this" strings that
+        // used to live here are gone.
         $base = $settings->url('data').'?resource='.urlencode($resource?->slug ?? '');
+
+        // THE TWO LINKS THAT MUST SHED A PARAMETER, WHICH IS WHY THEY CANNOT COME FROM link(). `link()`
+        // re-emits everything the query CARRIES, and the applied filters are exactly that — so a "clear"
+        // built from it would hand back the view it was meant to leave. They are built from $base instead,
+        // plus `own()`: the listing's own position, which is what a clear must KEEP. Dropping it is the bug
+        // this page had — set Rows to 100, apply a filter, clear it, and the table silently snapped back to
+        // the configured default under a reader who had chosen otherwise. `page` is dropped on purpose:
+        // widening a result set invalidates the offset into it, so both links return to the top.
+        //
+        // They differ in one parameter. The filter controls SHED THE FILTERS and nothing else — a search
+        // term survives clearing a condition, the same way the filter bar re-submits `q` as a hidden field
+        // so that applying one keeps the search. The empty state's "clear them all" answers a question the
+        // reader is asking about every narrowing at once, so it sheds the search as well — and that link is
+        // the only way back for a resource with no searchable column, where a hand-edited `?q=` renders no
+        // search box to clear it from.
+        $own = $query->own();
+        unset($own['page']);
+        $withoutSearch = $own;
+        unset($withoutSearch['q']);
+        $clearFilters = $base.($own === [] ? '' : '&'.http_build_query($own));
+        $clearAll = $base.($withoutSearch === [] ? '' : '&'.http_build_query($withoutSearch));
     @endphp
 
     <div class="head">
@@ -49,7 +70,7 @@
             @foreach ($listing->filters as $filter)
                 <code>{{ $filter->describe() }}</code>@if (! $loop->last) and @endif
             @endforeach
-            · <a href="{{ $base }}">clear</a>
+            · <a href="{{ $clearFilters }}">clear</a>
         </p>
     @endif
 
@@ -119,7 +140,7 @@
                     <button class="go" type="submit">Apply</button>
                     <button class="act" type="button" id="fadd">Add condition</button>
                     @if ($listing->filters !== [])
-                        <a class="act" href="{{ $base }}">Clear</a>
+                        <a class="act" href="{{ $clearFilters }}">Clear</a>
                     @endif
                     <span class="hint">Conditions are combined with <strong>and</strong>.</span>
                 </div>
@@ -131,9 +152,18 @@
                  resource, the ordering, the size and the filters through hiddenFields(), so searching
                  inside a filtered listing NARROWS it instead of silently widening to the whole table; and
                  the count is the formatted grand total followed by the word `total`, the wording this page
-                 hand-rolled and tests/Browser/AdminDataBrowserTest.php reads as `3 total` / `1 total`. --}}
+                 hand-rolled and tests/Browser/AdminDataBrowserTest.php reads as `3 total` / `1 total`.
+
+                 `searchable` IS THE ONE THING THIS PAGE HAS TO TELL THE PARTIAL. Every other listing on the
+                 dashboard searches the strings it renders; a resource does not necessarily have any.
+                 `DataSchema::searchable()` keeps only non-sensitive string columns, so a join table of
+                 `id`, `order_id`, `quantity` — or one whose only text column is masked — publishes none,
+                 and `DataQueryEngine` answers `[[], 0]` for every term the moment that list is empty. The
+                 box is therefore drawn only where it can match, which is the guard the <header> this
+                 include replaced had and the reason the count is passed through the same branch. --}}
             @include('firefly-admin::_panel-head', [
                 'title' => 'Records', 'count' => $listing->total, 'query' => $query,
+                'searchable' => $schema->searchable() !== [],
                 'placeholder' => 'Search records…',
             ])
 
@@ -141,7 +171,7 @@
                 @include('firefly-admin::_empty', [
                     'title' => $listing->search !== null || $listing->filters !== [] ? 'Nothing matches' : 'No records yet',
                     'body' => $listing->search !== null || $listing->filters !== []
-                        ? 'Loosen a condition, or <a href="'.e($base).'">clear them all</a>.'
+                        ? 'Loosen a condition, or <a href="'.e($clearAll).'">clear them all</a>.'
                         : 'This resource has no rows.',
                 ])
             @else

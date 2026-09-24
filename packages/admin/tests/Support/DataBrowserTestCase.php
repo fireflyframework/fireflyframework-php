@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Admin\Tests\Support;
 
 use Firefly\Actuator\Introspection\BeansCatalog;
+use Firefly\Admin\Tests\Data\Fixtures\AdminLinkRepository;
 use Firefly\Admin\Tests\Data\Fixtures\AdminRecordRepository;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Application;
@@ -66,12 +67,49 @@ abstract class DataBrowserTestCase extends AdminCapstoneTestCase
             'amount' => 50, 'active' => 1, 'meta' => null, 'created_at' => '2026-01-01 10:00:00',
         ]);
 
+        $this->exposeRepository(AdminRecordRepository::class);
+    }
+
+    /**
+     * The same, for a resource with NOTHING TO SEARCH: `admin_links` is four integers, the shape of any
+     * pivot table, so `DataSchema::searchable()` publishes no column and `DataQueryEngine` answers `[[], 0]`
+     * to every term. It replaces the catalogue rather than adding to it, exactly as its sibling does — a
+     * test wants one resource in the menu, not two.
+     *
+     * Public for the same reason the sibling is: Pest binds the closure's `$this` to a class PHPStan cannot
+     * relate to this one.
+     */
+    public function exposeAdminLinks(): void
+    {
+        Schema::create('admin_links', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->integer('record_id');
+            $table->integer('entry_id');
+            $table->integer('quantity');
+        });
+
+        DB::table('admin_links')->insert([
+            ['id' => 1, 'record_id' => 1, 'entry_id' => 7, 'quantity' => 3],
+            ['id' => 2, 'record_id' => 1, 'entry_id' => 8, 'quantity' => 5],
+        ]);
+
+        $this->exposeRepository(AdminLinkRepository::class);
+    }
+
+    /**
+     * The actuator's boot-time bean snapshot, swapped for one naming a single repository — done BEFORE the
+     * first request, which is when the dashboard assembles its DataBrowser and reads the catalogue.
+     *
+     * @param  class-string  $repository
+     */
+    protected function exposeRepository(string $repository): void
+    {
         $this->app()->instance(BeansCatalog::class, new BeansCatalog([[
-            'class' => AdminRecordRepository::class,
+            'class' => $repository,
             'stereotype' => 'repository',
             'scope' => 'Singleton',
             'name' => null,
-            'interfaces' => array_values(class_implements(AdminRecordRepository::class) ?: []),
+            'interfaces' => array_values(class_implements($repository) ?: []),
             'beans' => [],
         ]]));
     }
