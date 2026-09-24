@@ -50,6 +50,7 @@ it('renders the production 500 with a reference to quote and the cause withheld'
         // the page changed with it; the cell itself is asserted on the line below, as it always was.
         ->assertSee('quote the reference below')
         ->assertSeeIn('dl.facts', 'Reference')
+        ->assertSeeIn('.fact-ref', 'Quote this if you report the problem.')
         // The request path (/browser-fixture/boom) is legitimately shown in the facts, so the cause is
         // proved withheld by its class and message, never by the word "boom".
         ->assertDontSee('Caused by')
@@ -60,6 +61,39 @@ it('renders the production 500 with a reference to quote and the cause withheld'
         ->assertDontSee('Stack trace')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-500-production');
+});
+
+it('reveals the copy button on the production 500, and a click leads somewhere either way', function (): void {
+    /** @var ProductionBrowserTestCase $this */
+    // THE PAGE'S ONLY SCRIPT, RUN BY A REAL BROWSER rather than grepped out of the markup. The button is
+    // emitted `hidden` by ErrorPage::reference() and the ten lines in ErrorPage::clipboard() reveal it only
+    // after finding it with `querySelector(".copy")` — so a VISIBLE "Copy" is the one assertion that holds
+    // the class on the control against the selector that looks for it. Every other expectation about this
+    // control is string containment on ONE of those two sides: rename the class, or the selector, and both
+    // markup tests stay green while every production 500 ships a control that is never shown. The plugin
+    // serves the app on localhost, which is a secure context, so `navigator.clipboard` is defined and the
+    // reveal is the expected outcome here.
+    $page = visit('/browser-fixture/boom');
+
+    $page->assertSeeIn('.ref-act', 'Copy')->assertNoJavaScriptErrors();
+
+    // And the click leads somewhere. WHICH arm runs is the browser's business — this headless Chromium
+    // refuses `clipboard-write` and takes the rejection arm, a focused desktop browser takes the other one
+    // — so the assertion is the thing both arms owe the reader: the label stops saying "Copy". Before the
+    // `.catch` arm existed, a refusal left the label exactly as it was, did nothing at all, and wrote an
+    // unhandled rejection into the console of the page whose whole job is to be quiet; the JavaScript-error
+    // assertion below is what holds that shut, on the very path this browser actually takes.
+    $page->click('.copy');
+
+    $label = $page->text('.copy');
+    for ($attempt = 0; $attempt < 50 && $label === 'Copy'; $attempt++) {
+        usleep(100_000);
+        $label = $page->text('.copy');
+    }
+
+    expect($label)->toBeIn(['Copied', 'Copy failed']);
+
+    $page->assertNoJavaScriptErrors()->screenshot(filename: 'error-500-production-copy-clicked');
 });
 
 it('renders the production 404 and 500 in dark mode and at phone width', function (): void {
