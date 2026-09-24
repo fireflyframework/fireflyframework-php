@@ -662,10 +662,25 @@ it('resizes the page from the rows control without relying on its onchange', fun
 });
 
 /**
- * THE AUTO-REFRESH COMPOSES WITH PAGINATION, and the reason is structural rather than lucky: the refresh
- * is `window.location.reload()`, which re-requests the URL it is on, and every piece of listing state — the
- * page, the size, the sort, the search — lives in that URL. A reader on page 3 comes back to page 3. This
- * pins it, because the obvious "improvement" of fetching and replacing the table body would not.
+ * THE AUTO-REFRESH COMPOSES WITH PAGINATION, and the reason is structural rather than lucky: the toolbar's
+ * refresh toggle arms an interval whose whole body is `window.location.reload()`
+ * (packages/admin/resources/views/layout.blade.php), and a reload re-requests the URL it is on — where
+ * every piece of listing state lives: the page, the size, the sort, the search. A reader on page 3 comes
+ * back to page 3. This pins it, because the obvious "improvement" of fetching and replacing the table body
+ * would not.
+ *
+ * THE TEN SECONDS ARE NOT SPENT, AND THE RELOAD IS STILL OBSERVED. Waiting out
+ * `firefly.admin.refresh-seconds` would buy one reload for ten idle seconds of suite time, so the toggle is
+ * pressed — which is the part of the feature a test can drive instantly, and the part that says the control
+ * exists and marks itself pressed — and the reload its timer would fire is then performed on THE SAME page
+ * object with `refresh()`, so that everything after it is an assertion about the reloaded document. An
+ * earlier draft fired `window.location.reload()` through `script()`, which answers `mixed` and ends the
+ * chain, and then opened a second `visit()` of the same URL: two requests for page 3, no reload ever looked
+ * at, and the scenario passed unchanged with the reload deleted.
+ *
+ * WHAT THE RELOADED PAGE IS ASKED IS NOT ONLY THE RANGE READOUT. A refresh that silently reset to page 1
+ * would still draw a range, so the assertions name the row only page 3 draws and the row only page 1 draws,
+ * and read the page number back off the query string.
  */
 it('keeps the reader on their page across the ten-second auto-refresh', function (): void {
     /** @var AdminDashboardBrowserTestCase $this */
@@ -673,14 +688,38 @@ it('keeps the reader on their page across the ten-second auto-refresh', function
 
     visit('/firefly/data?resource=order-entity&size=25&page=3')
         ->assertSee('51–60 of 60')
-        ->script('window.location.reload()');
-
-    visit('/firefly/data?resource=order-entity&size=25&page=3')
+        ->assertSee('Customer 060')
+        ->assertDontSee('Customer 001')
+        ->click('#refresh')
+        ->assertAttribute('#refresh', 'aria-pressed', 'true')
+        ->refresh()
+        // THE RELOAD ITSELF, NAMED BY THE BROWSER, AND THE TIMER SWITCHED OFF BEFORE ANYTHING SLOW RUNS.
+        // The navigation timing entry is the one witness a page object that never moved cannot produce:
+        // Chromium records `reload` for `page.reload()` and for the `window.location.reload()` the timer
+        // fires alike, and `navigate` for everything else. The toggle came back pressed because `start()`
+        // re-reads the flag it left in `localStorage` — so a second reload is now ten seconds away, and
+        // pressing the toggle again takes it off the clock. Everything below runs with no interval armed,
+        // which is what keeps a slow machine from losing the execution context mid-assertion — the way
+        // this scenario does fail, at exactly this line, when its reload is mutated into a navigation.
+        ->assertScript("performance.getEntriesByType('navigation')[0].type", 'reload')
+        ->assertAttribute('#refresh', 'aria-pressed', 'true')
+        ->click('#refresh')
+        ->assertAttribute('#refresh', 'aria-pressed', 'false')
         ->assertSee('51–60 of 60')
+        ->assertSee('Customer 060')
+        ->assertDontSee('Customer 001')
         ->assertQueryStringHas('page', '3')
         ->assertNoJavaScriptErrors();
 });
 
+/**
+ * THE WIDEST THING THE DASHBOARD DRAWS, IN THE DARK AND ON A PHONE. A resource listing is seven columns of
+ * database values with a search box and a filter `<details>` over them and a pager under them, which is why
+ * the sixty rows are seeded for BOTH halves of this scenario: an earlier draft measured the phone half
+ * against `/firefly/mappings`, a seven-row, four-column table that is not what this wave is about and not
+ * what the seeded rows were for — a regression that pushed the data listing sideways at 375px would have
+ * left it green.
+ */
 it('renders a paged listing in dark mode and at phone width without a horizontal page scroll', function (): void {
     /** @var AdminDashboardBrowserTestCase $this */
     $this->seedManyOrders(60);
@@ -693,8 +732,28 @@ it('renders a paged listing in dark mode and at phone width without a horizontal
 
     // The table scrolls inside its own wrapper; the DOCUMENT must not. That is what `.tw{overflow:auto}`
     // plus `min-width:0` on main buys, and at 375px it is the difference between a dashboard and a mess.
+    // `60 total` is asserted first so the measurement is taken on a drawn listing rather than on whatever
+    // an error page would have put there — a 404 fits in 375px perfectly.
+    visit('/firefly/data?resource=order-entity&size=25')
+        ->on()->mobile()
+        ->assertSee('60 total')
+        ->assertScript('document.documentElement.scrollWidth <= document.documentElement.clientWidth', true)
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-data-paged-mobile');
+});
+
+/**
+ * THE SAME MEASUREMENT ON THE PAGE THIS WAVE STARTED FROM, under its own name. The routes table is the
+ * screenshot that opened the complaint, and its four columns — one of them a path that used to wrap to six
+ * lines — are a different layout problem from a resource listing's seven: it declares character widths for
+ * every column and a path cell that may not wrap, so it is the page most likely to overflow the document
+ * on a phone rather than inside its wrapper.
+ */
+it('renders the routes table at phone width without a horizontal page scroll', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
     visit('/firefly/mappings')
         ->on()->mobile()
+        ->assertSee('Routes')
         ->assertScript('document.documentElement.scrollWidth <= document.documentElement.clientWidth', true)
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'admin-mappings-mobile');
