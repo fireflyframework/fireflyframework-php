@@ -29,6 +29,17 @@
                                 <form method="post" action="{{ $settings->url('loggers') }}" class="inline">
                                     @csrf
                                     <input type="hidden" name="logger" value="{{ $channel['name'] }}">
+                                    {{--
+                                        WHERE THE READER WAS. This form is a POST, so none of the listing's
+                                        state survives it on its own — and AdminAction::setLoggerLevel()
+                                        redirects, which throws away the request's query string too. One
+                                        hidden field carrying `$query->link()` (the search, the ordering,
+                                        the size and the page, exactly as the pager writes them) is what
+                                        returns someone who filtered for `queue` on page 3 to page 3 of
+                                        `queue` instead of to the top of the unfiltered table. The action
+                                        validates it against this page's own URL before redirecting to it.
+                                    --}}
+                                    <input type="hidden" name="back" value="{{ $query->link() }}">
                                     <select name="level" aria-label="Level for {{ $channel['name'] }}">
                                         @foreach ($levelNames as $option)
                                             <option value="{{ $option }}" @selected($option === $channel['level'])>{{ $option }}</option>

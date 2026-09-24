@@ -70,7 +70,10 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
         $app->instance(RouteManifest::class, new RouteManifest($this->routes()));
         $app->instance(ScheduledManifest::class, new ScheduledManifest($this->tasks()));
         $app->instance(ConfigPropertiesManifest::class, new ConfigPropertiesManifest($this->configProperties()));
-        $app->instance(BillingProperties::class, new BillingProperties);
+
+        foreach ($this->boundConfigProperties() as $class => $instance) {
+            $app->instance($class, $instance);
+        }
     }
 
     protected function setUp(): void
@@ -134,6 +137,21 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
             new ConfigPropertiesDescriptor(BillingProperties::class, 'billing'),
             new ConfigPropertiesDescriptor(LedgerProperties::class, 'ledger', ['production']),
         ];
+    }
+
+    /**
+     * The DTOs of `configProperties()` that are actually IN the container, and their instances.
+     *
+     * A pair rather than a list, because that is what ConfigPropsEndpoint::describe() reads: it asks the
+     * container for the class and reports `bound: false` when nothing answers. A subclass that adds a bound
+     * DTO has to add it in BOTH places — the manifest says the application declares it, this says the
+     * application resolved it — and the difference between the two is the Not-bound panel.
+     *
+     * @return array<class-string, object>
+     */
+    protected function boundConfigProperties(): array
+    {
+        return [BillingProperties::class => new BillingProperties];
     }
 
     /**

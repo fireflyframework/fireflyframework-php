@@ -329,3 +329,106 @@ it('opens a table at the top when the reader navigates to it rather than reloadi
         ->assertScript("document.querySelector('.tw').scrollTop", 0)
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * THE SAME PADDING TRAP, ON A COLUMN THAT HOLDS A CONTROL RATHER THAN A WORD. The Loggers page puts a
+ * `<select>` of every Monolog level and an Apply button inside one cell, and the column that used to carry
+ * `style="width:1%"` under `table-layout:auto` — which is min-content sizing, i.e. exactly the control's
+ * width — now declares a character count like every other rigid column. A count that was read off the word
+ * `Apply` rather than off the control leaves `table.ftable td{overflow:hidden}` to cut the button in half:
+ * measured at the shipped 18ch, the form needed 172.5px against 135px of content box and 23px of the
+ * 51.5px button was clipped away, so it rendered as `App` and the part sticking out was not hit-testable.
+ *
+ * WHAT IS ASSERTED IS THE CONTROL, NOT THE CELL ALONE. `cell.scrollWidth <= cell.clientWidth` is the same
+ * reading the Method column takes, and the button's right edge against the cell's is the half that says
+ * WHICH element was in danger — a cell can stop overflowing because the select shrank instead.
+ */
+it('does not clip the Apply button in the loggers level column', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/loggers')
+        ->assertScript(<<<'JS'
+            (() => {
+                const cell = document.querySelector('table.ftable td.t-actions');
+                if (cell === null) { return 'no actions cell on the loggers page'; }
+                const button = cell.querySelector('button[type=submit]');
+                const select = cell.querySelector('select');
+                if (button === null || select === null) { return 'the level form lost its control'; }
+
+                // The worst case is not hypothetical: a <select> is as wide as its widest option, and the
+                // endpoint publishes Monolog's whole Level::NAMES, so EMERGENCY is on every install.
+                const widest = [...select.options].map(o => o.textContent.trim()).includes('EMERGENCY');
+                if (!widest) { return 'the level select no longer offers EMERGENCY'; }
+
+                return (cell.scrollWidth <= cell.clientWidth
+                        && button.scrollWidth <= button.clientWidth
+                        && button.getBoundingClientRect().right <= cell.getBoundingClientRect().right)
+                    || 'the Apply button is clipped: cell ' + cell.scrollWidth + '/' + cell.clientWidth
+                       + ', button ends ' + (button.getBoundingClientRect().right - cell.getBoundingClientRect().right).toFixed(1)
+                       + 'px past the cell';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE LEVEL PILL, SIZED FROM THE PILL AND NOT FROM THE WORD. `.code` is 11.5px mono inside 2×7px of its
+ * own padding, and the column's `ch` count covers only the characters — so a count of 9 fits the nine
+ * letters of EMERGENCY and clips the padding around them. Both of the levels this catches are real values:
+ * the endpoint reports whatever `logging.channels.*.level` says, upper-cased, and offers every name in the
+ * control beside it.
+ *
+ * The worst case is SEEDED rather than waited for, the way the Environment scenario seeds its unbreakable
+ * value: a skeleton configured at `debug` would pass this assertion while EMERGENCY clipped on the next
+ * deployment along.
+ */
+it('does not clip the widest level name the loggers page can report', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/loggers')
+        ->assertScript(<<<'JS'
+            (() => {
+                const pill = document.querySelector('table.ftable td.t-pill .code');
+                if (pill === null) { return 'no level pill on the loggers page'; }
+                const cell = pill.closest('td');
+                const original = pill.textContent;
+
+                const reading = name => {
+                    pill.textContent = name;
+                    return {
+                        name,
+                        fits: cell.scrollWidth <= cell.clientWidth && pill.scrollWidth <= pill.clientWidth,
+                        over: cell.scrollWidth - cell.clientWidth,
+                    };
+                };
+                const readings = ['DEBUG', 'WARNING', 'CRITICAL', 'EMERGENCY'].map(reading);
+                pill.textContent = original;
+
+                const clipped = readings.filter(r => !r.fits);
+                return clipped.length === 0
+                    || 'the Level column clips ' + clipped.map(r => r.name + ' by ' + r.over + 'px').join(', ');
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE CHIP'S OWN CHROME, WHICH A CHARACTER COUNT DOES NOT COVER. `.chip` draws a 6px dot, a 6px gap and
+ * 2×9px of padding around its text, so `default` is 72px of pill for 7 characters of word — and a column
+ * asked for 8 characters gives it 60px and clips the last two letters. The row is not an edge case:
+ * `cache.default` is set in every Laravel application, so the chip is on the page of every install.
+ */
+it('does not clip the Default chip in the cache stores table', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/caches')
+        ->assertScript(<<<'JS'
+            (() => {
+                const chip = document.querySelector('table.ftable td.t-pill .chip');
+                if (chip === null) { return 'no default store is marked on the caches page'; }
+                const cell = chip.closest('td');
+                return (cell.scrollWidth <= cell.clientWidth
+                        && chip.getBoundingClientRect().right <= cell.getBoundingClientRect().right)
+                    || 'the Default chip is clipped: cell ' + cell.scrollWidth + '/' + cell.clientWidth
+                       + ', chip ' + chip.getBoundingClientRect().width.toFixed(1) + 'px';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});

@@ -503,7 +503,14 @@ final readonly class AdminAction
                     TableView::of(
                         TableColumn::token('name', 'Store', weight: 3),
                         TableColumn::token('driver', 'Driver', weight: 3),
-                        TableColumn::pill('default', 'Default', ch: 8),
+                        // 10.5 CHARACTERS FOR A SEVEN-CHARACTER WORD, because a `.chip` is not only its
+                        // text: a 6px dot, the 6px gap after it and 2x9px of its own padding are 30px of
+                        // chrome that the column's `calc(<n>ch + 2 * var(--row-x))` does not cover —
+                        // `--row-x` is the CELL's padding, not the chip's. Measured in Chromium: the chip
+                        // is 71.8px and 8ch gave it 60px, so `overflow:hidden` cut the last two letters
+                        // off the word `default` on every application, since `cache.default` is always
+                        // set and the row therefore always renders.
+                        TableColumn::pill('default', 'Default', ch: 10.5),
                     ),
                     ['name', 'driver'],
                     'name',
@@ -520,8 +527,20 @@ final readonly class AdminAction
                     $this->loggerRows(),
                     TableView::of(
                         TableColumn::token('name', 'Channel', weight: 4),
-                        TableColumn::pill('level', 'Level', ch: 9),
-                        TableColumn::actions('Set', ch: 18),
+                        // The pill's padding again, and here the widest value is not a guess: the level is
+                        // whatever `logging.channels.*.level` says, upper-cased, so CRITICAL and EMERGENCY
+                        // are both reachable — and a testbench reports CRITICAL today. `.code` is 11.5px
+                        // mono inside 2x7px, which makes EMERGENCY 76.3px against the 67.6px that 9ch gave
+                        // it. 11 characters is 82.7px.
+                        TableColumn::pill('level', 'Level', ch: 11),
+                        // THE COLUMN IS SIZED FROM THE CONTROL, NOT FROM THE WORD `Apply`. This cell holds
+                        // a <select> and a button, and a <select> is as wide as its widest OPTION — the
+                        // endpoint publishes Monolog's whole `Level::NAMES`, so EMERGENCY is in it on every
+                        // install and the control measures 115px + the 6px flex gap + a 51.5px button =
+                        // 172.5px. At the 18ch this shipped with, the content box was 135px and
+                        // `table.ftable td{overflow:hidden}` cut 23px off the button: it rendered as `App`
+                        // and the rest of it was not hit-testable. 24 characters is 180.4px.
+                        TableColumn::actions('Set', ch: 24),
                     ),
                     ['name', 'level'],
                     'name',
@@ -647,7 +666,14 @@ final readonly class AdminAction
             TableColumn::text('why', 'Why', weight: 5),
         );
 
-        $bound = $this->listing($request, 'configprops', $this->configPropRows(), $boundView, ['class', 'prefix', 'key', 'value'], 'key', defaultSort: 'class', qualifier: 'props');
+        // `row` IS THE TIEBREAK, AND `key` CANNOT BE. InMemoryListing asks for "a key whose value is unique
+        // per row", and this listing emits one row per PROPERTY across every bound DTO — so `enabled`,
+        // `timeout` and `store` name as many rows as there are DTOs declaring them, and ordering by Property
+        // would leave the primary column and the tiebreak as the same non-unique key, i.e. ties broken by
+        // nothing. `row` is the identity the other listings already have as a natural column (a path, a
+        // class, a channel name) and this one does not; it is searched by nothing and drawn by nothing, in
+        // the same way `interfacesQualified` rides along in the beans catalogue.
+        $bound = $this->listing($request, 'configprops', $this->configPropRows(), $boundView, ['class', 'prefix', 'key', 'value'], 'row', defaultSort: 'class', qualifier: 'props');
         $unbound = $this->listing($request, 'configprops', $this->unboundRows(), $unboundView, ['class', 'prefix', 'why'], 'class', defaultSort: 'class', qualifier: 'unbound');
 
         $boundQuery = $bound['query']->carrying($unbound['query']->own());
@@ -812,7 +838,14 @@ final readonly class AdminAction
      * One row per bound PROPERTY rather than per DTO. A reader looks a value up by its key, and a table of
      * one row per class with a blob of properties in a cell cannot be searched that way.
      *
-     * @return list<array{class: string, prefix: string, key: string, value: string}>
+     * `row` IS THE PRICE OF THAT SHAPE. Every other listing on this dashboard has a natural column that is
+     * unique per row — a route path, a bean class, a channel name — and hands it to InMemoryListing as the
+     * tiebreak. Flattening N DTOs into their properties destroys that: neither `class` (one row per
+     * property of it) nor `key` (`enabled` is declared by half the framework's own DTOs) identifies a row,
+     * and a tiebreak that ties is no tiebreak at all. So the identity is synthesised here, once, and the
+     * listing orders by it — no TableColumn, no `?sort=row`, nothing drawn.
+     *
+     * @return list<array{row: string, class: string, prefix: string, key: string, value: string}>
      */
     private function configPropRows(): array
     {
@@ -827,6 +860,7 @@ final readonly class AdminAction
 
             foreach (is_array($bean['properties'] ?? null) ? $bean['properties'] : [] as $key => $value) {
                 $rows[] = [
+                    'row' => $class.'::'.(string) $key,
                     'class' => $class,
                     'prefix' => $prefix,
                     'key' => (string) $key,
@@ -1144,6 +1178,22 @@ final readonly class AdminAction
         }
     }
 
+    /**
+     * Apply a level to one channel and put the reader back where they were.
+     *
+     * THE POSITION IS CARRIED THROUGH THE POST, which it did not have to be until the Loggers page became a
+     * listing. Every channel used to be on one page with no search and no ordering, so there was nothing a
+     * redirect to the bare URL could lose; now a reader on page 3, or one who typed `queue` into the search
+     * box, would apply a level and land back on an unfiltered first page with their channel somewhere off
+     * screen. That is precisely the failure ListingQuery exists to prevent — "a sort link that dropped the
+     * filter widens the listing back to every row… and nothing fails when it happens" — and the dashboard
+     * already carries state through a redirect next door, in dataWrite().
+     *
+     * IT IS VALIDATED RATHER THAN TRUSTED. `back` arrives in a form body, so it is caller-supplied and the
+     * only honest thing to do with it is check it: it has to BE the Loggers page, or the Loggers page with
+     * a query string. Anything else — another dashboard page, a protocol-relative `//elsewhere` — falls
+     * back to the bare URL rather than turning an admin form into an open redirect.
+     */
     private function setLoggerLevel(Request $request): RedirectResponse
     {
         $name = $request->input('logger');
@@ -1153,7 +1203,12 @@ final readonly class AdminAction
             $this->reader->write('loggers', [$name], ['level' => $level]);
         }
 
-        return new RedirectResponse($this->settings->url('loggers'));
+        $page = $this->settings->url('loggers');
+        $back = $request->input('back');
+
+        return new RedirectResponse(
+            is_string($back) && ($back === $page || str_starts_with($back, $page.'?')) ? $back : $page,
+        );
     }
 
     /** @return array<string,mixed> */

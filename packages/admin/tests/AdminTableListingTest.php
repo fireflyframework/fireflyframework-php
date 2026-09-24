@@ -289,15 +289,32 @@ it('pages the bound config properties and the unbound ones independently', funct
         ->toContain('3 total');
 });
 
-// Each panel carries the OTHER's position, so paging or ordering one leaves the reader where they were in
-// the one they are not looking at.
+/**
+ * Each panel carries the OTHER's position, so paging or ordering one leaves the reader where they were in
+ * the one they are not looking at.
+ *
+ * IT IS THE `page` PARAMETER THAT MAKES THIS ASSERTION MEAN ANYTHING, for the same reason the conditions
+ * test above uses it. Asking for `?props_sort=key&unbound_sort=prefix` and looking for those two strings
+ * proves nothing at all: `props_sort=key` is written by the Bound panel's OWN `key` header — `sortLink()`
+ * emits it because `key` is not that listing's default sort — and by its own search form's hidden fields,
+ * and `unbound_sort=prefix` by the Not-bound panel's own, so both substrings are in the body whether or
+ * not either query carries the other. A panel's own links can never write its own `page`: `hiddenFields()`
+ * omits it, `sortLink()` nulls it, and `_pager`'s paged branch does not render for a fixture that fits on
+ * one page. So `props_page=2` in this body can only have arrived through the Not-bound panel's carried
+ * state, and `unbound_page=3` through the Bound panel's.
+ *
+ * `ListingQuery::fromRequest()` keeps the REQUESTED page — it cannot know the total — and `meaningful()`
+ * writes it because it is not 1, while `ListingPage::sliced()` still clamps what is rendered; that is what
+ * lets a one-page fixture carry a page number at all. The pager's own links, which a one-page fixture
+ * cannot draw, are pinned over a fixture built to page in AdminTableConfigPropsPagerTest.
+ */
 it('carries each config-properties panel\'s position through the other panel\'s links', function () {
     /** @var AdminTableCapstoneTestCase $this */
-    $body = (string) $this->get('/firefly/configprops?props_sort=key&unbound_sort=prefix')
+    $body = (string) $this->get('/firefly/configprops?props_page=2&unbound_page=3')
         ->assertStatus(200)
         ->getContent();
 
-    expect($body)->toContain('props_sort=key')->toContain('unbound_sort=prefix');
+    expect($body)->toContain('props_page=2')->toContain('unbound_page=3');
 });
 
 it('pages the cache stores and the log channels', function () {
@@ -314,3 +331,40 @@ it('gives the logger level control its own actions column instead of an inline w
 
     expect($body)->toContain('class="t-actions"')->not->toContain('style="width:1%"');
 });
+
+/**
+ * APPLYING A LEVEL MUST NOT COST THE READER THEIR PLACE, which it did not have to consider until this page
+ * became a listing: every channel was on one page, so a redirect to the bare URL lost nothing. Now the same
+ * redirect answers the unfiltered first page, and someone who searched for `err` on page 2 has to find
+ * their channel again — the state is in the URL and a POST does not carry a URL.
+ *
+ * The form's own field is asserted as well as the redirect, because either half alone passes on a broken
+ * page: an action that honours `back` is unreachable if the form never sends one.
+ */
+it('returns the reader to the search and page they applied a logger level from', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/loggers?q=err&sort=level&dir=desc')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('name="back" value="/firefly/loggers?q=err&amp;sort=level&amp;dir=desc"');
+
+    $this->post('/firefly/loggers', ['logger' => 'errorlog', 'level' => 'DEBUG', 'back' => '/firefly/loggers?q=err&sort=level&dir=desc'])
+        ->assertRedirect('/firefly/loggers?q=err&sort=level&dir=desc');
+});
+
+/**
+ * …and `back` is a form field, so it is caller-supplied. A value that is not this page — another dashboard
+ * page, or the protocol-relative `//elsewhere` that a naive prefix check reads as a path — is dropped
+ * rather than followed, which is what keeps an admin form from being an open redirect.
+ */
+it('refuses to redirect anywhere but the loggers page after applying a level', function (string $forged) {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->post('/firefly/loggers', ['logger' => 'errorlog', 'level' => 'DEBUG', 'back' => $forged])
+        ->assertRedirect('/firefly/loggers');
+})->with([
+    // A protocol-relative URL, which a bare `str_starts_with('/')` check reads as a path.
+    '//example.com/',
+    // The prefix check has to end at a boundary, or this page's own URL is a prefix of another one.
+    '/firefly/loggers-elsewhere',
+    'https://example.com/firefly/loggers',
+    '/firefly/env',
+]);
