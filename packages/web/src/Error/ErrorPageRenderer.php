@@ -64,9 +64,15 @@ final class ErrorPageRenderer
      * null for it — for the PAGE as well as for the problem document, because `handles()` reads the Accept
      * header alone and would otherwise draw a diagnostic 500 page over a browser's redirect-back-with-errors.
      *
-     * The list is named rather than derived because there is nothing to derive it from: the arms are a
-     * literal `match` in Laravel's handler, and a test in ErrorPageTest asserts this predicate against each
-     * of the three so a Laravel release that adds a fourth is a failing test and not a silent 500.
+     * THE LIST IS NAMED, AND THE TRIPWIRE UNDER IT IS NOT THIS PREDICATE'S OWN TEST. ErrorPageTest asserts
+     * this method against each of the three, which pins what THIS method does and would go on passing for
+     * ever if Laravel grew a fourth arm: the predicate knows nothing about the handler, so a test that
+     * constructs the three exceptions itself cannot notice a fourth. That test is therefore not the
+     * protection, and saying it was would have told a maintainer on a Laravel upgrade that the list
+     * re-checks itself. LaravelHandlerArmsTest is the protection: it reads `Handler::render()` out of the
+     * INSTALLED Laravel through reflection, extracts the classes its `match (true)` resolves, and fails
+     * unless that set is exactly these three — so a release that adds a fourth arm is a failing test naming
+     * the class to add here, and not a silent 500 in production.
      */
     public function describes(Throwable $e): bool
     {
