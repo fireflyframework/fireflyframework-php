@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Config\Config;
+use Firefly\Kernel\Exception\Business\ConflictException;
 use Firefly\Kernel\Exception\Business\PaymentRequiredException;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\Kernel\Exception\Infrastructure\ServiceUnavailableException;
@@ -273,4 +274,58 @@ it('falls back to the correlation id, and writes no trace header, when there is 
     expect($body['traceId'])->toBe('corr-42')
         ->and($body['correlationId'])->toBe('corr-42')
         ->and($response->headers->has('X-Trace-Id'))->toBeFalse();
+});
+
+/*
+ * THE ERROR HANDLER MUST NOT FAIL WHILE HANDLING THE ERROR. json_encode with JSON_THROW_ON_ERROR raises out
+ * of render() on any byte that is not valid UTF-8, and those bytes arrive on this path as a matter of
+ * routine: a driver message quoting a latin-1 column, a request header echoed into an extension member, a
+ * file name off a non-UTF-8 filesystem. What the caller got was not a worse document — it was NO document,
+ * a blank 500 from the web server, with the real failure buried under a JsonException.
+ */
+it('substitutes an invalid byte rather than throwing out of the renderer', function () {
+    $broken = (new ConflictException("caf\xE9 is closed", 'CAFE_CLOSED'))->withExtensions(['who' => "ada\xB1\x31"]);
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings(disclose: true)))->render($broken, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($response->headers->get('Content-Type'))->toBe('application/problem+json')
+        ->and($payload['code'])->toBe('CAFE_CLOSED')
+        // Substituted, not dropped: the document still describes the failure it was built for.
+        ->and($payload['detail'])->toContain('is closed')
+        ->and($payload['who'])->toContain('ada');
+});
+
+it('falls back to a minimal document rather than raising when a member cannot be encoded at all', function () {
+    // INF is the case JSON_INVALID_UTF8_SUBSTITUTE does not cover: a float an application put in an
+    // extension member at the throw site. The document that comes back is smaller and still true.
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]);
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['status'])->toBe(409)
+        ->and($payload['title'])->toBe('Conflict')
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($payload['category'])->toBe('internal')
+        ->and($payload['detail'])->toBe(ProblemMapper::OPAQUE)
+        // The member that could not be encoded is simply not there; it is not a reason to answer nothing.
+        ->and($payload)->not->toHaveKey('ratio');
+});
+
+it('answers with a document even when the status itself is the only thing left', function () {
+    // The last branch, exercised directly: whatever the payload holds, the renderer returns valid JSON.
+    $response = (new ProblemDetailsRenderer)->render(
+        (new ConflictException('x', 'X'))->withExtensions(['a' => NAN, 'b' => "\xC3\x28"]),
+        Request::create('/api/x'),
+    );
+
+    expect(json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR))->toBeArray()
+        ->and($response->getStatusCode())->toBe(409);
 });

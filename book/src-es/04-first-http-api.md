@@ -448,17 +448,21 @@ final class ProblemDetailsRenderer
 
         // …
         return new Response(
-            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            self::encode($payload),
             $exception->httpStatus(),
             $headers,
         );
     }
+
+    // …
 }
 ```
 
 `application/problem+json` se fija aquí, en cada respuesta que este renderizador produce — ese tipo de medio *es* el contrato del RFC-7807, y un cliente tiene todo el derecho a ramificar sobre él. A su lado viajan dos identificadores, y son dos a propósito. `X-Correlation-Id` lleva el identificador que `CorrelationIdFilter` acuña o lee en el borde de la petición, y el documento repite ese mismo valor en `correlationId`, de modo que quien llama puede casar el cuerpo que tiene delante con su propio registro de peticiones. El `traceId` del documento es lo que responda `TraceContext::referenceFor()` — el identificador de traza W3C de la petición cuando el trazado está activado y esta petición trae uno válido, y el identificador de correlación cuando no lo trae —, así que la referencia que alguien cita nunca está vacía, y activar el trazado es lo único que cambia cuál de los dos lleva. Cuando de verdad hay un identificador de traza, además se hace eco de él en una cabecera propia (`X-Trace-Id` por defecto; un nombre de cabecera vacío desactiva ese eco). Ambos identificadores pasan *a través* de `ErrorResponse` en vez de escribirse sobre el array después, porque la lista de miembros del DTO es de donde se genera el componente OpenAPI publicado — un miembro añadido aquí sería uno que ningún cliente generado sabe decodificar.
 
 El corte que hay encima del `return` oculta el resto del trabajo con cabeceras: las cabeceras que una `HttpExceptionInterface` ya trae se copian sobre la respuesta — el `Allow` de un `405`, entre ellas — y un `503` gana además `Retry-After: 5`.
+
+`self::encode()` es el cuerpo, y es total a propósito: un byte que no es UTF-8 válido — el mensaje de un driver que cita una columna latin-1, una cabecera de la petición copiada a un miembro de extensión — se sustituye en vez de elevarse, y cualquier cosa que `json_encode` siga rechazando, como un `INF` que una aplicación puso en una extensión en el punto del throw, cae a un documento mínimo que lleva el estado, el código y una frase opaca. Un renderizador que lanzara aquí fallaría mientras atiende el fallo, y quien llama no recibiría documento alguno.
 
 Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se convierte un throwable cualquiera. Esa regla vive una clase más allá, en `Firefly\Web\Error\ProblemMapper`, porque la página de error HTML del Capítulo 10 necesita la respuesta idéntica y dos copias de ella acabarían dándole a un navegador y a un cliente de API códigos distintos para el mismo fallo:
 

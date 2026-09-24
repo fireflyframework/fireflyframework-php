@@ -448,17 +448,21 @@ final class ProblemDetailsRenderer
 
         // …
         return new Response(
-            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            self::encode($payload),
             $exception->httpStatus(),
             $headers,
         );
     }
+
+    // …
 }
 ```
 
 `application/problem+json` is set here, on every response this renderer produces — that media type *is* the RFC-7807 contract, and a client is entitled to switch on it. Beside it travel two identifiers, and they are two on purpose. `X-Correlation-Id` carries the id `CorrelationIdFilter` minted or read at the edge of the request, and the document repeats that same value as `correlationId`, so a caller can match the body it is holding to its own request log. The document's `traceId` is whatever `TraceContext::referenceFor()` answers — the request's W3C trace id when tracing is on and this request carries a valid one, and the correlation id when it does not — so the reference a person quotes is never empty, and switching tracing on is the only thing that changes which of the two it holds. Where there really is a trace id, it is echoed on a header of its own as well (`X-Trace-Id` by default; an empty header name turns that echo off). Both ids are passed *through* `ErrorResponse` rather than written onto the array afterwards, because the DTO's member list is what the published OpenAPI component is generated from — a member appended here would be one no generated client decodes.
 
 The cut above the `return` hides the rest of the header work: the headers an `HttpExceptionInterface` already carries are copied onto the response — a `405`'s `Allow` among them — and a `503` additionally gains `Retry-After: 5`.
+
+`self::encode()` is the body, and it is total on purpose: a byte that is not valid UTF-8 — a driver message quoting a latin-1 column, a request header echoed into an extension member — is substituted rather than raised, and anything `json_encode` still refuses, such as an `INF` an application put in an extension at the throw site, falls back to a minimal document carrying the status, the code and an opaque sentence. A renderer that threw here would fail while handling the failure, and the caller would receive no document at all.
 
 What `render()` deliberately does **not** decide is which `FireflyException` an arbitrary throwable becomes. That rule lives one class along, in `Firefly\Web\Error\ProblemMapper`, because the HTML error page of Chapter 10 needs the identical answer and two copies of it would eventually hand a browser and an API client different codes for the same failure:
 
