@@ -237,3 +237,80 @@ it('offers no ordering by the interval columns it cannot order', function () {
 
     $this->get('/firefly/scheduled?sort=fixedRate')->assertStatus(200)->assertDontSee('sort=fixedRate', false);
 });
+
+/**
+ * `firefly.observability.metrics.store` is a qualified name whose LEAF is the answer and whose stem locates
+ * it, exactly like a class — which is why ColumnKind::Qualified takes its separator as a parameter instead
+ * of the environment growing a fourth width mechanism of its own.
+ */
+it('splits a dotted configuration key the same way it splits a class name', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/env')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<table class="ftable">')
+        ->toContain('class="t-qual"')
+        ->toContain('<span class="nm">enabled</span>')
+        ->toContain('class="ns stem">firefly.management');
+});
+
+it('pages the environment and searches keys and values together', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/env?q=management')
+        ->assertStatus(200)
+        ->assertSee('firefly.management', false)
+        ->assertDontSee('data-filter="env-body"', false);
+});
+
+/**
+ * TWO LISTINGS ON ONE PAGE, the same arrangement the Conditions page has and for the same reason: what
+ * bound and what did not are two questions, and a reader paging one of them must not silently reset the
+ * other. The panels are qualified `props` and `unbound`, so every parameter on this page is prefixed and
+ * each panel's links carry the other's position.
+ *
+ * ONE ROW PER PROPERTY, NOT PER DTO, is the other claim here and the fixture is built to show it: the
+ * bound DTO carries three properties, so `3 total` is the bound panel's count while the manifest declares
+ * a single bound class. A table of one row per class with a blob of values in a cell reads the same in a
+ * screenshot and cannot be searched by key, which is how someone actually looks a value up.
+ */
+it('pages the bound config properties and the unbound ones independently', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/configprops?props_page=1')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('props_sort=')->toContain('Bound values')
+        // Both panels rendered as listings, each with its own qualified search input.
+        ->toContain('Not bound')
+        ->toContain('name="props_q"')
+        ->toContain('name="unbound_q"')
+        // One row per property of the one bound DTO, and the reason the other one did not bind.
+        ->toContain('>dailyTransferLimitMinor<')
+        ->toContain('>dunningEnabled<')
+        ->toContain('>250000<')
+        ->toContain('Requires the production profile, which is not active.')
+        ->toContain('3 total');
+});
+
+// Each panel carries the OTHER's position, so paging or ordering one leaves the reader where they were in
+// the one they are not looking at.
+it('carries each config-properties panel\'s position through the other panel\'s links', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/configprops?props_sort=key&unbound_sort=prefix')
+        ->assertStatus(200)
+        ->getContent();
+
+    expect($body)->toContain('props_sort=key')->toContain('unbound_sort=prefix');
+});
+
+it('pages the cache stores and the log channels', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/caches')->assertStatus(200)->assertSee('<table class="ftable">', false);
+    $this->get('/firefly/loggers')->assertStatus(200)->assertSee('<table class="ftable">', false);
+});
+
+// The level control is a POST form inside the listing, so the column it lives in shrinks to it rather than
+// carrying the `style="width:1%"` the view used to hand-write.
+it('gives the logger level control its own actions column instead of an inline width', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/loggers')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('class="t-actions"')->not->toContain('style="width:1%"');
+});

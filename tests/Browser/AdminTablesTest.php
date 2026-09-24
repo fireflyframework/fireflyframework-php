@@ -128,39 +128,88 @@ it('searches and sorts on the server, from links that keep the rest of the state
 });
 
 /**
- * THE AUTO-LAYOUT PAGES STILL DEPEND ON `overflow-wrap:anywhere`, AND NOTHING USED TO SAY SO. Seven
- * listings that this wave has not rebuilt yet — env, configprops, beans, health, http, metrics, the
- * overview — still draw their cells as `td.mono.wrap` under `table-layout:auto`, where the column widths
- * come from the CONTENT. Per CSS Text 3 only `anywhere` contributes its break opportunities to min-content
- * sizing, so it is the one value that lets a token with no break of its own wrap INSIDE its column instead
- * of widening the table past the panel; `break-word` looks equivalent, breaks the same token at render
- * time, and sizes the column to the whole token.
+ * THE AUTO-LAYOUT PAGES STILL DEPEND ON `overflow-wrap:anywhere`, AND NOTHING USED TO SAY SO. The listings
+ * this wave has not rebuilt — health, the overview, and a record's detail table in the data browser — still
+ * draw their cells as `td.mono.wrap` under `table-layout:auto`, where the column widths come from the
+ * CONTENT. Per CSS Text 3 only `anywhere` contributes its break opportunities to min-content sizing, so it
+ * is the one value that lets a token with no break of its own wrap INSIDE its column instead of widening
+ * the table past the panel; `break-word` looks equivalent, breaks the same token at render time, and sizes
+ * the column to the whole token.
+ *
+ * IT WAS WRITTEN AGAINST `/firefly/env` AND HAD TO MOVE, which is the kind of thing worth recording rather
+ * than quietly rewriting: env is a fixed-layout `table.ftable` now, and a page that never asks a cell for
+ * its min-content size cannot assert anything about min-content sizing. Health is the listing that stays
+ * on auto layout for the whole of this wave, and it always has rows — the framework ships a ping indicator
+ * and a disk-space one — so the guard keeps a home. What env promises INSTEAD is pinned by the scenario
+ * below it.
  *
  * The scenario seeds its own worst case rather than hoping the process holds a long value: what is under
- * test is min-content sizing, so the input has to be a run with no break opportunity in it, and the
- * resolved `firefly.*` configuration this page happens to render is not reliably one.
+ * test is min-content sizing, so the input has to be a run with no break opportunity in it, and the health
+ * details this page happens to render are not reliably one.
  */
-it('keeps a long unbreakable value inside the Environment panel', function (): void {
+it('keeps a long unbreakable value inside the Health panel', function (): void {
     /** @var AdminDashboardBrowserTestCase $this */
-    visit('/firefly/env')
+    visit('/firefly/health')
         ->assertScript(<<<'JS'
             (() => {
-                const body = document.querySelector('#env-body');
-                if (body === null) { return 'no env table on the page'; }
+                const body = document.querySelector('#health-body');
+                if (body === null) { return 'no health table on the page'; }
                 const wrapper = body.closest('.tw');
                 const overflow = () => wrapper.scrollWidth - wrapper.clientWidth;
 
                 const before = overflow();
                 const row = document.createElement('tr');
-                row.innerHTML = '<td class="mono wrap"></td><td class="mono dim wrap"></td>';
-                row.children[0].textContent = 'firefly.browser-fixture.long';
-                row.children[1].textContent = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5'.repeat(3);
+                row.innerHTML = '<td class="mono tight"></td><td class="tight"></td><td class="mono dim wrap"></td>';
+                row.children[0].textContent = 'browserFixture';
+                row.children[1].textContent = 'UP';
+                row.children[2].textContent = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5'.repeat(3);
                 body.appendChild(row);
                 const after = overflow();
                 row.remove();
 
                 return (before <= 1 && after <= 1)
-                    || 'the env table overflows its panel: ' + before + 'px before the long value, ' + after + 'px after';
+                    || 'the health table overflows its panel: ' + before + 'px before the long value, ' + after + 'px after';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE SAME PROMISE, KEPT BY THE OPPOSITE MECHANISM. A resolved `firefly.*` value can be a base64 key or a
+ * JSON blob with no break opportunity in it, and the Environment table must still not push its panel
+ * sideways. Under the fixed layout it never asks the cell how wide it wants to be: the `<colgroup>` gives
+ * the column a definite width and `table.ftable td{overflow:hidden}` plus `t-line`'s ellipsis clip what
+ * does not fit, with the whole value on the cell's `title`.
+ *
+ * SO THIS ASSERTS THE CLIPPING AS WELL AS THE OVERFLOW, because "no overflow" alone is satisfied by a page
+ * that simply has no long value on it today. `scrollWidth > clientWidth` on the cell is the observation
+ * that the row really did hold more than fits, while the WRAPPER stayed inside its panel — which is the
+ * pair of facts the wave is claiming.
+ */
+it('clips a long unbreakable value in the Environment table instead of widening it', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    visit('/firefly/env')
+        ->assertScript(<<<'JS'
+            (() => {
+                const table = document.querySelector('table.ftable');
+                if (table === null) { return 'no env listing on the page'; }
+                const wrapper = table.closest('.tw');
+                const before = wrapper.scrollWidth - wrapper.clientWidth;
+
+                const row = document.createElement('tr');
+                row.innerHTML = '<td class="t-qual"><span class="nm"></span><span class="ns stem"></span></td><td class="t-line"></td>';
+                row.querySelector('.nm').textContent = 'long';
+                row.querySelector('.stem').textContent = 'firefly.browser-fixture';
+                const value = row.querySelector('.t-line');
+                value.textContent = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5'.repeat(3);
+                table.querySelector('tbody').appendChild(row);
+
+                const after = wrapper.scrollWidth - wrapper.clientWidth;
+                const clipped = value.scrollWidth > value.clientWidth;
+                row.remove();
+
+                return (before <= 1 && after <= 1 && clipped)
+                    || 'env: ' + before + 'px before, ' + after + 'px after, clipped=' + clipped;
             })()
             JS, true)
         ->assertNoJavaScriptErrors();

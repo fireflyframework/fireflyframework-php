@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Firefly\Admin\Tests\Support;
 
+use Firefly\Admin\Tests\Support\Fixtures\BillingProperties;
+use Firefly\Admin\Tests\Support\Fixtures\LedgerProperties;
+use Firefly\Config\Scanner\ConfigPropertiesDescriptor;
+use Firefly\Config\Scanner\ConfigPropertiesManifest;
 use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionOutcome;
 use Firefly\Scheduling\Schedule\ScheduledDescriptor;
@@ -46,6 +50,16 @@ use Illuminate\Foundation\Application;
  * - the non-matches go in after boot, because ConditionEvaluationReport is bound by ActuatorRouteRegistrar
  *   from the BootContext and is MUTABLE: the endpoint holds the same instance, so recording an outcome on
  *   it is visible to the next request. There is no earlier seam — the report does not exist until boot.
+ *
+ * THE CONFIG PROPERTIES ARE THE FOURTH SEEDED LISTING, and it is empty in a bare capstone for a reason
+ * worth spelling out: ConfigPropsEndpoint resolves its own manifest, from a compiled artifact or from a
+ * scan of `firefly.scan.paths`, and a testbench application configures neither — so `/firefly/configprops`
+ * renders two empty states and the page's TWO listings, which are independently qualified and carry each
+ * other's position, are asserted by nothing at all. The endpoint documents the seam this uses: a
+ * container-bound ConfigPropertiesManifest wins over both, "so a future pass that binds it (or a test that
+ * supplies one) is honoured rather than ignored". The BOUND DTO is then bound as an instance, because
+ * `describe()` reads the resolved object back out of the container — that IS the endpoint's contract — and
+ * the profile-gated one is deliberately left unbound, which is the state ConfigRegistrar leaves it in.
  */
 abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
 {
@@ -55,6 +69,8 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
 
         $app->instance(RouteManifest::class, new RouteManifest($this->routes()));
         $app->instance(ScheduledManifest::class, new ScheduledManifest($this->tasks()));
+        $app->instance(ConfigPropertiesManifest::class, new ConfigPropertiesManifest($this->configProperties()));
+        $app->instance(BillingProperties::class, new BillingProperties);
     }
 
     protected function setUp(): void
@@ -99,6 +115,24 @@ abstract class AdminTableCapstoneTestCase extends AdminCapstoneTestCase
         return [
             new ScheduledDescriptor('App\Jobs\NightlyReconciliation', 'run', cron: '0 2 * * *', zone: 'UTC'),
             new ScheduledDescriptor('App\Jobs\HeartbeatProbe', 'ping', fixedRate: '30s'),
+        ];
+    }
+
+    /**
+     * The #[ConfigProperties] DTOs this application declares — one bound, one gated off by a profile.
+     *
+     * Two descriptors rather than one, because the Config properties page shows TWO listings and the second
+     * one only renders when something failed to bind. The bound DTO carries three properties, so the bound
+     * listing has three rows over two classes' worth of columns and "one row per property, not per DTO" is
+     * an observable claim rather than a docblock.
+     *
+     * @return list<ConfigPropertiesDescriptor>
+     */
+    protected function configProperties(): array
+    {
+        return [
+            new ConfigPropertiesDescriptor(BillingProperties::class, 'billing'),
+            new ConfigPropertiesDescriptor(LedgerProperties::class, 'ledger', ['production']),
         ];
     }
 

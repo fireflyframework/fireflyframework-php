@@ -315,9 +315,9 @@
         /*
            `anywhere`, AND IT HAS TO STAY `anywhere` HERE. Per CSS Text 3 both values break an unbreakable
            token at render time; only `anywhere` also CONTRIBUTES its break opportunities to min-content
-           sizing. Under `table-layout:auto` — which is every table still carrying this class: env,
-           configprops, beans, health, http, metrics and the overview — min-content sizing is the whole
-           layout, and it is what keeps a base64 key or a JSON blob INSIDE its column. Measured with
+           sizing. Under `table-layout:auto` — which is every table still carrying this class: health, http,
+           metrics, the overview and a record's detail table in the data browser — min-content sizing is the
+           whole layout, and it is what keeps a base64 key or a JSON blob INSIDE its column. Measured with
            `break-word` instead: a 130-character `FIREFLY_…` value made an env table 1253px wide inside a
            618px panel. The fixed-layout listings do not want this trade and do not take it — see
            `table.ftable td.t-text` below.

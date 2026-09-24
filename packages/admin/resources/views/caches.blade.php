@@ -9,35 +9,28 @@
 
     <div class="panel">
         @include('firefly-admin::_panel-head', [
-            'title' => 'Stores', 'count' => count($stores),
-            'filter' => 'caches-body', 'placeholder' => 'Filter stores…',
+            'title' => 'Stores', 'count' => $slice->total, 'query' => $query, 'placeholder' => 'Search stores…',
         ])
-        @if ($stores === [])
-            @include('firefly-admin::_empty', [
-                'title' => 'No stores configured',
-                'body' => 'Laravel ships a <code>config/cache.php</code> defining several stores. If this is empty, that file is missing.',
-            ])
+        @if ($slice->isEmpty())
+            @include('firefly-admin::_empty', $query->isFiltered()
+                ? ['title' => 'Nothing matches', 'body' => 'No store name or driver contains that. <a href="'.e($query->link(['q' => null, 'page' => null])).'">Show them all</a>.']
+                : ['title' => 'No stores configured', 'body' => 'Laravel ships a <code>config/cache.php</code> defining several stores. If this is empty, that file is missing.'])
         @else
             <div class="tw">
-                <table>
-                    <thead><tr><th>Store</th><th>Driver</th><th>Default</th></tr></thead>
-                    <tbody id="caches-body">
-                    @foreach ($stores as $name => $store)
-                        @php
-                            $store = is_array($store) ? $store : [];
-                            $label = is_string($store['name'] ?? null) ? $store['name'] : (string) $name;
-                            $driver = is_string($store['driver'] ?? null) ? $store['driver'] : '';
-                            $isDefault = ($store['default'] ?? false) === true;
-                        @endphp
+                <table class="ftable">
+                    @include('firefly-admin::_table-head', ['view' => $view, 'query' => $query])
+                    <tbody>
+                    @foreach ($slice->rows as $store)
                         <tr>
-                            <td class="mono tight">{{ $label }}</td>
-                            <td class="mono dim">{{ $driver ?: '—' }}</td>
-                            <td class="tight">@if ($isDefault)<span class="chip up">default</span>@endif</td>
+                            <td class="t-token">{{ $store['name'] }}</td>
+                            <td class="t-token dim">{{ $store['driver'] ?: '—' }}</td>
+                            <td class="t-pill">@if ($store['default'] !== '')<span class="chip up">default</span>@endif</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+            @include('firefly-admin::_pager', ['slice' => $slice, 'query' => $query])
         @endif
     </div>
 

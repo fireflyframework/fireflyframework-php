@@ -480,17 +480,55 @@ final readonly class AdminAction
                 'runnable',
             ),
             'oauth2' => $this->oauth2(),
-            'env' => ['env' => $this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly')],
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
             // and caches answers {default: name|null, caches: {name => row}}.
-            'configprops' => ['beans' => $this->subArray($this->payload('configprops'), 'beans')],
+            'env' => $this->listing(
+                $request,
+                'env',
+                $this->envRows(),
+                TableView::of(
+                    TableColumn::qualified('key', 'Key', weight: 4, separator: '.'),
+                    TableColumn::line('value', 'Value', weight: 5),
+                ),
+                ['key', 'value'],
+                'key',
+                defaultSort: 'key',
+            ),
+            'configprops' => $this->configPropsPage($request),
             'caches' => [
-                'stores' => $this->subArray($this->payload('caches'), 'caches'),
+                ...$this->listing(
+                    $request,
+                    'caches',
+                    $this->cacheRows(),
+                    TableView::of(
+                        TableColumn::token('name', 'Store', weight: 3),
+                        TableColumn::token('driver', 'Driver', weight: 3),
+                        TableColumn::pill('default', 'Default', ch: 8),
+                    ),
+                    ['name', 'driver'],
+                    'name',
+                    defaultSort: 'name',
+                ),
                 'defaultStore' => is_string($this->payload('caches')['default'] ?? null)
                     ? $this->payload('caches')['default']
                     : null,
             ],
-            'loggers' => $this->payload('loggers') + ['levels' => [], 'loggers' => []],
+            'loggers' => [
+                ...$this->listing(
+                    $request,
+                    'loggers',
+                    $this->loggerRows(),
+                    TableView::of(
+                        TableColumn::token('name', 'Channel', weight: 4),
+                        TableColumn::pill('level', 'Level', ch: 9),
+                        TableColumn::actions('Set', ch: 18),
+                    ),
+                    ['name', 'level'],
+                    'name',
+                    defaultSort: 'name',
+                ),
+                'levels' => $this->subArray($this->payload('loggers'), 'levels'),
+            ],
             default => [],
         };
     }
@@ -583,6 +621,45 @@ final readonly class AdminAction
             'backedQuery' => $backedQuery,
             'backed' => ListingPage::sliced($backed['slice']->rows, $backed['slice']->total, $backedQuery),
             'view' => $view,
+        ];
+    }
+
+    /**
+     * The two listings the Config properties page shows: what bound, and what did not.
+     *
+     * They are qualified `props` and `unbound` and carry each other, for the same reason the two conditions
+     * panels do. The unbound panel is usually empty and is paged anyway: an application whose profiles are
+     * misconfigured can have dozens, and "usually small" is not a size.
+     *
+     * @return array<string,mixed>
+     */
+    private function configPropsPage(Request $request): array
+    {
+        $boundView = TableView::of(
+            TableColumn::qualified('class', 'Class', weight: 4),
+            TableColumn::token('prefix', 'Prefix', weight: 3),
+            TableColumn::token('key', 'Property', weight: 3),
+            TableColumn::line('value', 'Value', weight: 4),
+        );
+        $unboundView = TableView::of(
+            TableColumn::qualified('class', 'Class', weight: 4),
+            TableColumn::token('prefix', 'Prefix', weight: 2),
+            TableColumn::text('why', 'Why', weight: 5),
+        );
+
+        $bound = $this->listing($request, 'configprops', $this->configPropRows(), $boundView, ['class', 'prefix', 'key', 'value'], 'key', defaultSort: 'class', qualifier: 'props');
+        $unbound = $this->listing($request, 'configprops', $this->unboundRows(), $unboundView, ['class', 'prefix', 'why'], 'class', defaultSort: 'class', qualifier: 'unbound');
+
+        $boundQuery = $bound['query']->carrying($unbound['query']->own());
+        $unboundQuery = $unbound['query']->carrying($bound['query']->own());
+
+        return [
+            'boundQuery' => $boundQuery,
+            'bound' => ListingPage::sliced($bound['slice']->rows, $bound['slice']->total, $boundQuery),
+            'boundView' => $boundView,
+            'unboundQuery' => $unboundQuery,
+            'unbound' => ListingPage::sliced($unbound['slice']->rows, $unbound['slice']->total, $unboundQuery),
+            'unboundView' => $unboundView,
         ];
     }
 
@@ -709,6 +786,125 @@ final readonly class AdminAction
                 'fixedRate' => $this->trigger($task['fixedRate'] ?? null),
                 'fixedDelay' => $this->trigger($task['fixedDelay'] ?? null),
                 'zone' => is_string($task['zone'] ?? null) ? $task['zone'] : '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The resolved `firefly.*` configuration as rows. `flatten()` already returns dotted keys sorted; the
+     * listing then owns the ordering, so this only reshapes.
+     *
+     * @return list<array{key: string, value: string}>
+     */
+    private function envRows(): array
+    {
+        $rows = [];
+        foreach ($this->flatten($this->subArray($this->payload('env'), 'firefly'), 'firefly') as $key => $value) {
+            $rows[] = ['key' => $key, 'value' => $value];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * One row per bound PROPERTY rather than per DTO. A reader looks a value up by its key, and a table of
+     * one row per class with a blob of properties in a cell cannot be searched that way.
+     *
+     * @return list<array{class: string, prefix: string, key: string, value: string}>
+     */
+    private function configPropRows(): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('configprops'), 'beans') as $name => $bean) {
+            if (! is_array($bean) || ($bean['bound'] ?? false) !== true) {
+                continue;
+            }
+
+            $class = is_string($bean['class'] ?? null) ? $bean['class'] : (string) $name;
+            $prefix = is_string($bean['prefix'] ?? null) ? $bean['prefix'] : '';
+
+            foreach (is_array($bean['properties'] ?? null) ? $bean['properties'] : [] as $key => $value) {
+                $rows[] = [
+                    'class' => $class,
+                    'prefix' => $prefix,
+                    'key' => (string) $key,
+                    'value' => $this->scalar($value),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The DTOs that did NOT bind, with the reason already written as a sentence — "it did not bind, and
+     * here is why" is the more urgent thing this page can say, so it keeps its own panel.
+     *
+     * @return list<array{class: string, prefix: string, why: string}>
+     */
+    private function unboundRows(): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('configprops'), 'beans') as $name => $bean) {
+            if (! is_array($bean) || ($bean['bound'] ?? false) === true) {
+                continue;
+            }
+
+            $profiles = [];
+            foreach (is_array($bean['profiles'] ?? null) ? $bean['profiles'] : [] as $profile) {
+                $profiles[] = is_string($profile) ? $profile : '';
+            }
+
+            $rows[] = [
+                'class' => is_string($bean['class'] ?? null) ? $bean['class'] : (string) $name,
+                'prefix' => is_string($bean['prefix'] ?? null) ? $bean['prefix'] : '',
+                'why' => match (true) {
+                    is_string($bean['error'] ?? null) => $bean['error'],
+                    $profiles !== [] => 'Requires the '.implode(', ', $profiles).' profile, which is not active.',
+                    default => 'Not bound on this boot.',
+                },
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The configured cache stores as rows.
+     *
+     * @return list<array{name: string, driver: string, default: string}>
+     */
+    private function cacheRows(): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('caches'), 'caches') as $name => $store) {
+            $store = is_array($store) ? $store : [];
+
+            $rows[] = [
+                'name' => is_string($store['name'] ?? null) ? $store['name'] : (string) $name,
+                'driver' => is_string($store['driver'] ?? null) ? $store['driver'] : '',
+                // A sortable value rather than a bool, so "default first" is one click on the column.
+                'default' => ($store['default'] ?? false) === true ? 'default' : '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The log channels as rows, each with the level it is configured with.
+     *
+     * @return list<array{name: string, level: string}>
+     */
+    private function loggerRows(): array
+    {
+        $rows = [];
+        foreach ($this->subArray($this->payload('loggers'), 'loggers') as $name => $logger) {
+            $rows[] = [
+                'name' => (string) $name,
+                'level' => is_array($logger) && is_string($logger['configuredLevel'] ?? null) ? $logger['configuredLevel'] : 'INFO',
             ];
         }
 
