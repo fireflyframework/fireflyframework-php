@@ -22,8 +22,9 @@ namespace Firefly\Web\Error;
  *
  * THE SIGNATURE IS THE TRACE, because that is what the page is FOR. A raw PHP trace is a hundred frames of
  * which ten are yours; here the application's frames are the list — accented, one line each, the first one
- * with its source already open — and every dependency frame sits behind a single closed disclosure below
- * them. That split is the entire difference between scrolling a trace and reading one, and it is drawn with
+ * with its source already open — and every dependency frame sits behind a single disclosure below them,
+ * closed while there is a list above it to read and open when there is not. That split is the entire
+ * difference between scrolling a trace and reading one, and it is drawn with
  * `<details>` and CSS — no JavaScript, so it works with scripts disabled and in whatever a container's
  * minimal browser turns out to be.
  */
@@ -140,8 +141,20 @@ final class ErrorPage
      * A raw PHP trace is a hundred frames of which ten are the application's, and interleaving them is what
      * makes a trace something to scroll rather than something to read. So the application's frames are the
      * LIST — accented, in stack order, the first one with source already open — and the dependencies are a
-     * single closed disclosure underneath. Nothing is hidden: the count is on both, and one click or one
+     * single disclosure underneath, closed. Nothing is hidden: the count is on both, and one click or one
      * Enter opens the whole set.
+     *
+     * A STACK WITH NO APPLICATION FRAME IS NOT A REASON TO SHOW NOTHING. The split assumes there is
+     * something above the disclosure to be a list, and `ErrorFrame::$vendor` is decided by `/vendor/` in
+     * the path alone — so a stack has none whenever nothing application-owned is on it. Under php-fpm the
+     * entry script keeps that from happening: `public/index.php` is the application's, so it is the bottom
+     * frame of every request. It is exactly that floor a WORKER deployment removes — Octane, FrankenPHP
+     * worker mode and Vapor all boot from a front controller inside `vendor/` — and there every failure
+     * raised before application code runs (a routing miss, a 405, a container or bootstrap throw) has a
+     * stack that is dependencies end to end. Closing the disclosure there left the panel as a heading over
+     * one collapsed row with not a single frame in sight, which is a worse page than the interleaved trace
+     * this split replaced. So the disclosure is OPEN when it is the only thing in the panel: "nothing is
+     * hidden" has to hold in the case where hiding is all the page would otherwise do.
      *
      * Every frame keeps its position in the UNTRIMMED stack (`#37`), so a split list still reads as a stack
      * and a budgeted one still says where its gaps are.
@@ -186,7 +199,7 @@ final class ErrorPage
             $html .= '</ol>';
         }
 
-        return $html.self::dependencies($vendor, $report->frameCount - $report->appFrameCount).'</section>';
+        return $html.self::dependencies($vendor, $report->frameCount - $report->appFrameCount, $own === []).'</section>';
     }
 
     /**
@@ -250,10 +263,19 @@ final class ErrorPage
     /**
      * Every dependency frame behind one disclosure, with an honest count of what the budget left out.
      *
+     * CLOSED IS A CHOICE ABOUT CONTEXT, NOT A PROPERTY OF THIS SET. It is right whenever the application's
+     * frames are above it, because then the reader has the frames they came for and this is the stack they
+     * came THROUGH. When there are none — a routing miss, a 405, anything thrown before application code
+     * runs, or any failure at all under a front controller that lives in `vendor/` — closing it makes the
+     * trace panel a heading and a collapsed row with no frame visible at all, so `$open` is passed in by
+     * the caller rather than decided here: this set does not know whether it is the context or the whole
+     * trace.
+     *
      * @param  list<ErrorFrame>  $vendor
      * @param  int  $total  dependency frames in the UNTRIMMED stack
+     * @param  bool  $open  true when this disclosure is the only thing in the panel
      */
-    private static function dependencies(array $vendor, int $total): string
+    private static function dependencies(array $vendor, int $total, bool $open): string
     {
         if ($vendor === []) {
             return '';
@@ -262,7 +284,7 @@ final class ErrorPage
         $label = $total.' frame'.($total === 1 ? '' : 's').' in your dependencies';
         $note = count($vendor) === $total ? '' : '<span class="dn">'.self::e(count($vendor).' shown').'</span>';
 
-        $html = '<details class="deps"><summary><span class="dsum">'.self::e($label).'</span>'.$note.'</summary>'
+        $html = '<details class="deps"'.($open ? ' open' : '').'><summary><span class="dsum">'.self::e($label).'</span>'.$note.'</summary>'
             .'<ol class="frames deps-list">';
 
         foreach ($vendor as $frame) {
@@ -444,6 +466,9 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 /* De-emphasised by weight, ground and the missing rail — NOT by fading text below readable contrast. */
 .frames li.vendor .base{font-weight:400;color:var(--ink-2)}
 .deps{border-top:1px solid var(--line);background:var(--panel-2)}
+/* …except when it follows the heading directly, which is the vendor-only stack: the heading already draws
+   a border-bottom, and two adjacent 1px rules paint as one 2px one under a heading and nowhere else. */
+.panel h2+.deps{border-top:0}
 .deps>summary{display:flex;gap:12px;align-items:baseline;padding:10px 16px;cursor:pointer;list-style:none;font-size:12.5px;color:var(--ink-2)}
 .deps>summary::-webkit-details-marker{display:none}
 .deps>summary::before{content:"▸";color:var(--ink-3);font-size:10px}

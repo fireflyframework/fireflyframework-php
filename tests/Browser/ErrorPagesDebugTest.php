@@ -60,8 +60,15 @@ it('renders a domain not-found with the throw site open', function (): void {
         // only ever matched because Playwright concatenates sibling text with no separator; it asserted a
         // string the document no longer contains anywhere. Both halves are named instead, so the assertion
         // says what the page actually promises and fails loudly if either span is dropped.
+        //
+        // THE DIRECTORY IS MATCHED BY ITS TAIL, not from the project root, because the harness's project
+        // root is not a created application's. The skeleton is served from `<monorepo>/skeleton/app/…`, and
+        // SourcePaths derives its root from the outermost `vendor/` segment — the monorepo — so the page
+        // honestly prints `skeleton/app/Orders/` here and `app/Orders/` in a created project. Anchoring the
+        // assertion at `app/Orders/</span>` pins what this test is actually about — that the two spans are
+        // adjacent and that the file name is whole and its own — in both layouts.
         ->assertSee('OrderService.php')
-        ->assertSourceHas('<span class="dir">app/Orders/</span><span class="base">OrderService.php</span>')
+        ->assertSourceHas('app/Orders/</span><span class="base">OrderService.php</span>')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-404-domain-debug');
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Web\Error\ErrorFrame;
 use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
@@ -731,4 +732,79 @@ it('keeps every text token above 4.5:1, and the focus ring above 3:1, on every g
         ->and($ratio('#ff9d3c', '#181d21'))->toBeGreaterThan(3.0)
         // And the value that was failing is recorded as failing, so the swap cannot be undone by accident.
         ->and($ratio('#e07a17', '#faf9f6'))->toBeLessThan(3.0);
+});
+
+it('shows the frames when not one of them is yours, instead of a heading over a closed disclosure', function () {
+    // THE STACK THIS PINS IS NOT A HYPOTHETICAL. `ErrorFrame::$vendor` is decided by `/vendor/` in the
+    // path, so a stack has no application frame whenever nothing application-owned is on it: a routing
+    // miss, a 405, a container or bootstrap throw — everything raised BEFORE application code runs — under
+    // any deployment whose front controller is itself a dependency, which is Octane, FrankenPHP worker mode
+    // and Vapor. The split then has nothing to put in its list, and with the disclosure hardcoded closed
+    // the trace panel came out as a heading over one collapsed row with not a single frame in sight: worse
+    // than the interleaved trace the split replaced, and a flat contradiction of "nothing is hidden".
+    //
+    // WHY THE REPORT IS BUILT BY HAND. This repository cannot produce the shape through ErrorReport::of():
+    // a PHP process always has its entry script at the bottom of the stack, and here that script is a test
+    // file under `packages/` or `tests/` — application code by the same `/vendor/` rule. Measured against
+    // the wave's own browser harness, even its routing-miss 404 reports `40 of 98 frames · 9 in your code`,
+    // because the in-process server is driven from `tests/Browser/`. So the renderer is fed the report
+    // Octane hands it instead, which is the unit that has the decision: the page is a pure function of the
+    // report, and the report shape is the one the pipeline genuinely builds off the floor of a vendored
+    // front controller.
+    $class = new ReflectionClass(ErrorReport::class);
+    $constructor = $class->getConstructor();
+
+    expect($constructor)->not->toBeNull();
+
+    $report = $class->newInstanceWithoutConstructor();
+    $constructor?->invokeArgs($report, [
+        'status' => 404,
+        'reason' => 'Not Found',
+        'code' => 'ROUTE_NOT_FOUND',
+        'category' => 'business',
+        'severity' => 'warning',
+        'method' => 'GET',
+        'path' => '/does-not-exist',
+        'timestamp' => '2026-01-01T00:00:00+00:00',
+        'detailed' => true,
+        'exceptionClass' => 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException',
+        'message' => 'The route does-not-exist could not be found.',
+        'location' => 'vendor/laravel/framework/src/Illuminate/Routing/AbstractRouteCollection.php:44',
+        'frames' => [
+            new ErrorFrame('/srv/vendor/laravel/framework/src/Illuminate/Routing/AbstractRouteCollection.php', 'vendor/laravel/framework/src/Illuminate/Routing/AbstractRouteCollection.php', 44, 'throw', true, [], 0),
+            new ErrorFrame('/srv/vendor/laravel/framework/src/Illuminate/Routing/Router.php', 'vendor/laravel/framework/src/Illuminate/Routing/Router.php', 731, 'Illuminate\Routing\AbstractRouteCollection->handleMatchedRoute()', true, [], 1),
+            new ErrorFrame('/srv/vendor/laravel/octane/bin/swoole-server', 'vendor/laravel/octane/bin/swoole-server', 21, 'Laravel\Octane\Worker->handle()', true, [], 2),
+        ],
+        'frameCount' => 3,
+        'appFrameCount' => 0,
+    ]);
+
+    $html = ErrorPage::render($report, new ErrorPageSettings(trace: true, hints: false));
+
+    expect($html)
+        // A reader meets three frames, not a closed row: the disclosure is open because it is the panel.
+        ->toContain('<details class="deps" open>')
+        ->toContain('<span class="dsum">3 frames in your dependencies</span>')
+        ->and(substr_count($html, '<li class="vendor">'))->toBe(3)
+        ->and($html)->toContain('<span class="base">AbstractRouteCollection.php</span>')
+        ->toContain('<span class="base">swoole-server</span>')
+        // The header still counts the stack, and still says none of it is the application's.
+        ->toContain('3 frames · 0 in your code')
+        // And the one place a closed <details> and an open one sit differently: the heading above it
+        // already draws a border-bottom, so the disclosure drops its own border-top when it follows one.
+        ->toContain('.panel h2+.deps{border-top:0}');
+});
+
+it('leaves the dependency disclosure closed whenever there are frames above it to read', function () {
+    // The other side of the branch, and the one that must not move: when the split has a list, the
+    // dependency set is the stack the reader came THROUGH and starts collapsed. Driven through
+    // ErrorReport::of() rather than by hand, because this shape is the one a real run produces.
+    $settings = new ErrorPageSettings(trace: true, hints: false, maxFrames: 60);
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($error->appFrameCount)->toBeGreaterThan(0)
+        ->and($html)->toContain('<li class="own">')
+        ->toContain('<details class="deps">')
+        ->not->toContain('<details class="deps" open>');
 });
