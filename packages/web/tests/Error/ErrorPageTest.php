@@ -1346,6 +1346,31 @@ it('leaves a caller that expressed no preference to Laravel when the fallback is
         ->and($off->rendersProblem(new NotFoundHttpException, Request::create('/api/nope', 'GET')))->toBeTrue();
 });
 
+it('answers a caller that named a type it renders no error in, and stands down for it with the key off', function () {
+    // THE POPULATION THE KEY CLAIMS IS WIDER THAN THE WILDCARD IT WAS WRITTEN FOR, and this is the case
+    // that says so out loud rather than leaving it to be discovered in production. `Accept: application/xml`
+    // names something concrete and is still neither a browser (nothing in it is text/html) nor a JSON
+    // client (`wantsJson()` reads the FIRST acceptable type and that is not a JSON one), so the fallback
+    // claims it — and the last line of the loop is why that is the consistent rule rather than an
+    // overreach: this same XML client has ALWAYS been answered with a problem document for a
+    // FireflyException, so a fallback narrowed to a literal wildcard would hand it one shape for a taxonomy
+    // 404 and Laravel's stock markup for a router 404 on one application.
+    $on = new ErrorPageRenderer(new ErrorPageSettings(enabled: true));
+    $off = new ErrorPageRenderer(new ErrorPageSettings(enabled: true, problemFallback: false));
+
+    foreach (['application/xml', 'text/plain', 'image/png'] as $accept) {
+        $named = Request::create('/orders/9', 'GET', server: ['HTTP_ACCEPT' => $accept]);
+
+        expect($on->handles($named))->toBeFalse()
+            ->and($on->rendersProblem(new NotFoundHttpException, $named))->toBeTrue()
+            // With the key off this caller falls through to Laravel exactly as a wildcard one does, which
+            // is the escape hatch an application with its own opinion about an unrouted URL reaches for …
+            ->and($off->rendersProblem(new NotFoundHttpException, $named))->toBeFalse()
+            // … and what was never the fallback's to give away is unchanged in both positions.
+            ->and($off->rendersProblem(new ResourceNotFoundException('x', 'X'), $named))->toBeTrue();
+    }
+});
+
 it('claims nothing at all when the page is switched off and the caller is a browser', function () {
     // `enabled: false` means "use Laravel's stock error page", and it must keep meaning that: a browser
     // gets Laravel's page, and the fallback does not quietly turn it into JSON.

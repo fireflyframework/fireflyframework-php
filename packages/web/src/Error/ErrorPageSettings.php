@@ -24,13 +24,18 @@ use Illuminate\Support\Str;
  * while a 500 in staging is still the framework's diagnostic one.
  *
  * `problem-paths` IS NOT A KEY AND `problem-fallback` IS. The question `json-paths` answers is "which URLs
- * are machine surfaces"; the question this one answers is "what does a caller who named nothing get". They
- * are different questions and only the first is about the URL. With the fallback on — the default, and what
- * the documentation has always claimed — a request carrying a WILDCARD Accept header, or no Accept at all,
- * is answered with the problem document, because that is the form a client can read and the page is for a
- * person who asked for one. Off, such a request falls through to Laravel's handler exactly as it used to,
- * and so it does whenever `enabled` is off: the fallback is a second answer this package offers, and
- * `enabled => false` withdraws the answers rather than changing which one is given.
+ * are machine surfaces"; the question this one answers is "what does a caller that is not a browser and did
+ * not ask for JSON get". They are different questions and only the first is about the URL. With the
+ * fallback on — the default, and what the documentation has always claimed — such a request is answered
+ * with the problem document, because that is the form a client can read and the page is for a person who
+ * asked for one. That population is wider than the wildcard it was written for: a WILDCARD Accept header
+ * and an absent one are in it, and so is a caller that named a concrete type this package cannot render an
+ * error in (`application/xml`, `text/plain`), which gets the document rather than Laravel's markup for the
+ * reason ErrorPageRenderer::rendersProblem() sets out — a FireflyException has always answered that same
+ * caller with problem+json, and the narrower rule would be the inconsistency. Off, such a request falls
+ * through to Laravel's handler exactly as it used to, and so it does whenever `enabled` is off: the
+ * fallback is a second answer this package offers, and `enabled => false` withdraws the answers rather than
+ * changing which one is given.
  *
  * `trace` DEFAULTS TO `app.debug` and is enforced at render time, not merely at template time — the renderer
  * builds no frame list, opens no source file and copies no exception message when it is off. That is
@@ -135,8 +140,9 @@ final readonly class ErrorPageSettings
         public bool $authoredDetail = true,
         // Progressive enhancement, and the only script this page has ever carried: see ErrorPage::clipboard().
         public bool $copyButton = true,
-        // Whether a caller that named NOTHING acceptable gets a problem document rather than Laravel's own
-        // page. See ErrorPageRenderer::rendersProblem() for the case this closes.
+        // Whether a caller that is neither a browser nor a JSON client — a wildcard Accept header, no
+        // Accept at all, or a named type this package renders no error in — gets a problem document rather
+        // than Laravel's own page. See ErrorPageRenderer::rendersProblem() for the case this closes.
         public bool $problemFallback = true,
     ) {
         $this->home = self::url($home);

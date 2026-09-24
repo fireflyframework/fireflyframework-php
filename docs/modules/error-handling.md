@@ -240,7 +240,7 @@ unreadable for people.
 |---|---|
 | Named `text/html` (or `application/xhtml+xml`) in `Accept` | The HTML error page |
 | Asked for JSON, or is an `XMLHttpRequest` | `application/problem+json` |
-| Sent only a wildcard `Accept` — a bare `curl` | `application/problem+json` |
+| Sent only a wildcard `Accept` — a bare `curl` — or no `Accept`, or named some other type (`application/xml`) | `application/problem+json` |
 | Requested a path under `firefly.web.error-page.json-paths` | `application/problem+json`, whatever it asked for |
 
 The rule is **the client NAMED text/html**, not `acceptsHtml()`. A bare `curl` sends `*/*`, which
@@ -251,10 +251,17 @@ against an API into an HTML page — a worse regression than the bug being fixed
 path says what the URL *is*. It defaults to `api/*`, because a developer opening an API URL in a browser
 wants the payload their client will receive, not a styled page telling them the endpoint renders HTML.
 
-The wildcard row is `firefly.web.error-page.problem-fallback` (default `true`); set it to `false` to let a
-caller that named nothing fall through to Laravel's handler instead. Like `json-paths`, it is withdrawn
-along with the page when `firefly.web.error-page.enabled` is `false` — that key means "use Laravel's own
-error page", so it stops LaraFly adding answers rather than changing which answer is given.
+That third row is `firefly.web.error-page.problem-fallback` (default `true`), and it covers every caller
+that is **neither a browser nor a JSON client**: a wildcard `Accept`, an absent one, and a caller that named
+a concrete type LaraFly renders no error in — `application/xml`, `text/plain`, `image/png`. The wider rule
+is the consistent one. A `FireflyException` has always been answered with `application/problem+json`
+whatever the `Accept` header said, so catching only the wildcard would hand one XML client a problem
+document for a taxonomy 404 and Laravel's stock HTML page for a router 404. Errors have exactly two shapes
+here: a `MessageConverter` you add for XML converts what a **controller returns**, and neither error
+renderer is wired through it. Set the key to `false` to let all of those callers fall through to Laravel's
+handler instead. Like `json-paths`, it is withdrawn along with the page when
+`firefly.web.error-page.enabled` is `false` — that key means "use Laravel's own error page", so it stops
+LaraFly adding answers rather than changing which answer is given.
 
 **Three exceptions are Laravel's own and LaraFly never answers them**, whatever the table above says:
 `ValidationException`, `AuthenticationException` and `HttpResponseException`. Laravel's handler resolves

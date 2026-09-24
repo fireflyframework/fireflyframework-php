@@ -151,8 +151,24 @@ final class ErrorPageRenderer
      * page shipped.
      *
      * THE FALLBACK IS THE LAST TERM, NOT THE FIRST. A FireflyException, a JSON client and a `json-paths` URL
-     * are answered exactly as they were. Only the caller who expressed no preference changes, and only
-     * because "no preference" plus "not a browser" leaves one shape that anything can read.
+     * are answered exactly as they were; this term only adds an answer where the package previously gave
+     * none.
+     *
+     * AND IT CLAIMS EVERY CALLER THAT IS NEITHER A BROWSER NOR A JSON CLIENT — not only the one that named
+     * nothing at all. `! prefersHtml()` is true of a wildcard Accept and of an absent one, the two cases
+     * this term was written for, and it is equally true of `Accept: application/xml`, `text/plain` or
+     * `image/png`: a caller that named a concrete type this package does not render an error in. That is
+     * deliberate, and it is the narrower rule that would be the inconsistency. A FireflyException has
+     * ALWAYS been answered with problem+json whatever the Accept header said — the first term above,
+     * unchanged since before this method existed — so a fallback restricted to a literal wildcard would
+     * hand one XML client a problem document for a taxonomy 404 and Laravel's stock HTML page for a router
+     * 404, which is one application answering one failure two unrelated-looking ways and is the exact shape
+     * the class comment above opens by describing. Nor is there a third shape to offer: the
+     * MessageConverterRegistry converts what a CONTROLLER returns and an application may well add XML to
+     * it, but neither error renderer is wired through it, and problem+json is the only machine-readable
+     * document this package writes. So the key is `problem-fallback` rather than a wildcard-shaped name,
+     * and every sentence that documents it says what it actually claims: a caller that did not name
+     * text/html and did not ask for JSON.
      *
      * IT IS ALSO GATED ON THE FLAG, FOR `forcesJson()`'S REASON. The fallback asks `prefersHtml()`, and
      * `prefersHtml()` folds `json-paths` in — so without `enabled` on the term, an `api/*` URL hit by a

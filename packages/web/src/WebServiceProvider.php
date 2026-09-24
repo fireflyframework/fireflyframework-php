@@ -226,9 +226,10 @@ final class WebServiceProvider extends FireflyServiceProvider
      * FireflyException had.
      *
      * Everything else keeps the previous rule and gains the case it was missing: a FireflyException, a
-     * request that wants JSON and a `json-paths` URL all render as problem+json, and so now does a caller
-     * that named NOTHING — a wildcard Accept header from a bare curl, or no Accept at all — which used to
-     * fall through to Laravel's stock HTML page. The predicate itself lives in
+     * request that wants JSON and a `json-paths` URL all render as problem+json, and so now does every
+     * caller that is neither a browser nor a JSON client — a wildcard Accept header from a bare curl, no
+     * Accept at all, or a named type this package renders no error in, such as `application/xml` — each of
+     * which used to fall through to Laravel's stock HTML page. The predicate itself lives in
      * ErrorPageRenderer::rendersProblem(), beside handles() and prefersHtml(), because it is the same
      * negotiation asked a third way; this provider keeps only the wiring.
      * `firefly.web.error-page.problem-fallback => false` restores the fall-through.

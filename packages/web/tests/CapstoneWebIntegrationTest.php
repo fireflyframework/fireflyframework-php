@@ -107,6 +107,14 @@ it('renders a generic Throwable as a page ONLY for a caller that NAMED text/html
         ->assertStatus(500)
         ->assertHeader('Content-Type', 'application/problem+json');
 
+    // And so does a caller that named something concrete this application renders no error in. `Accept:
+    // application/xml` is not a browser and is not a JSON client, and the key claims it deliberately: a
+    // FireflyException has always answered this same caller with a problem document, so claiming only the
+    // wildcard would give one client two unrelated-looking shapes for two 404s.
+    $this->call('GET', '/boom/generic', server: ['HTTP_ACCEPT' => 'application/xml'])
+        ->assertStatus(500)
+        ->assertHeader('Content-Type', 'application/problem+json');
+
     // Same route, a caller that NAMED text/html: this one, and only this one, gets the page. Dropping the
     // handles() branch (rendering every generic Throwable as a document) would fail the assertion below.
     $html = $this->get('/boom/generic', ['Accept' => 'text/html']);

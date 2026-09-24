@@ -1045,13 +1045,21 @@ return [
     //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
     //
     //         /*
-    //          | Whether a caller that named NOTHING acceptable gets `application/problem+json` rather than
-    //          | falling through to Laravel's own error page. `Accept: */*` is what a bare curl and a
-    //          | default fetch() send, and an absent Accept is what a hand-rolled client sends; neither
-    //          | names text/html, so neither is a browser, and both used to receive framework HTML for any
-    //          | non-FireflyException. A browser is never caught by this, and neither is anything while
-    //          | `enabled` is off: the fallback is one of the answers this package offers, and
-    //          | `enabled => false` withdraws them, so it keeps meaning "use Laravel's page".
+    //          | Whether a caller that is NEITHER A BROWSER NOR A JSON CLIENT gets
+    //          | `application/problem+json` rather than falling through to Laravel's own error page.
+    //          | `Accept: */*` is what a bare curl and a default fetch() send, and an absent Accept is what
+    //          | a hand-rolled client sends; neither names text/html, so neither is a browser, and both
+    //          | used to receive framework HTML for any non-FireflyException.
+    //          |
+    //          | A CALLER THAT NAMED SOME OTHER TYPE IS CAUGHT TOO — `application/xml`, `text/plain`,
+    //          | `image/png`. It asked for something this package renders no error in, and a
+    //          | FireflyException has always answered that same caller with a problem document whatever it
+    //          | asked for; claiming only the wildcard would leave one client reading a problem document
+    //          | for one 404 and framework markup for another.
+    //          |
+    //          | A browser is never caught by this, and neither is anything while `enabled` is off: the
+    //          | fallback is one of the answers this package offers, and `enabled => false` withdraws them,
+    //          | so it keeps meaning "use Laravel's page".
     //          |
     //          | A throwable Laravel's own handler resolves is never answered here whatever this says: a
     //          | failed validation stays a 422 with its field errors and a 401 stays a 401.
