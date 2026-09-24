@@ -21,6 +21,7 @@ use Firefly\Context\Condition\ConditionEvaluationReport;
 use Firefly\Context\Condition\ConditionEvaluator;
 use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\Context\Definition\DefinitionSource;
+use Firefly\Context\Definition\StaleDefinitionReport;
 use Firefly\Context\Pass\ConditionPassOnePass;
 use Firefly\Context\Pass\ConditionPassTwoPass;
 use Firefly\Context\Pass\ContextRefreshedPass;
@@ -115,9 +116,21 @@ final class FireflyAutoConfigureServiceProvider extends FireflyServiceProvider
         $config = $this->config();
         $profiles = (new ProfileResolver)->resolve();
 
+        // The record of what a repair boot dropped, and the ONLY thing that can name it afterwards.
+        //
+        // Bound on the container even though BootContext deliberately is not, and the two are not in
+        // tension: BootContext carries live boot machinery (the registry, the evaluator, the container
+        // itself) that must never be reachable from a served request, while this is an append-only list
+        // of class names that can only be non-empty in a `firefly:cache` / `firefly:clear` process — a
+        // console process that serves nothing and exits. firefly/cli's CacheCommand resolves it to print
+        // the one line a developer needs; ActuatorRouteRegistrar binds ConditionEvaluationReport the same
+        // way, for the same reason.
+        $stale = new StaleDefinitionReport;
+        $this->app->instance(StaleDefinitionReport::class, $stale);
+
         $bootContext = new BootContext(
             container: $container,
-            definitions: new BeanDefinitionRegistry,
+            definitions: new BeanDefinitionRegistry($stale, AppScan::repairing()),
             config: $config,
             profiles: $profiles,
             conditions: new ConditionEvaluator($config, $profiles),

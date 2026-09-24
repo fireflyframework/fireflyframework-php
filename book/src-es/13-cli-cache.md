@@ -40,8 +40,11 @@ final class CacheCommand extends Command
             $dir,
         ));
 
+        $this->reportStaleEntries();
+
         return self::SUCCESS;
     }
+    // …
 }
 ```
 
@@ -293,6 +296,30 @@ final class ClearCommand extends Command
 ```
 
 Seguro de ejecutar en cualquier momento: el siguiente arranque simplemente recurre al escáner en-proceso, igual que una aplicación que nunca ejecutó `firefly:cache` en absoluto.
+
+---
+
+## Cuando la caché nombra una clase que borraste
+
+Ambos comandos anteriores tienen que arrancar la aplicación antes de poder hacer su trabajo — `firefly:cache` no puede escribir los manifiestos sin arrancar primero la aplicación cuyos manifiestos son, y `firefly:clear` no puede borrar un directorio por el que no ha arrancado. Esa circularidad se vuelve incómoda en cuanto la caché está *equivocada*, y la forma habitual de equivocarla es borrar un `#[Component]` y no recompilar: `component.php` sigue nombrando la clase, y ningún autoloader la encuentra.
+
+Ese estado no se podía recuperar con ningún comando. La clase borrada seguía en el manifiesto que leía `ContainerRegistrar`, así que `wireInterfaces()` ligaba la interfaz que implementaba — y la etiquetaba como implementación — a una clase que no estaba. El fallo aparecía por tanto lejos de su causa: `Target class [App\Security\ControlPlaneJwksProvider] does not exist` salía al resolver un bean que nadie había tocado y que se limita a inyectar esa interfaz. `EagerSingletonsPass` omite una definición cuya clase ya no existe, y no servía de nada, porque la excepción nunca se lanzaba sobre la definición borrada. `composer dump-autoload` tampoco ayudaba — su `package:discover` arranca la aplicación también. La recuperación era borrar `bootstrap/cache/firefly/*.php` a mano, luego `composer dump-autoload`, y luego `firefly:cache`, en ese orden.
+
+`Firefly\Context\Scan\AppScan::repairing()` es la costura que lo cierra: mientras el comando en ejecución sea `firefly:cache` o `firefly:clear`, `BeanDefinitionRegistry` — la única puerta por la que entra toda definición — descarta una definición cuya clase no se encuentra, de modo que ni el registrar, ni el paso de bean post-processors, ni el de ciclo de vida, ni el de listeners llegan a verla. `firefly:cache` dice entonces qué entradas descartó:
+
+```
+php artisan firefly:cache
+```
+
+```
+firefly:cache — wrote 14 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
+```
+
+El manifiesto que escribe ya no menciona la clase, así que la segunda ejecución es una ejecución limpia normal y la línea desaparece.
+
+!!! warning "Solo esos dos comandos descartan algo"
+    Bajo cualquier otro comando el manifiesto se toma tal cual, y una clase que ha desaparecido sigue deteniendo el arranque con el error del propio contenedor. Ahí esa es la respuesta correcta: una clase ausente en un proceso que está a punto de servir tráfico no es una caché rancia, es un despliegue roto — un artefacto truncado, un classmap construido desde otro árbol — y descartar la definición le entregaría a la aplicación una interfaz religada en silencio a la implementación que sobreviviera. Una respuesta equivocada de la que nadie se entera es peor que el fallo de arranque. Y solo se tolera una clase AUSENTE: una clase que existe y no se puede construir sigue fallando rápido, tanto en un comando de reparación como en cualquier otro sitio.
 
 ---
 

@@ -39,6 +39,9 @@ final class AppScan
     /** The console command that regenerates every artefact below; see self::regenerating(). */
     public const string REGENERATE_COMMAND = 'firefly:cache';
 
+    /** The console command that deletes every artefact below; see self::repairing(). */
+    public const string CLEAR_COMMAND = 'firefly:clear';
+
     public const string COMPONENT = 'component.php';
 
     public const string CONTEXT = 'context.php';
@@ -129,6 +132,31 @@ final class AppScan
      */
     public static function regenerating(): bool
     {
+        return self::running(self::REGENERATE_COMMAND);
+    }
+
+    /**
+     * True while one of the two commands that REPAIR the compiled cache is the command being run.
+     *
+     * `firefly:cache` rewrites those files and `firefly:clear` deletes them, and each can only do its job
+     * by first booting the application whose files it is about to replace or remove. So a boot in one of
+     * these two processes is the one boot that must not be stopped by what is on disk — it is on its way
+     * to fix exactly that. EagerSingletonsPass's own docblock names both commands as the escape hatch its
+     * guard restores; this is the seam that makes the claim true for the other four places a compiled
+     * class name reaches `make()` (see BeanDefinitionRegistry::add()).
+     *
+     * Deliberately WIDER than regenerating() and kept separate from it rather than folded in:
+     * regenerating() also decides whether a capability reads its compiled artefact or re-scans, and
+     * `firefly:clear` — which reads nothing and writes nothing — has no business changing that.
+     */
+    public static function repairing(): bool
+    {
+        return self::running(self::REGENERATE_COMMAND) || self::running(self::CLEAR_COMMAND);
+    }
+
+    /** See regenerating() for why `$_SERVER['argv']` is read rather than the Laravel helper. */
+    private static function running(string $command): bool
+    {
         if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
             return false;
         }
@@ -136,7 +164,7 @@ final class AppScan
         /** @var mixed $argv */
         $argv = $_SERVER['argv'] ?? null;
 
-        return is_array($argv) && in_array(self::REGENERATE_COMMAND, $argv, true);
+        return is_array($argv) && in_array($command, $argv, true);
     }
 
     public static function dir(Container $app): string

@@ -94,6 +94,35 @@ rather than run unprotected.
 Compiling is still worth it — reflection-free boot is the point of `firefly:cache` — but it is now an optimisation
 rather than a correctness requirement.
 
+### When the cache names a class you deleted
+
+Deleting a `#[Component]` and forgetting to recompile leaves `bootstrap/cache/firefly/component.php` naming a class
+no autoloader can find. That used to be unrecoverable by any single command: the deleted class was still in the
+manifest the container registrar read, so the interface it implemented was bound to a class that was not there, and
+`firefly:cache` and `firefly:clear` — each of which has to boot the application before it can rewrite or delete the
+manifest — both died with `Target class [...] does not exist`, pointing at a file you had already deleted, from
+inside a bean you had not touched.
+
+Those two commands now drop a manifest entry whose class cannot be found, and `firefly:cache` says which one:
+
+```
+php artisan firefly:cache
+```
+
+```
+firefly:cache — wrote 14 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
+```
+
+The manifest it writes no longer mentions the class, so the next run is an ordinary clean one and the line goes away.
+
+**Only these two commands drop anything, and that is deliberate.** Under every other command the manifest is trusted
+exactly as before, and a missing class still stops the boot. A class that has gone missing in a process about to
+serve traffic is not a stale cache — it is a broken deployment, a truncated artifact or a classmap built from a
+different tree — and quietly dropping the definition there would rebind the interface to whichever implementation
+happened to survive, with nothing said anywhere. Only a MISSING class is ever tolerated: a class that exists and
+cannot be constructed still fails fast, in a repair command as much as anywhere else.
+
 ## `firefly:clear`
 
 ```

@@ -126,3 +126,43 @@ it('ignores a compiled artefact that exists while firefly:cache is regenerating'
         @rmdir($dir);
     }
 });
+
+/*
+ | `firefly:clear` deletes the compiled cache, and it can only do that by first booting the application
+ | whose cache it is about to remove. EagerSingletonsPass's docblock names BOTH commands as the escape
+ | hatch its guard restores, and the claim was only ever true of one of them: the definition registry's
+ | stale-entry filter (BeanDefinitionRegistry::add) reads THIS seam, so a manifest naming a deleted class
+ | no longer stops the command that exists to throw that manifest away.
+ |
+ | It stays separate from regenerating(), which also decides whether a capability reads its compiled
+ | artefact or re-scans — a question `firefly:clear` has no business answering.
+ */
+it('reports that it is repairing while either firefly:cache or firefly:clear is the running command', function (array $argv, bool $expected) {
+    $original = $_SERVER['argv'] ?? null;
+    $_SERVER['argv'] = $argv;
+
+    try {
+        expect(AppScan::repairing())->toBe($expected);
+    } finally {
+        $original === null ? array_key_exists('argv', $_SERVER) && ($_SERVER['argv'] = []) : $_SERVER['argv'] = $original;
+    }
+})->with([
+    'firefly:cache' => [['artisan', 'firefly:cache'], true],
+    'firefly:clear' => [['artisan', 'firefly:clear'], true],
+    'with options first' => [['artisan', '--no-ansi', 'firefly:clear'], true],
+    'another command' => [['artisan', 'migrate'], false],
+    'a lookalike' => [['artisan', 'firefly:clear-all'], false],
+    'no command' => [['artisan'], false],
+]);
+
+it('keeps firefly:clear out of regenerating(), so a clear never changes which artefacts are read', function () {
+    $original = $_SERVER['argv'] ?? null;
+    $_SERVER['argv'] = ['artisan', 'firefly:clear'];
+
+    try {
+        expect(AppScan::regenerating())->toBeFalse()
+            ->and(AppScan::repairing())->toBeTrue();
+    } finally {
+        $original === null ? array_key_exists('argv', $_SERVER) && ($_SERVER['argv'] = []) : $_SERVER['argv'] = $original;
+    }
+});

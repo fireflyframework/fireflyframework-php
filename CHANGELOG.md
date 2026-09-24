@@ -4,6 +4,53 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+One defect, reported by the same application that reported the `26.09.4` list, and it is the one a developer
+hits on an ordinary afternoon: delete a `#[Component]`, forget to recompile, and neither of the two commands
+that exist to repair the compiled cache can run any more. Nothing here changes what a served request does.
+
+### Fixed
+
+- **`packages/context` + `packages/container` — deleting a `#[Component]` no longer makes `firefly:cache` and
+  `firefly:clear` unrunnable, and `firefly:cache` says which entry it dropped.** `EagerSingletonsPass` has
+  skipped a definition whose class no longer exists since `26.09.1`, and it was not enough, because the guard
+  protects the one pass it is written in. The deleted class was still in the manifest `ContainerRegistrar`
+  received, so `wireInterfaces()` bound the interface it implemented — and tagged it as an implementation — to
+  a class autoloading could not find: the throw came out of `make()` for a perfectly live abstract, while
+  resolving a bean nobody had touched, and named a file the developer had already deleted. Three more places
+  read a class straight off the same manifest with nothing between them and `make()`:
+  `RegisterBeanPostProcessorsPass` (phase 700, *before* eager singletons), `InfrastructureStartPass`, and
+  `RegisterEventListenersPass`, whose listener closure throws on the first dispatch rather than at boot.
+  `composer dump-autoload` could not recover it either — `package:discover` boots the application too — so the
+  only way out was `rm bootstrap/cache/firefly/*.php`, then `composer dump-autoload`, then `firefly:cache`, in
+  that order: a three-step incantation a developer simply had to know.
+
+  The check now lives at the one door every definition comes through. While `firefly:cache` or `firefly:clear`
+  is the running command, `BeanDefinitionRegistry::add()` drops a definition whose class cannot be found and
+  records it, so the registrar and all four passes see a manifest that agrees with what is on disk, and
+  `firefly:cache` prints one extra line naming what it dropped:
+  `firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider`.
+  The manifest it then writes no longer mentions the class, so the next run is an ordinary clean one.
+
+  **Under every other command nothing changes**, and that asymmetry is deliberate rather than cautious: a
+  class that has gone missing in a process about to serve traffic is not a stale cache but a broken deployment
+  — a truncated artifact, a classmap built from a different tree — and dropping the definition there would
+  hand the application an interface quietly rebound to whichever implementation happened to survive, with
+  nothing said anywhere. Only a MISSING class is ever tolerated: a class that exists and cannot be constructed
+  still fails fast, in a repair command as much as anywhere else.
+
+### Added
+
+- **`packages/context` — `Firefly\Context\Scan\AppScan::repairing()`**, true while `firefly:cache` *or*
+  `firefly:clear` is the running command. Deliberately wider than `regenerating()` and kept separate from it:
+  `regenerating()` also decides whether a capability reads its compiled artifact or re-scans, which is a
+  question `firefly:clear` — which reads nothing and writes nothing — has no business answering.
+- **`packages/context` — `Firefly\Context\Definition\StaleDefinitionReport`**, the append-only record of
+  what a repair boot dropped, bound as a container singleton by `FireflyAutoConfigureServiceProvider` and read
+  by `firefly:cache`. Shaped like `ConditionEvaluationReport`, for the same reason: reporting through a logger
+  would put a `psr/log` edge on the boot engine, which neither `firefly/context` nor `firefly/container`
+  carries. `BeanDefinitionRegistry` takes it, and the drop flag, as constructor arguments that both default to
+  the previous behaviour — an existing `new BeanDefinitionRegistry` filters nothing and reports nothing.
+
 ## [26.09.4] - 2026-09-23
 
 The gaps a second real application had to work around, closed in the framework instead. Every entry below
