@@ -222,6 +222,38 @@ final readonly class ListingQuery
     }
 
     /**
+     * The same listing at the size it was actually served.
+     *
+     * THIS EXISTS FOR A SECOND BOUND DOWNSTREAM. Every actuator listing is sliced by `InMemoryListing` at
+     * exactly `$size`, so for those this is never called. The data browser is not: `DataBrowser::list()`
+     * applies `firefly.admin.data.max-page-size` on top of the table's own offered set, because a page size
+     * that is merely large on an actuator payload can materialise a whole table into PHP memory on a
+     * repository that cannot page. When that cap is the tighter of the two, the rows come back at ITS size
+     * while every number a pager draws — the range readout, the last page, whether `Next` is live — would
+     * still be computed from the size that was asked for: on `table.page-size=100` over
+     * `data.max-page-size=50` the pager would claim half as many pages as there are and disable `Next` with
+     * the second half of the table still unreached. So the query is re-stated at the size that was served,
+     * and every link it then writes carries that size rather than the one the bound refused.
+     */
+    public function sized(int $size): self
+    {
+        return $size === $this->size ? $this : new self(
+            settings: $this->settings,
+            path: $this->path,
+            page: $this->page,
+            size: $size,
+            sort: $this->sort,
+            direction: $this->direction,
+            search: $this->search,
+            sortable: $this->sortable,
+            carried: $this->carried,
+            qualifier: $this->qualifier,
+            defaultSort: $this->defaultSort,
+            defaultDirection: $this->defaultDirection,
+        );
+    }
+
+    /**
      * The parameters worth writing down: everything that is set and is not already the default.
      *
      * `dir` is the subtle one. With no sort at all the direction says nothing, so its "default" is taken to

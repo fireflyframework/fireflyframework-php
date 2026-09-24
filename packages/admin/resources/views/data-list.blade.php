@@ -9,15 +9,12 @@
         $schema = $listing->schema;
         $columns = $listing->columns();
         $identifier = $schema?->identifierColumn();
-        $base = $settings->url('data').'?resource='.urlencode($resource?->slug ?? '');
 
-        // Everything a link must carry to survive being clicked. A sort that dropped the filter would widen
-        // the listing back to every row, which reads as rows appearing from nowhere; a filter that dropped
-        // the page size would silently resize the table under the reader.
-        $keepFilter = $listing->filterQuery() === '' ? '' : '&'.$listing->filterQuery();
-        $keepSearch = $listing->search !== null ? '&q='.urlencode($listing->search) : '';
-        $keepSize = '&size='.$listing->perPage;
-        $keepSort = $listing->sort !== null ? '&sort='.urlencode($listing->sort).'&dir='.$listing->direction : '';
+        // $base names a RECORD, not a listing: `&id=` and `&new=1` leave the table rather than moving
+        // within it, so they carry the resource and nothing else. Every link that stays in the listing goes
+        // through $query->link(), which is why the four "do not forget to carry this" strings that used to
+        // live here are gone.
+        $base = $settings->url('data').'?resource='.urlencode($resource?->slug ?? '');
     @endphp
 
     <div class="head">
@@ -37,6 +34,13 @@
                 @endforeach
             @endif
         </p>
+        {{-- Beside the title rather than inside the panel header: that header is now the shared
+             _panel-head, whose contract is a title, a count and a search form — and a "New record" link is
+             none of those. It is the one control on this page that creates something, so it reads better at
+             the top anyway. --}}
+        @if ($writable && $resource?->isEloquentBacked())
+            <a class="act" href="{{ $base }}&new=1">New record</a>
+        @endif
     </div>
 
     @if ($listing->filters !== [])
@@ -45,7 +49,7 @@
             @foreach ($listing->filters as $filter)
                 <code>{{ $filter->describe() }}</code>@if (! $loop->last) and @endif
             @endforeach
-            · <a href="{{ $base }}{{ $keepSize }}">clear</a>
+            · <a href="{{ $base }}">clear</a>
         </p>
     @endif
 
@@ -71,12 +75,19 @@
                 <span class="spacer"></span>
                 <span class="meta">{{ count($listing->filters) ?: 'none' }}{{ count($listing->filters) ? ' active' : '' }}</span>
             </summary>
-            <form method="get" action="{{ $settings->url('data') }}" class="filterform">
-                <input type="hidden" name="resource" value="{{ $resource?->slug }}">
-                @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
-                <input type="hidden" name="dir" value="{{ $listing->direction }}">
-                <input type="hidden" name="size" value="{{ $listing->perPage }}">
-                @if ($listing->search !== null)<input type="hidden" name="q" value="{{ $listing->search }}">@endif
+            <form method="get" action="{{ $query->path }}" class="filterform">
+                {{-- The resource, the ordering and the size, from the listing that produced this page. The
+                     `f…` parameters are skipped because this form's own rows ARE the filter: re-submitting
+                     the applied one as a hidden field would double every condition. `q` is not among what
+                     hiddenFields() emits — that method is written for the search form, whose <input> owns
+                     the name — so this form, which has no such input, re-adds it by hand. Without it,
+                     applying a filter from inside a searched listing silently widens it to the whole
+                     table. --}}
+                @foreach ($query->hiddenFields() as $field)
+                    @continue (str_starts_with($field['name'], 'f'))
+                    <input type="hidden" name="{{ $field['name'] }}" value="{{ $field['value'] }}">
+                @endforeach
+                @if ($query->search !== null)<input type="hidden" name="q" value="{{ $query->search }}">@endif
 
                 <div id="frows">
                     @php $rows = $listing->filters; $rows[] = null; @endphp
@@ -108,7 +119,7 @@
                     <button class="go" type="submit">Apply</button>
                     <button class="act" type="button" id="fadd">Add condition</button>
                     @if ($listing->filters !== [])
-                        <a class="act" href="{{ $base }}{{ $keepSize }}">Clear</a>
+                        <a class="act" href="{{ $base }}">Clear</a>
                     @endif
                     <span class="hint">Conditions are combined with <strong>and</strong>.</span>
                 </div>
@@ -116,30 +127,15 @@
         </details>
 
         <div class="panel">
-            <header>
-                <h2>Records</h2>
-                <span class="spacer"></span>
-                @if ($schema->searchable() !== [])
-                    <form method="get" action="{{ $settings->url('data') }}" class="inline">
-                        <input type="hidden" name="resource" value="{{ $resource?->slug }}">
-                        @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
-                        <input type="hidden" name="dir" value="{{ $listing->direction }}">
-                        <input type="hidden" name="size" value="{{ $listing->perPage }}">
-                        {{-- Searching inside a filtered listing NARROWS it; without these the search box
-                             would silently drop the filter and search the whole table. --}}
-                        @foreach ($listing->filters as $filter)
-                            <input type="hidden" name="fc[]" value="{{ $filter->column }}">
-                            <input type="hidden" name="fo[]" value="{{ $filter->operator }}">
-                            <input type="hidden" name="fv[]" value="{{ $filter->value }}">
-                        @endforeach
-                        <input class="filter" type="search" name="q" value="{{ $listing->search }}" placeholder="Search…" aria-label="Search records">
-                    </form>
-                @endif
-                @if ($writable && $resource?->isEloquentBacked())
-                    <a class="act" href="{{ $base }}&new=1">New record</a>
-                @endif
-                <span class="meta">{{ number_format($listing->total) }} total</span>
-            </header>
+            {{-- The same header every other listing on the dashboard draws. Its search form re-submits the
+                 resource, the ordering, the size and the filters through hiddenFields(), so searching
+                 inside a filtered listing NARROWS it instead of silently widening to the whole table; and
+                 the count is the formatted grand total followed by the word `total`, the wording this page
+                 hand-rolled and tests/Browser/AdminDataBrowserTest.php reads as `3 total` / `1 total`. --}}
+            @include('firefly-admin::_panel-head', [
+                'title' => 'Records', 'count' => $listing->total, 'query' => $query,
+                'placeholder' => 'Search records…',
+            ])
 
             @if ($listing->isEmpty())
                 @include('firefly-admin::_empty', [
@@ -150,20 +146,31 @@
                 ])
             @else
                 <div class="tw">
-                    <table class="datatable">
+                    {{-- `ftable` FIRST, `datatable` BESIDE IT. The shared class is what brings the fixed
+                         layout and the scrollport every other listing has; the second one keeps the
+                         DATABASE's own type classes — int, float, bool, datetime, string, json — which are
+                         a fact about the resource DataSchema derived rather than a presentation choice this
+                         view makes, and which no other page has. --}}
+                    <table class="ftable datatable">
+                        {{-- The <colgroup> the rest of the dashboard gets from TableView, computed here
+                             from the SCHEMA instead: this table's columns come from a resource, not from a
+                             hand-written view model. A column whose values have a known maximum width takes
+                             it and no more (the padding is added because box-sizing is border-box), and the
+                             text and json columns share what is left — which is where a reader needs it. --}}
+                        <colgroup>
+                            @foreach ($columns as $column)
+                                <col style="width:{{ in_array($column->type, [DataColumn::TYPE_INT, DataColumn::TYPE_FLOAT, DataColumn::TYPE_BOOL, DataColumn::TYPE_DATETIME], true) ? 'calc(13ch + 2 * var(--row-x))' : 'auto' }}">
+                            @endforeach
+                            @if ($identifier !== null)<col style="width:calc(9ch + 2 * var(--row-x))">@endif
+                        </colgroup>
                         <thead>
                         <tr>
                             @foreach ($columns as $column)
-                                @php
-                                    // searchable()/sortable() return column NAMES, not DataColumn objects.
-                                    $sortable = in_array($column->name, $schema->sortable(), true);
-                                    $isSorted = $listing->sort === $column->name;
-                                    $next = $isSorted && $listing->direction === 'asc' ? 'desc' : 'asc';
-                                @endphp
+                                {{-- sortable() returns column NAMES, not DataColumn objects. --}}
                                 <th class="t-{{ $column->type }} @if ($column->identifier) idcol @endif">
-                                    @if ($sortable)
-                                        <a href="{{ $base }}&sort={{ urlencode($column->name) }}&dir={{ $next }}{{ $keepSearch }}{{ $keepFilter }}{{ $keepSize }}">
-                                            {{ $column->label() }}<span class="ord">{{ $isSorted ? ($listing->direction === 'asc' ? '↑' : '↓') : '' }}</span>
+                                    @if (in_array($column->name, $schema->sortable(), true))
+                                        <a href="{{ $query->sortLink($column->name) }}">
+                                            {{ $column->label() }}<span class="ord">{{ $query->indicator($column->name) }}</span>
                                         </a>
                                     @else
                                         {{ $column->label() }}
@@ -193,59 +200,7 @@
                     </table>
                 </div>
 
-                @php
-                    $keep = $keepSort.$keepSearch.$keepFilter.$keepSize;
-                    $last = max(1, $listing->totalPages());
-                    $from = $listing->total === 0 ? 0 : ($listing->page - 1) * $listing->perPage + 1;
-                    $to = min($listing->total, $listing->page * $listing->perPage);
-                    // A window around the current page. Rendering every page of a 400-page table is a
-                    // pagination control nobody can use, and the ends are kept because "first" and "last" are
-                    // the two jumps people actually make.
-                    $window = range(max(1, $listing->page - 2), min($last, $listing->page + 2));
-                @endphp
-                <div class="pager">
-                    <span class="range">
-                        {{ number_format($from) }}–{{ number_format($to) }} of {{ number_format($listing->total) }}
-                        @if ($last > 1) · page {{ $listing->page }} of {{ number_format($last) }} @endif
-                    </span>
-                    <form method="get" action="{{ $settings->url('data') }}" class="inline">
-                        <input type="hidden" name="resource" value="{{ $resource?->slug }}">
-                        @if ($listing->sort)<input type="hidden" name="sort" value="{{ $listing->sort }}">@endif
-                        <input type="hidden" name="dir" value="{{ $listing->direction }}">
-                        @if ($listing->search !== null)<input type="hidden" name="q" value="{{ $listing->search }}">@endif
-                        @foreach ($listing->filters as $filter)
-                            <input type="hidden" name="fc[]" value="{{ $filter->column }}">
-                            <input type="hidden" name="fo[]" value="{{ $filter->operator }}">
-                            <input type="hidden" name="fv[]" value="{{ $filter->value }}">
-                        @endforeach
-                        <label class="sizer">
-                            <span>Rows</span>
-                            <select name="size" onchange="this.form.submit()" aria-label="Rows per page">
-                                @foreach ([10, 25, 50, 100, 200] as $size)
-                                    <option value="{{ $size }}" @selected($listing->perPage === $size)>{{ $size }}</option>
-                                @endforeach
-                            </select>
-                        </label>
-                    </form>
-                    <span class="spacer"></span>
-                    @if ($last > 1)
-                        <a class="act @if (! $listing->hasPrevious()) off @endif"
-                           @if ($listing->hasPrevious()) href="{{ $base }}&page={{ $listing->page - 1 }}{{ $keep }}" @endif>Previous</a>
-                        @if ($window[0] > 1)
-                            <a class="act" href="{{ $base }}&page=1{{ $keep }}">1</a>
-                            @if ($window[0] > 2)<span class="gap">…</span>@endif
-                        @endif
-                        @foreach ($window as $n)
-                            <a class="act @if ($n === $listing->page) on @endif" href="{{ $base }}&page={{ $n }}{{ $keep }}">{{ $n }}</a>
-                        @endforeach
-                        @if (end($window) < $last)
-                            @if (end($window) < $last - 1)<span class="gap">…</span>@endif
-                            <a class="act" href="{{ $base }}&page={{ $last }}{{ $keep }}">{{ $last }}</a>
-                        @endif
-                        <a class="act @if (! $listing->hasNext()) off @endif"
-                           @if ($listing->hasNext()) href="{{ $base }}&page={{ $listing->page + 1 }}{{ $keep }}" @endif>Next</a>
-                    @endif
-                </div>
+                @include('firefly-admin::_pager', ['slice' => $slice, 'query' => $query])
             @endif
         </div>
     @endif

@@ -182,7 +182,7 @@ final class DataQueryEngine
         ?string $term,
         array $filters = [],
     ): array {
-        $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction));
+        $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction, $schema));
 
         if (($term !== null || $filters !== []) && $repository instanceof EloquentRepository) {
             $specifications = [];
@@ -341,7 +341,14 @@ final class DataQueryEngine
                 $matched,
             ));
 
-            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare): int {
+            // The same tiebreak the SQL paths get, for the same reason: `usort` is stable in PHP 8, but the
+            // ARRAY it is stabilising is rebuilt from the repository on every request, so stability of the
+            // sort is not stability of the page boundary. See sort() above. Like the empty rank above it,
+            // and for the same reason, it sits OUTSIDE the direction flip: an identity is not a second
+            // ordering.
+            $tiebreak = $schema->identifier;
+
+            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare, $tiebreak): int {
                 $left = $a['values'][$sort] ?? null;
                 $right = $b['values'][$sort] ?? null;
 
@@ -353,7 +360,13 @@ final class DataQueryEngine
 
                 $comparison = $compare($left, $right);
 
-                return $direction === 'desc' ? -$comparison : $comparison;
+                if ($direction === 'desc') {
+                    $comparison = -$comparison;
+                }
+
+                return $comparison !== 0 || $tiebreak === null || $tiebreak === $sort
+                    ? $comparison
+                    : RowComparator::compare($a['values'][$tiebreak] ?? null, $b['values'][$tiebreak] ?? null);
             });
         }
 
@@ -455,15 +468,38 @@ final class DataQueryEngine
             : null;
     }
 
-    private function sort(?string $column, string $direction): ?Sort
+    /**
+     * The ORDER BY a listing goes out with: what was asked for, then the identifier as a tiebreak.
+     *
+     * EVERY LISTING IS ORDERED, EVEN WHEN NOBODY ASKED — that much was already true, and it is why
+     * sortColumn() falls back to the identifier. What was missing is the second half. Ordering by a column
+     * with duplicate values leaves the tied rows in whatever order the engine finds convenient, and it is
+     * allowed to find a different one convenient for the query behind page 1 and the query behind page 2:
+     * a row is then returned on both and another on neither, and the operator reads a table that is missing
+     * records which are really there. `ORDER BY status DESC, id ASC` has no such freedom.
+     *
+     * THE TIEBREAK IS ALWAYS ASCENDING. It is an identity, not a second ordering — mirroring it with the
+     * primary direction would make the order WITHIN a tie depend on the direction it is breaking the tie
+     * inside, which is the same instability with extra steps. And it is appended only when the identifier
+     * is not already the sort column, because `ORDER BY id DESC, id ASC` is at best noise and at worst an
+     * index the planner declines to use.
+     */
+    private function sort(?string $column, string $direction, DataSchema $schema): ?Sort
     {
         if ($column === null) {
             return null;
         }
 
         $sort = Sort::by($column);
+        if ($direction === 'desc') {
+            $sort = $sort->descending();
+        }
 
-        return $direction === 'desc' ? $sort->descending() : $sort;
+        $identifier = $schema->identifier;
+
+        return $identifier !== null && $identifier !== $column && in_array($identifier, $schema->sortable(), true)
+            ? $sort->and(Sort::by($identifier))
+            : $sort;
     }
 
     private function term(?string $search): ?string

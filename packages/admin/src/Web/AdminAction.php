@@ -339,26 +339,41 @@ final readonly class AdminAction
                 ]), 200);
         }
 
-        $page = (int) ($request->query('page') ?? 1);
-        $sort = $request->query('sort');
-        $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
-        $search = $request->query('q');
-
-        $perPage = $request->query('size');
         $filters = $this->filters($request);
+        $schema = $this->data->schema($slug);
 
-        $listing = $this->data->list(
-            $slug,
-            max(1, $page),
-            is_string($perPage) && ctype_digit($perPage) ? (int) $perPage : null,
-            is_string($sort) && $sort !== '' ? $sort : null,
-            $direction,
-            is_string($search) && $search !== '' ? $search : null,
-            $filters,
+        $query = ListingQuery::fromRequest(
+            $request,
+            $this->settings->table,
+            $this->settings->url('data'),
+            $schema?->sortable() ?? [],
+            defaultSort: $schema?->identifier,
+            carried: ['resource' => $slug, ...DataFilter::toParameters($filters)],
         );
+
+        $listing = $this->data->list($slug, $query->page, $query->size, $query->sort, $query->direction, $query->search, $filters);
+
+        // TWO BOUNDS IN SERIES, AND THE PAGER FOLLOWS THE TIGHTER ONE. `firefly.admin.data.max-page-size`
+        // is the browser's own cap and can be smaller than the table's offered set, because a size that is
+        // merely large on an actuator payload materialises a whole table into PHP memory on a repository
+        // that cannot page. Whatever it settled on is the size the rows were actually served at, so the
+        // query is re-stated at it before anything computes a page number from it.
+        $query = $query->sized($listing->perPage);
+
+        // ONE RE-QUERY, AND ONLY PAST THE END. The in-memory listings clamp `?page=999` onto the last page
+        // because they know the total before they slice; SQL does not, so a hand-edited page number comes
+        // back as an empty slice with a real total. Rather than show an empty table with a pager under it,
+        // the last page is fetched — which costs one extra query in a case that only a hand-edited URL or a
+        // stale bookmark reaches, and never on a click, because every link this page emits is in range.
+        $last = ListingPage::lastPageFor($listing->total, $query->size);
+        if ($listing->rows === [] && $listing->total > 0 && $query->page > $last) {
+            $listing = $this->data->list($slug, $last, $query->size, $query->sort, $query->direction, $query->search, $filters);
+        }
 
         return $this->html($this->render('data-list', [
             'listing' => $listing,
+            'query' => $query,
+            'slice' => ListingPage::sliced($listing->rows, $listing->total, $query),
             'writable' => $this->data->isWritable(),
             'relations' => $this->data->relationsFor($slug),
             'operators' => DataFilter::operators(),

@@ -426,24 +426,13 @@
         .pair{display:inline-flex;align-items:baseline;gap:5px;margin:0 8px 4px 0;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
 
         /* ── The data grid ─────────────────────────────────────────────────────────────────────────────
-           A table is read DOWN a column, not across a row, so the type decides the alignment: figures are
-           right-aligned with tabular numerals so digits line up and a long number is visibly long, and text
-           stays left. Everything is clipped to one line with the full value on the title, because a table
-           whose row height depends on its longest json blob is not a table.
+           The data browser's own type classes, on top of the shared `.ftable` vocabulary. They are the
+           DATABASE's types rather than the dashboard's kinds — int, float, bool, datetime, string, json —
+           and they survive because a column's type is a fact about the resource that DataSchema derived,
+           not a presentation choice a view makes. The width behaviour they used to carry is gone: the
+           <colgroup> declares it now, which is the same idea this block invented and the rest of the sheet
+           has finally caught up with.
         */
-        /* THE CLASS IS `datatable`, NOT `grid`. It was `grid`, which is also this layout's own utility for
-           a CSS grid of panels — so the table became a grid CONTAINER, thead and tbody became independent
-           blocks, and the two rows laid out their columns separately: headers bunched into the left third
-           with the values spread across the full width beneath them. A one-word collision, invisible in the
-           markup, and only findable by asking the browser what `display` the table had ended up with.
-
-           A CAP, NOT A COLLAPSE. This was `max-width:0`, which is the trick for clipping a cell in a
-           table that has explicit column widths — and this table has none, so auto-layout sized every
-           column from its HEADER while the values overflowed their boxes: headers bunched into the left
-           third and data spread across the full width, misaligned from the row above it. A real cap lets
-           auto-layout size a column from its content up to a limit, which is what keeps the two rows in
-           the same grid. */
-        table.datatable{table-layout:auto}
         table.datatable td.cell{max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px;vertical-align:middle}
         table.datatable td.cell .v,table.datatable td.cell .idv{overflow:hidden;text-overflow:ellipsis;display:block}
         table.datatable thead th{vertical-align:middle}

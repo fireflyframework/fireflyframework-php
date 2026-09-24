@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Admin\Data\DataFilter;
 use Firefly\Admin\Table\ListingQuery;
 use Firefly\Admin\Table\TableSettings;
 use Illuminate\Http\Request;
@@ -148,4 +149,57 @@ it('publishes its state as hidden fields for a GET search form, minus the term a
         ['name' => 'dir', 'value' => 'desc'],
         ['name' => 'size', 'value' => '25'],
     ]);
+});
+
+/**
+ * The shape `ListingQuery::$carried` is handed for the data browser's filters. It belongs beside the other
+ * link-building assertions rather than in the data suite: what it pins is not how a filter QUERIES, it is
+ * that a filter reaches a link builder as parsed parameters instead of as a hand-concatenated string.
+ */
+it('turns a filter set into query parameters rather than a hand-built string', function () {
+    $filters = [
+        new DataFilter('customer', DataFilter::CONTAINS, 'Hopper'),
+        new DataFilter('total', DataFilter::GT, '5'),
+    ];
+
+    expect(DataFilter::toParameters($filters))->toBe([
+        'fc' => ['customer', 'total'],
+        'fo' => ['contains', 'gt'],
+        'fv' => ['Hopper', '5'],
+    ]);
+
+    // The short spelling a relation link produces stays exactly what it was — it is short enough to read
+    // in a status bar, and every relation link in the tree carries it.
+    expect(DataFilter::toParameters([new DataFilter('order_id', DataFilter::EQ, '7')]))
+        ->toBe(['fk' => 'order_id', 'fv' => '7']);
+
+    expect(DataFilter::toParameters([]))->toBe([]);
+});
+
+// The string form is the same parameters, built by http_build_query rather than by concatenating
+// urlencode() calls — one representation, two spellings of it.
+it('keeps a query-string form that agrees with the parameters, escaping included', function () {
+    $filters = [new DataFilter('customer', DataFilter::EQ, 'Grace Hopper')];
+
+    expect(DataFilter::toQuery($filters))->toBe('fk=customer&fv=Grace+Hopper')
+        ->and(DataFilter::toQuery([]))->toBe('');
+});
+
+/**
+ * A listing may be SERVED at a size the query did not ask for. `DataBrowser::list()` applies
+ * `firefly.admin.data.max-page-size` on top of the table's own offered set, because a size that is merely
+ * large on an actuator payload materialises a whole table into PHP memory on a repository that cannot page.
+ * When that cap is the tighter of the two, every number a pager draws would still be computed from the size
+ * that was refused — the last page halved, `Next` dead with half the table unreached — so the query is
+ * re-stated at the size that was served, and its links carry that one.
+ */
+it('re-states itself at the size it was actually served, and leaves itself alone when nothing changed', function () {
+    $query = listingQuery(listingRequest(['size' => '200', 'page' => '3']), 'path');
+
+    $served = $query->sized(25);
+
+    expect($served->size)->toBe(25)
+        ->and($served->page)->toBe(3)
+        ->and($served->link())->toBe('/firefly/mappings?size=25&page=3')
+        ->and($query->sized(200))->toBe($query);
 });

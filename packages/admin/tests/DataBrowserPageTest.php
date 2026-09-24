@@ -96,3 +96,63 @@ it('marks a defaulted column optional on the new-record form, and creates the ro
 
     expect(DB::table('admin_records')->where(['id' => 2, 'email' => 'katherine@example.test', 'amount' => 7, 'active' => 1])->exists())->toBeTrue();
 });
+
+/**
+ * The listing itself, rebuilt on the shared table system.
+ *
+ * WHAT THIS PINS IS THE LINKS, not the decoration. Every href on this page used to be four concatenated
+ * strings — `$keepFilter`, `$keepSearch`, `$keepSize`, `$keepSort` — with a comment beside them asking the
+ * next author not to forget one, and a sort link that dropped the filter widens the listing back to every
+ * row: rows appear from nowhere and nothing fails. Now one ListingQuery carries the resource and the
+ * filter, `sortLink()` is the only way a header href is written, and this is what says the carry survived.
+ */
+it('renders the listing through the shared table system, carrying the resource and the filter into every link', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->exposeAdminRecords();
+    DB::table('admin_records')->insert([
+        ['id' => 2, 'email' => 'grace@example.test', 'amount' => 150, 'active' => 1, 'created_at' => null],
+        ['id' => 3, 'email' => 'linus@example.test', 'amount' => 250, 'active' => 0, 'created_at' => null],
+    ]);
+
+    $html = (string) $this->get('/firefly/data?resource=admin-record&fk=active&fv=1')->assertStatus(200)->getContent();
+
+    expect($html)
+        // ONE table class, with the database's own type classes beside it rather than instead of it.
+        ->toContain('<table class="ftable datatable">')
+        ->toContain('<colgroup>')
+        // The shared panel header, and the wording tests/Browser/AdminDataBrowserTest.php reads.
+        ->toContain('2 total')
+        // The shared pager's range readout.
+        ->toContain('1–2 of 2')
+        // A sort header, carrying the resource AND the filter it was clicked inside.
+        ->toContain('resource=admin-record&amp;fk=active&amp;fv=1&amp;sort=amount')
+        // The search form re-submits the filter, so searching inside it narrows rather than widens.
+        ->toContain('<input type="hidden" name="fk" value="active">')
+        ->toContain('<input type="hidden" name="fv" value="1">')
+        // The one control that leaves the listing keeps carrying the resource and nothing else.
+        ->toContain('New record');
+});
+
+/**
+ * `?page=999` on a two-page listing is a hand-edited URL or a stale bookmark, not an error. The in-memory
+ * listings clamp it because they know the total before they slice; SQL does not, so it comes back as an
+ * empty slice with a real total — an empty table under a pager that says there are thirty rows. The last
+ * page is fetched instead, which costs one extra query in a case no click can reach.
+ */
+it('renders the last page rather than an empty table when the page number is past the end', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->exposeAdminRecords();
+
+    $rows = [];
+    foreach (range(2, 30) as $n) {
+        $rows[] = ['id' => $n, 'email' => 'row-'.$n.'@example.test', 'amount' => $n, 'active' => 1, 'created_at' => null];
+    }
+    DB::table('admin_records')->insert($rows);
+
+    $html = (string) $this->get('/firefly/data?resource=admin-record&size=25&page=999')->assertStatus(200)->getContent();
+
+    expect($html)->toContain('30 total')
+        ->toContain('26–30 of 30')
+        ->toContain('row-30@example.test')
+        ->not->toContain('No records yet');
+});
