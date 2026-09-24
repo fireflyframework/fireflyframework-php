@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Firefly\Config\Config;
+use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Business\ConflictException;
 use Firefly\Kernel\Exception\Business\PaymentRequiredException;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Kernel\Exception\Business\ValidationException;
 use Firefly\Kernel\Exception\Infrastructure\ServiceUnavailableException;
 use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ProblemMapper;
@@ -304,7 +306,10 @@ it('falls back to a minimal document rather than raising when a member cannot be
     // extension member at the throw site. The document that comes back is smaller and still true.
     $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]);
 
-    $response = (new ProblemDetailsRenderer)->render($impossible, Request::create('/api/x'));
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-77');
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, $request);
 
     /** @var array<string,mixed> $payload */
     $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -313,10 +318,41 @@ it('falls back to a minimal document rather than raising when a member cannot be
         ->and($payload['status'])->toBe(409)
         ->and($payload['title'])->toBe('Conflict')
         ->and($payload['code'])->toBe('LEDGER_CONFLICT')
-        ->and($payload['category'])->toBe('internal')
-        ->and($payload['detail'])->toBe(ProblemMapper::OPAQUE)
+        // SMALLER, NOT CONTRADICTORY. A document whose status and code say business conflict while its
+        // category says `internal` is one no client can branch on twice and get the same answer, and the
+        // real values are plain strings ErrorResponse wrote — they can never be why the encode failed.
+        ->and($payload['category'])->toBe('business')
+        ->and($payload['severity'])->toBe('warning')
+        // The authored sub-500 sentence survives too: ProblemMapper's disclosure gate had already cleared
+        // it, so replacing it with the opaque one would withhold nothing and lose everything.
+        ->and($payload['detail'])->toBe('The ledger disagrees.')
+        // And the degraded body is still correlatable, which is the one action it exists to make possible.
+        ->and($payload['traceId'])->toBe('corr-77')
+        ->and($payload['correlationId'])->toBe('corr-77')
+        ->and($payload['instance'])->toBe('api/x')
+        ->and($payload['timestamp'])->toBeString()
         // The member that could not be encoded is simply not there; it is not a reason to answer nothing.
         ->and($payload)->not->toHaveKey('ratio');
+});
+
+it('keeps the category a generated client branches on when a rejected value is what cannot be encoded', function () {
+    // FieldError::$rejectedValue is `mixed` — literally whatever the client sent — so a 422 is a real route
+    // into the fallback, and a 422 that came back saying `category: internal` would send a generated client
+    // that branches on `category == 'validation'` to render field errors down the wrong arm.
+    $invalid = new ValidationException('Validation failed', [new FieldError('ratio', 'must be a number', rejectedValue: INF)]);
+
+    $response = (new ProblemDetailsRenderer)->render($invalid, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($payload['status'])->toBe(422)
+        ->and($payload['category'])->toBe('validation')
+        ->and($payload['code'])->toBe('VALIDATION_ERROR')
+        ->and($payload['detail'])->toBe('Validation failed')
+        // `errors` genuinely holds the value that could not be encoded, so it is the one member that goes.
+        ->and($payload)->not->toHaveKey('errors');
 });
 
 it('answers with a document even when the status itself is the only thing left', function () {

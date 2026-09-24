@@ -169,3 +169,51 @@ it('withholds the 404 sentence LARAVEL generates, after its own handler has rewr
     expect((string) $response->getContent())->not->toContain('Enums')
         ->and((string) $response->getContent())->not->toContain('Backed Enum');
 });
+
+/*
+ * A BYTE THAT IS NOT UTF-8 USED TO COST THE WHOLE DOCUMENT. The renderer encoded with JSON_THROW_ON_ERROR,
+ * so one latin-1 byte anywhere in the payload raised a JsonException OUT of the error handler and the
+ * caller received a blank 500 from the web server with nothing in it. Both cases below are driven through
+ * the real kernel for that reason: the blank 500 is not something the renderer returns, it is what the
+ * layer above it does with the exception the renderer threw, and a test that calls render() directly can
+ * only ever observe the throw.
+ */
+it('answers a controller that threw with a non-UTF-8 byte with a problem document, not a blank 500', function () {
+    /** @var WebCapstoneTestCase $this */
+    $response = $this->getJson('/errors/latin-1');
+
+    $response->assertStatus(409)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'LEDGER_CONFLICT')
+        ->assertJsonPath('category', 'business');
+
+    // Decodable, and still the sentence it was built from: the byte was substituted, not the document lost.
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+    expect($payload['detail'])->toContain('The ledger for')
+        ->and($payload['detail'])->toContain('disagrees.')
+        ->and($payload['traceId'])->toBe($response->headers->get('X-Correlation-Id'));
+});
+
+it('answers a member json_encode refuses with the minimal document, still describing the failure it was built for', function () {
+    /** @var WebCapstoneTestCase $this */
+    // INF in an extension member is what substitution cannot answer, so this is the fallback on the wire.
+    $response = $this->getJson('/errors/unencodable');
+
+    $response->assertStatus(409)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 409)
+        ->assertJsonPath('title', 'Conflict')
+        ->assertJsonPath('code', 'LEDGER_CONFLICT')
+        // Degraded, not contradictory: a 409 whose category read `internal` would have a client branching
+        // on the status and a client branching on the category disagreeing about the same document.
+        ->assertJsonPath('category', 'business')
+        ->assertJsonPath('severity', 'warning')
+        ->assertJsonPath('detail', 'The ledger disagrees.')
+        ->assertJsonMissingPath('ratio');
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+    expect($payload['traceId'])->toBe($response->headers->get('X-Correlation-Id'))
+        ->and($payload['correlationId'])->toBe($response->headers->get('X-Correlation-Id'));
+});

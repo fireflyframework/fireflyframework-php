@@ -47,9 +47,10 @@ use Throwable;
  *     `X-Correlation-Id` untouched and gains `correlationId`, and the trace id is echoed on its own header
  *     (`firefly.web.trace-id.header`, `X-Trace-Id` by default, '' to disable) only when there is one.
  *   - A BODY, unconditionally. The encoder is total: an invalid UTF-8 byte is substituted rather than
- *     raised, and anything json_encode still refuses falls back to a minimal document. This method used to
- *     throw JsonException out of the error handler on a latin-1 byte in a driver message, which turned a
- *     described failure into a blank 500 with no document at all.
+ *     raised, and anything json_encode still refuses falls back to a minimal document — one that keeps every
+ *     standard member, the reference among them, and drops only the values that can be the cause. This
+ *     method used to throw JsonException out of the error handler on a latin-1 byte in a driver message,
+ *     which turned a described failure into a blank 500 with no document at all.
  */
 final class ProblemDetailsRenderer
 {
@@ -147,32 +148,79 @@ final class ProblemDetailsRenderer
     }
 
     /**
-     * A document that CANNOT fail to encode: six members, each rebuilt from a value whose type is checked
-     * here rather than trusted, with every string passing through the same substitution.
+     * A document that CANNOT fail to encode: the standard members ErrorResponse declares, each rebuilt from
+     * a value whose type is checked here rather than trusted, with every string passing through the same
+     * substitution.
      *
-     * The status and the code are kept when they are what they claim to be, because they are the two members
-     * a client branches on; everything an application contributed — every extension member, the detail, the
-     * validation errors — is dropped, since one of them is why we are here. The literal at the bottom is
-     * unreachable and is written anyway: a renderer on the error path does not get to assume.
+     * WHAT IS DROPPED IS WHAT COULD BE THE CAUSE, AND NOTHING ELSE. Only a NON-string reaches this branch —
+     * JSON_INVALID_UTF8_SUBSTITUTE has already answered every bad byte — so what brought us here is an
+     * extension member an application chose at the throw site, a FieldError::$rejectedValue (`mixed`, so
+     * literally whatever the client sent), or a structure too deep or too circular to walk. `errors` and the
+     * open namespace therefore go. The standard members STAY, because ErrorResponse declares every one of
+     * them `?string` (`int`, for the status) and array_diff_key() keeps a same-named extension out of the
+     * document, so not one of them can be why we are here and dropping them buys nothing:
+     *
+     *   - `category` and `severity` pinned to Internal/Error for every exception publishes a document that
+     *     contradicts its own status and code — a 409 whose category reads `internal`, a 422 a generated
+     *     client branching on `category == 'validation'` renders down the wrong arm. They are re-derived
+     *     through tryFrom() rather than copied so the published schema's enum constraint holds whatever the
+     *     payload turns out to say.
+     *   - `detail`, `traceId` and `correlationId` dropped publishes exactly the document whose body a person
+     *     cannot correlate, against this class's promise that quoting the reference is possible from the body
+     *     alone — and replaces an authored sub-500 sentence that ProblemMapper's disclosure gate had already
+     *     cleared for publication with an opaque internal one that withholds nothing it had not already let
+     *     through.
+     *
+     * The literal at the bottom is unreachable and is written anyway: a renderer on the error path does not
+     * get to assume.
      *
      * @param  array<string, mixed>  $payload
      */
     private static function minimal(array $payload): string
     {
         $status = is_int($payload['status'] ?? null) ? $payload['status'] : 500;
-        $code = is_string($payload['code'] ?? null) ? $payload['code'] : 'INTERNAL_ERROR';
+        $category = ErrorCategory::tryFrom(self::member($payload, 'category', '')) ?? ErrorCategory::Internal;
+        $severity = ErrorSeverity::tryFrom(self::member($payload, 'severity', '')) ?? ErrorSeverity::Error;
 
-        $json = json_encode([
+        $document = [
             'status' => $status,
-            'title' => ErrorResponse::titleFor($status),
-            'code' => $code,
-            'category' => ErrorCategory::Internal->value,
-            'severity' => ErrorSeverity::Error->value,
-            'detail' => ProblemMapper::OPAQUE,
-        ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+            'title' => self::member($payload, 'title', ErrorResponse::titleFor($status)),
+            'code' => self::member($payload, 'code', 'INTERNAL_ERROR'),
+            'category' => $category->value,
+            'severity' => $severity->value,
+            'detail' => self::member($payload, 'detail', ProblemMapper::OPAQUE),
+        ];
+
+        // The rest are optional in the DOCUMENT as well as on the DTO — toArray() writes each one only when
+        // it is non-null — so an absent member stays absent here rather than becoming an invented empty
+        // string. The order is STANDARD_MEMBERS', so the degraded document reads like the full one.
+        foreach (['type', 'instance', 'traceId', 'correlationId', 'timestamp'] as $member) {
+            $value = $payload[$member] ?? null;
+
+            if (is_string($value)) {
+                $document[$member] = $value;
+            }
+        }
+
+        $json = json_encode($document, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 
         return is_string($json)
             ? $json
             : '{"status":500,"title":"Internal Server Error","code":"INTERNAL_ERROR","category":"internal","severity":"error"}';
+    }
+
+    /**
+     * One standard member of the payload, when it is the string ErrorResponse declares it to be.
+     *
+     * The type check is not ceremony: minimal() runs because something in this payload was not what the
+     * document's shape says it is, and a member read on trust here would take the fallback down with it.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private static function member(array $payload, string $name, string $fallback): string
+    {
+        $value = $payload[$name] ?? null;
+
+        return is_string($value) ? $value : $fallback;
     }
 }
