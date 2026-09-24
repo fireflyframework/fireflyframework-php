@@ -999,6 +999,23 @@ return [
     //         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
     //
     //         /*
+    //          | Whether the Reference cell offers a Copy button on top of being selectable.
+    //          |
+    //          | THE REFERENCE IS THE ONE THING A PRODUCTION PAGE ASKS A PERSON TO CARRY AWAY, so it is
+    //          | printed ONCE, in a cell a single click selects whole (`user-select:all`) — that much needs
+    //          | no JavaScript and works in whatever a container's minimal browser turns out to be. The
+    //          | button is offered on top of it by the page's only script, nine lines that ship the control
+    //          | `hidden` and reveal it only once `navigator.clipboard` is known to exist: with scripts off,
+    //          | behind a CSP that refuses an inline script, or on a plain-http origin where the clipboard
+    //          | API is undefined, no control appears that would do nothing. Turn this off and the page
+    //          | carries no script at all, which is the answer for a deployment whose CSP blocks rather
+    //          | than merely reports.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
+    //
+    //         /*
     //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
     //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
     //          | the path says what the URL is.

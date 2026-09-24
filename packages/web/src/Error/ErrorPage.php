@@ -41,10 +41,10 @@ final class ErrorPage
             .'<style>'.self::css().'</style></head><body>'
             .'<main class="sheet">'
             .self::header($report, $settings)
-            .self::facts($report)
+            .self::facts($report, $settings)
             .self::detail($report)
             .self::footer($report, $settings)
-            .'</main></body></html>';
+            .'</main>'.self::clipboard($settings, $report->reference !== '').'</body></html>';
     }
 
     private static function header(ErrorReport $report, ErrorPageSettings $settings): string
@@ -72,7 +72,17 @@ final class ErrorPage
         return $html.'</header>';
     }
 
-    private static function facts(ErrorReport $report): string
+    /**
+     * What is true about this request, as a card grid — with the reference as its own composed cell.
+     *
+     * THE GRID DRAWS ITS OWN RULES. It used to be `gap:1px` over a line-coloured container, which is a neat
+     * trick until the fact count is not a multiple of the column count — and the column count is
+     * `auto-fit`, so it is not knowable here. Six facts in four columns left two DEAD BEIGE CELLS on every
+     * production page. Now the container is the panel ground and each cell draws a rule up and to the left
+     * with an outset shadow, which the container's `overflow:hidden` clips on the first row and column; a
+     * ragged last row is simply panel-coloured, like the panel it is in.
+     */
+    private static function facts(ErrorReport $report, ErrorPageSettings $settings): string
     {
         $rows = [
             'Request' => $report->method.' '.$report->path,
@@ -80,16 +90,7 @@ final class ErrorPage
             'Category' => $report->category,
             'Severity' => $report->severity,
             'When' => $report->timestamp,
-            'Reference' => $report->reference,
         ];
-
-        // The correlation id beside the trace id, and only when the two differ: with tracing off the
-        // reference IS the correlation id, and a second row repeating it would teach a reader that the two
-        // ids are interchangeable — which is the confusion keeping them apart exists to prevent. The
-        // Reference row above is untouched, label and markup both; it is what a person is told to quote.
-        if ($report->correlationId !== '' && $report->correlationId !== $report->reference) {
-            $rows['Correlation'] = $report->correlationId;
-        }
 
         if ($report->detailed) {
             $rows['Exception'] = $report->exceptionClass;
@@ -104,7 +105,67 @@ final class ErrorPage
             $html .= '<div><dt>'.self::e($label).'</dt><dd>'.self::e($value).'</dd></div>';
         }
 
+        $html .= self::reference($report, $settings);
+
+        // The correlation id beside the trace id, and only when the two differ: with tracing off the
+        // reference IS the correlation id, and a second row repeating it would teach a reader that the two
+        // ids are interchangeable — which is the confusion keeping them apart exists to prevent.
+        if ($report->correlationId !== '' && $report->correlationId !== $report->reference) {
+            $html .= '<div><dt>Correlation</dt><dd>'.self::e($report->correlationId).'</dd></div>';
+        }
+
         return $html.'</dl>';
+    }
+
+    /**
+     * The reference, as ONE artefact a reader can take away.
+     *
+     * It was printed twice — in the 5xx sentence and in a REFERENCE cell — and neither copy could be
+     * copied, so the single action a production page offers was "retype this uuid". Now the sentence points
+     * here, the cell is `user-select:all` (one click takes the whole id, with no JavaScript at all, in
+     * whatever a container's minimal browser turns out to be), and a copy button is offered on top of that
+     * where the browser can honour one.
+     *
+     * The `<dt>`/`<dd>` pair is byte-for-byte what it was: it is what four tests and a support process both
+     * read, and the affordance is added BESIDE it in a second `<dd>` — which a definition list allows and a
+     * `<button>` loose inside a `<dl>` would not be.
+     */
+    private static function reference(ErrorReport $report, ErrorPageSettings $settings): string
+    {
+        if ($report->reference === '') {
+            return '';
+        }
+
+        $id = self::e($report->reference);
+
+        $action = $settings->copyButton
+            ? '<button type="button" class="copy" hidden data-ref="'.$id.'">Copy</button>'
+            : '';
+
+        return '<div class="fact-ref"><dt>Reference</dt><dd>'.$id.'</dd>'
+            .'<dd class="ref-act">'.$action.'<span class="hint">Quote this if you report the problem.</span></dd></div>';
+    }
+
+    /**
+     * Nine lines of progressive enhancement, and the only script this page carries.
+     *
+     * THE BUTTON SHIPS HIDDEN AND THIS REVEALS IT. A control that does nothing is worse than no control, and
+     * there are three ordinary ways for the clipboard to be unavailable: scripts off, a
+     * Content-Security-Policy that refuses an inline script, and a plain-http origin (navigator.clipboard is
+     * a secure-context API). In every one of them the button stays hidden, the select-all cell is still
+     * there, and the page is exactly what it was before. `firefly.web.error-page.copy-button` removes it
+     * entirely for a deployment whose CSP reports rather than merely blocks.
+     */
+    private static function clipboard(ErrorPageSettings $settings, bool $rendered): string
+    {
+        if (! $settings->copyButton || ! $rendered) {
+            return '';
+        }
+
+        return '<script>(function(){var b=document.querySelector(".copy");'
+            .'if(!b||!navigator.clipboard){return}b.hidden=false;'
+            .'b.addEventListener("click",function(){navigator.clipboard.writeText(b.getAttribute("data-ref")||"")'
+            .'.then(function(){b.textContent="Copied"})})})();</script>';
     }
 
     private static function detail(ErrorReport $report): string
@@ -344,7 +405,7 @@ final class ErrorPage
             $status === 405 => 'That address does not accept this kind of request.',
             $status >= 500 => $reference === ''
                 ? 'Something went wrong on our side. The error has been logged.'
-                : "Something went wrong on our side. It has been logged; quote reference {$reference} if you report it.",
+                : 'Something went wrong on our side. It has been logged; quote the reference below if you report it.',
             default => 'That request could not be completed.',
         };
     }
@@ -401,10 +462,25 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .code{margin:0;font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--ink-2)}
 .message{margin:6px 0 0;font-size:16px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
 .muted{color:var(--ink-2)}
-.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;margin:0;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.facts>div{background:var(--panel);padding:11px 14px;min-width:0}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+/* Each cell draws its own rule up and to the left. The first row's and first column's shadows fall outside
+   the padding box and are clipped by overflow:hidden, so nothing doubles the container border — and a
+   ragged last row is panel-coloured rather than the dead beige the line-coloured ground used to show. */
+.facts>div{background:var(--panel);padding:11px 14px;min-width:0;box-shadow:-1px -1px 0 var(--line)}
 .facts dt{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2);margin:0 0 3px}
 .facts dd{margin:0;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+/* .fact-ref is a div child of .facts, so it already has the cell's ground, padding and rule. Only what
+   makes it the REFERENCE cell is declared here. One click takes the whole id — no JavaScript at all, and
+   no dragging a selection across a wrapped uuid. */
+.fact-ref dd:first-of-type{user-select:all;-webkit-user-select:all}
+.fact-ref .ref-act{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.fact-ref .hint{font-family:var(--sans);font-size:11.5px;color:var(--ink-2)}
+.copy{font:inherit;font-size:11.5px;font-family:var(--sans);color:var(--ink);background:var(--panel-2);border:1px solid var(--line-2);border-radius:6px;padding:2px 9px;cursor:pointer}
+.copy:hover{background:var(--bg)}
+/* The ring is --brand-ink, not --brand: the button's ground is --panel-2, where #e07a17 measures
+   2.86:1 — under SC 1.4.11's 3:1 floor for a non-text indicator. Same token, same reason, as the
+   two summary rings below. */
+.copy:focus-visible{outline:2px solid var(--brand-ink);outline-offset:1px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;min-width:0}
 .panel h2{margin:0;padding:12px 16px;font-size:13px;font-weight:650;border-bottom:1px solid var(--line);background:var(--panel-2);display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .panel h2 .n{font-weight:400;font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}

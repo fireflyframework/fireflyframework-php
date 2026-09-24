@@ -286,7 +286,10 @@ it('publishes the request reference on the production page so a person can quote
 
     expect($error->reference)->toBe('ref-1234-abcd')
         ->and($html)->toContain('ref-1234-abcd')
-        ->toContain('quote reference ref-1234-abcd if you report it')
+        // The prose points at the Reference cell instead of repeating the id into it: the id was printed
+        // TWICE on every production page, and neither copy could be copied.
+        ->toContain('quote the reference below if you report it')
+        ->toContain('<dt>Reference</dt><dd>ref-1234-abcd</dd>')
         // The reference is the ONLY thing the production 500 adds; the cause stays withheld.
         ->not->toContain('boom')
         ->not->toContain('RuntimeException');
@@ -305,7 +308,7 @@ it('carries the same reference the problem document does, on the detailed page t
     expect($html)->toContain('<dt>Reference</dt><dd>ref-5678-efgh</dd>')
         // With the trace on the message is shown, so the reassurance sentence is not — the fact row is
         // where the reference lives on this variant.
-        ->not->toContain('quote reference')
+        ->not->toContain('quote the reference below')
         ->toContain('boom');
 });
 
@@ -322,8 +325,9 @@ it('shows the W3C trace id in the Reference row and the correlation id beside it
         // The fact-row MARKUP, so what is asserted is the table and not a word the page happens to contain.
         ->and($html)->toContain('<dt>Reference</dt><dd>4bf92f3577b34da6a3ce929d0e0e4736</dd>')
         ->toContain('<dt>Correlation</dt><dd>corr-42</dd>')
-        // The reference a person is asked to quote is the one a trace search can find.
-        ->toContain('quote reference 4bf92f3577b34da6a3ce929d0e0e4736 if you report it');
+        // The reference a person is asked to quote is the one a trace search can find, and it is named
+        // once, in the cell that can be selected in a single click.
+        ->toContain('quote the reference below if you report it');
 });
 
 it('shows no Correlation row when the reference already IS the correlation id', function () {
@@ -337,8 +341,9 @@ it('shows no Correlation row when the reference already IS the correlation id', 
         ->and($error->correlationId)->toBe('corr-42')
         ->and($html)->toContain('<dt>Reference</dt><dd>corr-42</dd>')
         ->not->toContain('<dt>Correlation</dt>')
-        // One id on the page, once: a second row holding the same value teaches a reader they are the same
-        // thing, which is exactly what the two members exist to keep apart.
+        // One id on the page, once: the cell, and the copy button's data-ref that reads it. It used to be
+        // the cell and a second copy spelled into prose, which teaches a reader to retype rather than
+        // select — and printed the same value in two places with no affordance on either.
         ->and(substr_count($html, 'corr-42'))->toBe(2);
 });
 
@@ -723,6 +728,9 @@ it('keeps every text token above 4.5:1, and the focus ring above 3:1, on every g
     expect($html)->toContain('--brand-ink:#a1520a')
         ->toContain('.frames summary:focus-visible{outline:2px solid var(--brand-ink)')
         ->toContain('.deps>summary:focus-visible{outline:2px solid var(--brand-ink)')
+        // The copy button's ring is the third one, and it is measured on the same two grounds: the
+        // button sits on --panel-2 inside a --panel cell, which is exactly where --brand fell short.
+        ->toContain('.copy:focus-visible{outline:2px solid var(--brand-ink)')
         // Pinned as a string so the token cannot silently go back to the shape one that fails.
         ->not->toContain('outline:2px solid var(--brand)')
         ->and($ratio('#a1520a', '#ffffff'))->toBeGreaterThan(3.0)
@@ -807,4 +815,87 @@ it('leaves the dependency disclosure closed whenever there are frames above it t
         ->and($html)->toContain('<li class="own">')
         ->toContain('<details class="deps">')
         ->not->toContain('<details class="deps" open>');
+});
+
+it('draws the fact grid on the panel ground, so a ragged last row is not a dead beige cell', function () {
+    // The grid is `gap:1px` over a coloured container, so the container shows through between cells — and
+    // through the WHOLE trailing area whenever the fact count is not a multiple of the (responsive, and
+    // therefore unknowable) column count. Six facts in four columns is two dead cells, which is what every
+    // production screenshot shows. The rules are drawn by each cell instead, outset and clipped.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $error = ErrorReport::of(new RuntimeException('boom'), Request::create('/x'), $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($html)->toContain('.facts{display:grid')
+        ->toContain('background:var(--panel)')
+        ->toContain('.facts>div{')
+        ->toContain('box-shadow:-1px -1px 0 var(--line)')
+        ->and($html)->not->toMatch('#\.facts\{[^}]*background:var\(--line\)#')
+        ->not->toMatch('#\.facts\{[^}]*gap:1px#');
+});
+
+it('prints the reference once, as something a reader can select in one gesture', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/orders/42', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-once-1234']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($html)->toContain('<div class="fact-ref"><dt>Reference</dt><dd>ref-once-1234</dd>')
+        ->toContain('Quote this if you report the problem.')
+        // The sentence points AT the cell rather than repeating the id into prose.
+        ->toContain('quote the reference below if you report it')
+        ->not->toContain('quote reference ref-once-1234')
+        // `user-select:all` is the affordance that needs nothing: one click takes the whole id, with
+        // JavaScript off, in a container's minimal browser, in a screenshot tool's headless Chromium.
+        ->toContain('.fact-ref dd:first-of-type{user-select:all');
+});
+
+it('ships the copy button hidden and reveals it from the same script that gives it behaviour', function () {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/x', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-copy-99']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($html)->toContain('<button type="button" class="copy" hidden data-ref="ref-copy-99">Copy</button>')
+        ->toContain('navigator.clipboard')
+        // A control that does nothing is worse than no control: with scripts off, with a CSP that refuses
+        // an inline script, or on a plain-http origin where navigator.clipboard is undefined, the button
+        // stays hidden and the select-all cell is still there.
+        ->and(substr_count($html, '<script>'))->toBe(1);
+
+    $off = new ErrorPageSettings(trace: false, hints: false, copyButton: false);
+    $plain = ErrorPage::render(ErrorReport::of(new RuntimeException('boom'), $request, $off, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00'), $off);
+
+    expect($plain)->not->toContain('<script>')
+        ->not->toContain('class="copy"')
+        ->toContain('<dd>ref-copy-99</dd>');
+});
+
+it('escapes a reference into the data attribute as well as the cell', function () {
+    // The reference comes off a request header. It is echoed twice now, so it is escaped twice.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/x', 'GET', server: ['HTTP_X_CORRELATION_ID' => '"><script>alert(1)</script>']);
+    $error = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__, 4), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($error, $settings);
+
+    expect($html)->not->toContain('<script>alert(1)</script>')
+        ->toContain('&lt;script&gt;')
+        ->toContain('data-ref="&quot;&gt;&lt;script&gt;');
+});
+
+it('gives a 404 the same single reference cell, so one page teaches the other', function () {
+    // CorrelationIdFilter mints an id when the request carried none, so every rendered page has a reference
+    // — but only the 5xx sentence names it. The CELL is the constant: whatever the status, the id is in one
+    // place, selectable, with the same words under it.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/nope', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-404-aa']);
+    $html = ErrorPage::render(
+        ErrorReport::of(new NotFoundHttpException, $request, $settings, dirname(__DIR__, 4), 404, 'Not Found', '2026-01-01T00:00:00+00:00'),
+        $settings,
+    );
+
+    expect($html)->toContain('<div class="fact-ref"><dt>Reference</dt><dd>ref-404-aa</dd>')
+        ->toContain('Quote this if you report the problem.')
+        // A 404 is not "something went wrong on our side", so that sentence is not on it.
+        ->not->toContain('quote the reference below');
 });

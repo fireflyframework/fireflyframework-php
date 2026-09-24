@@ -109,6 +109,8 @@ final readonly class ErrorPageSettings
         // its lede. Off, `ErrorReport::$publicDetail` is '' and there is nothing for a renderer to print.
         // What counts as authored is ProblemMapper's decision, not this key's — see the class comment.
         public bool $authoredDetail = true,
+        // Progressive enhancement, and the only script this page has ever carried: see ErrorPage::clipboard().
+        public bool $copyButton = true,
     ) {
         $this->home = self::url($home);
         $this->signIn = self::url($signIn);
@@ -185,6 +187,7 @@ final readonly class ErrorPageSettings
             // frames in it, and a million would put the 10,108-pixel page back.
             maxFrames: max(1, min(500, $config->int('firefly.web.error-page.max-frames', 40))),
             authoredDetail: $config->bool('firefly.web.error-page.authored-detail', true),
+            copyButton: $config->bool('firefly.web.error-page.copy-button', true),
         );
     }
 
