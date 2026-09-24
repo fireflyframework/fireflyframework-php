@@ -16,6 +16,7 @@ use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -974,8 +975,9 @@ it('offers a 5xx the one action its reader can actually take: ask again', functi
     $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', support: 'https://support.example.test');
 
     expect($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/orders/42'))
-        // A plain link to the request that failed: it re-issues a GET, it works with scripts off, and it
-        // cannot carry a scheme because $report->path is built as '/'.ltrim($request->path(), '/').
+        // A plain link to the request that failed: it re-issues a GET, it works with scripts off, and the
+        // address it names came back UNCHANGED from ErrorPageSettings::url(), the same guard every
+        // configured href on this page passed. See the two tests below for the halves of that sentence.
         ->toContain('<a class="act primary" href="/orders/42">Try again</a>')
         ->toContain('<a class="act" href="/">Go home</a>')
         ->toContain('<a class="act" href="https://support.example.test">Contact support</a>');
@@ -1090,4 +1092,98 @@ it('keeps the 405 verbs when authored detail is off, because they are the framew
         ->and($page(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), $off, 404, 'Not Found'))
         ->toContain('That page does not exist.')
         ->not->toContain('Order 42 does not exist.');
+});
+
+it('does not offer to re-issue a request a link cannot re-issue', function () use ($page) {
+    // A LINK IS A GET, WHATEVER IT CLAIMS TO REPEAT. "Try again" was offered on every status >= 500 and its
+    // href is a plain `<a>`, so a POST that 500s was handed a link that carries the address and the query
+    // and drops the verb and the body — on a POST-only route it lands the reader on this wave's own 405
+    // page, and on a route that answers both verbs it sends a DIFFERENT request under a label that says
+    // "again". The two offers that remain are the two that are true for a failed POST.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', support: 'https://support.example.test');
+
+    expect($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'POST', '/orders'))
+        ->toContain('class="acts"')
+        ->toContain('<a class="act primary" href="/">Go home</a>')
+        ->toContain('<a class="act" href="https://support.example.test">Contact support</a>')
+        ->not->toContain('Try again')
+        // A HEAD is a GET without a body, so it is the one other verb a link repeats faithfully.
+        ->and($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'HEAD', '/orders'))
+        ->toContain('>Try again</a>')
+        // And the verbs that carry a body are refused one by one rather than by a rule about POST alone.
+        ->and($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'PUT', '/orders/42'))
+        ->not->toContain('Try again')
+        ->and($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'PATCH', '/orders/42'))
+        ->not->toContain('Try again')
+        ->and($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'DELETE', '/orders/42'))
+        ->not->toContain('Try again');
+});
+
+it('puts the request\'s own address through the guard every other href on the page passed', function () {
+    // `/\host` IS AN AUTHORITY WEARING A PATH'S CLOTHES, and it reaches `path()` intact. Symfony refuses a
+    // backslash in a request target only inside Request::create(), so this request is built the way a real
+    // one is — from a raw $_SERVER array through prepareRequestUri(), which neither refuses nor normalises
+    // it. `path()` answers `\evil.example`; '/'.ltrim(…) makes `/\evil.example`; and for a special scheme
+    // the URL parser treats `\` exactly like `/`, so a browser resolves that as https://evil.example/. It
+    // would have been the PRIMARY action on the page, during the incident — a 5xx on an arbitrary path —
+    // that is precisely when a reader clicks "Try again". ErrorPageSettings::url() has refused this
+    // spelling for every configured href since the row existed; retry() asks it the same question now.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/');
+
+    $render = static fn (string $requestUri): string => ErrorPage::render(
+        ErrorReport::of(
+            new RuntimeException('boom'),
+            new Request([], [], [], [], [], [
+                'REQUEST_URI' => $requestUri,
+                'REQUEST_METHOD' => 'GET',
+                'SERVER_NAME' => 'app.test',
+                'HTTP_HOST' => 'app.test',
+                'SERVER_PORT' => '80',
+            ]),
+            $settings,
+            dirname(__DIR__, 4),
+            500,
+            'Internal Server Error',
+            '2026-01-01T00:00:00+00:00',
+        ),
+        $settings,
+    );
+
+    // The address is asserted absent from every HREF, not from the page: the fact grid legitimately states
+    // "GET /\evil.example", because that is what the request WAS and a statement is not a destination.
+    expect($render('/\evil.example'))
+        ->not->toContain('href="/\\')
+        // No offer at all rather than a fallback dressed as one: a link the page cannot spell truthfully is
+        // worse than a row with one fewer button on it, and "Go home" already says where home is.
+        ->not->toContain('Try again')
+        ->toContain('<a class="act primary" href="/">Go home</a>')
+        // A tab, an LF or a CR is DELETED by the parser wherever it sits, so `/<TAB>/evil.example` IS
+        // `//evil.example` by the time anything reads it. Same guard, same refusal.
+        ->and($render("/\t/evil.example"))
+        ->not->toContain("href=\"/\t")
+        ->not->toContain('Try again')
+        // And an ordinary address is still offered, so the guard is a filter and not an off switch.
+        ->and($render('/orders/42'))
+        ->toContain('<a class="act primary" href="/orders/42">Try again</a>');
+});
+
+it('says something a reader does not already know, or falls back to the sentence that does', function () use ($page) {
+    // THE MOST ORDINARY FAILURE A LARAVEL APPLICATION PRODUCES is `abort(403)` with no message, and the
+    // problem document needs SOME `detail` for it — ProblemMapper::httpMessage() substitutes statusText(),
+    // which is the honest answer there, beside a `title` a machine reads. Taken for an authored sentence it
+    // printed "Forbidden" as the lede of a page already headed "403 Forbidden": the same word twice, in the
+    // one slot reserved for telling a person something new, and the 401 and 403 reassurances below became
+    // dead code at the DEFAULT configuration.
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', signIn: '/login');
+
+    expect($page(new HttpException(403, ''), $settings, 403, 'Forbidden'))
+        ->toContain('<p class="message">You do not have access to that.</p>')
+        ->and($page(new HttpException(401, ''), $settings, 401, 'Unauthorized'))
+        ->toContain('<p class="message">You need to sign in to see that.</p>')
+        ->and($page(new HttpException(429, ''), $settings, 429, 'Too Many Requests'))
+        ->toContain('<p class="message">That request could not be completed.</p>')
+        // A sentence somebody actually wrote is untouched, which is the whole point of the key.
+        ->and($page(new HttpException(403, 'Your trial ended on the 3rd.'), $settings, 403, 'Forbidden'))
+        ->toContain('Your trial ended on the 3rd.')
+        ->not->toContain('You do not have access to that.');
 });

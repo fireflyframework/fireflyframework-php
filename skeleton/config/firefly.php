@@ -977,15 +977,26 @@ return [
     //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
     //          | QueryException's message is the failing SQL and its bindings — and nothing is carried.
     //          |
+    //          | A BARE `abort(403)` NAMED NO SENTENCE, and the page does not pretend otherwise. The
+    //          | problem document needs some `detail` for it and publishes the reason phrase ("Forbidden"),
+    //          | which is the honest answer beside a machine-readable `title`; as a page LEDE it would be
+    //          | the same word the reader has already met beside the status code. So the page falls through
+    //          | to its own sentence — "You do not have access to that." — and the document is unchanged.
+    //          |
     //          | Default: true.
     //         */
     //         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
     //
     //         /*
     //          | WHERE A READER CAN GO NEXT. The page offers the action that fits the status — a 401 gets
-    //          | `sign-in`, a 5xx gets "Try again" (a plain link to the same path), everything gets `home`
-    //          | and `support` when they are set — and offers nothing it was not given: no route name is
-    //          | guessed, and an empty value simply produces no link.
+    //          | `sign-in`, everything gets `home` and `support` when they are set — and offers nothing it
+    //          | was not given: no route name is guessed, and an empty value simply produces no link.
+    //          |
+    //          | "Try again" is offered on a 5xx AND ONLY FOR A GET OR A HEAD, because it is a plain link
+    //          | and a link is a GET: it carries the address and the query string of the request that
+    //          | failed and it cannot carry the verb or the body. On a failed POST it would either land the
+    //          | reader on the 405 page or send a different request under a label that says "again", so it
+    //          | is withheld and that page offers `home` and `support` instead.
     //          |
     //          | EACH OF THESE IS A SCHEME-GUARDED URL. They reach an `href`, and htmlspecialchars escapes
     //          | quotes and brackets and nothing about a SCHEME — so a `javascript:` value arriving from a
@@ -998,6 +1009,12 @@ return [
     //          | all. Whitespace at the EDGES is trimmed rather than refused, because the parser strips it
     //          | too: a value that reaches the environment with a trailing newline — a Helm block scalar, a
     //          | here-doc-rendered variable — is still the URL you meant, and is kept.
+    //          |
+    //          | THE "Try again" ADDRESS PASSES THE SAME GUARD, even though no operator configured it. It
+    //          | is the request's own path, and a request target reaches the framework with a backslash
+    //          | intact — so `/\host/…` is a real spelling a real client can send, and it is refused here
+    //          | exactly as a configured one would be. When it is, the page makes no retry offer at all
+    //          | rather than pointing somewhere it did not mean.
     //          |
     //          | Defaults: home '/', sign-in '', support '', actions true.
     //         */

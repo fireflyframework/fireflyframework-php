@@ -83,7 +83,8 @@ final class ErrorPage
      * "Order 42 does not exist.", "No such tenant.", the product's replacement for the router's 404. That is
      * what problem+json has always published for the same failure, and a page that said "That page does not
      * exist." instead made one error read two ways. Only when neither applies does the page fall back to its
-     * own reassurance, which is all a 5xx can honestly offer.
+     * own reassurance, which is all a 5xx can honestly offer — and all a BARE `abort(403)` can, for which
+     * "authored" is a word the document uses about a sentence nobody wrote. See authoredSentence().
      *
      * THE 405 BRANCH SITS ABOVE THE `authored-detail` GATE, AND IT IS NOT GOVERNED BY IT — which is worth
      * stating because the ORDER is what decides it. That key exists to say whether the sentence an
@@ -101,11 +102,44 @@ final class ErrorPage
             return self::methodSentence($report->method, $report->allowed);
         }
 
-        if ($settings->authoredDetail && $report->publicDetail !== '') {
-            return $report->publicDetail;
+        $authored = $settings->authoredDetail ? self::authoredSentence($report) : '';
+
+        if ($authored !== '') {
+            return $authored;
         }
 
         return self::reassurance($report->status, $report->reference);
+    }
+
+    /**
+     * The sentence somebody WROTE for this failure, or '' when all that is on offer is the reason phrase.
+     *
+     * A BARE `abort(403)` IS NOT AN AUTHORED SENTENCE, and taking it for one is how the most ordinary
+     * failure a Laravel application produces ended up with the worst lede on this page.
+     * ProblemMapper::httpMessage() substitutes statusText() for an empty message — the document needs SOME
+     * `detail`, and "Forbidden" is the honest one there, beside a `title` a machine reads — so
+     * authoredDetail() answers a non-empty string for every abort() that named no sentence. Printed as the
+     * lede that read "403 Forbidden" over "Forbidden": the same word twice, the second time in the one slot
+     * on the page reserved for telling a person something they did not already know. Worse, it made the
+     * reassurances for 401 and 403 — "You need to sign in to see that.", "You do not have access to that."
+     * — DEAD CODE at the default configuration, which is the only configuration most deployments run.
+     *
+     * So the test is not "is `publicDetail` non-empty" but "does it say anything the page does not already
+     * say": a value equal to the reason phrase beside the status code, or to the status text for the status,
+     * is treated as nothing authored and the page falls through to its own sentence. Both spellings are
+     * checked because they are two different sources — `reason` is what the renderer was handed, `statusText`
+     * is what ProblemMapper substituted — and they agree only by convention. Nothing an application actually
+     * wrote is affected: NOTHING_HERE, "No such tenant." and "Order 42 does not exist." are none of them a
+     * reason phrase, and an `abort(403, 'Forbidden')` that deliberately spells the word gets the sentence
+     * that explains it instead, which is the better page either way.
+     */
+    private static function authoredSentence(ErrorReport $report): string
+    {
+        if ($report->publicDetail === '' || $report->publicDetail === $report->reason) {
+            return '';
+        }
+
+        return $report->publicDetail === ProblemMapper::statusText($report->status) ? '' : $report->publicDetail;
     }
 
     /**
@@ -132,11 +166,13 @@ final class ErrorPage
      * What a reader can do next — and nothing this deployment did not configure.
      *
      * Every one of the four production screenshots ends at a fact grid: no link home, no way to sign in
-     * after a 401, no way to ask again after a 500. The offers are per STATUS because a wrong offer is worse
-     * than none — "Sign in" on a 404 tells a reader they were refused when they were not — and every href is
-     * either the request's own address (see retry() for how that is spelled and why it is safe) or a
-     * configured value that ErrorPageSettings::url() has already refused unless it is a path or an http(s)
-     * URL.
+     * after a 401, no way to ask again after a 500. The offers are per STATUS AND PER VERB, because a wrong
+     * offer is worse than none: "Sign in" on a 404 tells a reader they were refused when they were not, and
+     * "Try again" on a failed POST offers to repeat a request a link is incapable of repeating.
+     *
+     * EVERY href ON THIS PAGE HAS PASSED ErrorPageSettings::url() — the configured values when the settings
+     * object was built, and the request's own address in retry() — so there is exactly one vocabulary for
+     * what may appear here and exactly one place that knows it.
      */
     private static function actions(ErrorReport $report, ErrorPageSettings $settings): string
     {
@@ -153,8 +189,21 @@ final class ErrorPage
 
         // A 5xx is the one failure whose reader can act without leaving the page they wanted: ask for it
         // again. A 4xx cannot be retried into success — the address, the verb or the permission is wrong.
-        if ($report->status >= 500) {
-            $links[] = ['href' => self::retry($report), 'label' => 'Try again'];
+        //
+        // AND ONLY IF THE REQUEST WAS A GET OR A HEAD, because A LINK CANNOT RE-ISSUE A BODY. An `<a href>`
+        // is a GET, whatever the request it claims to repeat: on a POST-only route it lands the reader on
+        // this wave's OWN 405 page ("That address does not accept a GET request. It accepts POST."), and on
+        // a route that answers both verbs it silently sends a DIFFERENT request — same address, no form
+        // fields, no idempotency — while the label says "again". The query string is carried; the verb and
+        // the body are not, and there is no markup that would carry them without a form and a script this
+        // page refuses to grow. So the offer is withheld rather than made falsely: a POST that 500s gets
+        // "Go home" and "Contact support", which are the two things that are actually true for it.
+        if ($report->status >= 500 && in_array($report->method, ['GET', 'HEAD'], true)) {
+            $retry = self::retry($report);
+
+            if ($retry !== '') {
+                $links[] = ['href' => $retry, 'label' => 'Try again'];
+            }
         }
 
         if ($settings->home !== '') {
@@ -179,7 +228,8 @@ final class ErrorPage
     }
 
     /**
-     * THE REQUEST THAT FAILED, not merely the path it was addressed to.
+     * THE REQUEST THAT FAILED, not merely the path it was addressed to — or '' when this page declines to
+     * spell that address at all.
      *
      * "Try again" is the primary action on every 5xx, and in its first spelling it dropped the query string:
      * `$report->path` comes from Laravel's `path()`, which answers `search` for /search?q=foo&page=2, so a
@@ -187,9 +237,27 @@ final class ErrorPage
      * already typed. The word "again" is a promise about the request, and a link that re-issues a different
      * one breaks it silently — the page looks right, and only the reader knows what was lost.
      *
-     * IT STAYS SAFE FOR THE SAME REASON THE PATH DOES, in two halves. The path is '/'-prefixed and
-     * ltrim()ed, so the href begins with exactly one slash: no scheme, and no protocol-relative `//host`.
-     * The query is Symfony's `getQueryString()`, which percent-encodes to RFC 3986 — `"` is already `%22`
+     * THE ADDRESS GOES THROUGH THE SAME GUARD AS EVERY OTHER HREF ON THIS PAGE, and the first spelling of
+     * this method did not — it trusted `$report->path` on the strength of a claim that turns out to be
+     * false. That claim was: the path is '/'-prefixed and ltrim()ed, so the href begins with exactly one
+     * slash, so it can carry neither a scheme nor a protocol-relative `//host`. The first two clauses hold
+     * and the conclusion does not, because `//host` is not the only spelling of an authority. Symfony
+     * refuses a backslash in a request target ONLY inside `Request::create()`; `prepareRequestUri()` — the
+     * path every real request takes — neither refuses nor normalises one, so a REQUEST_URI of
+     * `/\evil.example` reaches `path()` as `\evil.example` and this method as `/\evil.example`. For a
+     * special scheme the URL parser's relative-slash state treats `\` exactly like `/`, so a browser reads
+     * that as `https://evil.example/` — the PRIMARY action on the page, pointing off the origin, during the
+     * incident that is exactly when a 5xx lands on an arbitrary path and a reader clicks "Try again".
+     *
+     * ErrorPageSettings::url() has refused that spelling for every operator-supplied href since the action
+     * row existed, along with the tab, LF and CR a parser DELETES wherever they sit. This method asks it the
+     * same question and accepts the address only when it comes back UNCHANGED — not merely non-empty, since
+     * a guard that trimmed an edge would hand back a different request than the one that failed, and this
+     * link's whole promise is that it is the same one. Anything else, and actions() makes no offer: a link
+     * the page cannot spell truthfully is worse than a row with one fewer button on it.
+     *
+     * THE QUERY IS SAFE ON ITS OWN TERMS. It is Symfony's `getQueryString()`, which percent-encodes to
+     * RFC 3986 — `"` is already `%22`
      * and `<` is `%3C` before this page escapes anything — so it cannot end the attribute, cannot introduce
      * a second `?`, and passes through htmlspecialchars byte for byte except for the `&` between pairs,
      * which becomes `&amp;` because that is how an ampersand is spelled inside an HTML attribute value.
@@ -199,6 +267,10 @@ final class ErrorPage
      */
     private static function retry(ErrorReport $report): string
     {
+        if (ErrorPageSettings::url($report->path) !== $report->path) {
+            return '';
+        }
+
         return $report->query === '' ? $report->path : $report->path.'?'.$report->query;
     }
 

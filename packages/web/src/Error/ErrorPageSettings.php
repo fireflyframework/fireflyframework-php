@@ -55,6 +55,13 @@ use Illuminate\Support\Str;
  * goes back to the generic reassurance for the status, and there is no authored sentence for any renderer
  * — this page or an application's own error view, which is handed the same report — to reach for at all.
  *
+ * A BARE `abort(403)` AUTHORED NOTHING, and the page reads it that way whatever this key says. The REPORT
+ * still carries "Forbidden", because that is what the problem document publishes as `detail` and this
+ * property mirrors the document; the PAGE declines to lede with a word already printed beside the status
+ * code, and says "You do not have access to that." instead. That rule lives in
+ * ErrorPage::authoredSentence(), on the page, because it is a judgement about what a person is told rather
+ * than about what a caller is sent.
+ *
  * WITH ONE EXCEPTION, AND IT IS NOT AN AUTHORED SENTENCE. A 405 the router raised keeps its verb sentence
  * — "That address does not accept a GET request. It accepts POST." — whichever way this key is set, because
  * nothing in it came from the application: ProblemMapper reads the verbs off the `Allow` header the ROUTER
@@ -224,7 +231,17 @@ final readonly class ErrorPageSettings
     }
 
     /**
-     * An operator-supplied URL, or '' when it is not one this page will put in an href.
+     * A URL this page will put in an `href`, or '' when it is not one.
+     *
+     * IT IS PUBLIC BECAUSE IT IS THE PACKAGE'S WHOLE VOCABULARY FOR "SAFE HERE", and there is one href on
+     * the page that is not operator-supplied: the "Try again" link, which is the address the REQUEST was
+     * sent to. That one skipped this method in its first spelling and trusted Laravel's `path()` instead —
+     * and `path()` will hand back `\evil.example` for a REQUEST_URI of `/\evil.example`, because Symfony
+     * rejects a backslash in a request target only in `Request::create()`, never in the `prepareRequestUri()`
+     * path a real request takes. Prefixed with a slash that is `/\evil.example`, which the paragraph below
+     * spends nine lines explaining is an authority wearing a path's clothes. A second guard would have been
+     * a second thing to keep right; ErrorPage::retry() calls THIS one and refuses any address it alters or
+     * drops. The constructor's three assignments below are the other callers.
      *
      * THE ATTACK THIS CLOSES. These values arrive from configuration, which in a real deployment means a
      * templated environment variable — a Helm value, a CI-rendered .env, a tenant-provisioning job. The page
@@ -267,7 +284,7 @@ final readonly class ErrorPageSettings
      * method already refuses: `<SP>//evil.test` into `//evil.test`, `<NUL>/\evil.test` into `/\evil.test`,
      * `<TAB>javascript:…` into `javascript:…`.
      */
-    private static function url(string $value): string
+    public static function url(string $value): string
     {
         $value = trim($value, "\x00..\x20");
 
