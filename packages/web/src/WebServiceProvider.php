@@ -35,6 +35,7 @@ use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
@@ -64,9 +65,26 @@ final class WebServiceProvider extends FireflyServiceProvider
     private function registerBindings(): void
     {
         if (! $this->app->bound(ProblemDetailsRenderer::class)) {
-            $this->app->singleton(ProblemDetailsRenderer::class, static fn (Container $app): ProblemDetailsRenderer => new ProblemDetailsRenderer(
-                $app->make(ErrorPageSettings::class),
-            ));
+            $this->app->singleton(ProblemDetailsRenderer::class, static function (Container $app): ProblemDetailsRenderer {
+                // The logger is what makes a DEGRADED problem document observable: when the encoder falls
+                // back, the throwable it caught is an arbitrary application exception, and without this
+                // argument it is recorded in no place at all. Optional and resolved defensively for the
+                // ResponseFactory's reason two closures down — Laravel aliases Psr\Log\LoggerInterface to
+                // the concrete 'log' key in registerCoreContainerAliases() whether or not LogServiceProvider
+                // ever registered anything, so bound() on the CONTRACT answers true in a bare container and
+                // the make() then throws. A logger that cannot be made is the same as none bound, and this
+                // renderer must not be the binding that fails to construct on an error path.
+                $logger = null;
+                if ($app->bound('log')) {
+                    try {
+                        $logger = $app->make(LoggerInterface::class);
+                    } catch (BindingResolutionException) {
+                        // No log manager: the document is still rendered, and the degradation is unwitnessed.
+                    }
+                }
+
+                return new ProblemDetailsRenderer($app->make(ErrorPageSettings::class), $logger);
+            });
         }
 
         if (! $this->app->bound(ErrorPageSettings::class)) {

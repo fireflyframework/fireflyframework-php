@@ -17,6 +17,7 @@ use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
+use Psr\Log\AbstractLogger;
 use Symfony\Component\ErrorHandler\Error\FatalError;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -331,8 +332,143 @@ it('falls back to a minimal document rather than raising when a member cannot be
         ->and($payload['correlationId'])->toBe('corr-77')
         ->and($payload['instance'])->toBe('api/x')
         ->and($payload['timestamp'])->toBeString()
-        // The member that could not be encoded is simply not there; it is not a reason to answer nothing.
-        ->and($payload)->not->toHaveKey('ratio');
+        // THE MEMBER STAYS AND SAYS WHAT IT IS. Deleting it published a document a healthy one could not
+        // be told apart from, and took every OTHER extension member down with it — including `allowed`,
+        // which ProblemMapper itself publishes on a 405. `INF` rather than `float`, because `float` is the
+        // one true thing about this value that helps nobody.
+        ->and($payload['ratio'])->toBe('INF')
+        // And it is LAST, after `timestamp`, exactly where ErrorResponse::toArray() puts the open
+        // namespace in a healthy document.
+        ->and(array_key_last($payload))->toBe('ratio');
+});
+
+it('keeps every extension member that was never in question, and names only the one that was', function () {
+    // The real shape of the failure: an application hangs three pieces of context off a throw site and
+    // exactly ONE of them is unencodable. Dropping the namespace wholesale lost the tenant and the order
+    // — the two members that make the failure legible — to pay for the one nobody could read.
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions([
+        'tenant' => 'acme',
+        'attempts' => 3,
+        'allowed' => ['GET', 'POST'],
+        'balance' => fopen('php://memory', 'r'),
+    ]);
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($payload['tenant'])->toBe('acme')
+        ->and($payload['attempts'])->toBe(3)
+        ->and($payload['allowed'])->toBe(['GET', 'POST'])
+        // get_debug_type()'s spelling, which is ConfigPropsEndpoint::value()'s answer to the same question:
+        // naming the type never calls the value's own code, and calling the value's own code is what threw.
+        ->and($payload['balance'])->toBe('resource (stream)');
+});
+
+it('reports the throwable it swallowed, with the document\'s own reference, when an extension member cannot be encoded', function () {
+    // THE ARM THAT USED TO FAIL UNOBSERVABLY. `catch (Throwable) { $json = false; }` put an arbitrary
+    // application exception into a pair of braces and published a degraded document with no marker, no
+    // header and no log line — so an operator whose application was losing its extension members from
+    // every problem document it published had no way to learn that it was happening, or why.
+    $log = new class extends AbstractLogger
+    {
+        /** @var list<array{level: mixed, message: string, context: array<string, mixed>}> */
+        public array $lines = [];
+
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            $this->lines[] = ['level' => $level, 'message' => (string) $message, 'context' => $context];
+        }
+    };
+
+    $thrower = new class implements JsonSerializable
+    {
+        public function jsonSerialize(): mixed
+        {
+            throw new RuntimeException('the accessor could not read the balance either');
+        }
+    };
+
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-99');
+
+    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings, $log);
+    $response = $renderer->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['balance' => $thrower]),
+        $request,
+    );
+
+    $cause = $log->lines[0]['context']['exception'] ?? null;
+
+    expect($log->lines)->toHaveCount(1)
+        ->and($log->lines[0]['level'])->toBe('error')
+        ->and($log->lines[0]['message'])->toContain('degraded')
+        // The cause itself, under the key PSR-3 reserves for it — so the class, the sentence and the trace
+        // all reach the log, and none of them reaches the caller.
+        ->and($cause)->toBeInstanceOf(Throwable::class)
+        ->and($cause instanceof Throwable ? $cause->getMessage() : '')->toContain('the accessor could not read the balance')
+        // And the document's own reference, which is the only thing that joins this line to the body a
+        // person is holding. A log line an operator cannot reach from the response is half a record.
+        ->and($log->lines[0]['context']['reference'])->toBe('corr-99')
+        ->and(json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR))
+        ->toHaveKey('traceId', 'corr-99');
+});
+
+it('says nothing, and still answers, when the document encodes cleanly', function () {
+    $log = new class extends AbstractLogger
+    {
+        /** @var list<string> */
+        public array $lines = [];
+
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            $this->lines[] = (string) $message;
+        }
+    };
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings, $log))
+        ->render(new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'), Request::create('/api/x'));
+
+    // The happy path is the overwhelmingly common one: a line per rendered problem would drown the line
+    // that means something.
+    expect($log->lines)->toBe([])
+        ->and($response->getStatusCode())->toBe(409);
+});
+
+it('still answers with a document when the logger itself throws', function () {
+    // The fix must not reintroduce the bug one layer up. The logger is a live collaborator on a failing
+    // box — a full disk, a channel whose endpoint is the thing that went down — and a throw from the
+    // reporting call would escape render() and produce exactly the blank 500 the encoder was made total
+    // to prevent.
+    $log = new class extends AbstractLogger
+    {
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            throw new RuntimeException('the log channel is down too');
+        }
+    };
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings, $log))->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]),
+        Request::create('/api/x'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($payload['ratio'])->toBe('INF');
 });
 
 it('falls back to a minimal document when an extension member\'s own jsonSerialize() throws', function () {
@@ -368,7 +504,10 @@ it('falls back to a minimal document when an extension member\'s own jsonSeriali
         ->and($payload['detail'])->toBe('The ledger disagrees.')
         // Still correlatable, which is the one action the degraded document exists to keep possible.
         ->and($payload['traceId'])->toBe('corr-88')
-        ->and($payload)->not->toHaveKey('balance');
+        // The member is NAMED, not deleted — get_debug_type()'s answer for an anonymous class is the
+        // interface it implements. What the thrower SAID is an internal detail and stays out.
+        ->and($payload['balance'])->toBe('JsonSerializable@anonymous')
+        ->and((string) $response->getContent())->not->toContain('accessor could not read');
 });
 
 it('keeps the field errors, and drops only the rejected value, when a rejected value cannot be encoded', function () {
@@ -418,4 +557,27 @@ it('answers with a document even when the status itself is the only thing left',
 
     expect(json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR))->toBeArray()
         ->and($response->getStatusCode())->toBe(409);
+});
+
+it('answers an extension member that refers to itself, instead of recursing until the stack goes', function () {
+    // The one way keeping the open namespace could have swapped a failed ENCODE for a failed STACK: an
+    // array that holds itself through a reference is what json_encode reports as "Recursion detected", and
+    // a walk of it with no bound would never come back at all. The depth cap is what makes the walk total.
+    $cycle = ['tenant' => 'acme'];
+    $cycle['self'] = &$cycle;
+
+    $response = (new ProblemDetailsRenderer)->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['context' => $cycle]),
+        Request::create('/api/x'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+    $context = $payload['context'] ?? null;
+
+    // The document comes back, the member is there, and the readable part of it survived the trip down.
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($context)->toBeArray()
+        ->and(is_array($context) ? $context['tenant'] : null)->toBe('acme');
 });

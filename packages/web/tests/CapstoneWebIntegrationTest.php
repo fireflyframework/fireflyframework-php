@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Firefly\Web\Error\ProblemMapper;
 use Firefly\Web\Tests\Support\WebCapstoneTestCase;
+use Illuminate\Support\Facades\Log;
+use Psr\Log\AbstractLogger;
 use Symfony\Component\HttpFoundation\Response;
 
 uses(WebCapstoneTestCase::class);
@@ -210,7 +212,9 @@ it('answers a member json_encode refuses with the minimal document, still descri
         ->assertJsonPath('category', 'business')
         ->assertJsonPath('severity', 'warning')
         ->assertJsonPath('detail', 'The ledger disagrees.')
-        ->assertJsonMissingPath('ratio');
+        // The member stays and says what it holds. It used to be deleted, which published a degraded
+        // document that a healthy one could not be told apart from.
+        ->assertJsonPath('ratio', 'INF');
 
     /** @var array<string,mixed> $payload */
     $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -232,8 +236,56 @@ it('answers an extension member whose own accessor throws with the minimal docum
         ->assertJsonPath('code', 'LEDGER_CONFLICT')
         ->assertJsonPath('category', 'business')
         ->assertJsonPath('detail', 'The ledger disagrees.')
-        ->assertJsonMissingPath('balance');
+        // Named rather than deleted, which is get_debug_type()'s answer and ConfigPropsEndpoint's idiom.
+        ->assertJsonPath('balance', 'JsonSerializable@anonymous');
 
     // The thrower's own sentence is an internal detail and must not ride out on the document either.
     expect((string) $response->getContent())->not->toContain('accessor could not read');
+});
+
+/*
+ * AND THE SWALLOWED THROWABLE REACHES THE LOG, THROUGH THE WIRING AND NOT THROUGH A CONSTRUCTOR ARGUMENT.
+ * The renderer takes an optional logger, and a unit test can hand it one; what a unit test cannot prove is
+ * that the application's own logger ever arrives — WebServiceProvider builds this singleton itself, and for
+ * one release it passed only the settings object, so the reporting arm would have been dead in every real
+ * boot while every unit test around it stayed green. The failure below is the one the reviewer reproduced:
+ * a RuntimeException raised by an extension member's accessor, recorded in no place at all.
+ */
+it('reports the degraded problem document through the application logger the provider wired', function () {
+    /** @var WebCapstoneTestCase $this */
+    $log = new class extends AbstractLogger
+    {
+        /** @var list<array{message: string, context: array<string, mixed>}> */
+        public array $lines = [];
+
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            $this->lines[] = ['message' => (string) $message, 'context' => $context];
+        }
+    };
+
+    // Swapped BEFORE the request, which is when the renderer singleton is first resolved: the provider's
+    // closure reads the container's logger at construction time, so this is the application's logger as
+    // far as it is concerned.
+    Log::swap($log);
+
+    $response = $this->getJson('/errors/throwing-extension');
+    $response->assertStatus(409);
+
+    $degraded = array_values(array_filter(
+        $log->lines,
+        static fn (array $line): bool => str_contains($line['message'], 'degraded'),
+    ));
+
+    $cause = $degraded[0]['context']['exception'] ?? null;
+
+    expect($degraded)->toHaveCount(1)
+        // The cause, which nothing anywhere recorded before.
+        ->and($cause)->toBeInstanceOf(Throwable::class)
+        ->and($cause instanceof Throwable ? $cause->getMessage() : '')->toContain('the accessor could not read the balance')
+        // And the reference the caller is holding, so the two ends of the failure join up.
+        ->and($degraded[0]['context']['reference'])->toBe($response->headers->get('X-Correlation-Id'));
 });
