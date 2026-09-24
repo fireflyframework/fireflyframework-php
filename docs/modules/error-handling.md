@@ -277,6 +277,13 @@ deployment wants to change:
 //         // Default: 7.
 //         'excerpt-lines' => 7,
 // …
+//         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
+// …
+//         'home' => env('FIREFLY_WEB_ERROR_PAGE_HOME', '/'),
+//         'sign-in' => env('FIREFLY_WEB_ERROR_PAGE_SIGN_IN', '/login'),
+//         'support' => env('FIREFLY_WEB_ERROR_PAGE_SUPPORT', 'https://support.example.test'),
+//         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
+// …
 //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
 // …
 //         'json-paths' => 'api/*,webhooks/*',
@@ -297,26 +304,55 @@ The reference both surfaces publish has two keys of its own:
 
 **`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never
 walks the stack, never opens a source file and never copies the exception message — so there is nothing
-assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
-**reference** — the same id the problem document publishes as `traceId`, which is the W3C trace id when the
-request had a valid span and the correlation id when it did not, and the same value the response echoes on
-`X-Trace-Id` — so the 500 page reads "quote the reference below if you report it" and the id a person
-screenshots is the one a trace search resolves. The page prints that id **once**, in a **Reference** cell
-that is `user-select:all`: one click takes the whole of it, with no JavaScript and no dragging a selection
-across a wrapped uuid. The lede points at the cell rather than spelling the id into prose a second time,
-which is why the page's sentence no longer matches the problem document's word for word — a payload has no
-cell to point at, so it keeps the id inline. Both surfaces still carry the same id, and that is the part a
-ticket and a trace search need. A **Copy** button sits beside the cell wherever the browser can honour one,
-behind `firefly.web.error-page.copy-button`: it ships `hidden` and is revealed by the page's only script, so
-scripts off, a Content-Security-Policy that refuses inline scripts, or a plain-http origin
-(`navigator.clipboard` is a secure-context API) leave no control rather than a dead one, and a copy the
-browser refuses at click time says `Copy failed` instead of failing silently. When the two ids differ the
-page carries a **Correlation** cell beside the Reference one, holding the `X-Correlation-Id` value; when
-they are the same string the cell is omitted, because two cells repeating one value teach a reader the ids
-are interchangeable. That is enough to quote into a ticket and grep in a log, and nothing that names a
-class, a file or a row. The page's own advice about *how* to turn traces on is suppressed outside
-non-production environments too, because naming the framework and a config key to an anonymous visitor is a
-free hint about your stack.
+assembled for a template mistake to leak. Production shows the status, the reason, the code, one **lede**
+sentence, a row of **actions**, and the request's **reference** — the same id the problem document publishes
+as `traceId`, which is the W3C trace id when the request had a valid span and the correlation id when it did
+not, and the same value the response echoes on `X-Trace-Id` — so the 500 page reads
+"quote the reference below if you report it" and the id a person screenshots is the one a trace search
+resolves. The page prints that id **once**, in a **Reference** cell that is `user-select:all`: one click
+takes the whole of it, with no JavaScript and no dragging a selection across a wrapped uuid. On a 5xx the
+lede points at that cell rather than spelling the id into prose a second time, which is why the page's
+sentence no longer matches the problem document's word for word — a payload has no cell to point at, so it
+keeps the id inline. Both surfaces still carry the same id,
+and that is the part a ticket and a trace search need. A **Copy** button sits beside the cell wherever the
+browser can honour one, behind `firefly.web.error-page.copy-button`: it ships `hidden` and is revealed by the
+page's only script, so scripts off, a Content-Security-Policy that refuses inline scripts, or a plain-http
+origin (`navigator.clipboard` is a secure-context API) leave no control rather than a dead one, and a copy the
+browser refuses at click time says `Copy failed` instead of failing silently. When the two ids differ the page
+carries a **Correlation** cell beside the Reference one, holding the `X-Correlation-Id` value; when they are
+the same string the cell is omitted, because two cells repeating one value teach a reader the ids are
+interchangeable. That is enough to quote into a ticket and grep in a log, and **no class, no file, no trace
+and no framework hint** — the boundary is the raw exception and everything downstream of it, not every word
+about the failure: the lede below is the sentence the application itself wrote for the caller, which
+problem+json publishes as `detail` for the same failure. The page's own advice about *how* to turn traces on
+is suppressed outside non-production environments too, because naming the framework and a config key to an
+anonymous visitor is a free hint about your stack.
+
+**The lede is the problem document's own sentence** (`firefly.web.error-page.authored-detail`, default
+`true`). An `abort(404, 'No such tenant.')`, or a `ResourceNotFoundException` carrying `Order 42 does not
+exist.`, says that to the person and to the client alike — one failure, one wording, whichever surface
+answered. What counts as authored is `ProblemMapper`'s decision and not this key's: below 500 only, and with
+every sentence the *framework* generated already replaced, so a `QueryException`'s SQL and the
+route-model-binding 404s that name a model class and a primary key are never ledes. Set the key `false` and
+the lede falls back to the generic sentence for the status — the status-and-code page — with two exceptions
+that do not move. A **405 always names the verbs**: "That address does not accept a GET request. It accepts
+POST.", built from the `Allow` header the *router* set, so there is nothing of yours in it for the key to
+withhold, and the same list is the document's `allowed` member. And a bare `abort(403)` authored nothing: the
+document publishes the reason phrase because it needs some `detail`, and the page declines to lede with a word
+already printed beside the status code.
+
+**The action row offers what fits the status, and nothing it was not given**: `home` (default `/`), `sign-in`
+and `support` (both **empty** by default — the values in the reference above are examples, and an empty one
+offers no link rather than a guessed route name), and `actions` (default `true`) to switch the row off
+entirely. A 401 gets **Sign in**; every page gets **Go home** and **Contact support** wherever those are set.
+**Try again** is offered on a **5xx and only for a GET or a HEAD**, because it is a plain link and a link is a
+GET: it carries the address and the query string of the request that failed and it cannot carry the verb or
+the body, so on a failed POST it would either land the reader on the 405 page or send a different request
+under a label that says "again". The address it names is the request's own — base path and all, so a
+deployment served under a front controller gets a link back to the URL it really serves — and it goes through
+the same scheme guard as every configured href on the page, which drops `javascript:`, `data:`, a
+protocol-relative `//host` and its backslash spelling `/\host`. When the guard refuses, the page makes no
+retry offer at all rather than one it cannot spell truthfully.
 
 **Overriding it.** `views` hands a status — or `default` — to your own Blade view. The view receives the same
 `$error` report the built-in page gets, so it is bound by the same `trace` gate and cannot print a stack
