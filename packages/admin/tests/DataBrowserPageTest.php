@@ -156,3 +156,54 @@ it('renders the last page rather than an empty table when the page number is pas
         ->toContain('row-30@example.test')
         ->not->toContain('No records yet');
 });
+
+/**
+ * THE RIGID WIDTHS ARE NOT ONE NUMBER. Under `table-layout:fixed` a `<col>` is the whole story — a cell
+ * cannot grow out of it, it can only clip — so a column sized for the wrong alphabet is a value the operator
+ * never sees. `2026-01-01 10:00:00` is NINETEEN characters, which is what `TableColumn::stamp()` already
+ * uses for the same string; an int, a float and a boolean need thirteen. Sized alike at thirteen, the stamp's
+ * own span measures 143px of text inside a 98px box and the cell reads `2026-01-01 10…`.
+ *
+ * The count is the assertion because a `<col>` carries no class: this fixture has three columns that take
+ * the narrow width (`id`, `amount`, `active`) and exactly one datetime (`created_at`).
+ */
+it('sizes a datetime column for the whole timestamp and the numeric ones for a figure', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->exposeAdminRecords();
+
+    $html = (string) $this->get('/firefly/data?resource=admin-record')->assertStatus(200)->getContent();
+
+    expect(substr_count($html, 'calc(19ch + 2 * var(--row-x))'))->toBe(1)
+        ->and(substr_count($html, 'calc(13ch + 2 * var(--row-x))'))->toBe(3)
+        // And the value it has to hold really is the full instant, seconds included.
+        ->and($html)->toContain('2026-01-01 10:00:00');
+});
+
+/**
+ * ROWS PER PAGE HERE IS THE BROWSER'S OWN KEY, and it stopped being that the moment this page started
+ * stating a size on every call: `DataBrowser::list()` was handed `$query->size` — the dashboard-wide
+ * `firefly.admin.table.page-size`, 50 — so `DataBrowserSettings::clampPageSize()`'s "null means use the
+ * configured default" branch became unreachable from the web UI and a browser documented at 25 rows silently
+ * served 50. `TableSettings::boundedBy()` composes the browser's pair into the shared settings before the
+ * request is parsed, which is what puts the key back in charge of the listing AND keeps the rows-per-page
+ * control showing where it is.
+ */
+it('pages the listing at the data browser\'s own default rather than the shared table default', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->exposeAdminRecords();
+
+    $rows = [];
+    foreach (range(2, 30) as $n) {
+        $rows[] = ['id' => $n, 'email' => 'row-'.$n.'@example.test', 'amount' => $n, 'active' => 1, 'created_at' => null];
+    }
+    DB::table('admin_records')->insert($rows);
+
+    $html = (string) $this->get('/firefly/data?resource=admin-record')->assertStatus(200)->getContent();
+
+    expect($html)->toContain('30 total')
+        ->toContain('1–25 of 30')
+        ->toContain('page 1 of 2')
+        // The control says which size it is at, and the shared set is still what it offers.
+        ->toContain('<option value="25" selected>25</option>')
+        ->toContain('<option value="200" >200</option>');
+});

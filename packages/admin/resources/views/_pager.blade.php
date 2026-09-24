@@ -47,7 +47,11 @@
         <label class="sizer">
             <span>Rows</span>
             <select name="{{ $query->qualifier === '' ? 'size' : $query->qualifier.'_size' }}" onchange="this.form.submit()" aria-label="Rows per page">
-                @foreach ($query->settings->pageSizes as $size)
+                {{-- offering(), NOT pageSizes: the data browser's own `max-page-size` caps where the
+                     offered set refuses, so the rows can be served at a size the set does not contain. A
+                     <select> whose current value has no <option> shows the FIRST one, and Apply then
+                     resizes the table the operator was reading — see TableSettings::offering(). --}}
+                @foreach ($query->settings->offering($query->size) as $size)
                     <option value="{{ $size }}" @selected($query->size === $size)>{{ $size }}</option>
                 @endforeach
             </select>

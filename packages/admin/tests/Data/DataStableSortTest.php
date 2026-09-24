@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Admin\Tests\Data\Fixtures\ReverseNoteRepository;
 use Firefly\Admin\Tests\Data\Support\DataBrowserTestCase;
 use Illuminate\Support\Facades\DB;
 
@@ -125,12 +126,12 @@ it('keeps the tiebreak ascending under a descending primary sort, so the tie ord
  * The same tiebreak on the OTHER engine — the `findAll()`-then-slice-in-PHP fallback a repository that
  * cannot page takes.
  *
- * `usort` is stable in PHP 8, and this fixture's `findAll()` happens to return its rows in identifier
- * order, so the array being stabilised already carries the answer the tiebreak gives: this passes before
- * the fix as well as after it. It is kept because stability of the SORT is not stability of the PAGE
- * BOUNDARY — the array is rebuilt from the repository on every request, and a repository whose `findAll()`
- * returns rows in whatever order its storage found convenient makes the tied order move between the
- * request that builds page 1 and the request that builds page 2. This is what says so.
+ * THIS ONE IS THE HAPPY-PATH HALF AND IT CANNOT FAIL ALONE. `usort` is stable in PHP 8, and this fixture's
+ * `findAll()` returns its rows in identifier order, so the array being stabilised already carries the answer
+ * the tiebreak gives: the walk below is green with the tiebreak and green without it. It is kept as the
+ * ordinary case, and the case beneath it — over a repository that hands its rows back in the REVERSE order —
+ * is the one that falsifies the branch. Read the two together: stability of the SORT is not stability of the
+ * PAGE BOUNDARY, because the array is rebuilt from the repository on every request.
  */
 it('breaks a tied sort on the identifier on the in-PHP fallback too', function () {
     /** @var DataBrowserTestCase $this */
@@ -143,6 +144,40 @@ it('breaks a tied sort on the identifier on the in-PHP fallback too', function (
     DB::table('admin_notes')->update(['pinned' => 0]);
 
     $browser = $this->browser();
+
+    $seen = [];
+    foreach (range(1, 3) as $page) {
+        $seen = [...$seen, ...array_column($browser->list('plain-note', $page, 2, 'pinned', 'desc')->rows, 'id')];
+    }
+
+    expect($seen)->toBe([1, 2, 3, 4, 5, 6]);
+});
+
+/**
+ * THE HALF THAT SORTS IN PHP, PINNED WHERE IT CAN ACTUALLY FAIL. The SQL cases above assert the ORDER BY the
+ * engine hands the driver, which is the right assertion there and no assertion at all for the fallback —
+ * there is no statement to read on this path, only an array and a `usort`. Over a repository whose rows
+ * arrive in identifier order the two orderings are indistinguishable, so the branch could be deleted with
+ * the whole suite still green; ReverseNoteRepository removes that cover by handing its rows back in
+ * descending identifier order, which is a freedom every unpaged repository has and some exercise.
+ *
+ * Every note is tied on `pinned`, so the identifier is the only thing that can decide the order. Without
+ * the tiebreak the stable sort preserves the order the rows arrived in and the walk returns
+ * `[6, 5, 4, 3, 2, 1]`; with it the walk is the whole table in identifier order, once each, across three
+ * pages of two.
+ */
+it('breaks the tie on the identifier even when the repository hands its rows back in another order', function () {
+    /** @var DataBrowserTestCase $this */
+    $this->seedNotes();
+    DB::table('admin_notes')->insert([
+        ['id' => 4, 'title' => 'Delta', 'body' => 'fourth note', 'pinned' => 0],
+        ['id' => 5, 'title' => 'Epsilon', 'body' => 'fifth note', 'pinned' => 0],
+        ['id' => 6, 'title' => 'Zeta', 'body' => 'sixth note', 'pinned' => 0],
+    ]);
+    DB::table('admin_notes')->update(['pinned' => 0]);
+
+    // Its own catalogue, because both note repositories derive the slug `plain-note` from the same entity.
+    $browser = $this->browserOver([ReverseNoteRepository::class]);
 
     $seen = [];
     foreach (range(1, 3) as $page) {

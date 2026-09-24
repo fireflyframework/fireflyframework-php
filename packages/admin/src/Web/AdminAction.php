@@ -342,9 +342,21 @@ final readonly class AdminAction
         $filters = $this->filters($request);
         $schema = $this->data->schema($slug);
 
+        // THE BROWSER'S OWN BOUNDS, COMPOSED BEFORE THE REQUEST IS READ. This listing answers to two
+        // page-size keys: the dashboard-wide `firefly.admin.table.*` set every table shares, and the
+        // browser's own `page-size` / `max-page-size`, which are lower because a row of a customer table is
+        // wider than a row of a bean listing, and because a size that is merely large on an actuator payload
+        // materialises a whole table into PHP memory on a repository that cannot page. Folding the second
+        // pair into the first HERE is what keeps both honest: the query falls back to the browser's own
+        // default when `?size=` is absent — rather than stating the table's 50 on every call and leaving
+        // `DataBrowserSettings::clampPageSize()` no null to act on — it offers exactly the sizes this
+        // listing may serve, and it omits `size` from a link when that size IS the default, so paging
+        // cannot silently resize the table. See TableSettings::boundedBy().
+        $browser = $this->data->settings();
+
         $query = ListingQuery::fromRequest(
             $request,
-            $this->settings->table,
+            $this->settings->table->boundedBy($browser->pageSize, $browser->maxPageSize),
             $this->settings->url('data'),
             $schema?->sortable() ?? [],
             defaultSort: $schema?->identifier,
@@ -353,11 +365,11 @@ final readonly class AdminAction
 
         $listing = $this->data->list($slug, $query->page, $query->size, $query->sort, $query->direction, $query->search, $filters);
 
-        // TWO BOUNDS IN SERIES, AND THE PAGER FOLLOWS THE TIGHTER ONE. `firefly.admin.data.max-page-size`
-        // is the browser's own cap and can be smaller than the table's offered set, because a size that is
-        // merely large on an actuator payload materialises a whole table into PHP memory on a repository
-        // that cannot page. Whatever it settled on is the size the rows were actually served at, so the
-        // query is re-stated at it before anything computes a page number from it.
+        // THE PAGER FOLLOWS THE SIZE THE ROWS WERE SERVED AT, whoever decided it. With the bounds composed
+        // above the two cannot disagree, and this is the line that says so rather than the line that hopes
+        // so: every number a pager draws — the range readout, the last page, whether `Next` is live — is
+        // computed from the query, so a query stating a size the rows were not served at would claim the
+        // wrong number of pages and disable `Next` with half the table unreached.
         $query = $query->sized($listing->perPage);
 
         // ONE RE-QUERY, AND ONLY PAST THE END. The in-memory listings clamp `?page=999` onto the last page

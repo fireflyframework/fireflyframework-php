@@ -91,7 +91,17 @@ final readonly class DataBrowserSettings
         return ! in_array($slug, $this->excluded, true);
     }
 
-    /** Clamp a caller-supplied page size into [1, maxPageSize]; null means "use the configured default". */
+    /**
+     * Clamp a caller-supplied page size into [1, maxPageSize]; null means "use the configured default".
+     *
+     * THE DASHBOARD DOES NOT ARRIVE HERE WITH A SURPRISE. Its listing query is parsed against
+     * `Table\TableSettings::boundedBy($this->pageSize, $this->maxPageSize)`, so the size it hands `list()`
+     * is already inside both bounds and this returns it unchanged — which is exactly what lets the
+     * rows-per-page control offer the sizes the listing can actually serve, and what lets `page-size` decide
+     * the default there rather than being shadowed by a size the page states on every call. Both bounds
+     * still bite for a direct `DataBrowser::list()` call, which has no query to have been parsed against
+     * them and may ask for anything.
+     */
     public function clampPageSize(?int $requested): int
     {
         if ($requested === null) {

@@ -110,3 +110,63 @@ it('hangs off AdminSettings so every view reaches it as $settings->table', funct
         'firefly' => ['admin' => ['table' => ['page-size' => 100]]],
     ]))->table->pageSize)->toBe(100);
 });
+
+/**
+ * The data browser's own bounds, folded in BEFORE a request is parsed.
+ *
+ * Applying them afterwards is what made `firefly.admin.data.page-size` inert: the page stated a size on
+ * every call, so the browser's "null means use my default" branch was unreachable and a listing configured
+ * for 25 rows served 50. Composed here, the default is the browser's, the offered set is the shared one
+ * narrowed to what this listing may serve, and the chrome keys are carried through untouched.
+ */
+it('composes a second, tighter pair of bounds without touching the chrome keys', function () {
+    $settings = TableSettings::fromConfig(tableConfig([
+        'firefly' => ['admin' => ['table' => ['density' => 'compact', 'max-height' => '40vh']]],
+    ]));
+
+    $bounded = $settings->boundedBy(25, 200);
+
+    expect($bounded->pageSize)->toBe(25)
+        ->and($bounded->pageSizes)->toBe([25, 50, 100, 200])
+        ->and($bounded->maxPageSize)->toBe(200)
+        // A size the composed ceiling refuses falls back to the composed default, not the shared one.
+        ->and($bounded->clamp(200))->toBe(200)
+        ->and($bounded->clamp(null))->toBe(25)
+        ->and($bounded->density)->toBe(TableSettings::DENSITY_COMPACT)
+        ->and($bounded->maxHeight)->toBe('40vh');
+});
+
+// The tighter of the two ceilings wins and the set is narrowed to it, so the control cannot offer a size
+// the listing would refuse to serve. The default is forced in afterwards, exactly as fromConfig() does.
+it('narrows the offered set to the tighter ceiling and keeps the new default inside it', function () {
+    $bounded = TableSettings::fromConfig(tableConfig([]))->boundedBy(10, 30);
+
+    expect($bounded->pageSizes)->toBe([10, 25])
+        ->and($bounded->pageSize)->toBe(10)
+        ->and($bounded->maxPageSize)->toBe(30)
+        ->and($bounded->clamp(50))->toBe(10);
+});
+
+// A default past the ceiling is the ceiling, and neither bound may be talked below one row.
+it('keeps a composed default inside its own ceiling', function () {
+    $bounded = TableSettings::fromConfig(tableConfig([]))->boundedBy(500, 40);
+
+    expect($bounded->pageSize)->toBe(40)->and($bounded->maxPageSize)->toBe(40)
+        ->and(TableSettings::fromConfig(tableConfig([]))->boundedBy(0, 0)->pageSize)->toBe(1);
+});
+
+/**
+ * WHAT THE ROWS-PER-PAGE CONTROL RENDERS, which is not quite the offered set. `clamp()` only ever returns a
+ * member and `boundedBy()` keeps the data browser inside the set too, so this returns the set unchanged for
+ * every listing in the tree. It exists for `ListingQuery::sized()`: a query re-stated at the size it was
+ * SERVED holds whatever the source served, and a <select> whose current value has no <option> shows the
+ * first one — pressing Apply then resizes the table the operator was reading.
+ */
+it('splices a size it was served but does not offer into the rendered set', function () {
+    $settings = TableSettings::fromConfig(tableConfig([]));
+
+    expect($settings->offering(50))->toBe([25, 50, 100, 200])
+        ->and($settings->offering(30))->toBe([25, 30, 50, 100, 200])
+        ->and($settings->offering(1))->toBe([1, 25, 50, 100, 200])
+        ->and($settings->offering(500))->toBe([25, 50, 100, 200, 500]);
+});

@@ -159,7 +159,22 @@
                              text and json columns share what is left — which is where a reader needs it. --}}
                         <colgroup>
                             @foreach ($columns as $column)
-                                <col style="width:{{ in_array($column->type, [DataColumn::TYPE_INT, DataColumn::TYPE_FLOAT, DataColumn::TYPE_BOOL, DataColumn::TYPE_DATETIME], true) ? 'calc(13ch + 2 * var(--row-x))' : 'auto' }}">
+                                @php
+                                    // A STAMP IS NOT THIRTEEN CHARACTERS WIDE. Every rigid type here has a
+                                    // known maximum, but they do not share one: `2026-01-01 10:00:00` is
+                                    // NINETEEN, which is the number `TableColumn::stamp()` already carries
+                                    // for exactly this string, so the two mechanisms that size a timestamp
+                                    // on this dashboard agree instead of each guessing. Thirteen is what an
+                                    // int, a float and a boolean need, and at thirteen the stamp's own span
+                                    // measures 143px of text inside a 98px box — under `table-layout:fixed`
+                                    // the operator then reads `2026-01-01 10…` as the whole instant.
+                                    $width = match ($column->type) {
+                                        DataColumn::TYPE_DATETIME => 'calc(19ch + 2 * var(--row-x))',
+                                        DataColumn::TYPE_INT, DataColumn::TYPE_FLOAT, DataColumn::TYPE_BOOL => 'calc(13ch + 2 * var(--row-x))',
+                                        default => 'auto',
+                                    };
+                                @endphp
+                                <col style="width:{{ $width }}">
                             @endforeach
                             @if ($identifier !== null)<col style="width:calc(9ch + 2 * var(--row-x))">@endif
                         </colgroup>

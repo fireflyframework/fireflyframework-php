@@ -1201,9 +1201,11 @@ return [
     //         */
     //         'writable' => env('FIREFLY_ADMIN_DATA_WRITABLE', false),
     //
-    //         // Rows per page, and the ceiling a `?per-page=` in the URL may raise it to. Both are clamped
-    //         // to a hard maximum of 1000 so no query string can ask for the whole table at once.
-    //         // Defaults: 25 and 200.
+    //         // Rows per page on the /firefly/data listing, and the ceiling a `?size=` in the URL may
+    //         // reach. Both are clamped to a hard maximum of 1000 so no query string can ask for the whole
+    //         // table at once. They compose with the dashboard-wide `firefly.admin.table.*` keys above:
+    //         // the rows-per-page control offers that shared set narrowed by `max-page-size`, with
+    //         // `page-size` always among the sizes it offers. Defaults: 25 and 200.
     //         'page-size' => 25,
     //         'max-page-size' => 200,
     //

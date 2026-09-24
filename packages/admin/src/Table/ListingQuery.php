@@ -224,16 +224,19 @@ final readonly class ListingQuery
     /**
      * The same listing at the size it was actually served.
      *
-     * THIS EXISTS FOR A SECOND BOUND DOWNSTREAM. Every actuator listing is sliced by `InMemoryListing` at
-     * exactly `$size`, so for those this is never called. The data browser is not: `DataBrowser::list()`
-     * applies `firefly.admin.data.max-page-size` on top of the table's own offered set, because a page size
-     * that is merely large on an actuator payload can materialise a whole table into PHP memory on a
-     * repository that cannot page. When that cap is the tighter of the two, the rows come back at ITS size
-     * while every number a pager draws — the range readout, the last page, whether `Next` is live — would
-     * still be computed from the size that was asked for: on `table.page-size=100` over
-     * `data.max-page-size=50` the pager would claim half as many pages as there are and disable `Next` with
-     * the second half of the table still unreached. So the query is re-stated at the size that was served,
-     * and every link it then writes carries that size rather than the one the bound refused.
+     * THIS EXISTS BECAUSE ONE SIDE ASKS AND THE OTHER SERVES. Every actuator listing is sliced by
+     * `InMemoryListing` at exactly `$size`, so for those this is never called. The data browser is the
+     * caller: `DataBrowser::list()` applies `firefly.admin.data.max-page-size` to whatever it is handed, and
+     * a page that merely ASSUMED the two agree would be assuming something it cannot see from the outside.
+     * `TableSettings::boundedBy()` composes that cap into the settings this query was parsed against
+     * precisely so they do agree, and this is the line that makes the agreement a fact rather than a hope.
+     * Were they ever to part, every number a pager draws — the range readout, the last page, whether `Next`
+     * is live — would still be computed from the size that was refused: over a served 50 a query stating 100
+     * claims half as many pages as there are and disables `Next` with the second half of the table
+     * unreached. So the query is re-stated at the size that was served, and every link it then writes
+     * carries that size rather than the one it asked for. A re-stated size is the one size on this object
+     * that the offered set did not choose, which is why the rows-per-page control renders
+     * `TableSettings::offering()` rather than the set itself.
      */
     public function sized(int $size): self
     {

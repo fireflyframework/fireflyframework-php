@@ -432,3 +432,44 @@ it('does not clip the Default chip in the cache stores table', function (): void
             JS, true)
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * THE DATA BROWSER'S OWN RIGID COLUMN, MEASURED. Its `<colgroup>` is computed from the resource's SCHEMA
+ * rather than from a hand-written view model, and it sized four types alike: an int, a float, a boolean and
+ * a datetime all took thirteen characters. Thirteen is right for the first three and wrong for the fourth —
+ * `2026-09-23 12:00:00` is nineteen, the width `TableColumn::stamp()` already carries for exactly this
+ * string — so under the `table-layout:fixed` this listing joined, the stamp's own `<span class="v">`
+ * reported 143px of text inside a 98px box and the operator read `2026-09-23 12…` as the whole instant.
+ *
+ * It measures the value the page really drew rather than substituting one, because a seeded order carries a
+ * real `created_at` written by Eloquent: the full instant IS the ordinary content of this column, not a
+ * worst case that has to be arranged. The assertion is the span and not the cell — `td.cell .v` is the
+ * clipping box here, and a cell that fits while its span does not is exactly the bug.
+ */
+it('holds a full timestamp in a data-browser datetime column', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedOrders();
+
+    visit('/firefly/data?resource=order-entity')
+        ->assertScript(<<<'JS'
+            (() => {
+                const cell = document.querySelector('table.datatable td.t-datetime');
+                if (cell === null) { return 'no datetime column on the order listing'; }
+
+                const value = cell.querySelector('.v');
+                if (value === null) { return 'the datetime cell drew no value: ' + cell.textContent.trim(); }
+
+                const drawn = value.textContent.trim();
+                if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(drawn)) {
+                    return 'the cell does not hold a full instant: ' + drawn;
+                }
+
+                const clipped = value.scrollWidth - value.clientWidth;
+                return clipped <= 0
+                    || 'the datetime column clips ' + drawn + ' by ' + clipped + 'px'
+                       + ' (span ' + value.scrollWidth + '/' + value.clientWidth + ')';
+            })()
+            JS, true)
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-data-datetime-column');
+});

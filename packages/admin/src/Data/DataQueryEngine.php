@@ -345,10 +345,23 @@ final class DataQueryEngine
             // ARRAY it is stabilising is rebuilt from the repository on every request, so stability of the
             // sort is not stability of the page boundary. See sort() above. Like the empty rank above it,
             // and for the same reason, it sits OUTSIDE the direction flip: an identity is not a second
-            // ordering.
+            // ordering. It is appended only when the identifier is not already the sort column, for the
+            // same reason `ORDER BY id DESC, id ASC` is not emitted.
+            //
+            // THE TIEBREAK IS A COLUMN TOO, AND IS CHOSEN THE SAME WAY — `forColumn()` over everything the
+            // identifier column holds, never `compare()` pair by pair. `Table\InMemoryListing::order()`
+            // does exactly this beside it, and RowComparator says why: a per-pair choice between the
+            // arithmetic and the natural comparison can close a cycle (`1.10 < 1.9 < 1.9-beta < 1.10` on a
+            // column of versions), and an ordering that is not a strict weak ordering entitles `usort()` to
+            // answer anything at all. An inconsistent tiebreak breaks the whole ordering just as thoroughly
+            // as an inconsistent primary, which is the instability this branch exists to remove.
             $tiebreak = $schema->identifier;
+            $breakTie = $tiebreak === null || $tiebreak === $sort ? null : RowComparator::forColumn(array_map(
+                static fn (array $row): mixed => $row['values'][$tiebreak] ?? null,
+                $matched,
+            ));
 
-            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare, $tiebreak): int {
+            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare, $tiebreak, $breakTie): int {
                 $left = $a['values'][$sort] ?? null;
                 $right = $b['values'][$sort] ?? null;
 
@@ -364,9 +377,11 @@ final class DataQueryEngine
                     $comparison = -$comparison;
                 }
 
-                return $comparison !== 0 || $tiebreak === null || $tiebreak === $sort
+                // `$breakTie` is null for exactly the two cases that have no tiebreak to apply — no
+                // identifier, or an identifier that IS the sort column — so testing it tests both.
+                return $comparison !== 0 || $breakTie === null
                     ? $comparison
-                    : RowComparator::compare($a['values'][$tiebreak] ?? null, $b['values'][$tiebreak] ?? null);
+                    : $breakTie($a['values'][$tiebreak] ?? null, $b['values'][$tiebreak] ?? null);
             });
         }
 

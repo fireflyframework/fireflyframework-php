@@ -428,6 +428,13 @@ class name. The message stays in the exception, where a log can have it.
 The page-size cap is applied to whatever the caller asks for, so the query layer never sees a size it did not
 agree to.
 
+Rows per page on the `/firefly/data` listing is this browser's own `firefly.admin.data.page-size`; the
+dashboard-wide `firefly.admin.table.*` keys govern the [listing tables](admin.md) everywhere else, and **the
+two apply in series**. The pair above is composed into the shared table settings *before* the request is
+read, so the rows-per-page control offers exactly the sizes this listing may serve — the shared set narrowed
+by `max-page-size`, with `page-size` always among them — and a deployment that sets
+`FIREFLY_ADMIN_DATA_PAGE_SIZE=10` is offered ten rows rather than being unable to say where it is.
+
 ## Reflection is confined to one class
 
 Discovery reads the compiled catalogue; schema derivation reads Laravel's schema builder; queries read the

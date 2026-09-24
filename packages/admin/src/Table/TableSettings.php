@@ -14,7 +14,9 @@ use Firefly\Config\Config;
  * 19 999 rows" are a cap or a refusal — a cap silently renders a page nobody asked for, so this refuses and
  * falls back to the configured default. The set is also what the rows-per-page `<select>` renders, so the
  * configured default is ALWAYS a member of it: a `<select>` whose current value has no `<option>` shows the
- * first option instead, and submitting the form then resizes the table the operator was reading.
+ * first option instead, and submitting the form then resizes the table the operator was reading. A size that
+ * reaches a listing from BELOW this object — the data browser's own cap, which caps where this refuses — is
+ * spliced into the rendered set by `offering()`, so that same `<select>` can still say where it is.
  *
  * `max-height` IS INTERPOLATED INTO THE STYLESHEET, as the `--table-vh` custom property the scroll container
  * reads, which makes it the one key on this object that is not merely wrong when it is wrong. A value is
@@ -84,6 +86,69 @@ final readonly class TableSettings
     }
 
     /**
+     * The same settings under a SECOND, tighter pair of bounds — the shape a listing that has page-size keys
+     * of its own needs.
+     *
+     * THE DATA BROWSER HAS TWO OF EVERY BOUND AND ONE CONTROL. `firefly.admin.data.page-size` and
+     * `firefly.admin.data.max-page-size` are its own keys and neither is decoration: the cap exists because a
+     * size that is merely large on an actuator payload materialises a whole table into PHP memory on a
+     * repository that cannot page, and the default is 25 rather than 50 because a row of a customer table is
+     * wider than a row of a bean listing. Applying them AFTER the query has been parsed is what turns them
+     * into lies — the page then states `?size=` explicitly on every call, so the browser's own default can
+     * never be reached, and a size its cap lowered leaves the rows-per-page `<select>` with no `<option>` to
+     * show. Composing them HERE, before the request is read, makes every mechanism downstream agree by
+     * construction: `clamp()` falls back to the browser's default and refuses a size it may not serve,
+     * `ListingQuery::meaningful()` omits `size` when it IS that default so a link stays at it, and the
+     * offered set is the shared one narrowed to what this listing may actually serve — with the configured
+     * default forced into it, exactly as `fromConfig()` does, so a deployment that asks for ten rows is
+     * OFFERED ten rows rather than being unable to say where it is.
+     *
+     * The shared keys that are not bounds — the density, the scrollport height, whether a scroll offset is
+     * remembered — are carried through untouched: they are facts about the dashboard's chrome, and a listing
+     * does not get its own.
+     */
+    public function boundedBy(int $pageSize, int $maxPageSize): self
+    {
+        $max = min($this->maxPageSize, max(1, $maxPageSize));
+        $size = min($max, max(1, $pageSize));
+
+        return new self(
+            pageSize: $size,
+            pageSizes: self::offered($this->pageSizes, $max, $size),
+            maxPageSize: $max,
+            maxHeight: $this->maxHeight,
+            density: $this->density,
+            rememberScroll: $this->rememberScroll,
+        );
+    }
+
+    /**
+     * The offered set, with the size a listing was actually SERVED spliced in when it is not a member.
+     *
+     * A CONTROL MUST BE ABLE TO SAY WHERE IT IS, and the closed set alone does not guarantee that.
+     * `clamp()` only ever returns a member and `boundedBy()` folds the data browser's own bounds in before a
+     * request is parsed, so on every listing in the tree today this returns the set unchanged. It exists
+     * because `ListingQuery::sized()` does not have to: a query RE-STATED at the size it was served carries
+     * whatever the source served, and a `<select>` whose current value has no `<option>` shows the first one
+     * instead — pressing Apply then resizes the table the operator was reading, which is the exact failure
+     * the closed set exists to prevent. So the served size is spliced in, ascending, the same way
+     * `fromConfig()` forces the configured default into the set.
+     *
+     * @return list<int>
+     */
+    public function offering(int $size): array
+    {
+        if (in_array($size, $this->pageSizes, true)) {
+            return $this->pageSizes;
+        }
+
+        $sizes = [...$this->pageSizes, $size];
+        sort($sizes);
+
+        return $sizes;
+    }
+
+    /**
      * The horizontal cell padding, published as `--row-x` so that a `<col>` width can subtract it.
      *
      * This is the number that makes a rigid column honest. `box-sizing:border-box` is global on this page
@@ -109,16 +174,33 @@ final readonly class TableSettings
         $sizes = [];
         foreach (explode(',', $configured) as $part) {
             $part = trim($part);
-            if (ctype_digit($part) && (int) $part >= 1 && (int) $part <= $max) {
+            if (ctype_digit($part)) {
                 $sizes[] = (int) $part;
             }
         }
 
-        $sizes[] = $default;
-        $sizes = array_values(array_unique($sizes));
-        sort($sizes);
+        return self::offered($sizes, $max, $default);
+    }
 
-        return $sizes;
+    /**
+     * The sizes a listing may actually serve, ascending and distinct, with the default always among them.
+     *
+     * One function rather than two so that a set narrowed by `boundedBy()` is built by the same rule as the
+     * one `fromConfig()` reads: the ceiling drops what is past it, and the default is forced in afterwards
+     * rather than filtered — it is already inside the ceiling by construction, and a `<select>` whose current
+     * value has no `<option>` shows the first one and resizes the table on the next submit.
+     *
+     * @param  list<int>  $sizes
+     * @return list<int>
+     */
+    private static function offered(array $sizes, int $max, int $default): array
+    {
+        $offered = array_values(array_filter($sizes, static fn (int $size): bool => $size >= 1 && $size <= $max));
+        $offered[] = $default;
+        $offered = array_values(array_unique($offered));
+        sort($offered);
+
+        return $offered;
     }
 
     private static function height(string $configured): string

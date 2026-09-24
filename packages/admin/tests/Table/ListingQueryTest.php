@@ -203,3 +203,20 @@ it('re-states itself at the size it was actually served, and leaves itself alone
         ->and($served->link())->toBe('/firefly/mappings?size=25&page=3')
         ->and($query->sized(200))->toBe($query);
 });
+
+/**
+ * A SERVED SIZE IS THE ONE SIZE THE OFFERED SET DID NOT CHOOSE. `clamp()` cannot return 30, so nothing this
+ * class parses is ever outside the set — but `sized()` does not parse, it RECORDS, and what it records is
+ * whatever the source served. The rows-per-page control therefore renders `TableSettings::offering()`
+ * rather than the set itself: a <select> whose current value has no <option> shows the first one, and
+ * pressing Apply resizes the table the operator was reading. The earlier case covers 25, which happens to
+ * be offered and so proves nothing about this.
+ */
+it('carries a served size the offered set does not contain, and the control can still show it', function () {
+    $served = listingQuery(listingRequest(['page' => '2']), 'path')->sized(30);
+
+    expect($served->size)->toBe(30)
+        ->and($served->link())->toBe('/firefly/mappings?size=30&page=2')
+        ->and($served->settings->offering($served->size))->toBe([25, 30, 50, 100, 200])
+        ->and(in_array($served->size, $served->settings->pageSizes, true))->toBeFalse();
+});
