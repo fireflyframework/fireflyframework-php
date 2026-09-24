@@ -26,9 +26,16 @@ it('lists the visited pages on the HTTP traffic page, each with the trace id it 
         ->assertSee('/orders/{id}')
         ->assertDontSee('No exchanges recorded')
         // The Trace column carries the id in `title`; a row recorded without one renders `title=""`.
+        //
+        // READ OFF THE LAST CELL OF EACH ROW, which is the Trace column. It used to be read off every
+        // `td[title]` in the body, and that was only ever a way of SAYING "the Trace column": since the
+        // listing wave, the Path and Correlation cells clip and carry their own full value on `title`, the
+        // way every clipped cell in the table vocabulary does. The claim here is unchanged — every trace
+        // cell holds a 32-character hex id, and at least two rows have one — it is just aimed at the
+        // column it was always about.
         ->assertSourceMissing('title=""')
-        ->assertScript("Array.from(document.querySelectorAll('#http-body td[title]')).every(function (td) { return /^[0-9a-f]{32}$/.test(td.getAttribute('title')); })", true)
-        ->assertScript("document.querySelectorAll('#http-body td[title]').length >= 2", true)
+        ->assertScript("Array.from(document.querySelectorAll('#http-body tr > td:last-child[title]')).every(function (td) { return /^[0-9a-f]{32}$/.test(td.getAttribute('title')); })", true)
+        ->assertScript("document.querySelectorAll('#http-body tr > td:last-child[title]').length >= 2", true)
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'observability-http-traffic');
 });

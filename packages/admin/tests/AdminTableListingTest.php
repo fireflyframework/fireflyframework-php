@@ -436,3 +436,126 @@ it('refuses to redirect anywhere but the loggers page after applying a level', f
     'https://example.com/firefly/loggers',
     '/firefly/env',
 ]);
+
+/**
+ * THE LISTING UNIT ON THE METRICS PAGE IS THE METER, NOT THE MEASUREMENT. A meter's `COUNT` and its
+ * `TOTAL_TIME` are two readings of one thing, so a page that sliced by measurement could put the count on
+ * page 3 and the total it counts on page 4. The page therefore sorts, searches and slices METERS, and each
+ * meter draws however many rows it has — which is also why the fixture's `http.server.requests` carries two
+ * measurements: on a per-measurement listing they are two rows that can be separated, and on this one they
+ * cannot be.
+ *
+ * `style="width:22%"` is the hand-written column width the Relative bar used to carry, and the assertion
+ * that it is gone is the assertion that this table is laid out by the vocabulary rather than by one number
+ * somebody typed into the markup.
+ */
+it('pages the metrics by meter and keeps every statistic of a meter on one page', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/metrics?size=25')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<table class="ftable">')
+        ->toContain('class="t-meter"')
+        ->not->toContain('style="width:22%"');
+
+    // The two measurements of one meter, in one <tbody>, with the meter named once and its second row
+    // carrying an empty name cell — the shape that says "these belong together".
+    preg_match('#<tbody[^>]*>(.*?)</tbody>#s', $body, $rows);
+    expect($rows[1] ?? '')->toContain('COUNT')->toContain('TOTAL_TIME')
+        // A meter the registry holds under a name with no measurements is legal, and the view has an arm
+        // for it rather than a missing row.
+        ->toContain('no measurements');
+});
+
+/**
+ * THE HTTP LISTING IS THE ONE THAT OPENS ON AN ORDER NOBODY ASKED FOR, and is allowed to.
+ *
+ * Every other listing on this dashboard opens in its tiebreak's order and claims nothing (see "claims no
+ * ordering on a configuration listing the reader has not ordered"). This one's tiebreak is the correlation
+ * id and its opening order is newest-first — a deliberate choice about a log, not an identity — so it
+ * declares `timestamp desc` and `meaningful()` keeps that pair out of every URL it writes: the landing page
+ * is `/firefly/http`, and the When header's own link degrades to a bare `?dir=asc`.
+ *
+ * The Method link carries `dir=asc` EXPLICITLY, and that is not noise: this listing's declared default
+ * direction is `desc`, so ascending is the half of the pair that differs from the default and has to be
+ * written down. A link that omitted it would sort by method descending.
+ */
+it('opens the HTTP traffic newest first, and says so without putting it in the URL', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/http')
+        ->assertStatus(200)
+        ->assertSee('href="/firefly/http?sort=method&amp;dir=asc"', false)
+        // The default sort is elided from every link, so the landing URL stays /firefly/http and the When
+        // column's own header link asks only for the other direction.
+        ->assertSee('href="/firefly/http?dir=asc"', false)
+        ->assertDontSee('href="/firefly/http?sort=timestamp&amp;dir=desc"', false);
+});
+
+it('flips the HTTP sort to oldest first when the reader asks', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/http?dir=asc')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<span class="ord">↑</span>');
+
+    // Oldest first really is oldest first: the 500 the fixture recorded two hours ago leads, and the 200 it
+    // recorded two seconds ago is behind it.
+    preg_match('#<tbody[^>]*>(.*?)</tbody>#s', $body, $rows);
+    expect(strpos($rows[1] ?? '', 'code err'))->toBeInt()
+        ->toBeLessThan((int) strpos($rows[1] ?? '', 'code ok'));
+});
+
+it('pages the OAuth2 clients and keeps the process-local caveat', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $this->get('/firefly/oauth2')
+        ->assertStatus(200)
+        ->assertSee('<table class="ftable">', false)
+        ->assertSee('href="/firefly/oauth2?sort=clientId"', false)
+        // The client id over the client name is a two-line cell like a class name — but WITHOUT `stem`:
+        // a human name is prose and elides from the right, not from the left.
+        ->assertSee('<span class="ns">Storefront</span>', false)
+        ->assertDontSee('<span class="ns stem">Storefront</span>', false)
+        // The Active column's `—` for a zero no per-process store can vouch for, and the paragraph naming
+        // the key that makes the column server-wide, both survive the move onto the listing engine.
+        ->assertSee('<td class="t-num">—</td>', false)
+        ->assertSee('Active counts this worker only');
+});
+
+/**
+ * THE THREE RUNTIME PAGES ANSWER "WHAT IS THIS SORTED BY?" THE WAY THE REST OF THE DASHBOARD DOES.
+ *
+ * Metrics and OAuth2 clients open in their tiebreak's order — the meter name, the client id — so they
+ * claim nothing: every header link names its own column and no arrow is drawn until a reader asks. HTTP
+ * traffic is the single exception on this dashboard and it is asserted above. Getting this wrong is not a
+ * broken page, which is exactly why it needs pinning: it is one affordance quietly meaning two things
+ * depending on which page you are on.
+ */
+it('claims no ordering on the runtime listings the reader has not ordered', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $opening = [
+        '/firefly/metrics' => '<a href="/firefly/metrics?sort=name">Meter<span class="ord"></span></a>',
+        '/firefly/oauth2' => '<a href="/firefly/oauth2?sort=clientId">Client<span class="ord"></span></a>',
+    ];
+
+    foreach ($opening as $url => $header) {
+        $body = (string) $this->get($url)->assertStatus(200)->getContent();
+
+        expect($body)->toContain($header)->not->toContain('<span class="ord">↑');
+    }
+});
+
+/**
+ * The Relative bar is a picture of the WHOLE result set, not of the slice the reader is looking at.
+ *
+ * A bar rescaled per page would say something different about the same number depending on which page it
+ * was drawn on — 100% on page 2 because page 2's largest meter is small. The scale is therefore the peak
+ * across every meter the endpoint reported, computed once and handed to the view, which is why the page's
+ * widest value renders as a full bar even when the listing is narrowed to something smaller.
+ */
+it('scales the metrics bar against every meter, not against the page being drawn', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $narrowed = (string) $this->get('/firefly/metrics?q=cache')->assertStatus(200)->getContent();
+
+    // `firefly.cache.hits` is 512 against a fixture peak of 2 097 152, so on its own page it is a sliver
+    // rather than the 100% a per-slice scale would give it.
+    expect($narrowed)->toContain('<i style="width:0.02%"></i>')
+        ->not->toContain('<i style="width:100%"></i>');
+});

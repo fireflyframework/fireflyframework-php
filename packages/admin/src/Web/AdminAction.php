@@ -426,8 +426,33 @@ final readonly class AdminAction
         return match ($slug) {
             '' => $this->overview(),
             'health' => ['indicators' => $this->reader->healthIndicators(), 'aggregate' => $this->aggregateStatus()],
-            'metrics' => ['metrics' => $this->metrics()],
-            'http' => ['exchanges' => $this->exchanges()],
+            'metrics' => $this->metricsPage($request),
+            // A LOG IS THE ONE LISTING ON THIS DASHBOARD THAT OPENS ON AN ORDER NOBODY ASKED FOR. Its
+            // tiebreak is the correlation id, and newest-first is a deliberate choice about the page rather
+            // than the identity the rows happen to have, so it is declared — and `meaningful()` then keeps
+            // the pair out of every URL the page writes, which is how /firefly/http stays /firefly/http.
+            // See listing()'s docblock for why the other listings declare nothing.
+            'http' => $this->listing(
+                $request,
+                'http',
+                $this->exchanges(),
+                TableView::of(
+                    TableColumn::stamp('timestamp', 'When', ch: 12),
+                    TableColumn::pill('method', 'Method'),
+                    TableColumn::path('path', 'Path', weight: 6),
+                    TableColumn::pill('status', 'Status', ch: 6),
+                    // `duration` IS PRE-FORMATTED — `12.4 ms`, `1.2 s` — so ordering by it would order by
+                    // the leading digit and put `9.1 ms` after `1.2 s`. Same reason the scheduled tasks'
+                    // interval columns are unsortable; the fix is a numeric column, not a sort link.
+                    TableColumn::number('duration', 'Took', ch: 10, sortable: false),
+                    TableColumn::token('correlationId', 'Correlation', weight: 2),
+                    TableColumn::token('traceId', 'Trace', weight: 2),
+                ),
+                ['path', 'method', 'status', 'correlationId', 'traceId'],
+                'correlationId',
+                defaultSort: 'timestamp',
+                defaultDirection: 'desc',
+            ),
             'beans' => $this->listing(
                 $request,
                 'beans',
@@ -479,7 +504,7 @@ final readonly class AdminAction
                 ['runnable', 'cron', 'zone'],
                 'runnable',
             ),
-            'oauth2' => $this->oauth2(),
+            'oauth2' => $this->oauth2Page($request),
             // Shapes verified against the real endpoints: configprops answers {beans: {class => row}}
             // and caches answers {default: name|null, caches: {name => row}}.
             'env' => $this->listing(
@@ -1017,7 +1042,7 @@ final readonly class AdminAction
             'positive' => $this->subArray($conditions, 'positiveMatches'),
             'negative' => $this->subArray($conditions, 'negativeMatches'),
             'tasks' => $this->listOf('scheduledtasks', 'tasks'),
-            'metrics' => $this->metrics(),
+            'metrics' => $this->meterRows(),
             'exchanges' => array_slice($this->exchanges(), 0, 8),
             'bootMode' => AppScan::cachedFile($this->container, AppScan::ROUTES) !== null ? 'compiled' : 'scanned',
             'endpoints' => $this->reader->available(),
@@ -1074,15 +1099,71 @@ final readonly class AdminAction
     }
 
     /**
+     * The Metrics page's model: one page of meters, plus the scale the bars are drawn against.
+     *
+     * THE SCALE IS A PROPERTY OF THE WHOLE RESULT SET, NOT OF THE SLICE. A bar rescaled per page would say
+     * something different about the same number depending on which page it was drawn on — the largest meter
+     * on page 2 would fill its row exactly as the largest meter on page 1 does, though one may be a
+     * thousand times the other. So `peak` is taken across every meter the endpoint reported, before the
+     * search and the slice, and a narrowed page still draws its meters against the whole registry.
+     *
+     * The rows are read ONCE and used twice. `meterRows()` is not cheap — it reads the metrics index and
+     * then reads every name back, so it is N+1 in-process endpoint calls — and calling it a second time for
+     * the peak would double that for a number already in hand.
+     *
+     * @return array<string,mixed>
+     */
+    private function metricsPage(Request $request): array
+    {
+        $meters = $this->meterRows();
+
+        $peak = 0.0;
+        foreach ($meters as $meter) {
+            $peak = max($peak, $meter['peak']);
+        }
+
+        return [
+            ...$this->listing(
+                $request,
+                'metrics',
+                $meters,
+                TableView::of(
+                    // Split on `.` the way a class name splits on its namespace separator:
+                    // `http.server.requests` is a leaf under a stem, and the stem is the half that may be
+                    // elided when the column runs out of room.
+                    TableColumn::qualified('name', 'Meter', weight: 5, separator: '.'),
+                    TableColumn::token('statistics', 'Statistic', weight: 2),
+                    TableColumn::number('peak', 'Value', ch: 12),
+                    TableColumn::meter('Relative'),
+                ),
+                ['name', 'statistics'],
+                'name',
+            ),
+            'peak' => $peak,
+        ];
+    }
+
+    /**
+     * One row per METER, with its measurements nested.
+     *
+     * THE LISTING UNIT IS THE METER. A meter's `count`, `total` and `max` are three readings of one thing,
+     * and paging by measurement would put `count` on page 3 and the `total` it counts on page 4. So the
+     * page sorts, searches and slices meters, and each meter draws however many rows it has — which is also
+     * why `statistics` exists: a searchable, sortable projection of the nested rows.
+     *
+     * `peak` is the same projection for ORDER and for the bar: the largest magnitude this meter reported, so
+     * the Value column has one number per row to sort by rather than a nested list, and metricsPage() can
+     * take the page-wide scale off the rows it already has.
+     *
      * The metrics index returns names only, so each name is read back for its measurements — N in-process
      * calls, the right trade for a dashboard, and it keeps MetricsEndpoint's contract untouched.
      *
      * Each measurement is pre-formatted here (bytes as MB, seconds as ms) because the view must not be
      * doing arithmetic, and the JSON surface must keep returning raw numbers for Prometheus.
      *
-     * @return list<array{name: string, rows: list<array{statistic: string, value: float, display: string}>}>
+     * @return list<array{name: string, statistics: string, peak: float, rows: list<array{statistic: string, value: float, display: string}>}>
      */
-    private function metrics(): array
+    private function meterRows(): array
     {
         $metrics = [];
         foreach ($this->subArray($this->payload('metrics'), 'names') as $name) {
@@ -1094,6 +1175,7 @@ final readonly class AdminAction
             $detail = $this->reader->read('metrics', [$name]) ?? [];
 
             $rows = [];
+            $peak = 0.0;
             foreach ($this->subArray($detail, 'measurements') as $measurement) {
                 if (! is_array($measurement)) {
                     continue;
@@ -1105,9 +1187,17 @@ final readonly class AdminAction
                     'value' => is_numeric($value) ? (float) $value : 0.0,
                     'display' => is_numeric($value) ? Format::measurement($name, (float) $value) : '—',
                 ];
+                // ABSOLUTE, because a gauge may be negative and a bar has no sign: the comparison the page
+                // offers is "which of these is large", and -2 GB of free memory is large.
+                $peak = max($peak, is_numeric($value) ? abs((float) $value) : 0.0);
             }
 
-            $metrics[] = ['name' => $name, 'rows' => $rows];
+            $metrics[] = [
+                'name' => $name,
+                'statistics' => implode(' ', array_column($rows, 'statistic')),
+                'peak' => $peak,
+                'rows' => $rows,
+            ];
         }
 
         return $metrics;
@@ -1121,7 +1211,7 @@ final readonly class AdminAction
      * only the latter pair, which the endpoint never produced, so the page showed an empty path and `—` for
      * the age of every request it listed.
      *
-     * @return list<array<string,mixed>>
+     * @return list<array{method: string, path: string, status: int, duration: string, correlationId: string, traceId: string, timestamp: float}>
      */
     private function exchanges(): array
     {
@@ -1148,16 +1238,17 @@ final readonly class AdminAction
     }
 
     /**
-     * The OAuth2 page's model, from ONE read of the `oauth2clients` endpoint.
+     * The OAuth2 page's model, still from ONE read of the `oauth2clients` endpoint.
      *
      * Shape verified against OAuth2ClientsEndpoint: `{issuer: string, authorizations: {processLocal: bool},
-     * clients: list<row>}`. The single read is the point. AdminEndpointReader::read() does not memoize — it
-     * calls handle() again on every call, and re-walks the registry through has() on the way — and this
-     * endpoint is not a cheap in-memory introspection like `caches` or `configprops`: it counts the
-     * authorizations alive for every client, which the Eloquent service answers with one query per client.
-     * Filling the keys with a payload() call each tripled that for nothing, and it also broke the endpoint's
-     * own "one clock for the whole sweep" guarantee across the rendered page — the issuer and the counts would
-     * each come from a different sweep.
+     * clients: list<row>}`. The single read is the point AND IT IS WHY `clientRows()` TAKES THE PAYLOAD
+     * RATHER THAN READING ITS OWN. AdminEndpointReader::read() does not memoize — it calls handle() again on
+     * every call, and re-walks the registry through has() on the way — and this endpoint is not a cheap
+     * in-memory introspection like `caches` or `configprops`: it counts the authorizations alive for every
+     * client, which the Eloquent service answers with one query per client. Filling the keys with a
+     * payload() call each tripled that for nothing, and it also broke the endpoint's own "one clock for the
+     * whole sweep" guarantee across the rendered page — the issuer and the counts would each come from a
+     * different sweep. AdminOAuth2PageSingleReadTest counts the calls.
      *
      * `processLocalAuthorizations` is carried through because the Active column is otherwise a number that
      * looks server-wide and is not: on the default `memory` driver the counts belong to the worker that
@@ -1166,16 +1257,105 @@ final readonly class AdminAction
      *
      * @return array<string,mixed>
      */
-    private function oauth2(): array
+    private function oauth2Page(Request $request): array
     {
         $payload = $this->payload('oauth2clients');
-        $issuer = $payload['issuer'] ?? null;
+        $processLocal = ($this->subArray($payload, 'authorizations')['processLocal'] ?? null) === true;
 
         return [
-            'issuer' => is_string($issuer) ? $issuer : '',
-            'clients' => $this->subArray($payload, 'clients'),
-            'processLocalAuthorizations' => ($this->subArray($payload, 'authorizations')['processLocal'] ?? null) === true,
+            ...$this->listing(
+                $request,
+                'oauth2',
+                $this->clientRows($payload, $processLocal),
+                TableView::of(
+                    // `separator: ''` — the two lines of this cell come from two different fields rather
+                    // than from splitting one, so the view supplies both halves itself. See TableColumn.
+                    TableColumn::qualified('clientId', 'Client', weight: 4, separator: ''),
+                    TableColumn::token('authentication', 'Authentication', weight: 3),
+                    TableColumn::token('grants', 'Grants', weight: 3),
+                    TableColumn::token('scopes', 'Scopes', weight: 3),
+                    TableColumn::line('redirects', 'Redirect URIs', weight: 4),
+                    TableColumn::token('issuance', 'Tokens', weight: 3),
+                    TableColumn::number('active', 'Active', ch: 7),
+                ),
+                ['clientId', 'clientName', 'grants', 'scopes'],
+                'clientId',
+            ),
+            'issuer' => is_string($payload['issuer'] ?? null) ? $payload['issuer'] : '',
+            'processLocalAuthorizations' => $processLocal,
         ];
+    }
+
+    /**
+     * The OAuth2 clients as flat, sortable rows.
+     *
+     * Every multi-valued field is space-joined here rather than in the view, for the reason `beanRows()`
+     * joins interfaces: a listing can order and search a string and cannot order a list. The `active`
+     * column keeps the `—`-for-zero rule exactly — see oauth2Page() for why a zero counted in a per-process
+     * store is the one cell that reads as a fact and is not one.
+     *
+     * TAKES THE PAYLOAD IT WAS READ FROM, and does not read its own: this endpoint counts authorizations
+     * per client and a second read is a second sweep of the store. The processLocal flag rides in beside it
+     * for the same reason.
+     *
+     * `requiresProofKey` (what the endpoints enforce), never `requireProofKey` (the switch the client
+     * registered): `require_pkce` and `require_proof_key_for_public_clients` both default to on, so the
+     * registered switch reads "no PKCE" for a client whose every authorization request is in fact refused
+     * without a code_challenge — the first thing this page is opened to explain. Strictly `=== true`,
+     * because both keys are `null` for a client with no authorization_code grant: PKCE and consent are that
+     * path's rules, so a machine client sends no code_challenge and reaches no consent screen, and the
+     * endpoint says "does not apply" rather than reporting a default nothing enforces. A truthy test would
+     * print both labels beside it and send the operator checking two requirements that are not there.
+     *
+     * @param  array<string,mixed>  $payload
+     * @return list<array{clientId: string, clientName: string, authentication: string, grants: string, scopes: string, redirects: string, issuance: string, active: string}>
+     */
+    private function clientRows(array $payload, bool $processLocal): array
+    {
+        $rows = [];
+        foreach ($this->subArray($payload, 'clients') as $client) {
+            if (! is_array($client)) {
+                continue;
+            }
+
+            $issuance = [$this->scalar($client['accessTokenFormat'] ?? ''), $this->scalar($client['accessTokenTtl'] ?? 0).'s'];
+            if (($client['requiresProofKey'] ?? null) === true) {
+                $issuance[] = 'PKCE';
+            }
+            if (($client['requireAuthorizationConsent'] ?? null) === true) {
+                $issuance[] = 'consent';
+            }
+
+            $active = is_numeric($client['activeAuthorizations'] ?? null) ? (int) $client['activeAuthorizations'] : 0;
+
+            $rows[] = [
+                'clientId' => $this->scalar($client['clientId'] ?? ''),
+                'clientName' => $this->scalar($client['clientName'] ?? ''),
+                'authentication' => $this->joined($client['authenticationMethods'] ?? null),
+                'grants' => $this->joined($client['grantTypes'] ?? null),
+                'scopes' => $this->joined($client['scopes'] ?? null),
+                'redirects' => $this->joined($client['redirectUris'] ?? null),
+                'issuance' => implode(' · ', $issuance),
+                // A `0` counted in a per-process store is the one cell that reads as a fact and is not one:
+                // the workers beside this one may be holding a hundred live authorizations for this client,
+                // and an operator who reads "none" goes looking for a token endpoint that is refusing
+                // nobody. Shown as `—` — nothing counted here — while a non-zero count is kept, because
+                // that one is a floor the store can vouch for.
+                'active' => $processLocal && $active === 0 ? '—' : (string) $active,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /** A multi-valued endpoint field as one searchable, orderable string. */
+    private function joined(mixed $values): string
+    {
+        if (! is_array($values)) {
+            return '';
+        }
+
+        return implode(' ', array_map(fn (mixed $value): string => $this->scalar($value), $values));
     }
 
     /**
