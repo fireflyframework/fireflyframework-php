@@ -549,3 +549,153 @@ it('fits a humanised header inside the width PHP computed for it', function (): 
             JS, true)
         ->assertNoJavaScriptErrors();
 });
+
+/**
+ * NOTHING IN THIS TREE EXERCISED THE DASHBOARD AT SCALE, and that gap is itself the finding: the Routes
+ * screenshot that started this wave has seven rows on it, and the defect it shows is a layout that cannot
+ * survive eight. These scenarios page a sixty-row listing, walk it, and assert the union of the pages is
+ * the table — which is the only way a paging bug is visible at all.
+ */
+it('pages a sixty-row listing and every page is a different, complete slice', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedManyOrders(60);
+
+    $page = visit('/firefly/data?resource=order-entity&size=25&sort=customer');
+
+    $page->assertSee('60 total')
+        ->assertSee('1–25 of 60')
+        ->assertSee('Customer 001')
+        ->assertDontSee('Customer 026')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-data-paged');
+
+    $page->click('Next')
+        ->assertQueryStringHas('page', '2')
+        ->assertSee('26–50 of 60')
+        ->assertSee('Customer 026')
+        ->assertDontSee('Customer 001')
+        // The sort survived the click. It used to survive it by being concatenated into the href by hand,
+        // four strings at a time.
+        ->assertQueryStringHas('sort', 'customer')
+        // AND SO DID THE SIZE, THOUGH NOT THROUGH THE URL — which is the point of asserting it here rather
+        // than with assertQueryStringHas. 25 IS this listing's default (`firefly.admin.data.page-size`),
+        // and ListingQuery::meaningful() omits a parameter that is already at its default, so that a
+        // bookmark taken today cannot pin a size an operator later reconfigures. What proves the size
+        // survived is the slice — 26–50, twenty-five rows — under a control that still reads 25.
+        ->assertScript("document.querySelector('.pager select').value", '25')
+        ->assertNoJavaScriptErrors();
+
+    $page->click('3')
+        ->assertSee('51–60 of 60')
+        ->assertSee('Customer 060')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE STABLE SORT, END TO END. Every one of these sixty rows carries the same `created_at` — seedManyOrders
+ * reads the clock once, above its loop — so ordering by it is a sixty-way tie, exactly the case where a
+ * listing without a tiebreak shows a row twice and another never. Three pages are walked as a reader walks
+ * them, over real requests, and the union of what they DREW is asserted to be the whole table.
+ *
+ * WHAT THIS ADDS OVER packages/admin/tests/Data/DataStableSortTest.php, and what it does not. That suite
+ * owns the ORDER BY: it pins the identifier onto the clause, ascending under a descending primary sort, and
+ * it fails the moment the tiebreak is dropped. This one cannot make that claim honestly — sqlite's sorter
+ * happens to be stable over a table this size, so the same three pages come back consistent with the
+ * tiebreak removed, which was measured rather than assumed. What it pins is everything BETWEEN the clause
+ * and the reader: three offsets, three rebuilt URLs and three renders, adding up to sixty distinct rows and
+ * no row drawn twice. A slice computed from the wrong size, a page link that lost the sort, or an offset
+ * off by a page are all invisible to a query test and all visible here.
+ *
+ * THE TIED COLUMN IS `created_at` AND NOT `ship_to`, because `DataSchema::sortable()` excludes json columns
+ * by design — ordering a serialized blob sorts its text, which looks like it worked and means nothing — so
+ * `?sort=ship_to` is dropped by ListingQuery and the listing falls back to its identifier, which is the one
+ * ordering that has no ties to break. A tie has to be asked for in a column the page really orders by.
+ */
+it('shows every row exactly once when paging a sort whose values all tie', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedManyOrders(60);
+
+    // The customer column, which is the second one every resource listing draws after its identifier, and
+    // the one column of this fixture whose sixty values are distinct by construction. `script()` answers
+    // `mixed`, so the names are narrowed as they are collected rather than asserted about as they are:
+    // anything that is not a string lands as '' and collapses under array_unique, which fails the
+    // assertion below instead of quietly passing it.
+    $seen = [];
+    foreach ([1, 2, 3] as $number) {
+        $page = visit('/firefly/data?resource=order-entity&size=25&sort=created_at&dir=desc&page='.$number);
+        $names = $page->script("[...document.querySelectorAll('tbody tr td:nth-child(2)')].map(c => c.textContent.trim())");
+
+        foreach (is_array($names) ? $names : [] as $name) {
+            $seen[] = is_string($name) ? $name : '';
+        }
+    }
+
+    expect($seen)->toHaveCount(60)->and(array_unique($seen))->toHaveCount(60);
+});
+
+/**
+ * The rows-per-page control had no submit button and did nothing with scripts off. It has one now, and
+ * pressing it is the assertion.
+ *
+ * THE ONCHANGE IS TAKEN AWAY FIRST, which is the only way this scenario can mean what its name says.
+ * `<select onchange="this.form.submit()">` resizes the table the moment an option is picked, so a test that
+ * merely picked one and then pressed the button would be asserting the convenience and never the control —
+ * and the control is the half a keyboard, a text browser or a page whose script failed depends on. With the
+ * handler gone, the only thing on this page that can submit that form is the button.
+ */
+it('resizes the page from the rows control without relying on its onchange', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedManyOrders(60);
+
+    $page = visit('/firefly/data?resource=order-entity&size=25');
+    $page->script("document.querySelector('.pager select').onchange = null;");
+
+    $page->select('size', '100')
+        // BY SELECTOR, NOT BY LABEL. `press('Apply')` resolves to the FIRST element whose text is `Apply`,
+        // and on this page that is the filter bar's submit — inside a <details> that is closed whenever no
+        // condition is applied, so the click waits on an element that can never become visible.
+        // AdminDataBrowserTest reaches that one by opening the <details> first; this one wants the other.
+        ->press('.pager button[type="submit"]')
+        ->assertQueryStringHas('size', '100')
+        ->assertSee('1–60 of 60')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * THE AUTO-REFRESH COMPOSES WITH PAGINATION, and the reason is structural rather than lucky: the refresh
+ * is `window.location.reload()`, which re-requests the URL it is on, and every piece of listing state — the
+ * page, the size, the sort, the search — lives in that URL. A reader on page 3 comes back to page 3. This
+ * pins it, because the obvious "improvement" of fetching and replacing the table body would not.
+ */
+it('keeps the reader on their page across the ten-second auto-refresh', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedManyOrders(60);
+
+    visit('/firefly/data?resource=order-entity&size=25&page=3')
+        ->assertSee('51–60 of 60')
+        ->script('window.location.reload()');
+
+    visit('/firefly/data?resource=order-entity&size=25&page=3')
+        ->assertSee('51–60 of 60')
+        ->assertQueryStringHas('page', '3')
+        ->assertNoJavaScriptErrors();
+});
+
+it('renders a paged listing in dark mode and at phone width without a horizontal page scroll', function (): void {
+    /** @var AdminDashboardBrowserTestCase $this */
+    $this->seedManyOrders(60);
+
+    visit('/firefly/data?resource=order-entity&size=25')
+        ->inDarkMode()
+        ->assertSee('60 total')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-data-paged-dark');
+
+    // The table scrolls inside its own wrapper; the DOCUMENT must not. That is what `.tw{overflow:auto}`
+    // plus `min-width:0` on main buys, and at 375px it is the difference between a dashboard and a mess.
+    visit('/firefly/mappings')
+        ->on()->mobile()
+        ->assertScript('document.documentElement.scrollWidth <= document.documentElement.clientWidth', true)
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'admin-mappings-mobile');
+});
