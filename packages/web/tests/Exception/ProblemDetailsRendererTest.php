@@ -335,11 +335,55 @@ it('falls back to a minimal document rather than raising when a member cannot be
         ->and($payload)->not->toHaveKey('ratio');
 });
 
-it('keeps the category a generated client branches on when a rejected value is what cannot be encoded', function () {
-    // FieldError::$rejectedValue is `mixed` — literally whatever the client sent — so a 422 is a real route
-    // into the fallback, and a 422 that came back saying `category: internal` would send a generated client
-    // that branches on `category == 'validation'` to render field errors down the wrong arm.
-    $invalid = new ValidationException('Validation failed', [new FieldError('ratio', 'must be a number', rejectedValue: INF)]);
+it('falls back to a minimal document when an extension member\'s own jsonSerialize() throws', function () {
+    // THE CASE JSON_THROW_ON_ERROR DOES NOT REACH. json_encode does not merely refuse an object — it CALLS
+    // the object's code, and whatever that code raises comes out of json_encode with no error state set
+    // and no JsonException in it, so `catch (JsonException)` let it straight through render(). Extension
+    // members are `mixed` and chosen at the throw site, so an Eloquent model under preventLazyLoading or
+    // any accessor that reads the database is a realistic member — and it is likeliest to throw exactly
+    // when the database is the thing that already failed, i.e. while this renderer describes that failure.
+    $thrower = new class implements JsonSerializable
+    {
+        public function jsonSerialize(): mixed
+        {
+            throw new RuntimeException('the accessor could not read the balance either');
+        }
+    };
+
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))
+        ->withExtensions(['balance' => $thrower]);
+
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-88');
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, $request);
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['status'])->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($payload['category'])->toBe('business')
+        ->and($payload['detail'])->toBe('The ledger disagrees.')
+        // Still correlatable, which is the one action the degraded document exists to keep possible.
+        ->and($payload['traceId'])->toBe('corr-88')
+        ->and($payload)->not->toHaveKey('balance');
+});
+
+it('keeps the field errors, and drops only the rejected value, when a rejected value cannot be encoded', function () {
+    // FieldError::$rejectedValue is `mixed` — literally whatever the client sent, since the validators fill
+    // it with Arr::get($data, $field) off the decoded body — so a 422 is a real route into the fallback,
+    // and json_decode('{"ratio": 1e999}') is float(INF), i.e. any caller can reach it by posting a number.
+    // Two things must survive that. The category, because a 422 saying `category: internal` sends a
+    // generated client branching on `category == 'validation'` down the wrong arm. And the errors
+    // THEMSELVES, because sending it down the RIGHT arm with nothing to render is the same bug wearing a
+    // different hat — and the second field below, whose rejected value is an ordinary string, was never
+    // implicated in the failure at all.
+    $invalid = new ValidationException('Validation failed', [
+        new FieldError('ratio', 'must be a number', rejectedValue: INF),
+        new FieldError('email', 'must be a valid email address', code: 'EMAIL_INVALID', rejectedValue: 'nope', constraint: 'Email'),
+    ]);
 
     $response = (new ProblemDetailsRenderer)->render($invalid, Request::create('/api/x'));
 
@@ -351,8 +395,18 @@ it('keeps the category a generated client branches on when a rejected value is w
         ->and($payload['category'])->toBe('validation')
         ->and($payload['code'])->toBe('VALIDATION_ERROR')
         ->and($payload['detail'])->toBe('Validation failed')
-        // `errors` genuinely holds the value that could not be encoded, so it is the one member that goes.
-        ->and($payload)->not->toHaveKey('errors');
+        // The member stays, and every declared-string part of both entries with it.
+        ->and($payload['errors'])->toBe([
+            ['field' => 'ratio', 'message' => 'must be a number'],
+            ['field' => 'email', 'message' => 'must be a valid email address', 'code' => 'EMAIL_INVALID', 'constraint' => 'Email'],
+        ])
+        // `rejectedValue` is the ONLY `mixed` member of a FieldError, so it is the only one that goes —
+        // from both entries, because the renderer cannot know which of them json_encode refused.
+        ->and((string) $response->getContent())->not->toContain('rejectedValue')
+        ->and((string) $response->getContent())->not->toContain('nope')
+        // `errors` stays LAST, where STANDARD_MEMBERS has it, so the degraded document still reads like
+        // the full one to a person diffing the two.
+        ->and(array_key_last($payload))->toBe('errors');
 });
 
 it('answers with a document even when the status itself is the only thing left', function () {

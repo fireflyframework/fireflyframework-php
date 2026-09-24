@@ -217,3 +217,23 @@ it('answers a member json_encode refuses with the minimal document, still descri
     expect($payload['traceId'])->toBe($response->headers->get('X-Correlation-Id'))
         ->and($payload['correlationId'])->toBe($response->headers->get('X-Correlation-Id'));
 });
+
+it('answers an extension member whose own accessor throws with the minimal document, not a blank 500', function () {
+    /** @var WebCapstoneTestCase $this */
+    // The failure json_encode does not REPORT, it merely propagates: encoding an object calls the
+    // application's code, so a jsonSerialize() or an Eloquent accessor that throws comes out of
+    // json_encode with no JsonException anywhere in it. `catch (JsonException)` let it escape render(),
+    // and the caller got the same blank 500 this whole task exists to remove.
+    $response = $this->getJson('/errors/throwing-extension');
+
+    $response->assertStatus(409)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 409)
+        ->assertJsonPath('code', 'LEDGER_CONFLICT')
+        ->assertJsonPath('category', 'business')
+        ->assertJsonPath('detail', 'The ledger disagrees.')
+        ->assertJsonMissingPath('balance');
+
+    // The thrower's own sentence is an internal detail and must not ride out on the document either.
+    expect((string) $response->getContent())->not->toContain('accessor could not read');
+});

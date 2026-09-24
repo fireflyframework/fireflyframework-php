@@ -9,6 +9,8 @@ use Firefly\Web\Attributes\ExceptionHandler;
 use Firefly\Web\Attributes\GetMapping;
 use Firefly\Web\Attributes\RequestMapping;
 use Firefly\Web\Attributes\RestController;
+use JsonSerializable;
+use RuntimeException;
 
 #[RestController]
 #[RequestMapping('/errors')]
@@ -55,6 +57,32 @@ final class ConflictController
     public function unencodable(): array
     {
         throw (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]);
+    }
+
+    /**
+     * THE ARM JSON_THROW_ON_ERROR NEVER REACHES. The two routes above are values json_encode REFUSES and
+     * reports; this one is a value whose own code json_encode CALLS — and a jsonSerialize() or an Eloquent
+     * accessor that throws propagates straight out of json_encode with no error state set and no
+     * JsonException in it, which is why catching JsonException left the renderer able to throw after all.
+     * The member is `mixed` and chosen at the throw site, and the realistic version of this object is a
+     * model whose accessor reads the database — the thing that already failed, which is why the renderer
+     * was running at all. Through the pipeline, because a blank 500 is again what the layer above does
+     * with the exception the renderer threw, and a direct call can only observe the throw.
+     *
+     * @return array<string,mixed>
+     */
+    #[GetMapping('/throwing-extension')]
+    public function throwingExtension(): array
+    {
+        $balance = new class implements JsonSerializable
+        {
+            public function jsonSerialize(): mixed
+            {
+                throw new RuntimeException('the accessor could not read the balance either');
+            }
+        };
+
+        throw (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['balance' => $balance]);
     }
 
     /**
