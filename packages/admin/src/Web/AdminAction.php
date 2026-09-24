@@ -492,7 +492,6 @@ final readonly class AdminAction
                 ),
                 ['key', 'value'],
                 'key',
-                defaultSort: 'key',
             ),
             'configprops' => $this->configPropsPage($request),
             'caches' => [
@@ -514,7 +513,6 @@ final readonly class AdminAction
                     ),
                     ['name', 'driver'],
                     'name',
-                    defaultSort: 'name',
                 ),
                 'defaultStore' => is_string($this->payload('caches')['default'] ?? null)
                     ? $this->payload('caches')['default']
@@ -544,7 +542,6 @@ final readonly class AdminAction
                     ),
                     ['name', 'level'],
                     'name',
-                    defaultSort: 'name',
                 ),
                 'levels' => $this->subArray($this->payload('loggers'), 'levels'),
             ],
@@ -560,11 +557,29 @@ final readonly class AdminAction
      * accept. Passing `$view->sortable()` into the query is what stops a hand-edited `?sort=password`
      * ordering by something the page does not draw.
      *
-     * `$defaultSort` is left null for a listing whose natural order IS its tiebreak: InMemoryListing falls
-     * back to the tiebreak column when no sort was asked for, so declaring the same key as the default sort
-     * would change nothing about the rows and a great deal about the URLs — `meaningful()` omits a
-     * parameter that is already at its default, so every header link would lose its own `?sort=` and a
-     * reader could not tell the sorted column from the rest by looking at where the link goes.
+     * `$defaultSort` IS LEFT NULL FOR A LISTING WHOSE NATURAL ORDER IS ITS TIEBREAK, and every listing on
+     * this dashboard but one is such a listing. InMemoryListing falls back to the tiebreak column when no
+     * sort was asked for, so declaring the same key as the default sort changes nothing whatever about the
+     * rows and two things about the page: `meaningful()` omits a parameter that is already at its default,
+     * so THAT column's header link loses its own `?sort=` and degrades to a bare `?dir=desc` — the other
+     * columns keep theirs — and `indicator()` draws an arrow on it from the first request, before the
+     * reader has ordered anything.
+     *
+     * Neither reading is wrong on its own; having BOTH of them in one dashboard is, and that is what the
+     * Configuration listings briefly shipped. `/firefly/env` opened with an arrow on Key while
+     * `/firefly/mappings` opened with none on Path, though each was ordered by exactly that column — one
+     * affordance answering "what is this sorted by?" two ways depending on which page a reader was on.
+     * The convention this file keeps is the one `/firefly/mappings` already had: an arrow means A READER
+     * ASKED FOR THIS ORDERING, and a listing nobody has ordered yet names every column in its header links
+     * and marks none of them.
+     *
+     * SO A DEFAULT SORT IS DECLARED ONLY WHERE THE OPENING ORDER IS NOT THE TIEBREAK — where the arrow is
+     * therefore saying something the reader could not have worked out. The bound config-properties panel
+     * is this file's one case today: its tiebreak is `row`, a key the page does not draw, so a null
+     * default would order the table by a column no header can name and no reader can click back to, and
+     * `class` is the drawn column that ordering amounts to. See configPropsPage(). A listing whose opening
+     * order is a deliberate choice rather than an identity — a log newest-first — declares one for the
+     * same reason.
      *
      * GENERIC OVER THE ROW, the way ListingPage is: a caller that hands in a precisely-shaped
      * `list<array{...}>` gets that shape back in `$slice->rows`, so the view draws `$route['path']` without
@@ -673,8 +688,15 @@ final readonly class AdminAction
         // nothing. `row` is the identity the other listings already have as a natural column (a path, a
         // class, a channel name) and this one does not; it is searched by nothing and drawn by nothing, in
         // the same way `interfacesQualified` rides along in the beans catalogue.
+        //
+        // WHICH IS WHY ONLY THIS PANEL DECLARES A DEFAULT SORT, and the one under it does not. A tiebreak
+        // the page does not draw is an ordering no header can claim, so the bound panel names `class` —
+        // the drawn column that ordering already amounts to — and opens with the arrow on it. The unbound
+        // panel's tiebreak IS its Class column, so it opens the way every other listing on this dashboard
+        // opens: ordered by class, arrow on nothing, every header link naming its own column. See the
+        // convention in listing()'s docblock.
         $bound = $this->listing($request, 'configprops', $this->configPropRows(), $boundView, ['class', 'prefix', 'key', 'value'], 'row', defaultSort: 'class', qualifier: 'props');
-        $unbound = $this->listing($request, 'configprops', $this->unboundRows(), $unboundView, ['class', 'prefix', 'why'], 'class', defaultSort: 'class', qualifier: 'unbound');
+        $unbound = $this->listing($request, 'configprops', $this->unboundRows(), $unboundView, ['class', 'prefix', 'why'], 'class', qualifier: 'unbound');
 
         $boundQuery = $bound['query']->carrying($unbound['query']->own());
         $unboundQuery = $unbound['query']->carrying($bound['query']->own());

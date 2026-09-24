@@ -317,10 +317,78 @@ it('carries each config-properties panel\'s position through the other panel\'s 
     expect($body)->toContain('props_page=2')->toContain('unbound_page=3');
 });
 
+/**
+ * THE ONE LISTING THAT DOES CLAIM AN ORDERING, AND THE REASON IT IS ALLOWED TO. The Bound panel's tiebreak
+ * is `row` — the synthetic `Class::property` identity that gives one row per property something unique to
+ * be ordered by — and `row` is drawn by no column, so a null default sort would leave the table ordered by
+ * a key no header can name and no reader can click back to. It declares `class`, the drawn column that
+ * ordering already amounts to, and the arrow on Class is then true.
+ *
+ * ITS NEIGHBOUR ON THE SAME PAGE DECLARES NOTHING, because its tiebreak IS its Class column: the Not-bound
+ * panel opens ordered by class with every header link naming its own column, exactly like Routes, Beans
+ * and the Environment. The two panels differ because their ORDERINGS differ in kind, not because two
+ * authors made two choices — which is the distinction this pins.
+ */
+it('claims an ordering on the bound properties panel alone, whose tiebreak no column draws', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $body = (string) $this->get('/firefly/configprops')->assertStatus(200)->getContent();
+
+    expect($body)->toContain('<a href="/firefly/configprops?props_dir=desc">Class<span class="ord">↑</span></a>')
+        ->toContain('<a href="/firefly/configprops?unbound_sort=class">Class<span class="ord"></span></a>');
+});
+
 it('pages the cache stores and the log channels', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $this->get('/firefly/caches')->assertStatus(200)->assertSee('<table class="ftable">', false);
     $this->get('/firefly/loggers')->assertStatus(200)->assertSee('<table class="ftable">', false);
+});
+
+/**
+ * ONE ARROW MEANS ONE THING ON EVERY PAGE OF THIS DASHBOARD, and these four are the ones that nearly
+ * shipped the other reading. `listing()` leaves `$defaultSort` null for a listing whose natural order is
+ * already its tiebreak, so the Environment table opens ordered by Key with no arrow on it and a header
+ * link that names its own column — the same thing `/firefly/mappings` does under "sorts on the server"
+ * above, and the same thing the Caches and Loggers tables do here.
+ *
+ * WHAT DECLARING `defaultSort: 'key'` WOULD CHANGE IS THE PAGE, NOT THE LISTING. InMemoryListing falls
+ * back to the tiebreak when no sort was asked for, so the rows are identical either way — the second half
+ * of this test reads both bodies and says so. `meaningful()` then omits a parameter already at its
+ * default, which turns that one header link into a bare `?dir=desc` and hands it an `↑` before the reader
+ * has asked for anything; the neighbouring columns keep their `?sort=`. That is a defensible convention
+ * and the opposite one is too, but not both in one dashboard: Configuration pages claiming an ordering
+ * and Routes not claiming the same ordering is one affordance answering the same question two ways.
+ */
+it('claims no ordering on a configuration listing the reader has not ordered', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $opening = [
+        '/firefly/env' => '<a href="/firefly/env?sort=key">Key<span class="ord"></span></a>',
+        '/firefly/caches' => '<a href="/firefly/caches?sort=name">Store<span class="ord"></span></a>',
+        '/firefly/loggers' => '<a href="/firefly/loggers?sort=name">Channel<span class="ord"></span></a>',
+    ];
+
+    foreach ($opening as $url => $header) {
+        $body = (string) $this->get($url)->assertStatus(200)->getContent();
+
+        expect($body)->toContain($header)
+            // Not "no arrow on that column" but no arrow anywhere: the indicator is the page's one claim
+            // about its own ordering, and an unordered listing makes none.
+            ->not->toContain('<span class="ord">↑');
+    }
+
+    // The arrow is what a reader ASKED for, and asking for the order the table is already in reorders
+    // nothing — which is precisely why the default had no business being declared.
+    $rowsOf = static function (string $body): string {
+        preg_match('#<tbody>(.*?)</tbody>#s', $body, $matches);
+
+        return $matches[1] ?? '';
+    };
+
+    $asked = (string) $this->get('/firefly/env?sort=key')->assertStatus(200)->getContent();
+    $opened = (string) $this->get('/firefly/env')->assertStatus(200)->getContent();
+
+    expect($asked)->toContain('<a href="/firefly/env?sort=key&amp;dir=desc">Key<span class="ord">↑</span></a>')
+        ->and($rowsOf($asked))->not->toBe('')
+        ->and($rowsOf($asked))->toBe($rowsOf($opened));
 });
 
 // The level control is a POST form inside the listing, so the column it lives in shrinks to it rather than
