@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Kernel\Exception\Security\AuthenticationException;
 use Firefly\Web\Error\ErrorFrame;
 use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
@@ -107,7 +108,13 @@ it('keeps the exception out of the rendered production page', function () use ($
     $settings = new ErrorPageSettings(trace: false, hints: false);
     $html = ErrorPage::render($report(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), $settings), $settings);
 
-    expect($html)->not->toContain('Order 42 does not exist.')
+    // The application's OWN sentence is published, and always was — by problem+json, for the same failure,
+    // written for the caller. The page withholding it was the inconsistency: a person reading the page and
+    // a client reading the document were told two different things about one error. What stays withheld is
+    // everything that is not a sentence somebody wrote: the class, the file, the trace, the page's own
+    // advice about turning the trace on. `firefly.web.error-page.authored-detail => false` restores the
+    // status-and-code-only page for a deployment that wants it.
+    expect($html)->toContain('Order 42 does not exist.')
         ->not->toContain('ResourceNotFoundException')
         ->not->toContain('Stack trace')
         // Nor the page's own advice about how to turn the trace on, which names the framework and a config
@@ -731,6 +738,10 @@ it('keeps every text token above 4.5:1, and the focus ring above 3:1, on every g
         // The copy button's ring is the third one, and it is measured on the same two grounds: the
         // button sits on --panel-2 inside a --panel cell, which is exactly where --brand fell short.
         ->toContain('.copy:focus-visible{outline:2px solid var(--brand-ink)')
+        // The action row's ring is the fourth, and it is drawn on the page ground the header sits on —
+        // #e07a17 measures 2.95:1 there, so the row that gives a keyboard reader the way off this page
+        // would have shipped the one ring below the floor.
+        ->toContain('.act:focus-visible{outline:2px solid var(--brand-ink)')
         // Pinned as a string so the token cannot silently go back to the shape one that fails.
         ->not->toContain('outline:2px solid var(--brand)')
         ->and($ratio('#a1520a', '#ffffff'))->toBeGreaterThan(3.0)
@@ -936,4 +947,97 @@ it('keeps the id shared with the problem document and lets the sentence diverge 
         // it, and neither is a substring of the other.
         ->and($clause)->not->toContain('ref-split-7')
         ->and($document)->not->toContain($clause);
+});
+
+$page = static fn (Throwable $e, ErrorPageSettings $settings, int $status, string $reason, string $method = 'GET', string $path = '/orders/42'): string => ErrorPage::render(
+    ErrorReport::of($e, Request::create($path, $method), $settings, dirname(__DIR__, 4), $status, $reason, '2026-01-01T00:00:00+00:00'),
+    $settings,
+);
+
+it('offers a 401 the way back in, and only when one was configured', function () use ($page) {
+    $configured = new ErrorPageSettings(trace: false, hints: false, home: '/', signIn: '/login');
+    $bare = new ErrorPageSettings(trace: false, hints: false, home: '', signIn: '');
+
+    $html = $page(new AuthenticationException('Authentication is required to access this resource.', 'AUTHENTICATION_FAILED'), $configured, 401, 'Unauthorized');
+
+    expect($html)->toContain('<nav class="acts" aria-label="What you can do next">')
+        ->toContain('<a class="act primary" href="/login">Sign in</a>')
+        ->toContain('<a class="act" href="/">Go home</a>')
+        // Nothing is invented: with no destination configured the page offers none rather than guessing a
+        // route name that may not exist.
+        ->and($page(new AuthenticationException('nope', 'AUTHENTICATION_FAILED'), $bare, 401, 'Unauthorized'))
+        ->not->toContain('class="acts"');
+});
+
+it('offers a 5xx the one action its reader can actually take: ask again', function () use ($page) {
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', support: 'https://support.example.test');
+
+    expect($page(new RuntimeException('boom'), $settings, 500, 'Internal Server Error', 'GET', '/orders/42'))
+        // A plain link to the same path: it re-issues a GET, it works with scripts off, and it cannot carry
+        // a scheme because $report->path is built as '/'.ltrim($request->path(), '/').
+        ->toContain('<a class="act primary" href="/orders/42">Try again</a>')
+        ->toContain('<a class="act" href="/">Go home</a>')
+        ->toContain('<a class="act" href="https://support.example.test">Contact support</a>');
+});
+
+it('offers a 404 the way home and nothing it cannot deliver', function () use ($page) {
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/', signIn: '/login');
+
+    expect($page(new NotFoundHttpException, $settings, 404, 'Not Found'))
+        ->toContain('<a class="act primary" href="/">Go home</a>')
+        // Sign-in is the 401's answer, not every page's: offering it here says the reader was refused when
+        // they were not.
+        ->not->toContain('Sign in')
+        ->not->toContain('Try again');
+});
+
+it('names the verbs a 405 accepts instead of shrugging at the caller', function () use ($page) {
+    $settings = new ErrorPageSettings(trace: false, hints: false, home: '/');
+    $one = new MethodNotAllowedHttpException(['POST', 'HEAD'], 'The GET method is not supported for route orders.');
+    $several = new MethodNotAllowedHttpException(['PUT', 'PATCH', 'DELETE']);
+
+    expect($page($one, $settings, 405, 'Method Not Allowed', 'GET', '/orders'))
+        ->toContain('That address does not accept a GET request. It accepts POST.')
+        ->and($page($several, $settings, 405, 'Method Not Allowed', 'POST', '/orders/1'))
+        ->toContain('That address does not accept a POST request. It accepts PUT, PATCH or DELETE.')
+        // And a 405 has nothing to retry: the verb is wrong, not the moment.
+        ->not->toContain('Try again');
+});
+
+it('uses the sentence the problem document publishes, so one failure reads one way', function () use ($page) {
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $business = new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND');
+
+    expect($page($business, $settings, 404, 'Not Found'))
+        ->toContain('Order 42 does not exist.')
+        ->and($page(new NotFoundHttpException('No such tenant.'), $settings, 404, 'Not Found'))
+        ->toContain('No such tenant.')
+        // The router's own sentence is still replaced by the product's, exactly as it is on the wire.
+        ->and($page(new NotFoundHttpException('The route nope could not be found.'), $settings, 404, 'Not Found'))
+        ->toContain(ProblemMapper::NOTHING_HERE)
+        ->not->toContain('could not be found');
+});
+
+it('still withholds a generic throwable\'s message, which is an accident and not a sentence', function () use ($page) {
+    // The gate is the STATUS and the kind of throwable, never the presence of a message. A QueryException
+    // stringifies its SQL and its bindings; that is what `publicDetail` exists to keep off this page while
+    // letting "Order 42 does not exist." through.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $leak = new RuntimeException("SQLSTATE[42S02]: no such table (SQL: select * from users where email = 'ada@example.test')");
+
+    expect($page($leak, $settings, 500, 'Internal Server Error'))
+        ->not->toContain('SQLSTATE')
+        ->not->toContain('ada@example.test')
+        ->toContain('Something went wrong on our side.');
+});
+
+it('lets an operator switch every action off, and never builds an href it did not check', function () use ($page) {
+    $off = new ErrorPageSettings(trace: false, hints: false, home: '/', signIn: '/login', actions: false);
+    // A hostile value never reaches the settings object at all (see ErrorPageSecurityTest); this proves the
+    // page prints exactly what the settings hold and adds no fallback of its own.
+    $empty = new ErrorPageSettings(trace: false, hints: false, home: '', signIn: '', support: '');
+
+    expect($page(new NotFoundHttpException, $off, 404, 'Not Found'))->not->toContain('class="acts"')
+        ->and($page(new NotFoundHttpException, $empty, 404, 'Not Found'))->not->toContain('class="acts"')
+        ->and($page(new NotFoundHttpException, $empty, 404, 'Not Found'))->not->toContain('href="javascript:');
 });

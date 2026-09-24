@@ -66,10 +66,106 @@ final class ErrorPage
         if ($report->detailed && $report->message !== '') {
             $html .= '<p class="message">'.self::e($report->message).'</p>';
         } elseif (! $report->detailed) {
-            $html .= '<p class="message muted">'.self::e(self::reassurance($report->status, $report->reference)).'</p>';
+            // Not `muted`: the lede is the page's sentence, not an aside beside it. It is the one line a
+            // production reader is meant to read, and it is now the SAME line the problem document publishes
+            // for the same failure, so dimming it was the page disagreeing with itself about its own subject.
+            $html .= '<p class="message">'.self::e(self::lede($report, $settings)).'</p>';
         }
 
-        return $html.'</header>';
+        return $html.self::actions($report, $settings).'</header>';
+    }
+
+    /**
+     * The one sentence a production page says, chosen so that the page and the problem document agree.
+     *
+     * THREE SOURCES, MOST SPECIFIC FIRST. A 405 the ROUTER raised knows something no exception message does
+     * — which verb the caller used — so it gets a sentence built from both. Then the AUTHORED sentence:
+     * "Order 42 does not exist.", "No such tenant.", the product's replacement for the router's 404. That is
+     * what problem+json has always published for the same failure, and a page that said "That page does not
+     * exist." instead made one error read two ways. Only when neither applies does the page fall back to its
+     * own reassurance, which is all a 5xx can honestly offer.
+     */
+    private static function lede(ErrorReport $report, ErrorPageSettings $settings): string
+    {
+        if ($report->status === 405 && $report->allowed !== []) {
+            return self::methodSentence($report->method, $report->allowed);
+        }
+
+        if ($settings->authoredDetail && $report->publicDetail !== '') {
+            return $report->publicDetail;
+        }
+
+        return self::reassurance($report->status, $report->reference);
+    }
+
+    /**
+     * A 405 in the product's words, naming the verb that was refused and the ones that are not.
+     *
+     * The verbs were already in hand: ProblemMapper parses the router's Allow header, drops HEAD (Symfony
+     * adds it beside every GET and no person chooses it) and publishes the rest as an `allowed` extension
+     * member — and the page threw them away and shrugged. Written with "does not" rather than a contraction
+     * because that is this page's voice ("That page does not exist.", "You do not have access to that.") and
+     * because an apostrophe here would reach the markup as `&#039;`.
+     *
+     * @param  list<string>  $allowed
+     */
+    private static function methodSentence(string $method, array $allowed): string
+    {
+        $verbs = count($allowed) === 1
+            ? $allowed[0]
+            : implode(', ', array_slice($allowed, 0, -1)).' or '.$allowed[count($allowed) - 1];
+
+        return "That address does not accept a {$method} request. It accepts {$verbs}.";
+    }
+
+    /**
+     * What a reader can do next — and nothing this deployment did not configure.
+     *
+     * Every one of the four production screenshots ends at a fact grid: no link home, no way to sign in
+     * after a 401, no way to ask again after a 500. The offers are per STATUS because a wrong offer is worse
+     * than none — "Sign in" on a 404 tells a reader they were refused when they were not — and every href is
+     * either the request's own path (built as '/'.ltrim($request->path(), '/'), so it cannot carry a scheme)
+     * or a configured value that ErrorPageSettings::url() has already refused unless it is a path or an
+     * http(s) URL.
+     */
+    private static function actions(ErrorReport $report, ErrorPageSettings $settings): string
+    {
+        if (! $settings->actions) {
+            return '';
+        }
+
+        /** @var list<array{href: string, label: string}> $links */
+        $links = [];
+
+        if ($report->status === 401 && $settings->signIn !== '') {
+            $links[] = ['href' => $settings->signIn, 'label' => 'Sign in'];
+        }
+
+        // A 5xx is the one failure whose reader can act without leaving the page they wanted: ask for it
+        // again. A 4xx cannot be retried into success — the address, the verb or the permission is wrong.
+        if ($report->status >= 500) {
+            $links[] = ['href' => $report->path, 'label' => 'Try again'];
+        }
+
+        if ($settings->home !== '') {
+            $links[] = ['href' => $settings->home, 'label' => 'Go home'];
+        }
+
+        if ($settings->support !== '') {
+            $links[] = ['href' => $settings->support, 'label' => 'Contact support'];
+        }
+
+        if ($links === []) {
+            return '';
+        }
+
+        $html = '<nav class="acts" aria-label="What you can do next">';
+        foreach ($links as $i => $link) {
+            $html .= '<a class="act'.($i === 0 ? ' primary' : '').'" href="'.self::e($link['href']).'">'
+                .self::e($link['label']).'</a>';
+        }
+
+        return $html.'</nav>';
     }
 
     /**
@@ -483,6 +579,12 @@ code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border:1p
 .status.down b{color:var(--down)} .status.warn b{color:var(--warn)} .status.idle b{color:var(--idle)}
 .code{margin:0;font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--ink-2)}
 .message{margin:6px 0 0;font-size:16px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.act{display:inline-flex;align-items:center;font-size:13.5px;font-weight:600;text-decoration:none;padding:7px 14px;border-radius:8px;border:1px solid var(--line-2);color:var(--ink);background:var(--panel)}
+.act:hover{border-color:var(--ink-3)}
+.act:focus-visible{outline:2px solid var(--brand-ink);outline-offset:2px}
+.act.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.act.primary:hover{opacity:.9}
 .muted{color:var(--ink-2)}
 .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 /* Each cell draws its own rule up and to the left. The first row's and first column's shadows fall outside

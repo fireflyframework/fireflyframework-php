@@ -955,15 +955,16 @@ return [
     //         'max-frames' => 40,
     //
     //         /*
-    //          | Whether the error REPORT carries the sentence the problem document already publishes — the
+    //          | Whether the production page says the sentence the problem document already publishes — the
     //          | application's own "Order 42 does not exist." for a sub-500 failure, which is the entire
-    //          | point of the exception taxonomy — so that a page can say the same words the document does
-    //          | instead of the generic sentence for the status.
+    //          | point of the exception taxonomy — instead of the generic sentence for the status.
     //          |
-    //          | THE BUILT-IN PAGE DOES NOT PRINT IT YET. It is carried and nothing more: the production
-    //          | page's lede is still the generic reassurance for the status. What reads the sentence today
-    //          | is an application's own error view (`views` below), which is handed the report as `$error`
-    //          | and can print `$error->publicDetail`. Turning this key off empties that property.
+    //          | IT IS THE PAGE'S LEDE. With this on (the default) a 404 raised as `abort(404, 'No such
+    //          | tenant.')` says "No such tenant." to the person and to the client alike, where the page
+    //          | used to say "That page does not exist." beside a document saying something else about the
+    //          | same failure. Turn it off and the lede goes back to the reassurance for the status, which
+    //          | is the status-and-code-only page a deployment may prefer. An application's own error view
+    //          | (`views` below) reads the same sentence as `$error->publicDetail`; this key empties it.
     //          |
     //          | Only sentences that were WRITTEN for a caller are ever carried: below 500, from a
     //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
