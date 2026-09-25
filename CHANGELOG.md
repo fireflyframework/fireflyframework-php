@@ -4,6 +4,24 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.6] - 2026-09-25
+
+### Fixed
+
+- **The resource server could not validate a token from Microsoft Entra.** `InMemoryJwksProvider::fromJwks()`
+  called `JWK::parseKeySet($jwks)` with no default algorithm, and php-jwt refuses a key that does not
+  state one — `JWK must contain an "alg" parameter`. Entra's tenant JWKS states none. Measured
+  against a live tenant on 2026-09-24: **six keys, zero with `alg`**, so every request carrying an
+  Entra token raised, and an application whose whole identity story is Entra answered 500 to every
+  authenticated call while answering anonymous ones perfectly.
+
+  The parameter exists for exactly this. php-jwt applies the default ONLY to a key that does not
+  state its own, so an issuer that publishes `alg` still decides; RS256 is what every `kty: RSA` key
+  in a public JWKS is in practice, and the default is consulted per key, so a key of another type is
+  untouched.
+
+  Two tests pin both halves: a key set with no `alg` parses, and a key that states `RS256` keeps it.
+
 ## [26.09.5] - 2026-09-24
 
 Two things the same application found, one on a developer's machine and one on a shared Kafka topic. Delete a
