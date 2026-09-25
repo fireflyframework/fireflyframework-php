@@ -60,9 +60,29 @@ use Illuminate\Http\Request;
  * harness, a boot that never binds a request — so a constructor dependency on it would fail boots that never
  * answer a login (the same reason SessionCsrf resolves the Encrypter on its first use).
  */
+/*
+ * AND ON FORM LOGIN BEING TURNED ON, which this filter never asked and its sibling always has.
+ *
+ * `HttpBasicFilter` carries `firefly.security.http_basic.enabled`; this one carried only
+ * `firefly.security.enabled`, so it existed in EVERY application with security on — including the
+ * great majority, where `firefly.security.form_login.enabled` is left at its default of false and no
+ * login form is ever rendered or posted to.
+ *
+ * THAT IS WHAT MADE #[Lazy] ON THE AuthenticationManager BEAN INSUFFICIENT ON ITS OWN, and it is the
+ * part worth remembering: #[Lazy] stops a bean being resolved FOR ITSELF at boot; it does not stop
+ * an eager consumer from pulling it in. This filter is a non-lazy singleton #[Component] that takes
+ * the manager as a constructor argument, so the manager was built regardless — and with it
+ * `DaoAuthenticationProvider`, whose constructor precomputes a dummy password hash.
+ *
+ * Measured in a dworkers preproduction container on 2026-09-25, on a request that carries an Entra
+ * token and touches no login form: one bcrypt hash at cost 12 cost 244.6 ms there and 171.5 ms on a
+ * developer Mac, inside a ~620 ms request whose BootProviders was ~490 ms. Under PHP-FPM the context
+ * starts on every request, so every request paid it.
+ */
 #[Component]
 #[Order(-92)]
 #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+#[ConditionalOnProperty(name: 'firefly.security.form_login.enabled', havingValue: 'true')]
 final class FormLoginFilter extends OncePerRequestFilter
 {
     public function __construct(

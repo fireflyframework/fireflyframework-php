@@ -4,6 +4,55 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.7] - 2026-09-25
+
+### Fixed
+
+- **Every request paid for a bcrypt hash it never used.** `DaoAuthenticationProvider`'s constructor
+  precomputes a dummy password hash so that the user-not-found path costs the same wall-clock as a
+  real credential check — the standard defence against username enumeration, and correct. What was
+  not correct is *when* it ran. The `authenticationManager()` bean carried no `#[Lazy]`, so
+  `EagerSingletonsPass` resolved it at every context start, and under PHP-FPM a context start is
+  **every request**.
+
+  Measured in a preproduction container on 2026-09-25, on a request carrying an Entra token that
+  touches no login form: the whole request took ~620 ms, of which `BootProviders` was ~490 ms, and a
+  single bcrypt hash at cost 12 was **244.6 ms** (171.5 ms on a developer Mac). Constructing the
+  provider twice cost 171.5 ms and 169.6 ms — nothing was memoised.
+
+  **Two changes were needed and neither works alone**, which is the part worth knowing:
+
+  | | boot |
+  | --- | --- |
+  | before | 267 ms |
+  | `#[Lazy]` alone | 264 ms |
+  | the filter condition alone | 272 ms |
+  | **both** | **93 ms** |
+
+  `#[Lazy]` on `authenticationManager()` stops the bean being resolved *for itself*. It does not stop
+  an eager consumer from pulling it in — and `FormLoginFilter` is a non-lazy singleton `#[Component]`
+  that takes the manager as a constructor argument. That filter carried only
+  `firefly.security.enabled`, while its sibling `HttpBasicFilter` has always carried
+  `firefly.security.http_basic.enabled`, so it existed in every application with security on,
+  including the great majority where `firefly.security.form_login.enabled` is left at its default of
+  `false` and no login form is ever rendered. It now asks the same question its sibling asks.
+
+  **Memoising the hash would have made this worse**, and it is the obvious move. On first use the
+  not-found path would pay encode + verify while a wrong password pays verify alone — and under FPM
+  every request is a fresh process, so that would be every time. The timing leak the precomputation
+  exists to close would reopen, wider and inverted. The hash is right; building it at boot, in
+  applications that never authenticate by password, was not.
+
+### Known
+
+- **A block comment between two attributes silently drops the attributes after it.** Both fixes above
+  were written once, compiled into the package manifests, and had no effect — because the explanatory
+  comment sat *between* `#[ConditionalOnMissingBean]` and `#[Lazy]`, and between the two
+  `#[ConditionalOnProperty]` lines. PHP accepts that placement; the component scanner stops reading
+  the group at the comment. Moving each comment above the whole attribute group is what made the
+  measurements above reproducible. Nothing warns, and the manifest simply lacks the attribute. Worth
+  a scanner fix or a lint rule; neither is in this release.
+
 ## [26.09.6] - 2026-09-25
 
 ### Fixed

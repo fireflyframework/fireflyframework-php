@@ -6,6 +6,7 @@ namespace Firefly\Security;
 
 use Firefly\Config\Config;
 use Firefly\Container\Attributes\Bean;
+use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
@@ -142,7 +143,39 @@ final class SecurityAutoConfiguration
 
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.security.enabled', havingValue: 'true')]
+    /*
+     * #[Lazy], AND THE REASON IS A MEASUREMENT RATHER THAN A PREFERENCE.
+     *
+     * `DaoAuthenticationProvider`'s constructor precomputes a dummy password hash so that the
+     * user-not-found path costs the same wall-clock as a real credential check — the standard
+     * defence against username enumeration, and it is correct. What is not correct is paying for it
+     * at BOOT: this bean carried no #[Lazy], so `EagerSingletonsPass` resolved it on every context
+     * start, and under PHP-FPM a context start is EVERY REQUEST.
+     *
+     * Measured in a dworkers preproduction container on 2026-09-25, on a request to `/up` that
+     * carries an Entra token and never touches a login form:
+     *
+     *     the whole request                    ~620 ms
+     *     BootProviders                        ~490 ms
+     *     one bcrypt hash at cost 12            244.6 ms   (171.5 ms on a developer Mac)
+     *     new DaoAuthenticationProvider(...)    171.5 ms, and 169.6 ms again — nothing is memoised
+     *
+     * So more than half of every request in every LaraFly application with security enabled was
+     * spent precomputing a hash for a code path most of them never take.
+     *
+     * MEMOISING THE HASH WOULD HAVE BEEN WORSE, which is worth writing down because it is the
+     * obvious move. On first use the not-found path would pay encode + verify while a wrong password
+     * pays verify alone — and under FPM every request is a fresh process, so that is every time. The
+     * timing leak the precomputation exists to close would reopen, wider and inverted.
+     *
+     * #[Lazy] keeps the hash exactly as it is and moves it off the boot path: the manager is built
+     * the first time something authenticates, and both the not-found and the wrong-password paths
+     * build it, so they stay timing-equivalent. An application that never authenticates by password
+     * never pays it at all. Nothing is lost by deferring it — this bean validates nothing at
+     * startup, which is the only thing eager resolution is there to buy.
+     */
     #[ConditionalOnMissingBean(AuthenticationManager::class)]
+    #[Lazy]
     public function authenticationManager(UserDetailsService $users, PasswordEncoder $encoder): AuthenticationManager
     {
         return new ProviderManager([new DaoAuthenticationProvider($users, $encoder)]);
