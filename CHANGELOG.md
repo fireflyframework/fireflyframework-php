@@ -4,6 +4,59 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.8] - 2026-09-25
+
+### Fixed
+
+- **`RdKafkaConsumerClient::close()` stranded its librdkafka client, and the release before this one
+  shipped a version number that disagreed with itself in three places.** Two unrelated repairs in one
+  release, because the second was found while verifying the first.
+
+  `close()` called `KafkaConsumer::close()` and then released the property. Releasing the property is
+  exactly right and was always there; it did nothing, because by the time it ran the handle was
+  already gone. ext-rdkafka 6.0.5, `kafka_consumer.c:531-542`, is the whole of that method:
+
+  ```
+  rd_kafka_consumer_close(intern->rk);
+  intern->rk = NULL;
+  ```
+
+  There is no `rd_kafka_destroy()`, and the free handler at `kafka_consumer.c:53-64` destroys the
+  handle only `if (intern->rk)` — which `close()` has just nulled. So the PHP object is freed and the
+  `rd_kafka_t` is not. Measured on PHP 8.5.8 / ext-rdkafka 6.0.5 / librdkafka 2.15.1, no broker:
+  **four OS threads stranded per closed consumer**, still there after five seconds of polling; zero
+  when the reference is simply dropped. Unconditional, not a race.
+
+  It now calls `unsubscribe()` — which is what leaves the consumer group, is safe on a consumer that
+  never subscribed, and lets the drop destroy the client (librdkafka logs `Destroying cgrp`). Pinned
+  by `RdKafkaConsumerClientLeavesNoThreadsTest`, which counts `rd_kafka_thread_cnt()` rather than
+  asserting a `WeakReference` goes null: **the natural test is green on this bug**, because the PHP
+  object really is freed and the leak is underneath it, in C.
+
+  A consumer of this framework found it the hard way. In dworkers the same call had been added
+  deliberately — to three integration tests and a long-running console command — to stop a segfault
+  at PHP shutdown after a green suite, under a comment explaining why it was necessary. It was the
+  cause. Anything that closes a consumer per restart accumulates dead clients and their threads for
+  as long as the process lives, which matters most where this class is used: a daemon.
+
+### Fixed — the release process itself
+
+- **The version was carried in four places and 26.09.6 moved one of them.** `Version::VERSION` said
+  `26.09.6`, the CHANGELOG's latest heading said `26.09.7`, the README badge said `26.09.5` and the
+  verbatim listing in `docs/versioning.md` said `26.09.5` — so the code inside the tag `v26.09.7`
+  reported itself as `26.09.6`. `VersionConsistencyTest` and `DocsCodeIsRealTest` had been red on
+  `main` since `26.09.6`, which is why CI was failing on all three PHP versions. All four now carry
+  `26.09.8`.
+
+- **`pint --test` was red on `main`** in three files, from the `26.09.7` commit: an import added out
+  of alphabetical order in `SecurityAutoConfiguration`, and the two security cache manifests
+  recompiled beside it.
+
+- **`phpstan` had three errors** in `InMemoryJwksProviderTest`, all from one missing
+  `@return array<string, mixed>` on its fixture helper.
+
+  Together these are why `composer check` could not pass on `main`. It passes now.
+
 ## [26.09.7] - 2026-09-25
 
 ### Fixed

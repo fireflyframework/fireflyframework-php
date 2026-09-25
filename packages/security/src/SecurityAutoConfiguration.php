@@ -6,8 +6,8 @@ namespace Firefly\Security;
 
 use Firefly\Config\Config;
 use Firefly\Container\Attributes\Bean;
-use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Attributes\Configuration;
+use Firefly\Container\Attributes\Lazy;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;

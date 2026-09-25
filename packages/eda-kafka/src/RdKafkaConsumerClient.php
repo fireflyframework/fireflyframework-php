@@ -184,9 +184,39 @@ final class RdKafkaConsumerClient implements KafkaConsumerClient
         return $headers;
     }
 
+    /**
+     * Let the consumer go — and do NOT call `KafkaConsumer::close()` to do it.
+     *
+     * ext-rdkafka 6.0.5, kafka_consumer.c:531-542, is the whole body of that method:
+     *
+     *     rd_kafka_consumer_close(intern->rk);
+     *     intern->rk = NULL;
+     *
+     * There is no `rd_kafka_destroy()`. The free handler at kafka_consumer.c:53-64 destroys the
+     * handle only `if (intern->rk)` — which `close()` has just nulled — so `close()` hands the
+     * `rd_kafka_t` to nobody. The PHP object is then freed and the client outlives it, with its
+     * threads, until the process exits. Measured on PHP 8.5.8 / ext-rdkafka 6.0.5 / librdkafka
+     * 2.15.1: four OS threads stranded per closed consumer, still there after five seconds of
+     * polling; zero when the reference is simply dropped. It is unconditional, not a race.
+     *
+     * THAT IS WHY THE NULLING BELOW WAS NOT ENOUGH. Releasing the property is exactly right and was
+     * always here — but by the time it ran, `close()` had already detached the handle, so freeing
+     * the object freed nothing. The two lines looked like a careful teardown and were a leak.
+     *
+     * `unsubscribe()` is what leaves the consumer group, and it is safe on a consumer that never
+     * subscribed (verified: no throw). librdkafka logs "Destroying cgrp" when the reference is
+     * dropped afterwards, so group membership is still surrendered — nothing the old shape
+     * achieved is lost.
+     *
+     * A CONSUMER OF THIS FRAMEWORK FOUND IT THE HARD WAY. In dworkers the same call had been added
+     * to three integration tests and a long-running console command, deliberately, to stop a
+     * segfault at PHP shutdown after a green suite — and it was the cause of it. Anything that
+     * closes a consumer per restart accumulates dead clients and their threads for as long as the
+     * process lives, which matters most in exactly the place this class is used: a daemon.
+     */
     public function close(): void
     {
-        $this->consumer?->close();
+        $this->consumer?->unsubscribe();
         $this->consumer = null;
     }
 

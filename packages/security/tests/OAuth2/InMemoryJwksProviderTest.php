@@ -13,6 +13,9 @@ use Firefly\Security\OAuth2\InMemoryJwksProvider;
  * validate a single token from the identity provider most applications use. The fixtures below are
  * that shape.
  */
+/**
+ * @return array<string, mixed> one JWKS key, `alg` present or absent
+ */
 function jwksKeyWithout(?string $alg): array
 {
     // A real RSA public key's components; only `alg` varies between the cases.
