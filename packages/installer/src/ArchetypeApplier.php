@@ -67,6 +67,10 @@ final class ArchetypeApplier
             if (isset($existing[$capability->package])) {
                 continue; // already a direct dependency — the skeleton's own, or a duplicate --with
             }
+            if ($capability->id === 'testing') {
+                $requireDev['orchestra/testbench'] ??= '^11.1';
+                $requireDev['illuminate/testing'] ??= '^13.0';
+            }
             if ($capability->dev) {
                 $requireDev[$capability->package] = $constraint;
             } else {

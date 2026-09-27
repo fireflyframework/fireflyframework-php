@@ -2,19 +2,15 @@
 
 ## Monorepo layout
 
-`fireflyframework-php` is a single monorepo housing every LaraFly package as an independent Composer unit:
+`fireflyframework-php` publishes the root `firefly/firefly` library. All component code stays under
+`packages/*`; their manifests document module requirements and namespaces and are validated together.
+They are not published or installed separately. `skeleton/` is the bundled application template used by
+`firefly new`. `samples/lumen` consumes the root through a copied path repository.
 
-- **`packages/*`** — one directory per package (`kernel`, `container`, `config`, `context`, `autoconfigure`,
-  `validation`, `web`, `resilience`, `scheduling`, `scheduling-postgres`, `domain`, `data`, `eda` + its three
-  broker adapters, `messaging`, `cqrs`, `security`, `security-oauth2-client`, `security-oauth2-server`,
-  `actuator`, `observability`, `admin`, `openapi`, `testing`, `cli`, `firefly`, `installer`), each with its
-  own `composer.json`, `src/`, and `tests/`. `ls packages` is the list that cannot go stale;
-  `.github/workflows/release.yml`'s split matrix is the one that has to name every one of them.
-- **`skeleton/`** — the `firefly/skeleton` `type: project` create-project template, at the top level, outside
-  `packages/*`.
-- The root `composer.json` is a `type: project` aggregator: it wires every `packages/*` directory as a local
-  Composer **path repository** (`*@dev`) so the whole monorepo installs and tests together from one
-  `vendor/`.
+Production namespaces, autoload files and Laravel discovery live in the root manifest. Component test
+namespaces and `Lumen\` belong in root `autoload-dev`, so consumers never load repository tests. When
+adding a component, update both its internal descriptor and the root's dependency/autoload/discovery/
+replacement entries. The distribution consumer gate verifies the resulting installation.
 
 ## Local setup
 
@@ -40,7 +36,8 @@ Before opening a PR, all of the following must pass:
 
 ```bash
 composer check          # pint --test && phpstan analyse && pest && deptrac analyse
-composer mono-validate   # symplify/monorepo-builder: validates every packages/*/composer.json
+composer mono-validate   # consistency of internal component dependency versions
+composer test:package    # exported library, copied Lumen consumer and bundled installer
 .venv-docs/bin/mkdocs build --strict   # docs/: link integrity, no orphaned pages
 bash scripts/check-no-sensitive-tracked.sh   # the pre-push guard, run directly
 ```
@@ -191,8 +188,7 @@ inventory and every "404 until exposed" sentence, the exceptions `PersistenceExc
 builds, the order in which `ErrorPageRenderer` really reads an `Accept` header, the stereotype hierarchy PHP
 really declares, the Composer constraint tables `composer/semver` really matches, the `make:firefly-*` tables
 the generators really back, every `firefly:cache` figure `ManifestCacheWriter` really produces (the console
-line, the pair count, the step count and the artifact count, in both manuscripts), the capabilities `--with`
-really fetches — the ones the `firefly/firefly` metapackage does *not* already require — the roster of
+line, the pair count, the step count and the artifact count, in both manuscripts), the roster of
 documentation guards this very section names, the registration default `DbHealthIndicator`'s own condition
 attribute really declares (a stale **default** is as dangerous as a stale count, and that one outlived its
 change in five places), the account these pages give of the book's own gate, pinned to what `verify_code.py`
@@ -259,8 +255,8 @@ exist.
 Package boundaries are enforced with **Deptrac** (`deptrac.yaml`): every package is its own layer, and the
 `ruleset` section declares which layers each one may depend on. A dependency edge that isn't declared is a
 Deptrac violation — this is how the monorepo keeps, for example, `firefly/kernel` free of any dependency on
-`firefly/web`, or `firefly/installer` free of every framework runtime dependency (it depends on nothing
-layered at all — `symfony/console`/`symfony/process` only).
+`firefly/web`. The bundled installer may read the kernel version but has no other framework layer
+dependency.
 
 Packages from an already-shipped milestone are treated as **FROZEN**: once a package's milestone is done and
 reviewed, further edits to its `src/` are the exception, not the rule, and are called out explicitly in

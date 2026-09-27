@@ -11,7 +11,7 @@ use Firefly\Web\WebServiceProvider;
 
 /**
  * The browser suite boots the skeleton with the provider set a CREATED app gets from Laravel's package
- * discovery — derived from installed.json rather than typed by hand, so adding a package to firefly/firefly
+ * discovery — derived from the root manifest rather than typed by hand, so adding a provider to firefly/firefly
  * changes the browser fixture without anyone remembering to. This test runs in the default gate (no
  * browser) and pins the derivation.
  */
@@ -28,22 +28,10 @@ it('derives the created-app provider set from the packages the skeleton requires
         ->and(array_count_values($providers))->each->toBe(1);
 });
 
-it('names every provider a package in the metapackage declares', function (): void {
-    /** @var array{packages: list<array{name: string, extra?: array{laravel?: array{providers?: list<string>}}}>} $installed */
-    $installed = json_decode((string) file_get_contents(__DIR__.'/../vendor/composer/installed.json'), true, 512, JSON_THROW_ON_ERROR);
-    /** @var array{require?: array<string, string>} $meta */
-    $meta = json_decode((string) file_get_contents(__DIR__.'/../packages/firefly/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-
-    $declared = [];
-    foreach ($installed['packages'] as $package) {
-        if (isset($meta['require'][$package['name']])) {
-            foreach ($package['extra']['laravel']['providers'] ?? [] as $provider) {
-                if ($provider !== FireflyAutoConfigureServiceProvider::class) {
-                    $declared[] = $provider;
-                }
-            }
-        }
-    }
+it('names every provider declared by the root library', function (): void {
+    /** @var array{extra: array{laravel: array{providers: list<string>}}} $root */
+    $root = json_decode((string) file_get_contents(__DIR__.'/../composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    $declared = array_filter($root['extra']['laravel']['providers'], static fn (string $provider): bool => $provider !== FireflyAutoConfigureServiceProvider::class);
 
     expect(array_diff($declared, DiscoveredProviders::forSkeleton()))->toBe([]);
 });

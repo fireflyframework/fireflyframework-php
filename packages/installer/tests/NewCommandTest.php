@@ -34,7 +34,7 @@ it('shells the exact composer create-project invocation for a fresh dir', functi
     $tester = runNew($runner, ['name' => $dir, '--no-git' => true]);
 
     $tester->assertCommandIsSuccessful();
-    expect($runner->calls[0]['command'])->toBe(
+    expect(array_slice($runner->calls[0]['command'], 0, 5))->toBe(
         ['composer', 'create-project', 'firefly/skeleton', $dir, '--no-interaction']
     );
 });
@@ -93,7 +93,7 @@ it('empties the target directory under --force before create-project runs', func
         $tester->assertCommandIsSuccessful();
         expect(is_dir($dir))->toBeTrue()                     // the directory itself survives
             ->and(scandir($dir))->toBe(['.', '..'])          // ...but nothing inside it does
-            ->and($runner->calls[0]['command'])->toBe(
+            ->and(array_slice($runner->calls[0]['command'], 0, 5))->toBe(
                 ['composer', 'create-project', 'firefly/skeleton', $dir, '--no-interaction']
             );
     } finally {
@@ -211,4 +211,16 @@ it('prompts for the archetype and the capabilities when the terminal is interact
         ->toContain('Which capabilities?')
         ->toContain('api')
         ->toContain('security, eda');
+});
+
+it('creates projects from the bundled skeleton without a mirror repository', function () {
+    $runner = new FakeProcessRunner;
+    runNew($runner, ['name' => sys_get_temp_dir().'/bundled-'.bin2hex(random_bytes(5)), '--no-git' => true]);
+    $repositories = array_values(array_filter($runner->calls[0]['command'], static fn (string $arg): bool => str_starts_with($arg, '--repository=')));
+    expect($repositories)->toHaveCount(1);
+    /** @var array{type: string, url: string, options: array{symlink: bool}} $repository */
+    $repository = json_decode(substr($repositories[0], strlen('--repository=')), true, flags: JSON_THROW_ON_ERROR);
+    expect($repository['type'])->toBe('path')
+        ->and(realpath($repository['url']))->toBe(realpath(dirname(__DIR__, 3).'/skeleton'))
+        ->and($repository['options']['symlink'])->toBeFalse();
 });

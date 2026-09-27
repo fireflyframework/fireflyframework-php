@@ -460,7 +460,12 @@ final class NewCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $runner = $this->runner ?? new SymfonyProcessRunner($output);
         // …
-        $create = ['composer', 'create-project', 'firefly/skeleton', $directory, '--no-interaction'];
+        $repository = json_encode([
+            'type' => 'path',
+            'url' => dirname(__DIR__, 3).'/skeleton',
+            'options' => ['symlink' => false, 'versions' => ['firefly/skeleton' => Version::VERSION]],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $create = ['composer', 'create-project', 'firefly/skeleton', $directory, '--no-interaction', '--repository='.$repository];
         if ($input->getOption('dev')) {
             $create[] = '--stability=dev';
         }

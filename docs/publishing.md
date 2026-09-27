@@ -1,110 +1,75 @@
-# Publishing
+# Publishing LaraFly
 
-This page is the release/split runbook for the LaraFly monorepo: how the 29 packages under `packages/*`
-(including `firefly/installer` and the `firefly/firefly` metapackage), plus `firefly/skeleton` at the top level
-— 30 shippable units in total — end up as individually-installable Packagist packages, and the exact, gated
-sequence for the first manual publish. The authoritative list is the `matrix.package` block in
-`.github/workflows/release.yml`: one entry per unit, and `ls packages` plus `skeleton` is what it has to
-match.
+LaraFly publishes **one library, `firefly/firefly`**, from this repository's root `composer.json`.
+Its tagged archive contains every component's code, configuration, migrations, views, compiled manifests,
+the `firefly` installer binary and the application skeleton. No component mirror repositories or
+cross-repository `ACCESS_TOKEN` are needed.
 
-## Model
+## Package identity and compatibility
 
-Development happens in one monorepo (`fireflyframework-php`); each package is published as a **read-only**
-Packagist mirror at `fireflyframework/firefly-<pkg>` (e.g. `fireflyframework/firefly-kernel`). All mirrors
-share **one CalVer tag** — a single `v26.09.3`-style tag on the monorepo cuts a release of every package at
-once, at the same version, even for packages that had no code change that cycle. There is no independent
-per-package versioning; see [Versioning](versioning.md) for why.
+The root package replaces the 28 other component names with `self.version`. Together with its own
+`firefly/firefly` name, that covers the 29 former packages. `firefly/lumen` is a sample, not a replacement;
+`firefly/skeleton` is a bundled project template, not a second published package.
 
-The mirrors are read-only by design: nobody commits directly to `fireflyframework/firefly-kernel` — every
-change flows through the monorepo and gets split out mechanically. This keeps the 30 mirror repos from ever
-drifting out of sync with each other or with the monorepo history.
+Consumers first require the provider package:
 
-## Automated split
+```bash
+composer require firefly/firefly
+composer require firefly/eda-kafka
+```
 
-Once wired (tracked separately from this docs task), `.github/workflows/release.yml` fires on a pushed `v*`
-tag and runs [`symplify/monorepo-split-github-action`](https://github.com/symplify/monorepo-split-github-action)
-once per shippable unit (all 29 `packages/*` + `skeleton`), pushing each subtree to its own
-`fireflyframework/firefly-<pkg>` mirror repository at that tag. The workflow needs an `ACCESS_TOKEN` — an
-organization-level GitHub Personal Access Token with `repo` scope on every mirror — stored as a repository (or
-organization) secret, since the default `GITHUB_TOKEN` can't push to a *different* repository.
+The second requirement is satisfied by the installed framework at a compatible version. Composer does
+not automatically discover an unknown provider from a replacement name alone: an empty project must
+require `firefly/firefly` explicitly. `self.version` prevents a framework from satisfying component
+constraints from another release line. See [Composer's replace documentation](https://getcomposer.org/doc/04-schema.md#replace).
 
-**The mirror repositories must already exist when the tag is pushed.** The split action creates neither the
-repository nor the token, and — this is the trap — it **exits 0 when its push fails**. On `v26.09.1` every
-split job reported success while no mirror existed and nothing whatsoever was published. The workflow
-therefore wraps the action in two guards of its own, and neither is optional:
+The component manifests under `packages/*` remain internal dependency and namespace descriptors.
+`composer mono-validate` still checks their version consistency. Do not run monorepo-builder `merge`,
+`bump-interdependency` or `release`: there are no component publications to coordinate. The root manifest
+owns runtime requirements, autoloading, Laravel discovery and the installer binary. Root `autoload-dev`
+loads component test support and Lumen only when developing this repository.
 
-- a `preflight` job that fails the run once, with a pointer to this page, when `ACCESS_TOKEN` is unset —
-  rather than letting a matrix of credential-less jobs go green;
-- a per-package `Verify the mirror actually received the tag` step that reads the tag back from the mirror
-  through the GitHub API and fails if it is not there.
+All adapter code is included. Configuration still chooses the active transport; PostgreSQL needs
+`ext-pdo_pgsql`, Kafka needs `ext-rdkafka`, and the RabbitMQ client is included. Testbench and
+`illuminate/testing` are development dependencies of an application using the testing kit, not production
+dependencies of the library:
 
-So a green **Release (split mirrors)** run now means the packages really are published. Treat a green run
-from before those guards existed as unverified.
+```bash
+composer require --dev orchestra/testbench:^11.1 illuminate/testing:^13.0
+```
 
-## Interdependency
+## Validate a change
 
-Dev uses `*@dev` path repos (untouched) — every package in `packages/*/composer.json` requires its siblings
-as `firefly/xyz: "*@dev"`, resolved locally via the root `composer.json`'s `path` repository entry. That's
-what makes `composer install` at the monorepo root wire the whole tree together for local development and the
-test suite.
+```bash
+composer install
+composer validate --strict
+composer mono-validate
+composer check
+composer test:package
+composer test:browser
+```
 
-At release, `vendor/bin/monorepo-builder bump-interdependency 26.09.3` rewrites every sibling constraint from
-`*@dev` to `^26.09` **on the release commit that gets tagged and split**, so the resulting mirrors are
-stable-installable on their own — a consumer running `composer require fireflyframework/firefly-eda` never
-sees a `*@dev` constraint, which `minimum-stability: stable` (the default posture) would refuse to resolve.
-Immediately after the tag is cut and split, the monorepo tree is restored to `*@dev` so local development
-continues undisturbed.
+`test:package` exports the current library, installs it without development dependencies in a separate
+application, requires every component name, boots and compiles a real route, runs the bundled installer,
+installs the Lumen consumer through a copied root path repository, and rejects an incompatible component
+version. Its package repositories exclude `firefly/*` from Packagist so a mirror cannot mask a missing
+replacement. The consumer directories are retained under the system temporary directory for inspection.
+CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushes to `main`.
 
-The `extra.branch-alias: { "dev-main": "26.x-dev" }` entry every package carries is unaffected by this
-dance — it remains in place for anyone tracking `dev-main` directly rather than a tagged release.
+## First publication and later releases
 
-## Manual first publish (controller + user, gated)
+1. Merge a reviewed PR only after all quality, browser, documentation and package checks pass.
+2. Update the framework version, README version badge and changelog together, then run the gates again.
+3. Tag that release commit with its new `vYY.MM.Patch` version. Do not move an existing tag. Tags through
+   `v26.09.8` describe the old development aggregator and cannot serve as this new library.
+4. Register `firefly/firefly` on Packagist using
+   `https://github.com/fireflyframework/fireflyframework-php` and enable the repository webhook. This is a
+   one-time publisher action; subsequent releases use tags from this same repository.
+5. Push the new release tag. **Release (single package)** validates the tagged distribution with read-only
+   repository permissions. A green workflow proves the archive checks passed; it does not prove Packagist
+   has indexed the tag.
+6. Confirm the exact new version is visible on Packagist and install it in a fresh project with default
+   stable resolution, no custom repositories, and matching `firefly/firefly` and `firefly/eda-kafka`
+   constraints. Publication is complete only when that install succeeds.
 
-The very first publish is done by hand, one careful step at a time, with a human in the loop at every
-irreversible action — not scripted end-to-end. Steps 4 and onward are **irreversible**: they push public
-history, create public mirror repositories, and register public Packagist packages. Do not proceed past step
-3 without the operator (a human, not an agent) explicitly confirming each subsequent step.
-
-1. **`git config core.hooksPath scripts/hooks`** — activate the committed pre-push guard hook for this local
-   clone. This is the *first* action, before anything else in this runbook, so the guard fires automatically
-   on every push below without relying on anyone remembering to run it manually.
-2. Confirm access to the `fireflyframework` GitHub org and repo-creation rights within it; confirm the
-   `ACCESS_TOKEN` org PAT and a Packagist API token are both available to whoever is running this runbook.
-3. Run the pre-push guard (it also runs automatically via the hook from step 1, but run it explicitly here as
-   a checkpoint) plus a final manual sweep that must come back **empty**:
-   ```bash
-   bash scripts/check-no-sensitive-tracked.sh
-   git ls-files | grep -iE 'superpowers|\.claude|\.env$'
-   ```
-4. **On a release commit:**
-   ```bash
-   vendor/bin/monorepo-builder bump-interdependency 26.09.3
-   ```
-   Verify every `packages/*/composer.json` now requires its siblings as `^26.09` (not `*@dev`), run
-   `composer validate` per package, commit the result, and **re-tag** `v26.09.3` at this commit — so the tag
-   that gets pushed and split in the next step is the one carrying `^26.09` constraints, not `*@dev`.
-5. **`git remote add origin git@github.com:fireflyframework/fireflyframework-php.git` then
-   `git push origin main`** — **irreversible**: this publishes the monorepo's history publicly for the first
-   time. Push the **branch only**; hold the tag back until step 6. Pushing `--tags` here fires the split
-   workflow immediately, before the mirrors of step 6 exist, and every job would then have nothing to push
-   to.
-6. **Create the 30 mirror repositories under the `fireflyframework` org, confirm `ACCESS_TOKEN` can write to
-   them, and only then `git push origin v26.09.3`** — **irreversible**: pushing the tag runs the split, and
-   each `fireflyframework/firefly-<pkg>` mirror now exists publicly, carrying `^26.09` sibling constraints.
-   Wait for the **Release (split mirrors)** run to go green: with the guards above in place, green means each
-   mirror answered with the tag.
-7. **Staged Packagist registration** — register only a first wave, then verify, before committing the rest:
-   register `firefly/kernel`, `firefly/container`, `firefly/config`, and `firefly/eda` on Packagist first.
-   Then, in a scratch directory, under Composer's default `minimum-stability: stable`:
-   ```bash
-   mkdir /tmp/firefly-publish-check && cd /tmp/firefly-publish-check
-   composer init --no-interaction
-   composer require firefly/eda:^26.09
-   ```
-   **Confirm this resolves and installs cleanly** before doing anything else. Only if it succeeds, register
-   every remaining package plus `firefly/firefly` (the runtime metapackage) and `firefly/installer`. If it
-   fails, **stop** — the interdependency-constraint strategy needs fixing, and only four packages are affected
-   (versus discovering the same problem after all 30 are already permanently registered on Packagist).
-8. After publishing, restore the monorepo dev tree to `*@dev` — revert the `bump-interdependency` commit (or
-   bump the constraints back by hand) — so local development on `main` continues exactly as before this
-   runbook started.
+An unmerged branch or a local consumer check is not a published release.

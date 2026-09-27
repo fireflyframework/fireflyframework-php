@@ -8,6 +8,7 @@ function fireflyUnitDirs(): array
     $root = dirname(__DIR__);
     $dirs = glob($root.'/packages/*', GLOB_ONLYDIR) ?: [];
     $dirs[] = $root.'/skeleton';
+    $dirs[] = $root;
 
     return $dirs;
 }

@@ -12,6 +12,10 @@ final class EdaPostgresBootServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        if ($this->app->make('config')->get('firefly.eda.provider') !== 'postgres') {
+            return;
+        }
+
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         if ($this->app->runningInConsole()) {

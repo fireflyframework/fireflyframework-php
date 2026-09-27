@@ -8,10 +8,8 @@ use Firefly\Installer\CapabilityCatalog;
 /**
  * The anti-rot guard for the hand-owned capability map.
  *
- * firefly/installer is a GLOBAL install with no monorepo on disk and no firefly runtime dependency, so it
- * cannot enumerate packages/* when it runs. The enumeration therefore happens HERE, where the monorepo
- * exists: every firefly/* package in packages/ must be either a capability or an explicitly-justified core
- * package, so adding a package to the family fails this test until someone decides which it is.
+ * Every internal component descriptor must correspond to an offered capability or a documented core
+ * component. The public installer choices are curated even though the distribution contains all code.
  *
  * @return list<string> every `name` in packages/ * /composer.json
  */

@@ -1,13 +1,12 @@
 # Installer
 
-`firefly/installer` is LaraFly's global scaffolding tool — the `laravel/installer` analogue. It is a single
-`firefly new` Symfony Console binary with **zero Firefly runtime dependencies**, so `composer global require
-firefly/installer` stays a light, fast install regardless of how large the rest of the framework family gets.
+The installer is bundled in the `firefly/firefly` library. Its `firefly new` Symfony Console binary
+uses the skeleton shipped in that same distribution, so creating an application needs no skeleton mirror.
 
 ## `firefly new <app>`
 
 ```bash
-composer global require firefly/installer
+composer global require firefly/firefly
 firefly new my-app
 ```
 
@@ -37,7 +36,7 @@ php artisan firefly:serve
 run via its `ProcessRunner` seam:
 
 1. ```bash
-   composer create-project firefly/skeleton <directory> --no-interaction [--stability=dev]
+   composer create-project firefly/skeleton <directory> --no-interaction --repository=<bundled-path-repository> [--stability=dev]
    ```
    Exactly the same command documented in [Installation § Without the installer](../installation.md#without-the-installer)
    — `firefly/skeleton`'s own `post-create-project-cmd` hooks (`.env` copy, sqlite file, `key:generate`,
@@ -54,13 +53,13 @@ run via its `ProcessRunner` seam:
 If the `composer create-project` step fails, `firefly new` reports the error and exits non-zero without
 attempting git initialization.
 
-## The zero-firefly-deps design
+## Distribution
 
-`packages/installer/composer.json` requires only `php`, `symfony/console`, and `symfony/process` — no
-`firefly/kernel`, no `firefly/container`, nothing from the runtime family. This is deliberate: `firefly/installer`
-is meant to be installed **globally** (`composer global require`), running entirely outside the context of any
-particular LaraFly project, so it must not drag in framework packages it will never use. The Deptrac `Installer`
-layer reflects this — it depends on no other layer in `deptrac.yaml`, and is depended on by none.
+The root manifest exposes `packages/installer/bin/firefly` as a Composer binary. Its autoloader supports
+both Composer's installed proxy and direct execution in a source checkout. The installer reads the kernel
+version for its bundled skeleton path repository; Deptrac permits that one framework dependency.
+`--with=testing` also declares the external test harness in the generated application's development
+requirements, because replacing `firefly/testing` does not install its old transitive requirements.
 
 ## The `ProcessRunner` seam
 

@@ -7,42 +7,15 @@ namespace Firefly\Installer;
 use InvalidArgumentException;
 
 /**
- * The catalog behind `--with=` and the interactive dependency picker: capability id -> firefly/* package.
+ * The catalog behind `--with=` and the interactive picker: capability id -> component requirement.
  *
- * WHY A DECLARATIVE MAP RATHER THAN A DIRECTORY SCAN
- * --------------------------------------------------
- * The obvious implementation is "list packages/* and offer every firefly package you find". It cannot work
- * here, and not for a stylistic reason: firefly/installer is a GLOBAL install. `composer global require
- * firefly/installer` puts this binary in ~/.composer/vendor with symfony/console + symfony/process and
- * nothing else — there is no monorepo checkout on that machine, no packages/ directory to enumerate, and no
- * firefly runtime package to introspect. The installer runs BEFORE the framework exists on disk.
+ * The root library ships all component code. This curated list distinguishes application capabilities
+ * from framework plumbing, rather than presenting every source directory as a user choice. The skeleton
+ * requires the root package, so its manifest alone cannot describe those choices.
  *
- * The second candidate, "read the list out of the skeleton's composer.json", fails for a different reason:
- * the skeleton requires exactly `firefly/cli` + `firefly/firefly`. firefly/firefly is the runtime BOM (the
- * Composer analog of a Maven BOM) and drags the whole family behind it, so the skeleton's require block
- * names two packages and describes the lot. There is no capability list in it to read, and reading one
- * would require resolving the dependency graph — i.e. running Composer — before we are allowed to ask the
- * user anything.
- *
- * WHICH IS ALSO WHY `--with` NEVER DECIDES WHETHER CODE EXISTS. Every non-adapter capability's package is
- * required by the BOM, so `--with security` promotes an already-installed package to an explicit dependency
- * in the generated composer.json — it does not fetch anything new. That uniformity is asserted by
- * tests/MetapackageCoverageTest.php, and it is not free: firefly/admin and firefly/openapi were once
- * offered here while the BOM required neither, so `--with admin` was the only way to get the dashboard at
- * all and a plain `create-project` silently had none.
- *
- * So the map below is owned here, and the rot it invites is handled where it can actually be caught: the
- * CapabilityCatalogTest enumerates the REAL packages/* directory in the monorepo and fails the build if any
- * firefly/* package there is neither a capability nor listed in self::corePackages(). Adding a package to
- * the family therefore forces a deliberate decision — "is this something a user picks?" — instead of
- * silently going missing from the installer for a year. The enumeration still happens; it happens at CI
- * time, where the monorepo exists, rather than at install time, where it does not.
- *
- * WHAT IS NOT A CAPABILITY
- * ------------------------
- * kernel/container/config/context/autoconfigure/web/cli are the framework itself — an app without them is
- * not a LaraFly app, so offering them as opt-ins would be offering the user a way to build something
- * broken. firefly/firefly is the BOM that ships them, and firefly/installer is this tool.
+ * CapabilityCatalogTest checks every internal module descriptor against this list and corePackages().
+ * Adapter selection remains a configuration decision; the testing capability also adds its external
+ * development harness through ArchetypeApplier.
  */
 final class CapabilityCatalog
 {
@@ -103,7 +76,7 @@ final class CapabilityCatalog
             'firefly/autoconfigure' => 'the conditional auto-configuration engine',
             'firefly/web' => 'the HTTP layer; both the api and web archetypes route through it',
             'firefly/cli' => 'the developer console the skeleton already requires directly',
-            'firefly/firefly' => 'the runtime BOM that ships the family in one line',
+            'firefly/firefly' => 'the root library containing every component',
             'firefly/installer' => 'this tool',
         ];
     }

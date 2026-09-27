@@ -1,0 +1,17 @@
+* text=auto eol=lf
+/.github export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/tests export-ignore
+/samples export-ignore
+/docs export-ignore
+/book export-ignore
+/scripts export-ignore
+/phpunit.xml.dist export-ignore
+/phpstan.neon.dist export-ignore
+/pint.json export-ignore
+/deptrac.yaml export-ignore
+/monorepo-builder.php export-ignore
+/package.json export-ignore
+/package-lock.json export-ignore
+/testbench.yaml export-ignore

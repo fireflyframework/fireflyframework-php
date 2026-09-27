@@ -202,7 +202,7 @@ will have — that they are worth naming outright:
 
 ```bash
 # 1 · Install the global installer once, then scaffold a new app
-composer global require firefly/installer
+composer global require firefly/firefly
 firefly new my-app
 cd my-app
 
@@ -986,26 +986,27 @@ LaraFly layers onto Laravel, it is not a standalone runtime. Full details in
 **New project — the global installer:**
 
 ```bash
-composer global require firefly/installer
+composer global require firefly/firefly
 firefly new my-app
 ```
 
-**New project — without the installer** (exactly what `firefly new` wraps):
+**New project — bundled installer:**
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require firefly/firefly
+firefly new my-app
 ```
 
-**Adding LaraFly to an existing Laravel app** — `firefly/firefly` is a `type: metapackage` (the Maven BOM
-analogue) that pulls in the whole runtime family, developer console included, with one line:
+**Adding LaraFly to an existing Laravel app** — `firefly/firefly` is the complete framework library,
+developer console included:
 
 ```bash
 composer require firefly/firefly
 ```
 
 The browser dashboard (`firefly/admin`) and the API-documentation package (`firefly/openapi`) come with it. The
-broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`) and the test kit
-(`firefly/testing`) stay separate — each binds you to an infrastructure choice or belongs in `require-dev`.
+broker adapters and testing helpers are included too. Configure the transport you need; install its
+required PHP extension separately. Applications using the test kit add Testbench with `--dev`.
 
 ```bash
 composer require firefly/admin     # /firefly — the dashboard over the actuator (see its access model first)
@@ -1055,9 +1056,9 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 ## Modules
 
-29 packages under `packages/*`, plus `firefly/skeleton` at the top level — 30 shippable units in total. Each
-is an independently installable Composer package with its own test suite; the one exception is
-`firefly/firefly`, a `type: metapackage` that carries a dependency list and nothing else. The 32
+One published library, `firefly/firefly`, contains the components under `packages/*` and the bundled
+application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
+component names remain useful module boundaries, with their own test suites. The 32
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1095,9 +1096,8 @@ is an independently installable Composer package with its own test suite; the on
 | Testing | [Integration Testing](docs/modules/integration-testing.md) — `@group integration`, testcontainers | `firefly/testing` |
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
 
-`firefly/firefly` (the runtime metapackage) and `firefly/cli` (the dev-console — see
-[CLI & Project Scaffolding](#cli--project-scaffolding) above) round out the 29 packages; `firefly/skeleton`
-is the 30th unit, a `type: project` create-project template at the top level.
+`firefly/cli` supplies the developer console — see [CLI & Project Scaffolding](#cli--project-scaffolding).
+All component names resolve through the root library; the top-level `skeleton/` template is bundled with it.
 
 ---
 
@@ -1191,15 +1191,16 @@ model across every runtime:
 
 ## Contributing
 
-`fireflyframework-php` is a single monorepo housing every LaraFly package as an independent Composer unit
-under `packages/*`, plus `firefly/skeleton` at the top level. Before opening a PR, the full gate must pass:
+`fireflyframework-php` publishes its root as one library. Component descriptors under `packages/*`
+preserve module boundaries; `skeleton/` is the bundled application template. Before opening a PR, the full gate must pass:
 
 ```bash
 composer install
 git config core.hooksPath scripts/hooks   # activates the committed pre-push safety guard
 
 composer check                            # pint --test && phpstan analyse && pest && deptrac analyse
-composer mono-validate                    # validates every packages/*/composer.json
+composer mono-validate                    # component dependency-version consistency
+composer test:package                     # exported and copied consumer installations
 .venv-docs/bin/mkdocs build --strict      # docs/: link integrity, no orphaned pages
 bash scripts/check-no-sensitive-tracked.sh
 ```

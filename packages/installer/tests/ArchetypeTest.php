@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Firefly\Installer\Archetype;
+use Firefly\Installer\ArchetypeApplier;
+use Firefly\Installer\CapabilityCatalog;
 use Firefly\Installer\NewCommand;
 use Firefly\Installer\Tests\Support\FakeProcessRunner;
 use Firefly\Installer\Tests\Support\Skeleton;
@@ -324,4 +327,16 @@ it('still writes the api smoke test when the base test case is there', function 
     } finally {
         cleanUp($dir);
     }
+});
+
+it('adds the external test harness when the bundled testing capability is requested', function () {
+    $directory = sys_get_temp_dir().'/testing-capability-'.bin2hex(random_bytes(5));
+    Skeleton::copy(Skeleton::path(), $directory);
+    $capability = array_values(array_filter(CapabilityCatalog::all(), static fn ($capability): bool => $capability->id === 'testing'))[0];
+    (new ArchetypeApplier(Archetype::Web, [$capability]))->applyTo($directory);
+    /** @var array{require: array<string, string>, require-dev: array<string, string>} $manifest */
+    $manifest = json_decode((string) file_get_contents($directory.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    expect($manifest['require-dev']['orchestra/testbench'] ?? null)->toBe('^11.1')
+        ->and($manifest['require-dev']['illuminate/testing'] ?? null)->toBe('^13.0')
+        ->and($manifest['require'])->not->toHaveKey('orchestra/testbench');
 });
