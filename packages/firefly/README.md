@@ -1,14 +1,14 @@
 # firefly/firefly
 
-LaraFly's runtime metapackage — the Composer analog of a Maven BOM. `composer require firefly/firefly`
-pulls the whole runtime framework family in one line (kernel, container, context, config, autoconfigure,
-web, validation, resilience, scheduling(+postgres), data, domain, eda, messaging, cqrs, security,
-observability, actuator) instead of requiring each package individually. It excludes the dev-scoped
-`firefly/testing` and `firefly/cli` packages and the `firefly/installer`, which stay `require-dev`/
-top-level concerns rather than runtime dependencies.
+LaraFly publishes the repository root as the `firefly/firefly` library, containing all framework
+components, the installer and the application skeleton. The root's `replace` entries satisfy compatible
+component requirements without split repositories.
 
 ```bash
 composer require firefly/firefly
 ```
+
+This directory retains the former runtime dependency list as internal module metadata. It is not the
+published package. See [Publishing](../../docs/publishing.md) for installation and release verification.
 
 Apache-2.0 © Firefly Software Solutions Inc.

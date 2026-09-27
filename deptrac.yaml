@@ -534,7 +534,6 @@ deptrac:
       - Observability
       - Resilience
 
-    # Installer is the standalone global `firefly new` tool: symfony/console + symfony/process ONLY,
-    # ZERO firefly runtime deps, so a global install never drags in the framework. Depends on nothing
-    # layered; depended on by none.
-    Installer: ~
+    # The bundled installer reads the framework version for its local skeleton repository.
+    Installer:
+      - Kernel

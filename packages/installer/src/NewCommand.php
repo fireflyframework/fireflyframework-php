@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Installer;
 
+use Firefly\Kernel\Version;
 use InvalidArgumentException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -16,7 +17,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * `firefly new <app>` — the LaraFly project generator, the Spring Initializr analog.
  *
- * It wraps `composer create-project firefly/skeleton`, then shapes the result into the requested archetype
+ * It supplies the bundled skeleton to `composer create-project`, then shapes the result into the requested archetype
  * (see ArchetypeApplier) and git-inits it. Every external process goes through the ProcessRunner seam so
  * the whole flow is assertable without a network.
  */
@@ -101,7 +102,12 @@ final class NewCommand extends Command
         ]);
         $io->newLine();
 
-        $create = ['composer', 'create-project', 'firefly/skeleton', $directory, '--no-interaction'];
+        $repository = json_encode([
+            'type' => 'path',
+            'url' => dirname(__DIR__, 3).'/skeleton',
+            'options' => ['symlink' => false, 'versions' => ['firefly/skeleton' => Version::VERSION]],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $create = ['composer', 'create-project', 'firefly/skeleton', $directory, '--no-interaction', '--repository='.$repository];
         if ($input->getOption('dev')) {
             $create[] = '--stability=dev';
         }

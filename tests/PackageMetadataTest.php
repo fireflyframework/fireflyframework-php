@@ -8,6 +8,7 @@ function fireflyComposerFiles(): array
     $root = dirname(__DIR__);
     $files = glob($root.'/packages/*/composer.json') ?: [];
     $files[] = $root.'/skeleton/composer.json';
+    $files[] = $root.'/composer.json';
 
     return $files;
 }

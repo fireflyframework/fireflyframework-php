@@ -9,10 +9,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
 
-/**
- * The small filesystem surface the installer needs. symfony/filesystem would do all of this, but it is a
- * third dependency on a binary whose whole selling point is that a global install pulls two.
- */
+/** The filesystem operations used by the project installer. */
 final class Filesystem
 {
     public static function directoryIsNotEmpty(string $directory): bool

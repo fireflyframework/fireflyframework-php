@@ -24,6 +24,12 @@ jobs:
           tools: composer:v2
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
+      - name: Package metadata
+        run: |
+          composer validate --strict
+          composer mono-validate
+      - name: Install exported library in a clean consumer
+        run: composer test:package
       - name: Pint (code style)
         run: composer pint-test
       - name: PHPStan (level max)

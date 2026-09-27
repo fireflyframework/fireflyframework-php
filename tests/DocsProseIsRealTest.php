@@ -19,7 +19,6 @@ use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Locking\HasOptimisticLock;
 use Firefly\Data\Repository\Locking\OptimisticLockException;
-use Firefly\Installer\CapabilityCatalog;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Observability\HttpExchanges\HeaderMasker;
 use Firefly\OpenApi\OpenApiProperties;
@@ -1531,89 +1530,6 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
         ->and($artifactClaims)->toBe(2)
         ->and($stepClaims)->toBe(4)
         ->and($recapClaims)->toBe(2);
-});
-
-it('pins the capabilities `--with` really fetches to the metapackage manifest', function () {
-    // The ninth. `docs/installation.md` explained `--with` with one flat sentence — "every non-adapter
-    // capability is already required by the `firefly/firefly` metapackage, so naming one promotes an
-    // installed package to an explicit dependency rather than fetching anything new" — and a reader who
-    // believed it ran `firefly new --with=testing` expecting nothing to be downloaded. firefly/testing is
-    // deliberately OUTSIDE the metapackage (it pulls orchestra/testbench), so that install fetches a package
-    // and writes it into require-dev. The sentence was inherited from CapabilityCatalog's own docblock, and
-    // `docs/getting-started.md` said the opposite two pages away.
-    //
-    // The real invariant is the one tests/MetapackageCoverageTest.php asserts: every non-adapter, NON-DEV
-    // capability is required by the metapackage. What is left over — the brokers an application chooses for
-    // itself, plus the dev-only test kit — is exactly the set `--with` really installs, and it is computable,
-    // so the page is held to it rather than to a list somebody kept in their head. `scheduling-postgres` is
-    // why this is derived and not typed: it is an `adapter: true` capability that the metapackage DOES ship,
-    // because an advisory-lock backend needs nothing but a Postgres connection, so "adapter" and "fetched"
-    // are not the same set and a hand-written caveat gets that wrong in the obvious direction.
-    /** @var mixed $manifest */
-    $manifest = json_decode(
-        (string) file_get_contents(dirname(__DIR__).'/packages/firefly/composer.json'),
-        true,
-    );
-    $require = is_array($manifest) && is_array($manifest['require'] ?? null) ? $manifest['require'] : [];
-    $shipped = array_map(strval(...), array_keys($require));
-
-    expect($shipped)->not->toBeEmpty('packages/firefly/composer.json requires nothing at all');
-
-    $fetched = [];
-    $shippedAdapters = [];
-
-    foreach (CapabilityCatalog::all() as $capability) {
-        if (! in_array($capability->package, $shipped, true)) {
-            $fetched[$capability->id] = $capability;
-        } elseif ($capability->adapter) {
-            $shippedAdapters[] = $capability->id;
-        }
-    }
-
-    $prose = (string) preg_replace(
-        '/\s+/',
-        ' ',
-        (string) file_get_contents(dirname(__DIR__).'/docs/installation.md'),
-    );
-
-    // The count, as the page writes it: "Four capabilities are the exception".
-    $found = preg_match('/(?:\*\*)?(\p{L}+)(?:\*\*)?\s+capabilities\s+are\s+the\s+exception/u', $prose, $match) === 1;
-
-    expect($found)->toBeTrue('docs/installation.md no longer counts the capabilities --with really fetches');
-
-    $counted = $match[1] ?? '';
-
-    expect(fireflyWrittenNumber($counted))->toBe(count($fetched), sprintf(
-        'docs/installation.md says %s capabilities are fetched by --with; the metapackage leaves %d out of '
-        .'its require block: %s.',
-        $counted,
-        count($fetched),
-        implode(', ', array_keys($fetched)),
-    ));
-
-    $drifted = [];
-
-    foreach ($fetched as $id => $capability) {
-        if (! str_contains($prose, '`'.$id.'`')) {
-            $drifted[] = $id.' is fetched by --with and the page never names it';
-        }
-
-        // A dev-only capability lands somewhere else in the generated manifest, which is the part a reader
-        // acts on: ArchetypeApplier writes it under require-dev, not require.
-        if ($capability->dev && ! str_contains($prose, '**`require-dev`**')) {
-            $drifted[] = $id.' is dev-only and the page no longer says it lands in require-dev';
-        }
-    }
-
-    // The other direction, and the one a hand-written caveat gets wrong: an adapter the metapackage DOES
-    // ship must still be named, or "the adapters are fetched" quietly becomes true of one package too many.
-    foreach ($shippedAdapters as $id) {
-        if (! str_contains($prose, '`'.$id.'`')) {
-            $drifted[] = $id.' is an adapter the metapackage ships, and the page no longer says so';
-        }
-    }
-
-    expect($drifted)->toBe([], implode('; ', $drifted));
 });
 
 it('pins the contributing guide\'s documentation-gate roster to the test files it names', function () {

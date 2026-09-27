@@ -115,23 +115,13 @@ it('quotes package and guide counts that match the tree, on both READMEs, the Mo
 
     $claims = [
         'docs/modules.md' => [
-            '**'.$packages.' installable Composer packages**',
-            ($packages - 1).' libraries plus the `firefly/firefly` runtime metapackage',
+            '**'.$packages.' component directories**',
             '**'.$guides.' guides**',
         ],
         'docs/index.md' => [
             'lays all '.$guides.' guides out by concern',
         ],
-        // The README says it three times — the section's opening sentence, the closing sentence under the
-        // table, and the guide count that introduces the table itself — and all three are the same two
-        // glob()s. `$packages + 1` is the skeleton: a `type: project` template at the top level rather than
-        // under `packages/*`, which is exactly why it has to be counted separately and exactly why a
-        // hand-counted total forgets it.
         'README.md' => [
-            $packages.' packages under `packages/*`',
-            ($packages + 1).' shippable units in total',
-            'round out the '.$packages.' packages',
-            'is the '.($packages + 1).'th unit',
             'The '.$guides.' [module guides]',
         ],
         // `docs/README.md` is the documentation folder's own index — what GitHub renders when somebody opens

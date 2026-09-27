@@ -64,189 +64,23 @@ it('triggers only on a pushed v* tag', function () {
     expect($tags)->toContain('v*');
 });
 
-it('the split matrix covers exactly the 30 publishable units, each mapped to fireflyframework/firefly-<dir>', function () {
-    $root = dirname(__DIR__);
+it('validates the tagged single package without cross-repository credentials', function () {
     $yaml = releaseWorkflowYaml();
-
     $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
-    $strategy = asYamlMap($splitJob['strategy'] ?? null, 'jobs.split.strategy');
-    $matrixMap = asYamlMap($strategy['matrix'] ?? null, 'jobs.split.strategy.matrix');
-    $matrix = asYamlList($matrixMap['package'] ?? null, 'jobs.split.strategy.matrix.package');
-
-    // Build the expected unit list independently from the filesystem — this is the
-    // ground truth the matrix must match exactly (fails if a unit is added/removed
-    // under packages/* without updating the workflow, and fails if the workflow lists
-    // a unit that doesn't exist).
-    /** @var list<string> $expectedLocals */
-    $expectedLocals = array_map(
-        static fn (string $dir): string => 'packages/'.basename($dir),
-        glob($root.'/packages/*', GLOB_ONLYDIR) ?: []
-    );
-    $expectedLocals[] = 'skeleton';
-    sort($expectedLocals);
-
-    // 29 packages under packages/* plus the skeleton. The number is spelled out so that adding a package
-    // without adding its split row (or the reverse) fails here rather than silently shipping an unpublished unit.
-    expect($expectedLocals)->toHaveCount(30);
-
-    /** @var list<string> $actualLocals */
-    $actualLocals = [];
-    /** @var array<string, string> $actualSplitByLocal */
-    $actualSplitByLocal = [];
-
-    foreach ($matrix as $row) {
-        $rowMap = asYamlMap($row, 'matrix row');
-        $local = $rowMap['local'] ?? null;
-        $splitName = $rowMap['split'] ?? null;
-
-        if (! is_string($local) || ! is_string($splitName)) {
-            throw new RuntimeException('matrix row local/split must be strings.');
+    expect(array_keys($jobs))->toBe(['package']);
+    $package = asYamlMap($jobs['package'], 'package');
+    $steps = asYamlList($package['steps'] ?? null, 'steps');
+    $commands = [];
+    foreach ($steps as $step) {
+        $map = asYamlMap($step, 'step');
+        if (is_string($map['run'] ?? null)) {
+            $commands[] = $map['run'];
+            expect($map['run'])->not->toContain('github.event.');
         }
-
-        $actualLocals[] = $local;
-        $actualSplitByLocal[$local] = $splitName;
     }
-    sort($actualLocals);
-
-    expect($actualLocals)->toBe($expectedLocals, 'split matrix does not match packages/* + skeleton exactly');
-
-    // Every mirror target must be fireflyframework/firefly-<dir> using the LOCAL dirname
-    // (e.g. packages/eda-postgres -> firefly-eda-postgres), consumed by
-    // split-repository-organization: fireflyframework alongside split-repository-name.
-    foreach ($actualSplitByLocal as $local => $splitName) {
-        $dir = basename($local);
-        expect($splitName)->toBe("firefly-{$dir}", "mirror name for {$local} must be firefly-{$dir}");
-    }
-});
-
-it('uses symplify/monorepo-split-github-action (v11 monorepo-builder has no split command)', function () {
+    expect($commands)->toContain('composer check', 'composer mono-validate', 'composer test:package');
+    $permissions = asYamlMap($yaml['permissions'] ?? null, 'permissions');
+    expect($permissions)->toBe(['contents' => 'read']);
     $blob = (string) file_get_contents(dirname(__DIR__).'/.github/workflows/release.yml');
-
-    expect($blob)->toContain('symplify/monorepo-split-github-action')
-        ->and($blob)->not->toContain('monorepo-builder split');
-});
-
-it('references the cross-repo PAT only via secrets.ACCESS_TOKEN, never hardcoded', function () {
-    $blob = (string) file_get_contents(dirname(__DIR__).'/.github/workflows/release.yml');
-
-    expect($blob)->toContain('${{ secrets.ACCESS_TOKEN }}');
-
-    // No plausible hardcoded GitHub PAT literal (ghp_/github_pat_ prefixes).
-    expect($blob)->not->toMatch('/ghp_[A-Za-z0-9]{20,}/')
-        ->and($blob)->not->toMatch('/github_pat_[A-Za-z0-9_]{20,}/');
-});
-
-it('checks out full history (fetch-depth: 0) for the split', function () {
-    $yaml = releaseWorkflowYaml();
-    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
-    $steps = asYamlList($splitJob['steps'] ?? null, 'jobs.split.steps');
-
-    /** @var array<string, mixed> $checkout */
-    $checkout = [];
-    foreach ($steps as $step) {
-        $stepMap = asYamlMap($step, 'step');
-        $uses = $stepMap['uses'] ?? null;
-        if (is_string($uses) && str_starts_with($uses, 'actions/checkout@')) {
-            $checkout = $stepMap;
-            break;
-        }
-    }
-
-    expect($checkout)->not->toBe([], 'no actions/checkout step found');
-
-    $with = asYamlMap($checkout['with'] ?? null, 'checkout.with');
-    expect($with['fetch-depth'] ?? null)->toBe(0);
-});
-
-it('does not interpolate untrusted github.event.* into a run: step', function () {
-    $yaml = releaseWorkflowYaml();
-    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
-    $steps = asYamlList($splitJob['steps'] ?? null, 'jobs.split.steps');
-
-    foreach ($steps as $step) {
-        $stepMap = asYamlMap($step, 'step');
-        $run = $stepMap['run'] ?? null;
-        if (is_string($run)) {
-            expect($run)->not->toContain('github.event.');
-        }
-    }
-});
-
-// The split action exits 0 even when its push fails. On v26.09.1 that produced a whole matrix of green
-// jobs, no mirror repositories, and nothing published — a release run that reported success while shipping
-// nothing. The workflow now carries two guards against that, and these tests exist so neither can be
-// dropped quietly.
-
-it('refuses to start the split when ACCESS_TOKEN is absent, instead of running a matrix of no-op jobs', function () {
-    $yaml = releaseWorkflowYaml();
-    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-
-    expect($jobs)->toHaveKey('preflight');
-
-    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
-    expect($splitJob['needs'] ?? null)->toBe('preflight');
-
-    $preflight = asYamlMap($jobs['preflight'] ?? null, 'jobs.preflight');
-    $steps = asYamlList($preflight['steps'] ?? null, 'jobs.preflight.steps');
-
-    $script = '';
-    foreach ($steps as $step) {
-        $stepMap = asYamlMap($step, 'step');
-        $run = $stepMap['run'] ?? null;
-        if (is_string($run)) {
-            $script .= $run;
-        }
-    }
-
-    // It must read the secret and exit non-zero when it is empty.
-    expect($script)->toContain('ACCESS_TOKEN')
-        ->and($script)->toContain('exit 1');
-});
-
-it('reads the tag back from each mirror, because a green split step does not mean anything was pushed', function () {
-    $yaml = releaseWorkflowYaml();
-    $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-    $splitJob = asYamlMap($jobs['split'] ?? null, 'jobs.split');
-    $steps = asYamlList($splitJob['steps'] ?? null, 'jobs.split.steps');
-
-    /** @var array<string, mixed> $verify */
-    $verify = [];
-    $splitIndex = null;
-    $verifyIndex = null;
-
-    foreach ($steps as $index => $step) {
-        $stepMap = asYamlMap($step, 'step');
-
-        $uses = $stepMap['uses'] ?? null;
-        if (is_string($uses) && str_starts_with($uses, 'symplify/monorepo-split-github-action')) {
-            $splitIndex = $index;
-        }
-
-        $run = $stepMap['run'] ?? null;
-        if (is_string($run) && str_contains($run, 'git/ref/tags/')) {
-            $verify = $stepMap;
-            $verifyIndex = $index;
-        }
-    }
-
-    expect($verify)->not->toBe([], 'no step reads the tag back from the mirror');
-    expect($splitIndex)->not->toBeNull();
-    // Verifying before the push would assert nothing.
-    expect($verifyIndex)->toBeGreaterThan((int) $splitIndex);
-
-    $run = $verify['run'] ?? null;
-    expect($run)->toBeString();
-
-    /** @var string $run */
-    // The mirror is asked about THIS tag, and a missing tag fails the job.
-    expect($run)->toContain('github.ref_name')
-        ->and($run)->toContain('matrix.package.split')
-        ->and($run)->toContain('exit 1');
-
-    // `set -e` alone would not catch it: the lookup is deliberately allowed to fail so the message can be
-    // ours, which only works if the emptiness of the result is what is actually tested.
-    expect($run)->toMatch('/if \[ -z .*sha/');
+    expect($blob)->not->toContain('ACCESS_TOKEN', 'monorepo-split', 'git push');
 });

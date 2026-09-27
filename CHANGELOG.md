@@ -4,6 +4,16 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Changed
+
+- Publish the repository root as the `firefly/firefly` library, replacing component names at the same
+  version. Runtime dependencies, autoloading and Laravel discovery now belong to that package; no split
+  mirrors or cross-repository release credential are needed.
+- Keep Lumen and component test support in development autoloading, and validate exported and copied
+  consumer installations in CI. The installer uses the bundled skeleton and adds Testbench explicitly
+  when the testing capability is requested. PostgreSQL outbox migrations are registered only for that
+  configured transport.
+
 ## [26.09.8] - 2026-09-25
 
 ### Fixed

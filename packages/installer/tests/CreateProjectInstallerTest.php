@@ -33,7 +33,7 @@ it('scaffolds a booting app via the real installer over local path repos', funct
     @mkdir($home, 0o755, true);
     file_put_contents($home.'/config.json', (string) json_encode([
         'repositories' => [
-            'firefly-pkgs' => ['type' => 'path', 'url' => $mono.'/packages/*', 'options' => ['symlink' => false]],
+            'firefly-pkgs' => ['type' => 'path', 'url' => $mono, 'options' => ['symlink' => false]],
             'firefly-skeleton' => ['type' => 'path', 'url' => $mono.'/skeleton', 'options' => ['symlink' => false]],
         ],
         'minimum-stability' => 'dev',

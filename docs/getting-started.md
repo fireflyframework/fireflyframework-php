@@ -7,7 +7,8 @@ application pre-wired with the Firefly family, a `#[Controller]` welcome page, a
 `#[RestController]`/`#[Service]` pair, and `firefly:cache` already wired into `post-create-project-cmd`:
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require firefly/firefly
+firefly new my-app
 cd my-app
 php artisan firefly:cache
 php artisan firefly:serve
@@ -25,17 +26,15 @@ installed) — see [CLI](cli.md) for the full command reference.
 
 ## Adding LaraFly to an existing Laravel app
 
-Pull in the whole runtime family with one line — `firefly/firefly` is a Composer metapackage (the Maven BOM
-analogue) that requires every runtime package, `firefly/cli` included, so `firefly:cache` and the
-`make:firefly-*` generators are available straight away:
+Install the complete framework library, including the CLI, dashboard and API documentation:
 
 ```bash
 composer require firefly/firefly
 ```
 
-The browser dashboard (`firefly/admin`) and the API-documentation package (`firefly/openapi`) come with it. The
-broker adapters (`firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka`) and the test kit
-(`firefly/testing`) stay separate — each binds you to an infrastructure choice or belongs in `require-dev`.
+All component code is included. Optional adapters are activated by configuration and may require a PHP
+extension. For the test kit, add `orchestra/testbench:^11.1` and `illuminate/testing:^13.0` with `--dev`.
+Existing component requirements are satisfied by the root library's `replace` metadata.
 
 Then point LaraFly at your app's classes and compile it. The one key an application must get right is
 `firefly.scan.paths` — the PSR-4 roots every scanner walks; the skeleton's `config/firefly.php` ships it
@@ -75,14 +74,12 @@ its `composer.json` asks for exactly two Firefly packages beside `php: ^8.3` and
 - **`firefly/cli`** — the developer-experience console: `firefly:cache`/`:clear`, actuator-over-CLI
   `firefly:about`/`:routes`/`:health`/`:metrics`, `firefly:oauth2:keys`, the `make:firefly-*` generator
   family, and thin `firefly:serve`/`:schedule`/`:db` passthroughs. See [CLI](cli.md).
-- **`firefly/firefly`** — a `type: metapackage` runtime aggregator; `composer require firefly/firefly` pulls
-  the whole runtime family in one line, `firefly/cli` among them. (It is in the metapackage deliberately:
-  while it was `require-dev`-only, an application that never ran `firefly:cache` booted with empty manifests —
-  including an empty method-security manifest, which both enforcement sites read as ALLOW.)
+- **`firefly/firefly`** — the complete `type: library` distribution. It supplies `firefly/cli` through
+  `replace`, so both requirements resolve to the same installation. The template's CLI requirement
+  explicitly records its use of `firefly:cache`.
 
-The skeleton lists `firefly/cli` explicitly as well as through the metapackage so that the template's own
-`post-create-project-cmd` — which ends in `php artisan firefly:cache` — cannot be broken by a future change
-to what the metapackage aggregates.
+The template is bundled in the library and supplied to Composer by `firefly new`; it does not need a
+separate Packagist package. See [Publishing](publishing.md) for the transition from split packages.
 
 ## Where to next
 

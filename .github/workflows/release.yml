@@ -1,107 +1,33 @@
-name: Release (split mirrors)
+name: Release (single package)
 
-# Dormant until a v* tag is pushed by the controller (see docs/publishing.md). Pushes NOTHING on
-# every other event — no branches:, no pull_request: trigger.
-#
-# The split faithfully mirrors the TAGGED commit's composer.json. Per docs/publishing.md, the
-# release-time `vendor/bin/monorepo-builder bump-interdependency <version>` runs on the release
-# commit BEFORE it is tagged, rewriting every `firefly/xyz: "*@dev"` sibling constraint to
-# `^26.07` — so by the time this workflow runs (triggered by the tag push), the commit being split
-# already carries `^26.07` interdependencies, not `*@dev`. Each mirror is therefore
-# stable-installable on its own via Packagist.
+# Packagist reads tags from this repository's root composer.json.
+# This gate validates the tagged distribution; indexing is checked separately (docs/publishing.md).
 on:
   push:
     tags:
       - 'v*'
 
-jobs:
-  preflight:
-    name: Preflight (release credentials)
-    runs-on: ubuntu-latest
-    steps:
-      # The split action below exits 0 even when its push fails, so without this gate a release with no
-      # credential produces a whole matrix of green jobs and zero published packages. Fail here instead, once,
-      # loudly.
-      - name: ACCESS_TOKEN must be present
-        env:
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        run: |
-          if [ -z "${ACCESS_TOKEN}" ]; then
-            echo "::error::ACCESS_TOKEN is not set, so nothing can be pushed to the mirrors."
-            echo "::error::Create the org PAT and the fireflyframework/firefly-* repositories first — see docs/publishing.md steps 6-7."
-            exit 1
-          fi
-          echo "ACCESS_TOKEN is present."
+permissions:
+  contents: read
 
-  split:
-    needs: preflight
-    name: Split ${{ matrix.package.local }}
+jobs:
+  package:
+    name: Validate package (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - { local: packages/kernel,              split: firefly-kernel }
-          - { local: packages/container,           split: firefly-container }
-          - { local: packages/config,              split: firefly-config }
-          - { local: packages/context,             split: firefly-context }
-          - { local: packages/autoconfigure,       split: firefly-autoconfigure }
-          - { local: packages/validation,          split: firefly-validation }
-          - { local: packages/web,                 split: firefly-web }
-          - { local: packages/resilience,          split: firefly-resilience }
-          - { local: packages/scheduling,          split: firefly-scheduling }
-          - { local: packages/scheduling-postgres, split: firefly-scheduling-postgres }
-          - { local: packages/domain,              split: firefly-domain }
-          - { local: packages/data,                split: firefly-data }
-          - { local: packages/eda,                 split: firefly-eda }
-          - { local: packages/eda-kafka,            split: firefly-eda-kafka }
-          - { local: packages/eda-postgres,        split: firefly-eda-postgres }
-          - { local: packages/eda-rabbitmq,        split: firefly-eda-rabbitmq }
-          - { local: packages/messaging,           split: firefly-messaging }
-          - { local: packages/cqrs,                split: firefly-cqrs }
-          - { local: packages/security,            split: firefly-security }
-          - { local: packages/security-oauth2-client, split: firefly-security-oauth2-client }
-          - { local: packages/security-oauth2-server, split: firefly-security-oauth2-server }
-          - { local: packages/actuator,            split: firefly-actuator }
-          - { local: packages/observability,       split: firefly-observability }
-          - { local: packages/admin,               split: firefly-admin }
-          - { local: packages/openapi,             split: firefly-openapi }
-          - { local: packages/testing,             split: firefly-testing }
-          - { local: packages/cli,                 split: firefly-cli }
-          - { local: packages/firefly,              split: firefly-firefly }
-          - { local: packages/installer,           split: firefly-installer }
-          - { local: skeleton,                     split: firefly-skeleton }
+        php: [ '8.3', '8.4', '8.5' ]
     steps:
       - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
         with:
-          fetch-depth: 0
-      - name: Guard (never split a tree with sensitive paths)
-        run: bash scripts/check-no-sensitive-tracked.sh
-      - name: Subtree split to the read-only mirror
-        uses: symplify/monorepo-split-github-action@v2.3.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        with:
-          tag: ${{ github.ref_name }}
-          package-directory: ${{ matrix.package.local }}
-          split-repository-organization: fireflyframework
-          split-repository-name: ${{ matrix.package.split }}
-          user-name: fireflybot
-          user-email: bot@fireflyframework.dev
-      - name: Verify the mirror actually received the tag
-        # symplify/monorepo-split-github-action@v2.3.0 exits 0 whether or not the push succeeded: on
-        # v26.09.1 all 28 jobs went green while the mirrors did not exist and nothing was published.
-        # A release is only released once the tag is readable on the mirror, so assert exactly that.
-        env:
-          GH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          repo="fireflyframework/${{ matrix.package.split }}"
-          tag="${{ github.ref_name }}"
-          sha="$(gh api "repos/${repo}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null || true)"
-          if [ -z "${sha}" ]; then
-            echo "::error::${repo} has no tag ${tag}. The split step reported success but published nothing."
-            echo "::error::Usual cause: the mirror repository does not exist, or ACCESS_TOKEN cannot write to it."
-            exit 1
-          fi
-          echo "${repo} @ ${tag} = ${sha}"
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+      - run: bash scripts/check-no-sensitive-tracked.sh
+      - run: composer validate --strict
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer check
+      - run: composer mono-validate
+      - run: composer test:package

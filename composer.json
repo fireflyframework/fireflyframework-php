@@ -1,11 +1,38 @@
 {
-    "name": "firefly/monorepo",
-    "description": "LaraFly — the Firefly Framework for PHP. Development monorepo.",
-    "type": "project",
+    "name": "firefly/firefly",
+    "description": "LaraFly — the Firefly Framework for PHP.",
+    "type": "library",
     "license": "Apache-2.0",
     "require": {
         "php": "^8.3",
-        "swagger-api/swagger-ui": "^5.17"
+        "ext-openssl": "*",
+        "firebase/php-jwt": "^7.0",
+        "guzzlehttp/promises": "^2.0 || ^3.0",
+        "illuminate/bus": "^13.0",
+        "illuminate/cache": "^13.0",
+        "illuminate/config": "^13.0",
+        "illuminate/console": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/cookie": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/events": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/log": "^13.0",
+        "illuminate/queue": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/session": "^13.0",
+        "illuminate/support": "^13.0",
+        "illuminate/translation": "^13.0",
+        "illuminate/validation": "^13.0",
+        "monolog/monolog": "^3.0",
+        "php-amqplib/php-amqplib": "^3.7",
+        "psr/http-message": "^1.0 || ^2.0",
+        "psr/log": "^3.0",
+        "swagger-api/swagger-ui": "^5.17",
+        "symfony/console": "^7.4|^8.0",
+        "symfony/expression-language": "^7.4|^8.0",
+        "symfony/process": "^7.4|^8.0"
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
@@ -54,25 +81,11 @@
             "Firefly\\Tests\\": "tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/",
-            "Lumen\\Tests\\": "samples/lumen/tests/"
+            "Lumen\\Tests\\": "samples/lumen/tests/",
+            "Firefly\\Kernel\\Tests\\": "packages/kernel/tests/",
+            "Lumen\\": "samples/lumen/src/"
         }
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "packages/*",
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "samples/*",
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
     "minimum-stability": "stable",
     "prefer-stable": true,
     "config": {
@@ -99,7 +112,8 @@
             "@stan",
             "@test",
             "@deptrac"
-        ]
+        ],
+        "test:package": "@php scripts/check-package-install.php"
     },
     "replace": {
         "firefly/actuator": "self.version",
@@ -116,7 +130,6 @@
         "firefly/eda-kafka": "self.version",
         "firefly/eda-postgres": "self.version",
         "firefly/eda-rabbitmq": "self.version",
-        "firefly/firefly": "self.version",
         "firefly/installer": "self.version",
         "firefly/kernel": "self.version",
         "firefly/messaging": "self.version",
@@ -166,6 +179,96 @@
         "files": [
             "packages/security-oauth2-client/src/Registration/casters.php",
             "packages/testing/src/functions.php"
+        ]
+    },
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "framework",
+        "ddd",
+        "cqrs"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php"
+    },
+    "suggest": {
+        "ext-pdo_pgsql": "Required to use the PostgreSQL event transport (firefly.eda.provider=postgres).",
+        "ext-rdkafka": "Required ONLY to activate the Kafka adapter (firefly.eda.provider=kafka). Needs librdkafka >= 1.5.3. Absent = the adapter is inert; the default gate + non-Kafka consumers never need it.",
+        "illuminate/testing": "^13.0 for the Firefly testing helpers; install with --dev.",
+        "open-telemetry/api": "The OpenTelemetry API — required with open-telemetry/sdk for the OpenTelemetryTracer adapter (firefly.observability.tracing.enabled).",
+        "open-telemetry/exporter-otlp": "OTLP span export over http/protobuf or http/json (firefly.observability.tracing.exporter=otlp).",
+        "open-telemetry/sdk": "The OpenTelemetry SDK (TracerProvider, samplers, console exporter) behind OpenTelemetryTracer.",
+        "open-telemetry/transport-grpc": "OTLP export over gRPC (firefly.observability.tracing.otlp.protocol=grpc; needs ext-grpc).",
+        "orchestra/testbench": "^11.1 for FireflyTestCase and Laravel test applications; install with --dev.",
+        "symfony/var-dumper": "What dd() and dump() are built on; the package registers a caster so a dumped ClientRegistration shows its client secret masked (laravel/framework already requires it).",
+        "testcontainers/testcontainers": "Ephemeral Docker backends for @group integration tests (fireflyConfigFor())."
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Firefly\\AutoConfigure\\FireflyAutoConfigureServiceProvider",
+                "Firefly\\Data\\DataServiceProvider",
+                "Firefly\\Data\\DataWiringProvider",
+                "Firefly\\Resilience\\ResilienceServiceProvider",
+                "Firefly\\Scheduling\\SchedulingServiceProvider",
+                "Firefly\\Scheduling\\SchedulingWiringProvider",
+                "Firefly\\Validation\\ValidationServiceProvider",
+                "Firefly\\Web\\WebServiceProvider",
+                "Firefly\\Actuator\\ActuatorServiceProvider",
+                "Firefly\\Actuator\\ActuatorWiringProvider",
+                "Firefly\\Admin\\AdminServiceProvider",
+                "Firefly\\Eda\\EdaServiceProvider",
+                "Firefly\\Eda\\EdaWiringProvider",
+                "Firefly\\Eda\\EdaConsumerServiceProvider",
+                "Firefly\\Cqrs\\CqrsServiceProvider",
+                "Firefly\\Cqrs\\CqrsWiringProvider",
+                "Firefly\\Messaging\\MessagingServiceProvider",
+                "Firefly\\Messaging\\MessagingWiringProvider",
+                "Firefly\\Observability\\ObservabilityServiceProvider",
+                "Firefly\\Observability\\ObservabilityWiringProvider",
+                "Firefly\\Security\\SecurityServiceProvider",
+                "Firefly\\Security\\SecurityWiringProvider",
+                "Firefly\\Security\\OAuth2\\Server\\SecurityOAuth2ServerServiceProvider",
+                "Firefly\\Security\\OAuth2\\Server\\SecurityOAuth2ServerWiringProvider",
+                "Firefly\\Cli\\CliServiceProvider",
+                "Firefly\\Eda\\Kafka\\EdaKafkaServiceProvider",
+                "Firefly\\Eda\\Postgres\\EdaPostgresServiceProvider",
+                "Firefly\\Eda\\Postgres\\EdaPostgresBootServiceProvider",
+                "Firefly\\Eda\\Rabbitmq\\EdaRabbitmqServiceProvider",
+                "Firefly\\OpenApi\\OpenApiServiceProvider",
+                "Firefly\\OpenApi\\OpenApiWiringProvider",
+                "Firefly\\Scheduling\\Postgres\\SchedulingPostgresServiceProvider",
+                "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientServiceProvider",
+                "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider",
+                "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
+            ]
+        }
+    },
+    "bin": [
+        "packages/installer/bin/firefly"
+    ],
+    "archive": {
+        "exclude": [
+            "/vendor",
+            "/node_modules",
+            "/.*",
+            "/composer.lock",
+            "/site",
+            "/coverage",
+            "/*.png",
+            "/packages/*/vendor",
+            "/packages/*/tests"
         ]
     }
 }

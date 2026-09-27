@@ -4,16 +4,15 @@
 
 - **PHP 8.3+** (8.4 recommended).
 - **Composer 2.**
-- **Laravel 13** — LaraFly is a set of Composer packages that layer onto a Laravel application; it is not a
+- **Laravel 13** — LaraFly is a Composer library that layers onto a Laravel application; it is not a
   standalone runtime.
 
 ## Quick install
 
-The fastest path is the global installer, `firefly/installer` — a thin `firefly new` binary (Symfony Console,
-no Firefly runtime dependencies) that wraps `composer create-project firefly/skeleton`:
+The bundled `firefly new` installer supplies the application template to Composer and prepares the app:
 
 ```bash
-composer global require firefly/installer
+composer global require firefly/firefly
 firefly new my-app
 cd my-app
 php artisan firefly:serve
@@ -30,32 +29,25 @@ off `NewCommand::configure()`:
 | `-f`, `--force` | **Empties the target directory first**, then scaffolds into it. |
 | `--git` / `--no-git` | Whether to `git init` and make an initial commit. On by default. |
 
-For most capabilities `--with` does not decide whether code *exists*: every non-adapter, non-dev capability
-is already required by the `firefly/firefly` metapackage — `tests/MetapackageCoverageTest.php` fails the
-build if one of them is not — so naming one promotes an already-installed package to an explicit dependency
-in the generated `composer.json` rather than fetching anything new.
-
-Four capabilities are the exception and really do fetch something. The broker adapters `eda-kafka`,
-`eda-rabbitmq` and `eda-postgres` each bind an application to one transport, and each brings its own
-baggage — `eda-postgres` will not install at all without `ext-pdo_pgsql`, `eda-rabbitmq` pulls
-`php-amqplib/php-amqplib` in with it, and `eda-kafka` is inert until `ext-rdkafka` is present — so the
-metapackage deliberately leaves all three out and `--with=eda-kafka` is what actually installs one. The
-dev-only `testing` kit is the fourth: it requires `orchestra/testbench`, which belongs in `require-dev` or
-nowhere, so `--with=testing` writes `firefly/testing` into **`require-dev`** rather than `require`. The
-catalogue's fourth adapter, `scheduling-postgres`, needs nothing but a Postgres connection and *is* shipped
-by the metapackage, so naming it only makes it explicit like any other capability. See
-[Installer](modules/installer.md) for the full catalogue and how the tool is built.
+Every component's code is included in `firefly/firefly`. `--with` records an explicit component
+requirement in the generated manifest; it does not fetch a separate framework package. Configuration
+selects the active transport. `eda-postgres` needs `ext-pdo_pgsql`, `eda-kafka` needs `ext-rdkafka`,
+`eda-rabbitmq` uses the included AMQP client, and `scheduling-postgres` needs a PostgreSQL connection.
+`--with=testing` adds `orchestra/testbench` and `illuminate/testing` to **`require-dev`**, alongside the
+compatible `firefly/testing` requirement. See [Installer](modules/installer.md).
 
 ## Without the installer
 
-If you'd rather not install a global binary, `composer create-project` alone gets you the same result —
-`firefly new` is a convenience wrapper around exactly this command:
+From a framework source checkout, Composer can also use the local bundled template directly:
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer create-project --repository='{"type":"path","url":"./skeleton","options":{"symlink":false}}' firefly/skeleton my-app --stability=dev
 cd my-app
 php artisan firefly:serve
 ```
+
+The generated application installs `firefly/firefly` from Packagist; before first publication, supply a
+root VCS or path repository as described in [Publishing](publishing.md).
 
 `firefly/skeleton`'s `composer.json` wires `post-create-project-cmd` to run automatically, so by the time the
 command above finishes you already have, in this order:
@@ -69,27 +61,9 @@ command above finishes you already have, in this order:
 
 ## What the template requires
 
-`skeleton/composer.json` asks for exactly four things: `php: ^8.3`, `laravel/framework: ^13.0`,
-`firefly/cli` and `firefly/firefly`. The last of those is the metapackage, and it is what pulls the whole
-runtime family in:
-
-<!-- source: packages/firefly/composer.json -->
-
-```json
-"require": {
-    "php": "^8.3",
-    "firefly/actuator": "*@dev",
-    "firefly/admin": "*@dev",
-    "firefly/autoconfigure": "*@dev",
-    "firefly/cli": "*@dev",
-// …
-    "firefly/security": "*@dev",
-    "firefly/security-oauth2-client": "*@dev",
-    "firefly/security-oauth2-server": "*@dev",
-    "firefly/validation": "*@dev",
-    "firefly/web": "*@dev"
-},
-```
+`skeleton/composer.json` requires PHP, Laravel, `firefly/firefly` and `firefly/cli`. The library supplies
+all framework code; the CLI requirement is satisfied by `replace`. Providers are discovered from the
+root package's `extra.laravel.providers` metadata.
 
 Two of those arrived in the `26.09` line and are worth naming, because both are **off until you configure
 them** and neither costs you anything until then:
