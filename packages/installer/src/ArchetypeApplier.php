@@ -187,7 +187,7 @@ final class ArchetypeApplier
      * Read from the generated manifest rather than hard-coded, because the right answer changes over the
      *
      * project's life: the skeleton pins `*@dev` while the family is pre-Packagist and will pin `^26.0` after
-     * the first tagged release. Copying whatever firefly/firefly (or, failing that, any firefly/* package)
+     * the first tagged release. Copying whatever fireflyframework/larafly (or, failing that, any firefly/* package)
      * is already pinned to means the added lines always agree with the ones the skeleton shipped, and this
      * file never has to be edited for a release.
      *
@@ -195,8 +195,8 @@ final class ArchetypeApplier
      */
     private function fireflyConstraint(array $require): string
     {
-        if (isset($require['firefly/firefly'])) {
-            return $require['firefly/firefly'];
+        if (isset($require['fireflyframework/larafly'])) {
+            return $require['fireflyframework/larafly'];
         }
         foreach ($require as $package => $version) {
             if (str_starts_with($package, 'firefly/')) {

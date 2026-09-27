@@ -5,7 +5,7 @@ declare(strict_types=1);
 it('ships the dependencies, autoloads and discovery metadata required by its component code', function () {
     /** @var array<string, mixed> $root */
     $root = json_decode((string) file_get_contents(dirname(__DIR__).'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
-    expect($root['name'])->toBe('firefly/firefly')->and($root['type'])->toBe('library');
+    expect($root['name'])->toBe('fireflyframework/larafly')->and($root['type'])->toBe('library');
 
     /** @var array<string, string> $replaced */
     $replaced = $root['replace'];
@@ -19,9 +19,7 @@ it('ships the dependencies, autoloads and discovery metadata required by its com
     foreach (glob(dirname(__DIR__).'/packages/*/composer.json') ?: [] as $file) {
         /** @var array{name: string, require?: array<string, string>, autoload?: array{psr-4?: array<string, string>, files?: list<string>}, extra?: array{laravel?: array{providers?: list<string>}}} $module */
         $module = json_decode((string) file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
-        if ($module['name'] !== 'firefly/firefly') {
-            expect($replaced[$module['name']] ?? null)->toBe('self.version');
-        }
+        expect($replaced[$module['name']] ?? null)->toBe('self.version');
         foreach ($module['require'] ?? [] as $name => $constraint) {
             if (str_starts_with($name, 'firefly/') || in_array($name, ['ext-pdo_pgsql', 'orchestra/testbench', 'illuminate/testing'], true)) {
                 continue;

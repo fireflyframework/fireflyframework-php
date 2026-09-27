@@ -1,7 +1,7 @@
 name: Release (single package)
 
 # Packagist reads tags from this repository's root composer.json.
-# This gate validates the tagged distribution; indexing is checked separately (docs/publishing.md).
+# The webhook indexes the tag; publication succeeds only after a clean consumer installs it.
 on:
   push:
     tags:
@@ -31,3 +31,50 @@ jobs:
       - run: composer check
       - run: composer mono-validate
       - run: composer test:package
+
+  publish:
+    name: Verify Packagist and publish release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --prefer-dist
+      - name: Wait for Packagist to index this exact tag
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error https://packagist.org/packages/fireflyframework/larafly.json -o "$RUNNER_TEMP/larafly.json" &&
+              php -r '$p = json_decode(file_get_contents($argv[1]), true); exit(($p["package"]["versions"][getenv("RELEASE_TAG")]["source"]["reference"] ?? null) === getenv("RELEASE_SHA") ? 0 : 1);' "$RUNNER_TEMP/larafly.json"; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo 'Packagist has not indexed the tagged commit. Check the repository webhook and rerun this job.' >&2
+          exit 1
+      - name: Install the public release and exercise its installer
+        run: php scripts/check-package-install.php --published
+      - name: Publish the verified release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          version = os.environ['RELEASE_TAG'].removeprefix('v')
+          changelog = pathlib.Path('CHANGELOG.md').read_text()
+          notes = re.search(r'^## \[' + re.escape(version) + r'\].*?\n(.*?)(?=^## \[|\Z)', changelog, re.M | re.S)
+          if notes is None:
+              raise SystemExit('The tag has no changelog entry')
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(notes[1].strip() + '\n')
+          PY
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 ||
+            gh release create "$RELEASE_TAG" --verify-tag --title "LaraFly ${RELEASE_TAG#v}" --notes-file "$RUNNER_TEMP/release-notes.md"

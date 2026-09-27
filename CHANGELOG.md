@@ -4,11 +4,17 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.9] - 2026-09-27
+
 ### Changed
 
-- Publish the repository root as the `firefly/firefly` library, replacing component names at the same
+- Publish the repository root as the `fireflyframework/larafly` library, replacing component names at the same
   version. Runtime dependencies, autoloading and Laravel discovery now belong to that package; no split
-  mirrors or cross-repository release credential are needed.
+  mirrors or cross-repository release credential are needed. The public package uses the
+  `fireflyframework` namespace because Packagist reserves `firefly` for another publisher.
+- Gate GitHub releases on PHP 8.3–8.5 validation and a clean installation of the exact tagged commit
+  from Packagist, including the bundled application installer.
+- Exclude local development dependencies from both release archives and copied path installations.
 - Keep Lumen and component test support in development autoloading, and validate exported and copied
   consumer installations in CI. The installer uses the bundled skeleton and adds Testbench explicitly
   when the testing capability is requested. PostgreSQL outbox migrations are registered only for that

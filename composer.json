@@ -1,5 +1,5 @@
 {
-    "name": "firefly/firefly",
+    "name": "fireflyframework/larafly",
     "description": "LaraFly — the Firefly Framework for PHP.",
     "type": "library",
     "license": "Apache-2.0",
@@ -130,6 +130,7 @@
         "firefly/eda-kafka": "self.version",
         "firefly/eda-postgres": "self.version",
         "firefly/eda-rabbitmq": "self.version",
+        "firefly/firefly": "self.version",
         "firefly/installer": "self.version",
         "firefly/kernel": "self.version",
         "firefly/messaging": "self.version",

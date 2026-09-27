@@ -32,9 +32,9 @@
         "firefly/security": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
+        "fireflyframework/larafly": "*@dev",
         "illuminate/database": "^13.0",
-        "illuminate/support": "^13.0",
-        "firefly/firefly": "*@dev"
+        "illuminate/support": "^13.0"
     },
     "require-dev": {
         "firefly/eda-postgres": "*@dev",

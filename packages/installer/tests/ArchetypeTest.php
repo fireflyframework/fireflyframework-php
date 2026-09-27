@@ -132,17 +132,17 @@ it('adds exactly the requested capabilities, at the constraint the skeleton alre
         $require = Skeleton::requirements($dir);
 
         expect($require)->toHaveKey('firefly/security')->toHaveKey('firefly/eda')
-            // the constraint is copied off firefly/firefly, so it tracks the skeleton across releases
+            // the constraint is copied off fireflyframework/larafly, so it tracks the skeleton across releases
             // instead of pinning a literal that goes stale the day the family reaches 1.0
-            ->and($require['firefly/security'])->toBe($require['firefly/firefly'])
-            ->and($require['firefly/eda'])->toBe($require['firefly/firefly'])
+            ->and($require['firefly/security'])->toBe($require['fireflyframework/larafly'])
+            ->and($require['firefly/eda'])->toBe($require['fireflyframework/larafly'])
             // nothing else crept in
             ->and(array_values(array_filter(array_keys($require), fn (string $p): bool => str_starts_with($p, 'firefly/'))))
-            ->toBe(['firefly/cli', 'firefly/eda', 'firefly/firefly', 'firefly/security'])
+            ->toBe(['firefly/cli', 'firefly/eda', 'firefly/security'])
             ->and(Skeleton::stamp($dir)['capabilities'])->toBe(['security', 'eda']);
 
         // composer's sort-packages ordering: platform first, then natural case-insensitive name.
-        expect(array_keys($require))->toBe(['php', 'firefly/cli', 'firefly/eda', 'firefly/firefly', 'firefly/security', 'laravel/framework']);
+        expect(array_keys($require))->toBe(['php', 'firefly/cli', 'firefly/eda', 'firefly/security', 'fireflyframework/larafly', 'laravel/framework']);
     } finally {
         cleanUp($dir);
     }

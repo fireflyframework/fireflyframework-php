@@ -1,7 +1,7 @@
 # LaraFly Skeleton
 
 A [Laravel 13](https://laravel.com) application skeleton pre-wired with the **Firefly** framework family
-(`firefly/firefly` + `firefly/cli`). It ships a sample slice — a `#[Controller]` welcome page, a
+(`fireflyframework/larafly` + `firefly/cli`). It ships a sample slice — a `#[Controller]` welcome page, a
 `#[RestController]`, a `#[Service]`, and a `#[ConfigProperties]` DTO — plus the `firefly:cache` compile step in
 `post-create-project-cmd`, so a freshly created app boots on the zero-reflection cached path with **zero
 external infrastructure** (sqlite + array/sync drivers by default).

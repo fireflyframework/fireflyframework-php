@@ -67,7 +67,7 @@ it('triggers only on a pushed v* tag', function () {
 it('validates the tagged single package without cross-repository credentials', function () {
     $yaml = releaseWorkflowYaml();
     $jobs = asYamlMap($yaml['jobs'] ?? null, 'jobs');
-    expect(array_keys($jobs))->toBe(['package']);
+    expect(array_keys($jobs))->toBe(['package', 'publish']);
     $package = asYamlMap($jobs['package'], 'package');
     $steps = asYamlList($package['steps'] ?? null, 'steps');
     $commands = [];
@@ -83,4 +83,26 @@ it('validates the tagged single package without cross-repository credentials', f
     expect($permissions)->toBe(['contents' => 'read']);
     $blob = (string) file_get_contents(dirname(__DIR__).'/.github/workflows/release.yml');
     expect($blob)->not->toContain('ACCESS_TOKEN', 'monorepo-split', 'git push');
+});
+
+it('publishes a GitHub release only after the tag installs from Packagist', function () {
+    $jobs = asYamlMap(releaseWorkflowYaml()['jobs'] ?? null, 'jobs');
+    $publish = asYamlMap($jobs['publish'] ?? null, 'publish');
+    expect($publish['needs'] ?? null)->toBe('package');
+    $steps = asYamlList($publish['steps'] ?? null, 'publish.steps');
+    $commands = [];
+    foreach ($steps as $step) {
+        $map = asYamlMap($step, 'step');
+        if (is_string($map['run'] ?? null)) {
+            $commands[] = $map['run'];
+        }
+    }
+    $commands = implode("\n", $commands);
+    expect($commands)->toContain('scripts/check-package-install.php --published', 'gh release create');
+    $verifyPosition = strpos($commands, '--published');
+    $releasePosition = strpos($commands, 'gh release create');
+    if ($verifyPosition === false || $releasePosition === false) {
+        throw new RuntimeException('The publication steps are missing.');
+    }
+    expect($verifyPosition)->toBeLessThan($releasePosition);
 });

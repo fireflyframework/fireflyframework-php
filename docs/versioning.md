@@ -9,7 +9,7 @@ in July 2026. A new patch bumps the trailing number; the first release of a new 
 
 ## No `version` field
 
-No `composer.json` in this monorepo — not the aggregator, not any `packages/*/composer.json` — carries a
+No `composer.json` in this monorepo — not the root library, not any `packages/*/composer.json` — carries a
 `version` key. Packagist derives a package's version from the **git tag** at publish time (and from the
 `extra.branch-alias` entry for dev-branch resolution — see [Constraints](#constraints) below); hand-writing a
 `version` field would just be a second, driftable source of truth.
@@ -21,7 +21,7 @@ The single place the current version *is* asserted in code is:
 ```php
 final class Version
 {
-    public const string VERSION = '26.09.8';
+    public const string VERSION = '26.09.9';
 }
 ```
 
@@ -62,14 +62,13 @@ Application `composer.json` files depend on Firefly packages with a constraint a
 ```json
 {
     "require": {
-        "firefly/firefly": "^26.09"
+        "fireflyframework/larafly": "^26.09"
     }
 }
 ```
 
-`^26.09` is the constraint the release runbook writes into every package's sibling requirements
-(`monorepo-builder bump-interdependency`, see [Publishing](publishing.md)) — and it is the **widest** of the
-three shapes below, not the narrowest. Composer normalises `26.09` to `26.09.0.0` and expands a caret to "up
+`^26.09` is the **widest** of the three shapes below. The published root library replaces component
+names with `self.version`; application constraints choose which framework releases to accept. Composer normalises `26.09` to `26.09.0.0` and expands a caret to "up
 to the next major", so `^26.09` accepts `26.10.x`, `26.12.x` and every other line released in the `26` year.
 That matters more under CalVer than it would under semver, because a CalVer number carries no promise that a
 bump in anything but the last segment is backward compatible — a month bump is exactly where an incompatible

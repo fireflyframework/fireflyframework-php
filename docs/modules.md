@@ -1,6 +1,6 @@
 # Modules
 
-LaraFly publishes one `firefly/firefly` library containing the **29 component directories** under
+LaraFly publishes one `fireflyframework/larafly` library containing the **29 component directories** under
 `packages/*`, each with its own tests or metadata. The **32 guides** below explain their public surfaces.
 Several components carry more than one guide: `firefly/data` answers for *Data & Repositories*,
 *Relational Data* and *Transactions*. Laravel discovers the root library's providers, and configuration

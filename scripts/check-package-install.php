@@ -7,6 +7,12 @@ use Symfony\Component\Process\Process;
 require dirname(__DIR__).'/vendor/autoload.php';
 
 $root = dirname(__DIR__);
+$published = in_array('--published', $argv, true);
+$version = $published ? getenv('RELEASE_TAG') : '26.9.99';
+$reference = $published ? getenv('RELEASE_SHA') : null;
+if ($published && (! is_string($version) || ! preg_match('/^v\d{2}\.\d{2}\.\d+$/', $version) || ! is_string($reference) || ! preg_match('/^[a-f0-9]{40}$/', $reference))) {
+    throw new InvalidArgumentException('Published verification needs RELEASE_TAG=vYY.MM.Patch and RELEASE_SHA=<commit>.');
+}
 $work = sys_get_temp_dir().'/larafly-package-'.bin2hex(random_bytes(6));
 mkdir($work, 0755, true);
 
@@ -32,16 +38,18 @@ function writePackageJson(string $path, array $value): void
 
 try {
     $manifest = json_decode(file_get_contents($root.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
-    packageAssert($manifest['name'] === 'firefly/firefly', 'The repository root must publish firefly/firefly.');
-    runPackageCommand(['composer', 'archive', '--format=zip', '--dir='.$work, '--file=firefly'], $root);
-    $manifest['version'] = '26.9.99';
-    $manifest['dist'] = ['type' => 'zip', 'url' => $work.'/firefly.zip'];
-    unset($manifest['source']);
+    packageAssert($manifest['name'] === 'fireflyframework/larafly', 'The repository root must publish fireflyframework/larafly.');
+    if (! $published) {
+        runPackageCommand(['composer', 'archive', '--format=zip', '--dir='.$work, '--file=firefly'], $root);
+        $manifest['version'] = $version;
+        $manifest['dist'] = ['type' => 'zip', 'url' => $work.'/firefly.zip'];
+        unset($manifest['source']);
+    }
 
     // Only this distribution supplies firefly/*; Packagist is used for third-party dependencies.
-    $repositories = [
+    $repositories = $published ? [] : [
         ['type' => 'package', 'package' => $manifest],
-        ['type' => 'composer', 'url' => 'https://repo.packagist.org', 'exclude' => ['firefly/*']],
+        ['type' => 'composer', 'url' => 'https://repo.packagist.org', 'exclude' => ['firefly/*', 'fireflyframework/larafly']],
         ['packagist.org' => false],
     ];
     $app = $work.'/app';
@@ -53,30 +61,35 @@ try {
     }
     $consumer = json_decode(file_get_contents($app.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
     $consumer['repositories'] = $repositories;
-    $consumer['require']['firefly/firefly'] = '26.9.99';
+    $consumer['require']['fireflyframework/larafly'] = $version;
     // Every former component must resolve to the same installed library.
     foreach (array_keys($manifest['replace']) as $name) {
-        $consumer['require'][$name] = '^26.9';
+        $consumer['require'][$name] = $version;
     }
     unset($consumer['require-dev'], $consumer['minimum-stability']);
     writePackageJson($app.'/composer.json', $consumer);
     runPackageCommand(['composer', 'update', '--no-dev', '--prefer-dist', '--no-scripts', '--no-progress'], $app);
     $installed = json_decode(file_get_contents($app.'/vendor/composer/installed.json'), true, flags: JSON_THROW_ON_ERROR)['packages'];
     $names = array_column($installed, 'name');
-    packageAssert(array_values(array_filter($names, fn ($name) => str_starts_with($name, 'firefly/'))) === ['firefly/firefly'], 'A component was installed separately.');
+    packageAssert(in_array('fireflyframework/larafly', $names, true), 'The root library was not installed.');
+    packageAssert(array_filter($names, fn ($name) => str_starts_with($name, 'firefly/')) === [], 'A component was installed separately.');
+    if ($published) {
+        $library = array_values(array_filter($installed, fn ($package) => $package['name'] === 'fireflyframework/larafly'))[0];
+        packageAssert(($library['source']['reference'] ?? null) === $reference, 'Packagist installed a different commit than the release tag.');
+    }
     foreach (['orchestra/testbench', 'pestphp/pest', 'phpunit/phpunit'] as $dev) {
         packageAssert(! in_array($dev, $names, true), $dev.' leaked into a production install.');
     }
-    packageAssert(! is_link($app.'/vendor/firefly/firefly'), 'Consumer must use copied sources.');
+    packageAssert(! is_link($app.'/vendor/fireflyframework/larafly'), 'Consumer must use copied sources.');
     copy($app.'/.env.example', $app.'/.env');
     touch($app.'/database/database.sqlite');
     foreach ([['package:discover'], ['key:generate'], ['migrate', '--force'], ['firefly:cache']] as $arguments) {
         runPackageCommand([PHP_BINARY, 'artisan', ...$arguments], $app);
     }
     runPackageCommand([PHP_BINARY, 'vendor/bin/firefly', '--help'], $app);
-    runPackageCommand([PHP_BINARY, 'vendor/firefly/firefly/packages/installer/bin/firefly', '--help'], $app);
-    packageAssert(! is_dir($app.'/vendor/firefly/firefly/vendor'), 'Development vendor directory leaked into the archive.');
-    packageAssert(! is_dir($app.'/vendor/firefly/firefly/tests'), 'Repository tests leaked into the archive.');
+    runPackageCommand([PHP_BINARY, 'vendor/fireflyframework/larafly/packages/installer/bin/firefly', '--help'], $app);
+    packageAssert(! is_dir($app.'/vendor/fireflyframework/larafly/vendor'), 'Development vendor directory leaked into the archive.');
+    packageAssert(! is_dir($app.'/vendor/fireflyframework/larafly/tests'), 'Repository tests leaked into the archive.');
     file_put_contents($app.'/probe.php', <<<'PROBE'
 <?php
 require __DIR__.'/vendor/autoload.php';
@@ -110,16 +123,20 @@ PROBE);
     mkdir($lumen);
     $sample = json_decode(file_get_contents($root.'/samples/lumen/composer.json'), true, flags: JSON_THROW_ON_ERROR);
     $sample['repositories'] = [
-        ['type' => 'path', 'url' => $root, 'options' => ['symlink' => false, 'versions' => ['firefly/firefly' => '26.9.99']]],
-        $repositories[1], $repositories[2],
+        ['type' => 'path', 'url' => $root, 'options' => ['symlink' => false, 'versions' => ['fireflyframework/larafly' => '26.9.99']]],
+        ['type' => 'composer', 'url' => 'https://repo.packagist.org', 'exclude' => ['firefly/*', 'fireflyframework/larafly']],
+        ['packagist.org' => false],
     ];
     // Source/test namespaces in the sample remain relative to the sample project.
     $sample['autoload']['psr-4']['Lumen\\'] = $root.'/samples/lumen/src/';
     writePackageJson($lumen.'/composer.json', $sample);
     runPackageCommand(['composer', 'update', '--no-dev', '--prefer-dist', '--no-scripts', '--no-progress'], $lumen);
     $sampleInstalled = json_decode(file_get_contents($lumen.'/vendor/composer/installed.json'), true, flags: JSON_THROW_ON_ERROR)['packages'];
-    packageAssert(array_values(array_filter(array_column($sampleInstalled, 'name'), fn ($name) => str_starts_with($name, 'firefly/'))) === ['firefly/firefly'], 'Lumen installed a split package.');
-    packageAssert(! is_link($lumen.'/vendor/firefly/firefly'), 'Lumen must exercise copied path sources.');
+    packageAssert(array_filter(array_column($sampleInstalled, 'name'), fn ($name) => str_starts_with($name, 'firefly/')) === [], 'Lumen installed a split package.');
+    packageAssert(! is_link($lumen.'/vendor/fireflyframework/larafly'), 'Lumen must exercise copied path sources.');
+    foreach (['vendor', 'node_modules', '.venv-docs', 'tests'] as $developmentDirectory) {
+        packageAssert(! is_dir($lumen.'/vendor/fireflyframework/larafly/'.$developmentDirectory), 'Copied library includes development directory '.$developmentDirectory.'.');
+    }
     runPackageCommand([PHP_BINARY, '-r', 'require "vendor/autoload.php"; if (! class_exists("Lumen\\Domain\\Money")) { exit(1); }'], $lumen);
 
     $consumer['require']['firefly/eda-kafka'] = '^27.0';

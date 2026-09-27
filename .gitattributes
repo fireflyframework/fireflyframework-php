@@ -1,4 +1,12 @@
 * text=auto eol=lf
+/.* export-ignore
+/vendor export-ignore
+/node_modules export-ignore
+/site export-ignore
+/coverage export-ignore
+/composer.lock export-ignore
+/packages/*/vendor export-ignore
+/packages/*/tests export-ignore
 /.github export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore

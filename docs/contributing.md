@@ -2,7 +2,7 @@
 
 ## Monorepo layout
 
-`fireflyframework-php` publishes the root `firefly/firefly` library. All component code stays under
+`fireflyframework-php` publishes the root `fireflyframework/larafly` library. All component code stays under
 `packages/*`; their manifests document module requirements and namespaces and are validated together.
 They are not published or installed separately. `skeleton/` is the bundled application template used by
 `firefly new`. `samples/lumen` consumes the root through a copied path repository.

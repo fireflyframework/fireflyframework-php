@@ -76,7 +76,7 @@ final class CapabilityCatalog
             'firefly/autoconfigure' => 'the conditional auto-configuration engine',
             'firefly/web' => 'the HTTP layer; both the api and web archetypes route through it',
             'firefly/cli' => 'the developer console the skeleton already requires directly',
-            'firefly/firefly' => 'the root library containing every component',
+            'firefly/firefly' => 'the former runtime metapackage, replaced by fireflyframework/larafly',
             'firefly/installer' => 'this tool',
         ];
     }
