@@ -66,7 +66,10 @@
 [*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
-(it boots and its tests pass against this framework version, `26.09.3`).
+(its boot and test suite are verified in CI against the same framework source).
+
+**[Download the book in English or Spanish, as PDF or EPUB](https://fireflyframework.github.io/fireflyframework-php/book/).**
+The published editions include the single-package installation and bundled installer.
 
 The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fifteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),

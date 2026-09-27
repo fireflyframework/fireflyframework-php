@@ -127,7 +127,7 @@ Want to see it all working together? The
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *LaraFly by Example*
 book — 15 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
-in [`book/`](https://github.com/fireflyframework/fireflyframework-php/tree/main/book).
+as [PDF and EPUB downloads in English and Spanish](book.md).
 
 ## Quick Links
 

@@ -63,6 +63,7 @@ jobs:
           exit 1
       - name: Install the public release and exercise its installer
         run: php scripts/check-package-install.php --published
+      - uses: ./.github/actions/build-docs
       - name: Publish the verified release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,3 +79,4 @@ jobs:
           PY
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 ||
             gh release create "$RELEASE_TAG" --verify-tag --title "LaraFly ${RELEASE_TAG#v}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release upload "$RELEASE_TAG" site/downloads/* --clobber
