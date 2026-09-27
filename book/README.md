@@ -28,12 +28,12 @@ python3.12 -m venv book/.venv   # or: python3.13 -m venv book/.venv
 book/.venv/bin/pip install -r book/build/requirements.txt
 
 # 2. macOS only: WeasyPrint links against cairo/pango via ctypes at runtime.
-brew install cairo pango
+brew install cairo pango poppler
 ```
 
 `book/build/run.sh` sets `DYLD_FALLBACK_LIBRARY_PATH` to Homebrew's `lib/` so
 WeasyPrint finds `libcairo`/`libpango` without any manual `export`. On Linux,
-install the equivalent packages (e.g. `apt install libcairo2 libpango-1.0-0`)
+install the equivalent packages (e.g. `apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0 poppler-utils`)
 and `run.sh`'s `DYLD_FALLBACK_LIBRARY_PATH` export is a no-op (Linux uses the
 system loader path instead).
 
@@ -48,7 +48,7 @@ bash book/build/run.sh --config book.es.yaml  # Spanish  -> book/dist/larafly-by
 generated PDF/EPUB.
 
 To run the same pipeline as CI, including the book tests, PHP listing checks, both editions,
-the strict MkDocs build and `site/downloads/` packaging:
+the PDF text-boundary check (using Poppler), the strict MkDocs build and `site/downloads/` packaging:
 
 ```bash
 bash scripts/build-docs.sh

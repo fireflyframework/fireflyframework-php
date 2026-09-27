@@ -7,6 +7,7 @@ book/.venv/bin/python book/build/verify_code.py book/src --require-provenance
 book/.venv/bin/python book/build/verify_code.py book/src-es --require-provenance
 bash book/build/run.sh
 bash book/build/run.sh --config book.es.yaml
+book/.venv/bin/python book/build/verify_pdf.py book/dist/larafly-by-example.pdf book/dist/larafly-by-example-es.pdf
 book/.venv/bin/mkdocs build --strict
 
 # Keep generated downloads outside docs/ so a standalone MkDocs build needs no books.

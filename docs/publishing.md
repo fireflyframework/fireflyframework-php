@@ -87,7 +87,8 @@ An unmerged branch or a local consumer check is not a published release.
 
 CI builds the MkDocs site and both book editions using the shared `.github/actions/build-docs` action.
 It runs the book pipeline tests, validates the PHP listings in both languages, renders the PDF/EPUB files,
-and builds MkDocs with `--strict`. The four books, `SHA256SUMS` and `build-info.json` are included under
+rejects PDF text outside the page boundaries, and builds MkDocs with `--strict`.
+The four books, `SHA256SUMS` and `build-info.json` are included under
 the site's `downloads/` directory and uploaded as the `books` artifact for review on PRs.
 
 For pushes to `main`, the **Publish documentation** job deploys that exact site artifact only after all
