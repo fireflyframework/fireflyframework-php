@@ -10,7 +10,13 @@ drives matching `#[EventListener]` handlers, and marks them `PUBLISHED` (or `FAI
 downstream broker. Auto-configured behind `firefly.eda.provider=postgres`, with a `PostgresHealthIndicator`.
 
 ```bash
-composer require firefly/eda-postgres
+composer require fireflyframework/larafly
+```
+
+The library includes the PostgreSQL adapter. Enable `ext-pdo_pgsql` and set
+`firefly.eda.provider` to `postgres` before migrating and starting delivery:
+
+```bash
 php artisan migrate                 # creates firefly_eda_outbox
 php artisan firefly:eda:consume     # terminal in-process delivery
 ```

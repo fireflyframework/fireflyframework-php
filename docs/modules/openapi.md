@@ -4,20 +4,13 @@
 memory. There is no annotation dialect to learn and nothing to keep in sync by hand: `RouteManifest` supplies the
 paths, verbs, statuses, route names and the per-parameter binding plan; `ConstraintManifest` supplies the
 request-body schemas and their `required` lists; `firefly/kernel`'s `ErrorResponse` supplies the RFC 9457 error
-component. Install the package and a LaraFly app has a spec — and therefore typed clients — for free.
+component. It is included in the LaraFly library, so applications can generate a spec and typed clients.
 
 Because every fact in the document is read from the same compiled artifacts the dispatcher dispatches from and the
 validator validates with, **the spec cannot drift from the server**.
 
-`firefly/firefly` requires it, so a skeleton project already serves `/openapi` and `/openapi.json`. Add it
-directly if you took the packages à la carte:
-
-```bash
-composer require firefly/openapi
-```
-
-`firefly/firefly` requires it, so a project built from the skeleton already has it; the line above is for an
-application that took the packages à la carte.
+`fireflyframework/larafly` includes it, so a skeleton project already serves `/openapi` and `/openapi.json`.
+An explicit `firefly/openapi` requirement is satisfied by the root library's `replace` metadata.
 
 ## What you get
 

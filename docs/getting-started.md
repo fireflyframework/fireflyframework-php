@@ -2,7 +2,8 @@
 
 ## Quickstart: `firefly/skeleton`
 
-The fastest way to a booting, cached LaraFly app is the `firefly/skeleton` create-project template — a Laravel 13
+The fastest way to a booting, cached LaraFly app is the installer and `firefly/skeleton` template bundled in
+`fireflyframework/larafly` — a Laravel 13
 application pre-wired with the Firefly family, a `#[Controller]` welcome page, a sample
 `#[RestController]`/`#[Service]` pair, and `firefly:cache` already wired into `post-create-project-cmd`:
 
@@ -14,7 +15,7 @@ php artisan firefly:cache
 php artisan firefly:serve
 ```
 
-`composer create-project` alone already ran `migrate` and `firefly:cache` for you (via
+The installer invokes Composer on the bundled template, which already ran `migrate` and `firefly:cache` for you (via
 `post-create-project-cmd`), so the app boots reflection-free and its sample `POST /orders` persists from the
 first request; re-run `firefly:cache` whenever you add or change
 `#[Component]`/`#[RestController]`/`#[CommandHandler]`/etc. classes. `firefly:clear` drops back to the

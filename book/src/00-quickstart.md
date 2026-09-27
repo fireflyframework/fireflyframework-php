@@ -2,12 +2,12 @@
 
 # Build Lumen Step by Step {.chtitle}
 
-Welcome. Before the deep dive, this chapter takes you from an *empty terminal* to a *running, curl-able* LaraFly application — installed, compiled, and served — in well under ten minutes. Every command and every listing here is real: it is exactly what `composer create-project firefly/skeleton` generates, unmodified.
+Welcome. Before the deep dive, this chapter takes you from an *empty terminal* to a *running, curl-able* LaraFly application — installed, compiled, and served — in well under ten minutes. Every command and every listing here is real: it is exactly what `firefly new` generates, unmodified.
 
 This is a *tour*, not the deep dive. Chapter 1 makes the case for the whole approach; Chapter 2 opens the engine room and explains, in depth, everything you meet here only in passing — the container, the stereotypes, and the compiled boot manifest. The goal of this chapter is momentum: by the end of it you will have a real service running, and a first, informal feel for what "convention over configuration" means in LaraFly.
 
 !!! note "Note"
-    Every listing in this chapter is copied verbatim from `skeleton/`, the project scaffold `composer create-project firefly/skeleton` installs, and from `samples/lumen`, the fuller digital-wallet-and-ledger application this book builds toward over the chapters that follow.
+    Every listing in this chapter is copied verbatim from `skeleton/`, the project scaffold `firefly new` installs, and from `samples/lumen`, the fuller digital-wallet-and-ledger application this book builds toward over the chapters that follow.
 
 ---
 
@@ -29,7 +29,7 @@ composer --version
 
 ## Step 2 — Install
 
-The fastest way to start a new LaraFly application is `composer create-project`, pointed at the `firefly/skeleton` template:
+The bundled `firefly new` installer supplies the application template to Composer:
 
 ```bash
 composer global require fireflyframework/larafly
@@ -50,12 +50,12 @@ cd my-app
 
 By the time that command returns, `.env` exists, a SQLite database file has been touched, `APP_KEY` is set, and — the step that matters most for this book — **`firefly:cache` has already compiled your application's manifests**. You have not written a single line of PHP yet, and the zero-reflection boot path this whole framework is built around is already in place.
 
-!!! tip "A global installer, if you prefer it"
+!!! tip "The bundled installer"
     `composer global require fireflyframework/larafly` gives you a `firefly` command on your `PATH`. `firefly new my-app` supplies the bundled skeleton to Composer, then runs `git init` and an initial commit for you — the LaraFly equivalent of `laravel new`.
 
 ### What you just installed
 
-The skeleton's `composer.json` requires only two Firefly packages directly:
+The skeleton's `composer.json` requires the root library and records a CLI component requirement satisfied by that library:
 
 ```json
 "require": {
@@ -287,7 +287,7 @@ You went from an empty terminal to a compiled, running, curl-able LaraFly applic
 
 | In this Quick Start you… | Goes deep in |
 |---|---|
-| Installed via `composer create-project firefly/skeleton` | **Chapter 1** — Why LaraFly? |
+| Installed via `firefly new` | **Chapter 1** — Why LaraFly? |
 | Saw `#[Service]`, `#[ConfigProperties]`, and `#[RestController]` register beans with no manual wiring | **Chapter 2** — Dependency Injection & Auto-Configuration |
 | Ran `firefly:cache` and saw routes served from a compiled manifest, not `routes/web.php` | **Chapter 2** — Dependency Injection & Auto-Configuration |
 

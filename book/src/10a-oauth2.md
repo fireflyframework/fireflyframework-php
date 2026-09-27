@@ -11,7 +11,7 @@ By the end of this chapter you will know which of the two OAuth2 packages you ar
 
 ## Two packages, two directions
 
-Chapter 10 ended with a filter chain and a warning that three of its numbers belonged to packages that chapter did not install. Here they are. Neither package is a dependency of the other — each builds on `firefly/security` and neither names the other — and installing one never drags the other in:
+The root library includes both OAuth2 components. Each builds on `firefly/security`; their internal dependency descriptors do not depend on one another. Configuration enables each role independently. These optional component requirements are satisfied by the already-installed library through `replace`:
 
 ```bash
 composer require firefly/security-oauth2-client   # be a relying party: sign people in through a provider

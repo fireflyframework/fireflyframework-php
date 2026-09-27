@@ -10,9 +10,8 @@ It is **off by default, and it does not inherit the dashboard's default.** Read
     `firefly.admin.data.enabled` turns the browser on and `firefly.admin.data.writable` permits writes on top
     of it. Both default to **false** and neither is implied by `app.debug` or by `firefly.admin.enabled` —
     see [The two gates](#the-two-gates), which is the point of this page.
-```bash
-composer require firefly/admin      # already required by firefly/firefly; the browser is a part of the dashboard, not a package of its own
-```
+
+The browser is part of the dashboard included in `fireflyframework/larafly`; no separate package is needed.
 
 `DataBrowser` is the single entry point, and `DataBrowser::forContainer($container)` assembles one from the
 application container in a line. Discovery, schema derivation, reads and the two writes all go through it, and

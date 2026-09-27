@@ -851,11 +851,7 @@ Un nombre de canal que no existe bajo `logging.channels` se rechaza, y la razón
 
 ## El panel de administración: `firefly/admin`
 
-Todo lo visto hasta aquí en este capítulo es JSON, y JSON es la forma correcta para un balanceador de carga, una sonda de Kubernetes y un scraper de Prometheus. No es la forma correcta para una persona a las 3 de la madrugada que quiere saber si este proceso compiló sus manifiestos, qué auto-configuración se echó atrás, y a qué resolvió realmente `firefly.data.*`. `firefly/admin` es el paquete para esa persona: un panel de administración renderizado en el servidor sobre esos mismos endpoints del actuator, en el espíritu de Spring Boot Admin. Llega con `firefly/firefly` como el resto de la familia, así que un proyecto del esqueleto ya lo tiene — y, igual que con `firefly/actuator`, tenerlo instalado no es lo mismo que tenerlo activado. Añádelo directamente solo si cogiste los paquetes por separado:
-
-```bash
-composer require firefly/admin
-```
+Todo lo visto hasta aquí en este capítulo es JSON, y JSON es la forma correcta para un balanceador de carga, una sonda de Kubernetes y un scraper de Prometheus. No es la forma correcta para una persona a las 3 de la madrugada que quiere saber si este proceso compiló sus manifiestos, qué auto-configuración se echó atrás, y a qué resolvió realmente `firefly.data.*`. `firefly/admin` es el paquete para esa persona: un panel de administración renderizado en el servidor sobre esos mismos endpoints del actuator, en el espíritu de Spring Boot Admin. Está incluido en `fireflyframework/larafly`, así que un proyecto del esqueleto ya lo tiene — y, igual que con `firefly/actuator`, tenerlo instalado no es lo mismo que tenerlo activado. No hace falta instalar otro paquete.
 
 Después abre `/firefly`. No hay paso de npm en la instalación ni CDN en tiempo de petición — las vistas son Blade puro con CSS en línea y tipografías del sistema, porque un paquete de Composer no puede dar por hecho que npm se ha ejecutado, y un panel que necesita la red es inútil precisamente en los entornos aislados donde más quieres mirar uno.
 

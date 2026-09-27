@@ -1,7 +1,7 @@
 # Tutorial: Build Your First LaraFly Feature
 
 This is a hand-built, step-by-step walkthrough of building a real LaraFly feature from an empty
-`composer create-project` to a fully attribute-driven slice — a REST controller, a service, typed
+`firefly new` application to a fully attribute-driven slice — a REST controller, a service, typed
 configuration, a repository-backed domain model, request validation, RFC-7807 error handling, a CQRS
 command/query pair, and a domain event listener. Every code block below is accurate to the framework as
 shipped in this repository — attributes, class names, and method signatures are taken verbatim from
@@ -39,10 +39,11 @@ See [Installation](installation.md) for the full requirements list.
 
 ## Step 1: Create the App
 
-Scaffold a new LaraFly application with the `firefly/skeleton` Composer template:
+Install LaraFly and scaffold a new application with its bundled template:
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require fireflyframework/larafly
+firefly new my-app
 cd my-app
 ```
 
@@ -52,7 +53,7 @@ already-cached app: it copies `.env.example` to `.env`, touches `database/databa
 so `POST /orders` works on the first request rather than after a step you have to be told about), and runs
 `php artisan firefly:cache` — the zero-reflection compile step you'll
 revisit in [Step 11](#step-11-the-zero-reflection-cache-and-health-introspection). See
-[Installation](installation.md) for the equivalent `firefly new my-app` global-installer shortcut.
+[Installation](installation.md) for using the local template directly from a framework source checkout.
 
 The scaffolded project looks like this:
 

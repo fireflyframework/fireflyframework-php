@@ -9,11 +9,12 @@ external infrastructure** (sqlite + array/sync drivers by default).
 ## Create a new app
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require fireflyframework/larafly
+firefly new my-app
 cd my-app
 ```
 
-`composer create-project` runs `post-create-project-cmd`, which:
+The installer supplies this bundled template to Composer, whose `post-create-project-cmd`:
 
 1. copies `.env.example` to `.env`,
 2. touches the default `database/database.sqlite`,

@@ -8,9 +8,7 @@ what each one is **wired to**, which is what you actually want when a `#[Conditi
 way you expected, when a cycle has hung a boot, or when you are trying to work out what a package you just
 installed attached itself to.
 
-```
-composer require firefly/admin      # already required by firefly/firefly; the graph is a page of the dashboard, not a package of its own
-```
+The graph is a dashboard page included in `fireflyframework/larafly`; no separate package is needed.
 
 ## What counts as a node
 

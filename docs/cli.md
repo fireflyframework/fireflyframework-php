@@ -87,7 +87,7 @@ the sole owner of the loading half of the contract. An app that skipped the comp
 `firefly/firefly` metapackage, which did not require the CLI — booted with no routes (404 on everything it owned)
 and, worse, with an empty method-security manifest: both enforcement sites read "no rule for this method" as ALLOW,
 so `#[PreAuthorize]`, `#[Secured]` and `#[RolesAllowed]` all failed **open**. `firefly/cli` is
-now part of the `firefly/firefly` metapackage, and `firefly.security.method.strict` (default `false`) makes the
+now included in the `fireflyframework/larafly` library, and `firefly.security.method.strict` (default `false`) makes the
 strict reading available to anyone who wants a build that ships without a compiled manifest to refuse to boot
 rather than run unprotected.
 
