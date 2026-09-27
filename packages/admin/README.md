@@ -4,10 +4,10 @@ The LaraFly admin dashboard — a server-rendered browser view over the actuator
 [Spring Boot Admin](https://docs.spring-boot-admin.com/).
 
 ```bash
-composer require firefly/admin
+composer require fireflyframework/larafly
 ```
 
-Then open `/firefly`.
+The library includes `firefly/admin`. When `firefly.admin.enabled` is on (default: `app.debug`), open `/firefly`.
 
 ## What it shows
 

@@ -33,7 +33,7 @@ always wins):
 |---|---|---|---|
 | *(unset)* / `none` | `NoneLock` | `firefly/scheduling` | **The default.** Every `tryAcquire()` succeeds and `release()` is a no-op — correct for a single-instance deployment (the only "node" always wins) and for a bare skeleton with no lock infrastructure, but provides **no real mutual exclusion** across nodes. |
 | `cache` | `CacheLock` | `firefly/scheduling` | Wraps Laravel's atomic `Cache::lock()`. Works over any lock-capable driver (`database`, `redis`, `memcached`, and `array` for tests). The `null` cache driver grants **no-op** locks (every acquire "succeeds" with no real exclusion, same as `NoneLock`); `array` is **per-process only** — it does not coordinate across separate PHP-FPM workers or hosts. Production multi-node deployments need `database` or `redis`. |
-| `postgres` | `PgAdvisoryLock` | `firefly/scheduling-postgres` | Session-scoped Postgres advisory lock (see below). Requires installing the separate adapter package. |
+| `postgres` | `PgAdvisoryLock` | `firefly/scheduling-postgres` | Session-scoped Postgres advisory lock (see below). Included in the root library; requires a PostgreSQL connection and `ext-pdo_pgsql`. |
 
 `CacheLock::tryAcquire()` throws a `ConfigurationException` up front if the configured cache store isn't a
 `LockProvider` at all (rather than silently degrading), naming the driver requirement explicitly.
@@ -45,7 +45,7 @@ always wins):
 (`PgAdvisoryLock::key()`, the top 60 bits of a SHA-256 digest folded into the signed `bigint` range). It
 opts in only behind `firefly.scheduling.lock.provider=postgres`, gated by
 `PgAdvisoryLockAutoConfiguration`'s `#[ConditionalOnProperty(name: 'firefly.scheduling.lock.provider',
-havingValue: 'postgres')]` — installing the package with the property unset is otherwise completely inert
+havingValue: 'postgres')]` — the bundled adapter remains inactive when the property is unset
 (`#[Order(1000)]` matches `SchedulingAutoConfiguration`'s own default bean, which backs off via
 `#[ConditionalOnMissingBean]` once this one binds `DistributedLock`).
 

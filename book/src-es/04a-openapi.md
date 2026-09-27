@@ -16,10 +16,10 @@ Todas las cadenas de herramientas OpenAPI en PHP anteriores a esta te piden escr
 `firefly/openapi` no tiene ese modo de fallo disponible, porque no tiene una segunda fuente. El Capítulo 4 terminó con el `RouteManifest`: la tabla compilada de cada `RouteDescriptor` desde la que sirve el dispatcher, que lleva el verbo, la ruta, el estado declarado, el nombre de ruta, la clase y el método del controlador, y el *plan de enlace* por parámetro. El Capítulo 4 también presentó el `ConstraintManifest`: la lista de reglas compilada que `BeanValidator` ejecuta sobre un cuerpo `#[Valid]`. Esos dos artefactos, más el `ErrorResponse` de `firefly/kernel`, son toda la entrada:
 
 ```bash
-composer require firefly/openapi
+composer require fireflyframework/larafly
 ```
 
-Esa es toda la instalación. Arranca la app y `GET /openapi.json` queda servido; `GET /openapi` renderiza una consola de referencia sobre él. No se anotó nada, y nada puede divergir, porque cada hecho del documento se lee del mismo artefacto compilado que lee el dispatcher.
+La biblioteca principal incluye el componente OpenAPI; las aplicaciones generadas con LaraFly ya lo tienen. Arranca la app y `GET /openapi.json` queda servido; `GET /openapi` renderiza una consola de referencia sobre él. No se anotó nada, y nada puede divergir, porque cada hecho del documento se lee del mismo artefacto compilado que lee el dispatcher.
 
 ---
 

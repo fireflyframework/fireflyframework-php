@@ -16,10 +16,10 @@ Every OpenAPI toolchain in PHP that predates this one asks you to write the docu
 `firefly/openapi` does not have that failure mode available to it, because it does not have a second source. Chapter 4 ended with `RouteManifest`: the compiled table of every `RouteDescriptor` the dispatcher serves from, carrying the verb, the path, the declared status, the route name, the controller class and method, and the per-parameter *binding plan*. Chapter 4 also introduced `ConstraintManifest`: the compiled rule list `BeanValidator` runs on a `#[Valid]` body. Those two artifacts, plus `firefly/kernel`'s `ErrorResponse`, are the entire input:
 
 ```bash
-composer require firefly/openapi
+composer require fireflyframework/larafly
 ```
 
-That is the whole installation. Boot the app and `GET /openapi.json` is served; `GET /openapi` renders a reference console over it. Nothing was annotated, and nothing can drift, because every fact in the document is read from the same compiled artifact the dispatcher reads.
+The root library includes the OpenAPI component; generated LaraFly applications already have it. Boot the app and `GET /openapi.json` is served; `GET /openapi` renders a reference console over it. Nothing was annotated, and nothing can drift, because every fact in the document is read from the same compiled artifact the dispatcher reads.
 
 ---
 

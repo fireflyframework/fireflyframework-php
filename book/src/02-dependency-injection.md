@@ -370,7 +370,7 @@ php artisan firefly:cache
 firefly:cache — wrote 14 manifest(s) + 0 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
-You already ran this once, indirectly — `composer create-project firefly/skeleton` calls it for you in its `post-create-project-cmd` script, which is why the Quick Start's application booted correctly without you ever running the command by hand. From here on, any time you add or change a `#[Service]`, `#[Repository]`, `#[Configuration]`, or any other Firefly attribute, re-run `firefly:cache` to recompile the manifest; `php artisan firefly:clear` deletes the compiled cache and falls back to the slower, reflection-based development scan.
+You already ran this once, indirectly — `firefly new` calls it for you in its `post-create-project-cmd` script, which is why the Quick Start's application booted correctly without you ever running the command by hand. From here on, any time you add or change a `#[Service]`, `#[Repository]`, `#[Configuration]`, or any other Firefly attribute, re-run `firefly:cache` to recompile the manifest; `php artisan firefly:clear` deletes the compiled cache and falls back to the slower, reflection-based development scan.
 
 !!! tip "Tip: `firefly:cache` is not just for containers"
     The same command also compiles the manifests for every other pillar Chapter 1 introduced — routes, transactional proxies, CQRS handlers, event listeners, security rules, and more. Dependency injection is simply the first and most foundational one; the same "reflect once, freeze into a manifest, boot from the frozen copy" idea repeats for every one of them.

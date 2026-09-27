@@ -444,7 +444,7 @@ Delega a los propios comandos de base de datos de Laravel: `migrate` (por defect
 
 ## De cero a en funcionamiento: `firefly/installer` y `firefly/skeleton`
 
-`firefly/installer` trae el comando global `firefly new` — un pequeño binario de Symfony Console, no un andamiador en sí. Sale directamente por shell hacia `composer create-project firefly/skeleton`:
+`firefly/installer` trae el comando global `firefly new` — un pequeño binario de Symfony Console, no un andamiador en sí. Invoca `composer create-project` con la plantilla incluida en `fireflyframework/larafly` como repositorio local de tipo path:
 
 <!-- source: packages/installer/src/NewCommand.php -->
 ```php
@@ -494,7 +494,7 @@ El `#[AsCommand]` de aquí es **de Symfony**, no de Firefly, y las líneas `use`
 
 Todo proceso externo pasa por la costura `ProcessRunner` — `composer`, `php artisan`, `git` —, que es lo que hace que el flujo entero sea afirmable sin red y sin un `composer create-project` real.
 
-`firefly/skeleton` — una plantilla de aplicación Laravel 13 genuina, de nivel superior, precableada con la familia Firefly y un par `#[RestController]`/`#[Service]` de ejemplo — es lo que `composer create-project` realmente descarga. Su propio `composer.json` cierra el bucle hacia el que todo este capítulo ha estado construyendo: `firefly:cache` se ejecuta **automáticamente**, justo después de la instalación, sin ningún paso manual:
+`firefly/skeleton` — una plantilla de aplicación Laravel 13 genuina, de nivel superior, precableada con la familia Firefly y un par `#[RestController]`/`#[Service]` de ejemplo — es lo que el instalador entrega a `composer create-project` desde su propia distribución. Su propio `composer.json` cierra el bucle hacia el que todo este capítulo ha estado construyendo: `firefly:cache` se ejecuta **automáticamente**, justo después de la instalación, sin ningún paso manual:
 
 ```json
 "scripts": {
@@ -510,7 +510,7 @@ Todo proceso externo pasa por la costura `ProcessRunner` — `composer`, `php ar
 Cada aplicación que `firefly new` andamia es por tanto, desde el primerísimo `git commit`, ya boot-cacheada — una aplicación genuinamente sin reflexión en disco, no meramente un framework capaz de convertirse en una. El propio `bootstrap/cache/firefly/` está en `.gitignore` en el esqueleto (los manifiestos se generan frescos por instalación, no se commitean), que es exactamente lo que esperarías de un artefacto de compilación en lugar de código fuente.
 
 !!! laravel "Paridad con Laravel"
-    `composer create-project laravel/laravel` te da una app Laravel desnuda sin nada precableado; `firefly new` (o `composer create-project firefly/skeleton`) te da la misma app Laravel, más la familia Firefly ya requerida, más un par de estereotipos de ejemplo, más una caché de arranque ya calentada — el equivalente al "genera un proyecto de arranque funcional" de Spring Initializr, apuntado a `artisan` en lugar de a un formulario web. `make:firefly-*` refleja la propia familia `make:controller`/`make:model` de Laravel exactamente en espíritu — un `GeneratorCommand` de Artisan, un stub, un marcador de namespace — solo que un atributo de estereotipo más profundo.
+    `composer create-project laravel/laravel` te da una app Laravel desnuda sin nada precableado; `firefly new` te da la misma app Laravel, más la familia Firefly ya requerida, más un par de estereotipos de ejemplo, más una caché de arranque ya calentada — el equivalente al "genera un proyecto de arranque funcional" de Spring Initializr, apuntado a `artisan` en lugar de a un formulario web. `make:firefly-*` refleja la propia familia `make:controller`/`make:model` de Laravel exactamente en espíritu — un `GeneratorCommand` de Artisan, un stub, un marcador de namespace — solo que un atributo de estereotipo más profundo.
 
 ---
 
@@ -524,7 +524,7 @@ Cada aplicación que `firefly new` andamia es por tanto, desde el primerísimo `
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renderiza los endpoints de actuator del Capítulo 11 en el terminal, en-proceso, sin ida y vuelta HTTP |
 | `make:firefly-*` | Ocho generadores, uno por estereotipo — `GeneratorCommand` + un stub, exactamente como la propia familia `make:*` de Laravel |
 | `firefly:serve` / `firefly:db` | Pasarelas finas a `artisan serve`/`octane:start` y a los propios comandos de base de datos de Laravel |
-| `firefly new` (`firefly/installer`) | Sale por shell hacia `composer create-project firefly/skeleton`; el esqueleto ejecuta `firefly:cache` automáticamente tras la instalación |
+| `firefly new` (`firefly/installer`) | Entrega la plantilla incluida a `composer create-project`; el esqueleto ejecuta `firefly:cache` automáticamente tras la instalación |
 
 ---
 

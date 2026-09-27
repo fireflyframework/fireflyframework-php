@@ -17,10 +17,10 @@
 | Guide | Description |
 |-------|-------------|
 | [Introduction](index.md) | What LaraFly is, the pitch, and a map of the docs |
-| [Installation](installation.md) | Requirements, `composer create-project firefly/skeleton`, and manual install |
+| [Installation](installation.md) | Requirements, the bundled `firefly new` installer, and manual install |
 | [Getting Started](getting-started.md) | Boot the `firefly/skeleton` template, write your first `#[RestController]`/`#[Service]`, run `firefly:cache` |
 | [Architecture](architecture.md) | The hexagonal design, the boot pipeline, and how the Deptrac layers fit together |
-| [Tutorial](tutorial.md) | A hand-built, 12-step walkthrough — from `composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice |
+| [Tutorial](tutorial.md) | A hand-built, 12-step walkthrough — from `firefly new` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice |
 | [Lumen Sample](../samples/lumen/) | A runnable digital-wallet & ledger sample exercising `#[Transactional]`, CQRS, domain events over EDA, method security, and a REST layer with RFC-7807 problem-details |
 
 ---

@@ -444,7 +444,7 @@ Delegates to Laravel's own database commands: `migrate` (default), `db:seed` (`f
 
 ## From zero to running: `firefly/installer` and `firefly/skeleton`
 
-`firefly/installer` ships the global `firefly new` command — a small Symfony Console binary, not itself a scaffolder. It shells straight out to `composer create-project firefly/skeleton`:
+`firefly/installer` ships the global `firefly new` command — a small Symfony Console binary, not itself a scaffolder. It invokes `composer create-project` with the template bundled in `fireflyframework/larafly` as a local path repository:
 
 <!-- source: packages/installer/src/NewCommand.php -->
 ```php
@@ -494,7 +494,7 @@ final class NewCommand extends Command
 
 Every external process goes through the `ProcessRunner` seam — `composer`, `php artisan`, `git` — which is what makes the whole flow assertable without a network or a real `composer create-project`.
 
-`firefly/skeleton` — a genuine, top-level Laravel 13 application template pre-wired with the Firefly family and a sample `#[RestController]`/`#[Service]` pair — is what `composer create-project` actually pulls down. Its own `composer.json` closes the loop this whole chapter has been building toward: `firefly:cache` runs **automatically**, right after install, with no manual step:
+`firefly/skeleton` — a genuine, top-level Laravel 13 application template pre-wired with the Firefly family and a sample `#[RestController]`/`#[Service]` pair — is what the installer supplies to `composer create-project` from its own distribution. Its own `composer.json` closes the loop this whole chapter has been building toward: `firefly:cache` runs **automatically**, right after install, with no manual step:
 
 ```json
 "scripts": {
@@ -510,7 +510,7 @@ Every external process goes through the `ProcessRunner` seam — `composer`, `ph
 Every application `firefly new` scaffolds is therefore, from the very first `git commit`, already boot-cached — a genuinely zero-reflection application on disk, not merely a framework capable of becoming one. `bootstrap/cache/firefly/` itself is `.gitignore`d in the skeleton (the manifests are generated fresh per install, not committed), which is exactly what you would expect of a build artifact rather than source.
 
 !!! laravel "Laravel parity"
-    `composer create-project laravel/laravel` gives you a bare Laravel app with nothing pre-wired; `firefly new` (or `composer create-project firefly/skeleton`) gives you the same Laravel app, plus the Firefly family pre-required, plus a sample stereotype pair, plus a boot cache already warmed — the equivalent of Spring Initializr's "generate a working starter project," aimed at `artisan` rather than a web form. `make:firefly-*` mirrors Laravel's own `make:controller`/`make:model` family exactly in spirit — an Artisan `GeneratorCommand`, a stub, a namespace placeholder — just one stereotype attribute deeper.
+    `composer create-project laravel/laravel` gives you a bare Laravel app with nothing pre-wired; `firefly new` gives you the same Laravel app, plus the Firefly family pre-required, plus a sample stereotype pair, plus a boot cache already warmed — the equivalent of Spring Initializr's "generate a working starter project," aimed at `artisan` rather than a web form. `make:firefly-*` mirrors Laravel's own `make:controller`/`make:model` family exactly in spirit — an Artisan `GeneratorCommand`, a stub, a namespace placeholder — just one stereotype attribute deeper.
 
 ---
 
@@ -524,7 +524,7 @@ Every application `firefly new` scaffolds is therefore, from the very first `git
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renders Chapter 11's actuator endpoints at the terminal, in-process, no HTTP round trip |
 | `make:firefly-*` | Eight generators, one per stereotype — `GeneratorCommand` + a stub, exactly like Laravel's own `make:*` family |
 | `firefly:serve` / `firefly:db` | Thin passthroughs to `artisan serve`/`octane:start` and Laravel's own database commands |
-| `firefly new` (`firefly/installer`) | Shells out to `composer create-project firefly/skeleton`; the skeleton runs `firefly:cache` automatically post-install |
+| `firefly new` (`firefly/installer`) | Supplies the bundled skeleton to `composer create-project`; the skeleton runs `firefly:cache` automatically post-install |
 
 ---
 

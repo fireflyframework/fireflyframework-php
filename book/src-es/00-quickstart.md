@@ -2,12 +2,12 @@
 
 # Construye Lumen paso a paso {.chtitle}
 
-Bienvenido. Antes de la inmersión profunda, este capítulo te lleva desde una *terminal vacía* hasta una aplicación LaraFly *en ejecución y consultable con curl* — instalada, compilada y servida — en bastante menos de diez minutos. Cada comando y cada listado de este capítulo son reales: es exactamente lo que genera `composer create-project firefly/skeleton`, sin modificar.
+Bienvenido. Antes de la inmersión profunda, este capítulo te lleva desde una *terminal vacía* hasta una aplicación LaraFly *en ejecución y consultable con curl* — instalada, compilada y servida — en bastante menos de diez minutos. Cada comando y cada listado de este capítulo son reales: es exactamente lo que genera `firefly new`, sin modificar.
 
 Esto es un *recorrido*, no la inmersión profunda. El Capítulo 1 argumenta el enfoque completo; el Capítulo 2 abre la sala de máquinas y explica, en profundidad, todo lo que aquí solo mencionas de pasada — el contenedor, los estereotipos y el manifiesto de arranque compilado. El objetivo de este capítulo es el impulso inicial: al terminarlo tendrás un servicio real en ejecución, y una primera sensación informal de lo que significa "convención sobre configuración" en LaraFly.
 
 !!! note "Nota"
-    Todos los listados de este capítulo se copian literalmente de `skeleton/`, el andamiaje de proyecto que instala `composer create-project firefly/skeleton`, y de `samples/lumen`, la aplicación más completa de monedero digital y libro mayor que este libro construye a lo largo de los capítulos siguientes.
+    Todos los listados de este capítulo se copian literalmente de `skeleton/`, el andamiaje de proyecto que instala `firefly new`, y de `samples/lumen`, la aplicación más completa de monedero digital y libro mayor que este libro construye a lo largo de los capítulos siguientes.
 
 ---
 
@@ -29,7 +29,7 @@ composer --version
 
 ## Paso 2 — Instalación
 
-La forma más rápida de iniciar una nueva aplicación LaraFly es `composer create-project`, apuntando a la plantilla `firefly/skeleton`:
+El instalador `firefly new` entrega a Composer la plantilla incluida en la biblioteca:
 
 ```bash
 composer global require fireflyframework/larafly
@@ -50,12 +50,12 @@ cd my-app
 
 Para cuando ese comando termina, `.env` ya existe, se ha creado el archivo de base de datos SQLite, `APP_KEY` está configurada y — el paso que más importa para este libro — **`firefly:cache` ya ha compilado los manifiestos de tu aplicación**. Todavía no has escrito una sola línea de PHP, y la ruta de arranque sin reflexión sobre la que se construye todo este framework ya está en su sitio.
 
-!!! tip "Un instalador global, si lo prefieres"
+!!! tip "El instalador incluido"
     `composer global require fireflyframework/larafly` te da un comando `firefly` en tu `PATH`. `firefly new my-app` entrega a Composer la plantilla incluida en la biblioteca, y luego ejecuta `git init` y un commit inicial por ti — el equivalente en LaraFly de `laravel new`.
 
 ### Qué acabas de instalar
 
-El `composer.json` del andamiaje requiere solo dos paquetes de Firefly directamente:
+El `composer.json` del andamiaje requiere la biblioteca principal y declara un requisito del componente CLI que esa biblioteca satisface:
 
 ```json
 "require": {
@@ -66,7 +66,7 @@ El `composer.json` del andamiaje requiere solo dos paquetes de Firefly directame
 }
 ```
 
-`firefly/cli` te da los comandos `artisan firefly:*` que usarás a lo largo de este libro. `fireflyframework/larafly` es el **biblioteca completa del framework**, que contiene toda la familia Firefly (contenedor, contexto, configuración, web, datos, cqrs, eda, seguridad, validación, resiliencia, programación, observabilidad, actuator y más) en una sola línea `require`, de modo que tu propio `composer.json` nunca tiene que enumerarlos uno a uno.
+`firefly/cli` te da los comandos `artisan firefly:*` que usarás a lo largo de este libro. `fireflyframework/larafly` es la **biblioteca completa del framework**, que contiene toda la familia Firefly (contenedor, contexto, configuración, web, datos, cqrs, eda, seguridad, validación, resiliencia, programación, observabilidad, actuator y más) en una sola línea `require`, de modo que tu propio `composer.json` nunca tiene que enumerarlos uno a uno.
 
 !!! laravel "Paridad con Laravel"
     `firefly new` es el equivalente en LaraFly de `laravel new` — y `fireflyframework/larafly` es el equivalente de instalar el propio `laravel/framework`: una línea de dependencia que trae una pila completa y coherente en lugar de una colección de piezas versionadas de forma independiente.
@@ -287,7 +287,7 @@ Pasaste de una terminal vacía a una aplicación LaraFly compilada, en ejecució
 
 | En este Inicio rápido... | Se profundiza en |
 |---|---|
-| Instalaste con `composer create-project firefly/skeleton` | **Capítulo 1** — ¿Por qué LaraFly? |
+| Instalaste con `firefly new` | **Capítulo 1** — ¿Por qué LaraFly? |
 | Viste cómo `#[Service]`, `#[ConfigProperties]` y `#[RestController]` registran beans sin conexión manual | **Capítulo 2** — Inyección de Dependencias y Auto-Configuración |
 | Ejecutaste `firefly:cache` y viste rutas servidas desde un manifiesto compilado, no desde `routes/web.php` | **Capítulo 2** — Inyección de Dependencias y Auto-Configuración |
 

@@ -11,7 +11,7 @@ Al terminar este capítulo sabrás cuál de los dos paquetes OAuth2 tienes entre
 
 ## Dos paquetes, dos direcciones
 
-El Capítulo 10 terminó con una cadena de filtros y con el aviso de que tres de sus números pertenecían a paquetes que aquel capítulo no instalaba. Aquí están. Ninguno de los dos paquetes depende del otro — cada uno se apoya en `firefly/security` y ninguno nombra al otro — e instalar uno nunca arrastra al otro:
+La biblioteca principal incluye ambos componentes OAuth2. Cada uno se apoya en `firefly/security`; sus descriptores internos no dependen el uno del otro. La configuración activa cada rol de forma independiente. Estos requisitos opcionales de componentes se satisfacen mediante el `replace` de la biblioteca ya instalada:
 
 ```bash
 composer require firefly/security-oauth2-client   # ser un relying party: identificar personas en un proveedor

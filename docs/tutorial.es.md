@@ -1,7 +1,7 @@
 # Tutorial: construye tu primera funcionalidad LaraFly
 
 Este es un recorrido paso a paso, construido a mano, de cómo levantar una funcionalidad LaraFly real desde
-un `composer create-project` vacío hasta una porción completa gobernada por atributos — un controlador REST,
+una aplicación creada con `firefly new` hasta una porción completa gobernada por atributos — un controlador REST,
 un servicio, configuración tipada, un modelo de dominio respaldado por un repositorio, validación de
 peticiones, manejo de errores RFC-7807, un par de comando/consulta CQRS y un listener de evento de dominio.
 Cada bloque de código de abajo es fiel al framework tal como se distribuye en este repositorio — los
@@ -40,10 +40,11 @@ Consulta [Instalación](installation.md) para la lista completa de requisitos.
 
 ## Paso 1: crea la aplicación
 
-Genera una nueva aplicación LaraFly con la plantilla de Composer `firefly/skeleton`:
+Instala LaraFly y genera una nueva aplicación con la plantilla incluida:
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require fireflyframework/larafly
+firefly new my-app
 cd my-app
 ```
 
@@ -53,7 +54,7 @@ arranca y que ya está cacheada: copia `.env.example` a `.env`, crea `database/d
 `orders`, así que `POST /orders` funciona en la primera petición y no tras un paso que alguien tenga que
 contarte) y ejecuta `php artisan firefly:cache` — el paso de compilación sin reflexión que retomarás en el
 [Paso 11](#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud). Consulta
-[Instalación](installation.md) para el atajo equivalente del instalador global `firefly new my-app`.
+[Instalación](installation.md) para usar la plantilla local directamente desde un checkout del framework.
 
 El proyecto generado tiene este aspecto:
 

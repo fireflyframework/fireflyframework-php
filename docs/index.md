@@ -8,8 +8,8 @@ CQRS, event-driven architecture, first-party security including both halves of O
 directly onto Laravel's own runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a
 Laravel developer would recognize, still a Laravel app — it just boots like a Spring Boot one.
 
-The whole framework is one monorepo of small, independently-installable Composer packages, wired together by
-a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
+The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 29 components,
+wired together by a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
 request after that runs against plain PHP arrays — no runtime reflection on the hot path.
 
 ## Start here
@@ -19,7 +19,7 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 <div class="lf-card" markdown>
 <span class="lf-card-title">Install</span>
 [Installation](installation.md)
-<span class="lf-card-note">Requirements, the `firefly new` quick install, and `composer create-project` on its own when you would rather not install a global binary.</span>
+<span class="lf-card-note">Requirements, the bundled `firefly new` installer, and using the local template from a framework source checkout.</span>
 </div>
 
 <div class="lf-card" markdown>
@@ -31,7 +31,7 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 <div class="lf-card" markdown>
 <span class="lf-card-title">Build something</span>
 [Tutorial](tutorial.md) · [Tutorial (Español)](tutorial.es.md)
-<span class="lf-card-note">A hand-built, 12-step walkthrough from `composer create-project` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice, with a curl'd expected output at every step.</span>
+<span class="lf-card-note">A hand-built, 12-step walkthrough from `firefly new` to a `#[Repository]`/`#[Valid]`/CQRS/`#[EventListener]` feature slice, with a curl'd expected output at every step.</span>
 </div>
 
 <div class="lf-card" markdown>
@@ -51,7 +51,8 @@ request after that runs against plain PHP arrays — no runtime reflection on th
 ## Quickstart
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require fireflyframework/larafly
+firefly new my-app
 cd my-app
 php artisan firefly:cache   # compile the zero-reflection boot manifests
 php artisan serve
@@ -63,7 +64,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 ## Why LaraFly?
 
 - **Attribute-driven DI & auto-configuration** — `#[Service]`, `#[Repository]`, `#[Configuration]` classes are
-  discovered by a compiled scan; install a capability package and its defaults wire themselves up, your own
+  discovered by a compiled scan; enable a capability and its defaults wire themselves up, your own
   beans always win.
 - **Hexagonal by construction** — every subsystem exposes a port and one or more adapters, with architectural
   direction enforced by Deptrac, not convention alone.
@@ -102,7 +103,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 
 ## The modules
 
-Every capability above ships as a package you install on its own. The [module index](modules.md) lays all 32
+Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 32
 guides out by concern, with a line on each saying what it is for, and the same grouping is the site's
 **Modules** tab.
 

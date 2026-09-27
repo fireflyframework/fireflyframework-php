@@ -27,14 +27,14 @@ firefly new my-shop --full --with=eda-postgres
 
 `--with=` takes a comma-separated capability list (repeat the flag if you prefer). Run `firefly new --help`
 for the current list — it is interpolated from the catalog, so it cannot drift from what the flag accepts.
-A capability's only footprint is a line in the generated `composer.json`: firefly's conditional
-auto-configuration means an installed capability is a wired capability, so there is no second copy of the
-package's own defaults for you to keep in sync.
+A capability records a requirement in the generated `composer.json`, satisfied by the root library's
+`replace` metadata. All component code is included; configuration selects optional features.
+`--with=testing` also adds the external test harness to the application's development dependencies.
 
 Adapters (`eda-kafka`, `eda-rabbitmq`, `eda-postgres`, `scheduling-postgres`) pull their port in with them
 and are deliberately **excluded from `--full`**: which broker or engine an application talks to is not
-something an archetype can guess, and guessing would install a broker client — or demand a PHP extension —
-the machine may not have. `security-oauth2-client` pulls `security` in the same way — a login with no
+something an archetype can guess. Their code is already bundled, but configuring PostgreSQL or Kafka still
+requires the corresponding PHP extension. `security-oauth2-client` pulls `security` in the same way — a login with no
 principal model to sign into is not a shape worth generating — but it is a capability, not an adapter, so
 `--full` includes it.
 
@@ -62,9 +62,8 @@ has no flag that says otherwise.
 
 ## Where the capability list comes from
 
-`Firefly\Installer\CapabilityCatalog` — a declarative map owned by this package, not a scan. A global
-install has no monorepo on disk to enumerate and no firefly runtime package to introspect; the installer
-runs before the framework exists. The enumeration happens in CI instead: `CapabilityCatalogTest` reads the
+`Firefly\Installer\CapabilityCatalog` — a declarative map of the choices exposed by the installer.
+CI validates it against the bundled components: `CapabilityCatalogTest` reads the
 real `packages/*` directory and fails the build when a firefly package is neither a capability nor listed,
 with a reason, in `CapabilityCatalog::corePackages()`.
 

@@ -13,7 +13,7 @@ Al terminar este capítulo sabrás cómo `Config` de LaraFly envuelve el propio 
 
 LaraFly no sustituye el sistema de configuración de Laravel — se apoya en él. Cada archivo `config/*.php`, cada llamada a `env('...')`, cada variable de `.env` que ya conoces de una aplicación Laravel corriente funciona exactamente igual en una aplicación LaraFly. El trabajo de `firefly/config` es más concreto y acotado: te da un **accesor tipado y de fallo rápido** sobre ese mismo repositorio, una forma de **vincular un subárbol entero sobre un DTO**, y un **resolutor respaldado por configuración** para el atributo `#[Value]` que introdujo el Capítulo 2.
 
-Ya viste el ejemplo más pequeño posible de esto en el Inicio rápido. `app/GreetingProperties.php`, generado por `composer create-project firefly/skeleton`, es un DTO `#[ConfigProperties]` real y distribuido:
+Ya viste el ejemplo más pequeño posible de esto en el Inicio rápido. `app/GreetingProperties.php`, generado por `firefly new`, es un DTO `#[ConfigProperties]` real y distribuido:
 
 <!-- source: skeleton/app/GreetingProperties.php -->
 ```php
