@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     name: Quality (PHP ${{ matrix.php }})
@@ -72,15 +75,49 @@ jobs:
           if-no-files-found: warn
 
   docs:
-    name: Docs (mkdocs --strict)
+    name: Docs (site + bilingual books)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/build-docs
+      - uses: actions/upload-artifact@v4
         with:
-          python-version: '3.12'
-      - run: pip install mkdocs-material
-      - run: mkdocs build --strict
+          name: books
+          path: site/downloads/
+          if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: site/
+
+  pages:
+    name: Publish documentation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, browser, docs, guard]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Skip a superseded main build
+        id: current
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head = await github.rest.repos.getCommit({...context.repo, ref: 'main'});
+            return head.data.sha === context.sha;
+      - uses: actions/configure-pages@v5
+        if: steps.current.outputs.result == 'true'
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        if: steps.current.outputs.result == 'true'
 
   guard:
     name: Pre-push safety guard

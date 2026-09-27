@@ -7,3 +7,6 @@ pygments==2.20.0
 pyyaml==6.0.3
 pytest==9.1.1
 cairosvg==2.9.0
+mkdocs-material==9.7.6
+mkdocs==1.6.1
+pdfplumber==0.11.9

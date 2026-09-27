@@ -11,6 +11,10 @@ and `book/dist/` (the generated PDF/EPUB) are gitignored and never committed.
 Only the *sources* — `book.yaml`, `build/*.py`, `theme/*.css`, `art/`,
 `src/` (EN), `src-es/` (ES), `tests/` — are tracked.
 
+**[Published PDF and EPUB editions (English + Español)](https://fireflyframework.github.io/fireflyframework-php/book/)**
+are rebuilt with the MkDocs site after every successful `main` CI run. GitHub releases also carry the
+books built from their tag. Each download set includes `SHA256SUMS` and a `build-info.json` source commit.
+
 ## One-time setup
 
 The first build needs **network access** (to install the Python deps) and a
@@ -29,7 +33,7 @@ brew install cairo pango
 
 `book/build/run.sh` sets `DYLD_FALLBACK_LIBRARY_PATH` to Homebrew's `lib/` so
 WeasyPrint finds `libcairo`/`libpango` without any manual `export`. On Linux,
-install the equivalent packages (e.g. `apt install libcairo2 libpango-1.0-0`)
+install the equivalent packages (e.g. `apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0`)
 and `run.sh`'s `DYLD_FALLBACK_LIBRARY_PATH` export is a no-op (Linux uses the
 system loader path instead).
 
@@ -42,6 +46,13 @@ bash book/build/run.sh --config book.es.yaml  # Spanish  -> book/dist/larafly-by
 
 `book/dist/` is created on demand and is gitignored — nobody commits a
 generated PDF/EPUB.
+
+To run the same pipeline as CI, including the book tests, PHP listing checks, both editions,
+the PDF text-boundary check, the strict MkDocs build and `site/downloads/` packaging:
+
+```bash
+bash scripts/build-docs.sh
+```
 
 ## Verifying PHP code listings
 

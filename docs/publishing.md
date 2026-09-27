@@ -69,7 +69,8 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
 5. Push the new release tag. **Release (single package)** validates the tagged distribution on PHP
    8.3, 8.4 and 8.5, waits for Packagist to index that exact commit, then installs it in a fresh stable
    consumer without custom repositories and exercises the bundled installer. Only after those checks
-   pass does its final job create the GitHub release from the changelog. That job uses the repository's
+   pass does its final job build both books and create the GitHub release from the changelog with the
+   English and Spanish PDF/EPUB files, checksums and source commit record. That job uses the repository's
    built-in `GITHUB_TOKEN` with `contents: write`; validation jobs remain read-only.
 6. If indexing times out, repair the Packagist webhook or trigger an update on the package page, then
    rerun the failed job. Do not move the tag or create a GitHub release to bypass the public install gate.
@@ -81,3 +82,20 @@ RELEASE_TAG=v26.09.9 RELEASE_SHA="$(git rev-parse 'v26.09.9^{commit}')" php scri
 ```
 
 An unmerged branch or a local consumer check is not a published release.
+
+## Publish the documentation and books
+
+CI builds the MkDocs site and both book editions using the shared `.github/actions/build-docs` action.
+It runs the book pipeline tests, validates the PHP listings in both languages, renders the PDF/EPUB files,
+rejects PDF text outside the page boundaries, and builds MkDocs with `--strict`.
+The four books, `SHA256SUMS` and `build-info.json` are included under
+the site's `downloads/` directory and uploaded as the `books` artifact for review on PRs.
+
+For pushes to `main`, the **Publish documentation** job deploys that exact site artifact only after all
+quality, browser, documentation and safety checks pass. PRs build and validate; they cannot deploy.
+The live [book page](book.md) links to the latest successful main build. Release downloads are built
+separately from the tagged source. A release rerun refreshes its generated assets from that same tag.
+
+Repository setup requires **Settings → Pages → Build and deployment → Source: GitHub Actions**, and the
+`github-pages` environment must permit deployments from `main`. The deployment job alone receives
+`pages: write` and `id-token: write`. The former `gh-pages` branch is no longer the publication source.
