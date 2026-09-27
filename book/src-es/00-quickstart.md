@@ -32,7 +32,8 @@ composer --version
 La forma más rápida de iniciar una nueva aplicación LaraFly es `composer create-project`, apuntando a la plantilla `firefly/skeleton`:
 
 ```bash
-composer create-project firefly/skeleton my-app
+composer global require fireflyframework/larafly
+firefly new my-app
 cd my-app
 ```
 
@@ -50,7 +51,7 @@ cd my-app
 Para cuando ese comando termina, `.env` ya existe, se ha creado el archivo de base de datos SQLite, `APP_KEY` está configurada y — el paso que más importa para este libro — **`firefly:cache` ya ha compilado los manifiestos de tu aplicación**. Todavía no has escrito una sola línea de PHP, y la ruta de arranque sin reflexión sobre la que se construye todo este framework ya está en su sitio.
 
 !!! tip "Un instalador global, si lo prefieres"
-    `composer global require firefly/installer` te da un comando `firefly` en tu `PATH`. `firefly new my-app` envuelve la misma llamada a `composer create-project firefly/skeleton`, y luego ejecuta `git init` y un commit inicial por ti — el equivalente en LaraFly de `laravel new`.
+    `composer global require fireflyframework/larafly` te da un comando `firefly` en tu `PATH`. `firefly new my-app` entrega a Composer la plantilla incluida en la biblioteca, y luego ejecuta `git init` y un commit inicial por ti — el equivalente en LaraFly de `laravel new`.
 
 ### Qué acabas de instalar
 
@@ -60,15 +61,15 @@ El `composer.json` del andamiaje requiere solo dos paquetes de Firefly directame
 "require": {
     "php": "^8.3",
     "firefly/cli": "*@dev",
-    "firefly/firefly": "*@dev",
+    "fireflyframework/larafly": "*@dev",
     "laravel/framework": "^13.0"
 }
 ```
 
-`firefly/cli` te da los comandos `artisan firefly:*` que usarás a lo largo de este libro. `firefly/firefly` es el **metapaquete de tiempo de ejecución** — el análogo en Composer de una lista de materiales (BOM) de Maven — que arrastra toda la familia Firefly (contenedor, contexto, configuración, web, datos, cqrs, eda, seguridad, validación, resiliencia, programación, observabilidad, actuator y más) en una sola línea `require`, de modo que tu propio `composer.json` nunca tiene que enumerarlos uno a uno.
+`firefly/cli` te da los comandos `artisan firefly:*` que usarás a lo largo de este libro. `fireflyframework/larafly` es el **biblioteca completa del framework**, que contiene toda la familia Firefly (contenedor, contexto, configuración, web, datos, cqrs, eda, seguridad, validación, resiliencia, programación, observabilidad, actuator y más) en una sola línea `require`, de modo que tu propio `composer.json` nunca tiene que enumerarlos uno a uno.
 
 !!! laravel "Paridad con Laravel"
-    `composer create-project firefly/skeleton` es el equivalente en LaraFly de `laravel new` — y `firefly/firefly` es el equivalente de instalar el propio `laravel/framework`: una línea de dependencia que trae una pila completa y coherente en lugar de una colección de piezas versionadas de forma independiente.
+    `firefly new` es el equivalente en LaraFly de `laravel new` — y `fireflyframework/larafly` es el equivalente de instalar el propio `laravel/framework`: una línea de dependencia que trae una pila completa y coherente en lugar de una colección de piezas versionadas de forma independiente.
 
 ---
 
@@ -87,7 +88,7 @@ declare(strict_types=1);
 return [];
 ```
 
-No hay ningún proveedor de servicios que registrar a mano. Los propios proveedores de `firefly/cli` y `firefly/firefly` se descubren automáticamente mediante el descubrimiento de paquetes de Composer/Laravel — nunca añades una línea aquí por un paquete de Firefly.
+No hay ningún proveedor de servicios que registrar a mano. Los propios proveedores de `firefly/cli` y `fireflyframework/larafly` se descubren automáticamente mediante el descubrimiento de paquetes de Composer/Laravel — nunca añades una línea aquí por un paquete de Firefly.
 
 Segundo, `routes/web.php` también está casi vacío:
 

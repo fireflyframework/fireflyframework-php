@@ -55,7 +55,7 @@ final class WelcomeController
             'debug' => $this->config->bool('app.debug', false),
             'phpVersion' => PHP_VERSION,
             'laravelVersion' => $this->packageVersion('laravel/framework'),
-            'fireflyVersion' => $this->packageVersion('firefly/firefly'),
+            'fireflyVersion' => $this->packageVersion('fireflyframework/larafly'),
             'bootMode' => AppScan::cachedFile($this->container, AppScan::ROUTES) !== null ? 'compiled' : 'scanned',
             'phases' => $this->phases(),
             'beanCount' => $this->beanCount(),

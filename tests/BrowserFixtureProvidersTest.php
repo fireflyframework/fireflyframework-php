@@ -11,7 +11,7 @@ use Firefly\Web\WebServiceProvider;
 
 /**
  * The browser suite boots the skeleton with the provider set a CREATED app gets from Laravel's package
- * discovery — derived from the root manifest rather than typed by hand, so adding a provider to firefly/firefly
+ * discovery — derived from the root manifest rather than typed by hand, so adding a provider to fireflyframework/larafly
  * changes the browser fixture without anyone remembering to. This test runs in the default gate (no
  * browser) and pins the derivation.
  */

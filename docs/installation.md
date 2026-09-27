@@ -12,7 +12,7 @@
 The bundled `firefly new` installer supplies the application template to Composer and prepares the app:
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 cd my-app
 php artisan firefly:serve
@@ -29,7 +29,7 @@ off `NewCommand::configure()`:
 | `-f`, `--force` | **Empties the target directory first**, then scaffolds into it. |
 | `--git` / `--no-git` | Whether to `git init` and make an initial commit. On by default. |
 
-Every component's code is included in `firefly/firefly`. `--with` records an explicit component
+Every component's code is included in `fireflyframework/larafly`. `--with` records an explicit component
 requirement in the generated manifest; it does not fetch a separate framework package. Configuration
 selects the active transport. `eda-postgres` needs `ext-pdo_pgsql`, `eda-kafka` needs `ext-rdkafka`,
 `eda-rabbitmq` uses the included AMQP client, and `scheduling-postgres` needs a PostgreSQL connection.
@@ -46,7 +46,7 @@ cd my-app
 php artisan firefly:serve
 ```
 
-The generated application installs `firefly/firefly` from Packagist; before first publication, supply a
+The generated application installs `fireflyframework/larafly` from Packagist; before first publication, supply a
 root VCS or path repository as described in [Publishing](publishing.md).
 
 `firefly/skeleton`'s `composer.json` wires `post-create-project-cmd` to run automatically, so by the time the
@@ -61,7 +61,7 @@ command above finishes you already have, in this order:
 
 ## What the template requires
 
-`skeleton/composer.json` requires PHP, Laravel, `firefly/firefly` and `firefly/cli`. The library supplies
+`skeleton/composer.json` requires PHP, Laravel, `fireflyframework/larafly` and `firefly/cli`. The library supplies
 all framework code; the CLI requirement is satisfied by `replace`. Providers are discovered from the
 root package's `extra.laravel.providers` metadata.
 

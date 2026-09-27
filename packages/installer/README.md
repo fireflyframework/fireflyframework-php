@@ -4,7 +4,7 @@ The LaraFly global installer — the `laravel/installer` analog, with a Spring-I
 picker.
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 ```
 

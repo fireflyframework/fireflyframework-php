@@ -1,12 +1,12 @@
 # Installer
 
-The installer is bundled in the `firefly/firefly` library. Its `firefly new` Symfony Console binary
+The installer is bundled in the `fireflyframework/larafly` library. Its `firefly new` Symfony Console binary
 uses the skeleton shipped in that same distribution, so creating an application needs no skeleton mirror.
 
 ## `firefly new <app>`
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 ```
 

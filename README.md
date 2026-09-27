@@ -14,7 +14,7 @@
   <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.8-brightgreen" alt="Version: 26.09.5"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.09.9-brightgreen" alt="Version: 26.09.9"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
@@ -202,7 +202,7 @@ will have — that they are worth naming outright:
 
 ```bash
 # 1 · Install the global installer once, then scaffold a new app
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 cd my-app
 
@@ -986,22 +986,22 @@ LaraFly layers onto Laravel, it is not a standalone runtime. Full details in
 **New project — the global installer:**
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 ```
 
 **New project — bundled installer:**
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 ```
 
-**Adding LaraFly to an existing Laravel app** — `firefly/firefly` is the complete framework library,
+**Adding LaraFly to an existing Laravel app** — `fireflyframework/larafly` is the complete framework library,
 developer console included:
 
 ```bash
-composer require firefly/firefly
+composer require fireflyframework/larafly
 ```
 
 The browser dashboard (`firefly/admin`) and the API-documentation package (`firefly/openapi`) come with it. The
@@ -1056,7 +1056,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 ## Modules
 
-One published library, `firefly/firefly`, contains the components under `packages/*` and the bundled
+One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
 component names remain useful module boundaries, with their own test suites. The 32
 [module guides](docs/modules/) below group them by concern:

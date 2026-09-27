@@ -7,7 +7,7 @@ application pre-wired with the Firefly family, a `#[Controller]` welcome page, a
 `#[RestController]`/`#[Service]` pair, and `firefly:cache` already wired into `post-create-project-cmd`:
 
 ```bash
-composer global require firefly/firefly
+composer global require fireflyframework/larafly
 firefly new my-app
 cd my-app
 php artisan firefly:cache
@@ -29,7 +29,7 @@ installed) — see [CLI](cli.md) for the full command reference.
 Install the complete framework library, including the CLI, dashboard and API documentation:
 
 ```bash
-composer require firefly/firefly
+composer require fireflyframework/larafly
 ```
 
 All component code is included. Optional adapters are activated by configuration and may require a PHP
@@ -55,10 +55,10 @@ php artisan firefly:cache
 php artisan firefly:serve
 ```
 
-## The two packages the skeleton requires
+## The library and component requirement
 
 `firefly/skeleton` is itself a `type: project` create-project template rather than something you require, and
-its `composer.json` asks for exactly two Firefly packages beside `php: ^8.3` and `laravel/framework: ^13.0`:
+its `composer.json` asks for the library and a CLI component requirement beside `php: ^8.3` and `laravel/framework: ^13.0`:
 
 <!-- source: skeleton/composer.json -->
 
@@ -66,7 +66,7 @@ its `composer.json` asks for exactly two Firefly packages beside `php: ^8.3` and
 "require": {
     "php": "^8.3",
     "firefly/cli": "*@dev",
-    "firefly/firefly": "*@dev",
+    "fireflyframework/larafly": "*@dev",
     "laravel/framework": "^13.0"
 },
 ```
@@ -74,7 +74,7 @@ its `composer.json` asks for exactly two Firefly packages beside `php: ^8.3` and
 - **`firefly/cli`** — the developer-experience console: `firefly:cache`/`:clear`, actuator-over-CLI
   `firefly:about`/`:routes`/`:health`/`:metrics`, `firefly:oauth2:keys`, the `make:firefly-*` generator
   family, and thin `firefly:serve`/`:schedule`/`:db` passthroughs. See [CLI](cli.md).
-- **`firefly/firefly`** — the complete `type: library` distribution. It supplies `firefly/cli` through
+- **`fireflyframework/larafly`** — the complete `type: library` distribution. It supplies `firefly/cli` through
   `replace`, so both requirements resolve to the same installation. The template's CLI requirement
   explicitly records its use of `firefly:cache`.
 
