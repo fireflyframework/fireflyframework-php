@@ -16,6 +16,7 @@ it('renders the production 404 with the code and a reassurance, and nothing inte
         // used to be the page's own "That page does not exist." — a fourth wording of one error, beside
         // the document's, the log's and the router's.
         ->assertSee('There is nothing at this address.')
+        ->assertSee('Go home')
         ->assertDontSee('Stack trace')
         ->assertDontSee('NotFoundHttpException')
         ->assertDontSee('APP_DEBUG')
@@ -58,6 +59,8 @@ it('renders the production 500 with a reference to quote and the cause withheld'
         // The lede points at the Reference cell instead of repeating the id into prose, so the words on
         // the page changed with it; the cell itself is asserted on the line below, as it always was.
         ->assertSee('quote the reference below')
+        ->assertSee('Try again')
+        ->assertSee('Contact support')
         ->assertSeeIn('dl.facts', 'Reference')
         ->assertSeeIn('.fact-ref', 'Quote this if you report the problem.')
         // The request path (/browser-fixture/boom) is legitimately shown in the facts, so the cause is
@@ -122,4 +125,28 @@ it('answers an API path with problem+json even though a browser asked', function
         ->assertSourceMissing('<h1')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-404-api-json');
+});
+
+it('offers the reference once, as something a reader can take away', function (): void {
+    /** @var ProductionBrowserTestCase $this */
+    visit('/browser-fixture/boom')
+        ->assertSeeIn('dl.facts', 'Reference')
+        ->assertSee('Quote this if you report the problem.')
+        // The copy button is revealed by the script that gives it behaviour; on localhost that is a secure
+        // context, so navigator.clipboard exists and the button is visible.
+        ->assertSee('Copy')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'error-500-production-reference');
+});
+
+it('answers a wildcard Accept with problem+json on an ordinary path, not just under api/*', function (): void {
+    /** @var ProductionBrowserTestCase $this */
+    // A browser cannot send `Accept: */*` from the address bar, so the request is made from a page — the
+    // same in-process pipeline a curl hits, with the header a curl sends.
+    visit('/browser-fixture/wildcard')
+        ->press('Ask')
+        ->assertSee('404 application/problem+json')
+        ->assertSee('"instance":"/does-not-exist"')
+        ->assertNoJavaScriptErrors()
+        ->screenshot(filename: 'error-404-wildcard-json');
 });

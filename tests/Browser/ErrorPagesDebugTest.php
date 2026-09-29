@@ -85,7 +85,7 @@ it('renders a 405 naming the verb the address accepts', function (): void {
         ->screenshot(filename: 'error-405-debug');
 });
 
-it('renders a 500 with the cause chain', function (): void {
+it('renders a 500 with the cause chain, on a page whose height is bounded', function (): void {
     /** @var BrowserTestCase $this */
     visit('/browser-fixture/boom')
         ->assertSee('500')
@@ -95,8 +95,20 @@ it('renders a 500 with the cause chain', function (): void {
         ->assertSeeIn('.chain', 'RuntimeException')
         ->assertSeeIn('.chain', 'the inner cause')
         ->assertSeeIn('dl.facts', 'Reference')
+        // Your frames are the list; a hundred-odd dependency frames are one closed disclosure below them.
+        ->assertSee('frames in your dependencies')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-500-debug');
+
+    // THE MEASUREMENT. This page was 10,108 pixels tall — not because frames were expanded (exactly two
+    // were) but because ErrorReport::shorten() never stripped the base path, so all 104 rows printed an
+    // absolute path and wrapped at an 87-pixel pitch. The assertion is the pixel count of the PNG the
+    // author looks at, because that is the thing that was wrong.
+    $shot = getimagesize(__DIR__.'/Screenshots/error-500-debug.png');
+
+    expect($shot)->toBeArray()
+        ->and($shot[1])->toBeLessThan(3000)
+        ->and($shot[1])->toBeGreaterThan(400);
 });
 
 it('renders the 404 and the 500 in dark mode', function (): void {
@@ -105,10 +117,30 @@ it('renders the 404 and the 500 in dark mode', function (): void {
     visit('/browser-fixture/boom')->inDarkMode()->assertSee('500')->assertNoJavaScriptErrors()->screenshot(filename: 'error-500-debug-dark');
 });
 
-it('renders the 404 and the 500 at phone width', function (): void {
+it('renders the 404 and the 500 at phone width, still bounded', function (): void {
     /** @var BrowserTestCase $this */
     visit('/does-not-exist')->on()->mobile()->assertSee('404')->assertSee('RESOURCE_NOT_FOUND')->assertNoJavaScriptErrors()->screenshot(filename: 'error-404-debug-mobile');
     // A phone is where the row runs out of width first, so it is where the method name is pinned: the
     // `.fn` of every frame has to be inside the panel, not cut off against it.
     visit('/browser-fixture/boom')->on()->mobile()->assertSee('500')->assertSee('Caused by')->assertScript(TRACE_CALLS_INSIDE_PANEL)->assertNoJavaScriptErrors()->screenshot(filename: 'error-500-debug-mobile');
+
+    $shot = getimagesize(__DIR__.'/Screenshots/error-500-debug-mobile.png');
+
+    expect($shot)->toBeArray()->and($shot[1])->toBeLessThan(4000);
+});
+
+it('draws each frame on one line, your code first, dependencies behind one disclosure', function (): void {
+    /** @var BrowserTestCase $this */
+    $page = visit('/browser-fixture/boom');
+
+    $page->assertSee('Stack trace')
+        ->assertSee('in your code')
+        ->assertSee('frames in your dependencies')
+        // The whole point of shortening: the trace names paths relative to the project, not /Users/…
+        ->assertSourceHas('<span class="base">')
+        ->assertSourceHas('<span class="dir">')
+        ->assertSourceMissing('<span class="dir">/Users/')
+        // HTML's own exclusive accordion: opening one frame closes the others, with no JavaScript.
+        ->assertSourceHas('<details name="firefly-frame"')
+        ->assertNoJavaScriptErrors();
 });
