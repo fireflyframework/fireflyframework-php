@@ -92,6 +92,19 @@ final class RowComparator
     }
 
     /**
+     * Identity cannot equate distinct spellings merely because their friendly ordering ties.
+     *
+     * @param  iterable<mixed>  $values
+     * @return Closure(mixed, mixed): int
+     */
+    public static function forIdentity(iterable $values): Closure
+    {
+        $compare = self::forColumn($values);
+
+        return static fn (mixed $a, mixed $b): int => $compare($a, $b) ?: strcmp(self::text($a), self::text($b));
+    }
+
+    /**
      * Order two values as a reader would expect them ordered, emptiness aside.
      *
      * Numbers compare as numbers, so `9` precedes `100` and a column of durations is not sorted by its first

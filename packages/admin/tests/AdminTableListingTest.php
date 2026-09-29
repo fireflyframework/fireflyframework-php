@@ -2,8 +2,16 @@
 
 declare(strict_types=1);
 
+use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Health\HealthIndicator;
+use Firefly\Actuator\Introspection\ConditionsEndpoint;
+use Firefly\Actuator\Introspection\MappingsEndpoint;
 use Firefly\Admin\Tests\Support\AdminTableCapstoneTestCase;
+use Firefly\Admin\Tests\Support\Fixtures\HttpExchangesEndpointStub;
+use Firefly\Context\Condition\ConditionEvaluationReport;
+use Firefly\Context\Condition\ConditionOutcome;
+use Firefly\Web\Route\RouteDescriptor;
+use Firefly\Web\Route\RouteManifest;
 use Illuminate\Support\Str;
 
 uses(AdminTableCapstoneTestCase::class);
@@ -656,4 +664,50 @@ it('scales the metrics bar against every meter, not against the page being drawn
     // rather than the 100% a per-slice scale would give it.
     expect($narrowed)->toContain('<i style="width:0.02%"></i>')
         ->not->toContain('<i style="width:100%"></i>');
+});
+
+it('keeps routes sharing a path in the same order when the manifest is rebuilt', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $routes = [
+        new RouteDescriptor('GET', '/shared', 'App\\FirstHandler', 'get', 200, 'first-route', []),
+        new RouteDescriptor('POST', '/shared', 'App\\SecondHandler', 'post', 200, 'second-route', []),
+    ];
+    foreach ([$routes, array_reverse($routes)] as $input) {
+        $this->app()->make(ActuatorRegistry::class)->register(
+            new MappingsEndpoint(new RouteManifest($input)),
+        );
+        $this->get('/firefly/mappings?sort=path')->assertStatus(200)
+            ->assertSeeInOrder(['FirstHandler', 'SecondHandler']);
+    }
+});
+
+it('keeps multiple conditions on one class in the same order when the report is rebuilt', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $registry = $this->app()->make(ActuatorRegistry::class);
+    foreach ([['ConditionA', 'ConditionB'], ['ConditionB', 'ConditionA']] as $input) {
+        $report = new ConditionEvaluationReport;
+        foreach ($input as $condition) {
+            $report->record('App\\SharedConfiguration', $condition, ConditionOutcome::match('fixture'));
+        }
+        $registry->register(
+            new ConditionsEndpoint($report),
+        );
+        $this->get('/firefly/conditions?pos_sort=class')->assertStatus(200)
+            ->assertSeeInOrder(['ConditionA', 'ConditionB']);
+    }
+});
+
+it('keeps requests sharing a correlation id ordered independently of ring order', function () {
+    /** @var AdminTableCapstoneTestCase $this */
+    $rows = [
+        ['method' => 'GET', 'uri' => '/first-request', 'status' => 200, 'durationMs' => 1, 'correlationId' => 'shared', 'timestamp' => '2026-09-21T06:14:09Z'],
+        ['method' => 'GET', 'uri' => '/second-request', 'status' => 200, 'durationMs' => 1, 'correlationId' => 'shared', 'timestamp' => '2026-09-21T06:14:09Z'],
+    ];
+    foreach ([$rows, array_reverse($rows)] as $input) {
+        $this->app()->make(ActuatorRegistry::class)->register(
+            new HttpExchangesEndpointStub($input),
+        );
+        $this->get('/firefly/http?sort=status')->assertStatus(200)
+            ->assertSeeInOrder(['/first-request', '/second-request']);
+    }
 });

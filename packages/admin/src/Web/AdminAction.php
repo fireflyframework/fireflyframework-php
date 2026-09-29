@@ -17,6 +17,7 @@ use Firefly\Admin\Data\DataListing;
 use Firefly\Admin\Data\DataMap;
 use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
+use Firefly\Admin\RowComparator;
 use Firefly\Admin\Settings\FeatureToggle;
 use Firefly\Admin\Settings\SettingsConsole;
 use Firefly\Admin\Table\InMemoryListing;
@@ -518,7 +519,7 @@ final readonly class AdminAction
             'health' => ['indicators' => $this->reader->healthIndicators(), 'aggregate' => $this->aggregateStatus()],
             'metrics' => $this->metricsPage($request),
             // A LOG IS THE ONE LISTING ON THIS DASHBOARD THAT OPENS ON AN ORDER NOBODY ASKED FOR. Its
-            // tiebreak is the correlation id, and newest-first is a deliberate choice about the page rather
+            // tiebreak distinguishes exchanges even when a caller reuses a correlation id, and newest-first is a deliberate choice about the page rather
             // than the identity the rows happen to have, so it is declared — and `meaningful()` then keeps
             // the pair out of every URL the page writes, which is how /firefly/http stays /firefly/http.
             // See listing()'s docblock for why the other listings declare nothing.
@@ -548,7 +549,7 @@ final readonly class AdminAction
                     TableColumn::token('traceId', 'Trace', weight: 2),
                 ),
                 ['path', 'method', 'status', 'correlationId', 'traceId'],
-                'correlationId',
+                'row',
                 defaultSort: 'timestamp',
                 defaultDirection: 'desc',
             ),
@@ -587,7 +588,7 @@ final readonly class AdminAction
                     TableColumn::token('name', 'Name', weight: 3),
                 ),
                 ['path', 'handler', 'name'],
-                'path',
+                'row',
             ),
             'scheduled' => $this->listing(
                 $request,
@@ -767,8 +768,8 @@ final readonly class AdminAction
             TableColumn::token('condition', 'Condition', weight: 3),
         );
 
-        $applied = $this->listing($request, 'conditions', $this->conditionRows('positiveMatches'), $view, ['class', 'condition'], 'class', qualifier: 'pos');
-        $backed = $this->listing($request, 'conditions', $this->conditionRows('negativeMatches'), $view, ['class', 'condition'], 'class', qualifier: 'neg');
+        $applied = $this->listing($request, 'conditions', $this->conditionRows('positiveMatches'), $view, ['class', 'condition'], 'row', qualifier: 'pos');
+        $backed = $this->listing($request, 'conditions', $this->conditionRows('negativeMatches'), $view, ['class', 'condition'], 'row', qualifier: 'neg');
 
         $appliedQuery = $applied['query']->carrying($backed['query']->own());
         $backedQuery = $backed['query']->carrying($applied['query']->own());
@@ -843,7 +844,7 @@ final readonly class AdminAction
      * to compare strings rather than "whatever the endpoint put there" — one int in that column and
      * strnatcasecmp is comparing a number to a name.
      *
-     * @return list<array{httpMethod: string, path: string, handler: string, name: string}>
+     * @return list<array{httpMethod: string, path: string, handler: string, name: string, row: string}>
      */
     private function mappingRows(): array
     {
@@ -853,12 +854,14 @@ final readonly class AdminAction
                 continue;
             }
 
-            $rows[] = [
+            $row = [
                 'httpMethod' => is_string($route['httpMethod'] ?? null) ? $route['httpMethod'] : '',
                 'path' => is_string($route['path'] ?? null) ? $route['path'] : '',
                 'handler' => is_string($route['handler'] ?? null) ? $route['handler'] : '',
                 'name' => is_string($route['name'] ?? null) ? $route['name'] : '',
             ];
+            $row['row'] = $row['path']."\0".$row['httpMethod']."\0".$row['handler']."\0".$row['name'];
+            $rows[] = $row;
         }
 
         return $rows;
@@ -920,7 +923,7 @@ final readonly class AdminAction
      * One side of the condition report as rows.
      *
      * @param  string  $key  `positiveMatches` or `negativeMatches`
-     * @return list<array{class: string, condition: string}>
+     * @return list<array{class: string, condition: string, row: string}>
      */
     private function conditionRows(string $key): array
     {
@@ -930,10 +933,12 @@ final readonly class AdminAction
                 continue;
             }
 
-            $rows[] = [
+            $row = [
                 'class' => is_string($row['class'] ?? null) ? $row['class'] : '',
                 'condition' => is_string($row['condition'] ?? null) ? $row['condition'] : '',
             ];
+            $row['row'] = $row['class']."\0".$row['condition'];
+            $rows[] = $row;
         }
 
         return $rows;
@@ -1310,7 +1315,7 @@ final readonly class AdminAction
      * only the latter pair, which the endpoint never produced, so the page showed an empty path and `—` for
      * the age of every request it listed.
      *
-     * @return list<array{method: string, path: string, status: int, duration: string, correlationId: string, traceId: string, timestamp: float}>
+     * @return list<array{method: string, path: string, status: int, duration: string, correlationId: string, traceId: string, timestamp: float, row: string}>
      */
     private function exchanges(): array
     {
@@ -1322,7 +1327,7 @@ final readonly class AdminAction
 
             $duration = $exchange['durationMs'] ?? $exchange['duration'] ?? null;
             $uri = $exchange['uri'] ?? $exchange['path'] ?? null;
-            $rows[] = [
+            $row = [
                 'method' => is_string($exchange['method'] ?? null) ? $exchange['method'] : '',
                 'path' => is_string($uri) ? $uri : '',
                 'status' => is_numeric($exchange['status'] ?? null) ? (int) $exchange['status'] : 0,
@@ -1331,6 +1336,8 @@ final readonly class AdminAction
                 'traceId' => is_string($exchange['traceId'] ?? null) ? $exchange['traceId'] : '',
                 'timestamp' => $this->epoch($exchange['timestamp'] ?? null),
             ];
+            $row['row'] = $row['correlationId']."\0".implode("\0", array_map(RowComparator::text(...), $row));
+            $rows[] = $row;
         }
 
         return $rows;

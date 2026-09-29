@@ -102,8 +102,11 @@ final class InMemoryListing
         // cycle — and usort() then returns whatever the arrival order suggested, which is the unstable page
         // this class's tiebreak exists to prevent. The tiebreak is a column too, and is chosen the same way:
         // an inconsistent tiebreak breaks the whole ordering just as thoroughly as an inconsistent primary.
-        $compare = RowComparator::forColumn(self::valuesOf($rows, $column));
-        $breakTie = RowComparator::forColumn(self::valuesOf($rows, $tiebreak));
+        $values = self::valuesOf($rows, $column);
+        $compare = $column === $tiebreak
+            ? RowComparator::forIdentity($values)
+            : RowComparator::forColumn($values);
+        $breakTie = RowComparator::forIdentity(self::valuesOf($rows, $tiebreak));
 
         usort($rows, static function (array $a, array $b) use ($column, $direction, $tiebreak, $compare, $breakTie): int {
             $left = $a[$column] ?? null;

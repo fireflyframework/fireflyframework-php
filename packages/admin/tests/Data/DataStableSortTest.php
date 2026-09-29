@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Admin\Tests\Data\Fixtures\ReverseNoteRepository;
+use Firefly\Admin\Tests\Data\Fixtures\WidgetRepository;
 use Firefly\Admin\Tests\Data\Support\DataBrowserTestCase;
 use Illuminate\Support\Facades\DB;
 
@@ -185,4 +186,15 @@ it('breaks the tie on the identifier even when the repository hands its rows bac
     }
 
     expect($seen)->toBe([1, 2, 3, 4, 5, 6]);
+});
+
+it('orders distinct string identifiers exactly when the identifier is the requested sort', function () {
+    /** @var DataBrowserTestCase $this */
+    DB::table('widgets')->insert([
+        ['uuid' => 'CLIENT-A', 'name' => 'Shared', 'occurred_at' => '2026-02-01 09:30:00', 'status' => 'live', 'tags' => '[]', 'price' => '10.10 EUR'],
+        ['uuid' => 'client-a', 'name' => 'Shared', 'occurred_at' => '2026-02-01 09:30:00', 'status' => 'live', 'tags' => '[]', 'price' => '10.10 EUR'],
+    ]);
+    $browser = $this->browserOver([WidgetRepository::class]);
+    expect(array_column($browser->list('widget', 1, 2, 'uuid', 'desc')->rows, 'uuid'))
+        ->toBe(['client-a', 'CLIENT-A']);
 });

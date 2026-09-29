@@ -336,10 +336,10 @@ final class DataQueryEngine
             // straddle a page boundary between one request and the next. Emptiness is ranked OUTSIDE the
             // direction flip: an em-dash is the absence of a value rather than a value that sorts low, so it
             // stays last under `desc` too.
-            $compare = RowComparator::forColumn(array_map(
-                static fn (array $row): mixed => $row['values'][$sort] ?? null,
-                $matched,
-            ));
+            $values = array_map(static fn (array $row): mixed => $row['values'][$sort] ?? null, $matched);
+            $compare = $sort === $schema->identifier
+                ? RowComparator::forIdentity($values)
+                : RowComparator::forColumn($values);
 
             // The same tiebreak the SQL paths get, for the same reason: `usort` is stable in PHP 8, but the
             // ARRAY it is stabilising is rebuilt from the repository on every request, so stability of the
@@ -356,7 +356,7 @@ final class DataQueryEngine
             // answer anything at all. An inconsistent tiebreak breaks the whole ordering just as thoroughly
             // as an inconsistent primary, which is the instability this branch exists to remove.
             $tiebreak = $schema->identifier;
-            $breakTie = $tiebreak === null || $tiebreak === $sort ? null : RowComparator::forColumn(array_map(
+            $breakTie = $tiebreak === null || $tiebreak === $sort ? null : RowComparator::forIdentity(array_map(
                 static fn (array $row): mixed => $row['values'][$tiebreak] ?? null,
                 $matched,
             ));

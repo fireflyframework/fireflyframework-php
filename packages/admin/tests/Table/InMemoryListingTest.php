@@ -189,3 +189,22 @@ it('renders the last page rather than an empty one when the page is past the end
 
     expect($slice->page)->toBe(2)->and($slice->rows)->toHaveCount(2);
 });
+
+it('keeps distinct identities stable when their display comparison ties', function (string $first, string $second, string $sort) {
+    $rows = [['id' => $first, 'group' => 'same'], ['id' => $second, 'group' => 'same']];
+    foreach ([$rows, array_reverse($rows)] as $input) {
+        $slice = InMemoryListing::page($input, rowQuery(['sort' => $sort], sortable: ['id', 'group']), [], 'id');
+        expect(array_column($slice->rows, 'id'))->toBe([$first, $second]);
+    }
+})->with([
+    ['CLIENT-A', 'client-a', 'group'],
+    ['CLIENT-A', 'client-a', 'id'],
+    ['01', '1', 'group'],
+    ['01', '1', 'id'],
+]);
+
+it('reverses the exact identity comparison when explicitly sorting that identifier descending', function () {
+    $rows = [['id' => 'CLIENT-A'], ['id' => 'client-a']];
+    $slice = InMemoryListing::page($rows, rowQuery(['sort' => 'id', 'dir' => 'desc'], sortable: ['id']), [], 'id');
+    expect(array_column($slice->rows, 'id'))->toBe(['client-a', 'CLIENT-A']);
+});
