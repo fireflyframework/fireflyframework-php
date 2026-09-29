@@ -19,6 +19,12 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **Migration:** problem `instance` values now begin with `/`, with unsafe path characters percent-encoded.
   Clients comparing the old relative path must account for the leading slash.
 
+- **Admin listings:** replace competing column rules with typed columns, fixed table layout and explicit
+  colgroups. Route paths no longer collapse into stacks of characters beside unused space. Rigid column
+  widths include cell padding, and a bounded table scrollport makes sticky headers work.
+- **Stable paging:** append an ascending identity tiebreak so tied rows cannot move between pages. Clamp
+  stale out-of-range pages to the last page; a SQL-backed data listing may need one additional query.
+
 ### Added
 
 - **Error navigation:** configured sign-in on 401, retry on GET/HEAD 5xx, and home/support links where
@@ -27,6 +33,26 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   `authored-detail`, `problem-fallback` and `problem.type-uri` settings in the reference and module guide.
 - **RFC 9457 type:** `about:blank` by default, a code-derived URI when an HTTP(S) base is configured, or an
   omitted member when the setting is empty. Omitting `type` does not revert the corrected `instance` path.
+
+- **Shared listing controls:** server-side paging, sorting and searching with validated, bookmarkable URL
+  state across routes, beans, conditions, scheduled tasks, configuration, runtime and data listings. Paired
+  listings preserve each other's state, and row-count controls have submit buttons for use without JavaScript.
+- **Table settings:** `firefly.admin.table.page-size`, `page-sizes`, `max-page-size`, `max-height`, `density`
+  and `remember-scroll`. The offered size set is closed; the data browser applies its own bounds in series.
+  Auto-refresh keeps URL state; optional per-URL scroll restoration applies on reload and back/forward.
+
+### Changed
+
+- **`packages/admin` — the data browser's rows-per-page control offers the dashboard's set, and a `?size=`
+  outside it is refused rather than lowered.** `/firefly/data` used to draw its own `<select>` with `10`
+  among the literal options and cap whatever arrived; its listing query is now parsed against the shared
+  `firefly.admin.table.page-sizes` narrowed by `firefly.admin.data.max-page-size`, and that set is **closed**
+  — a size that is not a member falls back to `firefly.admin.data.page-size` instead of being clamped to the
+  nearest permitted one. So `?size=300` renders 25 rows rather than 200, and **a bookmark holding `?size=10`
+  renders 25 rather than 10**, because ten is no longer offered unless a deployment says so
+  (`FIREFLY_ADMIN_TABLE_PAGE_SIZES=10,25,50,100,200`, or `FIREFLY_ADMIN_DATA_PAGE_SIZE=10`, which forces its
+  own default into the set). `firefly.admin.data.max-page-size` is a plain cap only for a direct
+  `Firefly\Admin\Data\DataBrowser::list()` call, which is parsed against no query string.
 
 ## [26.09.9] - 2026-09-27
 

@@ -10,30 +10,35 @@
     </div>
 
     <div class="panel">
-        @include('firefly-admin::_panel-head', ['title' => 'Tasks', 'count' => count($tasks)])
-        @if ($tasks === [])
-            @include('firefly-admin::_empty', [
-                'title' => 'Nothing scheduled',
-                'body' => 'Add <code>#[Scheduled]</code> to a bean method, then run the scheduler with <code>php artisan schedule:work</code>.',
-            ])
+        @include('firefly-admin::_panel-head', [
+            'title' => 'Tasks', 'count' => $slice->total, 'query' => $query,
+            'placeholder' => 'Search by runnable, cron or zone…',
+        ])
+        @if ($slice->isEmpty())
+            @include('firefly-admin::_empty', $query->isFiltered()
+                ? ['title' => 'Nothing matches', 'body' => 'No task\'s runnable, cron expression or zone contains that. <a href="'.e($query->link(['q' => null, 'page' => null])).'">Show them all</a>.']
+                : ['title' => 'Nothing scheduled', 'body' => 'Add <code>#[Scheduled]</code> to a bean method, then run the scheduler with <code>php artisan schedule:work</code>.'])
         @else
             <div class="tw">
-                <table>
-                    <thead><tr><th>Runnable</th><th>Cron</th><th class="num">Fixed rate</th><th class="num">Fixed delay</th><th>Zone</th></tr></thead>
+                <table class="ftable">
+                    @include('firefly-admin::_table-head', ['view' => $view, 'query' => $query])
                     <tbody>
-                    @foreach ($tasks as $task)
-                        @php $runnable = is_string($task['runnable'] ?? null) ? $task['runnable'] : ''; @endphp
+                    @foreach ($slice->rows as $task)
                         <tr>
-                            <td class="cls"><span class="nm">{{ Format::shortClass($runnable) }}</span><span class="ns">{{ rtrim(Format::namespaceOf($runnable), '\\') }}</span></td>
-                            <td class="mono dim">{{ $task['cron'] ?: '—' }}</td>
-                            <td class="num dim">{{ $task['fixedRate'] ?: '—' }}</td>
-                            <td class="num dim">{{ $task['fixedDelay'] ?: '—' }}</td>
-                            <td class="mono dim">{{ $task['zone'] ?: '—' }}</td>
+                            <td class="t-qual" title="{{ $task['runnable'] }}">
+                                <span class="nm">{{ Format::leafOf($task['runnable']) }}</span>
+                                <span class="ns stem">{{ Format::stemOf($task['runnable']) }}</span>
+                            </td>
+                            <td class="t-token dim" title="{{ $task['cron'] }}">{{ $task['cron'] ?: '—' }}</td>
+                            <td class="t-num dim">{{ $task['fixedRate'] ?: '—' }}</td>
+                            <td class="t-num dim">{{ $task['fixedDelay'] ?: '—' }}</td>
+                            <td class="t-token dim">{{ $task['zone'] ?: '—' }}</td>
                         </tr>
                     @endforeach
                     </tbody>
                 </table>
             </div>
+            @include('firefly-admin::_pager', ['slice' => $slice, 'query' => $query])
         @endif
     </div>
 @endsection

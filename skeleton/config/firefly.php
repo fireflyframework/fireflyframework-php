@@ -1250,6 +1250,74 @@ return [
     //         'max-nodes' => 220,
     //     ],
     //
+    //     /*
+    //      | THE LISTING TABLES — every page that draws a list of rows
+    //      |
+    //      | Routes, beans, conditions, scheduled tasks, OAuth2 clients, the environment, config properties,
+    //      | caches, loggers, metrics, HTTP traffic and the data browser all render through one table system:
+    //      | a typed column vocabulary laid out with `table-layout:fixed` and an explicit <colgroup>, a
+    //      | header that stays put while the rows scroll, and paging, sorting and searching done on the
+    //      | SERVER. Before this the whole list was rendered into every response and narrowed in the browser,
+    //      | which is fine for eleven rows and is not what 207 auto-configuration conditions look like.
+    //     */
+    //     'table' => [
+    //         /*
+    //          | Rows per page, and the sizes the rows-per-page control offers. `page-size` is always one of
+    //          | `page-sizes` — if you set a default the set does not contain, it is added to the set,
+    //          | because a <select> whose current value has no <option> resizes the table the moment anyone
+    //          | submits the form.
+    //          |
+    //          | THE SET IS CLOSED. `?size=` is in a URL an operator can hand-edit, and a size nobody offered
+    //          | falls back to the default rather than being silently capped. `max-page-size` is the ceiling
+    //          | an offered size may reach and is itself capped at 1000.
+    //          |
+    //          | Defaults: 50, '25,50,100,200', 200.
+    //         */
+    //         'page-size' => env('FIREFLY_ADMIN_TABLE_PAGE_SIZE', 50),
+    //         'page-sizes' => env('FIREFLY_ADMIN_TABLE_PAGE_SIZES', '25,50,100,200'),
+    //         'max-page-size' => env('FIREFLY_ADMIN_TABLE_MAX_PAGE_SIZE', 200),
+    //
+    //         /*
+    //          | The height of the scroll box a table lives in, as the `--table-vh` custom property. THIS IS
+    //          | WHAT MAKES THE STICKY HEADER WORK: `position:sticky` needs a scrollport that actually
+    //          | scrolls, and the wrapper had `overflow-x:auto` with no height constraint anywhere, so it
+    //          | never scrolled and the header was inert. Set it to `none` to turn the scrollport off — the
+    //          | page then scrolls as one document and the header scrolls away with it.
+    //          |
+    //          | Accepts `none` or a CSS length (px, vh, svh, dvh, rem, em). Anything else is refused and the
+    //          | default is used: this value is interpolated into the dashboard's stylesheet, and there is no
+    //          | escaping that makes an arbitrary string safe there.
+    //          |
+    //          | Default: '68vh'.
+    //         */
+    //         'max-height' => env('FIREFLY_ADMIN_TABLE_MAX_HEIGHT', '68vh'),
+    //
+    //         /*
+    //          | Whether a table's scroll position survives a reload, saved per URL in `sessionStorage`.
+    //          | This is the other half of `max-height`: the scrollport used to be the page itself and the
+    //          | browser restored ITS offset for free, so the ten-second refresh cost a reader nothing.
+    //          | Moving the scrollport into the panel took that away — a browser restores the document's
+    //          | scroll, never an inner scroller's — and the refresh started returning readers to row 1.
+    //          |
+    //          | It is applied ONLY on a reload or a back/forward, which are exactly the navigations where
+    //          | the browser would have restored it before. Clicking a page in the sidebar is a plain
+    //          | navigation and opens the table at the top. Set to false to store nothing at all.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'remember-scroll' => env('FIREFLY_ADMIN_TABLE_REMEMBER_SCROLL', true),
+    //
+    //         /*
+    //          | 'comfortable' (14px/8px cell padding) or 'compact' (10px/5px), which fits roughly a third
+    //          | more rows on a screen. Anything unrecognised reads as 'comfortable'. The value also feeds
+    //          | the rigid column widths, which are emitted as `calc(<n>ch + 2 * var(--row-x))` because
+    //          | box-sizing is border-box on this page.
+    //          |
+    //          | Default: 'comfortable'.
+    //         */
+    //         'density' => env('FIREFLY_ADMIN_TABLE_DENSITY', 'comfortable'),
+    //     ],
+    //
     //     'pages' => [
     //         /*
     //          | CSV of page slugs to REFUSE. This is a refusal, not a menu preference: an excluded page is
@@ -1293,9 +1361,16 @@ return [
     //         */
     //         'writable' => env('FIREFLY_ADMIN_DATA_WRITABLE', false),
     //
-    //         // Rows per page, and the ceiling a `?per-page=` in the URL may raise it to. Both are clamped
-    //         // to a hard maximum of 1000 so no query string can ask for the whole table at once.
-    //         // Defaults: 25 and 200.
+    //         // Rows per page on the /firefly/data listing, and the ceiling that narrows the set of sizes
+    //         // it offers. Both are clamped to a hard maximum of 1000 so no query string can ask for the
+    //         // whole table at once. They compose with the dashboard-wide `firefly.admin.table.*` keys
+    //         // above: the rows-per-page control offers that shared set narrowed by `max-page-size`, with
+    //         // `page-size` always among the sizes it offers. The offered set is CLOSED — a `?size=` that
+    //         // is not one of its members is refused and the listing falls back to `page-size`, rather
+    //         // than being lowered to the ceiling — so a deployment that wants a size on offer adds it to
+    //         // `firefly.admin.table.page-sizes` or names it here. `max-page-size` is a plain cap only for
+    //         // a direct Firefly\Admin\Data\DataBrowser::list() call, which is parsed against no query
+    //         // string. Defaults: 25 and 200.
     //         'page-size' => 25,
     //         'max-page-size' => 200,
     //

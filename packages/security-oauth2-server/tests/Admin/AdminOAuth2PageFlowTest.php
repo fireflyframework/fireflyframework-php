@@ -60,25 +60,25 @@ it('renders the Clients panel for an admin, read in-process, with the live autho
         ->assertSee('orders:read')
         ->assertSee('client.create')
         // The one client-credentials token issued above is the one live authorization the svc row reports.
-        ->assertSee('<td class="num">1</td>', false)
+        ->assertSee('<td class="t-num">1</td>', false)
         // …counted in the `memory` driver's map, which belongs to the process that rendered this page. The
         // page says so, and prints `—` rather than `0` for the two clients this worker holds nothing for:
         // under php-fpm that zero would be every client's, whatever the pool is actually holding.
         ->assertSee('Active counts this worker only')
-        ->assertSee('<td class="num">—</td>', false)
+        ->assertSee('<td class="t-num">—</td>', false)
         // PKCE is reported as the endpoints ENFORCE it, not as the client registered it: public-spa carries
         // no `require_pkce` of its own, yet the stock server-wide default refuses its every authorization
         // request without a code_challenge. Its issuance cell is the one without `consent`, so this string
         // belongs to that row alone.
-        ->assertSee('<td class="dim">self_contained · 300s · PKCE</td>', false)
+        ->assertSee('<td class="t-token dim" title="self_contained · 300s · PKCE">self_contained · 300s · PKCE</td>', false)
         // web-app holds the authorization_code grant and the stock consent default, so it carries both.
-        ->assertSee('<td class="dim">self_contained · 300s · PKCE · consent</td>', false)
+        ->assertSee('<td class="t-token dim" title="self_contained · 300s · PKCE · consent">self_contained · 300s · PKCE · consent</td>', false)
         // …and svc carries NEITHER. It is registered for client_credentials only: it never sends a
         // code_challenge and never reaches a consent screen, so the two rules do not describe it. Both
         // defaults are on, so a cell built from them would read `· PKCE · consent` beside a machine client
         // and hand the operator two requirements to check that nothing in the server enforces for it — on
         // the page opened to answer why a client cannot get a token.
-        ->assertSee('<td class="dim">self_contained · 300s</td>', false)
+        ->assertSee('<td class="t-token dim" title="self_contained · 300s">self_contained · 300s</td>', false)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::WEB_APP_SECRET)
         ->assertDontSee(OAuth2ServerCapstoneTestCase::SVC_SECRET);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Admin;
 
+use Firefly\Admin\Table\TableSettings;
 use Firefly\Config\Config;
 
 /**
@@ -33,6 +34,7 @@ final readonly class AdminSettings
         public string $theme = 'auto',
         public int $graphMaxNodes = 220,
         public array $excludedPages = [],
+        public TableSettings $table = new TableSettings,
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -52,6 +54,10 @@ final readonly class AdminSettings
             // depends on the screen and the application.
             graphMaxNodes: max(0, $config->int('firefly.admin.graph.max-nodes', 220)),
             excludedPages: self::csv($config->string('firefly.admin.pages.exclude', '')),
+            // Every listing's paging, sorting and spacing. On AdminSettings rather than resolved separately
+            // because a Blade view reaches exactly one settings object, and a second one would mean every
+            // view that draws a table taking a second parameter through render().
+            table: TableSettings::fromConfig($config),
         );
     }
 

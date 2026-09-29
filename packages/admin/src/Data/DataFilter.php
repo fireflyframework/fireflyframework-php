@@ -78,29 +78,46 @@ final readonly class DataFilter
     }
 
     /**
-     * The query-string form of a list of filters, so every link that must preserve them is built from one
-     * place. A single equality keeps the short `fk`/`fv` spelling that relation links use.
+     * This filter set as query PARAMETERS, which is the form every link builder wants.
+     *
+     * A LINK CARRIES A FILTER AS DATA, NOT AS A STRING IT WAS HANDED. `ListingQuery` is given this array as
+     * the parameters it must not lose, and it writes them out with `http_build_query` alongside its own —
+     * which is what lets a sort link, a page link and a search form each rebuild the whole URL from parsed
+     * values rather than concatenating someone else's fragment onto their own.
+     *
+     * @param  list<self>  $filters
+     * @return array<string, string|list<string>>
+     */
+    public static function toParameters(array $filters): array
+    {
+        if ($filters === []) {
+            return [];
+        }
+
+        // TWO SPELLINGS, ONE MEANING. `fk`/`fv` is a single equality and is what every relation link
+        // produces — short enough to read in a status bar. Both are validated identically downstream.
+        if (count($filters) === 1 && $filters[0]->operator === self::EQ) {
+            return ['fk' => $filters[0]->column, 'fv' => $filters[0]->value];
+        }
+
+        return [
+            'fc' => array_map(static fn (self $filter): string => $filter->column, $filters),
+            'fo' => array_map(static fn (self $filter): string => $filter->operator, $filters),
+            'fv' => array_map(static fn (self $filter): string => $filter->value, $filters),
+        ];
+    }
+
+    /**
+     * The query-string form, for the one caller that still wants a string.
+     *
+     * Built by http_build_query rather than by concatenating urlencode() calls: the hand-built version was
+     * correct and was one edit away from not being, which is exactly the class of bug this wave is removing.
      *
      * @param  list<self>  $filters
      */
     public static function toQuery(array $filters): string
     {
-        if ($filters === []) {
-            return '';
-        }
-
-        if (count($filters) === 1 && $filters[0]->operator === self::EQ) {
-            return 'fk='.urlencode($filters[0]->column).'&fv='.urlencode($filters[0]->value);
-        }
-
-        $parts = [];
-        foreach ($filters as $filter) {
-            $parts[] = 'fc[]='.urlencode($filter->column)
-                .'&fo[]='.urlencode($filter->operator)
-                .'&fv[]='.urlencode($filter->value);
-        }
-
-        return implode('&', $parts);
+        return http_build_query(self::toParameters($filters));
     }
 
     /** A one-line description of what this filter narrows to, for the banner above a filtered listing. */

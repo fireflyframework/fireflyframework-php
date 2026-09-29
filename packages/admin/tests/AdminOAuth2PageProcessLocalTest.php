@@ -71,8 +71,8 @@ it('marks a zero no per-process store can vouch for, and says whose authorizatio
         ->assertOk()
         ->assertSee('Active counts this worker only')
         ->assertSee('authorizations.driver')
-        ->assertSee('<td class="num">—</td>', false)
-        ->assertSee('<td class="num">2</td>', false);
+        ->assertSee('<td class="t-num">—</td>', false)
+        ->assertSee('<td class="t-num">2</td>', false);
 });
 
 it('prints the counts as they stand, with no caveat, when a durable store answered', function () {
@@ -83,6 +83,6 @@ it('prints the counts as they stand, with no caveat, when a durable store answer
         ->assertOk()
         ->assertDontSee('Active counts this worker only')
         // `0` from oauth2_authorizations is the deployment's answer, not one worker's, so it is printed.
-        ->assertSee('<td class="num">0</td>', false)
-        ->assertSee('<td class="num">2</td>', false);
+        ->assertSee('<td class="t-num">0</td>', false)
+        ->assertSee('<td class="t-num">2</td>', false);
 });
