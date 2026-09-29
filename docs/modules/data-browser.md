@@ -293,6 +293,24 @@ ticket or hand to someone else, which is most of what a data explorer is for —
 the whole state, because a sort that dropped the filter would widen the listing back to every row, which reads as
 rows appearing from nowhere.
 
+Every link is rebuilt from the parsed query rather than concatenated: the four `$keep…` strings the listing
+view used to glue onto every href — with a comment beside them asking the next author not to forget one —
+are gone, and a sort that dropped the filter is no longer expressible. The rows-per-page control gained a
+submit button, which it had never had: it was a `<select onchange="this.form.submit()">` and did nothing at
+all for a keyboard, a text browser, or a page whose script had failed.
+
+!!! danger "Two rows that tie used to be able to appear twice, or never"
+    `ORDER BY status` over forty rows sharing a status leaves the engine free to return them in a different
+    order for the query behind page 1 and the query behind page 2. Every listing now goes out as
+    `ORDER BY <column> <dir>, <identifier> ASC` — the identifier appended as an always-ascending tiebreak,
+    and skipped when it *is* the sort column. The same tiebreak is applied on the
+    [in-PHP fallback path](#reads-four-paths-and-one-of-them-is-a-foot-gun), because `usort` being stable
+    stabilises the array it was given and the array is rebuilt from the repository on every request.
+
+A `?page=` past the end renders the **last** page rather than an empty table with a pager under it. On the
+in-memory listings that costs nothing; here it costs one extra query, and only on a hand-edited URL or a
+stale bookmark, because every link the page emits is in range.
+
 Eight comparisons, over the columns the resource publishes **minus the masked ones**:
 
 | Operator | Meaning |
@@ -432,7 +450,7 @@ of this section is what it does instead.
 ### Rows per page
 
 Rows per page on the `/firefly/data` listing is this browser's own `firefly.admin.data.page-size`; the
-dashboard-wide `firefly.admin.table.*` keys govern the [listing tables](admin.md) everywhere else, and **the
+dashboard-wide `firefly.admin.table.*` keys govern the [listing tables](admin.md#the-listing-tables) everywhere else, and **the
 two apply in series**. The pair above is composed into the shared table settings *before* the request is
 read, so the rows-per-page control offers exactly the sizes this listing may serve — the shared set narrowed
 by `max-page-size`, with `page-size` always among them — and a deployment that sets

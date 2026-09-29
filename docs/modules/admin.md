@@ -285,6 +285,12 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 | `firefly.admin.refresh-seconds` | `10` | How often a live page reloads itself. **Floored at 2**: a shorter interval reloads faster than the page renders, so the countdown would never finish and the dashboard would hammer the application it is meant to be observing. |
 | `firefly.admin.theme` | `'auto'` | `auto` \| `light` \| `dark`. Anything unrecognised falls back to `auto` (follow the operating system) rather than rendering unstyled. |
 | `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
+| `firefly.admin.table.page-size` | `50` | Rows per page on every listing. Always a member of `page-sizes` — a default the set does not contain is added to it, because a `<select>` whose value has no `<option>` resizes the table on the next submit. |
+| `firefly.admin.table.page-sizes` | `'25,50,100,200'` | The sizes the rows-per-page control offers. **A closed set, not a cap**: a `?size=` nobody offered falls back to the default rather than being silently clamped. |
+| `firefly.admin.table.max-page-size` | `200` | The ceiling an offered size may reach, itself capped at **1000**. |
+| `firefly.admin.table.max-height` | `'68vh'` | The height of the scroll box a table lives in, published as `--table-vh`. **This is what makes the sticky header work** — see below. `none` turns the scrollport off. Refused unless it is `none` or a CSS length, because the value is interpolated into the dashboard's stylesheet. |
+| `firefly.admin.table.density` | `'comfortable'` | `comfortable` (14px/8px cell padding) or `compact` (10px/5px), roughly a third more rows per screen. Also feeds the rigid column widths, which are `calc(<n>ch + 2 * var(--row-x))`. |
+| `firefly.admin.table.remember-scroll` | `true` | Save table scroll offsets per URL in `sessionStorage`, restoring them on reload and back/forward navigation. Ordinary navigation opens at the top. |
 | `firefly.admin.pages.exclude` | `''` | CSV of page slugs to refuse. This is a **refusal, not a menu preference**: an excluded page is hidden *and* its URL 404s — hiding `env` from the menu achieves nothing if the URL still answers. Use `overview` for the index page. |
 | `firefly.admin.datasource.probe` | `true` | Whether the datasource page may **open** a configured connection to report that it answers. |
 | `firefly.admin.datasource.wizard` | **`false`** | The connection wizard. Off by default and refused in production — see [below](#the-connection-wizard). |
@@ -294,6 +300,72 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 The `firefly.admin.data.*` keys are documented separately, in [Data Browser](data-browser.md#configuration-fireflyadmindata),
 because the browser is gated independently of everything above: `firefly.admin.enabled` does **not** switch it on,
 and neither does `app.debug`.
+
+## The listing tables
+
+Every page that draws a list of rows — routes, beans, conditions, scheduled tasks, OAuth2 clients, the
+environment, config properties, caches, loggers, metrics, HTTP traffic and the
+[data browser](data-browser.md) — renders through one system, and it replaced six competing ones.
+
+**Columns are typed, and the type decides the width.** A column declares what it holds — a pill, a figure, a
+timestamp, a short token, a path, a qualified name, prose, one clipped line, a bar, a set of controls — and
+the layout is computed from those declarations into an explicit `<colgroup>` under `table-layout:fixed`.
+Rigid kinds are sized from their own alphabet (seven and a half characters is `DELETE` with room), and the
+rest share what is left in proportion to how much a reader needs.
+
+!!! danger "A `<col>` width includes the cell padding, and that is where `DELETE` went"
+    `box-sizing:border-box` applies to table columns like everything else, so `width:7.5ch` on a padded
+    cell is seven and a half characters **minus** both paddings — about 34px of content on the dashboard's
+    own 14px padding. The verb clipped, on the Routes page, which is the page this whole area was rebuilt
+    from. Every rigid width is emitted as `calc(<n>ch + 2 * var(--row-x))`, and `--row-x` comes from
+    `density` so the arithmetic follows the configuration.
+
+**A path and a qualified name elide in opposite directions.** `/api/v1/orgs/{o}/workspaces` and
+`App\Http\Controllers\Api\V1\WorkspaceController` are the same length in the same font and they are
+discriminated at opposite ends: a path by its head, so it clips at the end; a qualified name by its leaf, so
+it is drawn on two lines with the short name on top and it is the *prefix* that may go. The qualified kind
+takes its separator as a parameter, which is why a dotted config key, a meter name and a class name all get
+the same cell instead of three mechanisms.
+
+!!! note "`overflow-wrap: anywhere` is what collapsed the Path column"
+    Per CSS Text 3, `anywhere` and `break-word` both break an unbreakable token at render time, but
+    `anywhere` also **contributes its break opportunities to min-content sizing**. Under auto layout — which
+    is what every table here had, because none of them declared a `table-layout` — a path's minimum width
+    therefore became one glyph, the engine gave it three characters, and `/greetings/{name}` rendered as six
+    stacked lines beside 1100px of empty column. With seven routes on the page.
+
+**The header stays put.** `thead th` has carried `position:sticky` for as long as this dashboard has
+existed and it had never once worked: the wrapper it sticks inside had `overflow-x:auto` and no height, so
+it never scrolled — `main` did — and a sticky element does not follow an ancestor's scrollport. Giving the
+wrapper `max-height: var(--table-vh)` is the whole fix. The rule under the header is an inset box-shadow
+rather than a border, because under `border-collapse:collapse` a border belongs to the table's border grid
+and stays behind with the rows.
+
+**Paging, sorting and searching happen on the server.** They used to happen in the browser: the complete
+list was rendered into every response and a keyup handler hid rows, which is fine for eleven rows, is a
+janky filter and a large response at two hundred, and produces a "12 of 207" readout that is a statement
+about the DOM rather than about the application. Each listing now reads `page`, `size`, `sort`, `dir` and
+`q` from the URL with every bound applied — the page clamped and never redirected, the size a member of the
+offered set, the sort column one the page actually draws, the term trimmed and length-capped — and every
+link on the page is rebuilt from those parsed values rather than concatenated from carried strings.
+
+Two listings on one page (Conditions, Config properties) each take a **qualifier**, so their parameters are
+`pos_page` and `neg_page` — the same shape Spring gives a controller that resolves two `Pageable`s with
+`@Qualifier` — and each carries the other's position, so paging one never silently resets the other.
+
+!!! danger "A sort with no tiebreak is a listing that loses rows"
+    Ordering by a column with duplicate values leaves the tied rows in whatever order the source finds
+    convenient, and it is free to find a different one convenient for the query behind page 1 and the query
+    behind page 2: a row is then shown on both pages and another on neither, and the reader sees a table
+    that is missing records which are really there. Every listing here appends a second, **always
+    ascending** key over something unique. Ascending even under a descending sort, because it is an identity
+    rather than a second ordering.
+
+Because all of it lives in the URL, it composes with the ten-second **Auto** refresh for free: the refresh
+is a full `window.location.reload()`, so a reader on page 7 of a sorted, searched listing comes back to
+page 7 of the same listing. The only thing a reload cannot restore is the scroll position *inside* a table,
+now that tables scroll in their own box, so that is saved per URL in `sessionStorage` and restored on reload or back/forward navigation when
+`firefly.admin.table.remember-scroll` is enabled. Ordinary navigation starts at the top.
 
 ## The datasource page
 
@@ -400,6 +472,13 @@ container image, and a web form that edits the file holding your database passwo
   surface's disclosure policy (see above). The JSON surface's own `when-authorized` is real and answered by
   [`HealthDetailsAuthorizer`](actuator.md#who-may-read-the-component-details); the dashboard never consults it,
   because its URL is already the whole security boundary.
+
+- **A listing's search box searches what the page DRAWS, not the record behind it.** A column the table does
+  not show is not searched, because a search that matched on a hidden value would answer a question about
+  something the reader cannot see. Add the column to see it.
+- **`?page=` past the end of a SQL-backed listing costs one extra query.** The in-memory listings know the
+  total before they slice and clamp for free; the data browser does not, so it fetches the last page after
+  finding the requested one empty. Only a hand-edited URL or a stale bookmark reaches it.
 
 ---
 

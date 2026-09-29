@@ -4,6 +4,23 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Fixed
+
+- **Admin listings:** replace competing column rules with typed columns, fixed table layout and explicit
+  colgroups. Route paths no longer collapse into stacks of characters beside unused space. Rigid column
+  widths include cell padding, and a bounded table scrollport makes sticky headers work.
+- **Stable paging:** append an ascending identity tiebreak so tied rows cannot move between pages. Clamp
+  stale out-of-range pages to the last page; a SQL-backed data listing may need one additional query.
+
+### Added
+
+- **Shared listing controls:** server-side paging, sorting and searching with validated, bookmarkable URL
+  state across routes, beans, conditions, scheduled tasks, configuration, runtime and data listings. Paired
+  listings preserve each other's state, and row-count controls have submit buttons for use without JavaScript.
+- **Table settings:** `firefly.admin.table.page-size`, `page-sizes`, `max-page-size`, `max-height`, `density`
+  and `remember-scroll`. The offered size set is closed; the data browser applies its own bounds in series.
+  Auto-refresh keeps URL state; optional per-URL scroll restoration applies on reload and back/forward.
+
 ### Changed
 
 - **`packages/admin` — the data browser's rows-per-page control offers the dashboard's set, and a `?size=`
