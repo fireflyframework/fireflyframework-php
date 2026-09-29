@@ -127,13 +127,14 @@ it('reports compiled advice in chain order without instantiating interceptors', 
     $container->instance(ProxyPlan::class, new ProxyPlan([
         stdClass::class => ['proxyClass' => 'Unused', 'advice' => [
             'meter' => ['id' => 'meter', 'interceptor' => 'live.interceptor', 'descriptor' => 'Unused', 'order' => 50],
+            'optional' => ['id' => 'optional', 'interceptor' => 'optional.interceptor', 'descriptor' => 'Unused', 'order' => 100, 'inert' => true],
             'tx' => ['id' => 'tx', 'interceptor' => 'missing.interceptor', 'descriptor' => 'Unused', 'order' => 1000],
-        ], 'methods' => ['index' => [['advice' => 'meter', 'row' => ['name' => 'calls']], ['advice' => 'tx', 'row' => ['readOnly' => true]]]]],
+        ], 'methods' => ['index' => [['advice' => 'meter', 'row' => ['name' => 'calls']], ['advice' => 'optional', 'row' => []], ['advice' => 'tx', 'row' => ['readOnly' => true]]]]],
     ]));
     $route = new RouteDescriptor('GET', '/', stdClass::class, 'index', 200, null, []);
     $advice = (new RouteInspector($container))->advice($route);
-    expect(array_column($advice, 'id'))->toBe(['meter', 'tx'])
-        ->and(array_column($advice, 'state'))->toBe(['LIVE', 'UNBOUND']);
+    expect(array_column($advice, 'id'))->toBe(['meter', 'optional', 'tx'])
+        ->and(array_column($advice, 'state'))->toBe(['LIVE', 'INERT', 'UNBOUND']);
 });
 
 it('derives a pattern failure sentence from the PHP name rather than the wire key', function () {

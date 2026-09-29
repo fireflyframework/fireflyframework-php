@@ -65,7 +65,7 @@ it('honors route detail and mappings page switches with hard refusals', function
     if ($key === 'firefly.admin.routes.detail') {
         $this->get('/firefly/mappings')->assertOk()->assertDontSee('data-route="', false);
     }
-})->with([['firefly.admin.routes.detail', false], ['firefly.admin.pages.exclude', 'mappings']]);
+})->with([['firefly.admin.routes.detail', false], ['firefly.admin.pages.exclude', 'mappings'], ['firefly.management.endpoint.mappings.enabled', false]]);
 
 it('keeps optional crosslinks behind destination gates and does not read detail collaborators on the listing', function () {
     /** @var AdminTableCapstoneTestCase $this */

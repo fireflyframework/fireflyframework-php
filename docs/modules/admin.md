@@ -482,3 +482,48 @@ See also: [Actuator](actuator.md) for the endpoints themselves, [Observability](
 and HTTP-exchange stores the dashboard renders, [Bean Graph](bean-graph.md) for the one page that is more than
 a table, and [Data Browser](data-browser.md) for the Django-style view over your own repositories — which is
 **off by default and does not inherit `firefly.admin.enabled`**.
+
+## Inspecting a route
+
+Select a path in Routes to open its contract at
+`/firefly/mappings?route=GET%20%2Forders%2F%7Bid%7D#route-detail`.
+The ordinary link works without JavaScript; the optional focus enhancement moves to the route heading.
+Search, sorting, page and size travel with the link and the return link. No detail manifests, resolver
+claims, advice or wiring joins are read on an ordinary listing request.
+
+The page reads the booted Web `RouteManifest`, without widening `/actuator/mappings`. It shows handler
+arguments in signature order, including their wire keys, types, required flags, **compiled attribute
+defaults** and validation flags. A missing type means unrecorded (possibly union, intersection or untyped);
+a null default is not evidence of nullability. Resolver claims take precedence over compiled kinds:
+`#[AuthenticationPrincipal]` can compile as `query` but is shown as injected, alongside services.
+Inspection calls only `supports()` through `resolverFor()` and never executes `resolve()` or the handler.
+
+Possible failures are tied to each unclaimed caller binding. Required path/query/header/file inputs may
+produce `MISSING_PARAMETER`; primitive conversion and multi-file arrays may produce
+`TYPE_CONVERSION_ERROR`. A path pattern mismatch is 404 with its effective code and sentence. Bodies may
+produce `MALFORMED_BODY` or `INVALID_REQUEST`; a loadable DTO adds `UNBINDABLE_BODY`, and a typed `valid`
+body adds a possible 422. These are framework defaults: controller-local and global exception handlers
+can replace responses. Required body/service arguments do not imply a missing-parameter failure.
+
+DTO shapes prefer the compiled `dtos` table and fall back to legacy property names. Native disclosures
+keep the first two levels open, indentation is bounded, recursive references terminate, and a display
+budget limits very large trees. On phones the binding table scrolls horizontally inside its own region.
+The success status is a default; returned responses can override it. HTML stereotypes are shown explicitly,
+while older manifests with no HTML flag remain described as negotiated rather than promised JSON.
+
+Controller siblings appear near the heading with comparison markers. Duplicate verb/path registrations
+are marked **Shadowed** in the list and shown in manifest order on the detail page; the last wins.
+Related links respect each destination's page and endpoint gates. Configuration links identify known
+injected configuration collaborators, never request DTOs. The API reference link uses the actual registered
+viewer route, without guessing an operation fragment. HTTP traffic and Metrics remain application-wide.
+
+The collapsed advice section shows available plan provenance and interceptor binding state: **LIVE**
+means bound, **INERT** means explicitly allowed to be absent, and **UNBOUND** can prevent proxy creation.
+A transactional-only cache asks for recompilation. Declared settings and meter names are shown without
+claiming per-route measurements. Laravel metadata is read from its public route collection with normalized
+URIs and domain checks, without dispatching synthetic requests. No security authorization verdict is inferred.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `firefly.admin.routes.detail` | `true` | Offer detail links; false hard-404s every `?route=` URL. |
+| `firefly.admin.routes.advice` | `true` | Read and render the collapsed advice section. False omits it entirely. |
