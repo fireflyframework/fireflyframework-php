@@ -4,6 +4,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.10] - 2026-09-29
+
 ### Fixed
 
 - **OpenAPI contracts:** derive path-pattern `404` responses and restrict inferred validation `422` responses
