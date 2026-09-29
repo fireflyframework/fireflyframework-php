@@ -6,6 +6,8 @@ use Firefly\Admin\Route\RouteBinding;
 use Firefly\Admin\Route\RouteBodyNode;
 use Firefly\Admin\Route\RouteInspector;
 use Firefly\Data\Proxy\ProxyPlan;
+use Firefly\Kernel\Exception\Business\ValidationException;
+use Firefly\Web\Dispatch\ArgumentResolver;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolver;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
 use Firefly\Web\Route\RouteDescriptor;
@@ -52,6 +54,7 @@ it('keeps signature positions while separating resolver claims and services with
         throw new RuntimeException('Expected a route detail');
     }
     expect($detail)->not->toBeNull()
+        ->and(array_column($detail->arguments(), 'position'))->toBe([1, 2, 3, 4])
         ->and(array_column($detail->caller, 'position'))->toBe([1, 4])
         ->and(array_column($detail->injected, 'position'))->toBe([2, 3])
         ->and($detail->injected[0]->resolver)->toBe($resolver::class)
@@ -91,8 +94,8 @@ it('derives failures from the actual binding branch including upload arrays and 
     $codes = fn (string $name) => array_column(array_filter($detail->failures, fn (array $f) => $f['binding'] === $name), 'code');
     expect($codes('id'))->toContain('ORDER_MISSING', 'MISSING_PARAMETER', 'TYPE_CONVERSION_ERROR')
         ->and($codes('upload'))->toContain('INVALID_UPLOAD', 'TYPE_CONVERSION_ERROR', 'MISSING_PARAMETER')
-        ->and($codes('body'))->toContain('MALFORMED_BODY', 'INVALID_REQUEST', 'UNBINDABLE_BODY', 'VALIDATION_FAILED')->not->toContain('MISSING_PARAMETER')
-        ->and($codes('arrayBody'))->not->toContain('MISSING_PARAMETER', 'UNBINDABLE_BODY', 'VALIDATION_FAILED')
+        ->and($codes('body'))->toContain('MALFORMED_BODY', 'INVALID_REQUEST', 'UNBINDABLE_BODY', (new ValidationException)->errorCode())->not->toContain('MISSING_PARAMETER')
+        ->and($codes('arrayBody'))->not->toContain('MISSING_PARAMETER', 'UNBINDABLE_BODY', (new ValidationException)->errorCode())
         ->and($detail->caller[0]->notFoundMessage)->toBe('That resource does not exist.');
 });
 
@@ -131,4 +134,9 @@ it('reports compiled advice in chain order without instantiating interceptors', 
     $advice = (new RouteInspector($container))->advice($route);
     expect(array_column($advice, 'id'))->toBe(['meter', 'tx'])
         ->and(array_column($advice, 'state'))->toBe(['LIVE', 'UNBOUND']);
+});
+
+it('derives a pattern failure sentence from the PHP name rather than the wire key', function () {
+    $binding = new RouteBinding(1, [...detailBinding('orderId', 'path'), 'key' => 'id', 'pattern' => '[0-9]+'], null);
+    expect($binding->notFoundMessage)->toBe(ArgumentResolver::notFoundSentence('orderId'));
 });

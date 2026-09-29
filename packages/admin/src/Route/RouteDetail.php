@@ -23,4 +23,13 @@ final readonly class RouteDetail
         public array $failures,
         public array $siblings,
     ) {}
+
+    /** @return list<RouteBinding> */
+    public function arguments(): array
+    {
+        $arguments = [...$this->caller, ...$this->injected];
+        usort($arguments, static fn (RouteBinding $a, RouteBinding $b): int => $a->position <=> $b->position);
+
+        return $arguments;
+    }
 }

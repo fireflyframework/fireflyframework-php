@@ -132,7 +132,7 @@ final readonly class RouteInspector
                 $add(400, 'UNBINDABLE_BODY', 'The decoded body cannot construct the DTO.');
             }
             if ($plan['valid'] && $plan['type'] !== null) {
-                $add(422, 'VALIDATION_FAILED', 'Bean validation rejects the body before hydration.');
+                $add(422, 'VALIDATION_ERROR', 'Bean validation rejects the body before hydration.');
             }
         }
 
