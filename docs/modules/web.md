@@ -219,6 +219,11 @@ generation, and Laravel's own route-caching machinery all apply to LaraFly route
       providers register. This is exactly the ordering Laravel itself guarantees (`LoadConfiguration`
       runs before `RegisterProviders`), so a config file is the correct place for this key — but a
       programmatic override made after providers have registered is too late to affect the scan.
+    - **Error negotiation covers HTML and problem+json.** Named HTML receives the error page; JSON clients
+      and configured `json-paths` receive the problem document. With `firefly.web.error-page.problem-fallback`
+      enabled, other clients (wildcard, absent, XML or plain-text Accept) also receive problem+json. Laravel's
+      own validation, authentication and carried-response exceptions remain with its handler. Error
+      renderers do not use controller `MessageConverter`s. See [error handling](error-handling.md).
     - **Nested lists are not cascaded.** `#[Valid]` descends through nested DTOs and into the elements of a
       list, but not into a list of lists (`list<list<X>>`); the scanner refuses such a member at cache time
       rather than validating half of it.

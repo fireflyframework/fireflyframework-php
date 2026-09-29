@@ -32,23 +32,30 @@ it('opens a wallet and reads its balance over REST', function () {
 })->group('lumen');
 
 // NOTE on toBeProblemDetails(): the shipped `firefly/testing` expectation (packages/testing/src/Pest/
-// FireflyExpectations.php) asserts the body `->toHaveKeys(['type', 'title', 'status'])`. The REAL renderer
-// (Firefly\Kernel\Error\ErrorResponse::fromException(), rendered by Firefly\Web\Exception\ProblemDetailsRenderer)
-// never populates `type` — it is an optional field only emitted when explicitly passed, which fromException()
-// never does — so `toBeProblemDetails()` fails against every genuine HTTP problem+json response this framework
-// produces (verified empirically below: it throws "array does not have the key 'type'" for a real 404/422/403/409
-// response). This is a pre-existing gap in packages/kernel + packages/testing (both frozen, out of this task's
-// scope), not a lumen bug. It is exactly why Firefly\Web\Tests\CapstoneWebIntegrationTest (the web package's own
-// capstone) never uses toBeProblemDetails() either — it asserts the RFC-7807 fields directly. This file follows
-// that same established, working pattern.
+// FireflyExpectations.php) asserts the body `->toHaveKeys(['type', 'title', 'status'])`, and for its whole life
+// the real renderer (Firefly\Web\Exception\ProblemDetailsRenderer) published no `type` at all — it was an
+// optional member only emitted when something explicitly passed one, which the exception-to-response path never
+// did — so the expectation failed against every genuine 404/422/403/409 this framework produced. THAT GAP IS
+// CLOSED. RFC 9457 §3.1.1 says an absent `type` IS `about:blank`; the renderer now writes it out the way
+// Spring's ProblemDetail does, and `firefly.web.problem.type-uri` either derives a dereferenceable type from the
+// stable `code` or is set to '' to drop the member again. So the expectation is exercised below, against a
+// document this application really served. The assertions beside it stay as they are because they are MORE
+// specific — they name the `code` and the `title` a caller branches on, which is what the framework's own
+// capstone suites assert too — not because the shipped expectation cannot be used.
 it('returns RFC-7807 problem+json for an unknown wallet', function () {
     /** @var LumenTestCase $this */
-    $this->getJson('/api/v1/wallets/nope/balance')
+    $response = $this->getJson('/api/v1/wallets/nope/balance')
         ->assertStatus(404)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('status', 404)
         ->assertJsonPath('code', 'RESOURCE_NOT_FOUND')
         ->assertJsonPath('title', 'Not Found');
+
+    // Registered at runtime by FireflyExpectations::register() (tests/Pest.php) and therefore invisible to
+    // PHPStan's static reflection of the vendor Pest\Expectation class — the same gotcha the testing package's
+    // own MetricAndProblemExpectationsTest carries.
+    // @phpstan-ignore method.notFound
+    expect($response)->toBeProblemDetails(404);
 })->group('lumen');
 
 it('returns 422 problem+json when the open-wallet body fails #[Valid]', function () {

@@ -48,6 +48,12 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
             'app.env' => $this->environment(),
             'firefly.web.error-page.trace' => $this->trace(),
             'firefly.web.problem.disclose' => false,
+            // The wave UX-E keys, set explicitly for the same reason `trace` is: a screenshot of a default
+            // nobody chose teaches nothing, and the author is going to look at these.
+            'firefly.web.error-page.home' => '/',
+            'firefly.web.error-page.sign-in' => '/login',
+            'firefly.web.error-page.support' => 'https://support.example.test',
+            'firefly.web.error-page.max-frames' => 30,
             'firefly.admin.enabled' => true,
             'firefly.admin.data.enabled' => true,
             'firefly.admin.data.writable' => true,
@@ -99,12 +105,35 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
     }
 
     /**
-     * Three test-only routes. `submit` accepts POST only, so a browser's GET is the 405; `boom` throws a
+     * Test-only routes for error scenarios. `submit` accepts POST only, so a browser's GET is the 405; `boom` throws a
      * wrapped exception so the "Caused by" chain has two links; nothing is registered under /api/, so
      * /api/browser-fixture/missing is the json-paths 404.
      */
     private function defineFixtureRoutes(): void
     {
+        // A page that asks for a missing URL with the header a bare curl and a default fetch() send. The
+        // framework used to answer it with Laravel's stock HTML page.
+        Route::get('/browser-fixture/wildcard', static fn (): string => <<<'HTML'
+            <!DOCTYPE html>
+            <html lang="en">
+            <head><meta charset="utf-8"><title>Wildcard client fixture</title></head>
+            <body>
+            <h1>Wildcard client fixture</h1>
+            <button id="ask" type="button">Ask</button>
+            <p id="outcome"></p>
+            <pre id="body"></pre>
+            <script>
+            document.getElementById('ask').addEventListener('click', async () => {
+                const response = await fetch('/does-not-exist', {headers: {'Accept': '*/*'}});
+                document.getElementById('outcome').textContent =
+                    response.status + ' ' + (response.headers.get('content-type') || '');
+                document.getElementById('body').textContent = await response.text();
+            });
+            </script>
+            </body>
+            </html>
+            HTML);
+
         Route::post('/browser-fixture/submit', static fn (): string => 'submitted');
         Route::get('/browser-fixture/boom', static function (): never {
             throw new LogicException('The fixture failed on purpose.', 0, new RuntimeException('the inner cause'));

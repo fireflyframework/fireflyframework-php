@@ -54,12 +54,26 @@ final readonly class ErrorResponse
         public ?string $correlationId = null,
     ) {}
 
+    /**
+     * EVERY MEMBER ONLY THE RENDERER KNOWS ARRIVES THROUGH THIS SEAM, and `type` is one of them. A throwable
+     * carries its own status, title, code, category, severity and detail; `instance`, `traceId`, `timestamp`,
+     * `correlationId` and RFC 9457 §3.1.1's `type` are facts about the REQUEST or about the deployment's
+     * configuration, which is why each is an optional argument here rather than something a caller sets by
+     * re-declaring the value object afterwards. A second construction site would be a second list of members
+     * to keep complete, and every argument of it would have a default — so the day a member is added to this
+     * class it would be dropped from every document that site builds, silently, with nothing to fail.
+     *
+     * `$type` IS APPENDED, for `$correlationId`'s reason one position along: the member ORDER of the rendered
+     * problem is toArray()'s and never this list's, so a new argument costs nothing at the end and would cost
+     * every positional call site anywhere else.
+     */
     public static function fromException(
         FireflyException $e,
         ?string $instance = null,
         ?string $traceId = null,
         ?string $timestamp = null,
         ?string $correlationId = null,
+        ?string $type = null,
     ): self {
         $errors = $e instanceof ValidationException ? $e->fieldErrors() : [];
 
@@ -70,6 +84,7 @@ final readonly class ErrorResponse
             category: $e->category(),
             severity: $e->severity(),
             detail: $e->getMessage(),
+            type: $type,
             instance: $instance,
             traceId: $traceId,
             errors: $errors,

@@ -626,6 +626,7 @@ curl -X POST http://127.0.0.1:8000/greetings \
     "category": "validation",
     "severity": "warning",
     "detail": "Validation failed",
+    "type": "about:blank",
     "errors": [
         { "field": "name", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": "" },
         { "field": "message", "message": "must not be blank", "constraint": "NotBlank", "rejectedValue": "" }
@@ -697,7 +698,8 @@ Content-Type: application/problem+json
     "category": "business",
     "severity": "warning",
     "detail": "No saved greeting for 'Nowhere'",
-    "instance": "greetings/Nowhere/record"
+    "type": "about:blank",
+    "instance": "/greetings/Nowhere/record"
 }
 ```
 

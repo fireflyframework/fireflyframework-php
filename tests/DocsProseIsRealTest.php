@@ -19,6 +19,10 @@ use Firefly\Data\Exception\PersistenceExceptionTranslator;
 use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Locking\HasOptimisticLock;
 use Firefly\Data\Repository\Locking\OptimisticLockException;
+use Firefly\Kernel\Error\ErrorCategory;
+use Firefly\Kernel\Error\ErrorResponse;
+use Firefly\Kernel\Error\ErrorSeverity;
+use Firefly\Kernel\Error\FieldError;
 use Firefly\Kernel\Exception\Infrastructure\OptimisticLockingFailureException;
 use Firefly\Observability\HttpExchanges\HeaderMasker;
 use Firefly\OpenApi\OpenApiProperties;
@@ -31,8 +35,11 @@ use Firefly\Security\OAuth2\Client\Registration\CommonOAuth2Provider;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientProperties;
 use Firefly\Security\OAuth2\Client\Registration\OAuth2ClientPropertiesMapper;
 use Firefly\Tests\Support\DocsCodeAudit;
+use Firefly\Web\Error\ErrorPage;
 use Firefly\Web\Error\ErrorPageRenderer;
 use Firefly\Web\Error\ErrorPageSettings;
+use Firefly\Web\Error\ErrorReport;
+use Firefly\Web\Error\ProblemMapper;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Config\Repository as ConfigRepository;
@@ -1134,6 +1141,186 @@ it('pins every prefersHtml() paragraph to the order and the media types ErrorPag
     // paragraphs it spends on it; what the count protects is the opposite case, a paragraph that stops
     // matching `prefersHtml` and silently stops being checked.
     expect($paragraphs)->toBe(7);
+});
+
+it('pins every sentence that says what the 500 page reads to the lede ErrorPage really renders', function () {
+    // The fifth kind of wrong sentence, and the quietest: prose that quoted a surface correctly, and went on
+    // quoting it after the surface changed. `docs/modules/error-handling.md` told a reader the 500 page
+    // reads "quote reference `<id>` if you report it" for a release in which the page had already stopped
+    // naming the id in its lede and started pointing at a Reference cell instead. Nothing compared the
+    // quotation to the page, so the doc suite was green and the sentence was false — which is the exact
+    // shape of failure this file exists to catch, on a page that tells a person what to put in a ticket.
+    //
+    // DERIVED, like the rest: the clause is read off a page rendered HERE, through ErrorPage itself, and the
+    // problem document's sentence off ProblemMapper's own constant. Nothing below types out the answer, so
+    // the day the lede is reworded the failure names the paragraph that has to be reworded with it.
+    $settings = new ErrorPageSettings(trace: false, hints: false);
+    $request = Request::create('/x', 'GET', server: ['HTTP_X_CORRELATION_ID' => 'ref-prose-1']);
+    $report = ErrorReport::of(new RuntimeException('boom'), $request, $settings, dirname(__DIR__), 500, 'Internal Server Error', '2026-01-01T00:00:00+00:00');
+    $html = ErrorPage::render($report, $settings);
+
+    if (preg_match('/It has been logged; ([^.<]+)\./', $html, $matched) !== 1) {
+        throw new RuntimeException('The production 500 page no longer carries an "It has been logged; …" lede for this guard to read.');
+    }
+    $clause = $matched[1];
+
+    // The two surfaces share the ID and deliberately no longer share the SENTENCE: the page prints the id
+    // once, in a cell its lede points at, and the document keeps it inline because a payload has no cell to
+    // point at. So a paragraph may not hand either surface the other's wording.
+    expect($clause)->not->toContain('ref-prose-1')
+        ->and(sprintf(ProblemMapper::OPAQUE_WITH_REFERENCE, 'ref-prose-1'))->toContain('ref-prose-1');
+
+    $paragraphs = 0;
+    foreach (fireflyProsePages() as $page => $pageParagraphs) {
+        foreach ($pageParagraphs as $paragraph) {
+            if (preg_match('/\b(?:500|error) page (?:reads|says)\b/', $paragraph) !== 1) {
+                continue;
+            }
+
+            $paragraphs++;
+
+            expect(str_contains($paragraph, $clause))->toBeTrue(sprintf(
+                '%s says what the 500 page reads without quoting "%s", which is the clause ErrorPage renders.',
+                $page,
+                $clause,
+            ));
+        }
+    }
+
+    // A guard whose trigger matches nothing proves nothing, and this one matched a single paragraph the day
+    // it was written.
+    expect($paragraphs)->toBeGreaterThan(0);
+});
+
+it('pins every published problem document to the `instance` ProblemMapper really builds', function () {
+    // The twenty-ninth, and the fifth kind of wrong sentence at the one scale that hurts most: a document a
+    // reader COPIES. The RFC 9457 conformance pass made `instance` a root-relative reference — §3.1.5 makes
+    // the member a URI REFERENCE, and a relative one resolves against the document's base URI, so
+    // `api/v1/wallets/wlt-999` served from /api/v1/wallets/wlt-999 identified /api/v1/api/v1/wallets/wlt-999
+    // — and left ten published samples and two explanatory paragraphs stating the behaviour it had just
+    // inverted. Both book editions did not merely show the old value: they SINGLED IT OUT as a lesson ("a
+    // small thing, and exactly the kind of small thing a client that compares strings gets wrong"), in the
+    // very file the pass edited. tests/DocsCodeIsRealTest.php could not see any of it, because a `json`
+    // fence naming no source file and a paragraph of prose are both outside what a listing guard compares.
+    //
+    // DERIVED, like the rest of this file: the reference is built by ProblemMapper::instanceFor() over a
+    // request for the very path the sample publishes, and the member ORDER is read off a real
+    // ErrorResponse::toArray(). Nothing below types out the answer, so the day either shape changes the
+    // failure names the samples that change with it.
+    $published = ProblemMapper::instanceFor(Request::create('/api/v1/wallets/wlt-999'));
+
+    // The guard only has something to say while the two spellings really differ. If `instance` ever goes
+    // back to being the bare path, this stops asserting rather than asserting the wrong thing.
+    expect($published)->toBe('/api/v1/wallets/wlt-999')
+        ->and(Request::create('/api/v1/wallets/wlt-999')->path())->not->toBe($published);
+
+    // The member order a document really carries, taken from the DTO rather than typed out: the standard
+    // members lead in toArray()'s order and every extension follows them.
+    $order = array_values(array_filter(
+        array_keys((new ErrorResponse(404, 'Not Found', 'X', ErrorCategory::Business, ErrorSeverity::Warning,
+            detail: 'd', type: 'about:blank', instance: '/x', traceId: 't',
+            errors: [new FieldError('f', 'm')], timestamp: 'ts',
+            extensions: ['allowed' => ['POST']], correlationId: 'c'))->toArray()),
+        static fn (string $key): bool => in_array($key, ErrorResponse::STANDARD_MEMBERS, true),
+    ));
+
+    $root = dirname(__DIR__);
+    $samples = 0;
+    $failures = [];
+
+    foreach (array_keys(fireflyProsePages()) as $page) {
+        foreach (fireflyFencedBlocks($root.'/'.$page) as $block) {
+            preg_match_all('/"instance"\s*:\s*"([^"]*)"/', $block['code'], $found);
+
+            foreach ($found[1] as $value) {
+                $samples++;
+                $expected = ProblemMapper::instanceFor(Request::create('/'.ltrim($value, '/')));
+
+                if ($value !== $expected) {
+                    $failures[] = sprintf(
+                        '%s:%d publishes "instance": "%s"; the framework publishes "%s" — RFC 9457 §3.1.5 '
+                        .'makes the member a URI reference, and a reader copying this sample gets a document '
+                        .'ProblemMapper::instanceFor() cannot produce.',
+                        $page,
+                        $block['line'],
+                        $value,
+                        $expected,
+                    );
+                }
+            }
+
+            // A sample that is a whole document is also held to the member ORDER toArray() writes, so a
+            // member added to the published shape cannot be pasted into these samples in the wrong place.
+            if ($found[1] === []) {
+                continue;
+            }
+
+            $decoded = json_decode($block['code'], true);
+
+            if (! is_array($decoded)) {
+                continue;
+            }
+
+            $present = array_values(array_filter(array_keys($decoded), static fn (mixed $key): bool => is_string($key) && in_array($key, ErrorResponse::STANDARD_MEMBERS, true)));
+            $wanted = array_values(array_filter($order, static fn (string $key): bool => in_array($key, $present, true)));
+
+            if ($present !== $wanted) {
+                $failures[] = sprintf(
+                    '%s:%d publishes its standard members as %s; ErrorResponse::toArray() writes them as %s.',
+                    $page,
+                    $block['line'],
+                    implode(', ', $present),
+                    implode(', ', $wanted),
+                );
+            }
+        }
+    }
+
+    // And the prose beside them. A paragraph that explains what `instance` CARRIES and calls it a path is
+    // describing the value the renderer stopped passing, so it has to name what passes it instead — which is
+    // the correction the shipped paragraphs were missing, in either language, without this file having to
+    // read Spanish.
+    //
+    // THE TRIGGER IS THE CLAIM, NOT ONE SPELLING OF IT. Its first form asked for the literal
+    // `$request->path()`, which is the CONJUNCTION the two chapter-4 paragraphs happened to be written with
+    // — and `book/src/04a-openapi.md` said "`instance` carries a request *path* rather than a URI
+    // reference" in prose that names no PHP at all, so the sentence that survived the conformance pass
+    // longest was the one this guard could not see. A reader of a generated client's documentation reads
+    // that page, so it is judged by what it CLAIMS: `instance` plus "request path" in either language, with
+    // Markdown emphasis taken out first because that is how both editions wrote the word.
+    $paragraphs = 0;
+
+    foreach (fireflyProsePages() as $page => $pageParagraphs) {
+        foreach ($pageParagraphs as $paragraph) {
+            $plain = str_replace('*', '', $paragraph);
+
+            $claims = str_contains($paragraph, '$request->path()')
+                || str_contains($plain, 'request path')
+                || str_contains($plain, 'ruta de petición');
+
+            if (! str_contains($paragraph, '`instance`') || ! $claims) {
+                continue;
+            }
+
+            $paragraphs++;
+
+            if (! str_contains($paragraph, 'instanceFor')) {
+                $failures[] = sprintf(
+                    '%s explains `instance` as the request path without naming ProblemMapper::instanceFor(), '
+                    .'which is what the renderer passes and what makes the published member "%s".',
+                    $page,
+                    $published,
+                );
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        // Canaries, on both halves: a check that stops matching anything proves nothing. Eleven samples and
+        // four paragraphs are what the surface held the day the trigger was widened, and the wave still has
+        // pages to add — so the floor is asserted rather than the exact count.
+        ->and($samples)->toBeGreaterThanOrEqual(11)
+        ->and($paragraphs)->toBeGreaterThanOrEqual(4);
 });
 
 it('pins every stereotype-inheritance sentence to the class hierarchy PHP really declares', function () {

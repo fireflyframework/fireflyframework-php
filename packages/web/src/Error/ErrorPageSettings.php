@@ -23,6 +23,20 @@ use Illuminate\Support\Str;
  * status (or `default`) to the application's own Blade view, so a public 404 can be the product's own page
  * while a 500 in staging is still the framework's diagnostic one.
  *
+ * `problem-paths` IS NOT A KEY AND `problem-fallback` IS. The question `json-paths` answers is "which URLs
+ * are machine surfaces"; the question this one answers is "what does a caller that is not a browser and did
+ * not ask for JSON get". They are different questions and only the first is about the URL. With the
+ * fallback on — the default, and what the documentation has always claimed — such a request is answered
+ * with the problem document, because that is the form a client can read and the page is for a person who
+ * asked for one. That population is wider than the wildcard it was written for: a WILDCARD Accept header
+ * and an absent one are in it, and so is a caller that named a concrete type this package cannot render an
+ * error in (`application/xml`, `text/plain`), which gets the document rather than Laravel's markup for the
+ * reason ErrorPageRenderer::rendersProblem() sets out — a FireflyException has always answered that same
+ * caller with problem+json, and the narrower rule would be the inconsistency. Off, such a request falls
+ * through to Laravel's handler exactly as it used to, and so it does whenever `enabled` is off: the
+ * fallback is a second answer this package offers, and `enabled => false` withdraws the answers rather than
+ * changing which one is given.
+ *
  * `trace` DEFAULTS TO `app.debug` and is enforced at render time, not merely at template time — the renderer
  * builds no frame list, opens no source file and copies no exception message when it is off. That is
  * deliberate: a page that assembled the details and then declined to print them would put a stack trace one
@@ -36,17 +50,95 @@ use Illuminate\Support\Str;
  * person who wants a driver message inside a JSON `detail` says so with `firefly.web.problem.disclose=true`;
  * nothing infers it. The two gates are independent so that turning one on never opens the other.
  *
- * WHAT PRODUCTION SEES with `trace` off is the status, the reason phrase and the stable error code — the
- * same `code` the problem+json carries, so a user can quote it into a support ticket and an operator can
- * find it in the log. Not the message: an exception message is written for a developer and routinely names
- * a table, a column, a class or an id. And not the footer's own advice about turning the trace on, which is
- * useful on a staging box and is a free hint about the stack to anyone else — see `hints`.
+ * WHAT PRODUCTION SEES with `trace` off is the status, the reason phrase, the stable error code and the
+ * request's reference — the same `code` and `traceId` the problem+json carries, so a user can quote them
+ * into a support ticket and an operator can find them in the log. Never the RAW exception message: that
+ * sentence was written for a developer and routinely names a table, a column, a class or an id. And not the
+ * footer's own advice about turning the trace on, which is useful on a staging box and is a free hint about
+ * the stack to anyone else — see `hints`.
+ *
+ * THE ONE ADDITION IS AUTHORED, IT HAS ITS OWN KEY, AND IT IS THE PAGE'S LEDE. With `authored-detail` on
+ * (the default) the production page says the sentence the application ITSELF wrote for a caller — a
+ * FireflyException's "Order 42 does not exist.", or an `abort(404, 'No such tenant.')` — carried on the
+ * report as `ErrorReport::$publicDetail`, because that is exactly what the problem document beside it
+ * publishes as `detail`, and one failure reading two ways depending on which surface answered is its own
+ * kind of bug. None of this is an exemption from the paragraph above: ProblemMapper decides what counts as
+ * authored, withholds everything at 500 and above, and replaces the sentences the FRAMEWORK generated —
+ * the router's "The route … could not be found." and the route-model-binding 404s Laravel rewrites into
+ * it, which name a model class and a primary key. Turn the key off and `$publicDetail` is '', the lede
+ * goes back to the generic reassurance for the status, and there is no authored sentence for any renderer
+ * — this page or an application's own error view, which is handed the same report — to reach for at all.
+ *
+ * A BARE `abort(403)` AUTHORED NOTHING, and the page reads it that way whatever this key says. The REPORT
+ * still carries "Forbidden", because that is what the problem document publishes as `detail` and this
+ * property mirrors the document; the PAGE declines to lede with a word already printed beside the status
+ * code, and says "You do not have access to that." instead. That rule lives in
+ * ErrorPage::authoredSentence(), on the page, because it is a judgement about what a person is told rather
+ * than about what a caller is sent.
+ *
+ * WITH ONE EXCEPTION, AND IT IS NOT AN AUTHORED SENTENCE. A 405 the router raised keeps its verb sentence
+ * — "That address does not accept a GET request. It accepts POST." — whichever way this key is set, because
+ * nothing in it came from the application: ProblemMapper reads the verbs off the `Allow` header the ROUTER
+ * put on its own exception, and ProblemMapper::methodSentence() writes the words for the page and for the
+ * document alike. This key governs the DISCLOSURE of what an
+ * application said, and there is none to govern there — the same list of verbs is the `allowed` member of
+ * the problem document published for the same failure. An operator who turns the key off for the
+ * status-and-code page gets it everywhere else and gets this sentence still.
  */
 final readonly class ErrorPageSettings
 {
     /**
+     * WHERE A READER CAN GO NEXT — and the three values this class refuses to hold a hostile spelling of.
+     *
+     * THESE THREE ARE NOT PROMOTED, AND THAT IS THE WHOLE POINT. Each one is destined for an `href` on a
+     * page the framework hands itself, so the guard has to run on every construction path rather than on
+     * the one that happens to read configuration: `firefly/security` builds an ErrorPageSettings by hand
+     * for its login page, and a dozen tests construct one directly. A promoted property would put the
+     * caller's string into the object with nothing in between, and the guarantee this class advertises —
+     * that it cannot HOLD an unsafe URL, whoever built it — would have been true only of fromConfig(). The
+     * constructor body assigns each of them through self::url(), so it is true of all of them.
+     *
+     * WHAT PRINTS THEM is the action row in ErrorPage::actions(), which offers the one that fits the status
+     * — `signIn` on a 401, `home` and `support` wherever they are set — and offers nothing it was not
+     * given: an empty value produces no link rather than a guessed route name. The row was written against
+     * properties that were already safe, which is the point of guarding here instead of at the point of
+     * printing. See self::url() for the vocabulary, and `actions` below for switching the row off entirely.
+     */
+    public string $home;
+
+    public string $signIn;
+
+    public string $support;
+
+    /**
+     * THE FOURTH OPERATOR-SUPPLIED URI, AND THE ONLY ONE THAT NEVER REACHES AN `href`.
+     *
+     * RFC 9457 §3.1.1's `type` is a URI that identifies the KIND of problem, and the RFC's own words for it
+     * are "dereferenceable" — the member exists so that a person can open it. That is what makes it the same
+     * hazard as the three above wearing different clothes: nothing on the error PAGE prints it, so the
+     * `href` audit that produced self::url() looked straight past it, and every API console, every IDE HTTP
+     * client and every documentation viewer that renders a problem document turns `type` into a link. A
+     * `javascript:` base configured here is the same stored XSS the three properties above are guarded
+     * against, published to a wider audience and arriving in a tool the reader trusts more than a 500 page.
+     *
+     * THE SENTINEL IS COMPARED WITH `===`, WHICH IS WHY THE TRIM IS NOT COSMETIC. ProblemType::of() asks
+     * whether the base IS 'about:blank' and whether it IS '', and a Helm block scalar's trailing newline or
+     * a here-doc's trailing space makes both answers false — so the deployment that meant "leave the default
+     * alone" silently entered BASE-URI mode and published `" about:blank/resource-not-found"` as a
+     * dereferenceable URI. Config::string() does not trim, Laravel's Env does not trim a REAL environment
+     * variable, and this was the one configuration-supplied URI in this class that reached its consumer
+     * verbatim. See self::typeUri() for the vocabulary, which is self::url()'s with one member swapped.
+     */
+    public string $typeUri;
+
+    /**
      * @param  list<string>  $jsonPaths  path patterns that are answered as problem+json whatever the client asked for
      * @param  array<string, string>  $views  status (or `default`) => the Blade view to render instead
+     * @param  string  $home  the "Go home" target; '' offers no link. Guarded: see self::url()
+     * @param  string  $signIn  the 401's sign-in target; '' offers no link. Guarded: see self::url()
+     * @param  string  $support  the "Contact support" target; '' offers no link. Guarded: see self::url()
+     * @param  bool  $actions  whether the page offers any navigation at all
+     * @param  string  $typeUri  the RFC 9457 `type` base; '' omits the member. Guarded: see self::typeUri()
      */
     public function __construct(
         public bool $enabled = true,
@@ -57,7 +149,33 @@ final readonly class ErrorPageSettings
         public array $jsonPaths = ['api/*'],
         public array $views = [],
         public bool $disclose = false,
-    ) {}
+        string $home = '/',
+        string $signIn = '',
+        string $support = '',
+        public bool $actions = true,
+        // HOW MANY FRAMES THE PAGE BUILDS AT ALL. Applied as a trim in ErrorReport, before markup: a page
+        // that renders a hundred frames and hides ninety has still escaped and shipped a hundred.
+        public int $maxFrames = 40,
+        // Whether the report CARRIES the sentence the problem document publishes, so a page can use it as
+        // its lede. Off, `ErrorReport::$publicDetail` is '' and there is nothing for a renderer to print.
+        // What counts as authored is ProblemMapper's decision, not this key's — see the class comment.
+        public bool $authoredDetail = true,
+        // Progressive enhancement, and the only script this page has ever carried: see ErrorPage::clipboard().
+        public bool $copyButton = true,
+        // Whether a caller that is neither a browser nor a JSON client — a wildcard Accept header, no
+        // Accept at all, or a named type this package renders no error in — gets a problem document rather
+        // than Laravel's own page. See ErrorPageRenderer::rendersProblem() for the case this closes.
+        public bool $problemFallback = true,
+        // RFC 9457 §3.1.1's `type`: 'about:blank' (the default, and what Spring's ProblemDetail emits), ''
+        // to omit the member, or a BASE URI from which the stable error code derives one. See ProblemType.
+        // Guarded like the three above, through the same constructor seam: see the property's docblock.
+        string $typeUri = ProblemType::BLANK,
+    ) {
+        $this->home = self::url($home);
+        $this->signIn = self::url($signIn);
+        $this->support = self::url($support);
+        $this->typeUri = self::typeUri($typeUri);
+    }
 
     /**
      * Whether $path is one this application serves as an API, and therefore must answer with a problem
@@ -118,6 +236,20 @@ final readonly class ErrorPageSettings
             // Explicit, and only explicit: no fallback to app.debug, no fallback to `trace`. See the class
             // comment for the leak that a shared gate produced.
             disclose: $config->bool('firefly.web.problem.disclose', false),
+            typeUri: $config->string('firefly.web.problem.type-uri', ProblemType::BLANK),
+            // Handed over RAW: the constructor runs each of these through url(), so this call site cannot
+            // be the one that forgets. The default home is the site root, because a page with no way off it
+            // is the state every one of these screenshots was in.
+            home: $config->string('firefly.web.error-page.home', '/'),
+            signIn: $config->string('firefly.web.error-page.sign-in', ''),
+            support: $config->string('firefly.web.error-page.support', ''),
+            actions: $config->bool('firefly.web.error-page.actions', true),
+            // Clamped rather than trusted, like excerpt-lines above it: 0 would render a trace with no
+            // frames in it, and a million would put the 10,108-pixel page back.
+            maxFrames: max(1, min(500, $config->int('firefly.web.error-page.max-frames', 40))),
+            authoredDetail: $config->bool('firefly.web.error-page.authored-detail', true),
+            copyButton: $config->bool('firefly.web.error-page.copy-button', true),
+            problemFallback: $config->bool('firefly.web.error-page.problem-fallback', true),
         );
     }
 
@@ -144,5 +276,118 @@ final readonly class ErrorPageSettings
         }
 
         return $views;
+    }
+
+    /**
+     * A URL this page will put in an `href`, or '' when it is not one.
+     *
+     * IT IS PUBLIC BECAUSE IT IS THE PACKAGE'S WHOLE VOCABULARY FOR "SAFE HERE", and there is one href on
+     * the page that is not operator-supplied: the "Try again" link, which is the address the REQUEST was
+     * sent to. That one skipped this method in its first spelling and trusted Laravel's `path()` instead —
+     * and `path()` will hand back `\evil.example` for a REQUEST_URI of `/\evil.example`, because Symfony
+     * rejects a backslash in a request target only in `Request::create()`, never in the `prepareRequestUri()`
+     * path a real request takes. Prefixed with a slash that is `/\evil.example`, which the paragraph below
+     * spends nine lines explaining is an authority wearing a path's clothes. A second guard would have been
+     * a second thing to keep right; ErrorPage::retry() calls THIS one and refuses any address it alters or
+     * drops. The constructor's three assignments below are the other callers.
+     *
+     * THE ATTACK THIS CLOSES. These values arrive from configuration, which in a real deployment means a
+     * templated environment variable — a Helm value, a CI-rendered .env, a tenant-provisioning job. The page
+     * runs them through htmlspecialchars, which escapes quotes and angle brackets and does NOTHING to a
+     * scheme: `javascript:alert(document.cookie)` reaches the DOM intact, on the application's own origin,
+     * on a page a person opens while already confused. That is stored XSS the framework hands itself.
+     *
+     * THE ALLOW-LIST IS THE WHOLE VOCABULARY, and it is deliberately small. An ABSOLUTE PATH (`/login`) is
+     * the normal answer and cannot carry a scheme. An `http(s)://` URL is the other one. Everything else is
+     * dropped: `data:` and `vbscript:` are the other two script-bearing schemes, `file:` is not a link a
+     * browser should follow from here, `mailto:` is a legitimate wish that this page does not serve (put the
+     * address behind an https support URL), and a protocol-relative `//host/…` is refused because it
+     * silently leaves the origin — which on an error page is indistinguishable from a phishing redirect.
+     *
+     * A PATH IS ONLY A PATH IF A BROWSER READS IT AS ONE, and two rules of the URL standard make that a
+     * narrower set than "begins with a slash". For a special scheme the parser's relative-slash state treats
+     * `\` EXACTLY LIKE `/`, so `/\host/…` is the protocol-relative case wearing a different separator:
+     * Chrome, Firefox and Safari all resolve `/\evil.test/phish` against this origin as
+     * `https://evil.test/phish`, which is the classic bypass of a filter that only looks for `//`. And
+     * before any of that the parser DELETES every ASCII tab, LF and CR from the input, so `/<TAB>/evil.test`
+     * IS `//evil.test` by the time anything reads it. Both are refused: the second character of a path may
+     * not open an authority, and a value carrying INSIDE it a character the parser would delete is DROPPED
+     * rather than normalised — a guard that keeps a string the browser will re-read differently has decided
+     * nothing. `/` alone, the default home, is the one path with no second character and is kept by name.
+     *
+     * Refusing those characters instead of stripping them is also what keeps the scheme test honest.
+     * `java\tscript:` is only a javascript: URL because a browser strips the tab; this method never has to
+     * decide what the browser means by it, because the value is gone before either branch runs.
+     *
+     * THE EDGES ARE THE PARSER'S BUSINESS, AND TRIMMING THEM IS THAT SAME RULE READ PROPERLY rather than a
+     * softening of it. Before it does anything else the standard strips every LEADING and TRAILING C0
+     * control and space from the input, so a value padded at its edges is re-read by the browser as EXACTLY
+     * the value this method would have allowed: nothing is left undecided, and refusing it would delete a
+     * link an operator configured over a character no reader will ever see. The deployment mechanism this
+     * method exists for is the one that adds them — a Helm block scalar and a here-doc-rendered `.env` both
+     * end in a newline, and Laravel's `Env` does not trim a REAL environment variable the way Dotenv trims
+     * a `.env` line — and a trailing space was already being KEPT verbatim here while the newline spelling
+     * of the same padding dropped the whole link. So the edges are trimmed first and every refusal below is
+     * about the INTERIOR. That gives up no ground, because each hostile value trims into another this
+     * method already refuses: `<SP>//evil.test` into `//evil.test`, `<NUL>/\evil.test` into `/\evil.test`,
+     * `<TAB>javascript:…` into `javascript:…`.
+     */
+    public static function url(string $value): string
+    {
+        $value = trim($value, "\x00..\x20");
+
+        if ($value === '' || strpbrk($value, "\t\n\r") !== false) {
+            return '';
+        }
+
+        if (preg_match('#^https?://#i', $value) === 1) {
+            return $value;
+        }
+
+        return $value === '/' || preg_match('#^/[^/\\\\]#', $value) === 1 ? $value : '';
+    }
+
+    /**
+     * A base this class will let ProblemType build a published `type` out of, or the RFC's own sentinel.
+     *
+     * IT IS self::url()'s VOCABULARY WITH ONE MEMBER SWAPPED, and the swap is the whole difference between
+     * the two methods. An `href` on the error page may be an ABSOLUTE PATH, because a page is served from an
+     * origin and a path resolves against it. A problem `type` may not: RFC 9457 §3.1.1 wants a URI that
+     * identifies the problem kind across deployments, ProblemType::of() appends a slug to it, and a relative
+     * base would produce a type that means a different thing read from a different document. So the allowed
+     * set here is `''` (omit the member), the `about:blank` sentinel, and an absolute `http(s)://` base —
+     * nothing else. Everything self::url() refuses is refused for self::url()'s reasons, on top: a
+     * `javascript:` base is the same stored XSS in a member a console renders as a link, and `//evil.test`
+     * is the same silent change of origin.
+     *
+     * THE FALLBACK IS THE DEFAULT, NOT SILENCE. A value this method cannot read becomes 'about:blank' — the
+     * documented default and the RFC's own "no specific type" — rather than '' , because '' is a deliberate
+     * position an operator takes (publish the pre-9457 document byte for byte) and a typo must not be able
+     * to take it for them. A hostile base is answered by removing the hostility, not by removing the member.
+     *
+     * THE EDGES ARE TRIMMED FIRST, for self::url()'s reason and one more that is specific to this key. The
+     * URL standard strips leading and trailing C0 controls and space before it parses, so a padded value is
+     * re-read by every consumer as exactly the value this method allows; and ProblemType::of() compares the
+     * base to its two sentinels with `===`, so an untrimmed `"about:blank\n"` — which is what a Helm block
+     * scalar and a here-doc-rendered `.env` both hand over — would miss BOTH branches and publish
+     * `"about:blank\n/resource-not-found"` as a dereferenceable URI. Trimming is what makes the sentinels
+     * mean what an operator wrote. An INTERIOR tab, LF or CR is the opposite case and is refused, exactly as
+     * in self::url(): the parser deletes those from the middle, which is the whole reason `java<TAB>script:`
+     * is a javascript: URL, and a guard that keeps a string the reader will re-read differently has decided
+     * nothing.
+     */
+    public static function typeUri(string $value): string
+    {
+        $value = trim($value, "\x00..\x20");
+
+        if ($value === '' || $value === ProblemType::BLANK) {
+            return $value;
+        }
+
+        if (strpbrk($value, "\t\n\r") !== false) {
+            return ProblemType::BLANK;
+        }
+
+        return preg_match('#^https?://#i', $value) === 1 ? $value : ProblemType::BLANK;
     }
 }

@@ -4,6 +4,30 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Fixed
+
+- **Error pages:** shorten paths in symlinked deployments and test harnesses, bound the debug stack before
+  rendering, and group dependency frames behind a native disclosure. Frame summaries stay on one line on desktop and give calls a second line on phones;
+  text contrast meets 4.5:1 in both themes. The production facts grid has no empty colored cells and shows
+  the reference once, with selectable text and an optional clipboard enhancement.
+- **Error URL safety:** validate configured home, sign-in, support and problem-type URLs at construction;
+  reject unsafe schemes, authority-relative paths and interior URL control characters.
+- **Problem documents:** substitute invalid UTF-8 and return a degraded document if encoding or a serialization
+  callback fails. Wildcard, absent and unsupported Accept types receive problem+json while error-page
+  fallback is enabled. Laravel's own validation, authentication and carried-response exceptions retain
+  their native handling.
+- **Migration:** problem `instance` values now begin with `/`, with unsafe path characters percent-encoded.
+  Clients comparing the old relative path must account for the leading slash.
+
+### Added
+
+- **Error navigation:** configured sign-in on 401, retry on GET/HEAD 5xx, and home/support links where
+  configured. Production ledes retain safe authored details and 405 pages name the allowed methods.
+- **Error configuration:** documented `max-frames`, `home`, `sign-in`, `support`, `actions`, `copy-button`,
+  `authored-detail`, `problem-fallback` and `problem.type-uri` settings in the reference and module guide.
+- **RFC 9457 type:** `about:blank` by default, a code-derived URI when an HTTP(S) base is configured, or an
+  omitted member when the setting is empty. Omitting `type` does not revert the corrected `instance` path.
+
 ## [26.09.9] - 2026-09-27
 
 ### Changed

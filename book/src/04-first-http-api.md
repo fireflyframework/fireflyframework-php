@@ -421,19 +421,25 @@ final class ProblemDetailsRenderer
     {
         // An absent settings object means the SAFE answer, not the open one — see the constructor.
         $disclose = $this->settings instanceof ErrorPageSettings && $this->settings->disclose;
+        $typeUri = $this->settings instanceof ErrorPageSettings ? $this->settings->typeUri : ProblemType::BLANK;
 
         $correlationId = CorrelationIdFilter::of($request);
         $reference = TraceContext::referenceFor($request);
         $exception = ProblemMapper::toFireflyException($e, $disclose, $reference);
 
         // …
-        $payload = ErrorResponse::fromException(
+        $problem = ErrorResponse::fromException(
             $exception,
-            instance: $request->path(),
+            // …
+            instance: ProblemMapper::instanceFor($request),
             traceId: $reference,
             timestamp: (new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             correlationId: $correlationId,
-        )->toArray();
+            // …
+            type: ProblemType::of($exception->errorCode(), $typeUri),
+        );
+        // …
+        $payload = $problem->toArray();
 
         $headers = [
             'Content-Type' => 'application/problem+json',
@@ -448,17 +454,23 @@ final class ProblemDetailsRenderer
 
         // …
         return new Response(
-            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            $this->encode($payload, $reference),
             $exception->httpStatus(),
             $headers,
         );
     }
+
+    // …
 }
 ```
 
 `application/problem+json` is set here, on every response this renderer produces — that media type *is* the RFC-7807 contract, and a client is entitled to switch on it. Beside it travel two identifiers, and they are two on purpose. `X-Correlation-Id` carries the id `CorrelationIdFilter` minted or read at the edge of the request, and the document repeats that same value as `correlationId`, so a caller can match the body it is holding to its own request log. The document's `traceId` is whatever `TraceContext::referenceFor()` answers — the request's W3C trace id when tracing is on and this request carries a valid one, and the correlation id when it does not — so the reference a person quotes is never empty, and switching tracing on is the only thing that changes which of the two it holds. Where there really is a trace id, it is echoed on a header of its own as well (`X-Trace-Id` by default; an empty header name turns that echo off). Both ids are passed *through* `ErrorResponse` rather than written onto the array afterwards, because the DTO's member list is what the published OpenAPI component is generated from — a member appended here would be one no generated client decodes.
 
 The cut above the `return` hides the rest of the header work: the headers an `HttpExceptionInterface` already carries are copied onto the response — a `405`'s `Allow` among them — and a `503` additionally gains `Retry-After: 5`.
+
+`$this->encode()` is the body, and it is total on purpose. A byte that is not valid UTF-8 — a driver message quoting a latin-1 column, a request header echoed into an extension member — is substituted rather than raised. Anything `json_encode` still refuses, such as an `INF` an application put in an extension at the throw site, falls back to a minimal document; so does anything an encoded object's *own* code throws, because encoding an object calls that code — a `jsonSerialize()`, an Eloquent accessor — and what it raises never becomes a `JsonException` at all, which is why the fallback catches `Throwable` and not just the JSON one. That fallback keeps every member the shape above defines — the status, the title, the code, the category, the severity, the sentence and the reference ids — because each of them is a string this class wrote and none of them can be what `json_encode` refused. It keeps the field errors too, names and sentences intact — a `422` that still says `category: validation` while carrying no `errors` member would send a generated client down the field-error arm with nothing to render — and it keeps every extension member's *name*, rendering a value it cannot carry as the name of its type (`"balance": "App\Models\Balance"`) rather than deleting it, which is how `firefly/actuator`'s config endpoint has always answered the same question. Only two things actually go: an unreadable value, replaced by its type, and each field error's `rejectedValue`, which is dropped outright because that member's whole contract is *this is the value you sent* and the word `float` is not something anybody sent.
+
+And the degradation is on the record. The throwable the fallback caught is an arbitrary application exception, so it is logged — through the optional `Psr\Log\LoggerInterface` the provider hands this renderer, with the document's own `traceId` in the context so the log line and the body a caller is holding join up, and inside a `try`/`catch` of its own so a log channel that is down too cannot throw out of the error handler. An error-handling subsystem that fails invisibly is the thing this whole surface exists to remove, and a renderer that quietly swallowed an exception while publishing a document nobody could tell from a healthy one would have been exactly that. A renderer that threw here, meanwhile, would fail while handling the failure, and the caller would receive no document at all.
 
 What `render()` deliberately does **not** decide is which `FireflyException` an arbitrary throwable becomes. That rule lives one class along, in `Firefly\Web\Error\ProblemMapper`, because the HTML error page of Chapter 10 needs the identical answer and two copies of it would eventually hand a browser and an API client different codes for the same failure:
 
@@ -494,7 +506,7 @@ Five arms covering four cases — the `405` has an arm of its own only so the ve
 
 A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the same reference the document's `traceId` carries, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
 
-Requesting a wallet that was never opened renders like this. Note `instance`: it is `$request->path()`, which Laravel returns **without** a leading slash, so it is `api/v1/wallets/wlt-999` and not `/api/v1/wallets/wlt-999` — a small thing, and exactly the kind of small thing a client that compares strings gets wrong.
+Requesting a wallet that was never opened renders like this. Note `instance`: RFC 9457 §3.1.5 makes it a URI **reference**, and a relative reference resolves against the document's base URI — so the bare `api/v1/wallets/wlt-999` that `$request->path()` answers, served from `/api/v1/wallets/wlt-999`, would identify `/api/v1/api/v1/wallets/wlt-999`. LaraFly publishes the root-relative form, `ProblemMapper::instanceFor()`'s one job, and a client may compare it to the path it asked for. Note `type` too: RFC 9457 §3.1.1 says an absent `type` *is* `about:blank`, and LaraFly writes it out rather than leaving the reader to know that — point `firefly.web.problem.type-uri` at a base URI instead and the stable `code` derives a real, openable one.
 
 ```json
 {
@@ -504,7 +516,8 @@ Requesting a wallet that was never opened renders like this. Note `instance`: it
   "category": "business",
   "severity": "warning",
   "detail": "Wallet wlt-999 not found",
-  "instance": "api/v1/wallets/wlt-999",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-999",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -521,7 +534,8 @@ A failed `#[Valid]` check on `POST /api/v1/wallets` — an empty `owner_id` — 
   "category": "validation",
   "severity": "warning",
   "detail": "Validation failed",
-  "instance": "api/v1/wallets",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",
@@ -543,7 +557,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00"
@@ -560,7 +575,8 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "category": "security",
   "severity": "warning",
   "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
-  "instance": "api/v1/wallets/wlt-1/withdraw",
+  "type": "about:blank",
+  "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
   "correlationId": "0f7c9b2e-6b43-4f5e-9a1d-2c8e5f0a91b7",
   "timestamp": "2026-06-07T10:30:00+00:00",

@@ -942,6 +942,133 @@ return [
     //         'excerpt-lines' => 7,
     //
     //         /*
+    //          | How many stack frames the page BUILDS, clamped to 1-500. It is a hard trim taken in the
+    //          | report before any markup exists, not a style rule that hides the tail: a page that renders
+    //          | a hundred frames and hides ninety has still escaped and shipped a hundred, and the DOM a
+    //          | screen reader walks is still a hundred long. The budget is spent on YOUR frames first and
+    //          | filled with dependency frames in stack order, so a controller sixty frames deep under a
+    //          | queue worker is never the one that gets dropped, and the page still says how many frames
+    //          | the untrimmed stack had.
+    //          |
+    //          | Default: 40.
+    //         */
+    //         'max-frames' => 40,
+    //
+    //         /*
+    //          | Whether the production page says the sentence the problem document already publishes — the
+    //          | application's own "Order 42 does not exist." for a sub-500 failure, which is the entire
+    //          | point of the exception taxonomy — instead of the generic sentence for the status.
+    //          |
+    //          | IT IS THE PAGE'S LEDE. With this on (the default) a 404 raised as `abort(404, 'No such
+    //          | tenant.')` says "No such tenant." to the person and to the client alike, where the page
+    //          | used to say "That page does not exist." beside a document saying something else about the
+    //          | same failure. Turn it off and the lede goes back to the reassurance for the status, which
+    //          | is the status-and-code-only page a deployment may prefer. An application's own error view
+    //          | (`views` below) reads the same sentence as `$error->publicDetail`; this key empties it.
+    //          |
+    //          | ONE SENTENCE IS NOT GOVERNED BY THIS KEY: a 405 still names the verbs it accepts ("That
+    //          | address does not accept a GET request. It accepts POST.") with this off. That sentence is
+    //          | the FRAMEWORK's — the verbs come off the `Allow` header the router put on its own
+    //          | exception, and the framework writes the words — so there is nothing of YOURS in it for
+    //          | this key to withhold, and the same list is already the `allowed` member of the problem
+    //          | document published for the same failure.
+    //          |
+    //          | Only sentences that were WRITTEN for a caller are ever carried: below 500, from a
+    //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
+    //          | QueryException's message is the failing SQL and its bindings — and nothing is carried.
+    //          |
+    //          | A BARE `abort(403)` NAMED NO SENTENCE, and the page does not pretend otherwise. The
+    //          | problem document needs some `detail` for it and publishes the reason phrase ("Forbidden"),
+    //          | which is the honest answer beside a machine-readable `title`; as a page LEDE it would be
+    //          | the same word the reader has already met beside the status code. So the page falls through
+    //          | to its own sentence — "You do not have access to that." — and the document is unchanged.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
+    //
+    //         /*
+    //          | WHERE A READER CAN GO NEXT. The page offers the action that fits the status — a 401 gets
+    //          | `sign-in`, everything gets `home` and `support` when they are set — and offers nothing it
+    //          | was not given: no route name is guessed, and an empty value simply produces no link.
+    //          |
+    //          | "Try again" is offered on a 5xx AND ONLY FOR A GET OR A HEAD, because it is a plain link
+    //          | and a link is a GET: it carries the address and the query string of the request that
+    //          | failed and it cannot carry the verb or the body. On a failed POST it would either land the
+    //          | reader on the 405 page or send a different request under a label that says "again", so it
+    //          | is withheld and that page offers `home` and `support` instead.
+    //          |
+    //          | EACH OF THESE IS A SCHEME-GUARDED URL. They reach an `href`, and htmlspecialchars escapes
+    //          | quotes and brackets and nothing about a SCHEME — so a `javascript:` value arriving from a
+    //          | templated environment variable would be stored XSS on the framework's own error page. An
+    //          | absolute path (`/login`) or an `http(s)://` URL is kept; everything else — `data:`,
+    //          | `vbscript:`, `file:`, `mailto:`, a protocol-relative `//host/…` or its backslash spelling
+    //          | `/\host/…`, and anything carrying a tab, LF or CR INSIDE it (characters a URL parser
+    //          | DELETES wherever they sit, so `/<TAB>/host` is `//host` to a browser) — is dropped to ''
+    //          | when the settings object is built, whoever built it, so it cannot hold an unsafe value at
+    //          | all. Whitespace at the EDGES is trimmed rather than refused, because the parser strips it
+    //          | too: a value that reaches the environment with a trailing newline — a Helm block scalar, a
+    //          | here-doc-rendered variable — is still the URL you meant, and is kept.
+    //          |
+    //          | THE "Try again" ADDRESS PASSES THE SAME GUARD, even though no operator configured it. It
+    //          | is the request's own path, and a request target reaches the framework with a backslash
+    //          | intact — so `/\host/…` is a real spelling a real client can send, and it is refused here
+    //          | exactly as a configured one would be. When it is, the page makes no retry offer at all
+    //          | rather than pointing somewhere it did not mean.
+    //          |
+    //          | Defaults: home '/', sign-in '', support '', actions true.
+    //         */
+    //         'home' => env('FIREFLY_WEB_ERROR_PAGE_HOME', '/'),
+    //         'sign-in' => env('FIREFLY_WEB_ERROR_PAGE_SIGN_IN', '/login'),
+    //         'support' => env('FIREFLY_WEB_ERROR_PAGE_SUPPORT', 'https://support.example.test'),
+    //         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
+    //
+    //         /*
+    //          | Whether the Reference cell offers a Copy button on top of being selectable.
+    //          |
+    //          | THE REFERENCE IS THE ONE THING A PRODUCTION PAGE ASKS A PERSON TO CARRY AWAY, so it is
+    //          | printed ONCE, in a cell a single click selects whole (`user-select:all`) — that much needs
+    //          | no JavaScript and works in whatever a container's minimal browser turns out to be. The
+    //          | button is offered on top of it by the page's only script, ten lines that ship the control
+    //          | `hidden` and reveal it only once `navigator.clipboard` is known to exist: with scripts off,
+    //          | behind a CSP that refuses an inline script, or on a plain-http origin where the clipboard
+    //          | API is undefined, no control appears that would do nothing. A copy the browser refuses at
+    //          | CLICK time — an unfocused document, a denied `clipboard-write` permission, an embedding
+    //          | Permissions-Policy that omits it — is the fourth case, the one the reveal cannot foresee,
+    //          | so the button reports `Copy failed` rather than doing nothing in silence, and stays
+    //          | clickable because an unfocused document is transient. The cell is `user-select:all` either
+    //          | way, so one click takes the whole id with no script at all. Turn this off for a deployment
+    //          | whose CSP must report zero inline scripts.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
+    //
+    //         /*
+    //          | Whether a caller that is NEITHER A BROWSER NOR A JSON CLIENT gets
+    //          | `application/problem+json` rather than falling through to Laravel's own error page.
+    //          | `Accept: */*` is what a bare curl and a default fetch() send, and an absent Accept is what
+    //          | a hand-rolled client sends; neither names text/html, so neither is a browser, and both
+    //          | used to receive framework HTML for any non-FireflyException.
+    //          |
+    //          | A CALLER THAT NAMED SOME OTHER TYPE IS CAUGHT TOO — `application/xml`, `text/plain`,
+    //          | `image/png`. It asked for something this package renders no error in, and a
+    //          | FireflyException has always answered that same caller with a problem document whatever it
+    //          | asked for; claiming only the wildcard would leave one client reading a problem document
+    //          | for one 404 and framework markup for another.
+    //          |
+    //          | A browser is never caught by this, and neither is anything while `enabled` is off: the
+    //          | fallback is one of the answers this package offers, and `enabled => false` withdraws them,
+    //          | so it keeps meaning "use Laravel's page".
+    //          |
+    //          | A throwable Laravel's own handler resolves is never answered here whatever this says: a
+    //          | failed validation stays a 422 with its field errors and a 401 stays a 401.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'problem-fallback' => env('FIREFLY_WEB_ERROR_PAGE_PROBLEM_FALLBACK', true),
+    //
+    //         /*
     //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
     //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
     //          | the path says what the URL is.
@@ -988,6 +1115,39 @@ return [
     //          | Default: false. Turn it on deliberately, on a machine where the payload is yours to read.
     //         */
     //         'disclose' => false,
+    //
+    //         /*
+    //          | RFC 9457 §3.1.1's `type` member: the URI reference that says WHAT KIND of problem this is,
+    //          | as opposed to `instance`, which identifies this one occurrence of it.
+    //          |
+    //          | THE RFC MAKES THIS A PRESENTATION CHOICE, NOT A CONFORMANCE ONE: §3.1.1 says an absent
+    //          | `type` is identical to `about:blank`, so a document without one has always been conformant.
+    //          | Spring Boot's ProblemDetail nevertheless serialises `about:blank` explicitly, and that is
+    //          | the default here for the same reason: a client reading `type` always finds a string and
+    //          | never has to know the RFC's equivalence rule to work out what its absence meant.
+    //          |
+    //          | THREE BEHAVIOURS, ONE KEY. 'about:blank' emits the RFC's own "no specific type". '' omits
+    //          | the member entirely, which is the pre-9457 document byte for byte. And a BASE URI derives a
+    //          | real, dereferenceable type from the stable error code every Firefly failure already carries
+    //          | — 'https://api.example.test/problems' turns a RESOURCE_NOT_FOUND into
+    //          | 'https://api.example.test/problems/resource-not-found', which a client can switch on and a
+    //          | person can open, built from the same identifier the log line and the support ticket quote.
+    //          | A code that slugs to nothing falls back to 'about:blank' rather than to the bare base: the
+    //          | base names the COLLECTION of problem types, not a member of it.
+    //          |
+    //          | GUARDED, LIKE THE HREFS ABOVE, AND FOR A WIDER AUDIENCE. §3.1.1 calls `type`
+    //          | dereferenceable, and every API console, IDE HTTP client and docs viewer that renders a
+    //          | problem document turns it into a link — so a 'javascript:', 'data:' or '//host' base is
+    //          | the same stored XSS the error page's links are guarded against, published to more
+    //          | readers. ErrorPageSettings trims the edges (a Helm block scalar and a here-doc-rendered
+    //          | .env both end in a newline, and an untrimmed sentinel is not the sentinel) and then
+    //          | accepts only '', 'about:blank' or an absolute http(s) base; anything else becomes
+    //          | 'about:blank', because '' is a position you take deliberately and a typo must not take it
+    //          | for you.
+    //          |
+    //          | Default: 'about:blank'.
+    //         */
+    //         'type-uri' => env('FIREFLY_WEB_PROBLEM_TYPE_URI', 'about:blank'),
     //     ],
     //
     //     /*
