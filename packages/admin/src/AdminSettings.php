@@ -37,6 +37,7 @@ final readonly class AdminSettings
         public TableSettings $table = new TableSettings,
         public bool $routeDetail = true,
         public bool $routeAdvice = true,
+        public BeanGraphSettings $graph = new BeanGraphSettings,
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -51,9 +52,7 @@ final readonly class AdminSettings
             // never finish and the dashboard would hammer the application it is supposed to be observing.
             refreshSeconds: max(2, $config->int('firefly.admin.refresh-seconds', 10)),
             theme: self::theme($config->string('firefly.admin.theme', 'auto')),
-            // Past this, a dependency diagram is a hairball rather than something anyone can read, so the
-            // graph page lists the relations instead of drawing them. Configurable because "unreadable"
-            // depends on the screen and the application.
+            // Deprecated compatibility value; bounded focus views no longer read this ceiling.
             graphMaxNodes: max(0, $config->int('firefly.admin.graph.max-nodes', 220)),
             excludedPages: self::csv($config->string('firefly.admin.pages.exclude', '')),
             // Every listing's paging, sorting and spacing. On AdminSettings rather than resolved separately
@@ -62,6 +61,7 @@ final readonly class AdminSettings
             table: TableSettings::fromConfig($config),
             routeDetail: $config->bool('firefly.admin.routes.detail', true),
             routeAdvice: $config->bool('firefly.admin.routes.advice', true),
+            graph: BeanGraphSettings::fromConfig($config),
         );
     }
 

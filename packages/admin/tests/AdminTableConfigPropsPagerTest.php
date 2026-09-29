@@ -32,13 +32,13 @@ it('pages each config-properties panel on its own qualifier and keeps the other 
 
     // Bound values: every page link carries the Not-bound panel's size AND its page, and changes only
     // `props_page` — including the first-page jump, which drops its own page and keeps the neighbour's.
-    expect($body)->toContain('<a class="act" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2">1</a>')
-        ->toContain('<a class="act on" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2&amp;props_page=2">2</a>')
-        ->toContain('<a class="act" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2&amp;props_page=3">3</a>');
+    expect($body)->toContain('<a class="act" aria-label="Page 1" aria-current="false" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2">1</a>')
+        ->toContain('<a class="act on" aria-label="Page 2" aria-current="page" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2&amp;props_page=2">2</a>')
+        ->toContain('<a class="act" aria-label="Page 3" aria-current="false" href="/firefly/configprops?unbound_size=2&amp;unbound_page=2&amp;props_size=2&amp;props_page=3">3</a>');
 
     // Not bound: the mirror, on the three profile-gated DTOs this fixture seeds.
-    expect($body)->toContain('<a class="act on" href="/firefly/configprops?props_size=2&amp;props_page=2&amp;unbound_size=2&amp;unbound_page=2">2</a>')
-        ->toContain('<a class="act" href="/firefly/configprops?props_size=2&amp;props_page=2&amp;unbound_size=2">1</a>')
+    expect($body)->toContain('<a class="act on" aria-label="Page 2" aria-current="page" href="/firefly/configprops?props_size=2&amp;props_page=2&amp;unbound_size=2&amp;unbound_page=2">2</a>')
+        ->toContain('<a class="act" aria-label="Page 1" aria-current="false" href="/firefly/configprops?props_size=2&amp;props_page=2&amp;unbound_size=2">1</a>')
         ->toMatch('~<a class="act off"\s*>Next</a>~');
 });
 
@@ -58,7 +58,7 @@ it('carries the other panel search through a page link, not merely through its o
     expect($body)->toContain('ShippingProperties')
         ->not->toContain('ReportingProperties');
 
-    expect($body)->toContain('<a class="act" href="/firefly/configprops?unbound_q=Shipping&amp;props_size=2&amp;props_page=3">3</a>')
+    expect($body)->toContain('<a class="act" aria-label="Page 3" aria-current="false" href="/firefly/configprops?unbound_q=Shipping&amp;props_size=2&amp;props_page=3">3</a>')
         ->toMatch('~<a class="act"\s+href="/firefly/configprops\?unbound_q=Shipping&amp;props_size=2"\s*>Previous</a>~');
 });
 

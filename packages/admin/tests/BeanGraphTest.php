@@ -61,19 +61,21 @@ it('reports a type nothing provides instead of dropping it silently', function (
         ->and($graph->unresolved)->toBe(['Illuminate\\Http\\Request']);
 });
 
-it('never draws a self-edge', function () {
+it('retains self injection so the explorer can report the cycle', function () {
     $graph = graphOf([bean('App\\Recursive', ['App\\Recursive'])]);
 
-    expect($graph->edges)->toBe([]);
+    expect($graph->edges)->toHaveCount(1)
+        ->and($graph->components())->toBe([['App\\Recursive']]);
 });
 
-it('de-duplicates repeated relations between the same pair', function () {
+it('preserves different declared contracts resolved to the same target', function () {
     $graph = graphOf([
         bean('App\\A', ['App\\B', 'App\\Contracts\\B'], []),
         bean('App\\B', [], ['App\\Contracts\\B']),
     ]);
 
-    expect($graph->edges)->toHaveCount(1);
+    expect($graph->edges)->toHaveCount(2)
+        ->and(array_column($graph->edges, 'via'))->toBe([null, 'App\\Contracts\\B']);
 });
 
 // A cycle must terminate and be REPORTED — the container has no cycle detection, so a cycle among eager

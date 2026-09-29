@@ -933,133 +933,21 @@ Un endpoint que lanza se captura y se reporta como `null` en vez de dejar que se
 
 ---
 
-### El grafo de beans
+### El explorador de beans
 
-La mayoría de las páginas son tablas. Dos dibujan una imagen — esta, y el [mapa de entidades](#recorrer-el-modelo-relaciones-filtros-y-un-mapa) más adelante en el capítulo — y esta es la que amortiza el paquete el día en que algo está mal cableado.
+`/firefly/graph` abre con búsqueda, puntos de entrada, beans con más dependientes, acoplamiento entre módulos y ciclos del cableado. `?bean=<identidad cualificada>` muestra un entorno acotado; `?module=<namespace>` muestra los beans del módulo y sus relaciones externas; `?q=<término>` busca en el catálogo completo. `/firefly/beans` incluye componentes, productos de fábrica y DTOs de configuración enlazados, ordenados inicialmente por número de dependientes descendente.
 
-`/actuator/beans` te dice *qué* beans existen. No puede decirte a qué está **cableado** cada uno, que es lo que realmente quieres cuando un `#[ConditionalOnMissingBean]` no se disparó como esperabas, cuando un ciclo entre singletons ansiosos ha colgado un arranque sin mensaje alguno, o cuando intentas averiguar a qué se enganchó el paquete que acabas de instalar. `/firefly/graph` responde a eso, como un diagrama SVG por capas más una tabla de relaciones filtrable.
+El bean seleccionado queda entre sus dependientes a la izquierda y sus dependencias a la derecha. PHP calcula las posiciones: cajas de 176×38 píxeles, separadas cada 204×46 píxeles, con un máximo predeterminado de 16 filas por columna y 72 nodos. Dos saltos ocupan 992 píxeles de ancho y hasta 728 de alto. Las cabeceras se desplazan con las columnas. Los enlaces nativos, formularios GET, paginación y foco visible de teclado funcionan sin JavaScript; no hay cámara ni ajuste de escala. Texto y siglas identifican los módulos además del color decorativo.
 
-No se refleja nada para construirlo. `ComponentScanner` ya registra, en tiempo de **escaneo**, los tipos de clase e interfaz que pide el constructor de cada componente, y esa lista viaja en el manifiesto compilado igual que cualquier otro hecho escaneado (abreviado):
+La selección reparte cada columna por turnos entre los nodos de la frontera. Los enlaces de desbordamiento abren las tablas completas y paginadas de vecinos directos del origen, con interfaz y tipo de relación. Las cadenas más cortas desde puntos de entrada explican la alcanzabilidad. Se conservan todas las condiciones positivas y negativas, incluidas las de la configuración productora; la ausencia del endpoint Conditions se tolera.
 
-<!-- source: packages/container/src/Descriptor/ComponentDescriptor.php -->
-```php
-final readonly class ComponentDescriptor
-{
-    // …
-    public function __construct(
-        public string $class,
-        public string $stereotype,
-        // …
-        public array $interfaces,
-        // …
-        /**
-         * The class types this component's constructor asks for — the edges of the bean graph.
-         *
-         * Recorded at scan time, where reflection is already sanctioned, because the alternative is
-         * reflecting at request time to answer "what depends on what", which the reflection-free boot
-         // …
-         */
-        public array $dependencies = [],
-    ) {}
-// …
-}
-```
+Cada relación entre módulos muestra peso (relaciones resueltas), beans destino distintos, interfaces distintas y relaciones concretas. Las aristas de producción se excluyen salvo petición explícita. Las listas siguen paginadas cuando se supera el presupuesto del mapa. El módulo señala la alcanzabilidad exclusiva y los beans sin dependientes; son observaciones del catálogo, no una garantía de que retirar un módulo sea seguro.
 
-Esa última frase es una decisión de diseño en la que merece la pena detenerse. Un parámetro de constructor tipado `string $name` es configuración; dibujarlo como una arista enterraría las relaciones que importan bajo ruido de `string`/`int`. Un parámetro de **clase anulable o con valor por defecto** *sí* se conserva, porque un colaborador opcional sigue siendo una relación.
+Tarjan iterativo identifica componentes fuertemente conexos, incluida la autoinyección, sin recorridos recursivos. Un ciclo que incluye producción de fábricas no implica necesariamente un ciclo de constructores en ejecución. Las fábricas competidoras mantienen identidades separadas incluso en configuraciones diferentes. La proyección no aporta los metadatos primary/qualifier necesarios: los destinos ambiguos quedan sin resolver y el ámbito de fábrica se muestra como no informado. Se excluyen los DTOs explícitamente no enlazados. No se instancia ningún bean para inspeccionarlo.
 
-#### Tres clases de nodo, y por qué la primera versión estaba casi vacía
+**Migración:** `firefly.admin.graph.max-nodes` sigue leyéndose en `AdminSettings::$graphMaxNodes` (220 por defecto), pero ya no controla el dibujo. **0 ya no fuerza una lista**. Para una vista tabular utiliza el catálogo completo o las tablas de relaciones.
 
-Antes que las aristas, los nodos — porque la primera versión de esta página los entendió mal de una forma de la que merece la pena aprender. Una aplicación LaraFly tiene **tres clases de bean**, y las tres tienen que ser nodos:
-
-| Clase | Qué es | De dónde sale |
-|---|---|---|
-| `component` | Una clase escaneada `#[Component]`/`#[Service]`/`#[Repository]`/`#[RestController]`/`#[Configuration]` | El catálogo de beans |
-| `bean` | Un valor **producido por un método fábrica `#[Bean]`** de una `#[Configuration]` | Las filas `produces` del catálogo |
-| `config` | Un DTO `#[ConfigProperties]` enlazado desde la configuración | El endpoint `configprops` |
-
-Al principio solo la primera clase era un nodo, y la consecuencia no fue cosmética. El cableado de un framework vive casi por completo en la segunda clase: una autoconfiguración es una `#[Configuration]` cuyos métodos `#[Bean]` producen `MeterRegistry`, `TransactionTemplate`, `AggregateTracker` y demás. Con solo las clases declarantes como nodos, cada arista que apuntaba a uno de esos productos apuntaba a un nodo que no existía. Medido sobre un esqueleto de serie: **42 nodos, 41 productos `#[Bean]` ausentes, 21 dependencias colgando y exactamente una arista dibujada.** La página no mostraba un grafo disperso — era estructuralmente incapaz de mostrar el cableado del framework.
-
-La tercera clase es el mismo error en miniatura. Un DTO `#[ConfigProperties]` está enlazado y es inyectable, pero no se escanea como componente ni lo produce una fábrica, así que nada en el catálogo de beans puede verlo: `App\GreetingProperties` aparecía como *dependencia no resuelta* de `GreetingService` en lugar de como el bean que es. Por eso la página lee el endpoint `configprops` junto al catálogo.
-
-De modo que también hay dos clases de arista, y dicen cosas distintas:
-
-| Arista | De → a | Significado |
-|---|---|---|
-| `injects` | Un bean → algo de lo que declaró depender | El consumidor lo pidió; el contenedor lo satisface |
-| `produces` | Una `#[Configuration]` → el valor que devuelve uno de sus métodos `#[Bean]` | Esta clase es de donde sale ese bean |
-
-Las aristas `injects` se recogen de los parámetros del **constructor** de un componente *y* de los parámetros de cada **método fábrica `#[Bean]`** — el producto depende de lo que su fábrica pidiera. Esa unión es el cableado; los constructores por sí solos son una fracción de él.
-
-Una sutileza sobre la identidad. Un producto `#[Bean]` se identifica normalmente por el **tipo que produce**, porque esa es la clave que enlaza el contenedor y la clave que pide todo consumidor. Pero cuando dos métodos fábrica producen el mismo tipo — la forma que las reglas `#[Primary]`/`#[Qualifier]` del Capítulo 2 existen para desambiguar — el tipo por sí solo los colapsaría en un único nodo y ocultaría justo la ambigüedad por la que abriste la página. Así que cada competidor recibe `Declarante::metodo()` como identidad propia y el tipo desnudo resuelve al primero de ellos, reflejando al contenedor, donde la clave de tipo es un alias del ganador mientras todo candidato sigue alcanzable por nombre.
-
-#### Lo difícil no es dibujar, es resolver
-
-Un constructor pide un **tipo**, y ese tipo es muy a menudo una interfaz — `EventPublisher`, `HealthIndicator`, `Cache` — mientras que el bean que lo satisface es una clase concreta que meramente la implementa. Una lista de aristas construida ingenuamente a partir de los tipos del constructor apunta entonces a nodos que no existen, y el grafo sale como un campo de puntos desconectados. Pregúntate a qué debería dibujar una flecha la dependencia de `WalletService` sobre `WalletRepository`: no al puerto, que es una interfaz sin bean propio, sino a `EloquentWalletRepository`, que es lo que de verdad se va a construir.
-
-Así que cada dependencia se resuelve a través de un índice de interfaces antes de convertirse en arista:
-
-<!-- source: packages/admin/src/BeanGraphIndex.php -->
-```php
-foreach ($entry['dependencies'] as $dependency) {
-    $target = $this->resolve($dependency);
-
-    if ($target === null) {
-        $unresolved[] = $dependency;
-
-        continue;
-    }
-    // …
-    $edges[] = [
-        'from' => $entry['from'],
-        'to' => $target,
-        'via' => $target === $dependency ? null : $dependency,
-        'type' => $entry['type'],
-    ];
-}
-```
-
-<!-- source: packages/admin/src/BeanGraphIndex.php -->
-```php
-private function resolve(string $type): ?string
-{
-    return isset($this->nodes[$type]) ? $type : ($this->satisfiedBy[$type] ?? null);
-}
-```
-
-El miembro `via` es la honestidad de ese bucle. Cuando la arista pasó por una interfaz, el diagrama la marca y la columna **Wired by** de la tabla de relaciones nombra la interfaz, de modo que quien lee ve la indirección en lugar de que se le muestre calladamente una relación que nunca escribió. Cuando el constructor nombró la clase concreta, la columna simplemente dice `class`.
-
-El índice se construye en orden de catálogo y **gana el primer implementador**, de forma determinista — el catálogo se emite en orden de escaneo, así que la misma aplicación dibuja siempre el mismo grafo en lugar de rebarajarse entre máquinas. Una interfaz con varios implementadores es una ambigüedad real que el contenedor resuelve con `#[Primary]`/`#[Qualifier]`, y el grafo lo dice listando la arista como `via` en lugar de fingir que la elección era obvia.
-
-#### Capas, ciclos y el techo de nodos
-
-Los niveles salen de un recorrido de **camino más largo** sobre las aristas resueltas: la profundidad de un nodo es uno más que la de lo más profundo de lo que depende, y después los niveles se invierten para que el nivel 0 contenga aquello de lo que nada depende. El efecto es que un nodo siempre queda por debajo de todo lo que depende de él, las flechas se leen consistentemente hacia abajo, y la vista puede seguir una cadena desde un controlador hasta el repositorio que hay al final. La vista solo posiciona; los niveles vienen del modelo.
-
-La profundidad se memoiza y el recorrido lleva su propio conjunto de visitados, así que un ciclo termina en lugar de recursar para siempre — y la arista que lo cerró se *reporta*:
-
-<!-- source: packages/admin/src/BeanGraph.php -->
-```php
-foreach ($out[$node] ?? [] as $next) {
-    if (isset($path[$next])) {
-        $cycles[] = ['from' => $node, 'to' => $next];
-
-        continue;
-    }
-    $deepest = max($deepest, $walk($next, $path) + 1);
-}
-```
-
-Ese reporte vale más de lo que parece. El contenedor no tiene detección de ciclos propia, así que un ciclo entre singletons ansiosos no produce un error útil — agota la memoria en el arranque. Una página que nombra las dos clases implicadas convierte "la app murió sin mensaje" en un diagnóstico de cinco segundos, y el consejo del propio panel es el correcto: rompe una de estas aristas, normalmente inyectando una interfaz y dejando que el otro lado dependa de ella.
-
-Dos límites se declaran en la página en lugar de ocultarse:
-
-* **Pasados los `firefly.admin.graph.max-nodes` — 220 por defecto — el diagrama se suprime** y la tabla de Relaciones de abajo lleva la misma información como una lista filtrable. Un diagrama de más de un par de centenares de nodos es una maraña, no algo que una persona pueda leer, y renderizarlo de todos modos sería peor respuesta que negarse. Es una clave de configuración y no una constante porque "ilegible" depende de la pantalla y de la aplicación.
-* **"Provided outside the container" no es una advertencia.** Esas etiquetas son tipos de constructor satisfechos por un binding del contenedor de Laravel y no por un bean escaneado — la `Request`, el repositorio de configuración, una conexión. Se listan en lugar de descartarse en silencio precisamente porque *"¿por qué no está mi bean en el grafo?"* es la pregunta que la página tiene que responder. Un tipo que aparezca ahí y que esperabas que fuera un bean *tuyo* significa que tu escaneo no lo vio, y `firefly.scan.paths` es lo primero que hay que revisar.
-
-!!! tip "Léelo junto a la página de Condiciones"
-    Las dos responden mitades complementarias de toda sorpresa de auto-configuración. **Condiciones** dice *si* un bean del framework se registró o se echó atrás, y sobre qué condición. **El grafo** dice a qué está cableado el bean que sí ganó, y a través de qué interfaz. Una arista `EventPublisher` apuntando a `InMemoryEventPublisher` cuando configuraste `firefly.eda.provider=rabbitmq` se ve de un vistazo en el grafo; Condiciones nombra entonces el `#[ConditionalOnProperty]` que no casó.
-
-!!! note "Lo que el grafo sigue sin decidir por ti"
-    Dos límites merecen conocerse, y ninguno es una carencia de datos. **`#[Primary]`/`#[Qualifier]` no dirigen el índice** — gana quien escriba primero en orden de escaneo, tanto para una interfaz con varios implementadores como para la clave de tipo desnuda de un `#[Bean]` disputado. Cada competidor sigue teniendo su propio nodo y la arista se marca `via`, así que la ambigüedad es visible en la página, pero el destino dibujado puede no ser el que resuelve el contenedor. Y **un tipo no resuelto se reporta, nunca se explica**: la página puede decirte que un tipo lo provee algo fuera del contenedor, pero no *qué* enlace lo provee, porque un enlace del contenedor de Laravel no lleva descriptor que leer.
+Las claves nuevas son `firefly.admin.graph.focus.depth` (2, límites 1–4), `focus.max-rows` (16, 4–60), `focus.max-nodes` (72, 8–300), `focus.max-paths` (3, 0–10), `focus.page-size` (50, 10–500), `firefly.admin.graph.starters` (12, 1–50), `firefly.admin.graph.modules.max-nodes` (40, 0–200; 0 desactiva el mapa) y `firefly.admin.beans.page-size` (50, 10–500). Los tamaños de página también respetan los límites compartidos de tablas. Todas están documentadas en `skeleton/config/firefly.php`.
 
 ---
 
@@ -1233,7 +1121,7 @@ Es un *interruptor de funcionalidad*, no un endpoint de configuración remota: l
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | El mismo truco de precedencia que la costura de seguridad del Capítulo 10: registra `cqrsMetrics()` antes de que `CqrsAutoConfiguration` evalúe su `#[ConditionalOnMissingBean]` |
 | `firefly/admin` | Un panel Blade renderizado en el servidor en `/firefly`; una cuyo endpoint no está registrado o está apagado se oculta del menú en lugar de enlazarse |
 | `AdminEndpointReader` | Invoca cada `ActuatorEndpoint` **en proceso** desde el `ActuatorRegistry`, sorteando `ExposureModel` — así el panel muestra lo que la superficie HTTP no expone, y un endpoint que lanza degrada un solo panel |
-| `BeanGraph` | Convierte el catálogo de beans en un grafo de dependencias dibujado sobre **tres clases de nodo** — componentes, productos `#[Bean]` y DTOs `#[ConfigProperties]` — con aristas `injects`/`produces` resueltas a través de un índice de interfaces (marcadas `via`), estratificación por camino más largo, ciclos reportados en lugar de colgarse, y el diagrama suprimido pasados `firefly.admin.graph.max-nodes` (220) |
+| `BeanGraph` | Convierte el catálogo de beans en un grafo de dependencias dibujado sobre **tres clases de nodo** — componentes, productos `#[Bean]` y DTOs `#[ConfigProperties]` — con aristas `injects`/`produces` resueltas a través de un índice de interfaces (marcadas `via`), estratificación por camino más largo, ciclos reportados en lugar de colgarse, y exploración acotada por saltos con SCCs iterativos |
 | Los productos `#[Bean]` como nodos | El cableado de un framework vive en métodos fábrica, no en constructores; con solo las clases declarantes como nodos, un esqueleto de serie dibujaba **una** arista de 42 beans |
 | `ComponentDescriptor::$dependencies` | Las aristas del grafo, registradas por `ComponentScanner` en tiempo de **escaneo** — solo tipos de clase e interfaz, porque un parámetro escalar es configuración, no cableado |
 | `firefly.admin.enabled` | Toma por defecto `app.debug`; un valor explícito gana en ambas direcciones, y encenderlo con debug apagado te obliga a poner tu propio middleware de autenticación delante de la ruta |

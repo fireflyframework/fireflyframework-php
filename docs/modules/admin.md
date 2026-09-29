@@ -35,7 +35,7 @@ is a worse menu than four short ones.
 | Runtime | Metrics | `/firefly/metrics` | `metrics` | Counters, timers and gauges, with their current measurements |
 | Runtime | HTTP traffic | `/firefly/http` | `httpexchanges` | The most recent requests this application served |
 | Wiring | Beans | `/firefly/beans` | `beans` | Every bean the container registered, with the stereotype that declared it |
-| Wiring | **Bean graph** | `/firefly/graph` | `beans` | How your beans depend on one another — see [Bean Graph](bean-graph.md) |
+| Wiring | **Bean explorer** | `/firefly/graph` | `beans` | How your beans depend on one another — see [Bean Explorer](bean-graph.md) |
 | Wiring | Conditions | `/firefly/conditions` | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `/firefly/mappings` | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `/firefly/scheduled` | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
@@ -280,7 +280,15 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 | `firefly.admin.title` | `app.name` (else `'LaraFly'`) | The name shown in the sidebar and the page title. |
 | `firefly.admin.refresh-seconds` | `10` | How often a live page reloads itself. **Floored at 2**: a shorter interval reloads faster than the page renders, so the countdown would never finish and the dashboard would hammer the application it is meant to be observing. |
 | `firefly.admin.theme` | `'auto'` | `auto` \| `light` \| `dark`. Anything unrecognised falls back to `auto` (follow the operating system) rather than rendering unstyled. |
-| `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
+| `firefly.admin.graph.max-nodes` | `220` | Deprecated compatibility value. The [bean explorer](bean-graph.md) uses bounded focus views; this key, including `0`, no longer controls rendering. |
+| `firefly.admin.graph.focus.depth` | `2` | Hops per side, clamped 1–4. |
+| `firefly.admin.graph.focus.max-rows` | `16` | Column height budget, clamped 4–60. |
+| `firefly.admin.graph.focus.max-nodes` | `72` | Drawing budget, clamped 8–300. |
+| `firefly.admin.graph.focus.max-paths` | `3` | Entry-point chains, clamped 0–10; 0 hides chains. |
+| `firefly.admin.graph.focus.page-size` | `50` | Relation rows, clamped 10–500 and capped by shared tables. |
+| `firefly.admin.graph.starters` | `12` | Starter entries, clamped 1–50. |
+| `firefly.admin.graph.modules.max-nodes` | `40` | Module overview limit, clamped 0–200; 0 lists only. |
+| `firefly.admin.beans.page-size` | `50` | Complete catalogue rows, clamped 10–500 and capped by shared tables. |
 | `firefly.admin.table.page-size` | `50` | Rows per page on every listing. Always a member of `page-sizes` — a default the set does not contain is added to it, because a `<select>` whose value has no `<option>` resizes the table on the next submit. |
 | `firefly.admin.table.page-sizes` | `'25,50,100,200'` | The sizes the rows-per-page control offers. **A closed set, not a cap**: a `?size=` nobody offered falls back to the default rather than being silently clamped. |
 | `firefly.admin.table.max-page-size` | `200` | The ceiling an offered size may reach, itself capped at **1000**. |

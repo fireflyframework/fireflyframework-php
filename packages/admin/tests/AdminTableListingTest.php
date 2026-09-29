@@ -341,8 +341,8 @@ it('claims an ordering on the bound properties panel alone, whose tiebreak no co
     /** @var AdminTableCapstoneTestCase $this */
     $body = (string) $this->get('/firefly/configprops')->assertStatus(200)->getContent();
 
-    expect($body)->toContain('<a href="/firefly/configprops?props_dir=desc">Class<span class="ord">↑</span></a>')
-        ->toContain('<a href="/firefly/configprops?unbound_sort=class">Class<span class="ord"></span></a>');
+    expect($body)->toContain('<a href="/firefly/configprops?props_dir=desc">Class<span class="ord" aria-hidden="true">↑</span></a>')
+        ->toContain('<a href="/firefly/configprops?unbound_sort=class">Class<span class="ord" aria-hidden="true"></span></a>');
 });
 
 it('pages the cache stores and the log channels', function () {
@@ -369,9 +369,9 @@ it('pages the cache stores and the log channels', function () {
 it('claims no ordering on a configuration listing the reader has not ordered', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $opening = [
-        '/firefly/env' => '<a href="/firefly/env?sort=key">Key<span class="ord"></span></a>',
-        '/firefly/caches' => '<a href="/firefly/caches?sort=name">Store<span class="ord"></span></a>',
-        '/firefly/loggers' => '<a href="/firefly/loggers?sort=name">Channel<span class="ord"></span></a>',
+        '/firefly/env' => '<a href="/firefly/env?sort=key">Key<span class="ord" aria-hidden="true"></span></a>',
+        '/firefly/caches' => '<a href="/firefly/caches?sort=name">Store<span class="ord" aria-hidden="true"></span></a>',
+        '/firefly/loggers' => '<a href="/firefly/loggers?sort=name">Channel<span class="ord" aria-hidden="true"></span></a>',
     ];
 
     foreach ($opening as $url => $header) {
@@ -380,7 +380,7 @@ it('claims no ordering on a configuration listing the reader has not ordered', f
         expect($body)->toContain($header)
             // Not "no arrow on that column" but no arrow anywhere: the indicator is the page's one claim
             // about its own ordering, and an unordered listing makes none.
-            ->not->toContain('<span class="ord">↑');
+            ->not->toContain('<span class="ord" aria-hidden="true">↑');
     }
 
     // The arrow is what a reader ASKED for, and asking for the order the table is already in reorders
@@ -394,7 +394,7 @@ it('claims no ordering on a configuration listing the reader has not ordered', f
     $asked = (string) $this->get('/firefly/env?sort=key')->assertStatus(200)->getContent();
     $opened = (string) $this->get('/firefly/env')->assertStatus(200)->getContent();
 
-    expect($asked)->toContain('<a href="/firefly/env?sort=key&amp;dir=desc">Key<span class="ord">↑</span></a>')
+    expect($asked)->toContain('<a href="/firefly/env?sort=key&amp;dir=desc">Key<span class="ord" aria-hidden="true">↑</span></a>')
         ->and($rowsOf($asked))->not->toBe('')
         ->and($rowsOf($asked))->toBe($rowsOf($opened));
 });
@@ -502,7 +502,7 @@ it('flips the HTTP sort to oldest first when the reader asks', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $body = (string) $this->get('/firefly/http?dir=asc')->assertStatus(200)->getContent();
 
-    expect($body)->toContain('<span class="ord">↑</span>');
+    expect($body)->toContain('<span class="ord" aria-hidden="true">↑</span>');
 
     // Oldest first really is oldest first: the archived 503 from a fixed instant days back leads, the 500
     // recorded two hours ago is behind it, and the 200 from two seconds ago is behind both. An ISO string
@@ -637,14 +637,14 @@ it('orders the Active column by its counts and parks the ones no store can vouch
 it('claims no ordering on the runtime listings the reader has not ordered', function () {
     /** @var AdminTableCapstoneTestCase $this */
     $opening = [
-        '/firefly/metrics' => '<a href="/firefly/metrics?sort=name">Meter<span class="ord"></span></a>',
-        '/firefly/oauth2' => '<a href="/firefly/oauth2?sort=clientId">Client<span class="ord"></span></a>',
+        '/firefly/metrics' => '<a href="/firefly/metrics?sort=name">Meter<span class="ord" aria-hidden="true"></span></a>',
+        '/firefly/oauth2' => '<a href="/firefly/oauth2?sort=clientId">Client<span class="ord" aria-hidden="true"></span></a>',
     ];
 
     foreach ($opening as $url => $header) {
         $body = (string) $this->get($url)->assertStatus(200)->getContent();
 
-        expect($body)->toContain($header)->not->toContain('<span class="ord">↑');
+        expect($body)->toContain($header)->not->toContain('<span class="ord" aria-hidden="true">↑');
     }
 });
 

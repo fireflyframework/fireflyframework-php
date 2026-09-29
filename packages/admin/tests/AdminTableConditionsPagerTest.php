@@ -38,13 +38,13 @@ it('pages each conditions panel on its own qualifier and keeps the other panel w
 
     // Applied: every page link carries the Backed-off panel's size AND its page, and changes only `pos_page`.
     expect($body)->toMatch('~<a class="act"\s+href="/firefly/conditions\?neg_size=2&amp;neg_page=3&amp;pos_size=2"\s*>Previous</a>~')
-        ->toContain('<a class="act on" href="/firefly/conditions?neg_size=2&amp;neg_page=3&amp;pos_size=2&amp;pos_page=2">2</a>')
-        ->toContain('<a class="act" href="/firefly/conditions?neg_size=2&amp;neg_page=3&amp;pos_size=2&amp;pos_page=3">3</a>');
+        ->toContain('<a class="act on" aria-label="Page 2" aria-current="page" href="/firefly/conditions?neg_size=2&amp;neg_page=3&amp;pos_size=2&amp;pos_page=2">2</a>')
+        ->toContain('<a class="act" aria-label="Page 3" aria-current="false" href="/firefly/conditions?neg_size=2&amp;neg_page=3&amp;pos_size=2&amp;pos_page=3">3</a>');
 
     // Backed off: the mirror, on the fixture's own five rows — three pages, the third of them current, and
     // a first-page jump that drops its own `neg_page` while keeping the neighbour's `pos_page` whole.
-    expect($body)->toContain('<a class="act on" href="/firefly/conditions?pos_size=2&amp;pos_page=2&amp;neg_size=2&amp;neg_page=3">3</a>')
-        ->toContain('<a class="act" href="/firefly/conditions?pos_size=2&amp;pos_page=2&amp;neg_size=2">1</a>')
+    expect($body)->toContain('<a class="act on" aria-label="Page 3" aria-current="page" href="/firefly/conditions?pos_size=2&amp;pos_page=2&amp;neg_size=2&amp;neg_page=3">3</a>')
+        ->toContain('<a class="act" aria-label="Page 1" aria-current="false" href="/firefly/conditions?pos_size=2&amp;pos_page=2&amp;neg_size=2">1</a>')
         ->toMatch('~<a class="act"\s+href="/firefly/conditions\?pos_size=2&amp;pos_page=2&amp;neg_size=2&amp;neg_page=2"\s*>Previous</a>~')
         ->toMatch('~<a class="act off"\s*>Next</a>~');
 });
@@ -70,6 +70,6 @@ it('carries the other panel search through a page link, not merely through its o
         ->toContain('RedisCacheAutoConfiguration')
         ->not->toContain('WidgetAutoConfiguration');
 
-    expect($body)->toContain('<a class="act" href="/firefly/conditions?neg_q=Redis&amp;pos_size=2&amp;pos_page=3">3</a>')
+    expect($body)->toContain('<a class="act" aria-label="Page 3" aria-current="false" href="/firefly/conditions?neg_q=Redis&amp;pos_size=2&amp;pos_page=3">3</a>')
         ->toMatch('~<a class="act"\s+href="/firefly/conditions\?neg_q=Redis&amp;pos_size=2"\s*>Previous</a>~');
 });

@@ -1239,16 +1239,21 @@ return [
     //     'theme' => 'auto',
     //
     //     'graph' => [
-    //         /*
-    //          | The node count past which the Bean graph page LISTS the relations instead of drawing them.
-    //          | A diagram past a couple of hundred nodes is a hairball rather than something anyone can
-    //          | read. Configurable — not a constant — because "unreadable" depends on the screen and the
-    //          | application; 0 always lists.
-    //          |
-    //          | Default: 220.
-    //         */
+    //         // Deprecated: still parsed for compatibility, no longer controls rendering (including 0).
+    //         // The explorer draws bounded focus neighborhoods instead of the entire bean graph.
     //         'max-nodes' => 220,
+    //         'focus' => [
+    //             'depth' => 2,         // Hops per side; clamped 1–4.
+    //             'max-rows' => 16,     // Nodes per column; clamped 4–60.
+    //             'max-nodes' => 72,    // Total drawn beans; clamped 8–300.
+    //             'max-paths' => 3,     // Root chains; 0 disables, maximum 10.
+    //             'page-size' => 50,    // Relations; clamped 10–500, bounded by table.max-page-size.
+    //         ],
+    //         'starters' => 12,         // Entry points and most depended on; clamped 1–50.
+    //         'modules' => ['max-nodes' => 40], // Module map ceiling; 0 lists, maximum 200.
     //     ],
+    //     'beans' => ['page-size' => 50], // Complete catalogue; clamped 10–500 and table.max-page-size.
+
     //
     //     /*
     //      | THE LISTING TABLES — every page that draws a list of rows

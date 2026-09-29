@@ -25,11 +25,41 @@ final class BeanGraphIndex
     /** @var array<string, string> interface or produced type => the node id that satisfies it */
     private array $satisfiedBy = [];
 
+    /** @var array<string,true> */
+    private array $ambiguous = [];
+
     /** @var list<array{from: string, dependencies: list<string>, type: string}> */
     private array $pending = [];
 
     /** @var array<string, int> how many factory methods produce each type */
     private array $producerCount = [];
+
+    /**
+     * @param  array<mixed>  $rows
+     * @param  array<mixed>  $configProperties
+     */
+    public function countProducers(array $rows, array $configProperties = []): void
+    {
+        $classes = [];
+        foreach ($rows as $row) {
+            if (is_array($row) && is_string($row['class'] ?? null)) {
+                $classes[$row['class']] = true;
+            }
+        }
+        foreach ($configProperties as $class => $row) {
+            if (is_array($row) && ($row['bound'] ?? true) !== false && is_string($row['class'] ?? $class)) {
+                $classes[is_string($row['class'] ?? null) ? $row['class'] : (string) $class] = true;
+            }
+        }
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($this->producers($row['produces'] ?? null) as $produced) {
+                $this->producerCount[$produced['type']] = ($this->producerCount[$produced['type']] ?? (isset($classes[$produced['type']]) ? 1 : 0)) + 1;
+            }
+        }
+    }
 
     /**
      * @param  array<mixed>  $row
@@ -58,10 +88,6 @@ final class BeanGraphIndex
             'dependencies' => $this->strings($row['dependencies'] ?? null),
             'type' => BeanGraph::EDGE_INJECTS,
         ];
-
-        foreach ($this->producers($row['produces'] ?? null) as $produced) {
-            $this->producerCount[$produced['type']] = ($this->producerCount[$produced['type']] ?? 0) + 1;
-        }
 
         foreach ($this->producers($row['produces'] ?? null) as $produced) {
             $this->addBean($class, $produced);
@@ -101,14 +127,17 @@ final class BeanGraphIndex
             'namespace' => rtrim(Format::namespaceOf($produced['type']), '\\'),
             'kind' => BeanGraph::KIND_BEAN,
             'stereotype' => 'bean',
-            'scope' => 'Singleton',
+            'scope' => '',
             'detail' => Format::shortClass($declaring).'::'.$produced['method'].'()',
         ]);
 
-        // The produced type resolves to this node. With competitors, first-writer-wins gives the bare type a
-        // stable owner while each competitor keeps its own node — the same shape the container itself has,
-        // where the type key aliases the #[Primary] winner and every candidate stays reachable by name.
-        $this->satisfy($produced['type'], $id);
+        // Without primary/qualifier metadata the catalogue cannot identify a contested winner.
+        if (! $contested) {
+            $this->satisfy($produced['type'], $id);
+        } else {
+            $this->ambiguous[$produced['type']] = true;
+            unset($this->satisfiedBy[$produced['type']]);
+        }
 
         $this->pending[] = ['from' => $declaring, 'dependencies' => [$id], 'type' => BeanGraph::EDGE_PRODUCES];
         $this->pending[] = ['from' => $id, 'dependencies' => $produced['dependencies'], 'type' => BeanGraph::EDGE_INJECTS];
@@ -151,11 +180,7 @@ final class BeanGraphIndex
                     continue;
                 }
 
-                if ($target === $entry['from']) {
-                    continue;
-                }
-
-                $key = $entry['from'].'>'.$target.'>'.$entry['type'];
+                $key = $entry['from']."\0".$target."\0".$entry['type']."\0".$dependency;
                 if (isset($seen[$key])) {
                     continue;
                 }
@@ -175,13 +200,26 @@ final class BeanGraphIndex
 
     private function resolve(string $type): ?string
     {
+        if (isset($this->ambiguous[$type])) {
+            return null;
+        }
+
         return isset($this->nodes[$type]) ? $type : ($this->satisfiedBy[$type] ?? null);
     }
 
-    /** First writer wins, so the same application always draws the same graph. */
+    /** The projection lacks qualifiers and primary metadata: never invent a winner. */
     private function satisfy(string $type, string $nodeId): void
     {
-        $this->satisfiedBy[$type] ??= $nodeId;
+        if (isset($this->ambiguous[$type])) {
+            return;
+        }
+        if (isset($this->satisfiedBy[$type]) && $this->satisfiedBy[$type] !== $nodeId) {
+            unset($this->satisfiedBy[$type]);
+            $this->ambiguous[$type] = true;
+
+            return;
+        }
+        $this->satisfiedBy[$type] = $nodeId;
     }
 
     /**
