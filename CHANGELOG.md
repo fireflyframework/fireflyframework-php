@@ -30,7 +30,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 - **Admin listings:** replace competing column rules with typed columns, fixed table layout and explicit
   colgroups. Route paths no longer collapse into stacks of characters beside unused space. Rigid column
-  widths include cell padding, and a bounded table scrollport makes sticky headers work.
+  widths include cell padding and allow for Linux header-font metrics, and a bounded table scrollport makes
+  sticky headers work.
 - **Stable paging:** append an ascending identity tiebreak so tied rows cannot move between pages. Clamp
   stale out-of-range pages to the last page; a SQL-backed data listing may need one additional query.
 

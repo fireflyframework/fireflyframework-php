@@ -132,14 +132,14 @@ it('carries the separator a qualified name splits on, so a config key gets the s
  * FITTING A HEADER ONLY EVER WIDENS. A rigid width is the alphabet the CELLS can hold, so taking the
  * greater of the two needs is the only composition that keeps both promises: `Id` over a bigint column
  * stays at the thirteen characters the values want, and `Failed login attempts` over the same column takes
- * the twenty-eight its header wants. 21 characters × 1.25 `ch` + 1.75 for the ordering indicator is 28.
+ * the width its header wants. 21 characters × 1.30 `ch` + 1.75 for the ordering indicator is 29.05.
  */
 it('widens a rigid column to its own header and never narrows one', function () {
     $short = TableColumn::number('id', 'Id', ch: 13)->fittingItsHeader();
     $long = TableColumn::number('failed_login_attempts', 'Failed login attempts', ch: 13)->fittingItsHeader();
 
     expect($short->width)->toBe(13.0)
-        ->and($long->width)->toBe(28.0)
+        ->and($long->width)->toBe(29.05)
         // Everything else about the column survives the widening.
         ->and($long->key)->toBe('failed_login_attempts')
         ->and($long->label)->toBe('Failed login attempts')
@@ -150,8 +150,8 @@ it('widens a rigid column to its own header and never narrows one', function () 
 // The indicator is a declared 10px box plus the anchor's 3px gap, paid whether the column is the sorted
 // one or not — so an UNSORTABLE header of the same length needs 1.75ch less, and says so.
 it('charges a sortable header for the ordering indicator and an unsortable one for nothing', function () {
-    expect(TableColumn::number('n', 'Failed login attempts', ch: 13)->fittingItsHeader()->width)->toBe(28.0)
-        ->and(TableColumn::number('n', 'Failed login attempts', ch: 13, sortable: false)->fittingItsHeader()->width)->toBe(26.25);
+    expect(TableColumn::number('n', 'Failed login attempts', ch: 13)->fittingItsHeader()->width)->toBe(29.05)
+        ->and(TableColumn::number('n', 'Failed login attempts', ch: 13, sortable: false)->fittingItsHeader()->width)->toBe(27.3);
 });
 
 /**
@@ -170,5 +170,5 @@ it('leaves a flexible column alone, because its width is a weight and not a char
 // header decides, which is the case the data browser's `Last signed in at` lands in.
 it('lets a long header outgrow the alphabet a timestamp needs', function () {
     expect(TableColumn::stamp('created_at', 'Created at')->fittingItsHeader()->width)->toBe(19.0)
-        ->and(TableColumn::stamp('last_signed_in_at', 'Last signed in at')->fittingItsHeader()->width)->toBe(23.0);
+        ->and(TableColumn::stamp('last_signed_in_at', 'Last signed in at')->fittingItsHeader()->width)->toBe(23.85);
 });

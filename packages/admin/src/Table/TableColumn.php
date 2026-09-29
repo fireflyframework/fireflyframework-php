@@ -36,14 +36,14 @@ final readonly class TableColumn
      * Measured across the labels a schema actually produces — `Id` 0.88, `Unit price` 0.95,
      * `Failed login attempts` 0.99, `Created at` 1.02, `Warehouse manager` 1.12, `Customer` 1.14,
      * `Amount` 1.20 — one header character costs between 0.88 and 1.20 of those `ch`, the top of the range
-     * being the short, round-lettered words rather than the long labels. 1.25 carries every one of them
-     * with margin.
+     * being the short, round-lettered words rather than the long labels. Linux's system face puts
+     * `Amount` at 1.26, so 1.30 leaves room across both font stacks instead of clipping it at 1.25.
      *
      * IT IS AN ESTIMATE, AND THE HEADER THAT USES IT SAYS SO. PHP cannot measure a font, so a pathological
      * label — twelve `W`s measures 1.52 — still overflows its column; the data browser therefore puts the
      * full label on the `<th>`'s `title`, exactly as `_cell` already does for a value it clips.
      */
-    public const float HEADER_CH_PER_CHARACTER = 1.25;
+    public const float HEADER_CH_PER_CHARACTER = 1.30;
 
     /**
      * What the ordering indicator adds to a SORTABLE header, in the same `ch`.

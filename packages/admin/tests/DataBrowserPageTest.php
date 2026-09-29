@@ -191,8 +191,8 @@ it('sizes a datetime column for the whole timestamp and the numeric ones for a f
  * carries no ellipsis, so nothing on the page says it was cut. Under the `table-layout:auto` this wave
  * replaced the column simply grew to fit, which is why this is a regression and not a pre-existing gap.
  *
- * THE NUMBERS ARE THE ARITHMETIC, NOT A ROUND-UP. 21 characters × 1.25 `ch` + 1.75 for the sortable
- * header's ordering indicator is 28; 17 × 1.25 + 1.75 is 23, which is wider than the nineteen an ISO
+ * THE NUMBERS ARE THE ARITHMETIC, NOT A ROUND-UP. 21 characters × 1.30 `ch` + 1.75 for the sortable
+ * header's ordering indicator is 29.05; 17 × 1.30 + 1.75 is 23.85, which is wider than the nineteen an ISO
  * instant needs. `Id` at 2 characters stays at thirteen, because fitting a header never NARROWS a column
  * below the alphabet its values can hold. See TableColumn::fittingItsHeader().
  */
@@ -203,8 +203,8 @@ it('widens a rigid column when its humanised header is wider than its values', f
     $html = (string) $this->get('/firefly/data?resource=admin-sign-in')->assertStatus(200)->getContent();
 
     expect($html)
-        ->toContain('calc(28ch + 2 * var(--row-x))')
-        ->toContain('calc(23ch + 2 * var(--row-x))')
+        ->toContain('calc(29.05ch + 2 * var(--row-x))')
+        ->toContain('calc(23.85ch + 2 * var(--row-x))')
         // `Id` is short, so its column keeps the width an int column needs and gains nothing.
         ->toContain('calc(13ch + 2 * var(--row-x))')
         // Neither long column is left at its type's width.
