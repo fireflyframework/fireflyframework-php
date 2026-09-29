@@ -46,7 +46,9 @@ final class ProblemType
 
         $slug = self::slug($code);
 
-        return $slug === '' ? self::BLANK : rtrim($typeUri, '/').'/'.$slug;
+        return in_array($slug, ['', '.', '..'], true)
+            ? self::BLANK
+            : rtrim($typeUri, '/').'/'.rawurlencode($slug);
     }
 
     /** `RESOURCE_NOT_FOUND` → `resource-not-found`: the stable code as a URL path segment. */

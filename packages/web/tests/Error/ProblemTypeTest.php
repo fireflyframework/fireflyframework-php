@@ -42,3 +42,20 @@ it('slugs a code the way a URL path wants it, and never emits an empty last segm
         ->and(ProblemType::of('', 'https://api.example.test/problems'))->toBe('about:blank')
         ->and(ProblemType::of('___', 'https://api.example.test/problems'))->toBe('about:blank');
 });
+
+it('keeps an arbitrary application error code inside one URI path segment', function (string $code, string $segment) {
+    expect(ProblemType::of($code, 'https://api.example.test/problems'))
+        ->toBe('https://api.example.test/problems/'.$segment);
+})->with([
+    ['ORDER NOT FOUND', 'order%20not%20found'],
+    ['PAYMENT#EXPIRED', 'payment%23expired'],
+    ['ORDER?MISSING', 'order%3Fmissing'],
+    ['UPSTREAM/DOWN', 'upstream%2Fdown'],
+    ['RATE%LIMIT', 'rate%25limit'],
+    ["BAD\nCODE", 'bad%0Acode'],
+    ['ÉCHEC', '%C3%89chec'],
+]);
+
+it('does not let a dot-segment code identify the collection or its parent', function (string $code) {
+    expect(ProblemType::of($code, 'https://api.example.test/problems'))->toBe('about:blank');
+})->with(['.', '..']);
