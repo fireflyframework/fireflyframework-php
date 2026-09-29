@@ -31,6 +31,19 @@ final class BeanGraphIndex
     /** @var array<string, int> how many factory methods produce each type */
     private array $producerCount = [];
 
+    /** @param array<mixed> $rows */
+    public function countProducers(array $rows): void
+    {
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($this->producers($row['produces'] ?? null) as $produced) {
+                $this->producerCount[$produced['type']] = ($this->producerCount[$produced['type']] ?? 0) + 1;
+            }
+        }
+    }
+
     /**
      * @param  array<mixed>  $row
      */
@@ -58,10 +71,6 @@ final class BeanGraphIndex
             'dependencies' => $this->strings($row['dependencies'] ?? null),
             'type' => BeanGraph::EDGE_INJECTS,
         ];
-
-        foreach ($this->producers($row['produces'] ?? null) as $produced) {
-            $this->producerCount[$produced['type']] = ($this->producerCount[$produced['type']] ?? 0) + 1;
-        }
 
         foreach ($this->producers($row['produces'] ?? null) as $produced) {
             $this->addBean($class, $produced);
@@ -101,14 +110,16 @@ final class BeanGraphIndex
             'namespace' => rtrim(Format::namespaceOf($produced['type']), '\\'),
             'kind' => BeanGraph::KIND_BEAN,
             'stereotype' => 'bean',
-            'scope' => 'Singleton',
+            'scope' => '',
             'detail' => Format::shortClass($declaring).'::'.$produced['method'].'()',
         ]);
 
         // The produced type resolves to this node. With competitors, first-writer-wins gives the bare type a
         // stable owner while each competitor keeps its own node — the same shape the container itself has,
         // where the type key aliases the #[Primary] winner and every candidate stays reachable by name.
-        $this->satisfy($produced['type'], $id);
+        if (! $contested) {
+            $this->satisfy($produced['type'], $id);
+        }
 
         $this->pending[] = ['from' => $declaring, 'dependencies' => [$id], 'type' => BeanGraph::EDGE_PRODUCES];
         $this->pending[] = ['from' => $id, 'dependencies' => $produced['dependencies'], 'type' => BeanGraph::EDGE_INJECTS];
@@ -148,10 +159,6 @@ final class BeanGraphIndex
                 if ($target === null) {
                     $unresolved[] = $dependency;
 
-                    continue;
-                }
-
-                if ($target === $entry['from']) {
                     continue;
                 }
 
