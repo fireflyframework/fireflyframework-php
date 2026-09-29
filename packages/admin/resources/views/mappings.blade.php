@@ -26,7 +26,14 @@
                     @foreach ($slice->rows as $route)
                         <tr>
                             <td class="t-pill"><span class="verb">{{ $route['httpMethod'] }}</span></td>
-                            <td class="t-path" title="{{ $route['path'] }}">{{ $route['path'] }}</td>
+                            <td class="t-path" title="{{ $route['path'] }}">
+                                @if ($settings->routeDetail)
+                                    <a class="route-link" data-route="{{ $route['httpMethod'] }} {{ $route['path'] }}" href="{{ $query->link().(str_contains($query->link(), '?') ? '&' : '?').'route='.rawurlencode($route['httpMethod'].' '.$route['path']) }}#route-detail"><span class="sr">Inspect {{ $route['httpMethod'] }} </span>{{ $route['path'] }}</a>
+                                @else
+                                    {{ $route['path'] }}
+                                @endif
+                                @if ($route['shadowed'])<span class="code warn">Shadowed</span>@endif
+                            </td>
                             <td class="t-qual" title="{{ $route['handler'] }}">
                                 <span class="nm">{{ Format::leafOf($route['handler']) }}</span>
                                 <span class="ns stem">{{ Format::stemOf($route['handler']) }}</span>

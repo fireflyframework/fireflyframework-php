@@ -17,6 +17,8 @@ use Firefly\Admin\Data\DataListing;
 use Firefly\Admin\Data\DataMap;
 use Firefly\Admin\Data\DatasourceReport;
 use Firefly\Admin\Format;
+use Firefly\Admin\Route\RouteDetail;
+use Firefly\Admin\Route\RouteInspector;
 use Firefly\Admin\RowComparator;
 use Firefly\Admin\Settings\FeatureToggle;
 use Firefly\Admin\Settings\SettingsConsole;
@@ -26,11 +28,14 @@ use Firefly\Admin\Table\ListingQuery;
 use Firefly\Admin\Table\TableColumn;
 use Firefly\Admin\Table\TableView;
 use Firefly\Context\Scan\AppScan;
+use Firefly\Web\Exception\ExceptionHandlerDescriptor;
+use Firefly\Web\Exception\ExceptionHandlerRegistry;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Routing\Router;
 use Illuminate\Session\Store;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
@@ -88,6 +93,10 @@ final readonly class AdminAction
             return $this->html($this->render('unavailable', ['page' => $current]), 404);
         }
 
+        if ($slug === 'mappings' && $request->query('route') !== null) {
+            return $this->mappingPage($request, $current);
+        }
+
         if ($slug === 'loggers' && $request->isMethod('POST')) {
             return $this->setLoggerLevel($request);
         }
@@ -113,6 +122,79 @@ final readonly class AdminAction
         }
 
         return $this->html($this->render($slug === '' ? 'overview' : $slug, $this->data($request, $slug), $current), 200);
+    }
+
+    private function mappingPage(Request $request, AdminPage $current): SymfonyResponse
+    {
+        $key = $request->query('route');
+        $inspector = new RouteInspector($this->container);
+        $detail = $this->settings->routeDetail && is_string($key) ? $inspector->detail($key) : null;
+        if ($detail === null) {
+            return $this->html($this->render('missing', ['slug' => 'route']), 404);
+        }
+        $manifestFile = AppScan::cachedFile($this->container, AppScan::ROUTES);
+        $manifestTime = $manifestFile !== null ? filemtime($manifestFile) : false;
+        $query = ListingQuery::fromRequest($request, $this->settings->table, $this->settings->url('mappings'), ['httpMethod', 'path', 'handler', 'name']);
+        $handlers = $this->container->bound(ExceptionHandlerRegistry::class)
+            ? array_values(array_filter($this->container->make(ExceptionHandlerRegistry::class)->all(),
+                static fn (ExceptionHandlerDescriptor $handler): bool => $handler->global || $handler->handlerClass === $detail->route->controllerClass)) : [];
+
+        return $this->html($this->render('mapping', [
+            'detail' => $detail, 'query' => $query, 'handlers' => $handlers,
+            'bootMode' => $manifestFile !== null ? 'compiled' : 'in-process manifest',
+            'manifestTime' => $manifestTime,
+            'advice' => $this->settings->routeAdvice ? $inspector->advice($detail->route) : [],
+            // File-existence probes only: never require another package's compiled artifact.
+            'adviceSource' => AppScan::cachedFile($this->container, AppScan::PROXY_PLAN) !== null ? 'proxy-plan.php'
+                : (AppScan::cachedFile($this->container, AppScan::TRANSACTIONAL) !== null ? 'transactional.php only — recompile for the complete advice plan' : 'in-process plan, if registered'),
+            'metadata' => $inspector->metadata($detail->route),
+            'links' => $this->mappingLinks($detail),
+            'bindingView' => TableView::of(TableColumn::number('position', '#', ch: 3), TableColumn::token('name', 'PHP argument', weight: 2),
+                TableColumn::pill('kind', 'From', ch: 8), TableColumn::token('key', 'Wire name', weight: 2), TableColumn::qualified('type', 'Type', weight: 3),
+                TableColumn::pill('required', 'Required', ch: 8), TableColumn::token('default', 'Compiled default', weight: 2), TableColumn::pill('valid', 'Valid', ch: 5)),
+        ], $current), 200);
+    }
+
+    /** @return list<array{label: string, url: string}> */
+    private function mappingLinks(RouteDetail $detail): array
+    {
+        $allowed = array_column($this->nav(), 'slug');
+        $links = [];
+        foreach (['http' => 'HTTP traffic', 'metrics' => 'Metrics'] as $slug => $label) {
+            if (in_array($slug, $allowed, true)) {
+                $links[] = ['label' => $label, 'url' => $this->settings->url($slug)];
+            }
+        }
+        if (in_array('beans', $allowed, true)) {
+            $links[] = ['label' => 'Controller beans', 'url' => $this->settings->url('beans').'?q='.rawurlencode($detail->route->controllerClass)];
+        }
+        $properties = in_array('configprops', $allowed, true) ? $this->subArray($this->payload('configprops'), 'beans') : [];
+        if (in_array('graph', $allowed, true)) {
+            $graph = BeanGraph::build($this->listOf('beans', 'beans'), $properties);
+            foreach ($graph->nodes as $node) {
+                if ($node['id'] === $detail->route->controllerClass) {
+                    $links[] = ['label' => 'Controller wiring', 'url' => $this->settings->url('graph').'?bean='.rawurlencode($node['id'])];
+                }
+            }
+            foreach ($graph->edges as $edge) {
+                if ($edge['from'] === $detail->route->controllerClass && isset($properties[$edge['to']])) {
+                    $links[] = ['label' => 'Configuration: '.Format::leafOf($edge['to']), 'url' => $this->settings->url('configprops').'?q='.rawurlencode($edge['to'])];
+                }
+            }
+        }
+        foreach ($detail->injected as $binding) {
+            $type = $binding->plan['type'];
+            if ($binding->resolver === null && $type !== null && isset($properties[$type])) {
+                $links[] = ['label' => 'Configuration: '.Format::leafOf($type), 'url' => $this->settings->url('configprops').'?q='.rawurlencode($type)];
+            }
+        }
+        $router = $this->container->bound('router') ? $this->container->make('router') : null;
+        $viewer = $router instanceof Router ? $router->getRoutes()->getByName('firefly.openapi.viewer') : null;
+        if ($viewer !== null && $viewer->getDomain() === null && ! str_contains($viewer->uri(), '{')) {
+            $links[] = ['label' => 'API reference', 'url' => '/'.ltrim($viewer->uri(), '/')];
+        }
+
+        return $links;
     }
 
     private function settingsPage(AdminPage $current): SymfonyResponse
@@ -844,7 +926,7 @@ final readonly class AdminAction
      * to compare strings rather than "whatever the endpoint put there" — one int in that column and
      * strnatcasecmp is comparing a number to a name.
      *
-     * @return list<array{httpMethod: string, path: string, handler: string, name: string, row: string}>
+     * @return list<array{httpMethod: string, path: string, handler: string, name: string, row: string, shadowed: bool}>
      */
     private function mappingRows(): array
     {
@@ -863,6 +945,15 @@ final readonly class AdminAction
             $row['row'] = $row['path']."\0".$row['httpMethod']."\0".$row['handler']."\0".$row['name'];
             $rows[] = $row;
         }
+
+        $last = [];
+        foreach ($rows as $index => $row) {
+            $last[$row['httpMethod'].' '.$row['path']] = $index;
+        }
+        foreach ($rows as $index => &$row) {
+            $row['shadowed'] = $last[$row['httpMethod'].' '.$row['path']] !== $index;
+        }
+        unset($row);
 
         return $rows;
     }
