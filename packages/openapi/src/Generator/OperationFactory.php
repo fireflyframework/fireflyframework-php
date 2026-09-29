@@ -93,6 +93,7 @@ final class OperationFactory
         $files = [];
         $validated = false;
         $rejectable = false;
+        $notFound = false;
 
         foreach ($route->bindings as $binding) {
             // Claimed by a resolver: bound from somewhere other than the request, so neither a parameter nor
@@ -101,12 +102,11 @@ final class OperationFactory
                 continue;
             }
 
-            $validated = $validated || $binding['valid'];
-
             switch ($binding['kind']) {
                 case 'path':
                     $parameters[] = $this->parameter($binding, 'path', true, $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $this->coercible($binding);
+                    $notFound = $notFound || isset($binding['pattern']);
                     break;
                 case 'query':
                     $parameters[] = $this->parameter($binding, 'query', $binding['required'], $doc->parameters[$binding['key']] ?? null);
@@ -123,6 +123,7 @@ final class OperationFactory
                 case 'body':
                     $body = $binding;
                     $rejectable = true;
+                    $validated = $validated || ($binding['valid'] && $binding['type'] !== null);
                     break;
             }
         }
@@ -151,7 +152,7 @@ final class OperationFactory
             $operation['requestBody'] = $this->multipartBody($files);
         }
 
-        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
+        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $notFound, $doc, $registry);
 
         // Operation-level `security`. Absent — not `[]` — when nothing requires anything: an empty array in
         // OpenAPI is the positive claim "this operation needs no authentication", which is exactly the claim
@@ -291,9 +292,9 @@ final class OperationFactory
      * NOT emitted for an operation whose only parameter is an optional `string` path variable: nothing about
      * such a request can fail binding (a missing path segment does not match the route at all), and a
      * documented 400 that the endpoint cannot produce is noise a generated client turns into a dead error
-     * branch. `422` appears exactly when some binding carries #[Valid], because that is the only way
-     * BeanValidator runs and so the only way kernel's ValidationException (fixed at 422, with its `errors`
-     * array populated) can be thrown.
+     * branch. `404` appears for a path-pattern miss. `422` appears when a typed body binding carries #[Valid],
+     * matching the only ArgumentResolver branch that calls BeanValidator. A Valid attribute on a query,
+     * injected service or untyped body does not activate validation.
      * `default` covers everything the handler itself may raise — a 404 from a ResourceNotFoundException, a
      * 409 from a ConflictException, a 403 from a denied #[PreAuthorize] — which cannot be enumerated from the
      * route manifest without reading the controller's body, and which all render through the same
@@ -311,13 +312,17 @@ final class OperationFactory
      *
      * @return array<array-key, mixed>
      */
-    private function responseSet(RouteDescriptor $route, bool $rejectable, bool $validated, OperationDoc $doc, SchemaRegistry $registry): array
+    private function responseSet(RouteDescriptor $route, bool $rejectable, bool $validated, bool $notFound, OperationDoc $doc, SchemaRegistry $registry): array
     {
         [$status, $success] = $this->successResponse($route, $registry);
         $responses = [(string) $status => $success];
 
         if ($rejectable) {
             $responses['400'] = ['$ref' => ProblemSchema::RESPONSE_REF];
+        }
+
+        if ($notFound) {
+            $responses['404'] = ['$ref' => ProblemSchema::RESPONSE_REF];
         }
 
         if ($validated) {
@@ -515,16 +520,6 @@ final class OperationFactory
 
         if ($route->status === 204 || $type === 'void' || $type === 'never') {
             return [$route->status, ['description' => 'No content.']];
-        }
-
-        // A #[Controller] route renders a page. It reaches this factory only when
-        // firefly.openapi.include-html is on, and describing its response as a JSON schema would be a lie
-        // that a client generator would faithfully act on.
-        if ($route->html) {
-            return [$route->status, [
-                'description' => 'An HTML page.',
-                'content' => ['text/html' => ['schema' => ['type' => 'string']]],
-            ]];
         }
 
         $declared = $method?->getReturnType();

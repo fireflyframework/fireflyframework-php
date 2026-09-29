@@ -141,6 +141,7 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
         $files = [];
         $validated = false;
         $rejectable = false;
+        $notFound = false;
 
         foreach ($route->bindings as $binding) {
             // Claimed by a resolver: bound from somewhere other than the request, so neither a parameter nor
@@ -149,12 +150,11 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
                 continue;
             }
 
-            $validated = $validated || $binding['valid'];
-
             switch ($binding['kind']) {
                 case 'path':
                     $parameters[] = $this->parameter($binding, 'path', true, $doc->parameters[$binding['key']] ?? null);
                     $rejectable = $rejectable || $this->coercible($binding);
+                    $notFound = $notFound || isset($binding['pattern']);
                     break;
                 case 'query':
                     $parameters[] = $this->parameter($binding, 'query', $binding['required'], $doc->parameters[$binding['key']] ?? null);
@@ -171,6 +171,7 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
                 case 'body':
                     $body = $binding;
                     $rejectable = true;
+                    $validated = $validated || ($binding['valid'] && $binding['type'] !== null);
                     break;
             }
         }
@@ -185,7 +186,7 @@ Inside an operation, the binding plan does the real work. `OperationFactory` dis
             $operation['requestBody'] = $this->multipartBody($files);
         }
 
-        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $doc, $registry);
+        $operation['responses'] = $this->responseSet($route, $rejectable, $validated, $notFound, $doc, $registry);
         // …
         return $operation;
     }
@@ -462,7 +463,7 @@ Which statuses an operation lists is **derived, not guessed**. Compare two real 
 }
 ```
 
-`400` appears exactly when the operation has something `ArgumentResolver` can reject *before* the controller runs — a body to decode and bind, an upload to validate, a required query or header the client may omit, or a non-`string` parameter that has to be coerced out of the wire's string. It is deliberately absent from `balance`: nothing about that request can fail binding, because a missing path segment does not match the route at all, and a documented `400` an endpoint cannot produce is noise a generated client turns into a dead error branch. `422` appears exactly when some binding carries `#[Valid]`, because that is the only way `BeanValidator` runs and so the only way Chapter 4's `ValidationException` can be thrown. And `default` covers everything the handler itself may raise — a `404` from a `ResourceNotFoundException`, a `409` from a `ConflictException`, a `403` from a denied `#[PreAuthorize]` — which cannot be enumerated from the route manifest without reading the controller's body, and which all render through the same `ProblemDetailsRenderer` anyway.
+`400` appears exactly when the operation has something `ArgumentResolver` can reject *before* the controller runs — a body to decode and bind, an upload to validate, a required query or header the client may omit, or a non-`string` parameter that has to be coerced out of the wire's string. It is deliberately absent from `balance`: nothing about that request can fail binding, because a missing path segment does not match the route at all, and a documented `400` an endpoint cannot produce is noise a generated client turns into a dead error branch. `404` is inferred for a path binding with a pattern. `422` is inferred for typed request bodies carrying `#[Valid]`, matching the binding branch that calls `BeanValidator`; query parameters, services and untyped bodies do not activate it. And `default` covers everything the handler itself may raise — a `404` from a `ResourceNotFoundException`, a `409` from a `ConflictException`, a `403` from a denied `#[PreAuthorize]` — which cannot be enumerated from the route manifest without reading the controller's body, and which all render through the same `ProblemDetailsRenderer` anyway.
 
 A `204`, or a `void`/`never` return, gets no content at all, because emitting a content map for a status that carries no body is exactly what a strict client generator turns into a phantom return type. The success body of everything else is the subject of the next section.
 
@@ -644,7 +645,7 @@ Chapter 4 introduced `#[RestController]` alongside its HTML sibling `#[Controlle
 
 Read the name before the body: `excluded()` answers *leave this route out*, so every `return true` above is a route that does **not** reach the document. The first arm is the `#[Controller]` rule, the second is `#[ApiIgnore]`, and the third is the configured path-prefix list.
 
-A `#[Controller]` route renders a page. It is part of the application's HTTP surface, but it is not a JSON operation, and describing one as `application/json` would have a generator emit a typed client for a response that is a web page — the framework's own welcome page was in the spec exactly that way before this rule existed. Set `firefly.openapi.include-html` to `true` and the route is documented anyway, but honestly: the operation is then produced with `text/html` content and a `type: string` schema rather than a JSON schema that would be a lie a client generator faithfully acts on.
+`#[Controller]` routes are excluded by default. Set `firefly.openapi.include-html` to `true` to include them. Response media still comes from the return contract: views and `Htmlable` values produce `text/html`, arrays produce JSON, and redirects carry `Location`. The stereotype itself does not determine response media.
 
 The second half of that method is the blunt instrument for everything else: `firefly.openapi.exclude` is a CSV of path prefixes — `'/internal,/admin'` — for routes that are JSON but are nobody's public API.
 
@@ -775,7 +776,7 @@ return [
         'description' => '',
         'servers' => ['https://api.example.test'],  // bare URLs or OpenAPI Server Objects
         'exclude' => '/internal,/admin',            // CSV of path prefixes to leave out
-        'include-html' => false,                    // document #[Controller] routes as text/html
+        'include-html' => false,                    // include #[Controller] routes with their return contract
     ],
 ];
 ```
@@ -849,11 +850,11 @@ final class ApiDocsConfiguration
 | `ConstraintSchemaMapper` | Maps the compiled rule list — not the attributes — to keywords; first writer wins, so `#[Min(1)] int` stays `integer` |
 | `x-firefly-constraints` | Records what JSON Schema cannot state (`after:now`, a checksum, a flagged PCRE, a third-party rule) instead of dropping it |
 | `ProblemSchema` | The one shared `application/problem+json` response; documents Firefly's `code`/`category`/`severity`/`errors`, with the enums read off the kernel's own cases |
-| Derived error set | `400` only when something is rejectable before the controller runs, `422` only under `#[Valid]`, `default` always |
+| Derived error set | `400` only when something is rejectable before the controller runs, `404` for path patterns, `422` for typed bodies under `#[Valid]`, `default` always |
 | `DocType` | Compiles a PHPDoc type expression to a JSON Schema fragment — shapes, generics, tuples, literal unions, PHPStan pseudo-types — and returns *nothing* rather than guessing when it cannot read one |
 | `ResponseSchemaFactory` | Builds a returned class from its WIRE shape: `jsonSerialize()`'s declared `@return` when there is one, public properties otherwise. Response members stay `required` and nullable ones widen their type |
 | `#[ApiResponse(type:)]` | A full type expression (`'list<Shipment>'`), resolved through the controller's own imports |
-| `$route->html` | `#[Controller]` HTML routes are excluded by default; `firefly.openapi.include-html` documents them as `text/html`, never as JSON |
+| `$route->html` | `#[Controller]` routes are excluded by default; `firefly.openapi.include-html` includes them with media derived from their return contract |
 | `firefly.openapi.viewer.style` | `swagger` (default) \| `builtin` \| `cdn`. Only `cdn` makes a third-party request at page view; an unrecognised value falls back to `swagger` |
 | `SwaggerAssets` | Serves the OFFICIAL Swagger UI from your own origin out of the `swagger-api/swagger-ui` composer package — seven whitelisted basenames, each `realpath()`-checked inside the dist directory |
 | `ViewerPage::render()` | Falls back to `builtin` when the Swagger dist is absent, rather than rendering a console whose assets 404 |

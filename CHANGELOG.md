@@ -6,6 +6,13 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Fixed
 
+- **OpenAPI contracts:** derive path-pattern `404` responses and restrict inferred validation `422` responses
+  to typed request bodies. Included page controllers now preserve their actual JSON, HTML or redirect return
+  contract. Browser coverage checks every generated operation, tag, response and component, including nested
+  schemas and keyboard access on phones.
+- **OpenAPI readability:** improve local Swagger text contrast for method and version badges, links, actions,
+  code examples, schema controls and constraints; verify expanded schemas with either system color preference.
+  Normalize native schema buttons and wrap operation controls to prevent phone overflow in WebKit.
 - **Error pages:** shorten paths in symlinked deployments and test harnesses, bound the debug stack before
   rendering, and group dependency frames behind a native disclosure. Frame summaries stay on one line on desktop and give calls a second line on phones;
   text contrast meets 4.5:1 in both themes. The production facts grid has no empty colored cells and shows
