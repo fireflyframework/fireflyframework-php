@@ -8,7 +8,6 @@ use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
-use Firefly\Kernel\Exception\FireflyException;
 use Firefly\Validation\Constraint\BeanValidator;
 use Firefly\Validation\Constraint\ConstraintManifest;
 use Firefly\Validation\Constraint\ConstraintManifestCompiler;
@@ -35,6 +34,7 @@ use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
@@ -64,9 +64,26 @@ final class WebServiceProvider extends FireflyServiceProvider
     private function registerBindings(): void
     {
         if (! $this->app->bound(ProblemDetailsRenderer::class)) {
-            $this->app->singleton(ProblemDetailsRenderer::class, static fn (Container $app): ProblemDetailsRenderer => new ProblemDetailsRenderer(
-                $app->make(ErrorPageSettings::class),
-            ));
+            $this->app->singleton(ProblemDetailsRenderer::class, static function (Container $app): ProblemDetailsRenderer {
+                // The logger is what makes a DEGRADED problem document observable: when the encoder falls
+                // back, the throwable it caught is an arbitrary application exception, and without this
+                // argument it is recorded in no place at all. Optional and resolved defensively for the
+                // ResponseFactory's reason two closures down — Laravel aliases Psr\Log\LoggerInterface to
+                // the concrete 'log' key in registerCoreContainerAliases() whether or not LogServiceProvider
+                // ever registered anything, so bound() on the CONTRACT answers true in a bare container and
+                // the make() then throws. A logger that cannot be made is the same as none bound, and this
+                // renderer must not be the binding that fails to construct on an error path.
+                $logger = null;
+                if ($app->bound('log')) {
+                    try {
+                        $logger = $app->make(LoggerInterface::class);
+                    } catch (BindingResolutionException) {
+                        // No log manager: the document is still rendered, and the degradation is unwitnessed.
+                    }
+                }
+
+                return new ProblemDetailsRenderer($app->make(ErrorPageSettings::class), $logger);
+            });
         }
 
         if (! $this->app->bound(ErrorPageSettings::class)) {
@@ -206,10 +223,22 @@ final class WebServiceProvider extends FireflyServiceProvider
      *
      * The order is the whole of it. A browser that names `text/html` gets the HTML page — which is what
      * fixes a person clicking a stale link and being shown a raw JSON blob, the behaviour every
-     * FireflyException had. Everything else keeps the previous rule exactly: a FireflyException, or a
-     * request that wants JSON, renders as problem+json. A throwable that is NEITHER — an unrouted URL hit by
-     * a client that asked for neither — still falls through to Laravel's handler, because inventing a
-     * response shape for a caller that expressed no preference is not this package's decision to make.
+     * FireflyException had.
+     *
+     * Everything else keeps the previous rule and gains the case it was missing: a FireflyException, a
+     * request that wants JSON and a `json-paths` URL all render as problem+json, and so now does every
+     * caller that is neither a browser nor a JSON client — a wildcard Accept header from a bare curl, no
+     * Accept at all, or a named type this package renders no error in, such as `application/xml` — each of
+     * which used to fall through to Laravel's stock HTML page. The predicate itself lives in
+     * ErrorPageRenderer::rendersProblem(), beside handles() and prefersHtml(), because it is the same
+     * negotiation asked a third way; this provider keeps only the wiring.
+     * `firefly.web.error-page.problem-fallback => false` restores the fall-through.
+     *
+     * BOTH OF THOSE READ THE REQUEST, SO WHAT WAS THROWN IS ASKED FIRST. describes() is the one term that
+     * looks at the throwable, and it is asked ahead of both branches because the three exceptions Laravel's
+     * own `match (true)` resolves AFTER this callback runs — HttpResponseException, AuthenticationException,
+     * ValidationException — are not ours to answer in either shape. Returning null for them is what lets a
+     * 422 stay a 422 with its field errors, and a 401 stay a 401.
      */
     private function registerProblemDetailsRenderable(): void
     {
@@ -221,11 +250,15 @@ final class WebServiceProvider extends FireflyServiceProvider
             $handler->renderable(function (Throwable $e, Request $request) {
                 $page = $this->app->make(ErrorPageRenderer::class);
 
+                if (! $page->describes($e)) {
+                    return null;
+                }
+
                 if ($page->handles($request)) {
                     return $page->render($e, $request);
                 }
 
-                if ($e instanceof FireflyException || $request->expectsJson() || $page->forcesJson($request)) {
+                if ($page->rendersProblem($e, $request)) {
                     return $this->app->make(ProblemDetailsRenderer::class)->render($e, $request);
                 }
 

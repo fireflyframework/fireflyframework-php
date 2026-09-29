@@ -864,7 +864,7 @@ Most pages are a view over one endpoint's payload; four read the container inste
 | Runtime | Metrics | `metrics` | Counters, timers and gauges, with their current measurements |
 | Runtime | HTTP traffic | `httpexchanges` | The most recent requests this application served |
 | Wiring | Beans | `beans` | Every bean the container registered, with the stereotype that declared it |
-| Wiring | Bean graph | `beans` | How your beans depend on one another, resolved through the interfaces they are wired by |
+| Wiring | Bean explorer | `beans` | How your beans depend on one another, resolved through the interfaces they are wired by |
 | Wiring | Conditions | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
@@ -933,133 +933,21 @@ A throwing endpoint is caught and reported as `null` rather than allowed to take
 
 ---
 
-### The bean graph
+### The bean explorer
 
-Most of the pages are tables. Two draw a picture — this one, and the [entity map](#walking-the-model-relations-filters-and-a-map) later in the chapter — and this is the one that pays for the package on the day something is wired wrongly.
+`/firefly/graph` now opens with search, entry points, heavily depended-on beans, module coupling and wiring cycles. Select `?bean=<qualified identity>` to explore a bounded neighbourhood; `?module=<namespace>` opens that module's beans and boundary relations; `?q=<term>` searches the complete catalogue. `/firefly/beans` includes components, factory products and bound configuration DTOs and defaults to dependent count descending.
 
-`/actuator/beans` tells you *which* beans exist. It cannot tell you what each one is **wired to**, which is what you actually want when a `#[ConditionalOnMissingBean]` did not fire the way you expected, when an eager singleton cycle has hung a boot with no message, or when you are trying to work out what a package you just installed attached itself to. `/firefly/graph` answers that, as a layered SVG diagram plus a filterable relations table.
+The selected bean sits between its dependents on the left and dependencies on the right. Positions are computed in PHP: 176×38-pixel boxes at 204×46-pixel pitch, with at most 16 rows per column and 72 nodes by default. Two hops occupy 992 pixels horizontally and at most 728 vertically. Headings scroll with the content. Native links, GET forms, pagination and visible keyboard focus work without JavaScript; the graph has no camera or fit operation. Module text and sigils complement decorative colours.
 
-Nothing is reflected to build it. `ComponentScanner` already records, at **scan** time, the class and interface types each component's constructor asks for, and that list rides the compiled manifest exactly like every other scanned fact (abridged):
+Frontier candidates share each column round robin. Overflow links open the source bean's complete direct-neighbour tables, with interface indirection and injection/production labels. Shortest entry-point chains explain reachability. The details preserve all positive and negative conditions, including those on the producing configuration; a missing Conditions endpoint is tolerated.
 
-<!-- source: packages/container/src/Descriptor/ComponentDescriptor.php -->
-```php
-final readonly class ComponentDescriptor
-{
-    // …
-    public function __construct(
-        public string $class,
-        public string $stereotype,
-        // …
-        public array $interfaces,
-        // …
-        /**
-         * The class types this component's constructor asks for — the edges of the bean graph.
-         *
-         * Recorded at scan time, where reflection is already sanctioned, because the alternative is
-         * reflecting at request time to answer "what depends on what", which the reflection-free boot
-         // …
-         */
-        public array $dependencies = [],
-    ) {}
-// …
-}
-```
+Module coupling reports weight (resolved relations), distinct target beans, distinct interfaces and concrete relations. Production edges are excluded unless explicitly included. Module lists remain paginated above the map budget. The module page marks exclusive reachability and beans with no dependents. These are catalogue observations, not proof that removing a module is safe.
 
-That last sentence is a design decision worth pausing on. A constructor parameter typed `string $name` is configuration; drawing it as an edge would bury the relationships that matter under `string`/`int` noise. A **nullable or defaulted class** parameter *is* kept, because an optional collaborator is still a relationship.
+Iterative Tarjan SCC analysis reports all cycle members, including self-injection, without recursive walks. Since the wiring graph includes factory production, an SCC is not necessarily a runtime constructor cycle. Competing factory methods keep separate identities, even across configuration classes. The projection lacks primary/qualifier metadata, so ambiguous targets remain unresolved rather than guessing the container winner; factory scope is reported as unknown. Explicitly unbound configuration DTOs are excluded. No bean is instantiated to inspect it.
 
-#### Three kinds of node, and why the first version was nearly empty
+**Migration:** `firefly.admin.graph.max-nodes` still parses into `AdminSettings::$graphMaxNodes` (default 220), but no longer controls rendering. In particular, **0 no longer forces a list**. Use the complete catalogue or relation tables for a tabular view.
 
-Before the edges, the nodes — because the first version of this page got them wrong in a way worth learning from. A LaraFly application has **three kinds of bean**, and all three have to be nodes:
-
-| Kind | What it is | Where it comes from |
-|---|---|---|
-| `component` | A scanned `#[Component]`/`#[Service]`/`#[Repository]`/`#[RestController]`/`#[Configuration]` class | The beans catalogue |
-| `bean` | A value **produced by a `#[Bean]` factory method** on a `#[Configuration]` | The catalogue's `produces` rows |
-| `config` | A `#[ConfigProperties]` DTO bound from configuration | The `configprops` endpoint |
-
-Only the first kind was a node to begin with, and the consequence was not a cosmetic one. A framework's wiring lives almost entirely in the second kind: an auto-configuration is a `#[Configuration]` whose `#[Bean]` methods produce `MeterRegistry`, `TransactionTemplate`, `AggregateTracker` and the rest. With only declaring classes as nodes, every edge pointing at one of those products pointed at a node that did not exist. Measured on a stock skeleton: **42 nodes, 41 `#[Bean]` products missing, 21 dangling dependencies, and exactly one edge drawn.** The page was not showing a sparse graph — it was structurally incapable of showing framework wiring at all.
-
-The third kind is the same mistake in miniature. A `#[ConfigProperties]` DTO is bound and injectable, but it is neither scanned as a component nor produced by a factory, so nothing in the beans catalogue can see it: `App\GreetingProperties` turned up as an *unresolved dependency* of `GreetingService` rather than as the bean it is. That is why the page reads the `configprops` endpoint alongside the catalogue.
-
-So there are two kinds of edge, too, and they say different things:
-
-| Edge | From → to | Meaning |
-|---|---|---|
-| `injects` | A bean → something it declared a dependency on | The consumer asked for it; the container satisfies it |
-| `produces` | A `#[Configuration]` → the value one of its `#[Bean]` methods returns | This class is where that bean comes from |
-
-`injects` edges are collected from a component's **constructor** parameters *and* from every `#[Bean]` **factory method's** parameters — the product depends on whatever its factory asked for. That union is the wiring; constructors alone are a fraction of it.
-
-One subtlety about identity. A `#[Bean]` product is normally identified by the **type it produces**, because that is the key the container binds and the key every consumer asks for. But when two factory methods produce the same type — the shape that Chapter 2's `#[Primary]`/`#[Qualifier]` rules exist to disambiguate — the type alone would collapse them into a single node and hide exactly the ambiguity you opened the page to see. So each competitor gets `Declaring::method()` as its own id and the bare type resolves to the first of them, mirroring the container, where the type key aliases the winner while every candidate stays reachable by name.
-
-#### The hard part is not drawing, it is resolving
-
-A constructor asks for a **type**, and that type is very often an interface — `EventPublisher`, `HealthIndicator`, `Cache` — while the bean that satisfies it is a concrete class that merely implements it. An edge list built naively from constructor types therefore points at nodes that do not exist, and the graph comes out as a field of disconnected dots. Ask yourself what `WalletService`'s dependency on `WalletRepository` should draw an arrow *to*: not to the port, which is an interface with no bean of its own, but to `EloquentWalletRepository`, which is the thing that will actually be constructed.
-
-So every dependency is resolved through an interface index before it becomes an edge:
-
-<!-- source: packages/admin/src/BeanGraphIndex.php -->
-```php
-foreach ($entry['dependencies'] as $dependency) {
-    $target = $this->resolve($dependency);
-
-    if ($target === null) {
-        $unresolved[] = $dependency;
-
-        continue;
-    }
-    // …
-    $edges[] = [
-        'from' => $entry['from'],
-        'to' => $target,
-        'via' => $target === $dependency ? null : $dependency,
-        'type' => $entry['type'],
-    ];
-}
-```
-
-<!-- source: packages/admin/src/BeanGraphIndex.php -->
-```php
-private function resolve(string $type): ?string
-{
-    return isset($this->nodes[$type]) ? $type : ($this->satisfiedBy[$type] ?? null);
-}
-```
-
-The `via` member is the honesty in that loop. When the edge went through an interface, the diagram marks it and the Relations table's **Wired by** column names the interface, so a reader can see the indirection rather than being quietly shown a relationship they never wrote. When the constructor named the concrete class, the column just says `class`.
-
-The index is built in catalogue order and **first implementor wins**, deterministically — the catalogue is emitted in scan order, so the same application always draws the same graph rather than reshuffling between machines. An interface with several implementors is a real ambiguity that the container resolves with `#[Primary]`/`#[Qualifier]`, and the graph says so by listing the edge as `via` rather than pretending the choice was obvious.
-
-#### Layers, cycles, and the node ceiling
-
-Levels come from a **longest-path** walk over the resolved edges: a node's depth is one more than the deepest thing it depends on, and the levels are then flipped so level 0 holds the things nothing depends on. The effect is that a node always sits below everything that depends on it, arrows read consistently downward, and the eye can follow a chain from a controller to the repository at the bottom of it. The view only positions; the levels come from the model.
-
-Depth is memoised and the walk carries its own visited set, so a cycle terminates instead of recursing forever — and the edge that closed it is *reported*:
-
-<!-- source: packages/admin/src/BeanGraph.php -->
-```php
-foreach ($out[$node] ?? [] as $next) {
-    if (isset($path[$next])) {
-        $cycles[] = ['from' => $node, 'to' => $next];
-
-        continue;
-    }
-    $deepest = max($deepest, $walk($next, $path) + 1);
-}
-```
-
-That reporting is worth more than it looks. The container has no cycle detection of its own, so a cycle among eager singletons does not produce a helpful error — it exhausts memory at boot. A page that names the two classes involved turns "the app died with no message" into a five-second diagnosis, and the panel's own advice is the right one: break one of these edges, usually by injecting an interface and letting the other side depend on that.
-
-Two limits are stated in the page rather than hidden:
-
-* **Past `firefly.admin.graph.max-nodes` — 220 by default — the diagram is suppressed** and the Relations table below carries the same information as a filterable list. A diagram past a couple of hundred nodes is a hairball, not something a person can read, and rendering one anyway would be a worse answer than declining to. It is a config key rather than a constant because "unreadable" depends on the screen and the application.
-* **"Provided outside the container" is not a warning.** Those chips are constructor types satisfied by a Laravel container binding rather than a scanned bean — the `Request`, the config repository, a connection. They are listed rather than silently dropped precisely because *"why is my bean not in the graph"* is the question the page has to answer. A type appearing there that you expected to be a bean of *yours* means your scan did not see it, and `firefly.scan.paths` is the first thing to check.
-
-!!! tip "Read it next to the Conditions page"
-    The two answer complementary halves of every auto-configuration surprise. **Conditions** says *whether* a framework bean was registered or backed off, and on which condition. **The graph** says what the bean that did win is wired to, and through which interface. An `EventPublisher` edge pointing at `InMemoryEventPublisher` when you configured `firefly.eda.provider=rabbitmq` is one glance on the graph; Conditions then names the `#[ConditionalOnProperty]` that did not match.
-
-!!! note "What the graph still does not decide for you"
-    Two limits are worth knowing, and neither is a gap in the data. **`#[Primary]`/`#[Qualifier]` do not steer the index** — first writer in scan order wins, both for an interface with several implementors and for the bare type key of a contested `#[Bean]`. Every competitor still gets its own node and the edge is marked `via`, so the ambiguity is visible on the page, but the drawn target may not be the one the container resolves. And **an unresolved type is reported, never explained**: the page can tell you a type is provided outside the container, but not *which* binding provides it, because a Laravel container binding carries no descriptor to read.
+The new settings are `firefly.admin.graph.focus.depth` (2, bounded 1–4), `focus.max-rows` (16, 4–60), `focus.max-nodes` (72, 8–300), `focus.max-paths` (3, 0–10), `focus.page-size` (50, 10–500), `firefly.admin.graph.starters` (12, 1–50), `firefly.admin.graph.modules.max-nodes` (40, 0–200; 0 disables the map), and `firefly.admin.beans.page-size` (50, 10–500). Relation/catalogue page sizes also obey shared table limits. All keys are documented in `skeleton/config/firefly.php`.
 
 ---
 
@@ -1233,7 +1121,7 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 | `ObservabilityAutoConfiguration` `#[Order(500)]` | The same precedence trick as Chapter 10's security seam: registers `cqrsMetrics()` before `CqrsAutoConfiguration` evaluates its `#[ConditionalOnMissingBean]` |
 | `firefly/admin` | A server-rendered Blade dashboard at `/firefly`; a page whose endpoint is unregistered or switched off is hidden from the menu rather than linked |
 | `AdminEndpointReader` | Invokes each `ActuatorEndpoint` **in-process** from `ActuatorRegistry`, bypassing `ExposureModel` — so the dashboard shows what the HTTP surface does not expose, and a throwing endpoint degrades one panel |
-| `BeanGraph` | Turns the beans catalogue into a drawn dependency graph over **three kinds of node** — components, `#[Bean]` products and `#[ConfigProperties]` DTOs — with `injects`/`produces` edges resolved through an interface index (marked `via`), longest-path layering, cycles reported rather than hung on, and the diagram suppressed past `firefly.admin.graph.max-nodes` (220) |
+| `BeanGraph` | Turns the beans catalogue into a drawn dependency graph over **three kinds of node** — components, `#[Bean]` products and `#[ConfigProperties]` DTOs — with `injects`/`produces` edges resolved through an interface index (marked `via`), longest-path layering, cycles reported rather than hung on, and bounded hop exploration with iterative SCCs |
 | `#[Bean]` products as nodes | A framework's wiring lives in factory methods, not constructors; with only declaring classes as nodes a stock skeleton drew **one** edge out of 42 beans |
 | `ComponentDescriptor::$dependencies` | The graph's edges, recorded by `ComponentScanner` at **scan** time — class and interface types only, because a scalar parameter is configuration, not wiring |
 | `firefly.admin.enabled` | Defaults to `app.debug`; an explicit value wins in both directions, and turning it on with debug off obliges you to put your own auth middleware in front of the route |

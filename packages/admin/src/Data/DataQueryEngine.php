@@ -7,6 +7,7 @@ namespace Firefly\Admin\Data;
 use BackedEnum;
 use DateTimeInterface;
 use Firefly\Actuator\Introspection\SensitiveValueMasker;
+use Firefly\Admin\RowComparator;
 use Firefly\Data\Repository\CrudRepository;
 use Firefly\Data\Repository\EloquentRepository;
 use Firefly\Data\Repository\Page;
@@ -181,7 +182,7 @@ final class DataQueryEngine
         ?string $term,
         array $filters = [],
     ): array {
-        $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction));
+        $pageable = new Pageable($page, $perPage, $this->sort($sort, $direction, $schema));
 
         if (($term !== null || $filters !== []) && $repository instanceof EloquentRepository) {
             $specifications = [];
@@ -327,10 +328,60 @@ final class DataQueryEngine
         }
 
         if ($sort !== null) {
-            usort($matched, function (array $a, array $b) use ($sort, $direction): int {
-                $comparison = $this->compare($a['values'][$sort] ?? null, $b['values'][$sort] ?? null);
+            // The same ordering the actuator listings use, from the same class — a sort drifts as quietly as
+            // a filter does, and the drift would show as one column header meaning two different orders on
+            // two pages of one dashboard. It is asked for the COLUMN, once, rather than pair by pair: a
+            // column that mixes numbers with anything else has no consistent pairwise answer (see
+            // RowComparator::forColumn()), and an inconsistent comparison here reorders the rows that
+            // straddle a page boundary between one request and the next. Emptiness is ranked OUTSIDE the
+            // direction flip: an em-dash is the absence of a value rather than a value that sorts low, so it
+            // stays last under `desc` too.
+            $values = array_map(static fn (array $row): mixed => $row['values'][$sort] ?? null, $matched);
+            $compare = $sort === $schema->identifier
+                ? RowComparator::forIdentity($values)
+                : RowComparator::forColumn($values);
 
-                return $direction === 'desc' ? -$comparison : $comparison;
+            // The same tiebreak the SQL paths get, for the same reason: `usort` is stable in PHP 8, but the
+            // ARRAY it is stabilising is rebuilt from the repository on every request, so stability of the
+            // sort is not stability of the page boundary. See sort() above. Like the empty rank above it,
+            // and for the same reason, it sits OUTSIDE the direction flip: an identity is not a second
+            // ordering. It is appended only when the identifier is not already the sort column, for the
+            // same reason `ORDER BY id DESC, id ASC` is not emitted.
+            //
+            // THE TIEBREAK IS A COLUMN TOO, AND IS CHOSEN THE SAME WAY — `forColumn()` over everything the
+            // identifier column holds, never `compare()` pair by pair. `Table\InMemoryListing::order()`
+            // does exactly this beside it, and RowComparator says why: a per-pair choice between the
+            // arithmetic and the natural comparison can close a cycle (`1.10 < 1.9 < 1.9-beta < 1.10` on a
+            // column of versions), and an ordering that is not a strict weak ordering entitles `usort()` to
+            // answer anything at all. An inconsistent tiebreak breaks the whole ordering just as thoroughly
+            // as an inconsistent primary, which is the instability this branch exists to remove.
+            $tiebreak = $schema->identifier;
+            $breakTie = $tiebreak === null || $tiebreak === $sort ? null : RowComparator::forIdentity(array_map(
+                static fn (array $row): mixed => $row['values'][$tiebreak] ?? null,
+                $matched,
+            ));
+
+            usort($matched, static function (array $a, array $b) use ($sort, $direction, $compare, $tiebreak, $breakTie): int {
+                $left = $a['values'][$sort] ?? null;
+                $right = $b['values'][$sort] ?? null;
+
+                $rank = RowComparator::rankEmpty($left, $right);
+
+                if ($rank !== 0) {
+                    return $rank;
+                }
+
+                $comparison = $compare($left, $right);
+
+                if ($direction === 'desc') {
+                    $comparison = -$comparison;
+                }
+
+                // `$breakTie` is null for exactly the two cases that have no tiebreak to apply — no
+                // identifier, or an identifier that IS the sort column — so testing it tests both.
+                return $comparison !== 0 || $breakTie === null
+                    ? $comparison
+                    : $breakTie($a['values'][$tiebreak] ?? null, $b['values'][$tiebreak] ?? null);
             });
         }
 
@@ -375,8 +426,10 @@ final class DataQueryEngine
                 DataFilter::NE => $string !== $filter->value,
                 DataFilter::CONTAINS => $string !== null && str_contains(mb_strtolower($string), mb_strtolower($filter->value)),
                 DataFilter::STARTS => $string !== null && str_starts_with(mb_strtolower($string), mb_strtolower($filter->value)),
-                DataFilter::GT => $string !== null && $this->compare($value, $filter->value) > 0,
-                DataFilter::LT => $string !== null && $this->compare($value, $filter->value) < 0,
+                // The SCALAR STRING, not the raw value: see compare() for why a bool must reach it as the
+                // `'1'`/`''` the driver would have bound and not as the word the listing renders.
+                DataFilter::GT => $string !== null && $this->compare($string, $filter->value) > 0,
+                DataFilter::LT => $string !== null && $this->compare($string, $filter->value) < 0,
                 DataFilter::NULL => $value === null,
                 DataFilter::NOT_NULL => $value !== null,
                 default => $string === $filter->value,
@@ -430,15 +483,38 @@ final class DataQueryEngine
             : null;
     }
 
-    private function sort(?string $column, string $direction): ?Sort
+    /**
+     * The ORDER BY a listing goes out with: what was asked for, then the identifier as a tiebreak.
+     *
+     * EVERY LISTING IS ORDERED, EVEN WHEN NOBODY ASKED — that much was already true, and it is why
+     * sortColumn() falls back to the identifier. What was missing is the second half. Ordering by a column
+     * with duplicate values leaves the tied rows in whatever order the engine finds convenient, and it is
+     * allowed to find a different one convenient for the query behind page 1 and the query behind page 2:
+     * a row is then returned on both and another on neither, and the operator reads a table that is missing
+     * records which are really there. `ORDER BY status DESC, id ASC` has no such freedom.
+     *
+     * THE TIEBREAK IS ALWAYS ASCENDING. It is an identity, not a second ordering — mirroring it with the
+     * primary direction would make the order WITHIN a tie depend on the direction it is breaking the tie
+     * inside, which is the same instability with extra steps. And it is appended only when the identifier
+     * is not already the sort column, because `ORDER BY id DESC, id ASC` is at best noise and at worst an
+     * index the planner declines to use.
+     */
+    private function sort(?string $column, string $direction, DataSchema $schema): ?Sort
     {
         if ($column === null) {
             return null;
         }
 
         $sort = Sort::by($column);
+        if ($direction === 'desc') {
+            $sort = $sort->descending();
+        }
 
-        return $direction === 'desc' ? $sort->descending() : $sort;
+        $identifier = $schema->identifier;
+
+        return $identifier !== null && $identifier !== $column && in_array($identifier, $schema->sortable(), true)
+            ? $sort->and(Sort::by($identifier))
+            : $sort;
     }
 
     private function term(?string $search): ?string
@@ -543,24 +619,26 @@ final class DataQueryEngine
         return mb_substr($value, 0, $limit).self::ELLIPSIS;
     }
 
-    /** Null-last ordering, so a nullable column does not sort its empties into the middle of the values. */
-    private function compare(mixed $a, mixed $b): int
+    /**
+     * How `greater than` and `less than` compare on the unpaged path.
+     *
+     * IT IS GIVEN THE CELL'S SCALAR STRING, NEVER THE RAW VALUE, and the difference is not cosmetic. The
+     * paged sibling of this predicate is `where(col, '>', ?)` in SQL: the driver binds a bool as `1`/`0`, so
+     * `pinned > 0` selects the pinned rows. RowComparator renders a bool for a READER — `true`/`false` — and
+     * a word is not numeric, so the pair would fall to the natural-text comparison where `t` and `f` sort
+     * after every digit: `greater than 0` would match EVERY row and `less than 1` none, on a repository that
+     * cannot page, while the identical filter over a pageable resource answered correctly. `(string) true`
+     * is `'1'` and `(string) false` is `''`, which are the shapes the binding has, so passing the string
+     * keeps one filter meaning one thing on both paths. That is the same drift the search predicate above
+     * warns about, arriving through the operand rather than through a second implementation.
+     *
+     * It is RowComparator's value comparison and nothing else — no empty-last rank. In SQL the empty string
+     * is simply the smallest string, and ranking empties last here would be the same drift again. Where
+     * empties go is a question about a LISTING's order, which is asked in the sort, not here.
+     */
+    private function compare(string $a, string $b): int
     {
-        if ($a === null && $b === null) {
-            return 0;
-        }
-        if ($a === null) {
-            return 1;
-        }
-        if ($b === null) {
-            return -1;
-        }
-
-        if (is_scalar($a) && is_scalar($b)) {
-            return is_numeric($a) && is_numeric($b) ? ($a + 0) <=> ($b + 0) : strnatcasecmp((string) $a, (string) $b);
-        }
-
-        return 0;
+        return RowComparator::compare($a, $b);
     }
 
     /**

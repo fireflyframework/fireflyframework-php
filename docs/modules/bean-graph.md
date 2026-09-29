@@ -1,202 +1,94 @@
-# Bean Graph
+# Bean Explorer
 
-The bean graph is the one page of the [admin dashboard](admin.md) that is more than a table: a layered, drawn
-diagram of how your beans depend on one another, at `/firefly/graph`.
+The [admin dashboard](admin.md) exposes the bean explorer at `/firefly/graph`. It starts with search,
+entry points, heavily depended-on beans, module coupling and wiring cycles. Selecting a bean draws a
+bounded neighbourhood; the application size never disables exploration. All navigation uses GET forms
+and ordinary links, including when JavaScript is disabled.
 
-It answers a question `/actuator/beans` cannot. That endpoint tells you *which* beans exist; the graph tells you
-what each one is **wired to**, which is what you actually want when a `#[ConditionalOnMissingBean]` did not fire the
-way you expected, when a cycle has hung a boot, or when you are trying to work out what a package you just
-installed attached itself to.
+## Four states, one URL
 
-The graph is a dashboard page included in `fireflyframework/larafly`; no separate package is needed.
+| URL | What it shows |
+|---|---|
+| `/firefly/graph` | Search, starters, module overview and cycles |
+| `/firefly/graph?q=OrderService` | Paginated matches on identity, factory detail and stereotype |
+| `/firefly/graph?bean=App%5COrders%5COrderService&depth=2&dir=both` | Focus bean, hop columns, root chains, conditions and direct relations |
+| `/firefly/graph?module=App%5COrders` | Module beans, exclusive reachability and boundary coupling |
 
-## What counts as a node
+`/firefly/beans` is the complete paginated catalogue, sourced from the same graph. It includes scanned
+components, `#[Bean]` products and bound `#[ConfigProperties]` DTOs, and opens with dependent count
+descending. Every identity links to its focus view. Interface search on component rows remains available.
 
-A LaraFly application has **three kinds of bean**, and all three are nodes:
+## Reading a neighbourhood
 
-| Kind | What it is | Where the node comes from |
+Dependents sit to the left; dependencies sit to the right. Columns show graph distance from the selected
+bean. PHP computes the positions at a fixed 176×38 pixels per node, 204-pixel column pitch and 46-pixel
+row pitch. Two hops in both directions occupy 992 pixels horizontally, at most 728 pixels high with the
+default 16-row bound. Smaller neighbourhoods use fewer rows. Depth three expands to 1400 pixels and
+scrolls inside the drawing; headings scroll with their columns. There is no fit, camera, zoom or pan mode.
+
+Every box is a native HTML anchor over decorative SVG edges, with keyboard focus and a full accessible
+name. Labels remain at least 11 pixels. Module sigils and text identify modules independently of colour;
+decorative stripes use 38% lightness in light mode and 62% in dark mode. Text uses the dashboard's readable
+ink colours instead of those hues.
+
+Each frontier receives candidates round robin, so one hub cannot consume all of a column's budget.
+`+N more` links open the source bean's complete, paginated direct-neighbour tables. The two lists preserve
+the selected bean, depth, direction and each other's filters. They show the `via` interface and whether
+the relation injects or produces. Same-column, skip-hop and cyclic relations remain in these lists.
+
+Root chains are shortest-first and deterministic. The details join every positive and negative condition
+for the bean and its producing configuration; a class can legitimately have both outcomes under different
+conditions. An absent Conditions endpoint simply omits those details.
+
+## Modules and cycles
+
+Modules are the first two namespace segments (or the only namespace segment, or `(global)`). The bounded
+module overview presents each module's outgoing coupling. Module and coupling tables remain paginated
+when the map exceeds its configured ceiling. Fewer than three modules use the module list directly.
+
+Each module edge reports **Weight** (resolved dependency relations), **Beans** (distinct targets), **Via**
+(distinct interfaces) and **Concrete** (direct relations). Factory `produces` edges are excluded by
+default; a GET link includes them. The module view marks beans reachable only from that module and beans
+with no dependents (`unused outside`). Exclusive reachability is a graph observation, not proof that
+removing a module is safe: external Laravel bindings and runtime lookups are outside this catalogue.
+
+Iterative Tarjan analysis finds complete strongly connected components, including self-injection. The
+condensed graph supplies levels without recursive PHP calls; a 5000-node chain does not exhaust the call
+stack. Module coupling has its own SCC analysis. A component denotes a cycle in the published wiring
+graph; because factory production is represented too, it does not necessarily imply a runtime constructor
+cycle. Bean names in a component are members, not a claimed path ordering.
+
+## What the catalogue can establish
+
+No beans are instantiated and no reflection runs to build this page. Component dependencies and factory
+products come from the scanned or compiled catalogue. Bound configuration DTOs come from `configprops`;
+explicitly unbound DTOs are omitted. Factory products carry the declaring method as their detail.
+
+Competing factories retain distinct `Declaring::method()` identities even when declared in separate
+configuration classes. The projection does not contain enough primary/qualifier metadata to choose the
+container's winner. Ambiguous factory return types and interfaces therefore remain unresolved instead
+of drawing an arbitrary target. Factory scope is displayed as **Not reported** when the projection does
+not provide it. An unresolved type can also be supplied by a Laravel binding or absent from the scan;
+the explorer cannot distinguish those cases from the published metadata alone.
+
+## Configuration and migration
+
+| Key | Default | Bounds / meaning |
 |---|---|---|
-| `component` | A scanned `#[Component]`/`#[Service]`/`#[Repository]`/`#[RestController]`/`#[Configuration]` class | The beans catalogue |
-| `bean` | A **value produced by a `#[Bean]` factory method** on a `#[Configuration]` | The `produces` rows of the catalogue |
-| `config` | A `#[ConfigProperties]` DTO bound from configuration | The `configprops` endpoint |
+| `firefly.admin.graph.focus.depth` | `2` | 1–4 hops; `depth` can override per request |
+| `firefly.admin.graph.focus.max-rows` | `16` | 4–60 nodes per column |
+| `firefly.admin.graph.focus.max-nodes` | `72` | 8–300 nodes in the drawing |
+| `firefly.admin.graph.focus.max-paths` | `3` | 0–10 entry-point chains; 0 disables chains |
+| `firefly.admin.graph.focus.page-size` | `50` | 10–500 relation rows, also capped by shared table settings |
+| `firefly.admin.graph.starters` | `12` | 1–50 entries per starter list |
+| `firefly.admin.graph.modules.max-nodes` | `40` | 0–200 modules; 0 disables the module map |
+| `firefly.admin.beans.page-size` | `50` | 10–500 catalogue rows, also capped by shared table settings |
+| `firefly.admin.graph.max-nodes` | `220` | Deprecated compatibility value; no longer controls drawing |
 
-That list is the whole design, and it is worth saying why, because the first version of this page only knew about
-the first kind and was therefore *structurally incapable* of showing framework wiring.
+The old whole-graph view has been removed. `AdminSettings::$graphMaxNodes` still parses and clamps the
+legacy key, but no page reads it. **Setting it to 0 no longer forces a list**, and raising it no longer draws
+the whole graph. Use the complete catalogue or the relation lists for a tabular view, and the new focus
+budgets to adjust drawing limits. Shared `firefly.admin.table.*` settings still control density, paging
+choices and scrollport behaviour. No npm build, CDN or graph library is required.
 
-A framework's wiring lives almost entirely in the second kind. An auto-configuration is a `#[Configuration]` whose
-`#[Bean]` methods produce `MeterRegistry`, `TransactionTemplate`, `AggregateTracker` and so on. When only declaring
-classes were nodes, every edge pointing at one of those products pointed at a node that did not exist. Measured on
-a stock skeleton: **42 nodes, 41 `#[Bean]` products missing, 21 dangling dependencies, and exactly one edge drawn.**
-The graph was not sparse — it was a field of disconnected dots with the mechanism removed.
-
-The third kind is a smaller version of the same mistake. A `#[ConfigProperties]` DTO is bound and injectable but is
-neither scanned as a component nor produced by a factory, so nothing in the beans catalogue can see it: it showed
-up as an *unresolved dependency* of the service that injects it rather than as the bean it is. It is read from the
-`configprops` endpoint alongside the catalogue for exactly that reason.
-
-### The identity of a `#[Bean]` product
-
-Usually the produced **type** is the identity, because that is the key the container binds and the key every
-consumer asks for. `MeterRegistry` is the node; the `#[Configuration]` that made it is recorded on the node as a
-detail (`ObservabilityAutoConfiguration::meterRegistry()`), not as its name.
-
-When **two factory methods produce the same type** — the shape that requires `#[Primary]`/`#[Qualifier]` to
-disambiguate — the type alone would collapse them into one node and hide exactly the ambiguity the reader came to
-look at. So each competitor gets `Declaring::method()` as its id, and the bare type resolves to the first of them.
-That mirrors the container itself, where the type key aliases the winner and every candidate stays reachable by
-name.
-
-## What counts as an edge
-
-Two kinds, and they mean different things:
-
-| Edge | From → to | Meaning |
-|---|---|---|
-| `injects` | A bean → something it declared a dependency on | The consumer asked for it; the container satisfies it |
-| `produces` | A `#[Configuration]` → the value one of its `#[Bean]` methods returns | This class is where that bean comes from |
-
-`injects` edges are drawn for a component's **constructor** parameters *and* for a `#[Bean]` **factory method's**
-parameters — the product depends on what its factory asked for. That union is where a framework's wiring actually
-lives, and a graph built from constructors alone draws almost nothing.
-
-Nothing is reflected at request time to work any of this out. `ComponentScanner` records the types at **scan** time
-and they ride the compiled manifest exactly like every other scanned fact:
-
-<!-- source: packages/container/src/Descriptor/ComponentDescriptor.php -->
-```php
-/**
- * The class types this component's constructor asks for — the edges of the bean graph.
- *
- * Recorded at scan time, where reflection is already sanctioned, because the alternative is
- * reflecting at request time to answer "what depends on what", which the reflection-free boot
- * contract forbids. Only CLASS and INTERFACE types are kept: a scalar or a builtin is configuration,
- * not a wiring edge, and putting it in the graph would drown the edges that matter.
- *
- * Last, with a default, so a manifest compiled before this field existed still rehydrates.
- *
- * @var list<string>
- */
-public array $dependencies = [],
-```
-
-A `string $name` parameter is configuration, not wiring, and is not an edge. A **nullable or defaulted** class
-parameter *is* an edge — an optional collaborator is still a relationship.
-
-## Why an edge through an interface is labelled with that interface
-
-A constructor asks for a **type**, and that type is very often an interface — `EventPublisher`,
-`HealthIndicator`, `Cache` — while the bean that satisfies it is a concrete class, or the return of a factory
-method. An edge list built naively from declared types therefore points at nodes that do not exist.
-
-So every dependency is resolved through an index of *what satisfies what* — a component's `interfaces`, and every
-`#[Bean]` method's produced type — before it becomes an edge. `PostgresEventPublisher` is what `EventPublisher`
-links to.
-
-The edge then records the interface it went through, in a member called **`via`**, and both surfaces show it: the
-diagram's edge `<title>` reads `Consumer → Target (via EventPublisher)`, and the **Relations** table has a
-*Wired by* column naming the interface, or `—` when the constructor named the concrete type.
-
-That label is the honesty in the whole page. Without it the reader is shown a relationship they never wrote —
-`WalletService → EloquentWalletRepository` is *true*, but what they wrote was `WalletRepository`, and the gap
-between the two is precisely where a mis-wiring hides. With it, the indirection is visible and the port they
-depend on is named.
-
-The index is built in catalogue order and **first implementor wins**, deterministically — the catalogue is emitted
-in scan order, so the same application always draws the same graph rather than reshuffling between machines. An
-interface with several implementors is a real ambiguity that the container resolves with `#[Primary]`/`#[Qualifier]`,
-and the graph says so by listing the edge as `via` rather than pretending the choice was obvious.
-
-## Layers, and why arrows read downward
-
-Level assignment is a **longest-path** walk over the resolved edges: a node's depth is one more than the deepest
-thing it depends on, and the levels are then flipped so that level 0 holds the things nothing depends on. The
-result is that a node always sits below everything that depends on it, arrows flow consistently downward, and the
-eye can follow a chain from a controller to the repository at the bottom of it.
-
-Within a level the nodes are **clustered by module** — the first two namespace segments, `Firefly\Observability`,
-`App\Http` — so related things end up adjacent rather than scattered, and each module gets a stable colour assigned
-by position, with a legend whose entries toggle. Hues are kept away from the red and green the rest of the
-dashboard reserves for status.
-
-Each level is then **wrapped into a grid of its own** rather than laid out as one row. A pure layered layout is
-wrong for this graph: dependency depth is shallow and wide, so most beans land on one or two levels — a stock
-skeleton produced a single row 54 nodes and 9184px across, which the fit-to-view control then scaled to 11%, i.e.
-unreadable. Wrapping keeps the drawing a compact rectangle while arrows still read downward from dependents to
-dependencies.
-
-## Cycles are reported, not fatal
-
-Depth is memoised and the walk carries its own visited set, so a **cycle terminates instead of recursing forever**.
-The edge that closed it is collected, and when the walk finds one a *Circular dependencies* panel appears above the
-diagram listing every closing edge, with the **Cycles** stat turned red.
-
-Reporting rather than throwing is the deliberate choice, and it is worth being explicit about why. A cycle is a
-fact about *your application*, not a malfunction of the page that drew it — and the page is very often the only
-thing that can tell you. The container has no cycle detection of its own, so a cycle among eager singletons does
-not produce a helpful error: it exhausts memory at boot. If this page refused to render on finding one, the single
-tool capable of naming the two classes involved would go dark at exactly the moment you needed it, and you would be
-back to a process that died with no message.
-
-So it renders, draws everything else, and names the closing edges. The panel's own advice is the right one: break
-one of these edges, usually by depending on an interface and letting the other side provide it.
-
-## The panels
-
-| Panel | Shows | Notes |
-|---|---|---|
-| Stats | Beans, Components, `#[Bean]` products, Config DTOs, Relations, Layers, Cycles | Cycles renders as a red chip when non-zero |
-| Circular dependencies | Every closing edge, `Bean` → `Depends on` | Only rendered when there is at least one |
-| Wiring | The layered SVG diagram — module legend with toggles, a find box, Fit/Reset controls, drag-to-pan and scroll-to-zoom, and an inspector panel showing a selected bean's dependencies and dependents | Suppressed past the node ceiling |
-| Relations | Every edge as `Bean` / `Depends on` / `Wired by` | Always rendered, filterable — the fallback when the diagram is suppressed |
-| Provided outside the container | Declared types nothing in the container provides | Chips, with the full type as a tooltip |
-
-Each node is a rounded box carrying the bean's short name, its kind, and its in/out degree; its `<title>` carries
-the fully-qualified identity and, for a `#[Bean]` product, the factory method that produced it. Edges are curves
-with an arrow marker, styled by edge type, and an edge that went through an interface carries the interface in its
-title.
-
-The diagram is plain inline SVG generated server-side — no JavaScript graph library, no layout engine, no network
-request. It is the same "no npm step, no CDN" rule the [rest of the dashboard](admin.md#no-build-step) follows.
-
-## Two honest limits
-
-**Past 220 nodes the diagram is suppressed.** The ceiling is `firefly.admin.graph.max-nodes`, default `220`; above
-it the Wiring panel says so and the Relations table below carries the same information as a filterable list. A
-diagram past a couple of hundred nodes is a hairball, not something a person can read, and rendering one anyway
-would be a worse answer than declining to. It is configurable because "unreadable" depends on the screen and the
-application — raise it to draw a bigger graph anyway, or set it to `0` to always get the list.
-
-**"Provided outside the container" is not a warning.** Those are declared types satisfied by a Laravel container
-binding rather than a bean — the `Request`, the config repository, a database connection, a framework contract.
-They are listed rather than silently dropped precisely because *"why is my bean not in the graph"* is the question
-this page has to be able to answer. A type appearing there is usually correct; a type appearing there that you
-expected to be a bean of yours means your scan did not see it, and `firefly.scan.paths` is the first thing to
-check.
-
-## Reading it against the Conditions page
-
-The graph and [Conditions](admin.md#the-pages) answer complementary questions, and the pair is the fastest
-way to diagnose an auto-configuration surprise:
-
-1. **Conditions** says *whether* a framework bean was registered or backed off, and on which condition.
-2. **The graph** says what the bean that *did* win is wired to, and through which interface.
-
-An `EventPublisher` edge pointing at `InMemoryEventPublisher` when you configured `firefly.eda.provider=rabbitmq`
-is visible in one glance on the graph, and Conditions then tells you which `#[ConditionalOnProperty]` did not match.
-
-## Known-latent
-
-- **`#[Primary]`/`#[Qualifier]` do not steer the index.** First writer in scan order wins, both for an interface
-  with several implementors and for the bare type key of a contested `#[Bean]`. Every competitor still gets its own
-  node and the edge is marked `via`, so the ambiguity is visible — but the drawn target may not be the one the
-  container resolves.
-- **No crossing minimisation.** Nodes are ordered within a level by module and then label, and levels are wrapped
-  into grids; there is no pass that reorders them to reduce edge crossings, so a dense graph has crossing edges.
-- **An unresolved type is reported, never explained.** The page can say a type is provided outside the container;
-  it cannot say by *which* binding, because a Laravel container binding carries no descriptor to read.
-
----
-
-See also: [Admin Dashboard](admin.md) for the page's access model, [Dependency Injection](dependency-injection.md)
-for what the stereotypes and scopes on each node mean, and [Auto-Configuration](starters.md) for the conditions
-that decided which beans exist at all.
+See also [Dependency Injection](dependency-injection.md) and [Auto-Configuration](starters.md).

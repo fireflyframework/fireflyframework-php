@@ -6,8 +6,9 @@ paths, verbs, statuses, route names and the per-parameter binding plan; `Constra
 request-body schemas and their `required` lists; `firefly/kernel`'s `ErrorResponse` supplies the RFC 9457 error
 component. It is included in the LaraFly library, so applications can generate a spec and typed clients.
 
-Because every fact in the document is read from the same compiled artifacts the dispatcher dispatches from and the
-validator validates with, **the spec cannot drift from the server**.
+The generator reads the same compiled binding and validation plans the server uses, then enriches them with PHP
+types, PHPDoc and optional API attributes. Keep return annotations accurate and use `#[ApiResponse]` for business
+responses that cannot be inferred from signatures, such as a conflict raised inside a service.
 
 `fireflyframework/larafly` includes it, so a skeleton project already serves `/openapi` and `/openapi.json`.
 An explicit `firefly/openapi` requirement is satisfied by the root library's `replace` metadata.
@@ -79,15 +80,18 @@ exactly what a strict client generator turns into a phantom return type.
 Beside it, every operation carries the shared `#/components/responses/Problem` as its `default`, plus a `400` when
 `ArgumentResolver` has something it can reject before the controller runs (a required binding, or one whose value
 must be *converted* out of the string the wire always carries — a `string` parameter cannot fail a conversion, an
-`int`/`float`/`bool`/enum can), and a `422` when a binding carries `#[Valid]`. `ProblemSchema` describes what
+`int`/`float`/`bool`/enum can), a `404` when a path binding has a pattern, and a `422` when a typed request-body
+binding carries `#[Valid]`. A `#[Valid]` on a query parameter, injected service or untyped body does not trigger
+request-body validation, so it does not add a `422`. Bindings claimed by a custom argument resolver contribute
+none of these inferred failures. `ProblemSchema` describes what
 LaraFly *actually* returns — RFC 9457's members **plus** Firefly's `code`, `category`, `severity` and `errors` —
 with the `category` and `severity` enumerations read straight off
 `ErrorCategory::cases()`/`ErrorSeverity::cases()`, so a new kernel case appears in the spec on the next generation
 with no edit in this package.
 
-**`#[Controller]` HTML routes are excluded by default.** They are part of the HTTP surface but not JSON API
-operations, and describing one as `application/json` hands a generator a typed client for a response that is a web
-page. `firefly.openapi.include-html` documents them anyway, as `text/html`.
+**`#[Controller]` routes are excluded by default.** Set `firefly.openapi.include-html` to include them. Their
+response contract still comes from the return type: a view or `Htmlable` is `text/html`, an array is JSON, and a
+redirect carries a `Location` header. The controller stereotype does not override the returned value.
 
 ## What an endpoint returns
 
@@ -736,7 +740,7 @@ otherwise get a link that 404s from every page but the root.
 | `firefly.openapi.license.identifier` \| `.url` | `''` | The other two License members. They are mutually exclusive in 3.1, so `identifier` wins where both are set and `url` is dropped rather than emitting an invalid object. |
 | `firefly.openapi.servers` | `[]` | Bare URL strings and/or OpenAPI Server Objects. An entry that is neither — or an object with no `url` — is **dropped**, because it would be invalid under the 3.1 schema and would poison an otherwise-good document. Omitted from the document when empty. |
 | `firefly.openapi.exclude` | `''` | CSV of path **prefixes** left out of the document. Removes them from the spec only; it does not unroute them. |
-| `firefly.openapi.include-html` | `false` | Document `#[Controller]` HTML routes as `text/html` operations. |
+| `firefly.openapi.include-html` | `false` | Include `#[Controller]` routes, deriving response media from their return contract. |
 | `firefly.openapi.security.enabled` | `true` | Emit `components.securitySchemes` and each operation's `security` from `firefly.security.*` — see [What the document says about authentication](#what-the-document-says-about-authentication). Nothing is emitted when `firefly.security.enabled` is off, so this key only matters to an application that **has** security. |
 
 The optional Info Object members live on `DocumentInfo` rather than on `OpenApiProperties`, and its constructor

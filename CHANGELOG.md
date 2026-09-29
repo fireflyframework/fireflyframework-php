@@ -4,6 +4,80 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.10] - 2026-09-29
+
+### Fixed
+
+- **OpenAPI contracts:** derive path-pattern `404` responses and restrict inferred validation `422` responses
+  to typed request bodies. Included page controllers now preserve their actual JSON, HTML or redirect return
+  contract. Browser coverage checks every generated operation, tag, response and component, including nested
+  schemas and keyboard access on phones.
+- **OpenAPI readability:** improve local Swagger text contrast for method and version badges, links, actions,
+  code examples, schema controls and constraints; verify expanded schemas with either system color preference.
+  Normalize native schema buttons and wrap operation controls to prevent phone overflow in WebKit.
+- **Error pages:** shorten paths in symlinked deployments and test harnesses, bound the debug stack before
+  rendering, and group dependency frames behind a native disclosure. Frame summaries stay on one line on desktop and give calls a second line on phones;
+  text contrast meets 4.5:1 in both themes. The production facts grid has no empty colored cells and shows
+  the reference once, with selectable text and an optional clipboard enhancement.
+- **Error URL safety:** validate configured home, sign-in, support and problem-type URLs at construction;
+  reject unsafe schemes, authority-relative paths and interior URL control characters.
+- **Problem documents:** substitute invalid UTF-8 and return a degraded document if encoding or a serialization
+  callback fails. Wildcard, absent and unsupported Accept types receive problem+json while error-page
+  fallback is enabled. Laravel's own validation, authentication and carried-response exceptions retain
+  their native handling.
+- **Migration:** problem `instance` values now begin with `/`, with unsafe path characters percent-encoded.
+  Clients comparing the old relative path must account for the leading slash.
+
+- **Admin listings:** replace competing column rules with typed columns, fixed table layout and explicit
+  colgroups. Route paths no longer collapse into stacks of characters beside unused space. Rigid column
+  widths include cell padding and allow for Linux header-font metrics, and a bounded table scrollport makes
+  sticky headers work.
+- **Stable paging:** append an ascending identity tiebreak so tied rows cannot move between pages. Clamp
+  stale out-of-range pages to the last page; a SQL-backed data listing may need one additional query.
+
+### Added
+
+- **Route detail:** permalinked, server-rendered route contracts with ordered caller/injected bindings,
+  resolver claims, binding-specific failures, bounded DTO trees, sibling comparison and duplicate warnings.
+  Gated wiring/configuration/API/traffic links, default responses, exception handlers, registered route
+  metadata and collapsed advice provenance make the compiled contract inspectable without running it.
+  `firefly.admin.routes.detail` and `firefly.admin.routes.advice` control the new surface.
+- **Bean explorer:** server-rendered landing/search/focus/module states, native keyboard links, bounded hop
+  columns, exact overflow links, complete paginated catalogue and relations, module coupling metrics,
+  conditions and shortest entry-point chains. Iterative SCC analysis handles deep graphs and self-cycles.
+- **Bean graph truthfulness:** stable competing factory identities across configurations, explicit unresolved
+  ambiguity instead of an arbitrary target, unknown factory scope and exclusion of unbound config DTOs.
+- **Explorer settings:** focus depth/row/node/path/page budgets, starter/module budgets and catalogue page size.
+  The legacy `firefly.admin.graph.max-nodes` is still parsed but no longer controls drawing; **0 no longer
+  forces a list**. Use the catalogue or relation tables for tabular exploration.
+
+- **Error navigation:** configured sign-in on 401, retry on GET/HEAD 5xx, and home/support links where
+  configured. Production ledes retain safe authored details and 405 pages name the allowed methods.
+- **Error configuration:** documented `max-frames`, `home`, `sign-in`, `support`, `actions`, `copy-button`,
+  `authored-detail`, `problem-fallback` and `problem.type-uri` settings in the reference and module guide.
+- **RFC 9457 type:** `about:blank` by default, a code-derived URI when an HTTP(S) base is configured, or an
+  omitted member when the setting is empty. Omitting `type` does not revert the corrected `instance` path.
+
+- **Shared listing controls:** server-side paging, sorting and searching with validated, bookmarkable URL
+  state across routes, beans, conditions, scheduled tasks, configuration, runtime and data listings. Paired
+  listings preserve each other's state, and row-count controls have submit buttons for use without JavaScript.
+- **Table settings:** `firefly.admin.table.page-size`, `page-sizes`, `max-page-size`, `max-height`, `density`
+  and `remember-scroll`. The offered size set is closed; the data browser applies its own bounds in series.
+  Auto-refresh keeps URL state; optional per-URL scroll restoration applies on reload and back/forward.
+
+### Changed
+
+- **`packages/admin` — the data browser's rows-per-page control offers the dashboard's set, and a `?size=`
+  outside it is refused rather than lowered.** `/firefly/data` used to draw its own `<select>` with `10`
+  among the literal options and cap whatever arrived; its listing query is now parsed against the shared
+  `firefly.admin.table.page-sizes` narrowed by `firefly.admin.data.max-page-size`, and that set is **closed**
+  — a size that is not a member falls back to `firefly.admin.data.page-size` instead of being clamped to the
+  nearest permitted one. So `?size=300` renders 25 rows rather than 200, and **a bookmark holding `?size=10`
+  renders 25 rather than 10**, because ten is no longer offered unless a deployment says so
+  (`FIREFLY_ADMIN_TABLE_PAGE_SIZES=10,25,50,100,200`, or `FIREFLY_ADMIN_DATA_PAGE_SIZE=10`, which forces its
+  own default into the set). `firefly.admin.data.max-page-size` is a plain cap only for a direct
+  `Firefly\Admin\Data\DataBrowser::list()` call, which is parsed against no query string.
+
 ## [26.09.9] - 2026-09-27
 
 ### Changed

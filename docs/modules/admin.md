@@ -35,7 +35,7 @@ is a worse menu than four short ones.
 | Runtime | Metrics | `/firefly/metrics` | `metrics` | Counters, timers and gauges, with their current measurements |
 | Runtime | HTTP traffic | `/firefly/http` | `httpexchanges` | The most recent requests this application served |
 | Wiring | Beans | `/firefly/beans` | `beans` | Every bean the container registered, with the stereotype that declared it |
-| Wiring | **Bean graph** | `/firefly/graph` | `beans` | How your beans depend on one another — see [Bean Graph](bean-graph.md) |
+| Wiring | **Bean explorer** | `/firefly/graph` | `beans` | How your beans depend on one another — see [Bean Explorer](bean-graph.md) |
 | Wiring | Conditions | `/firefly/conditions` | `conditions` | Which auto-configurations applied, and which backed off because you supplied your own |
 | Wiring | Routes | `/firefly/mappings` | `mappings` | The compiled route table the dispatcher serves from |
 | Wiring | Scheduled | `/firefly/scheduled` | `scheduledtasks` | Methods registered by `#[Scheduled]`, with the cron or interval that drives them |
@@ -280,7 +280,21 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 | `firefly.admin.title` | `app.name` (else `'LaraFly'`) | The name shown in the sidebar and the page title. |
 | `firefly.admin.refresh-seconds` | `10` | How often a live page reloads itself. **Floored at 2**: a shorter interval reloads faster than the page renders, so the countdown would never finish and the dashboard would hammer the application it is meant to be observing. |
 | `firefly.admin.theme` | `'auto'` | `auto` \| `light` \| `dark`. Anything unrecognised falls back to `auto` (follow the operating system) rather than rendering unstyled. |
-| `firefly.admin.graph.max-nodes` | `220` | The ceiling past which the [bean graph](bean-graph.md) lists relations instead of drawing them. Clamped to a minimum of `0`, which suppresses the diagram entirely. |
+| `firefly.admin.graph.max-nodes` | `220` | Deprecated compatibility value. The [bean explorer](bean-graph.md) uses bounded focus views; this key, including `0`, no longer controls rendering. |
+| `firefly.admin.graph.focus.depth` | `2` | Hops per side, clamped 1–4. |
+| `firefly.admin.graph.focus.max-rows` | `16` | Column height budget, clamped 4–60. |
+| `firefly.admin.graph.focus.max-nodes` | `72` | Drawing budget, clamped 8–300. |
+| `firefly.admin.graph.focus.max-paths` | `3` | Entry-point chains, clamped 0–10; 0 hides chains. |
+| `firefly.admin.graph.focus.page-size` | `50` | Relation rows, clamped 10–500 and capped by shared tables. |
+| `firefly.admin.graph.starters` | `12` | Starter entries, clamped 1–50. |
+| `firefly.admin.graph.modules.max-nodes` | `40` | Module overview limit, clamped 0–200; 0 lists only. |
+| `firefly.admin.beans.page-size` | `50` | Complete catalogue rows, clamped 10–500 and capped by shared tables. |
+| `firefly.admin.table.page-size` | `50` | Rows per page on every listing. Always a member of `page-sizes` — a default the set does not contain is added to it, because a `<select>` whose value has no `<option>` resizes the table on the next submit. |
+| `firefly.admin.table.page-sizes` | `'25,50,100,200'` | The sizes the rows-per-page control offers. **A closed set, not a cap**: a `?size=` nobody offered falls back to the default rather than being silently clamped. |
+| `firefly.admin.table.max-page-size` | `200` | The ceiling an offered size may reach, itself capped at **1000**. |
+| `firefly.admin.table.max-height` | `'68vh'` | The height of the scroll box a table lives in, published as `--table-vh`. **This is what makes the sticky header work** — see below. `none` turns the scrollport off. Refused unless it is `none` or a CSS length, because the value is interpolated into the dashboard's stylesheet. |
+| `firefly.admin.table.density` | `'comfortable'` | `comfortable` (14px/8px cell padding) or `compact` (10px/5px), roughly a third more rows per screen. Also feeds the rigid column widths, which are `calc(<n>ch + 2 * var(--row-x))`. |
+| `firefly.admin.table.remember-scroll` | `true` | Save table scroll offsets per URL in `sessionStorage`, restoring them on reload and back/forward navigation. Ordinary navigation opens at the top. |
 | `firefly.admin.pages.exclude` | `''` | CSV of page slugs to refuse. This is a **refusal, not a menu preference**: an excluded page is hidden *and* its URL 404s — hiding `env` from the menu achieves nothing if the URL still answers. Use `overview` for the index page. |
 | `firefly.admin.datasource.probe` | `true` | Whether the datasource page may **open** a configured connection to report that it answers. |
 | `firefly.admin.datasource.wizard` | **`false`** | The connection wizard. Off by default and refused in production — see [below](#the-connection-wizard). |
@@ -290,6 +304,72 @@ Under PHP-FPM every request is a different process, and three pages inherit that
 The `firefly.admin.data.*` keys are documented separately, in [Data Browser](data-browser.md#configuration-fireflyadmindata),
 because the browser is gated independently of everything above: `firefly.admin.enabled` does **not** switch it on,
 and neither does `app.debug`.
+
+## The listing tables
+
+Every page that draws a list of rows — routes, beans, conditions, scheduled tasks, OAuth2 clients, the
+environment, config properties, caches, loggers, metrics, HTTP traffic and the
+[data browser](data-browser.md) — renders through one system, and it replaced six competing ones.
+
+**Columns are typed, and the type decides the width.** A column declares what it holds — a pill, a figure, a
+timestamp, a short token, a path, a qualified name, prose, one clipped line, a bar, a set of controls — and
+the layout is computed from those declarations into an explicit `<colgroup>` under `table-layout:fixed`.
+Rigid kinds are sized from their own alphabet (seven and a half characters is `DELETE` with room), and the
+rest share what is left in proportion to how much a reader needs.
+
+!!! danger "A `<col>` width includes the cell padding, and that is where `DELETE` went"
+    `box-sizing:border-box` applies to table columns like everything else, so `width:7.5ch` on a padded
+    cell is seven and a half characters **minus** both paddings — about 34px of content on the dashboard's
+    own 14px padding. The verb clipped, on the Routes page, which is the page this whole area was rebuilt
+    from. Every rigid width is emitted as `calc(<n>ch + 2 * var(--row-x))`, and `--row-x` comes from
+    `density` so the arithmetic follows the configuration.
+
+**A path and a qualified name elide in opposite directions.** `/api/v1/orgs/{o}/workspaces` and
+`App\Http\Controllers\Api\V1\WorkspaceController` are the same length in the same font and they are
+discriminated at opposite ends: a path by its head, so it clips at the end; a qualified name by its leaf, so
+it is drawn on two lines with the short name on top and it is the *prefix* that may go. The qualified kind
+takes its separator as a parameter, which is why a dotted config key, a meter name and a class name all get
+the same cell instead of three mechanisms.
+
+!!! note "`overflow-wrap: anywhere` is what collapsed the Path column"
+    Per CSS Text 3, `anywhere` and `break-word` both break an unbreakable token at render time, but
+    `anywhere` also **contributes its break opportunities to min-content sizing**. Under auto layout — which
+    is what every table here had, because none of them declared a `table-layout` — a path's minimum width
+    therefore became one glyph, the engine gave it three characters, and `/greetings/{name}` rendered as six
+    stacked lines beside 1100px of empty column. With seven routes on the page.
+
+**The header stays put.** `thead th` has carried `position:sticky` for as long as this dashboard has
+existed and it had never once worked: the wrapper it sticks inside had `overflow-x:auto` and no height, so
+it never scrolled — `main` did — and a sticky element does not follow an ancestor's scrollport. Giving the
+wrapper `max-height: var(--table-vh)` is the whole fix. The rule under the header is an inset box-shadow
+rather than a border, because under `border-collapse:collapse` a border belongs to the table's border grid
+and stays behind with the rows.
+
+**Paging, sorting and searching happen on the server.** They used to happen in the browser: the complete
+list was rendered into every response and a keyup handler hid rows, which is fine for eleven rows, is a
+janky filter and a large response at two hundred, and produces a "12 of 207" readout that is a statement
+about the DOM rather than about the application. Each listing now reads `page`, `size`, `sort`, `dir` and
+`q` from the URL with every bound applied — the page clamped and never redirected, the size a member of the
+offered set, the sort column one the page actually draws, the term trimmed and length-capped — and every
+link on the page is rebuilt from those parsed values rather than concatenated from carried strings.
+
+Two listings on one page (Conditions, Config properties) each take a **qualifier**, so their parameters are
+`pos_page` and `neg_page` — the same shape Spring gives a controller that resolves two `Pageable`s with
+`@Qualifier` — and each carries the other's position, so paging one never silently resets the other.
+
+!!! danger "A sort with no tiebreak is a listing that loses rows"
+    Ordering by a column with duplicate values leaves the tied rows in whatever order the source finds
+    convenient, and it is free to find a different one convenient for the query behind page 1 and the query
+    behind page 2: a row is then shown on both pages and another on neither, and the reader sees a table
+    that is missing records which are really there. Every listing here appends a second, **always
+    ascending** key over something unique. Ascending even under a descending sort, because it is an identity
+    rather than a second ordering.
+
+Because all of it lives in the URL, it composes with the ten-second **Auto** refresh for free: the refresh
+is a full `window.location.reload()`, so a reader on page 7 of a sorted, searched listing comes back to
+page 7 of the same listing. The only thing a reload cannot restore is the scroll position *inside* a table,
+now that tables scroll in their own box, so that is saved per URL in `sessionStorage` and restored on reload or back/forward navigation when
+`firefly.admin.table.remember-scroll` is enabled. Ordinary navigation starts at the top.
 
 ## The datasource page
 
@@ -397,9 +477,62 @@ container image, and a web form that edits the file holding your database passwo
   [`HealthDetailsAuthorizer`](actuator.md#who-may-read-the-component-details); the dashboard never consults it,
   because its URL is already the whole security boundary.
 
+- **A listing's search box searches what the page DRAWS, not the record behind it.** A column the table does
+  not show is not searched, because a search that matched on a hidden value would answer a question about
+  something the reader cannot see. Add the column to see it.
+- **`?page=` past the end of a SQL-backed listing costs one extra query.** The in-memory listings know the
+  total before they slice and clamp for free; the data browser does not, so it fetches the last page after
+  finding the requested one empty. Only a hand-edited URL or a stale bookmark reaches it.
+
 ---
 
 See also: [Actuator](actuator.md) for the endpoints themselves, [Observability](observability.md) for the metrics
 and HTTP-exchange stores the dashboard renders, [Bean Graph](bean-graph.md) for the one page that is more than
 a table, and [Data Browser](data-browser.md) for the Django-style view over your own repositories — which is
 **off by default and does not inherit `firefly.admin.enabled`**.
+
+## Inspecting a route
+
+Select a path in Routes to open its contract at
+`/firefly/mappings?route=GET%20%2Forders%2F%7Bid%7D#route-detail`.
+The ordinary link works without JavaScript; the optional focus enhancement moves to the route heading.
+Search, sorting, page and size travel with the link and the return link. No detail manifests, resolver
+claims, advice or wiring joins are read on an ordinary listing request.
+
+The page reads the booted Web `RouteManifest`, without widening `/actuator/mappings`. It shows handler
+arguments in signature order, including their wire keys, types, required flags, **compiled attribute
+defaults** and validation flags. A missing type means unrecorded (possibly union, intersection or untyped);
+a null default is not evidence of nullability. Resolver claims take precedence over compiled kinds:
+`#[AuthenticationPrincipal]` can compile as `query` but is shown as injected, alongside services.
+Inspection calls only `supports()` through `resolverFor()` and never executes `resolve()` or the handler.
+
+Possible failures are tied to each unclaimed caller binding. Required path/query/header/file inputs may
+produce `MISSING_PARAMETER`; primitive conversion and multi-file arrays may produce
+`TYPE_CONVERSION_ERROR`. A path pattern mismatch is 404 with its effective code and sentence. Bodies may
+produce `MALFORMED_BODY` or `INVALID_REQUEST`; a loadable DTO adds `UNBINDABLE_BODY`, and a typed `valid`
+body adds a possible 422. These are framework defaults: controller-local and global exception handlers
+can replace responses. Required body/service arguments do not imply a missing-parameter failure.
+
+DTO shapes prefer the compiled `dtos` table and fall back to legacy property names. Native disclosures
+keep the first two levels open, indentation is bounded, recursive references terminate, and a display
+budget limits very large trees. On phones the binding table scrolls horizontally inside its own region.
+The success status is a default; returned responses can override it. HTML stereotypes are declaration metadata, not media-type guarantees. In both cases the returned value
+and Accept determine the response: a Controller can return JSON data and a RestController can return HTML.
+Older manifests may omit the stereotype flag.
+
+Controller siblings appear near the heading with comparison markers. Duplicate verb/path registrations
+are marked **Shadowed** in the list and shown in manifest order on the detail page; the last wins.
+Related links respect each destination's page and endpoint gates. Configuration links identify known
+injected configuration collaborators, never request DTOs. The API reference link uses the actual registered
+viewer route, without guessing an operation fragment. HTTP traffic and Metrics remain application-wide.
+
+The collapsed advice section shows available plan provenance and interceptor binding state: **LIVE**
+means bound, **INERT** means explicitly allowed to be absent, and **UNBOUND** can prevent proxy creation.
+A transactional-only cache asks for recompilation. Declared settings and meter names are shown without
+claiming per-route measurements. Laravel metadata is read from its public route collection with normalized
+URIs and domain checks, without dispatching synthetic requests. No security authorization verdict is inferred.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `firefly.admin.routes.detail` | `true` | Offer detail links; false hard-404s every `?route=` URL. |
+| `firefly.admin.routes.advice` | `true` | Read and render the collapsed advice section. False omits it entirely. |

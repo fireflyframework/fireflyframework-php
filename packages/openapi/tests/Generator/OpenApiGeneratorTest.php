@@ -152,8 +152,8 @@ it('documents 422 only where a binding carries #[Valid], and 400 only where bind
     expect($statuses($create))->toBe(['201', '400', '422', 'default'])
         // A bool query parameter must be coerced out of the wire's string, so 400 is reachable.
         ->and($statuses($show))->toBe(['200', '400', 'default'])
-        // A single `string` path variable cannot fail binding at all — no phantom 400.
-        ->and($statuses($cancel))->toBe(['204', 'default'])
+        // The string needs no coercion, but its UUID pattern can reject the request with 404.
+        ->and($statuses($cancel))->toBe(['204', '404', 'default'])
         ->and($cancel[204])->toBe(['description' => 'No content.']);
 });
 

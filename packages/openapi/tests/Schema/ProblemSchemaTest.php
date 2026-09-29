@@ -6,7 +6,11 @@ use Firefly\Kernel\Error\ErrorCategory;
 use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Kernel\Error\ErrorSeverity;
 use Firefly\Kernel\Error\FieldError;
+use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
 use Firefly\OpenApi\Schema\ProblemSchema;
+use Firefly\Web\Error\ProblemMapper;
+use Firefly\Web\Exception\ProblemDetailsRenderer;
+use Illuminate\Http\Request;
 
 /**
  * The error component is only worth anything if it describes what the framework REALLY sends, so the tests
@@ -50,6 +54,41 @@ it('describes every optional member ErrorResponse can add', function () {
     $undocumented = array_values(array_diff(array_keys($payload), array_keys($properties)));
 
     expect($undocumented)->toBe([], 'ErrorResponse emits members the problem schema does not describe');
+});
+
+/**
+ * The two RFC 9457 URI members, held against the document the framework really publishes.
+ *
+ * For one release this component said `type` was "OPTIONAL here where the RFC gives it a default" and that
+ * `instance` "carries a request PATH rather than a URI reference", and both halves outlived by one commit
+ * the conformance pass that made them false: ProblemDetailsRenderer emits `type` on EVERY document
+ * (`about:blank` unless `firefly.web.problem.type-uri` names a base) and `instance` is the root-relative
+ * reference ProblemMapper::instanceFor() builds. A description here is not decoration — it is printed into
+ * every generated openapi.json and into the docs of every generated client — and it is the one surface in
+ * this wave that no prose guard can read, because it is PHP. So it is asserted against the renderer's real
+ * output rather than against a sentence.
+ */
+it('describes `type` and `instance` as the URI references the renderer really publishes', function () {
+    /** @var array<string, array<string, string>> $properties */
+    $properties = ProblemSchema::schema()['properties'];
+
+    /** @var array<string, mixed> $published */
+    $published = json_decode((string) (new ProblemDetailsRenderer)->render(
+        new ResourceNotFoundException('Order 42 not found'),
+        Request::create('/api/orders/42'),
+    )->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($published)->toHaveKey('type')
+        // Emitted by default, which is why the description may not go on calling the member one a caller
+        // gets only when something explicitly passes it.
+        ->and($published['type'])->toBe('about:blank')
+        ->and($properties['type']['description'])->toContain('about:blank')
+        ->and($properties['type']['format'])->toBe('uri-reference')
+        // A URI reference on both sides of the contract, and root-relative — not the bare path.
+        ->and($published['instance'])->toBe(ProblemMapper::instanceFor(Request::create('/api/orders/42')))
+        ->and($properties['instance']['format'])->toBe('uri-reference')
+        ->and($properties['instance']['description'])->toContain('root-relative')
+        ->and($properties['instance']['description'])->toContain('instanceFor');
 });
 
 /**

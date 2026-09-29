@@ -75,6 +75,29 @@ it('builds from a FireflyException', function () {
         ->and($r->errors)->toBe([]);
 });
 
+it('carries an RFC 9457 `type` through the same seam as every other renderer-supplied member', function () {
+    // The members only a renderer knows arrive as arguments here — `instance`, `traceId`, `timestamp`,
+    // `correlationId` and §3.1.1's `type` — so there is ONE construction site for the published document.
+    // A renderer that re-declared this value object to set a single field would have a default for every
+    // other member, and the day a member is added to this class it would vanish from every document that
+    // site builds, in silence, with nothing to fail.
+    $typed = ErrorResponse::fromException(
+        new ResourceNotFoundException('Order 42 not found'),
+        instance: '/orders/42',
+        type: 'https://api.example.test/problems/resource-not-found',
+    )->toArray();
+
+    $untyped = ErrorResponse::fromException(new ResourceNotFoundException('Order 42 not found'))->toArray();
+
+    expect($typed['type'])->toBe('https://api.example.test/problems/resource-not-found')
+        // The member sits where toArray() writes it — after `detail`, before `instance` — whatever order
+        // the arguments arrived in, which is the reason the argument could be appended at all.
+        ->and(array_keys($typed))->toBe(['status', 'title', 'code', 'category', 'severity', 'detail', 'type', 'instance'])
+        // And nothing supplied means nothing published: the member stays optional, so a caller that never
+        // names it still gets the pre-9457 document byte for byte.
+        ->and($untyped)->not->toHaveKey('type');
+});
+
 it('omits correlationId when nothing supplied one, and never lets an extension forge it', function () {
     $plain = ErrorResponse::fromException(new ResourceNotFoundException('Order 42 not found'))->toArray();
 

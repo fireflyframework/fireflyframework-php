@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Firefly\Config\Config;
+use Firefly\Kernel\Error\FieldError;
+use Firefly\Kernel\Exception\Business\ConflictException;
 use Firefly\Kernel\Exception\Business\PaymentRequiredException;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Kernel\Exception\Business\ValidationException;
 use Firefly\Kernel\Exception\Infrastructure\ServiceUnavailableException;
 use Firefly\Web\Error\ErrorPageSettings;
 use Firefly\Web\Error\ProblemMapper;
@@ -13,7 +16,10 @@ use Firefly\Web\Filter\CorrelationIdFilter;
 use Firefly\Web\Trace\TraceContext;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\BackedEnumCaseNotFoundException;
+use Psr\Log\AbstractLogger;
 use Symfony\Component\ErrorHandler\Error\FatalError;
+use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -33,7 +39,11 @@ it('renders a FireflyException as 404 application/problem+json', function () {
         ->and($payload['code'])->toBe('RESOURCE_NOT_FOUND')
         ->and($payload['category'])->toBe('business')
         ->and($payload['detail'])->toBe('Account 42 not found')
-        ->and($payload['instance'])->toBe('accounts/42');
+        // RFC 9457 §3.1.5: `instance` is a URI reference, and a RELATIVE one resolves against the document's
+        // base URI — so `accounts/42` served from /accounts/42 identifies /accounts/accounts/42. One
+        // character, and the member stops identifying the occurrence it exists to identify. Spring's
+        // ProblemDetail sets it from the request URI for the same reason.
+        ->and($payload['instance'])->toBe('/accounts/42');
 });
 
 it('converts a generic Throwable to a 500 problem+json', function () {
@@ -207,6 +217,28 @@ it('leaves an author\'s abort(404, …) sentence alone while replacing the route
         ->and($router->getMessage())->toBe(ProblemMapper::NOTHING_HERE);
 });
 
+it('keeps a model class and a primary key out of `detail` when Laravel rewrote the 404 itself', function () {
+    // The router is not the only source of a generated 404. Handler::prepareException() turns a
+    // ModelNotFoundException — the ordinary route-model-binding miss, the most common 404 an application
+    // has — into `new NotFoundHttpException($e->getMessage(), $e)` before renderViaCallbacks() is reached,
+    // so this document was publishing an application FQCN and a row id to whoever followed a stale link.
+    $response = (new ProblemDetailsRenderer)->render(
+        new NotFoundHttpException('No query results for model [App\Models\Order] 42'),
+        Request::create('/orders/42'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true);
+
+    expect($response->getStatusCode())->toBe(404)
+        ->and($payload['detail'])->toBe(ProblemMapper::NOTHING_HERE)
+        // Asserted against the RAW body too: a sentence smuggled into another member is the same leak.
+        ->and((string) $response->getContent())->not->toContain('Models')
+        ->and(ProblemMapper::toFireflyException(
+            new NotFoundHttpException((new BackedEnumCaseNotFoundException('App\Enums\Status', 'pending'))->getMessage()),
+        )->getMessage())->toBe(ProblemMapper::NOTHING_HERE);
+});
+
 it('spreads a FireflyException\'s extension members and title into the document', function () {
     $response = (new ProblemDetailsRenderer)->render(
         (new PaymentRequiredException('The Team edition includes up to five workers.', 'EDITION_LIMIT'))
@@ -250,4 +282,428 @@ it('falls back to the correlation id, and writes no trace header, when there is 
     expect($body['traceId'])->toBe('corr-42')
         ->and($body['correlationId'])->toBe('corr-42')
         ->and($response->headers->has('X-Trace-Id'))->toBeFalse();
+});
+
+/*
+ * THE ERROR HANDLER MUST NOT FAIL WHILE HANDLING THE ERROR. json_encode with JSON_THROW_ON_ERROR raises out
+ * of render() on any byte that is not valid UTF-8, and those bytes arrive on this path as a matter of
+ * routine: a driver message quoting a latin-1 column, a request header echoed into an extension member, a
+ * file name off a non-UTF-8 filesystem. What the caller got was not a worse document — it was NO document,
+ * a blank 500 from the web server, with the real failure buried under a JsonException.
+ */
+it('substitutes an invalid byte rather than throwing out of the renderer', function () {
+    $broken = (new ConflictException("caf\xE9 is closed", 'CAFE_CLOSED'))->withExtensions(['who' => "ada\xB1\x31"]);
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings(disclose: true)))->render($broken, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($response->headers->get('Content-Type'))->toBe('application/problem+json')
+        ->and($payload['code'])->toBe('CAFE_CLOSED')
+        // Substituted, not dropped: the document still describes the failure it was built for.
+        ->and($payload['detail'])->toContain('is closed')
+        ->and($payload['who'])->toContain('ada');
+});
+
+it('falls back to a minimal document rather than raising when a member cannot be encoded at all', function () {
+    // INF is the case JSON_INVALID_UTF8_SUBSTITUTE does not cover: a float an application put in an
+    // extension member at the throw site. The document that comes back is smaller and still true.
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]);
+
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-77');
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, $request);
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['status'])->toBe(409)
+        ->and($payload['title'])->toBe('Conflict')
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        // SMALLER, NOT CONTRADICTORY. A document whose status and code say business conflict while its
+        // category says `internal` is one no client can branch on twice and get the same answer, and the
+        // real values are plain strings ErrorResponse wrote — they can never be why the encode failed.
+        ->and($payload['category'])->toBe('business')
+        ->and($payload['severity'])->toBe('warning')
+        // The authored sub-500 sentence survives too: ProblemMapper's disclosure gate had already cleared
+        // it, so replacing it with the opaque one would withhold nothing and lose everything.
+        ->and($payload['detail'])->toBe('The ledger disagrees.')
+        // And the degraded body is still correlatable, which is the one action it exists to make possible.
+        ->and($payload['traceId'])->toBe('corr-77')
+        ->and($payload['correlationId'])->toBe('corr-77')
+        // Root-relative here too, for RFC 9457 §3.1.5's reason — see the first test in this file. The
+        // degraded document carries the SAME member the healthy one would have carried, which is the whole
+        // promise minimal() makes: it diffs against the full document member for member.
+        ->and($payload['instance'])->toBe('/api/x')
+        ->and($payload['timestamp'])->toBeString()
+        // THE MEMBER STAYS AND SAYS WHAT IT IS. Deleting it published a document a healthy one could not
+        // be told apart from, and took every OTHER extension member down with it — including `allowed`,
+        // which ProblemMapper itself publishes on a 405. `INF` rather than `float`, because `float` is the
+        // one true thing about this value that helps nobody.
+        ->and($payload['ratio'])->toBe('INF')
+        // And it is LAST, after `timestamp`, exactly where ErrorResponse::toArray() puts the open
+        // namespace in a healthy document.
+        ->and(array_key_last($payload))->toBe('ratio');
+});
+
+it('keeps every extension member that was never in question, and names only the one that was', function () {
+    // The real shape of the failure: an application hangs three pieces of context off a throw site and
+    // exactly ONE of them is unencodable. Dropping the namespace wholesale lost the tenant and the order
+    // — the two members that make the failure legible — to pay for the one nobody could read.
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions([
+        'tenant' => 'acme',
+        'attempts' => 3,
+        'allowed' => ['GET', 'POST'],
+        'balance' => fopen('php://memory', 'r'),
+    ]);
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($payload['tenant'])->toBe('acme')
+        ->and($payload['attempts'])->toBe(3)
+        ->and($payload['allowed'])->toBe(['GET', 'POST'])
+        // get_debug_type()'s spelling, which is ConfigPropsEndpoint::value()'s answer to the same question:
+        // naming the type never calls the value's own code, and calling the value's own code is what threw.
+        ->and($payload['balance'])->toBe('resource (stream)');
+});
+
+it('reports the throwable it swallowed, with the document\'s own reference, when an extension member cannot be encoded', function () {
+    // THE ARM THAT USED TO FAIL UNOBSERVABLY. `catch (Throwable) { $json = false; }` put an arbitrary
+    // application exception into a pair of braces and published a degraded document with no marker, no
+    // header and no log line — so an operator whose application was losing its extension members from
+    // every problem document it published had no way to learn that it was happening, or why.
+    $log = new class extends AbstractLogger
+    {
+        /** @var list<array{level: mixed, message: string, context: array<string, mixed>}> */
+        public array $lines = [];
+
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            $this->lines[] = ['level' => $level, 'message' => (string) $message, 'context' => $context];
+        }
+    };
+
+    $thrower = new class implements JsonSerializable
+    {
+        public function jsonSerialize(): mixed
+        {
+            throw new RuntimeException('the accessor could not read the balance either');
+        }
+    };
+
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-99');
+
+    $renderer = new ProblemDetailsRenderer(new ErrorPageSettings, $log);
+    $response = $renderer->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['balance' => $thrower]),
+        $request,
+    );
+
+    $cause = $log->lines[0]['context']['exception'] ?? null;
+
+    expect($log->lines)->toHaveCount(1)
+        ->and($log->lines[0]['level'])->toBe('error')
+        ->and($log->lines[0]['message'])->toContain('degraded')
+        // The cause itself, under the key PSR-3 reserves for it — so the class, the sentence and the trace
+        // all reach the log, and none of them reaches the caller.
+        ->and($cause)->toBeInstanceOf(Throwable::class)
+        ->and($cause instanceof Throwable ? $cause->getMessage() : '')->toContain('the accessor could not read the balance')
+        // And the document's own reference, which is the only thing that joins this line to the body a
+        // person is holding. A log line an operator cannot reach from the response is half a record.
+        ->and($log->lines[0]['context']['reference'])->toBe('corr-99')
+        ->and(json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR))
+        ->toHaveKey('traceId', 'corr-99');
+});
+
+it('says nothing, and still answers, when the document encodes cleanly', function () {
+    $log = new class extends AbstractLogger
+    {
+        /** @var list<string> */
+        public array $lines = [];
+
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            $this->lines[] = (string) $message;
+        }
+    };
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings, $log))
+        ->render(new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'), Request::create('/api/x'));
+
+    // The happy path is the overwhelmingly common one: a line per rendered problem would drown the line
+    // that means something.
+    expect($log->lines)->toBe([])
+        ->and($response->getStatusCode())->toBe(409);
+});
+
+it('still answers with a document when the logger itself throws', function () {
+    // The fix must not reintroduce the bug one layer up. The logger is a live collaborator on a failing
+    // box — a full disk, a channel whose endpoint is the thing that went down — and a throw from the
+    // reporting call would escape render() and produce exactly the blank 500 the encoder was made total
+    // to prevent.
+    $log = new class extends AbstractLogger
+    {
+        /**
+         * @param  array<string, mixed>  $context
+         */
+        public function log(mixed $level, string|Stringable $message, array $context = []): void
+        {
+            throw new RuntimeException('the log channel is down too');
+        }
+    };
+
+    $response = (new ProblemDetailsRenderer(new ErrorPageSettings, $log))->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['ratio' => INF]),
+        Request::create('/api/x'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($payload['ratio'])->toBe('INF');
+});
+
+it('falls back to a minimal document when an extension member\'s own jsonSerialize() throws', function () {
+    // THE CASE JSON_THROW_ON_ERROR DOES NOT REACH. json_encode does not merely refuse an object — it CALLS
+    // the object's code, and whatever that code raises comes out of json_encode with no error state set
+    // and no JsonException in it, so `catch (JsonException)` let it straight through render(). Extension
+    // members are `mixed` and chosen at the throw site, so an Eloquent model under preventLazyLoading or
+    // any accessor that reads the database is a realistic member — and it is likeliest to throw exactly
+    // when the database is the thing that already failed, i.e. while this renderer describes that failure.
+    $thrower = new class implements JsonSerializable
+    {
+        public function jsonSerialize(): mixed
+        {
+            throw new RuntimeException('the accessor could not read the balance either');
+        }
+    };
+
+    $impossible = (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))
+        ->withExtensions(['balance' => $thrower]);
+
+    $request = Request::create('/api/x');
+    $request->headers->set(CorrelationIdFilter::HEADER, 'corr-88');
+
+    $response = (new ProblemDetailsRenderer)->render($impossible, $request);
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['status'])->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($payload['category'])->toBe('business')
+        ->and($payload['detail'])->toBe('The ledger disagrees.')
+        // Still correlatable, which is the one action the degraded document exists to keep possible.
+        ->and($payload['traceId'])->toBe('corr-88')
+        // The member is NAMED, not deleted — get_debug_type()'s answer for an anonymous class is the
+        // interface it implements. What the thrower SAID is an internal detail and stays out.
+        ->and($payload['balance'])->toBe('JsonSerializable@anonymous')
+        ->and((string) $response->getContent())->not->toContain('accessor could not read');
+});
+
+it('keeps the field errors, and drops only the rejected value, when a rejected value cannot be encoded', function () {
+    // FieldError::$rejectedValue is `mixed` — literally whatever the client sent, since the validators fill
+    // it with Arr::get($data, $field) off the decoded body — so a 422 is a real route into the fallback,
+    // and json_decode('{"ratio": 1e999}') is float(INF), i.e. any caller can reach it by posting a number.
+    // Two things must survive that. The category, because a 422 saying `category: internal` sends a
+    // generated client branching on `category == 'validation'` down the wrong arm. And the errors
+    // THEMSELVES, because sending it down the RIGHT arm with nothing to render is the same bug wearing a
+    // different hat — and the second field below, whose rejected value is an ordinary string, was never
+    // implicated in the failure at all.
+    $invalid = new ValidationException('Validation failed', [
+        new FieldError('ratio', 'must be a number', rejectedValue: INF),
+        new FieldError('email', 'must be a valid email address', code: 'EMAIL_INVALID', rejectedValue: 'nope', constraint: 'Email'),
+    ]);
+
+    $response = (new ProblemDetailsRenderer)->render($invalid, Request::create('/api/x'));
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($payload['status'])->toBe(422)
+        ->and($payload['category'])->toBe('validation')
+        ->and($payload['code'])->toBe('VALIDATION_ERROR')
+        ->and($payload['detail'])->toBe('Validation failed')
+        // The member stays, and every declared-string part of both entries with it.
+        ->and($payload['errors'])->toBe([
+            ['field' => 'ratio', 'message' => 'must be a number'],
+            ['field' => 'email', 'message' => 'must be a valid email address', 'code' => 'EMAIL_INVALID', 'constraint' => 'Email'],
+        ])
+        // `rejectedValue` is the ONLY `mixed` member of a FieldError, so it is the only one that goes —
+        // from both entries, because the renderer cannot know which of them json_encode refused.
+        ->and((string) $response->getContent())->not->toContain('rejectedValue')
+        ->and((string) $response->getContent())->not->toContain('nope')
+        // `errors` stays LAST, where STANDARD_MEMBERS has it, so the degraded document still reads like
+        // the full one to a person diffing the two.
+        ->and(array_key_last($payload))->toBe('errors');
+});
+
+it('answers with a document even when the status itself is the only thing left', function () {
+    // The last branch, exercised directly: whatever the payload holds, the renderer returns valid JSON.
+    $response = (new ProblemDetailsRenderer)->render(
+        (new ConflictException('x', 'X'))->withExtensions(['a' => NAN, 'b' => "\xC3\x28"]),
+        Request::create('/api/x'),
+    );
+
+    expect(json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR))->toBeArray()
+        ->and($response->getStatusCode())->toBe(409);
+});
+
+it('answers an extension member that refers to itself, instead of recursing until the stack goes', function () {
+    // The one way keeping the open namespace could have swapped a failed ENCODE for a failed STACK: an
+    // array that holds itself through a reference is what json_encode reports as "Recursion detected", and
+    // a walk of it with no bound would never come back at all. The depth cap is what makes the walk total.
+    $cycle = ['tenant' => 'acme'];
+    $cycle['self'] = &$cycle;
+
+    $response = (new ProblemDetailsRenderer)->render(
+        (new ConflictException('The ledger disagrees.', 'LEDGER_CONFLICT'))->withExtensions(['context' => $cycle]),
+        Request::create('/api/x'),
+    );
+
+    /** @var array<string,mixed> $payload */
+    $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+    $context = $payload['context'] ?? null;
+
+    // The document comes back, the member is there, and the readable part of it survived the trip down.
+    expect($response->getStatusCode())->toBe(409)
+        ->and($payload['code'])->toBe('LEDGER_CONFLICT')
+        ->and($context)->toBeArray()
+        ->and(is_array($context) ? $context['tenant'] : null)->toBe('acme');
+});
+
+it('identifies the occurrence with a root-relative reference, at every depth and at the site root', function () {
+    $renderer = new ProblemDetailsRenderer;
+
+    $deep = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/api/v1/orders/42/lines/7'))->getContent(), true);
+    $root = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/'))->getContent(), true);
+
+    /** @var array<string,mixed> $deep */
+    /** @var array<string,mixed> $root */
+    expect($deep['instance'])->toBe('/api/v1/orders/42/lines/7')
+        ->and($root['instance'])->toBe('/');
+});
+
+it('cannot publish an `instance` that leaves this origin, whatever request target arrives', function () {
+    // THE LEADING SLASH IS WHAT MADE THIS A SECURITY QUESTION, and it arrived with the conformance pass
+    // above. `$request->path()` does NOT strip a backslash from a REAL request — Symfony refuses one only
+    // inside Request::create(), never in the prepareRequestUri() path a served request takes, which is the
+    // quirk ErrorPageSettings::url()'s docblock spends nine lines on and the reason this case has to build
+    // its request the long way. So a REQUEST_URI of `/\evil.example/phish` answers `\evil.example/phish`.
+    // UNPREFIXED that is harmless: the URL parser's relative state reads the leading `\` as one separator
+    // and resolves it against this origin. PREFIXED it is `/\evil.example/phish`, which enters
+    // special-authority-ignore-slashes state and resolves to https://evil.example/phish — `//host` wearing
+    // a path's clothes, the exact attack ErrorPageSettings::url() exists to refuse. ASCII tab, LF and CR
+    // are the same hazard by the other rule the parser applies before it reads anything: it DELETES all
+    // three, so `/<TAB>/evil.example` IS `//evil.example` by the time a browser looks at it.
+    //
+    // AND `instance` TRAVELS TO THE SAME READERS AS `type`, which is the argument the sibling guard on
+    // firefly.web.problem.type-uri is written on: every API console, IDE HTTP client and documentation
+    // viewer that renders a problem document turns its URI members into links. The HTML page was never
+    // exposed — ErrorPage::retry() runs its own address through ErrorPageSettings::url() and refuses
+    // anything that method alters — so the published JSON is the whole of it, and ProblemMapper is where
+    // the rule belongs because ErrorReport builds the same member from the same call.
+    $renderer = new ProblemDetailsRenderer;
+
+    $published = static function (string $requestUri) use ($renderer): string {
+        $request = Request::createFromBase(new SymfonyRequest([], [], [], [], [], [
+            'REQUEST_URI' => $requestUri,
+            'REQUEST_METHOD' => 'GET',
+            'HTTP_HOST' => 'app.test',
+            'SCRIPT_NAME' => '/index.php',
+            'SCRIPT_FILENAME' => '/index.php',
+        ]));
+
+        /** @var array<string,mixed> $payload */
+        $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), $request)->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $instance = $payload['instance'] ?? null;
+
+        return is_string($instance) ? $instance : '';
+    };
+
+    expect($published('/\\evil.example/phish'))->toBe('/%5Cevil.example/phish')
+        ->and($published("/\t/evil.example/phish"))->toBe('/%09/evil.example/phish')
+        ->and($published("/\n/evil.example/phish"))->toBe('/%0A/evil.example/phish')
+        ->and($published("/\r/evil.example/phish"))->toBe('/%0D/evil.example/phish')
+        // The `//` spelling never got here: Laravel trims the leading slashes off path() before this method
+        // sees it, so it was already a path. Pinned anyway, because the whole point of this case is that a
+        // value which is safe unprefixed is not safe prefixed.
+        ->and($published('//evil.example/phish'))->toBe('/evil.example/phish')
+        // AND THE ENCODING IS NOT A REFUSAL. RFC 3986 admits none of those four in a path segment, so
+        // percent-encoding is the conformant spelling AND keeps the member identifying the occurrence it
+        // was asked about — a fallback to '/' would throw that away on exactly the requests an operator
+        // most wants to see. An ordinary target is untouched.
+        ->and($published('/api/orders/42?include=lines'))->toBe('/api/orders/42');
+
+    // The rule as a rule rather than as six expected strings: do to each answer what a URL parser does
+    // before it reads anything — delete every tab, LF and CR — and no reference this renderer publishes can
+    // open an authority at its second character.
+    foreach ([
+        '/\\evil.example/phish',
+        "/\t/evil.example/phish",
+        "/\n\\evil.example/phish",
+        "/\r/evil.example/phish",
+        '//evil.example/phish',
+        '/\\\\evil.example/phish',
+        "/\t\\evil.example/phish",
+    ] as $target) {
+        $parsed = str_replace(["\t", "\n", "\r"], '', $published($target));
+
+        expect(preg_match('#^/[/\\\\]#', $parsed))->toBe(0, sprintf(
+            '%s published "%s", which a browser resolves off this origin.',
+            var_export($target, true),
+            $parsed,
+        ));
+    }
+});
+
+it('carries about:blank as its problem type by default, the way Spring\'s ProblemDetail does', function () {
+    $payload = json_decode((string) (new ProblemDetailsRenderer)->render(new ResourceNotFoundException('x'), Request::create('/api/x'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload['type'])->toBe('about:blank')
+        // The member leads the document with the other standard ones, whatever extensions arrived.
+        ->and(array_slice(array_keys($payload), 0, 5))->toBe(['status', 'title', 'code', 'category', 'severity']);
+});
+
+it('derives a dereferenceable type from the stable code when the deployment names a base', function () {
+    $renderer = new ProblemDetailsRenderer(ErrorPageSettings::fromConfig(new Config(new Repository([
+        'firefly' => ['web' => ['problem' => ['type-uri' => 'https://api.example.test/problems']]],
+    ]))));
+
+    $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('Order 42 does not exist.', 'ORDER_NOT_FOUND'), Request::create('/api/orders/42'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload['type'])->toBe('https://api.example.test/problems/order-not-found')
+        ->and($payload['code'])->toBe('ORDER_NOT_FOUND')
+        ->and($payload['instance'])->toBe('/api/orders/42');
+});
+
+it('emits no type member at all when a deployment wants the pre-9457 document byte for byte', function () {
+    $renderer = new ProblemDetailsRenderer(ErrorPageSettings::fromConfig(new Config(new Repository([
+        'firefly' => ['web' => ['problem' => ['type-uri' => '']]],
+    ]))));
+
+    $payload = json_decode((string) $renderer->render(new ResourceNotFoundException('x'), Request::create('/api/x'))->getContent(), true);
+
+    /** @var array<string,mixed> $payload */
+    expect($payload)->not->toHaveKey('type');
 });

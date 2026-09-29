@@ -84,6 +84,7 @@ throw (new PaymentRequiredException('The Team edition includes up to five worker
   "category": "business",
   "severity": "warning",
   "detail": "The Team edition includes up to five workers.",
+  "type": "about:blank",
   "field": "workers",
   "limit": 5
 }
@@ -166,8 +167,21 @@ $payload  = $response->toArray(); // omits null/empty optionals
 `firefly/web` ([Web Layer](web.md)) is the concrete renderer this document promised: every
 `FireflyException` thrown while handling a request is turned into an `application/problem+json` response
 by `Firefly\Web\Exception\ProblemDetailsRenderer`, via `ErrorResponse::fromException(...)`, at the
-exception's own `httpStatus()` — the shape is exactly the payload above, produced by the same
-kernel-level `ErrorResponse` this page documents.
+exception's own `httpStatus()` — the same kernel-level `ErrorResponse` this page documents, built by the
+same call.
+
+**The rendered document carries more than the sample above, and every extra member is one only a request can
+supply.** That listing is a kernel call with nothing in hand but an exception and an `instance`; the renderer
+has the request, so it passes `traceId`, `correlationId`, a `timestamp` and RFC 9457 §3.1.1's `type` as well
+— and `type` is on **every** published document (`about:blank` unless `firefly.web.problem.type-uri` says
+otherwise, below), which is the one member the kernel sample above cannot show you, because nothing in it
+sets one. `instance` is the member with a rule of its own: the renderer builds it through
+`Firefly\Web\Error\ProblemMapper::instanceFor()`, which answers a **root-relative** URI reference
+(`/orders/42`, never `orders/42`) — §3.1.5 makes the member a URI *reference*, and a relative one resolves
+against the document's own base URI, so `orders/42` served from `/orders/42` would identify
+`/orders/orders/42`. The four characters that would let the leading slash open an *authority* instead
+(`\`, and the tab, LF and CR a URL parser deletes before it reads anything) are percent-encoded there, so
+the member can never name a different origin however the request target was spelled.
 
 `Firefly\Web\Error\ProblemMapper` owns the rule for turning *any* throwable into that shape, in one place,
 because the HTML page below needs the same answer and two copies of it would eventually tell a browser and a
@@ -192,6 +206,25 @@ client different things about one failure. It has **three** cases, and only the 
     real message stays on the exception, where the log has it beside the same id. When no settings object is
     bound at all — a JSON-only deployment that never constructed one — the default is the **safe** one; an
     absent gate must not mean an open one.
+
+**`firefly.web.problem.type-uri` decides what RFC 9457's `type` says, and it has exactly three positions.**
+§3.1.1 makes an absent `type` *identical* to `about:blank`, which makes emitting it a presentation choice
+rather than a conformance one — and LaraFly makes Spring `ProblemDetail`'s choice, writing `about:blank` out
+by default so a client reading the member always finds a string instead of having to encode the RFC's
+equivalence rule. Point the key at an absolute `http(s)://` base and every document instead carries a
+dereferenceable type derived from the stable `code` — `https://api.example.test/problems/resource-not-found`
+— which is the thing LaraFly can do here that Spring cannot, because that identifier is already on every
+error, in the log line and in the support ticket. Set the key to `''` and the member is omitted entirely:
+the pre-9457 document, byte for byte.
+
+Anything else falls back to `about:blank` rather than to silence, because `''` is a position an operator
+takes deliberately and a typo must not be able to take it for them. The vocabulary is
+`ErrorPageSettings::typeUri()`'s — the two sentinels and an absolute `http(s)://` base, edges trimmed the
+way a URL parser trims them, with a relative base, a `javascript:`/`data:`/`file:` scheme, a
+protocol-relative `//host` and an interior tab, LF or CR all refused. `type` is the one operator-supplied
+URI on this surface that never reaches an `href` on the error page, which is exactly why it needed a guard
+of its own: every API console, IDE HTTP client and documentation viewer that renders a problem document
+turns the member into a link.
 
 Two more things every problem document carries. **The ids — two of them, related and never conflated.**
 **`traceId`** is the id a person quotes: the request's **W3C trace id** when tracing gave it a valid span,
@@ -240,7 +273,7 @@ unreadable for people.
 |---|---|
 | Named `text/html` (or `application/xhtml+xml`) in `Accept` | The HTML error page |
 | Asked for JSON, or is an `XMLHttpRequest` | `application/problem+json` |
-| Sent only a wildcard `Accept` — a bare `curl` | `application/problem+json` |
+| Sent only a wildcard `Accept` — a bare `curl` — or no `Accept`, or named some other type (`application/xml`) | `application/problem+json` |
 | Requested a path under `firefly.web.error-page.json-paths` | `application/problem+json`, whatever it asked for |
 
 The rule is **the client NAMED text/html**, not `acceptsHtml()`. A bare `curl` sends `*/*`, which
@@ -250,6 +283,45 @@ against an API into an HTML page — a worse regression than the bug being fixed
 `json-paths` is the stronger statement and is checked **first**: the Accept header says who is asking, the
 path says what the URL *is*. It defaults to `api/*`, because a developer opening an API URL in a browser
 wants the payload their client will receive, not a styled page telling them the endpoint renders HTML.
+
+That third row is `firefly.web.error-page.problem-fallback` (default `true`), and it covers every caller
+that is **neither a browser nor a JSON client**: a wildcard `Accept`, an absent one, and a caller that named
+a concrete type LaraFly renders no error in — `application/xml`, `text/plain`, `image/png`. The wider rule
+is the consistent one. A `FireflyException` has always been answered with `application/problem+json`
+whatever the `Accept` header said, so catching only the wildcard would hand one XML client a problem
+document for a taxonomy 404 and Laravel's stock HTML page for a router 404. Errors have exactly two shapes
+here: a `MessageConverter` you add for XML converts what a **controller returns**, and neither error
+renderer is wired through it. Set the key to `false` to let all of those callers fall through to Laravel's
+handler instead. Like `json-paths`, it is withdrawn along with the page when
+`firefly.web.error-page.enabled` is `false` — that key means "use Laravel's own error page", so it stops
+LaraFly adding answers rather than changing which answer is given.
+
+**Three exceptions are Laravel's own and LaraFly never answers them**, whatever the table above says:
+`ValidationException`, `AuthenticationException` and `HttpResponseException`. Laravel's handler resolves
+each of them itself immediately after it has consulted LaraFly's renderer, and none of the three is a
+`FireflyException` or carries an HTTP status of its own — so describing them would replace a `422` with its
+field errors, a `401`, or a response the application had already built, with an opaque `500`. A failed
+`$request->validate()` in a LaraFly application behaves exactly as it does in a plain Laravel one.
+
+### RFC 9457, member by member
+
+| Member | Meaning | Published behavior |
+|---|---|---|
+| `type` | Identifies the kind of problem (§3.1.1) | `about:blank` by default; a configured HTTP(S) base derives a URI from the stable code; `''` omits the member. |
+| `title` | Short summary of the problem type (§3.1.2) | The reason phrase or the exception's authored title. |
+| `status` | Advisory HTTP status (§3.1.3) | An integer matching the response status. |
+| `detail` | Explanation of this occurrence (§3.1.4) | The authored sentence or the opaque sentence, subject to the disclosure gate. |
+| `instance` | URI reference identifying this occurrence (§3.1.5) | A root-relative request path from `ProblemMapper::instanceFor()`; backslash, TAB, LF and CR are percent-encoded to keep the reference on this origin. |
+| Extensions | Application-specific members (§3.2) | Stable `code`, reference ids, timestamp, field errors and safe exception extensions. |
+
+**Migration:** `instance` now has a leading slash. A client comparing it to `api/orders/42` must expect
+`/api/orders/42`. `type` is now explicit by default; setting `firefly.web.problem.type-uri` to `''` omits
+that member but does not undo the corrected `instance` behavior. A configured base identifies a problem
+type; the application is responsible for serving documentation at that URI.
+
+**Encoding degrades safely.** Invalid UTF-8 is substituted. If encoding or a serialization callback fails,
+the renderer reports the failure and emits a document preserving scalar metadata, safe authored details
+and encodable field errors and extensions. The [web rendering](#web-rendering-m6) section describes what is disclosed.
 
 ## The HTML error page
 
@@ -277,6 +349,15 @@ deployment wants to change:
 //         // Default: 7.
 //         'excerpt-lines' => 7,
 // …
+//         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
+// …
+//         'home' => env('FIREFLY_WEB_ERROR_PAGE_HOME', '/'),
+//         'sign-in' => env('FIREFLY_WEB_ERROR_PAGE_SIGN_IN', '/login'),
+//         'support' => env('FIREFLY_WEB_ERROR_PAGE_SUPPORT', 'https://support.example.test'),
+//         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
+// …
+//         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
+// …
 //         'json-paths' => 'api/*,webhooks/*',
 // …
 //         'views' => [
@@ -286,25 +367,80 @@ deployment wants to change:
 //     ],
 ```
 
-The reference both surfaces publish has two keys of its own:
+The error surfaces and their shared reference use these configuration keys:
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
+| `firefly.web.error-page.enabled` | bool | `true` | Off falls back to Laravel's own error page. It gates RENDERING, not recognition: the security entry point still knows a browser from a client. |
+| `firefly.web.error-page.trace` | bool | `app.debug` | Whether the page carries the exception, its file and line, a source excerpt and the stack trace. Enforced where the report is BUILT. |
+| `firefly.web.error-page.title` | string | `app.name` | The name in the wordmark and the `<title>`. |
+| `firefly.web.error-page.excerpt-lines` | int | `7` (0–40) | Source lines around a throwing line. |
+| `firefly.web.error-page.max-frames` | int | `40` (1–500) | The most frames the page BUILDS. A trim in the report, before markup; your own frames are kept first, and the header says "30 of 104 frames". |
+| `firefly.web.error-page.json-paths` | string (CSV) | `api/*` | Path patterns answered as problem+json whatever the caller asked for. Checked before the `Accept` header. |
+| `firefly.web.error-page.views` | array | `[]` | Your own Blade view per status, or `default`. Bound by the same `trace` gate; a view that throws falls back to the built-in page. |
+| `firefly.web.error-page.home` | string | `/` | The "Go home" target. Scheme-guarded — see below. `''` offers no link. |
+| `firefly.web.error-page.sign-in` | string | `''` | The 401's "Sign in" target. Scheme-guarded. Offered on a 401 and on nothing else. |
+| `firefly.web.error-page.support` | string | `''` | The "Contact support" target. Scheme-guarded. |
+| `firefly.web.error-page.actions` | bool | `true` | Whether the page offers any navigation at all. |
+| `firefly.web.error-page.copy-button` | bool | `true` | The Reference cell's Copy button — the page's only script, shipped `hidden` and revealed by it. |
+| `firefly.web.error-page.authored-detail` | bool | `true` | Whether the production lede is the sentence problem+json publishes for the same failure. |
+| `firefly.web.error-page.problem-fallback` | bool | `true` | Whether clients asking for wildcard, absent or unsupported Accept types get problem+json; withdrawn when the page is disabled. |
+| `firefly.web.problem.disclose` | bool | `false` | Whether an UNHANDLED throwable's own message may appear in `detail`. Follows nothing — not `app.debug`, not `trace`. |
+| `firefly.web.problem.type-uri` | string | `about:blank` | RFC 9457 `type`: that literal, `''` to omit the member, or a base URI from which the stable `code` derives one. |
 | `firefly.web.trace-id.enabled` | bool | `true` | Whether the W3C trace id is what `traceId`, the page's **Reference** row and the echoed header publish. `false` puts the correlation id back in all three — the pre-trace behaviour — and turns the echo off. The trace id is still read for logs and the HTTP-exchange row; only publishing it stops. |
 | `firefly.web.trace-id.header` | string | `X-Trace-Id` | The response header the trace id is echoed on, beside `X-Correlation-Id` and never in place of it. `''` disables the echo and leaves the document and the page untouched. It is deliberately **not** W3C `traceresponse`, which LaraFly does not implement. |
 
 **`trace` is enforced where the data is gathered, not where it is printed.** With it off the framework never
 walks the stack, never opens a source file and never copies the exception message — so there is nothing
-assembled for a template mistake to leak. Production shows the status, the reason, the code and the request's
-**reference** — the same id the problem document publishes as `traceId`, which is the W3C trace id when the
-request had a valid span and the correlation id when it did not, and the same value the response echoes on
-`X-Trace-Id` — so the 500 page reads "quote reference `<id>` if you report it" and the id a person
-screenshots is the one a trace search resolves. When the two ids differ the page carries a **Correlation**
-fact row beside the Reference one, holding the `X-Correlation-Id` value; when they are the same string the
-row is omitted, because two rows repeating one value teach a reader the ids are interchangeable. That is
-enough to quote into a ticket and grep in a log, and nothing that names a class, a file or a row. The page's own
-advice about *how* to turn traces on is suppressed outside non-production environments too, because naming
-the framework and a config key to an anonymous visitor is a free hint about your stack.
+assembled for a template mistake to leak. Production shows the status, the reason, the code, one **lede**
+sentence, a row of **actions**, and the request's **reference** — the same id the problem document publishes
+as `traceId`, which is the W3C trace id when the request had a valid span and the correlation id when it did
+not, and the same value the response echoes on `X-Trace-Id` — so the 500 page reads
+"quote the reference below if you report it" and the id a person screenshots is the one a trace search
+resolves. The page prints that id **once**, in a **Reference** cell that is `user-select:all`: one click
+takes the whole of it, with no JavaScript and no dragging a selection across a wrapped uuid. On a 5xx the
+lede points at that cell rather than spelling the id into prose a second time, which is why the page's
+sentence no longer matches the problem document's word for word — a payload has no cell to point at, so it
+keeps the id inline. Both surfaces still carry the same id,
+and that is the part a ticket and a trace search need. A **Copy** button sits beside the cell wherever the
+browser can honour one, behind `firefly.web.error-page.copy-button`: it ships `hidden` and is revealed by the
+page's only script, so scripts off, a Content-Security-Policy that refuses inline scripts, or a plain-http
+origin (`navigator.clipboard` is a secure-context API) leave no control rather than a dead one, and a copy the
+browser refuses at click time says `Copy failed` instead of failing silently. When the two ids differ the page
+carries a **Correlation** cell beside the Reference one, holding the `X-Correlation-Id` value; when they are
+the same string the cell is omitted, because two cells repeating one value teach a reader the ids are
+interchangeable. That is enough to quote into a ticket and grep in a log, and **no class, no file, no trace
+and no framework hint** — the boundary is the raw exception and everything downstream of it, not every word
+about the failure: the lede below is the sentence the application itself wrote for the caller, which
+problem+json publishes as `detail` for the same failure. The page's own advice about *how* to turn traces on
+is suppressed outside non-production environments too, because naming the framework and a config key to an
+anonymous visitor is a free hint about your stack.
+
+**The lede is the problem document's own sentence** (`firefly.web.error-page.authored-detail`, default
+`true`). An `abort(404, 'No such tenant.')`, or a `ResourceNotFoundException` carrying `Order 42 does not
+exist.`, says that to the person and to the client alike — one failure, one wording, whichever surface
+answered. What counts as authored is `ProblemMapper`'s decision and not this key's: below 500 only, and with
+every sentence the *framework* generated already replaced, so a `QueryException`'s SQL and the
+route-model-binding 404s that name a model class and a primary key are never ledes. Set the key `false` and
+the lede falls back to the generic sentence for the status — the status-and-code page — with two exceptions
+that do not move. A **405 always names the verbs**: "That address does not accept a GET request. It accepts
+POST.", built from the `Allow` header the *router* set, so there is nothing of yours in it for the key to
+withhold, and the same list is the document's `allowed` member. And a bare `abort(403)` authored nothing: the
+document publishes the reason phrase because it needs some `detail`, and the page declines to lede with a word
+already printed beside the status code.
+
+**The action row offers what fits the status, and nothing it was not given**: `home` (default `/`), `sign-in`
+and `support` (both **empty** by default — the values in the reference above are examples, and an empty one
+offers no link rather than a guessed route name), and `actions` (default `true`) to switch the row off
+entirely. A 401 gets **Sign in**; every page gets **Go home** and **Contact support** wherever those are set.
+**Try again** is offered on a **5xx and only for a GET or a HEAD**, because it is a plain link and a link is a
+GET: it carries the address and the query string of the request that failed and it cannot carry the verb or
+the body, so on a failed POST it would either land the reader on the 405 page or send a different request
+under a label that says "again". The address it names is the request's own — base path and all, so a
+deployment served under a front controller gets a link back to the URL it really serves — and it goes through
+the same scheme guard as every configured href on the page, which drops `javascript:`, `data:`, a
+protocol-relative `//host` and its backslash spelling `/\host`. When the guard refuses, the page makes no
+retry offer at all rather than one it cannot spell truthfully.
 
 **Overriding it.** `views` hands a status — or `default` — to your own Blade view. The view receives the same
 `$error` report the built-in page gets, so it is bound by the same `trace` gate and cannot print a stack
@@ -316,3 +452,11 @@ possible outcome.
 **It is not a Blade view itself.** The built-in page is assembled as a string with no container lookups, no
 view factory and no network font, because the failure being explained may *be* the view layer. String
 building is not the elegant choice; it is the one that still works when nothing else does.
+
+**The stack puts your code first.** Application frames precede one native dependency disclosure. Frame
+summaries keep the index, package, directory, filename, line and call on one line on desktop; narrow screens
+place the call on a second line. Only one source excerpt
+opens at a time, using native `details` behavior without JavaScript. `firefly.web.error-page.max-frames`
+limits the frames assembled, with application frames taking priority; counts disclose any truncation.
+`SourcePaths` removes literal and realpath-normalized roots, then uses roots inferred from vendor frames.
+This also handles symlinked deployments and harnesses whose application root sits inside a vendor tree.

@@ -19,6 +19,7 @@ it('answers an anonymous browser with the 401 page', function (): void {
         ->assertSee('401')
         ->assertSee('AUTHENTICATION_FAILED')
         ->assertSee('Authentication is required to access this resource.')
+        ->assertSee('Sign in')
         ->assertDontSee('Ada Lovelace')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-401');
@@ -41,7 +42,9 @@ it('answers an authenticated non-admin with the 403 page', function (): void {
         ->assertSee('403')
         ->assertSee('ACCESS_DENIED')
         ->assertSee('Access is denied.')
+        // A refusal after authentication offers a way home, not another sign-in.
         ->assertDontSee('Sign in')
+        ->assertSee('Go home')
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'error-403');
 });

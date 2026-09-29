@@ -8,6 +8,7 @@
         "ext-openssl": "*",
         "firebase/php-jwt": "^7.0",
         "guzzlehttp/promises": "^2.0 || ^3.0",
+        "illuminate/auth": "^13.0",
         "illuminate/bus": "^13.0",
         "illuminate/cache": "^13.0",
         "illuminate/config": "^13.0",

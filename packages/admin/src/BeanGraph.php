@@ -26,10 +26,8 @@ namespace Firefly\Admin;
  * the interface in `via` so the reader sees the indirection rather than being quietly shown something they
  * did not write.
  *
- * Layering is a longest-path assignment over the resolved edges, so a node sits below everything that
- * depends on it and arrows read downward. The walk carries its own visited set, so a cycle terminates and
- * the edge that closed it is REPORTED — which matters, because the container has no cycle detection and a
- * cycle among eager singletons exhausts memory at boot.
+ * Iterative Tarjan analysis condenses strongly connected components before assigning longest-path levels.
+ * Cycle membership is a wiring fact; production edges mean it need not be a runtime constructor cycle.
  */
 final class BeanGraph
 {
@@ -65,6 +63,7 @@ final class BeanGraph
     public static function build(array $beans, array $configProperties = []): self
     {
         $index = new BeanGraphIndex;
+        $index->countProducers($beans, $configProperties);
 
         foreach ($beans as $row) {
             if (! is_array($row) || ! is_string($row['class'] ?? null)) {
@@ -74,7 +73,7 @@ final class BeanGraph
         }
 
         foreach ($configProperties as $class => $row) {
-            if (is_array($row) && is_string($row['class'] ?? $class)) {
+            if (is_array($row) && ($row['bound'] ?? true) !== false && is_string($row['class'] ?? $class)) {
                 $index->addConfigProperties(is_string($row['class'] ?? null) ? $row['class'] : (string) $class);
             }
         }
@@ -84,8 +83,8 @@ final class BeanGraph
 
         $degree = [];
         foreach ($edges as $edge) {
-            $degree[$edge['from']]['out'] = ($degree[$edge['from']]['out'] ?? 0) + 1;
-            $degree[$edge['to']]['in'] = ($degree[$edge['to']]['in'] ?? 0) + 1;
+            $degree[$edge['from']]['out'][$edge['to']] = true;
+            $degree[$edge['to']]['in'][$edge['from']] = true;
         }
 
         $nodes = [];
@@ -93,8 +92,8 @@ final class BeanGraph
             $nodes[] = [
                 ...$node,
                 'level' => $levels[$id] ?? 0,
-                'in' => $degree[$id]['in'] ?? 0,
-                'out' => $degree[$id]['out'] ?? 0,
+                'in' => count($degree[$id]['in'] ?? []),
+                'out' => count($degree[$id]['out'] ?? []),
             ];
         }
 
@@ -106,6 +105,7 @@ final class BeanGraph
     /**
      * Kept for the older two-argument shape.
      *
+     *
      * @param  array<mixed>  $beans
      */
     public static function fromCatalog(array $beans): self
@@ -113,7 +113,8 @@ final class BeanGraph
         return self::build($beans);
     }
 
-    /** @return array<string,int> node count per kind, for the page's summary */
+    /**
+     * @return array<string,int> node count per kind, for the page's summary */
     public function kindCounts(): array
     {
         $counts = [self::KIND_COMPONENT => 0, self::KIND_BEAN => 0, self::KIND_CONFIG => 0];
@@ -127,6 +128,7 @@ final class BeanGraph
     /**
      * The namespace roots present, most-populated first — the drawing colours by module, and a legend has to
      * name them.
+     *
      *
      * @return list<string>
      */
@@ -156,9 +158,8 @@ final class BeanGraph
     }
 
     /**
-     * Longest-path layering, so a node always sits below everything that depends on it. Depth is memoised and
-     * the walk carries a visited set, so a cycle terminates instead of recursing forever — and the edge that
-     * closed it is reported.
+     * Longest-path levels on the component DAG, with every internal cyclic edge retained for compatibility.
+     *
      *
      * @param  list<string>  $ids
      * @param  list<array{from: string, to: string, via: string|null, type: string}>  $edges
@@ -170,54 +171,59 @@ final class BeanGraph
         foreach ($edges as $edge) {
             $out[$edge['from']][] = $edge['to'];
         }
-
+        $components = GraphComponents::of($ids, $out);
         $depth = [];
         $cycles = [];
-
-        $walk = static function (string $node, array $path) use (&$walk, &$depth, &$cycles, $out): int {
-            if (isset($depth[$node])) {
-                return $depth[$node];
-            }
-            if (isset($path[$node])) {
-                return 0;
-            }
-
-            $path[$node] = true;
-            $deepest = 0;
-            foreach ($out[$node] ?? [] as $next) {
-                if (isset($path[$next])) {
-                    $cycles[] = ['from' => $node, 'to' => $next];
-
-                    continue;
+        // Tarjan emits dependency components before their consumers.
+        foreach ($components->groups as $index => $members) {
+            $depth[$index] = 0;
+            foreach ($members as $member) {
+                foreach ($out[$member] ?? [] as $target) {
+                    $other = $components->membership[$target];
+                    if ($other !== $index) {
+                        $depth[$index] = max($depth[$index], $depth[$other] + 1);
+                    } else {
+                        $cycles[] = ['from' => $member, 'to' => $target];
+                    }
                 }
-                $deepest = max($deepest, $walk($next, $path) + 1);
             }
-
-            return $depth[$node] = $deepest;
-        };
-
-        foreach ($ids as $id) {
-            $walk($id, []);
         }
-
-        // Depth counts how far a node's longest chain of dependencies runs; the drawing wants the opposite,
-        // with dependents on top. Flip it so level 0 is what nothing depends on.
         $max = $depth === [] ? 0 : max($depth);
         $levels = [];
-        foreach ($depth as $id => $value) {
-            $levels[$id] = $max - $value;
+        foreach ($components->membership as $id => $group) {
+            $levels[$id] = $max - $depth[$group];
         }
 
-        $seen = [];
-        $unique = [];
-        foreach ($cycles as $cycle) {
-            $key = $cycle['from'].'>'.$cycle['to'];
-            if (! isset($seen[$key])) {
-                $seen[$key] = true;
-                $unique[] = $cycle;
+        return [$levels, $cycles];
+    }
+
+    /**
+     * @return array{out: array<string,list<string>>, in: array<string,list<string>>} */
+    public function adjacency(): array
+    {
+        $out = $in = [];
+        foreach ($this->edges as $edge) {
+            $out[$edge['from']][] = $edge['to'];
+            $in[$edge['to']][] = $edge['from'];
+        }
+
+        return ['out' => $out, 'in' => $in];
+    }
+
+    /** Complete cyclic components, rather than arbitrary closing pairs.
+     * @return list<list<string>> */
+    public function components(): array
+    {
+        $self = [];
+        foreach ($this->edges as $edge) {
+            if ($edge['from'] === $edge['to']) {
+                $self[$edge['from']] = true;
             }
         }
 
-        return [$levels, $unique];
+        return array_values(array_filter(
+            GraphComponents::of(array_column($this->nodes, 'id'), $this->adjacency()['out'])->groups,
+            static fn (array $group): bool => count($group) > 1 || isset($self[$group[0]]),
+        ));
     }
 }

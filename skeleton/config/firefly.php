@@ -942,6 +942,133 @@ return [
     //         'excerpt-lines' => 7,
     //
     //         /*
+    //          | How many stack frames the page BUILDS, clamped to 1-500. It is a hard trim taken in the
+    //          | report before any markup exists, not a style rule that hides the tail: a page that renders
+    //          | a hundred frames and hides ninety has still escaped and shipped a hundred, and the DOM a
+    //          | screen reader walks is still a hundred long. The budget is spent on YOUR frames first and
+    //          | filled with dependency frames in stack order, so a controller sixty frames deep under a
+    //          | queue worker is never the one that gets dropped, and the page still says how many frames
+    //          | the untrimmed stack had.
+    //          |
+    //          | Default: 40.
+    //         */
+    //         'max-frames' => 40,
+    //
+    //         /*
+    //          | Whether the production page says the sentence the problem document already publishes — the
+    //          | application's own "Order 42 does not exist." for a sub-500 failure, which is the entire
+    //          | point of the exception taxonomy — instead of the generic sentence for the status.
+    //          |
+    //          | IT IS THE PAGE'S LEDE. With this on (the default) a 404 raised as `abort(404, 'No such
+    //          | tenant.')` says "No such tenant." to the person and to the client alike, where the page
+    //          | used to say "That page does not exist." beside a document saying something else about the
+    //          | same failure. Turn it off and the lede goes back to the reassurance for the status, which
+    //          | is the status-and-code-only page a deployment may prefer. An application's own error view
+    //          | (`views` below) reads the same sentence as `$error->publicDetail`; this key empties it.
+    //          |
+    //          | ONE SENTENCE IS NOT GOVERNED BY THIS KEY: a 405 still names the verbs it accepts ("That
+    //          | address does not accept a GET request. It accepts POST.") with this off. That sentence is
+    //          | the FRAMEWORK's — the verbs come off the `Allow` header the router put on its own
+    //          | exception, and the framework writes the words — so there is nothing of YOURS in it for
+    //          | this key to withhold, and the same list is already the `allowed` member of the problem
+    //          | document published for the same failure.
+    //          |
+    //          | Only sentences that were WRITTEN for a caller are ever carried: below 500, from a
+    //          | FireflyException or from an `abort(404, '…')`. At 500 and above nothing is authored — a
+    //          | QueryException's message is the failing SQL and its bindings — and nothing is carried.
+    //          |
+    //          | A BARE `abort(403)` NAMED NO SENTENCE, and the page does not pretend otherwise. The
+    //          | problem document needs some `detail` for it and publishes the reason phrase ("Forbidden"),
+    //          | which is the honest answer beside a machine-readable `title`; as a page LEDE it would be
+    //          | the same word the reader has already met beside the status code. So the page falls through
+    //          | to its own sentence — "You do not have access to that." — and the document is unchanged.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'authored-detail' => env('FIREFLY_WEB_ERROR_PAGE_AUTHORED_DETAIL', true),
+    //
+    //         /*
+    //          | WHERE A READER CAN GO NEXT. The page offers the action that fits the status — a 401 gets
+    //          | `sign-in`, everything gets `home` and `support` when they are set — and offers nothing it
+    //          | was not given: no route name is guessed, and an empty value simply produces no link.
+    //          |
+    //          | "Try again" is offered on a 5xx AND ONLY FOR A GET OR A HEAD, because it is a plain link
+    //          | and a link is a GET: it carries the address and the query string of the request that
+    //          | failed and it cannot carry the verb or the body. On a failed POST it would either land the
+    //          | reader on the 405 page or send a different request under a label that says "again", so it
+    //          | is withheld and that page offers `home` and `support` instead.
+    //          |
+    //          | EACH OF THESE IS A SCHEME-GUARDED URL. They reach an `href`, and htmlspecialchars escapes
+    //          | quotes and brackets and nothing about a SCHEME — so a `javascript:` value arriving from a
+    //          | templated environment variable would be stored XSS on the framework's own error page. An
+    //          | absolute path (`/login`) or an `http(s)://` URL is kept; everything else — `data:`,
+    //          | `vbscript:`, `file:`, `mailto:`, a protocol-relative `//host/…` or its backslash spelling
+    //          | `/\host/…`, and anything carrying a tab, LF or CR INSIDE it (characters a URL parser
+    //          | DELETES wherever they sit, so `/<TAB>/host` is `//host` to a browser) — is dropped to ''
+    //          | when the settings object is built, whoever built it, so it cannot hold an unsafe value at
+    //          | all. Whitespace at the EDGES is trimmed rather than refused, because the parser strips it
+    //          | too: a value that reaches the environment with a trailing newline — a Helm block scalar, a
+    //          | here-doc-rendered variable — is still the URL you meant, and is kept.
+    //          |
+    //          | THE "Try again" ADDRESS PASSES THE SAME GUARD, even though no operator configured it. It
+    //          | is the request's own path, and a request target reaches the framework with a backslash
+    //          | intact — so `/\host/…` is a real spelling a real client can send, and it is refused here
+    //          | exactly as a configured one would be. When it is, the page makes no retry offer at all
+    //          | rather than pointing somewhere it did not mean.
+    //          |
+    //          | Defaults: home '/', sign-in '', support '', actions true.
+    //         */
+    //         'home' => env('FIREFLY_WEB_ERROR_PAGE_HOME', '/'),
+    //         'sign-in' => env('FIREFLY_WEB_ERROR_PAGE_SIGN_IN', '/login'),
+    //         'support' => env('FIREFLY_WEB_ERROR_PAGE_SUPPORT', 'https://support.example.test'),
+    //         'actions' => env('FIREFLY_WEB_ERROR_PAGE_ACTIONS', true),
+    //
+    //         /*
+    //          | Whether the Reference cell offers a Copy button on top of being selectable.
+    //          |
+    //          | THE REFERENCE IS THE ONE THING A PRODUCTION PAGE ASKS A PERSON TO CARRY AWAY, so it is
+    //          | printed ONCE, in a cell a single click selects whole (`user-select:all`) — that much needs
+    //          | no JavaScript and works in whatever a container's minimal browser turns out to be. The
+    //          | button is offered on top of it by the page's only script, ten lines that ship the control
+    //          | `hidden` and reveal it only once `navigator.clipboard` is known to exist: with scripts off,
+    //          | behind a CSP that refuses an inline script, or on a plain-http origin where the clipboard
+    //          | API is undefined, no control appears that would do nothing. A copy the browser refuses at
+    //          | CLICK time — an unfocused document, a denied `clipboard-write` permission, an embedding
+    //          | Permissions-Policy that omits it — is the fourth case, the one the reveal cannot foresee,
+    //          | so the button reports `Copy failed` rather than doing nothing in silence, and stays
+    //          | clickable because an unfocused document is transient. The cell is `user-select:all` either
+    //          | way, so one click takes the whole id with no script at all. Turn this off for a deployment
+    //          | whose CSP must report zero inline scripts.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'copy-button' => env('FIREFLY_WEB_ERROR_PAGE_COPY_BUTTON', true),
+    //
+    //         /*
+    //          | Whether a caller that is NEITHER A BROWSER NOR A JSON CLIENT gets
+    //          | `application/problem+json` rather than falling through to Laravel's own error page.
+    //          | `Accept: */*` is what a bare curl and a default fetch() send, and an absent Accept is what
+    //          | a hand-rolled client sends; neither names text/html, so neither is a browser, and both
+    //          | used to receive framework HTML for any non-FireflyException.
+    //          |
+    //          | A CALLER THAT NAMED SOME OTHER TYPE IS CAUGHT TOO — `application/xml`, `text/plain`,
+    //          | `image/png`. It asked for something this package renders no error in, and a
+    //          | FireflyException has always answered that same caller with a problem document whatever it
+    //          | asked for; claiming only the wildcard would leave one client reading a problem document
+    //          | for one 404 and framework markup for another.
+    //          |
+    //          | A browser is never caught by this, and neither is anything while `enabled` is off: the
+    //          | fallback is one of the answers this package offers, and `enabled => false` withdraws them,
+    //          | so it keeps meaning "use Laravel's page".
+    //          |
+    //          | A throwable Laravel's own handler resolves is never answered here whatever this says: a
+    //          | failed validation stays a 422 with its field errors and a 401 stays a 401.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'problem-fallback' => env('FIREFLY_WEB_ERROR_PAGE_PROBLEM_FALLBACK', true),
+    //
+    //         /*
     //          | CSV of path patterns that answer with `application/problem+json` WHATEVER the caller's
     //          | Accept header says. Checked BEFORE the header, because the header says who is asking and
     //          | the path says what the URL is.
@@ -988,6 +1115,39 @@ return [
     //          | Default: false. Turn it on deliberately, on a machine where the payload is yours to read.
     //         */
     //         'disclose' => false,
+    //
+    //         /*
+    //          | RFC 9457 §3.1.1's `type` member: the URI reference that says WHAT KIND of problem this is,
+    //          | as opposed to `instance`, which identifies this one occurrence of it.
+    //          |
+    //          | THE RFC MAKES THIS A PRESENTATION CHOICE, NOT A CONFORMANCE ONE: §3.1.1 says an absent
+    //          | `type` is identical to `about:blank`, so a document without one has always been conformant.
+    //          | Spring Boot's ProblemDetail nevertheless serialises `about:blank` explicitly, and that is
+    //          | the default here for the same reason: a client reading `type` always finds a string and
+    //          | never has to know the RFC's equivalence rule to work out what its absence meant.
+    //          |
+    //          | THREE BEHAVIOURS, ONE KEY. 'about:blank' emits the RFC's own "no specific type". '' omits
+    //          | the member entirely, which is the pre-9457 document byte for byte. And a BASE URI derives a
+    //          | real, dereferenceable type from the stable error code every Firefly failure already carries
+    //          | — 'https://api.example.test/problems' turns a RESOURCE_NOT_FOUND into
+    //          | 'https://api.example.test/problems/resource-not-found', which a client can switch on and a
+    //          | person can open, built from the same identifier the log line and the support ticket quote.
+    //          | A code that slugs to nothing falls back to 'about:blank' rather than to the bare base: the
+    //          | base names the COLLECTION of problem types, not a member of it.
+    //          |
+    //          | GUARDED, LIKE THE HREFS ABOVE, AND FOR A WIDER AUDIENCE. §3.1.1 calls `type`
+    //          | dereferenceable, and every API console, IDE HTTP client and docs viewer that renders a
+    //          | problem document turns it into a link — so a 'javascript:', 'data:' or '//host' base is
+    //          | the same stored XSS the error page's links are guarded against, published to more
+    //          | readers. ErrorPageSettings trims the edges (a Helm block scalar and a here-doc-rendered
+    //          | .env both end in a newline, and an untrimmed sentinel is not the sentinel) and then
+    //          | accepts only '', 'about:blank' or an absolute http(s) base; anything else becomes
+    //          | 'about:blank', because '' is a position you take deliberately and a typo must not take it
+    //          | for you.
+    //          |
+    //          | Default: 'about:blank'.
+    //         */
+    //         'type-uri' => env('FIREFLY_WEB_PROBLEM_TYPE_URI', 'about:blank'),
     //     ],
     //
     //     /*
@@ -1079,15 +1239,96 @@ return [
     //     'theme' => 'auto',
     //
     //     'graph' => [
-    //         /*
-    //          | The node count past which the Bean graph page LISTS the relations instead of drawing them.
-    //          | A diagram past a couple of hundred nodes is a hairball rather than something anyone can
-    //          | read. Configurable — not a constant — because "unreadable" depends on the screen and the
-    //          | application; 0 always lists.
-    //          |
-    //          | Default: 220.
-    //         */
+    //         // Deprecated: still parsed for compatibility, no longer controls rendering (including 0).
+    //         // The explorer draws bounded focus neighborhoods instead of the entire bean graph.
     //         'max-nodes' => 220,
+    //         'focus' => [
+    //             'depth' => 2,         // Hops per side; clamped 1–4.
+    //             'max-rows' => 16,     // Nodes per column; clamped 4–60.
+    //             'max-nodes' => 72,    // Total drawn beans; clamped 8–300.
+    //             'max-paths' => 3,     // Root chains; 0 disables, maximum 10.
+    //             'page-size' => 50,    // Relations; clamped 10–500, bounded by table.max-page-size.
+    //         ],
+    //         'starters' => 12,         // Entry points and most depended on; clamped 1–50.
+    //         'modules' => ['max-nodes' => 40], // Module map ceiling; 0 lists, maximum 200.
+    //     ],
+    //     'beans' => ['page-size' => 50], // Complete catalogue; clamped 10–500 and table.max-page-size.
+
+    //
+    //     /*
+    //      | THE LISTING TABLES — every page that draws a list of rows
+    //      |
+    //      | Routes, beans, conditions, scheduled tasks, OAuth2 clients, the environment, config properties,
+    //      | caches, loggers, metrics, HTTP traffic and the data browser all render through one table system:
+    //      | a typed column vocabulary laid out with `table-layout:fixed` and an explicit <colgroup>, a
+    //      | header that stays put while the rows scroll, and paging, sorting and searching done on the
+    //      | SERVER. Before this the whole list was rendered into every response and narrowed in the browser,
+    //      | which is fine for eleven rows and is not what 207 auto-configuration conditions look like.
+    //     */
+    //     'table' => [
+    //         /*
+    //          | Rows per page, and the sizes the rows-per-page control offers. `page-size` is always one of
+    //          | `page-sizes` — if you set a default the set does not contain, it is added to the set,
+    //          | because a <select> whose current value has no <option> resizes the table the moment anyone
+    //          | submits the form.
+    //          |
+    //          | THE SET IS CLOSED. `?size=` is in a URL an operator can hand-edit, and a size nobody offered
+    //          | falls back to the default rather than being silently capped. `max-page-size` is the ceiling
+    //          | an offered size may reach and is itself capped at 1000.
+    //          |
+    //          | Defaults: 50, '25,50,100,200', 200.
+    //         */
+    //         'page-size' => env('FIREFLY_ADMIN_TABLE_PAGE_SIZE', 50),
+    //         'page-sizes' => env('FIREFLY_ADMIN_TABLE_PAGE_SIZES', '25,50,100,200'),
+    //         'max-page-size' => env('FIREFLY_ADMIN_TABLE_MAX_PAGE_SIZE', 200),
+    //
+    //         /*
+    //          | The height of the scroll box a table lives in, as the `--table-vh` custom property. THIS IS
+    //          | WHAT MAKES THE STICKY HEADER WORK: `position:sticky` needs a scrollport that actually
+    //          | scrolls, and the wrapper had `overflow-x:auto` with no height constraint anywhere, so it
+    //          | never scrolled and the header was inert. Set it to `none` to turn the scrollport off — the
+    //          | page then scrolls as one document and the header scrolls away with it.
+    //          |
+    //          | Accepts `none` or a CSS length (px, vh, svh, dvh, rem, em). Anything else is refused and the
+    //          | default is used: this value is interpolated into the dashboard's stylesheet, and there is no
+    //          | escaping that makes an arbitrary string safe there.
+    //          |
+    //          | Default: '68vh'.
+    //         */
+    //         'max-height' => env('FIREFLY_ADMIN_TABLE_MAX_HEIGHT', '68vh'),
+    //
+    //         /*
+    //          | Whether a table's scroll position survives a reload, saved per URL in `sessionStorage`.
+    //          | This is the other half of `max-height`: the scrollport used to be the page itself and the
+    //          | browser restored ITS offset for free, so the ten-second refresh cost a reader nothing.
+    //          | Moving the scrollport into the panel took that away — a browser restores the document's
+    //          | scroll, never an inner scroller's — and the refresh started returning readers to row 1.
+    //          |
+    //          | It is applied ONLY on a reload or a back/forward, which are exactly the navigations where
+    //          | the browser would have restored it before. Clicking a page in the sidebar is a plain
+    //          | navigation and opens the table at the top. Set to false to store nothing at all.
+    //          |
+    //          | Default: true.
+    //         */
+    //         'remember-scroll' => env('FIREFLY_ADMIN_TABLE_REMEMBER_SCROLL', true),
+    //
+    //         /*
+    //          | 'comfortable' (14px/8px cell padding) or 'compact' (10px/5px), which fits roughly a third
+    //          | more rows on a screen. Anything unrecognised reads as 'comfortable'. The value also feeds
+    //          | the rigid column widths, which are emitted as `calc(<n>ch + 2 * var(--row-x))` because
+    //          | box-sizing is border-box on this page.
+    //          |
+    //          | Default: 'comfortable'.
+    //         */
+    //         'density' => env('FIREFLY_ADMIN_TABLE_DENSITY', 'comfortable'),
+    //     ],
+    //
+    //     // Route permalinks read the compiled binding contract without executing a handler or resolver.
+    //     'routes' => [
+    //         // Default true. False removes route links and refuses every ?route= URL with 404.
+    //         'detail' => env('FIREFLY_ADMIN_ROUTES_DETAIL', true),
+    //         // Default true. Show the collapsed compiled advice plan, its provenance and binding state.
+    //         'advice' => env('FIREFLY_ADMIN_ROUTES_ADVICE', true),
     //     ],
     //
     //     'pages' => [
@@ -1133,9 +1374,16 @@ return [
     //         */
     //         'writable' => env('FIREFLY_ADMIN_DATA_WRITABLE', false),
     //
-    //         // Rows per page, and the ceiling a `?per-page=` in the URL may raise it to. Both are clamped
-    //         // to a hard maximum of 1000 so no query string can ask for the whole table at once.
-    //         // Defaults: 25 and 200.
+    //         // Rows per page on the /firefly/data listing, and the ceiling that narrows the set of sizes
+    //         // it offers. Both are clamped to a hard maximum of 1000 so no query string can ask for the
+    //         // whole table at once. They compose with the dashboard-wide `firefly.admin.table.*` keys
+    //         // above: the rows-per-page control offers that shared set narrowed by `max-page-size`, with
+    //         // `page-size` always among the sizes it offers. The offered set is CLOSED — a `?size=` that
+    //         // is not one of its members is refused and the listing falls back to `page-size`, rather
+    //         // than being lowered to the ceiling — so a deployment that wants a size on offer adds it to
+    //         // `firefly.admin.table.page-sizes` or names it here. `max-page-size` is a plain cap only for
+    //         // a direct Firefly\Admin\Data\DataBrowser::list() call, which is parsed against no query
+    //         // string. Defaults: 25 and 200.
     //         'page-size' => 25,
     //         'max-page-size' => 200,
     //

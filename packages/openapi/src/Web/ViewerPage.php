@@ -75,7 +75,28 @@ final class ViewerPage
         <link rel="stylesheet" href="__ASSETS__/swagger-ui.css">
         <link rel="icon" type="image/png" href="__ASSETS__/favicon-32x32.png" sizes="32x32">
         <link rel="icon" type="image/png" href="__ASSETS__/favicon-16x16.png" sizes="16x16">
-        <style>html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;background:#fafafa}</style>
+        <style>
+        html{box-sizing:border-box;color-scheme:light}*,*:before,*:after{box-sizing:inherit}body{margin:0;background:#fafafa}
+        .swagger-ui .opblock .opblock-summary-method{background:#334155;text-shadow:none}
+        .swagger-ui .opblock.opblock-get .opblock-summary-method{background:#1d4ed8}
+        .swagger-ui .opblock.opblock-post .opblock-summary-method{background:#166534}
+        .swagger-ui .opblock.opblock-put .opblock-summary-method{background:#854d0e}
+        .swagger-ui .opblock.opblock-delete .opblock-summary-method{background:#b91c1c}
+        .swagger-ui .opblock.opblock-patch .opblock-summary-method{background:#115e59}
+        .swagger-ui .topbar .download-url-wrapper .download-url-button{background:#3f6212}
+        .swagger-ui .info .title small{background:#4b5563}
+        .swagger-ui .info .title small.version-stamp{background:#3f6212}
+        .swagger-ui .info a{color:#1d4ed8}
+        .swagger-ui .btn.execute{background:#1d4ed8;border-color:#1d4ed8}
+        .swagger-ui .btn.cancel{color:#b91c1c;border-color:#b91c1c}
+        .swagger-ui .json-schema-2020-12-accordion,.swagger-ui .json-schema-2020-12-expand-deep-button{appearance:none;background:transparent}
+        .swagger-ui .json-schema-2020-12-expand-deep-button{color:#475569;opacity:1}
+        .swagger-ui .json-schema-2020-12__constraint--string{background:#854d0e}
+        .swagger-ui .renderedMarkdown code{color:#6531a5;background:#f2eafa}
+        .swagger-ui .highlight-code .microlight{background:#171717!important}
+        .swagger-ui :focus-visible{outline:2px solid #1d4ed8;outline-offset:2px}
+        @media(max-width:600px){.swagger-ui .opblock .opblock-section-header{flex-wrap:wrap;gap:8px}}
+        </style>
         </head>
         <body>
         <div id="swagger-ui"></div>

@@ -7,6 +7,7 @@ namespace Firefly\OpenApi\Schema;
 use Firefly\Kernel\Error\ErrorCategory;
 use Firefly\Kernel\Error\ErrorResponse;
 use Firefly\Kernel\Error\ErrorSeverity;
+use Firefly\Web\Error\ProblemMapper;
 
 /**
  * The error component every generated operation references — the shape LaraFly ACTUALLY returns, not the
@@ -16,9 +17,20 @@ use Firefly\Kernel\Error\ErrorSeverity;
  * `status`/`title`/`code`/`category`/`severity` unconditionally, then `detail`/`type`/`instance`/`traceId`/
  * `correlationId`/`timestamp` only when non-null, then `errors` only when non-empty; ProblemDetailsRenderer
  * serialises that under `Content-Type: application/problem+json`. So `code`, `category`, `severity` and `errors` are Firefly
- * extension members on top of RFC 7807's five (and RFC 9457's re-issue of them), `type` is OPTIONAL here
- * where the RFC gives it a default of `about:blank`, and `instance` carries a request PATH rather than a URI
- * reference. Documenting the RFC's shape instead of this one would hand every generated client a decoder that
+ * extension members on top of RFC 7807's five (and RFC 9457's re-issue of them).
+ *
+ * `type` AND `instance` ARE BOTH DESCRIBED AS THE FRAMEWORK REALLY EMITS THEM, and for one release this
+ * comment described neither. RFC 9457 §3.1.1 makes an absent `type` IDENTICAL to `about:blank`, so emitting
+ * it is a presentation choice rather than a conformance one — and ProblemDetailsRenderer makes Spring
+ * ProblemDetail's choice and writes it out, so every published document carries the member and a client
+ * reading it always finds a string. `firefly.web.problem.type-uri` moves it: a base URI derives a real,
+ * dereferenceable type from the stable `code`, and `''` omits the member for a deployment that wants the
+ * pre-9457 document byte for byte — which is why it stays OPTIONAL in the `required` list below. `instance`
+ * is a ROOT-RELATIVE URI reference (§3.1.5, built by Firefly\Web\Error\ProblemMapper::instanceFor()), not
+ * the bare request path it was until that pass: a relative reference resolves against the document's base
+ * URI, so `api/orders/42` served from /api/orders/42 identified /api/api/orders/42.
+ *
+ * Documenting the RFC's shape instead of this one would hand every generated client a decoder that
  * silently drops the three members a caller actually branches on.
  *
  * `traceId` and `correlationId` are described as two members because they ARE two, and their values differ
@@ -73,8 +85,8 @@ final class ProblemSchema
                 'category' => ['type' => 'string', 'description' => 'Firefly error category.', 'enum' => self::cases(ErrorCategory::cases())],
                 'severity' => ['type' => 'string', 'description' => 'Firefly error severity.', 'enum' => self::cases(ErrorSeverity::cases())],
                 'detail' => ['type' => 'string', 'description' => 'A human-readable explanation of this occurrence.'],
-                'type' => ['type' => 'string', 'format' => 'uri-reference', 'description' => 'A URI reference identifying the problem type.'],
-                'instance' => ['type' => 'string', 'description' => 'The request path this occurrence relates to.'],
+                'type' => ['type' => 'string', 'format' => 'uri-reference', 'description' => 'A URI reference identifying the problem type (RFC 9457 3.1.1); about:blank unless firefly.web.problem.type-uri names a base URI, and absent only when that key is set to the empty string.'],
+                'instance' => ['type' => 'string', 'format' => 'uri-reference', 'description' => 'A root-relative URI reference identifying this occurrence (RFC 9457 3.1.5), as '.ProblemMapper::class.'::instanceFor() builds it.'],
                 'traceId' => ['type' => 'string', 'description' => 'The W3C trace id for this occurrence when the request had a valid span, the correlation id otherwise; echoed on X-Trace-Id when it is a trace id.'],
                 'correlationId' => ['type' => 'string', 'description' => 'The request correlation id, echoed on X-Correlation-Id; equal to traceId only when the request had no trace.'],
                 'timestamp' => ['type' => 'string', 'format' => 'date-time', 'description' => 'When the error was rendered (ISO-8601).'],

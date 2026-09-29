@@ -44,7 +44,7 @@
                     'body' => 'Implement <code>Firefly\Actuator\Health\HealthIndicator</code> and register it as a bean to see it here.',
                 ])
             @else
-                <div class="tw">
+                <div class="tw free">
                     <table>
                         <tbody>
                         @foreach ($indicators as $indicator)
@@ -77,7 +77,7 @@
                     'body' => 'No <code>InfoContributor</code> has contributed anything. Set <code>firefly.management.info.app</code>, or register your own contributor.',
                 ])
             @else
-                <div class="tw">
+                <div class="tw free">
                     <table>
                         <tbody>
                         @foreach ($info as $key => $value)
@@ -97,7 +97,7 @@
         @if ($exchanges !== [])
             <div class="panel">
                 @include('firefly-admin::_panel-head', ['title' => 'Recent requests', 'count' => count($exchanges)])
-                <div class="tw">
+                <div class="tw free">
                     <table>
                         <tbody>
                         @foreach ($exchanges as $exchange)
@@ -122,7 +122,7 @@
         @if ($metrics !== [])
             <div class="panel">
                 @include('firefly-admin::_panel-head', ['title' => 'Metrics', 'count' => count($metrics)])
-                <div class="tw">
+                <div class="tw free">
                     <table>
                         <tbody>
                         @foreach (array_slice($metrics, 0, 8) as $metric)

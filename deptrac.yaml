@@ -438,7 +438,8 @@ deptrac:
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
     # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
     # its pages on the illuminate Router through a Context BootPass at a configurable base path, and reuses
-    # Web's ProblemDetailsRenderer for its own failures (=> Web). It reads Config, carries Container/Context
+    # Web's compiled RouteManifest, argument-resolver claims and exception-handler registry for route detail
+    # (=> Web). It reads Config, carries Container/Context
     # attributes and extends AutoConfigure's base. NOTHING depends on it — it is a leaf, and an optional one.
     #
     # The => Data edge is the Django-style database browser (src/Data): it discovers browsable resources by
