@@ -141,3 +141,8 @@ it('derives a pattern failure sentence from the PHP name rather than the wire ke
     $binding = new RouteBinding(1, [...detailBinding('orderId', 'path'), 'key' => 'id', 'pattern' => '[0-9]+'], null);
     expect($binding->notFoundMessage)->toBe(ArgumentResolver::notFoundSentence('orderId'));
 });
+
+it('distinguishes zero null false and empty defaults in the compiled contract', function (mixed $default, string $label) {
+    $binding = new RouteBinding(1, [...detailBinding('limit', 'query', 'int', false), 'default' => $default], null);
+    expect($binding->defaultLabel())->toBe($label);
+})->with([[0, '0'], [null, 'null'], [false, 'false'], ['', '""'], [[], '[]']]);

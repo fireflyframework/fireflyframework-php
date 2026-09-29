@@ -508,8 +508,9 @@ can replace responses. Required body/service arguments do not imply a missing-pa
 DTO shapes prefer the compiled `dtos` table and fall back to legacy property names. Native disclosures
 keep the first two levels open, indentation is bounded, recursive references terminate, and a display
 budget limits very large trees. On phones the binding table scrolls horizontally inside its own region.
-The success status is a default; returned responses can override it. HTML stereotypes are shown explicitly,
-while older manifests with no HTML flag remain described as negotiated rather than promised JSON.
+The success status is a default; returned responses can override it. HTML stereotypes are declaration metadata, not media-type guarantees. In both cases the returned value
+and Accept determine the response: a Controller can return JSON data and a RestController can return HTML.
+Older manifests may omit the stereotype flag.
 
 Controller siblings appear near the heading with comparison markers. Duplicate verb/path registrations
 are marked **Shadowed** in the list and shown in manifest order on the detail page; the last wins.

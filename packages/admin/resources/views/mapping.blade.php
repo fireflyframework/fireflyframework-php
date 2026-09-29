@@ -30,7 +30,7 @@
     </div>
     <div class="stats">
         <dl class="stat"><dt>Default success status</dt><dd>{{ $route->status }}</dd></dl>
-        <dl class="stat"><dt>Response</dt><dd>{{ $route->html ? 'HTML page' : 'Negotiated' }}</dd></dl>
+        <dl class="stat"><dt>HTML stereotype</dt><dd>{{ $route->html ? 'Declared' : 'No / legacy' }}</dd></dl>
         <dl class="stat"><dt>Caller arguments</dt><dd>{{ count($detail->caller) }}</dd></dl>
         <dl class="stat"><dt>Injected arguments</dt><dd>{{ count($detail->injected) }}</dd></dl>
         <dl class="stat"><dt>Route source</dt><dd>{{ $bootMode }}</dd></dl>
@@ -53,12 +53,12 @@
                     <tbody>@foreach ($detail->caller as $binding)
                         <tr>
                             <td class="t-number">{{ $binding->position }}</td>
-                            <td class="t-token">${{ $binding->plan['name'] }}</td>
+                            <td class="t-token" title="${{ $binding->plan['name'] }}">${{ $binding->plan['name'] }}</td>
                             <td class="t-pill">{{ $binding->plan['kind'] }}</td>
-                            <td class="t-token">{{ $binding->plan['key'] }}</td>
+                            <td class="t-token" title="{{ $binding->plan['key'] }}">{{ $binding->plan['key'] }}</td>
                             <td class="t-qual" title="{{ $binding->plan['type'] }}"><span class="nm">{{ Format::leafOf($binding->plan['type'] ?? 'not recorded') }}</span><span class="ns stem">{{ Format::stemOf($binding->plan['type'] ?? '') }}</span></td>
                             <td class="t-pill"><span class="bool {{ $binding->plan['required'] ? 'yes' : 'no' }}">{{ $binding->plan['required'] ? 'yes' : 'no' }}</span></td>
-                            <td class="t-token">{{ $binding->defaultLabel() }}</td>
+                            <td class="t-token" title="{{ $binding->defaultLabel() }}">{{ $binding->defaultLabel() }}</td>
                             <td class="t-pill"><span class="bool {{ $binding->plan['valid'] ? 'yes' : 'no' }}">{{ $binding->plan['valid'] ? 'yes' : 'no' }}</span></td>
                         </tr>
                     @endforeach</tbody>
@@ -105,7 +105,8 @@
     <section class="panel route-panel" aria-labelledby="route-response">
         <h2 id="route-response">Response</h2>
         <p>Default success status <strong>{{ $route->status }}</strong>. A returned response can override it.</p>
-        <p>{{ $route->html ? 'The controller is declared as an HTML page (text/html).' : 'Negotiated from Accept and the returned value’s type. Older manifests may not record the HTML stereotype.' }}</p>
+        <p>{{ $route->html ? 'The manifest records the #[Controller] HTML stereotype. This is declaration metadata, not a media-type guarantee.' : 'No HTML stereotype is recorded. Older manifests may omit this metadata.' }}</p>
+        <p>The returned value and Accept determine the response. Views and HTML-capable values can render as HTML; data is negotiated; returned responses retain their own headers.</p>
         @if ($route->html)<p class="dim">HTML controllers are excluded from the OpenAPI document unless <code>firefly.openapi.include-html</code> is enabled.</p>@endif
         <h3>Exception handlers</h3>
         <p class="dim">Controller-local handlers take precedence over global handlers; within that scope, the most-derived matching exception class wins.</p>

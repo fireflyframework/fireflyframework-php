@@ -32,15 +32,16 @@ it('keeps the complete detail and native disclosure controls usable with JavaScr
 });
 
 it('contains the wide binding table inside its scrollport on a phone', function (): void {
-    $page = visit('/firefly/mappings?route=POST%20%2Forders')->on()->mobile();
+    $page = visit('/firefly/mappings?route=POST%20%2Forders')->on()->mobile()
+        ->assertSee('Request body');
     $page
-        ->assertSee('Request body')
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)
         ->assertScript("document.querySelector('.route-bindings').closest('.tw').scrollWidth > document.querySelector('.route-bindings').closest('.tw').clientWidth", true)
         ->assertNoJavaScriptErrors()
         ->screenshot(filename: 'route-detail-phone');
     $page->script("document.getElementById('route-request').scrollIntoView()");
-    $page->screenshot(filename: 'route-detail-phone-contract');
+    $page->assertScript("document.getElementById('route-request').getBoundingClientRect().top < window.innerHeight", true)
+        ->screenshot(fullPage: false, filename: 'route-detail-phone-contract');
 });
 
 it('renders the route contract and failure explanations in the dark theme', function (): void {

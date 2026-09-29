@@ -7,18 +7,25 @@ use Firefly\Actuator\Introspection\MappingsEndpoint;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\Tests\Support\AdminTableCapstoneTestCase;
 use Firefly\Admin\Tests\Support\Fixtures\BillingProperties;
+use Firefly\Admin\Tests\Support\Fixtures\LedgerProperties;
 use Firefly\Config\Config;
+use Firefly\Config\Scanner\ConfigPropertiesDescriptor;
+use Firefly\Config\Scanner\ConfigPropertiesManifest;
 use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Kernel\Exception\Business\ValidationException;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolver;
 use Firefly\Web\Dispatch\HandlerMethodArgumentResolvers;
+use Firefly\Web\Dispatch\ResponseFactory;
 use Firefly\Web\Exception\ExceptionHandlerDescriptor;
 use Firefly\Web\Exception\ExceptionHandlerRegistry;
+use Firefly\Web\Http\JsonMessageConverter;
+use Firefly\Web\Http\MessageConverterRegistry;
 use Firefly\Web\Route\RouteDescriptor;
 use Firefly\Web\Route\RouteManifest;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\HtmlString;
 
 uses(AdminTableCapstoneTestCase::class);
 
@@ -142,7 +149,46 @@ it('shows only matching exception advice and distinguishes an HTML stereotype', 
         new ExceptionHandlerDescriptor(Throwable::class, 'App\\GlobalAdvice', 'globalFailure', true),
         new ExceptionHandlerDescriptor(Throwable::class, 'App\\Unrelated', 'unrelatedFailure', false),
     ]));
-    $this->get('/firefly/mappings?route=GET%20%2F')->assertOk()->assertSee('HTML page')
+    $this->get('/firefly/mappings?route=GET%20%2F')->assertOk()->assertSee('HTML stereotype')->assertSee('Declared')
         ->assertSee('localFailure')->assertSee('globalFailure')->assertDontSee('unrelatedFailure')
         ->assertSee('firefly.openapi.include-html');
 });
+
+it('follows configuration joins to the correctly filtered bound or unbound panel', function (bool $bound) {
+    /** @var AdminTableCapstoneTestCase $this */
+    $type = $bound ? BillingProperties::class : LedgerProperties::class;
+    if ($bound) {
+        $this->app()->instance(LedgerProperties::class, new LedgerProperties);
+    }
+    $this->app()->instance(ConfigPropertiesManifest::class, new ConfigPropertiesManifest([
+        new ConfigPropertiesDescriptor(BillingProperties::class, 'billing'),
+        new ConfigPropertiesDescriptor(LedgerProperties::class, 'ledger'),
+        new ConfigPropertiesDescriptor(stdClass::class, 'unrelated'),
+    ]));
+    $this->app()->instance(RouteManifest::class, new RouteManifest([
+        new RouteDescriptor('GET', '/configuration-link', 'App\\Configured', 'index', 200, null, [['name' => 'config', 'kind' => 'service', 'key' => 'config', 'type' => $type, 'required' => true, 'default' => null, 'valid' => false, 'properties' => []]]),
+    ]));
+    $body = (string) $this->get('/firefly/mappings?route=GET%20%2Fconfiguration-link')->assertOk()->getContent();
+    preg_match('/href="([^"]+)">Configuration:/', $body, $matches);
+    $url = html_entity_decode($matches[1] ?? '');
+    expect($url)->toContain($bound ? 'props_q=' : 'unbound_q=');
+    $destination = $this->get($url)->assertOk();
+    if ($bound) {
+        $destination->assertSee('BillingProperties')->assertDontSee('LedgerProperties')->assertSee('3 total');
+    } else {
+        $destination->assertSee('LedgerProperties')->assertDontSee('stdClass')->assertSee('1 total');
+    }
+})->with([true, false]);
+
+it('describes HTML as declaration metadata because response negotiation follows the returned value', function (bool $html) {
+    /** @var AdminTableCapstoneTestCase $this */
+    $descriptor = new RouteDescriptor('GET', '/mixed-response', 'App\\MixedController', 'show', 200, null, [], html: $html);
+    $factory = new ResponseFactory(new MessageConverterRegistry([new JsonMessageConverter]));
+    $request = Request::create('/mixed-response', server: ['HTTP_ACCEPT' => 'application/json']);
+    expect($factory->make(['ok' => true], $descriptor, $request)->headers->get('Content-Type'))->toBe('application/json')
+        ->and($factory->make(new HtmlString('<p>A view-like return</p>'), $descriptor, $request)->headers->get('Content-Type'))->toBe('text/html; charset=UTF-8');
+    $this->app()->instance(RouteManifest::class, new RouteManifest([$descriptor]));
+    $this->get('/firefly/mappings?route=GET%20%2Fmixed-response')->assertOk()
+        ->assertSee('HTML stereotype')->assertSee('The returned value and Accept determine the response.')
+        ->assertDontSee('HTML page (text/html)');
+})->with([true, false]);

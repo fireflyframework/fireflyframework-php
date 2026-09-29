@@ -27,6 +27,8 @@ final readonly class RouteBinding
 
     public function defaultLabel(): string
     {
-        return json_encode($this->plan['default'], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: 'null';
+        $encoded = json_encode($this->plan['default'], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return $encoded !== false ? $encoded : 'null';
     }
 }

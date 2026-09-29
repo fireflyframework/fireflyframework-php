@@ -178,14 +178,14 @@ final readonly class AdminAction
             }
             foreach ($graph->edges as $edge) {
                 if ($edge['from'] === $detail->route->controllerClass && isset($properties[$edge['to']])) {
-                    $links[] = ['label' => 'Configuration: '.Format::leafOf($edge['to']), 'url' => $this->settings->url('configprops').'?q='.rawurlencode($edge['to'])];
+                    $links[] = ['label' => 'Configuration: '.Format::leafOf($edge['to']), 'url' => $this->configurationLink($edge['to'], $properties[$edge['to']])];
                 }
             }
         }
         foreach ($detail->injected as $binding) {
             $type = $binding->plan['type'];
             if ($binding->resolver === null && $type !== null && isset($properties[$type])) {
-                $links[] = ['label' => 'Configuration: '.Format::leafOf($type), 'url' => $this->settings->url('configprops').'?q='.rawurlencode($type)];
+                $links[] = ['label' => 'Configuration: '.Format::leafOf($type), 'url' => $this->configurationLink($type, $properties[$type])];
             }
         }
         $router = $this->container->bound('router') ? $this->container->make('router') : null;
@@ -195,6 +195,13 @@ final readonly class AdminAction
         }
 
         return $links;
+    }
+
+    private function configurationLink(string $class, mixed $description): string
+    {
+        $bound = is_array($description) && ($description['bound'] ?? false) === true;
+
+        return $this->settings->url('configprops').'?'.($bound ? 'props_q' : 'unbound_q').'='.rawurlencode($class);
     }
 
     private function settingsPage(AdminPage $current): SymfonyResponse
