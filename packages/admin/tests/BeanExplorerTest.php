@@ -47,6 +47,7 @@ it('allocates the next hop round robin between frontier parents', function () {
         $rows[] = ['class' => $id];
     }
     $focus = BeanNeighbourhood::around(BeanGraph::build($rows), 'F', 2, 'out', new BeanGraphSettings(maxRows: 4));
+    $focus ??= throw new RuntimeException('Missing focus');
     expect(array_keys($focus->positions))->toContain('Z')->toHaveCount(7);
 });
 
@@ -77,4 +78,13 @@ it('reports self injection as a cyclic component', function () {
 
 it('does not claim backed off configuration DTOs are registered', function () {
     expect(BeanGraph::build([], ['Absent' => ['class' => 'Absent', 'bound' => false]])->nodes)->toBe([]);
+});
+
+it('counts overflow against the final drawing after both sides are placed', function () {
+    $rows = [['class' => 'F', 'dependencies' => ['E']], ['class' => 'E', 'dependencies' => ['F']], ['class' => 'X']];
+    foreach (['A', 'B', 'C', 'D'] as $id) {
+        $rows[] = ['class' => $id, 'dependencies' => ['F', 'X']];
+    }
+    $focus = BeanNeighbourhood::around(BeanGraph::build($rows), 'F', 1, 'both', new BeanGraphSettings(maxRows: 4)) ?? throw new RuntimeException('Missing focus');
+    expect($focus->positions)->toHaveKey('E')->and($focus->overflow)->toBe([]);
 });

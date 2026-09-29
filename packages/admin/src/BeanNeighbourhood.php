@@ -87,6 +87,13 @@ final readonly class BeanNeighbourhood
                 }
             }
         }
+        $finalOverflow = [];
+        foreach ($overflow as $entry) {
+            $ids = array_values(array_filter($entry['ids'], static fn (string $id): bool => ! isset($placed[$id])));
+            if ($ids !== []) {
+                $finalOverflow[] = [...$entry, 'ids' => $ids, 'count' => count($ids)];
+            }
+        }
         $rows = max(1, ...array_map('count', $byColumn));
         $height = $rows * 46 - 8;
         $positions = [];
@@ -98,7 +105,7 @@ final readonly class BeanNeighbourhood
             }
         }
 
-        return new self($positions, $overflow, self::rootPaths($focus, $adjacency['in'], $settings->maxPaths), $columns, count($columns) * 204 - 28, $height);
+        return new self($positions, $finalOverflow, self::rootPaths($focus, $adjacency['in'], $settings->maxPaths), $columns, count($columns) * 204 - 28, $height);
     }
 
     /**
