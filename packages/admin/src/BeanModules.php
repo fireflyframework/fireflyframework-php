@@ -56,6 +56,44 @@ final readonly class BeanModules
         return new self($nodes, $edges, array_values(array_filter(GraphComponents::of(array_keys($nodes), $out)->groups, static fn (array $group): bool => count($group) > 1)));
     }
 
+    /** A module's own beans plus one boundary port per foreign module. */
+    public static function scope(BeanGraph $graph, string $module): BeanGraph
+    {
+        $nodes = [];
+        foreach ($graph->nodes as $node) {
+            if (BeanGraph::moduleOf($node['id']) === $module) {
+                $nodes[$node['id']] = $node;
+            }
+        }
+        $edges = [];
+        foreach ($graph->edges as $edge) {
+            $from = BeanGraph::moduleOf($edge['from']);
+            $to = BeanGraph::moduleOf($edge['to']);
+            if ($from !== $module && $to !== $module) {
+                continue;
+            }
+            foreach (['from' => $from, 'to' => $to] as $side => $foreign) {
+                if ($foreign !== $module) {
+                    $id = 'module:'.$foreign;
+                    $edge[$side] = $id;
+                    $nodes[$id] ??= ['id' => $id, 'label' => $foreign, 'namespace' => $foreign, 'kind' => 'module', 'stereotype' => '', 'scope' => '', 'detail' => 'Boundary port', 'level' => 0, 'in' => 0, 'out' => 0];
+                }
+            }
+            $edges[$edge['from']."\0".$edge['to']."\0".$edge['type']] = $edge;
+        }
+
+        foreach ($edges as $edge) {
+            if ($nodes[$edge['from']]['kind'] === 'module') {
+                $nodes[$edge['from']]['out']++;
+            }
+            if ($nodes[$edge['to']]['kind'] === 'module') {
+                $nodes[$edge['to']]['in']++;
+            }
+        }
+
+        return new BeanGraph(array_values($nodes), array_values($edges), [], []);
+    }
+
     /**
      * @return list<string> */
     public static function exclusive(BeanGraph $graph, string $module): array

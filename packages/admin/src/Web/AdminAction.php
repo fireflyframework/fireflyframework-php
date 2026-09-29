@@ -9,6 +9,8 @@ use Firefly\Actuator\Server\ManagementPortGuard;
 use Firefly\Admin\AdminEndpointReader;
 use Firefly\Admin\AdminSettings;
 use Firefly\Admin\BeanGraph;
+use Firefly\Admin\BeanModules;
+use Firefly\Admin\BeanNeighbourhood;
 use Firefly\Admin\Data\ConnectionWizard;
 use Firefly\Admin\Data\DataBrowser;
 use Firefly\Admin\Data\DataColumn;
@@ -16,6 +18,7 @@ use Firefly\Admin\Data\DataFilter;
 use Firefly\Admin\Data\DataListing;
 use Firefly\Admin\Data\DataMap;
 use Firefly\Admin\Data\DatasourceReport;
+use Firefly\Admin\ExplorerQuery;
 use Firefly\Admin\Format;
 use Firefly\Admin\RowComparator;
 use Firefly\Admin\Settings\FeatureToggle;
@@ -553,29 +556,8 @@ final readonly class AdminAction
                 defaultSort: 'timestamp',
                 defaultDirection: 'desc',
             ),
-            'beans' => $this->listing(
-                $request,
-                'beans',
-                $this->beanRows(),
-                TableView::of(
-                    TableColumn::qualified('class', 'Class', weight: 5),
-                    TableColumn::token('stereotype', 'Stereotype', weight: 2),
-                    TableColumn::token('scope', 'Scope', weight: 1.5),
-                    TableColumn::token('name', 'Name', weight: 2),
-                    TableColumn::text('interfaces', 'Implements', weight: 3, sortable: true),
-                ),
-                // `interfacesQualified` is searched but has no column: it is the same list the Implements
-                // column draws, spelled out, and the cell carries it on its `title`. See beanRows().
-                ['class', 'stereotype', 'scope', 'name', 'interfaces', 'interfacesQualified'],
-                'class',
-            ),
-            // #[ConfigProperties] DTOs are bound and injectable but are neither scanned as components nor
-            // produced by a factory, so the beans catalogue alone cannot see them — they arrived as
-            // unresolved dependencies instead of as the beans they are.
-            'graph' => ['graph' => BeanGraph::build(
-                $this->listOf('beans', 'beans'),
-                $this->subArray($this->payload('configprops'), 'beans'),
-            )],
+            'beans' => $this->beansPage($request),
+            'graph' => $this->graphPage($request),
             'conditions' => $this->conditionsPage($request),
             'mappings' => $this->listing(
                 $request,
@@ -741,6 +723,149 @@ final readonly class AdminAction
             'query' => $query,
             'slice' => InMemoryListing::page($rows, $query, $searchable, $tiebreak),
             'view' => $view,
+        ];
+    }
+
+    private function beanGraph(): BeanGraph
+    {
+        return BeanGraph::build($this->listOf('beans', 'beans'), $this->subArray($this->payload('configprops'), 'beans'));
+    }
+
+    /** @return array<string,mixed> */
+    private function beansPage(Request $request): array
+    {
+        $graph = $this->beanGraph();
+        $rows = [];
+        $catalogue = array_column($this->beanRows(), null, 'class');
+        foreach ($graph->nodes as $node) {
+            $rows[] = [...($catalogue[$node['id']] ?? ['name' => '', 'interfaces' => '', 'interfacesQualified' => '']), ...$node, 'class' => $node['id'], 'module' => BeanGraph::moduleOf($node['id'])];
+        }
+        $view = TableView::of(
+            TableColumn::qualified('class', 'Class', weight: 5),
+            TableColumn::token('kind', 'Kind', weight: 2),
+            TableColumn::token('stereotype', 'Stereotype', weight: 2),
+            TableColumn::token('scope', 'Scope', weight: 2),
+            TableColumn::text('module', 'Module', weight: 3, sortable: true),
+            TableColumn::text('interfaces', 'Implements', weight: 3, sortable: true),
+            TableColumn::number('in', 'Dependents', ch: 11),
+            TableColumn::number('out', 'Dependencies', ch: 13),
+        );
+        $query = ListingQuery::fromRequest($request, $this->settings->table->boundedBy($this->settings->graph->beansPageSize, 500), $this->settings->url('beans'), $view->sortable(), 'in', in_array($request->query('sort'), $view->sortable(), true) && $request->query('sort') !== 'in' ? 'asc' : 'desc');
+
+        return ['graph' => $graph, 'view' => $view, 'query' => $query, 'slice' => InMemoryListing::page($rows, $query, ['class', 'kind', 'stereotype', 'scope', 'module', 'detail', 'name', 'interfacesQualified'], 'class')];
+    }
+
+    /** @return array<string,mixed> */
+    private function graphPage(Request $request): array
+    {
+        $graph = $this->beanGraph();
+        $explorer = ExplorerQuery::fromRequest($request, $this->settings->url('graph'), $this->settings->graph);
+        $nodes = array_column($graph->nodes, null, 'id');
+        $picked = $nodes[$explorer->get('bean')] ?? null;
+        $modules = BeanModules::fromGraph($graph, $explorer->get('produces') === '1');
+        $focus = $picked === null ? null : BeanNeighbourhood::around($graph, $picked['id'], $explorer->depth, $explorer->direction, $this->settings->graph);
+        $conditions = [];
+        $report = $this->payload('conditions');
+        $classes = $picked === null ? [] : [$picked['id']];
+        foreach ($graph->edges as $edge) {
+            if ($picked !== null && $edge['to'] === $picked['id'] && $edge['type'] === BeanGraph::EDGE_PRODUCES) {
+                $classes[] = $edge['from'];
+            }
+        }
+        foreach (['positiveMatches' => 'Applied', 'negativeMatches' => 'Backed off'] as $key => $outcome) {
+            foreach ($this->subArray($report, $key) as $row) {
+                if (is_array($row) && is_string($row['class'] ?? null) && in_array($row['class'], $classes, true) && is_string($row['condition'] ?? null)) {
+                    $conditions[] = ['class' => $row['class'], 'condition' => $row['condition'], 'outcome' => $outcome];
+                }
+            }
+        }
+        $starters = $graph->nodes;
+        usort($starters, static fn (array $a, array $b): int => [$b['in'], $a['id']] <=> [$a['in'], $b['id']]);
+        $roots = array_values(array_filter($graph->nodes, static fn (array $node): bool => $node['in'] === 0));
+        usort($roots, static fn (array $a, array $b): int => [$b['out'], $a['id']] <=> [$a['out'], $b['id']]);
+        $rows = array_values(array_filter($graph->nodes, static fn (array $node): bool => $explorer->get('module') === '' || BeanGraph::moduleOf($node['id']) === $explorer->get('module')));
+        $view = TableView::of(TableColumn::qualified('id', 'Bean', weight: 5), TableColumn::token('kind', 'Kind', weight: 2), TableColumn::number('in', 'Dependents', ch: 11), TableColumn::number('out', 'Dependencies', ch: 13));
+        $query = ListingQuery::fromRequest($request, $this->settings->table->boundedBy($this->settings->graph->pageSize, 500), $this->settings->url('graph'), $view->sortable(), 'in', 'desc', $explorer->carried('beans'), 'beans');
+        // Search is the landing form's unqualified q; module paging uses a qualified listing.
+        $searchRequest = Request::create('/', 'GET', [...$request->query(), 'beans_q' => $explorer->get('q')]);
+        $query = ListingQuery::fromRequest($searchRequest, $query->settings, $query->path, $view->sortable(), 'in', 'desc', $explorer->carried('beans'), 'beans');
+        $relations = [];
+        $source = $explorer->get('neighbor') ?: ($picked['id'] ?? '');
+        foreach (['in' => 'Depended on by', 'out' => 'Depends on'] as $side => $title) {
+            $relationRows = [];
+            foreach ($graph->edges as $index => $edge) {
+                if ($edge[$side === 'in' ? 'to' : 'from'] !== $source) {
+                    continue;
+                }
+                $id = $edge[$side === 'in' ? 'from' : 'to'];
+                $relationRows[] = ['id' => $id, 'via' => $edge['via'] ?? '', 'type' => $edge['type'], 'row' => $edge['from']."\0".$edge['to']."\0".$edge['type']."\0".($edge['via'] ?? '')];
+            }
+            $relationView = TableView::of(TableColumn::qualified('id', 'Bean', weight: 5), TableColumn::qualified('via', 'Via interface', weight: 4), TableColumn::token('type', 'Relation', weight: 2));
+            $relationQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $relationView->sortable(), carried: $explorer->carried($side), qualifier: $side);
+            $relations[$side] = ['title' => $title, 'view' => $relationView, 'query' => $relationQuery, 'slice' => InMemoryListing::page($relationRows, $relationQuery, ['id', 'via', 'type'], 'row')];
+        }
+
+        $cycleRows = [];
+        $cycles = $graph->components();
+        foreach ($cycles as $component => $members) {
+            if ($explorer->get('cycle') !== '' && $explorer->get('cycle') !== (string) $component) {
+                continue;
+            }
+            foreach ($members as $id) {
+                $cycleRows[] = ['component' => $component, 'id' => $id];
+            }
+        }
+        $cycleView = TableView::of(TableColumn::number('component', 'Component', ch: 11), TableColumn::qualified('id', 'Member', weight: 5));
+        $cycleQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $cycleView->sortable(), carried: $explorer->carried('cycles'), qualifier: 'cycles');
+        $unresolvedRows = array_map(static fn (string $id): array => ['id' => $id], $graph->unresolved);
+        $unresolvedView = TableView::of(TableColumn::qualified('id', 'Unresolved type', weight: 5));
+        $unresolvedQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $unresolvedView->sortable(), carried: $explorer->carried('unresolved'), qualifier: 'unresolved');
+        $pathRows = [];
+        foreach ($focus->paths ?? [] as $chain => $path) {
+            foreach ($path as $hop => $id) {
+                $pathRows[] = ['chain' => $chain + 1, 'hop' => $hop, 'id' => $id, 'row' => sprintf('%02d:%08d', $chain, $hop)];
+            }
+        }
+        $pathView = TableView::of(TableColumn::number('chain', 'Chain', ch: 6), TableColumn::number('hop', 'Hop', ch: 5), TableColumn::qualified('id', 'Bean', weight: 5));
+        $pathQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $pathView->sortable(), carried: $explorer->carried('paths'), qualifier: 'paths');
+        $moduleGraph = BeanModules::scope($graph, $explorer->get('module'));
+        $moduleAnchor = $rows;
+        usort($moduleAnchor, static fn (array $a, array $b): int => [$b['in'] + $b['out'], $a['id']] <=> [$a['in'] + $a['out'], $b['id']]);
+        $modulePicked = $moduleAnchor[0] ?? null;
+        $moduleFocus = $modulePicked === null ? null : BeanNeighbourhood::around($moduleGraph, $modulePicked['id'], $explorer->depth, 'both', $this->settings->graph);
+        $couplingView = TableView::of(TableColumn::qualified('from', 'From', weight: 4), TableColumn::qualified('to', 'To', weight: 4), TableColumn::number('weight', 'Weight', ch: 7), TableColumn::number('beans', 'Beans', ch: 6), TableColumn::number('via', 'Via', ch: 5), TableColumn::number('concrete', 'Concrete', ch: 9));
+        $couplingQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $couplingView->sortable(), carried: $explorer->carried('coupling'), qualifier: 'coupling');
+        $couplingRows = [];
+        foreach ($modules->edges as $edge) {
+            if ($explorer->get('module') === '' || $edge['from'] === $explorer->get('module') || $edge['to'] === $explorer->get('module')) {
+                $couplingRows[] = [...$edge, 'row' => $edge['from']."\0".$edge['to']];
+            }
+        }
+        $moduleView = TableView::of(TableColumn::qualified('id', 'Module', weight: 5), TableColumn::number('count', 'Beans', ch: 8), TableColumn::token('cycle', 'Cycle', weight: 2));
+        $moduleQuery = ListingQuery::fromRequest($request, $query->settings, $query->path, $moduleView->sortable(), carried: $explorer->carried('modules'), qualifier: 'modules');
+        $moduleCycles = [];
+        foreach ($modules->cycles as $index => $members) {
+            foreach ($members as $id) {
+                $moduleCycles[$id] = 'Cycle '.($index + 1);
+            }
+        }
+        $moduleRows = [];
+        foreach ($modules->nodes as $id => $info) {
+            $moduleRows[] = ['id' => $id, 'cycle' => $moduleCycles[$id] ?? '', ...$info];
+        }
+
+        return [
+            'cycleView' => $cycleView, 'cycleQuery' => $cycleQuery, 'cycleSlice' => InMemoryListing::page($cycleRows, $cycleQuery, ['id'], 'id'),
+            'unresolvedView' => $unresolvedView, 'unresolvedQuery' => $unresolvedQuery, 'unresolvedSlice' => InMemoryListing::page($unresolvedRows, $unresolvedQuery, ['id'], 'id'),
+            'pathView' => $pathView, 'pathQuery' => $pathQuery, 'pathSlice' => InMemoryListing::page($pathRows, $pathQuery, ['id'], 'row'),
+            'moduleGraph' => $moduleGraph, 'modulePicked' => $modulePicked, 'moduleFocus' => $moduleFocus,
+            'couplingView' => $couplingView, 'couplingQuery' => $couplingQuery, 'couplingSlice' => InMemoryListing::page($couplingRows, $couplingQuery, ['from', 'to'], 'row'),
+            'moduleView' => $moduleView, 'moduleQuery' => $moduleQuery, 'moduleSlice' => InMemoryListing::page($moduleRows, $moduleQuery, ['id'], 'id'),
+            'graph' => $graph, 'explorer' => $explorer, 'picked' => $picked, 'focus' => $focus, 'nodes' => $nodes, 'modules' => $modules,
+            'conditions' => $conditions, 'cycles' => $cycles, 'relations' => $relations, 'relationSource' => $source,
+            'starters' => array_slice($starters, 0, $this->settings->graph->starters), 'roots' => array_slice($roots, 0, $this->settings->graph->starters),
+            'view' => $view, 'query' => $query, 'slice' => InMemoryListing::page($rows, $query, ['id', 'detail', 'stereotype'], 'id'),
+            'exclusive' => $explorer->get('module') === '' ? [] : BeanModules::exclusive($graph, $explorer->get('module')),
         ];
     }
 

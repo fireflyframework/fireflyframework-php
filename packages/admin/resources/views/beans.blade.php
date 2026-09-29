@@ -25,15 +25,15 @@
                     @foreach ($slice->rows as $bean)
                         <tr>
                             <td class="t-qual" title="{{ $bean['class'] }}">
-                                <span class="nm">{{ Format::leafOf($bean['class']) }}</span>
-                                <span class="ns stem">{{ Format::stemOf($bean['class']) }}</span>
+                                @if ($settings->allows('graph'))<a href="{{ $settings->url('graph') }}?bean={{ urlencode($bean['class']) }}">@endif<span class="nm">{{ Format::leafOf($bean['class']) }}</span>
+                                <span class="ns stem">{{ Format::stemOf($bean['class']) }}</span>@if ($settings->allows('graph'))</a>@endif
                             </td>
+                            <td class="t-token">{{ $bean['kind'] }}</td>
                             <td class="t-token dim">{{ $bean['stereotype'] ?: '—' }}</td>
-                            <td class="t-token dim">{{ $bean['scope'] ?: '—' }}</td>
-                            <td class="t-token dim" title="{{ $bean['name'] }}">{{ $bean['name'] ?: '—' }}</td>
-                            {{-- The leaf names in the cell and the qualified ones on the title, exactly as the
-                                 Class column beside it: the searchable value is the one on hover. --}}
+                            <td class="t-token dim">{{ $bean['scope'] ?: 'Not reported' }}</td>
+                            <td class="t-text">@if ($settings->allows('graph'))<a href="{{ $settings->url('graph') }}?module={{ urlencode($bean['module']) }}">{{ $bean['module'] }}</a>@else{{ $bean['module'] }}@endif</td>
                             <td class="t-text dim" title="{{ $bean['interfacesQualified'] }}">{{ $bean['interfaces'] ?: '—' }}</td>
+                            <td class="t-number">{{ $bean['in'] }}</td><td class="t-number">{{ $bean['out'] }}</td>
                         </tr>
                     @endforeach
                     </tbody>

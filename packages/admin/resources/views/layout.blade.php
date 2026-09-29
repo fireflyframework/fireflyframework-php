@@ -513,6 +513,31 @@
         }
         .act:hover{border-color:var(--accent);color:var(--accent)}
 
+        .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+        :root{--mod-l:38%}
+        html[data-theme="dark"]{--mod-l:62%}
+        @media(prefers-color-scheme:dark){html[data-theme="auto"]{--mod-l:62%}}
+        .bx-module-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:16px 0}
+        .bx-module{display:flex;flex-direction:column;gap:7px;padding:12px;border:1px solid var(--line);border-left:4px solid hsl(var(--hue) 62% var(--mod-l));border-radius:5px;color:var(--ink);overflow-wrap:break-word}
+        .bx-search,.bx-controls,.bx-module-list{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}
+        .bx-search input{min-width:240px;padding:8px;color:var(--ink);background:var(--panel);border:1px solid var(--line-2)}
+        .bx-details,.bx-controls,.bx-caption{padding:14px}
+        .bx-details li{margin:8px 0}
+        .bx{overflow:auto;padding:10px 14px;background:var(--panel-2)}
+        .bx-heads{display:grid;margin-bottom:12px;color:var(--ink-2);font-size:11px;font-weight:600}
+        .bx-drawing{position:relative;margin:4px 0}
+        .bx-edges{position:absolute;inset:0;overflow:visible;pointer-events:none}
+        .bx-edge{fill:none;stroke:var(--ink-3);stroke-width:1.2}
+        .bx-edge.cycle{stroke-dasharray:6 3;stroke-width:2}
+        .bx-edge.produces{stroke-dasharray:5 4}
+        .bx-node{position:absolute;display:block;width:176px;height:38px;border:1px solid var(--line-2);border-left:3px solid hsl(var(--hue) 62% var(--mod-l));border-radius:5px;padding:3px 7px;color:var(--ink);background:var(--panel);text-decoration:none;font-size:12px;line-height:14px}
+        .bx-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:25px}
+        .bx-sigil{position:absolute;right:5px;top:3px;font-size:11px;color:var(--ink-2)}
+        .bx-sub{font-size:11px;color:var(--ink-2)}
+        .bx-controls .act[aria-current="true"]{font-weight:700;border:2px solid var(--ink);text-decoration:underline}
+        .bx-node.is-focus{border:2px solid var(--accent)}
+        .bx-node:focus-visible,.bx:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+        .bx-node:hover{background:var(--panel-2)}
         /* ── bean graph ──────────────────────────────────────────────────── */
         .legend{display:flex;flex-wrap:wrap;gap:6px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel-2)}
         .mod{
@@ -520,61 +545,12 @@
             border:1px solid var(--line-2);background:transparent;color:var(--ink-2);cursor:pointer;
             font-family:var(--mono);font-size:11px;
         }
-        .mod i{width:8px;height:8px;border-radius:2px;background:hsl(var(--hue) 62% 46%);flex:none}
+        .mod i{width:8px;height:8px;border-radius:2px;background:hsl(var(--hue) 62% var(--mod-l));flex:none}
         .mod:hover{border-color:var(--ink-3);color:var(--ink)}
         .mod[aria-pressed="false"]{opacity:.42;text-decoration:line-through}
 
-        .graph{display:grid;grid-template-columns:minmax(0,1fr) 268px}
-        @media(max-width:1100px){.graph{grid-template-columns:1fr}}
-        .graph .canvas{position:relative;height:min(72vh,720px);overflow:hidden;background:var(--panel-2);cursor:grab;touch-action:none}
-        .graph .canvas.grabbing{cursor:grabbing}
-        .graph .canvas svg{width:100%;height:100%;display:block}
-        .hint-bar{
-            position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--ink-3);
-            background:color-mix(in srgb, var(--panel) 84%, transparent);padding:3px 8px;border-radius:6px;
-            pointer-events:none;
-        }
-        .inspect{border-left:1px solid var(--line);padding:12px 14px;overflow:hidden auto;height:min(72vh,720px);background:var(--panel);min-width:0}
-        @media(max-width:1100px){.inspect{border-left:0;border-top:1px solid var(--line);height:auto;max-height:320px}}
-        .inspect .blank{color:var(--ink-3);font-size:13px;padding:18px 0}
-        .inspect .who{margin-bottom:12px}
-        .inspect .who strong{display:block;font-size:14.5px}
-        .inspect .who code{display:block;margin-top:4px;font-size:10.5px;overflow-wrap:anywhere;background:none;border:0;padding:0;color:var(--ink-3)}
-        .inspect h4{margin:12px 0 5px;font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
-        .inspect h4 span{color:var(--ink-2);letter-spacing:0}
-        .inspect ul{list-style:none;margin:0;padding:0}
-        .inspect li button{
-            display:block;width:100%;text-align:left;background:none;border:0;padding:3px 0;cursor:pointer;
-            font-family:var(--mono);font-size:11.5px;color:var(--accent);
-            overflow-wrap:anywhere;line-height:1.4;
-        }
-        .inspect li button:hover{text-decoration:underline}
-        .inspect .none{margin:0;font-size:12.5px;color:var(--ink-3)}
         .canvas{overflow:auto;padding:14px;background:var(--panel-2);max-height:70vh}
         .canvas svg{display:block;margin-inline:auto}
-        .edges .edge{fill:none;stroke:var(--line-2);stroke-width:1.3;color:var(--line-2);transition:stroke .12s,opacity .12s}
-        .edges .edge.via{stroke-dasharray:4 3}
-        /* A `produces` edge is structure, not a dependency the author wrote — drawn quieter so the wiring
-           the reader came to see stays the loudest thing on the canvas. */
-        .edges .edge.produces{stroke-dasharray:1 4;opacity:.55}
-        .edges .edge.lit{stroke:var(--accent);color:var(--accent);stroke-width:2;opacity:1}
-        .edges .edge.dimmed{opacity:.08}
-        .edges .edge.off{display:none}
-
-        .nodes .node{cursor:pointer}
-        .nodes .node rect{fill:var(--panel);stroke:var(--line-2);stroke-width:1.1;transition:stroke .12s,fill .12s}
-        .nodes .node .stripe{fill:hsl(var(--hue) 62% 46%);stroke:none}
-        .nodes .node text{font-family:var(--mono);font-size:11px;fill:var(--ink);pointer-events:none}
-        .nodes .node text.sub{font-size:9.5px;fill:var(--ink-3)}
-        /* A #[Bean] product is a value a factory returns, not a class the scanner found — dashed says so. */
-        .nodes .node.k-bean rect{stroke-dasharray:3 2}
-        .nodes .node.k-config rect{fill:var(--hover)}
-        .nodes .node:hover rect,.nodes .node.lit rect{stroke:var(--accent);fill:var(--accent-soft)}
-        .nodes .node.picked rect{stroke:var(--accent);stroke-width:2}
-        .nodes .node.dimmed{opacity:.22}
-        .nodes .node.off{display:none}
-        .nodes .node:focus-visible rect{stroke:var(--accent);stroke-width:2}
-
         /* ── data browser ────────────────────────────────────────────────── */
         .pager{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;
                border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
@@ -743,75 +719,6 @@
             });
         })();
         @endif
-
-        // Bean graph: hovering or clicking a node lights its edges and both endpoints, and dims everything
-        // else. Reading a dependency diagram is asking "what touches THIS", and a static picture cannot
-        // answer that once there is more than a handful of nodes.
-        (function () {
-            var svg = document.querySelector('.canvas svg');
-            if (!svg) { return; }
-
-            var nodes = svg.querySelectorAll('.node');
-            var edges = svg.querySelectorAll('.edge');
-
-            function clear() {
-                nodes.forEach(function (n) { n.classList.remove('lit', 'dimmed'); });
-                edges.forEach(function (e) { e.classList.remove('lit', 'dimmed'); });
-            }
-
-            function focus(id) {
-                var touched = {};
-                touched[id] = true;
-                edges.forEach(function (edge) {
-                    var from = edge.getAttribute('data-from'), to = edge.getAttribute('data-to');
-                    if (from === id || to === id) {
-                        edge.classList.add('lit');
-                        edge.classList.remove('dimmed');
-                        touched[from] = true;
-                        touched[to] = true;
-                    } else {
-                        edge.classList.add('dimmed');
-                        edge.classList.remove('lit');
-                    }
-                });
-                nodes.forEach(function (node) {
-                    var hit = touched[node.getAttribute('data-id')];
-                    node.classList.toggle('lit', !!hit);
-                    node.classList.toggle('dimmed', !hit);
-                });
-            }
-
-            var pinned = null;
-            nodes.forEach(function (node) {
-                var id = node.getAttribute('data-id');
-                node.addEventListener('mouseenter', function () { if (!pinned) { focus(id); } });
-                node.addEventListener('mouseleave', function () { if (!pinned) { clear(); } });
-                node.addEventListener('click', function () {
-                    pinned = pinned === id ? null : id;
-                    pinned ? focus(pinned) : clear();
-                });
-            });
-            svg.addEventListener('click', function (event) {
-                if (event.target === svg) { pinned = null; clear(); }
-            });
-
-            // The graph filter highlights rather than hides: removing a node would silently remove its
-            // edges too, and an edge to something you cannot see is worse than no filter at all.
-            var find = document.querySelector('[data-filter="graph-body"]');
-            if (find) {
-                find.addEventListener('input', function () {
-                    var needle = find.value.toLowerCase();
-                    pinned = null;
-                    if (needle === '') { clear(); return; }
-                    nodes.forEach(function (node) {
-                        var hit = (node.getAttribute('data-search') || '').indexOf(needle) !== -1;
-                        node.classList.toggle('lit', hit);
-                        node.classList.toggle('dimmed', !hit);
-                    });
-                    edges.forEach(function (e) { e.classList.add('dimmed'); e.classList.remove('lit'); });
-                });
-            }
-        })();
 
         // "/" focuses the first filter on the page — the shortcut every log and table UI uses.
         document.addEventListener('keydown', function (event) {

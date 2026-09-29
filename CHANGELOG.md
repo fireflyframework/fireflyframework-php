@@ -27,6 +27,15 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Added
 
+- **Bean explorer:** server-rendered landing/search/focus/module states, native keyboard links, bounded hop
+  columns, exact overflow links, complete paginated catalogue and relations, module coupling metrics,
+  conditions and shortest entry-point chains. Iterative SCC analysis handles deep graphs and self-cycles.
+- **Bean graph truthfulness:** stable competing factory identities across configurations, explicit unresolved
+  ambiguity instead of an arbitrary target, unknown factory scope and exclusion of unbound config DTOs.
+- **Explorer settings:** focus depth/row/node/path/page budgets, starter/module budgets and catalogue page size.
+  The legacy `firefly.admin.graph.max-nodes` is still parsed but no longer controls drawing; **0 no longer
+  forces a list**. Use the catalogue or relation tables for tabular exploration.
+
 - **Error navigation:** configured sign-in on 401, retry on GET/HEAD 5xx, and home/support links where
   configured. Production ledes retain safe authored details and 405 pages name the allowed methods.
 - **Error configuration:** documented `max-frames`, `home`, `sign-in`, `support`, `actions`, `copy-button`,

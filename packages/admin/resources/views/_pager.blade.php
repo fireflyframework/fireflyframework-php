@@ -63,15 +63,15 @@
         <a class="{{ $slice->hasPrevious() ? 'act' : 'act off' }}"
            @if ($slice->hasPrevious()) href="{{ $slice->link($slice->page - 1) }}" @endif>Previous</a>
         @if ($window[0] > 1)
-            <a class="act" href="{{ $slice->link(1) }}">1</a>
+            <a class="act" aria-label="Page 1" aria-current="false" href="{{ $slice->link(1) }}">1</a>
             @if ($window[0] > 2)<span class="gap">…</span>@endif
         @endif
         @foreach ($window as $n)
-            <a class="{{ $n === $slice->page ? 'act on' : 'act' }}" href="{{ $slice->link($n) }}">{{ $n }}</a>
+            <a class="{{ $n === $slice->page ? 'act on' : 'act' }}" aria-label="Page {{ $n }}" aria-current="{{ $n === $slice->page ? 'page' : 'false' }}" href="{{ $slice->link($n) }}">{{ $n }}</a>
         @endforeach
         @if (end($window) < $slice->lastPage())
             @if (end($window) < $slice->lastPage() - 1)<span class="gap">…</span>@endif
-            <a class="act" href="{{ $slice->link($slice->lastPage()) }}">{{ number_format($slice->lastPage()) }}</a>
+            <a class="act" aria-label="Page {{ $slice->lastPage() }}" aria-current="false" href="{{ $slice->link($slice->lastPage()) }}">{{ number_format($slice->lastPage()) }}</a>
         @endif
         <a class="{{ $slice->hasNext() ? 'act' : 'act off' }}"
            @if ($slice->hasNext()) href="{{ $slice->link($slice->page + 1) }}" @endif>Next</a>

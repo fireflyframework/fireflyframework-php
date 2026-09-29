@@ -20,9 +20,9 @@
 <thead>
 <tr>
     @foreach ($view->columns as $column)
-        <th class="{{ $column->cssClass() }}" scope="col">
+        <th class="{{ $column->cssClass() }}" scope="col" @if ($query !== null && $column->isSortable()) aria-sort="{{ $query->isSortedBy($column->key) ? ($query->direction === 'asc' ? 'ascending' : 'descending') : 'none' }}" @endif>
             @if ($query !== null && $column->isSortable())
-                <a href="{{ $query->sortLink($column->key) }}">{{ $column->label }}<span class="ord">{{ $query->indicator($column->key) }}</span></a>
+                <a href="{{ $query->sortLink($column->key) }}">{{ $column->label }}<span class="ord" aria-hidden="true">{{ $query->indicator($column->key) }}</span></a>
             @else
                 {{ $column->label }}
             @endif

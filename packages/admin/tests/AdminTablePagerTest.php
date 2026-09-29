@@ -22,12 +22,12 @@ it('carries the search across a page boundary, on every link the pager draws', f
 
     expect($body)->toContain('page 2 of 3')
         // The page that was asked for is the page that is marked, and its own link is a link to itself.
-        ->toContain('<a class="act on" href="/firefly/mappings?q=orders&amp;size=2&amp;page=2">2</a>')
+        ->toContain('<a class="act on" aria-label="Page 2" aria-current="page" href="/firefly/mappings?q=orders&amp;size=2&amp;page=2">2</a>')
         // EVERY jump keeps `q`. This is the assertion the whole partial exists for: the views this replaced
         // concatenated the search into each href by hand, and a link that forgot it widened the listing back
         // to all twenty-one rows — which reads as rows appearing from nowhere, and fails nothing.
-        ->toContain('<a class="act" href="/firefly/mappings?q=orders&amp;size=2&amp;page=3">3</a>')
-        ->toContain('<a class="act" href="/firefly/mappings?q=orders&amp;size=2">1</a>')
+        ->toContain('<a class="act" aria-label="Page 3" aria-current="false" href="/firefly/mappings?q=orders&amp;size=2&amp;page=3">3</a>')
+        ->toContain('<a class="act" aria-label="Page 1" aria-current="false" href="/firefly/mappings?q=orders&amp;size=2">1</a>')
         ->toMatch('~<a class="act"\s+href="/firefly/mappings\?q=orders&amp;size=2&amp;page=3"\s*>Next</a>~')
         ->toMatch('~<a class="act"\s+href="/firefly/mappings\?q=orders&amp;size=2"\s*>Previous</a>~')
         // And the rows under it are still the narrowed ones on page 2, not merely on page 1.
@@ -43,7 +43,7 @@ it('marks the ends of the listing, and gives the dead control no href at all', f
 
     expect($first)->toContain('page 1 of 11')
         ->toMatch('~<a class="act off"\s*>Previous</a>~')
-        ->toContain('<a class="act on" href="/firefly/mappings?size=2">1</a>')
+        ->toContain('<a class="act on" aria-label="Page 1" aria-current="page" href="/firefly/mappings?size=2">1</a>')
         ->toMatch('~<a class="act"\s+href="/firefly/mappings\?size=2&amp;page=2"\s*>Next</a>~');
 
     $last = (string) $this->get('/firefly/mappings?size=2&page=11')->assertStatus(200)->getContent();
@@ -59,15 +59,15 @@ it('draws a window around the current page, keeps the two ends, and says the res
     $body = (string) $this->get('/firefly/mappings?size=2&page=6')->assertStatus(200)->getContent();
 
     expect($body)->toContain('page 6 of 11')
-        ->toContain('<a class="act on" href="/firefly/mappings?size=2&amp;page=6">6</a>')
+        ->toContain('<a class="act on" aria-label="Page 6" aria-current="page" href="/firefly/mappings?size=2&amp;page=6">6</a>')
         // Two either side, and NOT a third: rendering every page of a long listing is a control nobody can use.
         ->toContain('>4</a>')
         ->toContain('>8</a>')
         ->not->toContain('>3</a>')
         ->not->toContain('>9</a>')
         // The two jumps people actually make are kept whatever the window is.
-        ->toContain('<a class="act" href="/firefly/mappings?size=2">1</a>')
-        ->toContain('<a class="act" href="/firefly/mappings?size=2&amp;page=11">11</a>');
+        ->toContain('<a class="act" aria-label="Page 1" aria-current="false" href="/firefly/mappings?size=2">1</a>')
+        ->toContain('<a class="act" aria-label="Page 11" aria-current="false" href="/firefly/mappings?size=2&amp;page=11">11</a>');
 
     expect(substr_count($body, '<span class="gap">…</span>'))->toBe(2);
 });

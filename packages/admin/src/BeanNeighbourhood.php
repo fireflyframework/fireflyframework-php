@@ -113,6 +113,10 @@ final readonly class BeanNeighbourhood
      * @return list<list<string>> */
     private static function rootPaths(string $focus, array $in, int $limit): array
     {
+        foreach ($in as &$parents) {
+            sort($parents, SORT_STRING);
+        }
+        unset($parents);
         $queue = [$focus];
         $toward = [$focus => null];
         $paths = [];

@@ -26,10 +26,8 @@ namespace Firefly\Admin;
  * the interface in `via` so the reader sees the indirection rather than being quietly shown something they
  * did not write.
  *
- * Layering is a longest-path assignment over the resolved edges, so a node sits below everything that
- * depends on it and arrows read downward. The walk carries its own visited set, so a cycle terminates and
- * the edge that closed it is REPORTED — which matters, because the container has no cycle detection and a
- * cycle among eager singletons exhausts memory at boot.
+ * Iterative Tarjan analysis condenses strongly connected components before assigning longest-path levels.
+ * Cycle membership is a wiring fact; production edges mean it need not be a runtime constructor cycle.
  */
 final class BeanGraph
 {
@@ -65,7 +63,7 @@ final class BeanGraph
     public static function build(array $beans, array $configProperties = []): self
     {
         $index = new BeanGraphIndex;
-        $index->countProducers($beans);
+        $index->countProducers($beans, $configProperties);
 
         foreach ($beans as $row) {
             if (! is_array($row) || ! is_string($row['class'] ?? null)) {
@@ -85,8 +83,8 @@ final class BeanGraph
 
         $degree = [];
         foreach ($edges as $edge) {
-            $degree[$edge['from']]['out'] = ($degree[$edge['from']]['out'] ?? 0) + 1;
-            $degree[$edge['to']]['in'] = ($degree[$edge['to']]['in'] ?? 0) + 1;
+            $degree[$edge['from']]['out'][$edge['to']] = true;
+            $degree[$edge['to']]['in'][$edge['from']] = true;
         }
 
         $nodes = [];
@@ -94,8 +92,8 @@ final class BeanGraph
             $nodes[] = [
                 ...$node,
                 'level' => $levels[$id] ?? 0,
-                'in' => $degree[$id]['in'] ?? 0,
-                'out' => $degree[$id]['out'] ?? 0,
+                'in' => count($degree[$id]['in'] ?? []),
+                'out' => count($degree[$id]['out'] ?? []),
             ];
         }
 
@@ -160,9 +158,7 @@ final class BeanGraph
     }
 
     /**
-     * Longest-path layering, so a node always sits below everything that depends on it. Depth is memoised and
-     * the walk carries a visited set, so a cycle terminates instead of recursing forever — and the edge that
-     * closed it is reported.
+     * Longest-path levels on the component DAG, with every internal cyclic edge retained for compatibility.
      *
      *
      * @param  list<string>  $ids

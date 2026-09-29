@@ -81,3 +81,16 @@ it('lets the overview itself be excluded, under its own slug', function () {
     expect($settings->allows(''))->toBeFalse()
         ->and($settings->allows('beans'))->toBeTrue();
 });
+
+it('bounds the focus explorer independently of the deprecated global graph ceiling', function () {
+    $settings = AdminSettings::fromConfig(adminConfig(['firefly' => ['admin' => ['graph' => ['max-nodes' => 0, 'focus' => ['depth' => 999, 'max-rows' => -1, 'max-nodes' => 999, 'max-paths' => -1, 'page-size' => 999], 'starters' => 999, 'modules' => ['max-nodes' => -1]], 'beans' => ['page-size' => 999]]]]));
+    expect($settings->graphMaxNodes)->toBe(0)
+        ->and($settings->graph->depth)->toBe(4)
+        ->and($settings->graph->maxRows)->toBe(4)
+        ->and($settings->graph->maxNodes)->toBe(300)
+        ->and($settings->graph->maxPaths)->toBe(0)
+        ->and($settings->graph->pageSize)->toBe(500)
+        ->and($settings->graph->starters)->toBe(50)
+        ->and($settings->graph->moduleMaxNodes)->toBe(0)
+        ->and($settings->graph->beansPageSize)->toBe(500);
+});
