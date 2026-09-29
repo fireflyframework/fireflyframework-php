@@ -106,6 +106,10 @@ it('renders a 500 with the cause chain, on a page whose height is bounded', func
     // author looks at, because that is the thing that was wrong.
     $shot = getimagesize(__DIR__.'/Screenshots/error-500-debug.png');
 
+    if ($shot === false) {
+        $this->fail('The debug screenshot must be a readable image.');
+    }
+
     expect($shot)->toBeArray()
         ->and($shot[1])->toBeLessThan(3000)
         ->and($shot[1])->toBeGreaterThan(400);
@@ -125,6 +129,10 @@ it('renders the 404 and the 500 at phone width, still bounded', function (): voi
     visit('/browser-fixture/boom')->on()->mobile()->assertSee('500')->assertSee('Caused by')->assertScript(TRACE_CALLS_INSIDE_PANEL)->assertNoJavaScriptErrors()->screenshot(filename: 'error-500-debug-mobile');
 
     $shot = getimagesize(__DIR__.'/Screenshots/error-500-debug-mobile.png');
+
+    if ($shot === false) {
+        $this->fail('The debug screenshot must be a readable image.');
+    }
 
     expect($shot)->toBeArray()->and($shot[1])->toBeLessThan(4000);
 });

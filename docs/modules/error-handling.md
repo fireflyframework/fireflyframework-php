@@ -303,6 +303,26 @@ each of them itself immediately after it has consulted LaraFly's renderer, and n
 field errors, a `401`, or a response the application had already built, with an opaque `500`. A failed
 `$request->validate()` in a LaraFly application behaves exactly as it does in a plain Laravel one.
 
+### RFC 9457, member by member
+
+| Member | Meaning | Published behavior |
+|---|---|---|
+| `type` | Identifies the kind of problem (§3.1.1) | `about:blank` by default; a configured HTTP(S) base derives a URI from the stable code; `''` omits the member. |
+| `title` | Short summary of the problem type (§3.1.2) | The reason phrase or the exception's authored title. |
+| `status` | Advisory HTTP status (§3.1.3) | An integer matching the response status. |
+| `detail` | Explanation of this occurrence (§3.1.4) | The authored sentence or the opaque sentence, subject to the disclosure gate. |
+| `instance` | URI reference identifying this occurrence (§3.1.5) | A root-relative request path from `ProblemMapper::instanceFor()`; backslash, TAB, LF and CR are percent-encoded to keep the reference on this origin. |
+| Extensions | Application-specific members (§3.2) | Stable `code`, reference ids, timestamp, field errors and safe exception extensions. |
+
+**Migration:** `instance` now has a leading slash. A client comparing it to `api/orders/42` must expect
+`/api/orders/42`. `type` is now explicit by default; setting `firefly.web.problem.type-uri` to `''` omits
+that member but does not undo the corrected `instance` behavior. A configured base identifies a problem
+type; the application is responsible for serving documentation at that URI.
+
+**Encoding degrades safely.** Invalid UTF-8 is substituted. If encoding or a serialization callback fails,
+the renderer reports the failure and emits a document preserving scalar metadata, safe authored details
+and encodable field errors and extensions. The [web rendering](#web-rendering-m6) section describes what is disclosed.
+
 ## The HTML error page
 
 `firefly/web` ships a page in the same visual language as the welcome page and the admin dashboard, showing
@@ -347,10 +367,26 @@ deployment wants to change:
 //     ],
 ```
 
-The reference both surfaces publish has two keys of its own:
+The error surfaces and their shared reference use these configuration keys:
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
+| `firefly.web.error-page.enabled` | bool | `true` | Off falls back to Laravel's own error page. It gates RENDERING, not recognition: the security entry point still knows a browser from a client. |
+| `firefly.web.error-page.trace` | bool | `app.debug` | Whether the page carries the exception, its file and line, a source excerpt and the stack trace. Enforced where the report is BUILT. |
+| `firefly.web.error-page.title` | string | `app.name` | The name in the wordmark and the `<title>`. |
+| `firefly.web.error-page.excerpt-lines` | int | `7` (0–40) | Source lines around a throwing line. |
+| `firefly.web.error-page.max-frames` | int | `40` (1–500) | The most frames the page BUILDS. A trim in the report, before markup; your own frames are kept first, and the header says "30 of 104 frames". |
+| `firefly.web.error-page.json-paths` | string (CSV) | `api/*` | Path patterns answered as problem+json whatever the caller asked for. Checked before the `Accept` header. |
+| `firefly.web.error-page.views` | array | `[]` | Your own Blade view per status, or `default`. Bound by the same `trace` gate; a view that throws falls back to the built-in page. |
+| `firefly.web.error-page.home` | string | `/` | The "Go home" target. Scheme-guarded — see below. `''` offers no link. |
+| `firefly.web.error-page.sign-in` | string | `''` | The 401's "Sign in" target. Scheme-guarded. Offered on a 401 and on nothing else. |
+| `firefly.web.error-page.support` | string | `''` | The "Contact support" target. Scheme-guarded. |
+| `firefly.web.error-page.actions` | bool | `true` | Whether the page offers any navigation at all. |
+| `firefly.web.error-page.copy-button` | bool | `true` | The Reference cell's Copy button — the page's only script, shipped `hidden` and revealed by it. |
+| `firefly.web.error-page.authored-detail` | bool | `true` | Whether the production lede is the sentence problem+json publishes for the same failure. |
+| `firefly.web.error-page.problem-fallback` | bool | `true` | Whether clients asking for wildcard, absent or unsupported Accept types get problem+json; withdrawn when the page is disabled. |
+| `firefly.web.problem.disclose` | bool | `false` | Whether an UNHANDLED throwable's own message may appear in `detail`. Follows nothing — not `app.debug`, not `trace`. |
+| `firefly.web.problem.type-uri` | string | `about:blank` | RFC 9457 `type`: that literal, `''` to omit the member, or a base URI from which the stable `code` derives one. |
 | `firefly.web.trace-id.enabled` | bool | `true` | Whether the W3C trace id is what `traceId`, the page's **Reference** row and the echoed header publish. `false` puts the correlation id back in all three — the pre-trace behaviour — and turns the echo off. The trace id is still read for logs and the HTTP-exchange row; only publishing it stops. |
 | `firefly.web.trace-id.header` | string | `X-Trace-Id` | The response header the trace id is echoed on, beside `X-Correlation-Id` and never in place of it. `''` disables the echo and leaves the document and the page untouched. It is deliberately **not** W3C `traceresponse`, which LaraFly does not implement. |
 
@@ -416,3 +452,11 @@ possible outcome.
 **It is not a Blade view itself.** The built-in page is assembled as a string with no container lookups, no
 view factory and no network font, because the failure being explained may *be* the view layer. String
 building is not the elegant choice; it is the one that still works when nothing else does.
+
+**The stack puts your code first.** Application frames precede one native dependency disclosure. Frame
+summaries keep the index, package, directory, filename, line and call on one line on desktop; narrow screens
+place the call on a second line. Only one source excerpt
+opens at a time, using native `details` behavior without JavaScript. `firefly.web.error-page.max-frames`
+limits the frames assembled, with application frames taking priority; counts disclose any truncation.
+`SourcePaths` removes literal and realpath-normalized roots, then uses roots inferred from vendor frames.
+This also handles symlinked deployments and harnesses whose application root sits inside a vendor tree.
