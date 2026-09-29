@@ -35,6 +35,8 @@ final readonly class AdminSettings
         public int $graphMaxNodes = 220,
         public array $excludedPages = [],
         public TableSettings $table = new TableSettings,
+        public bool $routeDetail = true,
+        public bool $routeAdvice = true,
     ) {}
 
     public static function fromConfig(Config $config): self
@@ -58,6 +60,8 @@ final readonly class AdminSettings
             // because a Blade view reaches exactly one settings object, and a second one would mean every
             // view that draws a table taking a second parameter through render().
             table: TableSettings::fromConfig($config),
+            routeDetail: $config->bool('firefly.admin.routes.detail', true),
+            routeAdvice: $config->bool('firefly.admin.routes.advice', true),
         );
     }
 

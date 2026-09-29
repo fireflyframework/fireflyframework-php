@@ -27,6 +27,12 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Added
 
+- **Route detail:** permalinked, server-rendered route contracts with ordered caller/injected bindings,
+  resolver claims, binding-specific failures, bounded DTO trees, sibling comparison and duplicate warnings.
+  Gated wiring/configuration/API/traffic links, default responses, exception handlers, registered route
+  metadata and collapsed advice provenance make the compiled contract inspectable without running it.
+  `firefly.admin.routes.detail` and `firefly.admin.routes.advice` control the new surface.
+
 - **Error navigation:** configured sign-in on 401, retry on GET/HEAD 5xx, and home/support links where
   configured. Production ledes retain safe authored details and 405 pages name the allowed methods.
 - **Error configuration:** documented `max-frames`, `home`, `sign-in`, `support`, `actions`, `copy-button`,

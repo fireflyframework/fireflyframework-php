@@ -598,6 +598,30 @@
              padding:11px 14px;font-size:13.5px}
 
         [hidden]{display:none!important}
+        .route-head{display:block}
+        .route-head h1{font-size:24px;margin:16px 0 10px;overflow-wrap:break-word;scroll-margin-top:16px}
+        .route-head+.stats{margin-bottom:16px}
+        .route-links{display:flex;flex-wrap:wrap;gap:8px 20px;margin:14px 0}
+        .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+        .route-link{display:inline}
+        .route-panel{padding:18px 20px;overflow-wrap:break-word}
+        .route-panel h2{font-size:16px;margin:0 0 10px}
+        .route-panel h3{font-size:14px;margin:20px 0 8px}
+        .route-panel p{margin:8px 0}
+        .route-panel summary,.route-siblings summary{cursor:pointer;font-weight:600}
+        .route-siblings{margin-top:16px}
+        .route-siblings ul,.route-injected{padding-left:22px}
+        .route-siblings li,.route-injected li{margin:10px 0}
+        table.route-bindings{min-width:900px}
+        .route-failures{list-style:none;padding:0}
+        .route-failures li{padding:10px 0;border-bottom:1px solid var(--line)}
+        .route-failures li:last-child{border:0}
+        .route-failures li>span:last-child{display:block;margin-top:4px}
+        .body-tree{list-style:none;padding-left:18px;border-left:1px solid var(--line)}
+        .body-tree li{margin:9px 0}
+        .body-tree .body-tree .body-tree{padding-left:0;border-left:0}
+        .route-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+        .route-head h1:focus{outline:2px solid var(--accent);outline-offset:5px}
     </style>
 </head>
 <body>

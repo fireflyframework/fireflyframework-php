@@ -1318,6 +1318,14 @@ return [
     //         'density' => env('FIREFLY_ADMIN_TABLE_DENSITY', 'comfortable'),
     //     ],
     //
+    //     // Route permalinks read the compiled binding contract without executing a handler or resolver.
+    //     'routes' => [
+    //         // Default true. False removes route links and refuses every ?route= URL with 404.
+    //         'detail' => env('FIREFLY_ADMIN_ROUTES_DETAIL', true),
+    //         // Default true. Show the collapsed compiled advice plan, its provenance and binding state.
+    //         'advice' => env('FIREFLY_ADMIN_ROUTES_ADVICE', true),
+    //     ],
+    //
     //     'pages' => [
     //         /*
     //          | CSV of page slugs to REFUSE. This is a refusal, not a menu preference: an excluded page is

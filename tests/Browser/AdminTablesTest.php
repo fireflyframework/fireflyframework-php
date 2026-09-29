@@ -25,7 +25,10 @@ it('draws a route path on one line instead of six', function (): void {
                 // cell's contents reports one rectangle per line box, which is the thing being counted:
                 // it was six, and it is one.
                 const range = document.createRange();
-                range.selectNodeContents(cell);
+                // The route is now an anchor with a hidden verb for its accessible name. Measure
+                // the visible path text, not the additional element rectangles the link introduces.
+                const path = cell.querySelector('.route-link');
+                range.selectNodeContents(path ? [...path.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '') : cell);
                 return range.getClientRects().length === 1;
             })()
             JS, true)
