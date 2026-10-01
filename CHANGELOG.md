@@ -4,6 +4,18 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.09.11] - 2026-09-30
+
+### Fixed
+
+- **Scheduling:** every duration of a `#[Scheduled]` method — `fixedRate`, `fixedDelay` and `lockTtl`, as
+  `initialDelay` already was — is parsed at boot, and one that does not parse refuses the boot naming its method.
+  `lockTtl` used to be parsed only when its task ran, so an unparseable value failed that task on every tick and
+  the task never ran while the application booted and looked healthy.
+- **Durations:** `Firefly\Resilience\Duration` also reads ISO-8601 durations (`PT14M`, `PT1H30M`, `P1D`,
+  `PT0.25S`), the form Spring's `@Scheduled` and `java.time.Duration` use. Years, months and weeks are refused
+  because their length is not fixed. Resilience settings and every scheduling duration accept it.
+
 ## [26.09.10] - 2026-09-29
 
 ### Fixed

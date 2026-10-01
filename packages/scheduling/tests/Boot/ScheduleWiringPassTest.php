@@ -368,3 +368,68 @@ it('says nothing about the anchor store when no task carries an initial delay', 
 
     expect($logger->records)->toBe([]);
 });
+
+/*
+ * A LOCK TTL THAT IS NOT A DURATION USED TO DISABLE ITS TASK FOR GOOD. `lockTtl` was parsed inside the task
+ * closure, so a value Duration::parse refused threw on every tick, was reported and the task never ran — while
+ * the application booted, served and looked healthy. Every duration of the manifest is now proved where
+ * initialDelay already was: at boot.
+ */
+
+it('REFUSES TO BOOT on a lockTtl that is not a duration, rather than failing its task on every tick', function () {
+    $refuse = fn () => scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', cron: '*/5 * * * *', lockName: 'reconcile', lockTtl: 'four minutes'),
+    ], enabled: true);
+
+    expect($refuse)->toThrow(
+        ConfigurationException::class,
+        "#[Scheduled(lockTtl: 'four minutes')] on ".ScheduledJobs::class.'::reconcile',
+    );
+});
+
+it('REFUSES TO BOOT on a fixedRate or fixedDelay that is not a duration', function (string $parameter) {
+    $refuse = fn () => scheduleWithInitialDelayGate([
+        new ScheduledDescriptor(...['class' => ScheduledJobs::class, 'method' => 'reconcile', $parameter => 'often']),
+    ], enabled: true);
+
+    expect($refuse)->toThrow(
+        ConfigurationException::class,
+        "#[Scheduled({$parameter}: 'often')] on ".ScheduledJobs::class.'::reconcile',
+    );
+})->with(['fixedRate', 'fixedDelay']);
+
+it('acquires the lock for the ISO-8601 lockTtl Spring authors write', function () {
+    $lock = new class implements DistributedLock
+    {
+        /** @var array<string, float> */
+        public array $acquired = [];
+
+        public function tryAcquire(string $name, float $ttlSeconds): bool
+        {
+            $this->acquired[$name] = $ttlSeconds;
+
+            return true;
+        }
+
+        public function release(string $name): void {}
+    };
+    $container = new Container;
+    Container::setInstance($container);
+    $container->instance(CacheFactoryContract::class, new class implements CacheFactoryContract
+    {
+        public function store($name = null)
+        {
+            return new CacheRepository(new ArrayStore);
+        }
+    });
+    $container->instance(DistributedLock::class, $lock);
+    $container->instance(ScheduledManifest::class, new ScheduledManifest([
+        new ScheduledDescriptor(class: ScheduledJobs::class, method: 'reconcile', cron: '*/5 * * * *', lockName: 'reconcile', lockTtl: 'PT4M'),
+    ]));
+    (new ScheduleWiringPass)->run(scheduleWiringContext($container));
+
+    $event = $container->make(Schedule::class)->events()[0];
+    $event->run($container);
+
+    expect($lock->acquired)->toBe(['reconcile' => 240.0]);
+});
