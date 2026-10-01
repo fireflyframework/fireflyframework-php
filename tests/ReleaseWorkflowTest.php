@@ -106,3 +106,9 @@ it('publishes a GitHub release only after the tag installs from Packagist', func
     }
     expect($verifyPosition)->toBeLessThan($releasePosition);
 });
+
+it('waits for the tag on Composer\'s metadata endpoint, not on the CDN-cached web API', function () {
+    $blob = (string) file_get_contents(dirname(__DIR__).'/.github/workflows/release.yml');
+    expect($blob)->toContain('https://repo.packagist.org/p2/fireflyframework/larafly.json')
+        ->not->toContain('https://packagist.org/packages/fireflyframework/larafly.json');
+});
