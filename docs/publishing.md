@@ -67,13 +67,16 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
    `https://github.com/fireflyframework/fireflyframework-php` and enable the repository webhook. This is a
    one-time publisher action; subsequent releases use tags from this same repository.
 5. Push the new release tag. **Release (single package)** validates the tagged distribution on PHP
-   8.3, 8.4 and 8.5, waits for Packagist to index that exact commit, then installs it in a fresh stable
+   8.3, 8.4 and 8.5, waits for Packagist's Composer metadata (`repo.packagist.org/p2/…`) to list that exact
+   commit for the tag, then installs it in a fresh stable
    consumer without custom repositories and exercises the bundled installer. Only after those checks
    pass does its final job build both books and create the GitHub release from the changelog with the
    English and Spanish PDF/EPUB files, checksums and source commit record. That job uses the repository's
    built-in `GITHUB_TOKEN` with `contents: write`; validation jobs remain read-only.
 6. If indexing times out, repair the Packagist webhook or trigger an update on the package page, then
    rerun the failed job. Do not move the tag or create a GitHub release to bypass the public install gate.
+   Releases up to 26.09.11 waited on the web API (`packagist.org/packages/…json`), which the CDN caches for
+   twelve hours; for those tags a rerun succeeds once that cache has expired.
 
 To repeat the public install check locally:
 

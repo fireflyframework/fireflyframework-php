@@ -4,6 +4,12 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release workflow:** the publication job waits for the tag on Composer's metadata endpoint
+  (`repo.packagist.org/p2`), which Packagist refreshes when it indexes a tag. It used to read the web API, which
+  the CDN caches for twelve hours, so 26.09.11 was installable from Packagist while its GitHub release waited.
+
 ## [26.09.11] - 2026-09-30
 
 ### Fixed

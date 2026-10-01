@@ -50,11 +50,15 @@ jobs:
           coverage: none
           tools: composer:v2
       - run: composer install --no-interaction --prefer-dist
+      # Composer's own metadata endpoint, which Packagist refreshes when the webhook indexes a tag. The web API
+      # (packagist.org/packages/<name>.json) is cached by the CDN for twelve hours (s-maxage=43200), so it can
+      # keep answering without the new tag long after Composer already installs it.
       - name: Wait for Packagist to index this exact tag
         run: |
-          for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error https://packagist.org/packages/fireflyframework/larafly.json -o "$RUNNER_TEMP/larafly.json" &&
-              php -r '$p = json_decode(file_get_contents($argv[1]), true); exit(($p["package"]["versions"][getenv("RELEASE_TAG")]["source"]["reference"] ?? null) === getenv("RELEASE_SHA") ? 0 : 1);' "$RUNNER_TEMP/larafly.json"; then
+          # shellcheck disable=SC2016 # the PHP program is single-quoted on purpose
+          for _ in $(seq 1 40); do
+            if curl --fail --silent --show-error https://repo.packagist.org/p2/fireflyframework/larafly.json -o "$RUNNER_TEMP/larafly.json" &&
+              php -r '$p = json_decode(file_get_contents($argv[1]), true); foreach ($p["packages"]["fireflyframework/larafly"] ?? [] as $v) { if (($v["version"] ?? null) === getenv("RELEASE_TAG")) { exit(($v["source"]["reference"] ?? null) === getenv("RELEASE_SHA") ? 0 : 1); } } exit(1);' "$RUNNER_TEMP/larafly.json"; then
               exit 0
             fi
             sleep 15
