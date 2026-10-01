@@ -91,8 +91,10 @@ several of those example values are deliberately not the framework default (the 
 ```
 
 Duration-shaped keys (`wait-duration`, `max-wait`, `wait-duration-in-open`, `timeout`, …) accept either a
-bare number of seconds or a `Firefly\Resilience\Duration`-parsed string: `250ms`, `30s`, `5m`, `1h`. `Duration`
-is also reused by `firefly/scheduling` for `lock-ttl` and `fixedRate`/`fixedDelay`.
+bare number of seconds or a `Firefly\Resilience\Duration`-parsed string: `250ms`, `30s`, `5m`, `1h`, or an ISO-8601
+duration such as `PT5M` (days, hours, minutes and seconds; years, months and weeks are refused because their length
+is not fixed). `Duration` is also reused by `firefly/scheduling` for `lockTtl`, `initialDelay` and
+`fixedRate`/`fixedDelay`.
 
 ## The six patterns
 

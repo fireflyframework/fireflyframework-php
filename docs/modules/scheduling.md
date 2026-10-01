@@ -83,14 +83,19 @@ Exactly one of `cron`, `fixedRate`, or `fixedDelay` must be set (the attribute's
 `InvalidArgumentException` otherwise):
 
 - **`cron`** — a Laravel/crontab expression, applied to the scheduled `Event` verbatim (`$event->cron(...)`).
-- **`fixedRate`** / **`fixedDelay`** — a `Duration`-parsed string (`'250ms'`, `'30s'`, `'5m'`, `'1h'`, or a
-  bare number of seconds) mapped to the *nearest* native Laravel frequency method — see
-  [Known-latent](#known-latent).
+- **`fixedRate`** / **`fixedDelay`** — a `Duration`-parsed string (`'250ms'`, `'30s'`, `'5m'`, `'1h'`, a bare
+  number of seconds, or an ISO-8601 duration such as `'PT5M'`, the form Spring's `@Scheduled` reads) mapped to the
+  *nearest* native Laravel frequency method — see [Known-latent](#known-latent).
 - **`lock`** — `true` shares a lock named `"Class::method"` (derived from the annotated method); a string is
   an explicit shared lock name (so several methods can share one lock); `null`/`false` (the default) runs
   unlocked, with no `DistributedLock` guard at all.
-- **`lockTtl`** — a `Duration`-parsed string bounding how long the lock may be held; defaults to `30.0`
-  seconds when the trigger is locked and no `lockTtl` is given.
+- **`lockTtl`** — a `Duration`-parsed string, in either form, bounding how long the lock may be held; defaults
+  to `30.0` seconds when the trigger is locked and no `lockTtl` is given.
+
+Every duration of a `#[Scheduled]` method (`fixedRate`, `fixedDelay`, `initialDelay`, `lockTtl`) is parsed when
+the application boots, and one that does not parse refuses the boot with the method it belongs to. Before 26.09.11
+a `lockTtl` was only parsed when its task ran, so an unparseable value failed that task on every tick while the
+application looked healthy.
 
 <!-- illustrative: an application's own bean with two scheduled methods -->
 ```php

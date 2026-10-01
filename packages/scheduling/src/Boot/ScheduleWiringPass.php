@@ -66,6 +66,7 @@ final class ScheduleWiringPass implements BootPass
         $lock = $container->make(DistributedLock::class);
 
         $config = $context->config;
+        $this->validateDurations($manifest);
         $this->validateDelays($manifest, $config);
 
         $container->afterResolving(Schedule::class, function (Schedule $schedule) use ($manifest, $lock, $container, $config): void {
@@ -82,6 +83,35 @@ final class ScheduleWiringPass implements BootPass
                 $this->applyInitialDelay($event, $descriptor, $gate, $container);
             }
         });
+    }
+
+    /**
+     * `fixedRate`, `fixedDelay` and `lockTtl` are PARSED HERE for their refusal, as validateDelays() parses
+     * `initialDelay`. Neither the attribute nor the scanner validates them. `lockTtl` used to be parsed only inside
+     * the task closure, so a string Duration::parse refused threw on every tick, was reported and the task never
+     * ran — while the application booted, served and looked healthy. A rate or delay was parsed when the Schedule
+     * was resolved, so one bad string stopped every task of the scheduler, not just its own.
+     */
+    private function validateDurations(ScheduledManifest $manifest): void
+    {
+        foreach ($manifest->all() as $descriptor) {
+            $durations = ['fixedRate' => $descriptor->fixedRate, 'fixedDelay' => $descriptor->fixedDelay, 'lockTtl' => $descriptor->lockTtl];
+            foreach ($durations as $parameter => $value) {
+                if ($value === null) {
+                    continue;
+                }
+
+                try {
+                    Duration::parse($value);
+                } catch (ConfigurationException $exception) {
+                    throw new ConfigurationException(
+                        "#[Scheduled({$parameter}: '{$value}')] on {$descriptor->class}::{$descriptor->method} "
+                        ."is not a duration this framework can parse. {$exception->getMessage()}",
+                        previous: $exception,
+                    );
+                }
+            }
+        }
     }
 
     /**

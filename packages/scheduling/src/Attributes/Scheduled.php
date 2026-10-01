@@ -10,7 +10,9 @@ use InvalidArgumentException;
 /**
  * Marks a public method as a scheduled task (pyfly/Spring @Scheduled parity). Exactly one trigger is required:
  * `cron` (a Laravel/crontab expression, applied verbatim), `fixedRate`, or `fixedDelay` (duration strings parsed
- * by Duration::parse at wiring time and mapped to the nearest native Laravel frequency). `lock === true` shares a
+ * by Duration::parse at wiring time and mapped to the nearest native Laravel frequency). Durations — these two,
+ * `initialDelay` and `lockTtl` — take the short form ('30s', '5m') or ISO-8601 ('PT5M'), and a value that does not
+ * parse refuses to boot. `lock === true` shares a
  * lock named "Class::method"; a string is an explicit shared lock name; null/false runs unlocked. The scanner
  * (the package's sole reflection site) reads these into pure-array descriptors; nothing here parses durations.
  */
