@@ -33,7 +33,7 @@ interface FlagSource
     /** Seconds between two checks of this source; 0 means "check on every refresh" (in-process data). */
     public function refreshInterval(): float;
 
-    /** Whether failing before this source EVER loaded refuses the boot (config and file: spec §4.5). */
+    /** Whether a failure refuses the boot: config always, file only before it ever loaded (spec §4.5, deviation 3). */
     public function failsStartup(): bool;
 
     /** The revision worth showing an operator (null hides an internal one, such as config's hash). */
