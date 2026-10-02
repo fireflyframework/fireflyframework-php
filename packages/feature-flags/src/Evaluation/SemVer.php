@@ -6,8 +6,8 @@ namespace Firefly\FeatureFlags\Evaluation;
 
 /**
  * flagd's `sem_ver` [version, operator, version] as the reference evaluator runs it (openfeature-flagd-core 1.0.0
- * on python-semver 3.1.0): str() of each side — a float as Python writes it, so 0.1 + 0.2 is
- * "0.30000000000000004" and 1e16 is "1e+16", never PHP's 14-digit string cast — a leading v/V dropped, a
+ * on python-semver 3.1.0): str() of each side — a float as Python writes it (PythonText::float()), so 0.1 + 0.2
+ * is "0.30000000000000004" and 1e16 is "1e+16", never PHP's 14-digit string cast — a leading v/V dropped, a
  * partial version padded to three parts ("1" → "1.0.0", "1.2-rc.1" → "1.2.0-rc.1"), then a STRICT SemVer 2.0.0
  * parse: "2.0.0.0", "01.0.0" and "1.0.0\n" do not parse, and neither do a boolean, null, a list or an object.
  * Precedence ignores build metadata and compares numbers exactly at any length. `^` compares majors only and
@@ -70,7 +70,7 @@ final class SemVer
         $version = match (true) {
             is_string($value) => $value,
             is_int($value) => (string) $value,
-            is_float($value) => self::pythonFloat($value),
+            is_float($value) => PythonText::float($value),
             default => null,
         };
         if ($version === null) {
@@ -184,45 +184,5 @@ final class SemVer
     private static function numeric(string $a, string $b): int
     {
         return strlen($a) <=> strlen($b) ?: strcmp($a, $b) <=> 0;
-    }
-
-    /**
-     * Python's repr() of a float (what str() gives), independent of PHP's `precision` ini: the shortest digits
-     * that read back as the same float, fixed notation for 1e-4 <= |x| < 1e16 (with ".0" when whole), an
-     * exponent of at least two digits otherwise.
-     */
-    private static function pythonFloat(float $value): string
-    {
-        if (is_nan($value)) {
-            return 'nan';
-        }
-        if (is_infinite($value)) {
-            return $value > 0 ? 'inf' : '-inf';
-        }
-
-        $sign = $value < 0 || ($value === 0.0 && fdiv(1.0, $value) < 0) ? '-' : '';
-        $magnitude = abs($value);
-
-        // Sixteen decimals in scientific notation is seventeen significant digits, which always read back.
-        $precision = 0;
-        while ($precision < 16 && (float) sprintf('%.'.$precision.'e', $magnitude) !== $magnitude) {
-            $precision++;
-        }
-        [$mantissa, $exponent] = explode('e', sprintf('%.'.$precision.'e', $magnitude));
-        $digits = rtrim(str_replace('.', '', $mantissa), '0');
-        $digits = $digits === '' ? '0' : $digits;
-        $point = (int) $exponent + 1;
-
-        if ($point <= -4 || $point > 16) {
-            $text = $digits[0].(strlen($digits) > 1 ? '.'.substr($digits, 1) : '');
-
-            return sprintf('%s%se%s%02d', $sign, $text, $point - 1 < 0 ? '-' : '+', abs($point - 1));
-        }
-
-        return $sign.match (true) {
-            $point <= 0 => '0.'.str_repeat('0', -$point).$digits,
-            $point >= strlen($digits) => $digits.str_repeat('0', $point - strlen($digits)).'.0',
-            default => substr($digits, 0, $point).'.'.substr($digits, $point),
-        };
     }
 }
