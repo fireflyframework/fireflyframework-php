@@ -6,6 +6,38 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\FeatureFlags\\Evaluation\\FlagdEvaluatorConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'flagdEvaluator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Evaluation\\FlagdEvaluator',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\FeatureFlags\\FeatureFlagsAutoConfiguration',
         'postConstruct' => [
         ],
