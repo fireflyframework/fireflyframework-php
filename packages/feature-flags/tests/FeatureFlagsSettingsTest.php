@@ -221,21 +221,44 @@ it('refuses a duration that is not a finite number of seconds, naming its key', 
         ->toThrow(ConfigurationException::class, 'firefly.feature-flags.'.$leaf);
 })->with(array_keys(featureFlagsDurations()))->with([INF, NAN, '', 'soon', true, [['5s']]]);
 
-it('accepts zero as a refresh interval: the source is re-checked on every refresh', function (string $leaf, mixed $written): void {
+it('accepts zero as a file or store refresh interval: the source is re-checked on every refresh', function (string $leaf, mixed $written): void {
     $settings = featureFlagsSettings(featureFlagsSection($leaf, $written));
     $intervals = [
         'sources.file.refresh-interval' => $settings->file->refreshInterval,
-        'sources.http.refresh-interval' => $settings->http->refreshInterval,
         'sources.store.refresh-interval' => $settings->store->refreshInterval,
     ];
 
     expect($intervals[$leaf])->toBe(0.0);
-})->with(['sources.file.refresh-interval', 'sources.http.refresh-interval', 'sources.store.refresh-interval'])->with([0, 0.0, '0s', 'PT0S']);
+})->with(['sources.file.refresh-interval', 'sources.store.refresh-interval'])->with([0, 0.0, '0s', 'PT0S']);
+
+it('refuses an http refresh interval that is not above zero, naming its key', function (mixed $written): void {
+    expect(fn () => featureFlagsSettings(['sources' => ['http' => ['refresh-interval' => $written]]]))
+        ->toThrow(ConfigurationException::class, 'firefly.feature-flags.sources.http.refresh-interval');
+})->with([0, 0.0, '0s', '0ms', 'PT0S']);
 
 it('refuses an http timeout that is not above zero, naming its key', function (mixed $written): void {
     expect(fn () => featureFlagsSettings(['sources' => ['http' => ['timeout' => $written]]]))
         ->toThrow(ConfigurationException::class, 'firefly.feature-flags.sources.http.timeout');
 })->with([0, 0.0, '0s', '0ms', 'PT0S']);
+
+/*
+ * DurationReader::get() is named get() so the key discovery in tests/ConfigReferenceTest.php (and the same pattern
+ * in DocsCodeAudit::keyLiterals()) finds each duration key at its read site. Renaming the method would silently
+ * drop four keys from the configuration-reference check; this pins it, with ConfigReferenceTest's pattern copied
+ * verbatim.
+ */
+it('reads every duration where the configuration-reference check can see its key', function (): void {
+    preg_match_all(
+        "/->(?:bool|string|int|array|get|has)\(\s*'(firefly\.[a-z0-9._\-]+)'/",
+        (string) file_get_contents(dirname(__DIR__).'/src/FeatureFlagsSettings.php'),
+        $matches,
+    );
+
+    expect($matches[1])->toContain(...array_map(
+        static fn (string $leaf): string => 'firefly.feature-flags.'.$leaf,
+        array_keys(featureFlagsDurations()),
+    ));
+});
 
 it('falls back to the default for a duration set to null, as an unset env() leaves it', function (string $leaf): void {
     $settings = featureFlagsSettings(featureFlagsSection($leaf, null));

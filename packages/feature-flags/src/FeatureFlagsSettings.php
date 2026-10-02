@@ -18,9 +18,10 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  * every leaf set to null (`env('X')` with X unset) takes its default.
  *
  * Durations (DurationReader) take the framework grammar or a number of seconds; a negative one is refused. Zero
- * is allowed only where it is safe: a `refresh-interval` of 0 re-checks that source on every registry refresh,
- * that is on every request, while `sources.http.timeout` must be above zero, because Laravel's HTTP client reads 0
- * as no timeout at all.
+ * is allowed only where it is cheap: a file or store `refresh-interval` of 0 re-checks that source on every
+ * registry refresh, that is on every request (a stat, or one MAX(id) query). Both http durations must be above
+ * zero: an http `refresh-interval` of 0 would send the remote server one conditional GET per request with no
+ * stampede lock, and Laravel's HTTP client reads a `timeout` of 0 as no timeout at all.
  */
 final readonly class FeatureFlagsSettings
 {
@@ -65,8 +66,8 @@ final readonly class FeatureFlagsSettings
             enabled: $config->bool('firefly.feature-flags.sources.http.enabled', false),
             url: $config->string('firefly.feature-flags.sources.http.url', ''),
             token: $config->string('firefly.feature-flags.sources.http.token', ''),
-            refreshInterval: $durations->get('firefly.feature-flags.sources.http.refresh-interval', 30.0),
-            timeout: $durations->get('firefly.feature-flags.sources.http.timeout', 2.0, positive: true),
+            refreshInterval: $durations->get('firefly.feature-flags.sources.http.refresh-interval', 30.0, refuseZeroBecause: 'zero would send the remote server one conditional GET per request, with no stampede lock'),
+            timeout: $durations->get('firefly.feature-flags.sources.http.timeout', 2.0, refuseZeroBecause: "Laravel's HTTP client reads zero as no timeout at all"),
         );
         if ($http->enabled && trim($http->url) === '') {
             throw new ConfigurationException('firefly.feature-flags.sources.http.enabled is on but firefly.feature-flags.sources.http.url is empty: name the sync endpoint to poll.');

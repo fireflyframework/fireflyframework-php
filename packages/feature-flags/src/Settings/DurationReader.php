@@ -18,8 +18,8 @@ use Firefly\Resilience\Duration;
  *
  * Accepted: a duration in the framework grammar (`'500ms'`, `'5s'`, `'PT1M'`, see Duration::parse()) or a finite
  * number of seconds. Null is unset, as everywhere in Config: an absent key, or `env('X')` with X unset, gives the
- * default. Refused: a negative value, a non-finite number, an empty or unparsable string and any other type; with
- * `$positive`, zero too.
+ * default. Refused: a negative value, a non-finite number, an empty or unparsable string and any other type; and
+ * zero too when the caller says why zero is unsafe for that key (`$refuseZeroBecause`, quoted in the refusal).
  *
  * @internal
  */
@@ -27,7 +27,7 @@ final readonly class DurationReader
 {
     public function __construct(private Config $config) {}
 
-    public function get(string $key, float $default, bool $positive = false): float
+    public function get(string $key, float $default, ?string $refuseZeroBecause = null): float
     {
         $value = $this->config->get($key);
         if ($value === null) {
@@ -52,8 +52,8 @@ final readonly class DurationReader
         if ($seconds < 0.0) {
             throw new ConfigurationException("Configuration key [{$key}] must not be negative, got [".var_export($value, true).'].');
         }
-        if ($positive && $seconds <= 0.0) {
-            throw new ConfigurationException("Configuration key [{$key}] must be greater than zero, got [".var_export($value, true).']: zero would mean no limit at all.');
+        if ($refuseZeroBecause !== null && $seconds <= 0.0) {
+            throw new ConfigurationException("Configuration key [{$key}] must be greater than zero, got [".var_export($value, true)."]: {$refuseZeroBecause}.");
         }
 
         return $seconds;
