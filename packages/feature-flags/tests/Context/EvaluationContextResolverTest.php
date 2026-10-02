@@ -10,6 +10,9 @@ use Firefly\FeatureFlags\Evaluation\FlagType;
 use Firefly\FeatureFlags\Tests\Support\ProfileVariables;
 use Firefly\FeatureFlags\Tests\Support\RecordingLogger;
 use Illuminate\Config\Repository;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 function featureFlagsApplicationContributor(): ApplicationEvaluationContextContributor
 {
@@ -188,6 +191,41 @@ it('logs one DEBUG line for each attribute it drops, naming it and why', functio
         ->and($logger->count('debug', 'attribute [logger] was dropped: an object of class '.RecordingLogger::class))->toBe(1)
         ->and($logger->count('debug', 'attribute [empty] was dropped: an empty or list-like JSON object'))->toBe(1)
         ->and($logger->count('debug', 'attribute [listy] was dropped: an empty or list-like JSON object'))->toBe(1);
+});
+
+it('never reads an Eloquent model or a collection as its JSON text, and still reads a UUID as its string', function (): void {
+    $logger = new RecordingLogger;
+    $user = new class extends Model {};
+    $user->forceFill(['id' => 42, 'plan' => 'pro']);
+    $teams = new Collection(['core', 'ops']);
+    $uuid = Str::uuid();
+    $principal = new class implements EvaluationContextContributor
+    {
+        public function contribute(EvaluationContextBuilder $context): void
+        {
+            $context->setTargetingKey('ada');
+        }
+    };
+    $resolver = new EvaluationContextResolver([$principal], $logger);
+
+    // Both are Stringable (their JSON text), which a targeting key or an attribute would otherwise be read as.
+    expect((string) $user)->toBe('{"id":42,"plan":"pro"}')
+        ->and((string) $teams)->toBe('["core","ops"]');
+
+    $byModel = $resolver->resolve(['targetingKey' => $user]);
+    $byCollection = $resolver->resolve(['targetingKey' => $teams], ambient: false);
+    $byUuid = $resolver->resolve(['targetingKey' => $uuid, 'user' => $user, 'teams' => $teams, 'session' => $uuid]);
+
+    expect($byModel->getTargetingKey())->toBe('ada')
+        ->and($byCollection->getTargetingKey())->toBeNull()
+        ->and($byUuid->getTargetingKey())->toBe($uuid->toString())
+        ->and($byUuid->getAttributes()->toArray())->toBe(['session' => $uuid->toString()])
+        ->and($logger->lines)->toHaveCount(4)
+        ->and($logger->count('debug', 'targetingKey of type '.get_debug_type($user).' was refused (an Eloquent model or a collection'))->toBe(1)
+        ->and($logger->count('debug', 'targetingKey of type '.Collection::class.' was refused (an Eloquent model or a collection'))->toBe(1)
+        ->and($logger->count('debug', 'pass $user->id'))->toBe(2)
+        ->and($logger->count('debug', 'attribute [user] was dropped: an Eloquent model or a collection'))->toBe(1)
+        ->and($logger->count('debug', 'attribute [teams] was dropped: an Eloquent model or a collection'))->toBe(1);
 });
 
 it('drops values OpenFeature cannot carry', function (): void {

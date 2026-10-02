@@ -13,9 +13,11 @@ use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
 use Firefly\Cqrs\Tracing\CqrsTracing;
 use Firefly\Eda\Tracing\EdaTracing;
+use Firefly\FeatureFlags\Telemetry\FeatureFlagMetrics;
 use Firefly\Observability\Cqrs\MeterRegistryCqrsMetrics;
 use Firefly\Observability\Cqrs\TracerCqrsTracing;
 use Firefly\Observability\Eda\TracerEdaTracing;
+use Firefly\Observability\FeatureFlags\MeterRegistryFeatureFlagMetrics;
 use Firefly\Observability\HttpExchanges\CacheHttpExchangeRecorder;
 use Firefly\Observability\HttpExchanges\HttpExchangeCapacity;
 use Firefly\Observability\HttpExchanges\HttpExchangeRecorder;
@@ -173,6 +175,21 @@ final class ObservabilityAutoConfiguration
     public function cqrsMetrics(MetricsRecorder $recorder): CqrsMetrics
     {
         return new MeterRegistryCqrsMetrics($recorder);
+    }
+
+    /**
+     * Backs firefly/feature-flags' FeatureFlagMetrics port. #[Order(500)] registers it before
+     * FeatureFlagsAutoConfiguration's #[Order(700)] NoOp, which then backs off — the cqrsMetrics() precedence.
+     * Gated on the metrics master switch like every meter here, and on firefly.feature-flags.enabled: with flags
+     * off, firefly/feature-flags registers nothing and this meter would have nothing to count.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(FeatureFlagMetrics::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
+    #[ConditionalOnProperty(name: 'firefly.feature-flags.enabled', havingValue: 'true')]
+    public function featureFlagMetrics(MetricsRecorder $recorder): FeatureFlagMetrics
+    {
+        return new MeterRegistryFeatureFlagMetrics($recorder);
     }
 
     /**

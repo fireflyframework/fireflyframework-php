@@ -12,8 +12,9 @@ namespace Firefly\FeatureFlags\Context;
  * so a #[Bean] returning a concrete contributor is NOT seen: use #[Component].
  *
  * Set JSON values (scalars, lists, maps) and date-times; a date-time is evaluated as epoch milliseconds, and a
- * Stringable is read as its string. A numeric-looking name (an int key in PHP), an enum and any other object
- * OpenFeature cannot carry are dropped, each with a DEBUG line (EvaluationContextResolver lists the rules).
+ * Stringable is read as its string. A numeric-looking name (an int key in PHP), an enum, an Eloquent model or a
+ * collection (never read as its JSON text) and any other object OpenFeature cannot carry are dropped, each with a
+ * DEBUG line (EvaluationContextResolver lists the rules).
  */
 interface EvaluationContextContributor
 {

@@ -6,6 +6,8 @@ namespace Firefly\FeatureFlags\Context;
 
 use DateTime;
 use DateTimeImmutable;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Contracts\Support\Jsonable;
 use OpenFeature\implementation\flags\Attributes;
 use OpenFeature\implementation\flags\EvaluationContext;
 use Psr\Log\LoggerInterface;
@@ -20,9 +22,10 @@ use UnitEnum;
  * caller's explicit attributes over it — the caller wins, attribute by attribute; a `targetingKey` in the explicit
  * attributes wins over the ambient key, and the $targetingKey argument over both. The explicit `targetingKey` is
  * never kept as an attribute; it is a key when it is a non-empty string, an int (`['targetingKey' => $user->id]`,
- * read as `"42"`) or a Stringable. Any other type is refused with a DEBUG line naming it, and the ambient key
- * applies. A contributor that throws is skipped (logged at DEBUG): context is best-effort, an evaluation must not
- * fail.
+ * read as `"42"`) or a Stringable such as a UUID. Any other type is refused with a DEBUG line naming it, and the
+ * ambient key applies — and so is an Eloquent model or a collection (Arrayable/Jsonable): both are Stringable, but
+ * as their JSON text, which would key a rollout on every attribute the model holds (pass `$user->id`). A
+ * contributor that throws is skipped (logged at DEBUG): context is best-effort, an evaluation must not fail.
  *
  * Not ambient (`ambient: false`, the management preview): only the PROCESS attributes — what the
  * ApplicationEvaluationContextContributor gives, `application` and `profiles` — under the explicit context. No
@@ -35,7 +38,8 @@ use UnitEnum;
  *
  *   - a DateTimeImmutable becomes the equal DateTime (same instant, zone and microseconds); date-times are not
  *     converted further here — the evaluator turns them into epoch milliseconds;
- *   - a Stringable becomes its string;
+ *   - a Stringable becomes its string — except an Eloquent model or a collection (Arrayable/Jsonable), whose string
+ *     is its JSON text: it is dropped (pass the values a rule reads, such as `$user->plan`);
  *   - a JSON object (stdClass) becomes its members when they form Json's faithful array (non-empty, not a list).
  *     `{}` and a list-like object (`{"0": …}`) have no such form at the top level — as arrays they would read as
  *     lists, a different JSON value — so they are dropped rather than altered;
@@ -114,6 +118,10 @@ final class EvaluationContextResolver
             return (string) $key;
         }
 
+        if ($key instanceof Arrayable || $key instanceof Jsonable) {
+            return $this->refusedKey($key, 'an Eloquent model or a collection is not read as its JSON text: pass $user->id');
+        }
+
         if ($key instanceof Stringable) {
             try {
                 $text = (string) $key;
@@ -152,6 +160,12 @@ final class EvaluationContextResolver
 
         if ($value instanceof DateTimeImmutable) {
             $attributes[$name] = DateTime::createFromImmutable($value);
+
+            return;
+        }
+
+        if ($value instanceof Arrayable || $value instanceof Jsonable) {
+            $this->dropped($name, 'an Eloquent model or a collection ('.get_debug_type($value).'), which is not read as its JSON text: pass the values a rule reads, such as $user->plan');
 
             return;
         }

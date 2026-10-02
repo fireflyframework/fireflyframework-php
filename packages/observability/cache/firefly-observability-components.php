@@ -181,6 +181,18 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'featureFlagMetrics',
+                'returns' => 'Firefly\\FeatureFlags\\Telemetry\\FeatureFlagMetrics',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+                ],
+            ],
+            7 => [
                 'method' => 'observabilityMethodInterceptor',
                 'returns' => 'Firefly\\Observability\\Method\\ObservabilityMethodInterceptor',
                 'name' => null,
@@ -194,7 +206,7 @@ return [
                     2 => 'Firefly\\Config\\Config',
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'cqrsTracing',
                 'returns' => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
                 'name' => null,
@@ -206,7 +218,7 @@ return [
                     0 => 'Firefly\\Observability\\Tracing\\Tracer',
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'edaTracing',
                 'returns' => 'Firefly\\Eda\\Tracing\\EdaTracing',
                 'name' => null,
