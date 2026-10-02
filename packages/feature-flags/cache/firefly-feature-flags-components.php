@@ -6,6 +6,24 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\FeatureFlags\\Context\\ApplicationEvaluationContextContributor',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -200,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Context\\EvaluationContextContributor',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Illuminate\\Contracts\\Config\\Repository',
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\FeatureFlags\\FeatureFlagsAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -33,7 +51,7 @@ return [
         'dependencies' => [
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -51,7 +69,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    2 => [
+    3 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'stereotype' => 'component',
         'name' => null,

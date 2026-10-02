@@ -6,6 +6,27 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\FeatureFlags\\Context\\ApplicationEvaluationContextContributor',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\FeatureFlags\\FeatureFlagsAutoConfiguration',
         'postConstruct' => [
         ],
@@ -37,7 +58,7 @@ return [
             ],
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'postConstruct' => [
         ],
@@ -64,7 +85,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    2 => [
+    3 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'postConstruct' => [
         ],
