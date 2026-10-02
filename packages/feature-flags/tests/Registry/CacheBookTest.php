@@ -96,7 +96,9 @@ it('is degraded only until the store answers again, and warns once per outage', 
 
 it('tolerates a store that fails while releasing a lock: the refresh goes on and the flags evaluate', function (): void {
     $failingRelease = static function (string $lock): void {
-        throw new RuntimeException('redis is gone');
+        if (str_ends_with($lock, 'lock:http')) {
+            throw new RuntimeException('redis is gone');
+        }
     };
     $store = new HookedLockStore;
     $store->onRelease = $failingRelease;

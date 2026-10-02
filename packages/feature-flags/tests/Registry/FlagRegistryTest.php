@@ -377,7 +377,9 @@ it('writes the new state of a source before it lets go of the source lock', func
     $http = new StubFlagSource('http', 300, 30.0, ['h' => true]);
     $seen = [];
     $store->onRelease = function (string $lock) use ($cache, &$seen): void {
-        $seen[] = SourceState::fromArray($cache->get(CacheBook::PREFIX.'source:http'))?->revision;
+        if ($lock === CacheBook::PREFIX.'lock:http') {
+            $seen[] = SourceState::fromArray($cache->get(CacheBook::PREFIX.'source:http'))?->revision;
+        }
     };
 
     featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document();
@@ -425,6 +427,98 @@ it('reloads a source whose cached document cannot be read', function (string $do
     'not JSON' => ['{"flags": {'],
     'another shape' => ['[["a", true]]'],
 ]);
+
+it('falls back on the newest document it served, adopted from the cache or loaded itself, after an eviction', function (): void {
+    $cache = new Repository(new ArrayStore);
+    $clock = new FixedClock;
+    $http = new StubFlagSource('http', 300, 30.0, ['h' => true]);
+    $longLived = featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock);
+    $longLived->document();
+
+    $http->flags = ['h' => false];
+    $http->revision = 'r2';
+    $clock->now += 30.0;
+    featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document(); // another worker loads r2
+    $clock->now += 1.0;
+    $adopted = $longLived->document()->flag('h')?->defaultVariant(); // read from the cache, not loaded
+
+    $cache->forget(CacheBook::PREFIX.'source:http'); // evicted
+    $http->failure = new FlagSourceUnavailable('connection refused');
+    $clock->now += 30.0;
+    featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document(); // cannot load it
+    $longLivedServes = $longLived->document()->flag('h')?->defaultVariant();
+
+    expect($adopted)->toBe('off')
+        ->and($longLivedServes)->toBe('off')
+        ->and($longLived->states()[0]->revision)->toBe('r2')
+        ->and(featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document()->flag('h')?->defaultVariant())->toBe('off');
+});
+
+it('records one transition at a time: a newer record written meanwhile is never overwritten', function (): void {
+    $cache = new class(new ArrayStore) extends Repository
+    {
+        /** @var (Closure(): void)|null */
+        public ?Closure $beforeRecord = null;
+
+        public function forever($key, $value): bool
+        {
+            $hook = $this->beforeRecord;
+            if ($key === CacheBook::PREFIX.'composed' && $hook !== null) {
+                $this->beforeRecord = null;
+                $hook();
+            }
+
+            return parent::forever($key, $value);
+        }
+    };
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $store = new StubFlagSource('store', 400, 5.0, ['a' => true]);
+    featureFlagsRegistry([$store], $cache, $events, $clock)->document();
+
+    $store->flags = ['a' => false];
+    $store->revision = 'r2';
+    $clock->now += 5.0;
+    // worker X has checked its layers and is about to record them when an admin write makes worker Z load and record r3
+    $cache->beforeRecord = function () use ($store, $cache, $events, $clock): void {
+        $store->flags = ['a' => false, 'b' => true];
+        $store->revision = 'r3';
+        featureFlagsRegistry([$store], $cache, $events, $clock)->refresh(force: true, only: 'store');
+    };
+    featureFlagsRegistry([$store], $cache, $events, $clock)->document();
+    featureFlagsRegistry([$store], $cache, $events, $clock)->document(); // the next request
+
+    /** @var array{keys: array<string, string>} $record */
+    $record = $cache->get(CacheBook::PREFIX.'composed');
+
+    expect(array_keys($record['keys']))->toBe(['a', 'b'])
+        ->and(featureFlagsChanges($events))->toBe([['startup', ['a']], ['store', ['a']], ['store', ['b']]]);
+});
+
+it('a long-lived process records a set it could not record while another worker held the record lock', function (): void {
+    $store = new ArrayStore;
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true], failsStartup: true);
+    $registry = featureFlagsRegistry([$file], new Repository($store), $events, $clock);
+    $registry->document();
+
+    $file->flags = ['a' => false];
+    $file->revision = 'r2';
+    $clock->now += 5.0;
+    $held = $store->lock(CacheBook::PREFIX.'lock:composed', 60);
+    $held->get();
+    $whileHeld = $registry->document()->flag('a')?->defaultVariant();
+    $eventsWhileHeld = featureFlagsChanges($events);
+    $held->release();
+    $clock->now += 5.0;
+    $registry->document();
+
+    expect($whileHeld)->toBe('off')
+        ->and($eventsWhileHeld)->toBe([['startup', ['a']]])
+        ->and(featureFlagsChanges($events))->toBe([['startup', ['a']], ['file', ['a']]])
+        ->and($file->loads)->toBe(3);
+});
 
 it('puts test overrides on top without sharing them', function (): void {
     $registry = featureFlagsRegistry([new StubFlagSource('config', 100, 0.0, ['a' => true], failsStartup: true)], new Repository(new ArrayStore), new RecordingApplicationEventPublisher, new FixedClock);
@@ -724,7 +818,7 @@ it('refuses two sources with one name, and a source named like a reserved origin
 
     expect(fn () => featureFlagsRegistry($sources, new Repository(new ArrayStore), new RecordingApplicationEventPublisher, new FixedClock))
         ->toThrow(ConfigurationException::class, "[{$second}]");
-})->with(['config', FlagRegistry::TEST_LAYER, FlagRegistry::TEST_OVERRIDES_ORIGIN, FlagRegistry::STARTUP_ORIGIN]);
+})->with(['config', FlagRegistry::TEST_LAYER, FlagRegistry::TEST_OVERRIDES_ORIGIN, FlagRegistry::STARTUP_ORIGIN, 'composed']);
 
 it('warns about an expired flag once a day across every worker', function (): void {
     $cache = new Repository(new ArrayStore);

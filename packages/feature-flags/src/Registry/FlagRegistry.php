@@ -55,6 +55,12 @@ final class FlagRegistry implements FlagDocumentSource
     /** Seconds within which two workers observing the same transition agree that only one announces it. */
     private const int CHANGE_WINDOW = 10;
 
+    /** The shared record of the last composition (cache key `composed`, guarded by the lock `lock:composed`). */
+    private const string RECORD = 'composed';
+
+    /** Seconds the record lock outlives a holder that died while recording (recording takes milliseconds). */
+    private const int RECORD_LOCK = 5;
+
     /** @var list<FlagSource> */
     private readonly array $sources;
 
@@ -85,6 +91,9 @@ final class FlagRegistry implements FlagDocumentSource
     /** @var array<string, array{0: string, 1: FlagDocument}> per source, the last document JSON decoded and its document */
     private array $documents = [];
 
+    /** The last composition could not be recorded (another worker held the record lock): record it at the next refresh. */
+    private bool $recordPending = false;
+
     /**
      * @param  iterable<FlagSource>  $sources
      * @param  (Closure(): float)|null  $clock  Unix seconds
@@ -104,8 +113,8 @@ final class FlagRegistry implements FlagDocumentSource
         $names = [];
         foreach ($ordered as $source) {
             $name = $source->name();
-            if (in_array($name, [self::TEST_LAYER, self::TEST_OVERRIDES_ORIGIN, self::STARTUP_ORIGIN], true)) {
-                throw new ConfigurationException(sprintf('A feature flag source cannot be named [%s]: %s, %s and %s name the registry\'s own origins.', $name, self::TEST_LAYER, self::TEST_OVERRIDES_ORIGIN, self::STARTUP_ORIGIN));
+            if (in_array($name, [self::TEST_LAYER, self::TEST_OVERRIDES_ORIGIN, self::STARTUP_ORIGIN, self::RECORD], true)) {
+                throw new ConfigurationException(sprintf('A feature flag source cannot be named [%s]: the registry reserves %s, %s and %s for its own origins and %s for its shared record.', $name, self::TEST_LAYER, self::TEST_OVERRIDES_ORIGIN, self::STARTUP_ORIGIN, self::RECORD));
             }
             if (isset($names[$name])) {
                 throw new ConfigurationException(sprintf('Two feature flag sources are named [%s]: every source needs a name of its own (it keys the source\'s shared state).', $name));
@@ -193,6 +202,7 @@ final class FlagRegistry implements FlagDocumentSource
             if ($before === null || $before->document !== $after->document) {
                 $moved[] = $name;
             }
+            $this->states[$name] = $after; // the newest document this process serves, loaded here or adopted from the cache
             $loaded[] = [$name, $after->document];
             $layers[] = [$name, $document];
         }
@@ -200,7 +210,7 @@ final class FlagRegistry implements FlagDocumentSource
         $this->memoUntil = $now + $this->memoSeconds();
 
         $shared = $this->shared;
-        if ($shared === null || $loaded !== $this->signature) {
+        if ($shared === null || $loaded !== $this->signature || $this->recordPending) {
             $overridden = $this->testOverrides === null ? null : $this->effective;
             $shared = Composer::compose($layers);
             $this->layers = $layers;
@@ -456,10 +466,12 @@ final class FlagRegistry implements FlagDocumentSource
      * to announce (its keys, whether it is the first record, the guard key that lets one worker announce it), or null
      * when there is none, the store is down, or this process composed documents older than the shared ones.
      *
-     * The record only moves forward: right before writing a transition the shared source states are read again, and
-     * a worker whose layers no longer match them (it served a last good document while another worker loaded a newer
-     * one, then reached this point after that worker recorded it) neither writes nor announces — it would announce a
-     * revert, and the next request the change again.
+     * The record only moves forward. It is read, compared and written under the non-blocking lock `lock:composed`
+     * (a worker that finds it held skips: the holder records, or this process at its next refresh, or the next
+     * request), and right before writing a transition the shared source states are read again: a worker whose layers
+     * no longer match them (it served a last good document while another worker loaded a newer one) neither writes
+     * nor announces — it would announce a revert, and the next request the change again. The common case — the same
+     * layers as the record — is answered from one read, without the lock.
      *
      * @param  list<array{0: string, 1: string}>  $loaded  the composed layers as source name and document JSON
      * @param  string  $layersHash  sha256 of $loaded: the same layers compose the same set, so the common case
@@ -468,32 +480,51 @@ final class FlagRegistry implements FlagDocumentSource
      */
     private function record(Composition $shared, array $loaded, string $layersHash): ?array
     {
-        $previous = self::composedRecord($this->book->get('composed'));
+        $previous = self::composedRecord($this->book->get(self::RECORD));
         if ($this->book->degraded()) {
             return null; // no shared memory of the previous set: every process would announce a "change"
         }
         if ($previous !== null && $previous['layers'] === $layersHash) {
+            $this->recordPending = false;
+
+            return null; // the common case, checked without the lock
+        }
+
+        $release = $this->book->lock('lock:'.self::RECORD, self::RECORD_LOCK);
+        if ($release === null) {
+            $this->recordPending = true; // another worker is recording: it, or this process's next refresh, records
+
             return null;
         }
 
-        $keys = $shared->fingerprints();
-        $fingerprint = hash('sha256', Json::canonical(Json::object($keys)));
-        if ($previous !== null && $previous['fingerprint'] === $fingerprint) {
-            $this->book->put('composed', [...$previous, 'layers' => $layersHash]); // other documents, the same effective flags
+        try {
+            $this->recordPending = false;
+            $previous = self::composedRecord($this->book->get(self::RECORD));
+            if ($previous !== null && $previous['layers'] === $layersHash) {
+                return null;
+            }
 
-            return null;
+            $keys = $shared->fingerprints();
+            $fingerprint = hash('sha256', Json::canonical(Json::object($keys)));
+            if ($previous !== null && $previous['fingerprint'] === $fingerprint) {
+                $this->book->put(self::RECORD, [...$previous, 'layers' => $layersHash]); // other documents, the same effective flags
+
+                return null;
+            }
+            if (! $this->current($loaded)) {
+                return null;
+            }
+
+            // The generation makes each transition's guard key unique, so flipping back and forth is announced every time.
+            $generation = ($previous['generation'] ?? 0) + 1;
+            $this->book->put(self::RECORD, ['generation' => $generation, 'layers' => $layersHash, 'fingerprint' => $fingerprint, 'keys' => $keys]);
+
+            $changed = self::changedKeys($previous['keys'] ?? [], $keys);
+
+            return $changed === [] ? null : ['changed' => $changed, 'startup' => $previous === null, 'guard' => 'changed:'.$generation.':'.$fingerprint];
+        } finally {
+            $release();
         }
-        if (! $this->current($loaded)) {
-            return null;
-        }
-
-        // The generation makes each transition's guard key unique, so flipping back and forth is announced every time.
-        $generation = ($previous['generation'] ?? 0) + 1;
-        $this->book->put('composed', ['generation' => $generation, 'layers' => $layersHash, 'fingerprint' => $fingerprint, 'keys' => $keys]);
-
-        $changed = self::changedKeys($previous['keys'] ?? [], $keys);
-
-        return $changed === [] ? null : ['changed' => $changed, 'startup' => $previous === null, 'guard' => 'changed:'.$generation.':'.$fingerprint];
     }
 
     /**
