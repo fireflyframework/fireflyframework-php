@@ -38,7 +38,7 @@ final class CacheBook
     public function get(string $key): mixed
     {
         try {
-            $value = $this->cache->get(self::PREFIX.$key);
+            $value = $this->cache->get(self::key($key));
             $this->degraded = false;
 
             return $value;
@@ -52,7 +52,7 @@ final class CacheBook
     public function put(string $key, mixed $value): void
     {
         try {
-            $this->cache->forever(self::PREFIX.$key, $value);
+            $this->cache->forever(self::key($key), $value);
             $this->degraded = false;
         } catch (Throwable $failure) {
             $this->degrade($failure);
@@ -63,7 +63,7 @@ final class CacheBook
     public function first(string $key, int $seconds): bool
     {
         try {
-            $first = $this->cache->add(self::PREFIX.$key, true, max(1, $seconds));
+            $first = $this->cache->add(self::key($key), true, max(1, $seconds));
             $this->degraded = false;
 
             return $first;
@@ -90,7 +90,7 @@ final class CacheBook
                 return static function (): void {};
             }
 
-            $lock = $store->lock(self::PREFIX.$key, max(1, $seconds));
+            $lock = $store->lock(self::key($key), max(1, $seconds));
             $acquired = $lock->get() === true;
             $this->degraded = false;
 
@@ -107,6 +107,12 @@ final class CacheBook
     public function degraded(): bool
     {
         return $this->degraded;
+    }
+
+    /** The full cache key: every entry of the bookkeeping lives under PREFIX. */
+    private static function key(string $key): string
+    {
+        return self::PREFIX.$key;
     }
 
     private function degrade(Throwable $failure): void
