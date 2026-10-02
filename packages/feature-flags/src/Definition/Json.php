@@ -13,7 +13,10 @@ use stdClass;
  * decoding loses the one distinction PyFly reads: `{}` and `[]` both become `[]`, so an empty object variant
  * written back would reach Python as a list. So objects decode to string-keyed arrays EXCEPT those whose array
  * form would read as a list — `{}` and `{"0": …}` — which stay stdClass. A PHP `[]` is therefore always a JSON
- * array, and json_encode() round-trips every decoded value.
+ * array, and encode() gives a decoded value back as the same JSON value: member order, `{}` versus `[]` and
+ * integer versus float survive, though not always the same text (`1E2` comes back as `100.0`). Two limits are
+ * PHP's own: a number beyond the float range (`1E400`) decodes to INF, which encode() refuses with a
+ * JsonException, and an integer beyond 64 bits decodes to a float.
  *
  * A member name that looks like an integer (`"2024"`, `"1"`) is an int array key in PHP. It is still text in
  * JSON: callers that need the name read it with `(string) $key`.
@@ -49,6 +52,7 @@ final class Json
         return $value;
     }
 
+    /** @throws \JsonException on INF or NAN, malformed UTF-8, or nesting deeper than 512 levels */
     public static function encode(mixed $value): string
     {
         return json_encode($value, self::ENCODE_FLAGS | JSON_THROW_ON_ERROR);
@@ -56,6 +60,8 @@ final class Json
 
     /**
      * The encoding with object members sorted by name, recursively; `[]` and `{}` stay distinct.
+     *
+     * @throws \JsonException as encode()
      */
     public static function canonical(mixed $value): string
     {

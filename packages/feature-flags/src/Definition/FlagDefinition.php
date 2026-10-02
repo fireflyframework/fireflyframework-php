@@ -10,6 +10,9 @@ use stdClass;
 /**
  * One flagd flag object, kept exactly as written ($raw) so a definition passes through every layer unchanged.
  * The accessors read it the way flagd does; nothing here validates (FlagDefinitions does).
+ *
+ * `readonly` is shallow: a stdClass inside $raw (an empty or list-like object, at any depth) is the same instance
+ * every accessor hands out and every copy of the definition shares. Treat returned values as read-only.
  */
 final readonly class FlagDefinition
 {
@@ -88,17 +91,17 @@ final readonly class FlagDefinition
     }
 
     /**
-     * The scalar metadata entries. A numeric-looking name is an int key at runtime (PHP arrays): cast it with
-     * `(string)` where a string is needed.
+     * The scalar metadata entries. A numeric-looking name (`"1"`, `"2024"`) is an int key: PHP arrays cannot hold
+     * it as a string. Read a name with `(string) $name`.
      *
-     * @return array<string, bool|int|float|string>
+     * @return array<array-key, bool|int|float|string>
      */
     public function metadata(): array
     {
         $metadata = [];
         foreach (Json::members($this->raw['metadata'] ?? null) as $name => $value) {
             if (is_bool($value) || is_int($value) || is_float($value) || is_string($value)) {
-                $metadata[(string) $name] = $value;
+                $metadata[$name] = $value;
             }
         }
 

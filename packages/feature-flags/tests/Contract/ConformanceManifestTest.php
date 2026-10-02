@@ -38,3 +38,9 @@ it('reads a version-1 vector file whose every case has a known kind', function (
         expect(FireflyVectors::cases($kind))->not->toBeEmpty();
     }
 });
+
+it('hands the runners every case: the per-kind datasets add up to the whole file', function (): void {
+    $perKind = array_map(static fn (string $kind): int => count(FireflyVectors::cases($kind)), FireflyVectors::KINDS);
+
+    expect(array_sum($perKind))->toBe(count((array) (FireflyVectors::document()['cases'] ?? [])));
+});

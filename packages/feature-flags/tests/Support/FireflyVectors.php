@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\FeatureFlags\Tests\Support;
 
 use Firefly\FeatureFlags\Definition\Json;
+use LogicException;
 
 /** firefly-vectors.json, decoded with Json so `{}` stays an object (the `{}` defaults and empty variants need it). */
 final class FireflyVectors
@@ -28,7 +29,8 @@ final class FireflyVectors
     }
 
     /**
-     * Pest dataset: case name => [case].
+     * Pest dataset: case name => [case]. Two cases of one kind sharing a name would make one overwrite the other,
+     * so a duplicate name fails loudly instead of dropping a case.
      *
      * @return array<string, array{0: array<array-key, mixed>}>
      */
@@ -39,7 +41,11 @@ final class FireflyVectors
             $members = Json::members($case);
             if (($members['kind'] ?? null) === $kind) {
                 $name = $members['name'] ?? null;
-                $cases[is_string($name) ? $name : (string) count($cases)] = [$members];
+                $name = is_string($name) ? $name : (string) count($cases);
+                if (array_key_exists($name, $cases)) {
+                    throw new LogicException(sprintf('firefly-vectors.json has two [%s] cases named [%s].', $kind, $name));
+                }
+                $cases[$name] = [$members];
             }
         }
 
