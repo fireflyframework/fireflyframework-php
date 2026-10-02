@@ -14,8 +14,9 @@ use stdClass;
  *
  * A flag's rules run in the order PyFly checks them, so a definition breaking two rules reports the same one in both
  * frameworks: key, object, state, variants, variant types, defaultVariant, targeting, then metadata (values scalar,
- * keys not empty, kind, expires, owner, description), and last the finite-number rule over the whole definition
- * (fields flagd does not define included: they are kept as written and otherwise ignored, never an error).
+ * keys not empty, kind, expires, owner, description), and last the walk over the whole definition (fields flagd does
+ * not define included: they are kept as written and otherwise ignored, never an error), which refuses nesting deeper
+ * than MAX_DEPTH and then a number that is not finite. Evaluator rules and the document metadata take the same walk.
  *
  * Two rules of the contract cannot be broken in PHP: `metadata keys must be strings` and `evaluator names must be
  * strings`. A PHP array key is text or an int, and an int key is a numeric-looking name (`"2024"`) that JSON and YAML
@@ -27,8 +28,9 @@ use stdClass;
  * an error, and so is `[]` as the document itself, as a flag definition or as an evaluator rule. A flag's `[]`
  * targeting or metadata is handed on as `{}`, so every reader sees the contract's "no targeting".
  *
- * Validation never recurses: the finite-number rule walks a definition with a stack of its own, so a PHP-built
- * definition nested deeper than any decoder allows is still judged rather than exhausting the call stack. A JSON
+ * Validation never recurses: the walk keeps a stack of its own and stops descending at MAX_DEPTH, so even a PHP-built
+ * definition nested thousands of levels deep is refused cheaply. A definition that validates therefore always
+ * encodes: a flag 256 levels deep sits 258 levels deep in its document, well inside json_encode()'s 512. A JSON
  * document nested deeper than the decoder's 512 levels never gets here: decoding refuses it as a whole.
  */
 final class FlagDefinitions
@@ -37,6 +39,12 @@ final class FlagDefinitions
 
     /** @var list<string> */
     public const array KINDS = ['release', 'experiment', 'ops', 'permission'];
+
+    /**
+     * The deepest a flag definition, an evaluator rule or the document metadata may nest (R-depth-validate): the
+     * definition itself is level 1, and each object or array inside adds one.
+     */
+    public const int MAX_DEPTH = 256;
 
     /**
      * Shorthand → flagd. Only config and test overrides accept shorthand; full definitions pass through
@@ -91,8 +99,9 @@ final class FlagDefinitions
             if (! Json::isObject($rule)) {
                 throw new InvalidFlagDefinition('$evaluators', sprintf("targeting must be an object (evaluator '%s')", $name));
             }
-            if (self::hasNonFiniteNumber($rule)) {
-                throw new InvalidFlagDefinition('$evaluators', sprintf("numbers must be finite (evaluator '%s')", $name));
+            $reason = self::walkReason($rule);
+            if ($reason !== null) {
+                throw new InvalidFlagDefinition('$evaluators', sprintf("%s (evaluator '%s')", $reason, $name));
             }
         }
 
@@ -101,8 +110,9 @@ final class FlagDefinitions
         if ($reason !== null) {
             throw new InvalidFlagDefinition('metadata', $reason);
         }
-        if (self::hasNonFiniteNumber($metadata)) {
-            throw new InvalidFlagDefinition('metadata', 'numbers must be finite');
+        $reason = self::walkReason($metadata);
+        if ($reason !== null) {
+            throw new InvalidFlagDefinition('metadata', $reason);
         }
 
         return new FlagDocument($definitions, $evaluators, $metadata);
@@ -154,8 +164,9 @@ final class FlagDefinitions
             self::validateMetadata($key, $metadata);
         }
 
-        if (self::hasNonFiniteNumber($definition)) {
-            throw new InvalidFlagDefinition($key, 'numbers must be finite');
+        $reason = self::walkReason($definition);
+        if ($reason !== null) {
+            throw new InvalidFlagDefinition($key, $reason);
         }
     }
 
@@ -259,29 +270,36 @@ final class FlagDefinitions
     }
 
     /**
-     * Whether INF or NAN stands anywhere in $value. JSON has neither (YAML's `.inf`/`.nan` and PHP produce them), and
-     * encoding one throws, so a definition holding one could be neither composed, stored nor served. Walks with a
-     * stack of its own: no recursion, whatever the depth.
+     * Why $value (a flag definition, an evaluator rule or the document metadata: level 1) breaks the two rules that
+     * reach its every corner, or null. `definition nests too deeply` when an object or array sits deeper than
+     * MAX_DEPTH (reported first, whatever else the walk met); otherwise `numbers must be finite` when INF or NAN
+     * stands anywhere — JSON has neither (YAML's `.inf`/`.nan` and PHP produce them) and encoding one throws, so the
+     * definition could be neither composed, stored nor served. Walks with a stack of its own and never descends past
+     * MAX_DEPTH: no recursion, and bounded work whatever the input's depth.
      */
-    private static function hasNonFiniteNumber(mixed $value): bool
+    private static function walkReason(mixed $value): ?string
     {
-        $pending = [$value];
+        $nonFinite = false;
+        /** @var list<array{mixed, int}> $pending */
+        $pending = [[$value, 1]];
         while ($pending !== []) {
-            $item = array_pop($pending);
-            if (is_float($item) && ! is_finite($item)) {
-                return true;
-            }
+            [$item, $level] = array_pop($pending);
             if ($item instanceof stdClass) {
                 $item = get_object_vars($item);
             }
             if (is_array($item)) {
-                foreach ($item as $member) {
-                    $pending[] = $member;
+                if ($level > self::MAX_DEPTH) {
+                    return 'definition nests too deeply';
                 }
+                foreach ($item as $member) {
+                    $pending[] = [$member, $level + 1];
+                }
+            } elseif (is_float($item) && ! is_finite($item)) {
+                $nonFinite = true;
             }
         }
 
-        return false;
+        return $nonFinite ? 'numbers must be finite' : null;
     }
 
     /** The JSON type a variant value has; null and anything JSON cannot hold share no type with a variant. */

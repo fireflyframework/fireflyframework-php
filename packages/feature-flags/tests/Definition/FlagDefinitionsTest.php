@@ -34,6 +34,22 @@ function featureFlagsBoolFlag(array $fields = []): array
     return [...['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off'], ...$fields];
 }
 
+/**
+ * A chain of containers exactly $levels deep around $leaf — objects (`{"x":{"x":…}}`) or lists (`[[…]]`) — built
+ * without recursion.
+ *
+ * @return array<array-key, mixed>
+ */
+function featureFlagsNested(int $levels, mixed $leaf = 1, bool $lists = false): array
+{
+    $value = $lists ? [$leaf] : ['x' => $leaf];
+    for ($level = 1; $level < $levels; $level++) {
+        $value = $lists ? [$value] : ['x' => $value];
+    }
+
+    return $value;
+}
+
 it('keeps a numeric-looking string shorthand a single-variant OBJECT', function (): void {
     $normalized = FlagDefinitions::normalize(['legacy' => '0']);
 
@@ -172,19 +188,40 @@ it('refuses a number that is not finite anywhere in a definition, before composi
     'YAML .inf in document metadata' => [Json::normalize(Yaml::parse("flags: {}\nmetadata: {rate: .inf}", Yaml::PARSE_OBJECT_FOR_MAP)), 'metadata', 'numbers must be finite'],
 ]);
 
-it('walks a definition nested far deeper than JSON allows without recursing, and finds what lies at the bottom', function (): void {
-    $finiteTree = [1.5];
-    $infiniteTree = [INF];
-    for ($level = 0; $level < 5000; $level++) {
-        $finiteTree = ['x' => [$finiteTree]];
-        $infiniteTree = ['x' => [$infiniteTree]];
-    }
+it('accepts a definition 256 levels deep and refuses one 257 deep, in a flag and in an evaluator rule (R-depth-validate)', function (): void {
+    expect(featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => featureFlagsNested(255)])]]))->toBeNull()
+        ->and(featureFlagsRefusal(['$evaluators' => ['deep' => featureFlagsNested(256)]]))->toBeNull()
+        ->and(featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => featureFlagsNested(255, INF)])]])?->reason())->toBe('numbers must be finite');
 
-    $finite = featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => ['<' => [['var' => 'x'], $finiteTree]]])]]);
-    $infinite = featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => ['<' => [['var' => 'x'], $infiniteTree]]])]]);
+    $flag = featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => featureFlagsNested(256)])]]);
+    $rule = featureFlagsRefusal(['$evaluators' => ['ok' => ['var' => 'a'], 'deep' => featureFlagsNested(257)]]);
 
-    expect($finite)->toBeNull()
-        ->and($infinite?->reason())->toBe('numbers must be finite');
+    expect([$flag?->flagKey(), $flag?->reason()])->toBe(['deep', 'definition nests too deeply'])
+        ->and([$rule?->flagKey(), $rule?->reason()])->toBe(['$evaluators', "definition nests too deeply (evaluator 'deep')"]);
+});
+
+it('refuses a definition nesting deeper than 256 levels anywhere in it', function (array $fields): void {
+    /** @var array<string, mixed> $fields */
+    expect(featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag($fields)]])?->reason())->toBe('definition nests too deeply');
+})->with([
+    'an object-valued variant' => [['variants' => ['a' => featureFlagsNested(255)], 'defaultVariant' => 'a']],
+    'targeting through lists' => [['targeting' => ['if' => featureFlagsNested(255, lists: true)]]],
+    'a field flagd does not define' => [['notes' => featureFlagsNested(256)]],
+    'list-like objects (stdClass)' => [['notes' => Json::decode(str_repeat('{"0":', 256).'1'.str_repeat('}', 256))]],
+]);
+
+it('refuses a PHP-built definition 5000 levels deep without recursing', function (): void {
+    $error = featureFlagsRefusal(['flags' => ['deep' => featureFlagsBoolFlag(['targeting' => featureFlagsNested(5000, INF)])]]);
+
+    expect([$error?->flagKey(), $error?->reason()])->toBe(['deep', 'definition nests too deeply']);
+});
+
+it('finds INF that Json::decode made of 1E400 inside an object-valued variant kept as a stdClass', function (): void {
+    $document = Json::decode('{"flags":{"big":{"state":"ENABLED","variants":{"a":{"0":1E400},"b":{"0":1}},"defaultVariant":"a"}}}');
+    $variant = Json::members(Json::members(Json::members(Json::members($document)['flags'] ?? null)['big'] ?? null)['variants'] ?? null)['a'] ?? null;
+
+    expect($variant)->toBeInstanceOf(stdClass::class)
+        ->and(featureFlagsRefusal($document)?->reason())->toBe('numbers must be finite');
 });
 
 it('reports the first broken rule in the contract order PyFly checks', function (mixed $definition, string $reason): void {
@@ -203,6 +240,7 @@ it('reports the first broken rule in the contract order PyFly checks', function 
     'kind before expires' => [featureFlagsBoolFlag(['metadata' => ['kind' => 'x', 'expires' => 'soon', 'owner' => 1, 'description' => 2]]), 'kind must be one of release, experiment, ops, permission'],
     'expires before owner' => [featureFlagsBoolFlag(['metadata' => ['expires' => 'soon', 'owner' => 1, 'description' => 2]]), 'expires must be a YYYY-MM-DD date'],
     'owner before description' => [featureFlagsBoolFlag(['metadata' => ['owner' => 1, 'description' => 2]]), 'owner must be a string'],
+    'too deep before not finite' => [featureFlagsBoolFlag(['variants' => ['a' => INF], 'defaultVariant' => 'a', 'targeting' => featureFlagsNested(300)]), 'definition nests too deeply'],
     'finite numbers last' => [featureFlagsBoolFlag(['variants' => ['a' => INF], 'defaultVariant' => 'a', 'metadata' => ['kind' => 'x']]), 'kind must be one of release, experiment, ops, permission'],
 ]);
 
