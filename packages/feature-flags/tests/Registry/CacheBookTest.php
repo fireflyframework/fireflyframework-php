@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use Firefly\FeatureFlags\Registry\CacheBook;
+use Firefly\FeatureFlags\Registry\FlagRegistry;
+use Firefly\FeatureFlags\Tests\Support\FixedClock;
 use Firefly\FeatureFlags\Tests\Support\FlakyCache;
+use Firefly\FeatureFlags\Tests\Support\HookedLockStore;
 use Firefly\FeatureFlags\Tests\Support\RecordingLogger;
+use Firefly\FeatureFlags\Tests\Support\StubFlagSource;
+use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Cache\SessionStore;
@@ -57,7 +62,7 @@ it('tolerates a failing store: nothing known, writes dropped, every caller first
         ->and($logger->count('warning', 'cannot reach the cache store (redis is gone)'))->toBe(1);
 });
 
-it('is degraded only until the store answers again, and warns about the outage once', function (Closure $call): void {
+it('is degraded only until the store answers again, and warns once per outage', function (Closure $call): void {
     $cache = new FlakyCache;
     $logger = new RecordingLogger;
     $book = new CacheBook($cache, $logger);
@@ -74,7 +79,7 @@ it('is degraded only until the store answers again, and warns about the outage o
     expect($whileDown)->toBeTrue()
         ->and($afterRecovery)->toBeFalse()
         ->and($book->degraded())->toBeTrue()
-        ->and($logger->count('warning', 'cannot reach the cache store'))->toBe(1);
+        ->and($logger->count('warning', 'cannot reach the cache store'))->toBe(2);
 })->with([
     'get' => [static fn (CacheBook $book): mixed => $book->get('composed')],
     'put' => [static function (CacheBook $book): void {
@@ -88,3 +93,30 @@ it('is degraded only until the store answers again, and warns about the outage o
         }
     }],
 ]);
+
+it('tolerates a store that fails while releasing a lock: the refresh goes on and the flags evaluate', function (): void {
+    $failingRelease = static function (string $lock): void {
+        throw new RuntimeException('redis is gone');
+    };
+    $store = new HookedLockStore;
+    $store->onRelease = $failingRelease;
+    $logger = new RecordingLogger;
+    $book = new CacheBook(new Repository($store), $logger);
+    $release = $book->lock('lock:http', 5);
+    if ($release !== null) {
+        $release();
+    }
+    $degraded = $book->degraded();
+
+    $bootStore = new HookedLockStore;
+    $bootStore->onRelease = $failingRelease;
+    $bootLogger = new RecordingLogger;
+    $registry = new FlagRegistry([new StubFlagSource('http', 300, 30.0, ['h' => true])], new CacheBook(new Repository($bootStore), $bootLogger), new RecordingApplicationEventPublisher, $bootLogger, (new FixedClock)(...));
+    $registry->start();
+
+    expect($release)->not->toBeNull()
+        ->and($degraded)->toBeTrue()
+        ->and($logger->count('warning', 'cannot reach the cache store (redis is gone)'))->toBe(1)
+        ->and($registry->document()->flag('h'))->not->toBeNull()
+        ->and($bootLogger->count('warning', 'cannot reach the cache store (redis is gone)'))->toBe(1);
+});

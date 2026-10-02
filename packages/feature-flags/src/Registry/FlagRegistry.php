@@ -82,6 +82,9 @@ final class FlagRegistry implements FlagDocumentSource
     /** @var array<string, SourceState> what this process last knew, for when the cache store knows nothing */
     private array $states = [];
 
+    /** @var array<string, array{0: string, 1: FlagDocument}> per source, the last document JSON decoded and its document */
+    private array $documents = [];
+
     /**
      * @param  iterable<FlagSource>  $sources
      * @param  (Closure(): float)|null  $clock  Unix seconds
@@ -168,6 +171,7 @@ final class FlagRegistry implements FlagDocumentSource
     {
         $now = ($this->clock)();
         $loaded = [];
+        $layers = [];
         $moved = [];
 
         foreach ($this->sources as $source) {
@@ -175,14 +179,22 @@ final class FlagRegistry implements FlagDocumentSource
             $before = $this->state($name);
             $forced = $force && ($only === null || $only === $name);
             $after = $forced || $this->due($source, $before, $now) ? $this->check($source, $before, $now, $forced) : $before;
+            $document = $after === null ? null : $this->decoded($after);
 
-            if ($after === null || ! $after->loaded || $after->document === null) {
+            if ($after !== null && $after->loaded && $document === null) {
+                // A cached entry this process cannot read (corrupt, or written in another shape): unknown, so reload it.
+                $this->logger->warning('The cached document of feature flag source [{source}] cannot be read; reloading the source.', ['source' => $name]);
+                $after = $this->check($source, null, $now, forced: true, known: false);
+                $document = $this->decoded($after);
+            }
+            if ($after === null || $after->document === null || $document === null) {
                 continue; // a source that never loaded contributes nothing
             }
             if ($before === null || $before->document !== $after->document) {
                 $moved[] = $name;
             }
             $loaded[] = [$name, $after->document];
+            $layers[] = [$name, $document];
         }
 
         $this->memoUntil = $now + $this->memoSeconds();
@@ -190,14 +202,13 @@ final class FlagRegistry implements FlagDocumentSource
         $shared = $this->shared;
         if ($shared === null || $loaded !== $this->signature) {
             $overridden = $this->testOverrides === null ? null : $this->effective;
-            $layers = array_map(static fn (array $layer): array => [$layer[0], FlagDocument::fromJson($layer[1])], $loaded);
             $shared = Composer::compose($layers);
             $this->layers = $layers;
             $this->signature = $loaded;
             $this->shared = $shared;
             $this->effective = $this->testOverrides === null ? null : Composer::compose([...$layers, [self::TEST_LAYER, $this->testOverrides]]);
             $this->document = null;
-            $this->observe($shared, hash('sha256', implode("\0", array_merge(...$loaded))), $this->origin($moved, $loaded), $overridden);
+            $this->observe($shared, $loaded, $this->origin($moved, $loaded), $overridden);
         }
 
         return $shared;
@@ -268,12 +279,50 @@ final class FlagRegistry implements FlagDocumentSource
         return $shared;
     }
 
-    /** The cache's state of the source, else this process's own (a store outage, an evicted entry). */
+    /**
+     * The cache's state of the source, else this process's own (a store outage, an evicted entry). A cached state that
+     * never loaded does not displace this process's loaded one: it is an evicted entry written back by a worker that
+     * could not load the source, and the last good document stays in use (and is written back at the next check).
+     */
     private function state(string $name): ?SourceState
     {
-        $shared = SourceState::fromArray($this->book->get('source:'.$name));
+        $cached = SourceState::fromArray($this->book->get('source:'.$name));
+        $own = $this->states[$name] ?? null;
+        if ($cached === null || $cached->name !== $name) {
+            return $own;
+        }
 
-        return $shared !== null && $shared->name === $name ? $shared : ($this->states[$name] ?? null);
+        return ! $cached->loaded && $own !== null && $own->loaded ? $own : $cached;
+    }
+
+    /**
+     * The state's document, decoded once per JSON text; null when it has none or cannot be read: not JSON, or another
+     * shape than the one SourceState::withLoaded() writes (its flag count disagrees).
+     */
+    private function decoded(SourceState $state): ?FlagDocument
+    {
+        $json = $state->loaded ? $state->document : null;
+        if ($json === null) {
+            return null;
+        }
+
+        $memo = $this->documents[$state->name] ?? null;
+        if ($memo !== null && $memo[0] === $json) {
+            return $memo[1];
+        }
+
+        try {
+            $document = FlagDocument::fromJson($json);
+        } catch (Throwable) {
+            return null;
+        }
+        if (count($document->flags) !== $state->flags) {
+            return null;
+        }
+
+        $this->documents[$state->name] = [$json, $document];
+
+        return $document;
     }
 
     private function due(FlagSource $source, ?SourceState $state, float $now): bool
@@ -288,32 +337,50 @@ final class FlagRegistry implements FlagDocumentSource
     }
 
     /**
-     * Load the source under its lock and record the result in the cache and in this process.
+     * Load the source and record the result in the cache and in this process. A polling source loads under its lock:
+     * the holder re-reads the state once it has the lock (another worker may have checked it in between) and writes
+     * the new state before letting the lock go, so the next holder reads this check instead of loading again.
+     *
+     * @param  bool  $known  false when the cached state cannot be read: load from scratch, ignoring it
      *
      * @throws InvalidFlagDefinition|FlagSourceUnavailable|Throwable as load()
      */
-    private function check(FlagSource $source, ?SourceState $before, float $now, bool $forced): SourceState
+    private function check(FlagSource $source, ?SourceState $before, float $now, bool $forced, bool $known = true): SourceState
     {
         $name = $source->name();
         $interval = $source->refreshInterval();
-        $release = null;
-        if ($interval > 0.0) {
-            $release = $this->book->lock('lock:'.$name, (int) ceil($interval) + 1);
-            if ($release === null && $before !== null && ! $forced) {
+        if ($interval <= 0.0) {
+            return $this->settle($name, $before, $this->load($source, $before ?? SourceState::initial($name), $now), everyRefresh: true);
+        }
+
+        $release = $this->book->lock('lock:'.$name, (int) ceil($interval) + 1);
+        if ($release === null) {
+            if ($before !== null && ! $forced) {
                 return $before; // another worker is checking it: serve the last good document meanwhile
             }
+
+            return $this->settle($name, $before, $this->load($source, $before ?? SourceState::initial($name), $now));
         }
 
         try {
-            $after = $this->load($source, $before ?? SourceState::initial($name), $now);
-        } finally {
-            if ($release !== null) {
-                $release();
+            $latest = $known ? ($this->state($name) ?? $before) : null;
+            if (! $forced && $latest !== null && ! $this->due($source, $latest, $now)) {
+                return $latest; // another worker checked it between this one reading its state and taking the lock
             }
-        }
 
-        if ($interval <= 0.0 && $before !== null && $after->sameAs($before)) {
-            // checked on every refresh, so its check time tells nothing: no cache write per request
+            return $this->settle($name, $latest, $this->load($source, $latest ?? SourceState::initial($name), $now));
+        } finally {
+            $release();
+        }
+    }
+
+    /**
+     * Remember a check in this process and in the cache. A source checked on every refresh that found nothing new
+     * writes nothing: its check time tells nothing, and a cache write per request would.
+     */
+    private function settle(string $name, ?SourceState $before, SourceState $after, bool $everyRefresh = false): SourceState
+    {
+        if ($everyRefresh && $before !== null && $after->sameAs($before)) {
             $this->states[$name] = $before;
 
             return $before;
@@ -363,12 +430,12 @@ final class FlagRegistry implements FlagDocumentSource
      * process: a source change to a key an override shadows is not announced (clearing the override announces it),
      * and an overridden key whose targeting references a changed evaluator is.
      *
-     * @param  string  $layers  sha256 of the layers' names and document JSON (see record())
+     * @param  list<array{0: string, 1: string}>  $loaded  the composed layers as source name and document JSON
      * @param  Composition|null  $overridden  the effective composition before this refresh, while test overrides are active
      */
-    private function observe(Composition $shared, string $layers, string $origin, ?Composition $overridden): void
+    private function observe(Composition $shared, array $loaded, string $origin, ?Composition $overridden): void
     {
-        $transition = $this->record($shared, $layers);
+        $transition = $this->record($shared, $loaded, hash('sha256', implode("\0", array_merge(...$loaded))));
 
         if ($overridden !== null && $this->effective !== null) {
             $changed = self::changedKeys($overridden->fingerprints(), $this->effective->fingerprints());
@@ -387,37 +454,64 @@ final class FlagRegistry implements FlagDocumentSource
     /**
      * Compare the shared composition with the last one the shared bookkeeping recorded and record it: the transition
      * to announce (its keys, whether it is the first record, the guard key that lets one worker announce it), or null
-     * when there is none or the store is down.
+     * when there is none, the store is down, or this process composed documents older than the shared ones.
      *
-     * @param  string  $layers  sha256 of the layers' names and document JSON: the same layers compose the same set, so
-     *                          the common case (nothing moved since another worker recorded it) fingerprints no flag
+     * The record only moves forward: right before writing a transition the shared source states are read again, and
+     * a worker whose layers no longer match them (it served a last good document while another worker loaded a newer
+     * one, then reached this point after that worker recorded it) neither writes nor announces — it would announce a
+     * revert, and the next request the change again.
+     *
+     * @param  list<array{0: string, 1: string}>  $loaded  the composed layers as source name and document JSON
+     * @param  string  $layersHash  sha256 of $loaded: the same layers compose the same set, so the common case
+     *                              (nothing moved since another worker recorded it) fingerprints no flag
      * @return array{changed: non-empty-list<string>, startup: bool, guard: string}|null
      */
-    private function record(Composition $shared, string $layers): ?array
+    private function record(Composition $shared, array $loaded, string $layersHash): ?array
     {
         $previous = self::composedRecord($this->book->get('composed'));
         if ($this->book->degraded()) {
             return null; // no shared memory of the previous set: every process would announce a "change"
         }
-        if ($previous !== null && $previous['layers'] === $layers) {
+        if ($previous !== null && $previous['layers'] === $layersHash) {
             return null;
         }
 
         $keys = $shared->fingerprints();
         $fingerprint = hash('sha256', Json::canonical(Json::object($keys)));
         if ($previous !== null && $previous['fingerprint'] === $fingerprint) {
-            $this->book->put('composed', [...$previous, 'layers' => $layers]); // other documents, the same effective flags
+            $this->book->put('composed', [...$previous, 'layers' => $layersHash]); // other documents, the same effective flags
 
+            return null;
+        }
+        if (! $this->current($loaded)) {
             return null;
         }
 
         // The generation makes each transition's guard key unique, so flipping back and forth is announced every time.
         $generation = ($previous['generation'] ?? 0) + 1;
-        $this->book->put('composed', ['generation' => $generation, 'layers' => $layers, 'fingerprint' => $fingerprint, 'keys' => $keys]);
+        $this->book->put('composed', ['generation' => $generation, 'layers' => $layersHash, 'fingerprint' => $fingerprint, 'keys' => $keys]);
 
         $changed = self::changedKeys($previous['keys'] ?? [], $keys);
 
         return $changed === [] ? null : ['changed' => $changed, 'startup' => $previous === null, 'guard' => 'changed:'.$generation.':'.$fingerprint];
+    }
+
+    /**
+     * Whether the source states hold, right now, the documents this process composed.
+     *
+     * @param  list<array{0: string, 1: string}>  $loaded
+     */
+    private function current(array $loaded): bool
+    {
+        $states = [];
+        foreach ($this->sources as $source) {
+            $state = $this->state($source->name());
+            if ($state !== null && $state->loaded && $state->document !== null) {
+                $states[] = [$source->name(), $state->document];
+            }
+        }
+
+        return $states === $loaded;
     }
 
     /**

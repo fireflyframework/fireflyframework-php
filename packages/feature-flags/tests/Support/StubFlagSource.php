@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\FeatureFlags\Tests\Support;
 
+use Closure;
 use Firefly\FeatureFlags\Definition\FlagDefinitions;
 use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Source\FlagSource;
@@ -12,7 +13,7 @@ use Throwable;
 
 /**
  * A scriptable source: flags (shorthand allowed), shared evaluators and document metadata, a revision, an optional
- * failure, and a load counter.
+ * failure, a load counter, and a hook that runs once inside the next load (another worker interleaving).
  */
 final class StubFlagSource implements FlagSource
 {
@@ -27,6 +28,9 @@ final class StubFlagSource implements FlagSource
 
     /** @var array<array-key, mixed> */
     public array $metadata = [];
+
+    /** @var (Closure(): void)|null */
+    public ?Closure $beforeLoad = null;
 
     /**
      * @param  array<array-key, mixed>  $flags
@@ -67,6 +71,11 @@ final class StubFlagSource implements FlagSource
     public function load(?string $knownRevision): ?SourceSnapshot
     {
         $this->loads++;
+        $hook = $this->beforeLoad;
+        $this->beforeLoad = null;
+        if ($hook !== null) {
+            $hook();
+        }
         if ($this->failure !== null) {
             throw $this->failure;
         }

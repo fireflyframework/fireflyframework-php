@@ -17,10 +17,14 @@ use Throwable;
  * outage costs extra source loads in each process, never the flags themselves.
  *
  * degraded() tells whether the LAST call failed: it clears as soon as the store answers again, so a long-lived
- * process resumes sharing (and announcing changes) after an outage. The outage is logged once per process.
+ * process resumes sharing (and announcing changes) after an outage. Each outage is logged once (a WARN when the
+ * store first fails, none while it stays down).
  *
  * Every application needs a cache prefix of its own (Laravel's `cache.prefix`): two applications sharing one store
- * and one prefix would share their flag bookkeeping as well.
+ * and one prefix would share their flag bookkeeping as well. The entries are written with no expiry and must not be
+ * evicted: under memory pressure Memcached's LRU, or Redis with `allkeys-lru`/`allkeys-lfu`/`allkeys-random`, drops
+ * them, and a worker that then cannot reach a remote source has no last good document to serve (Redis's `volatile-*`
+ * policies and `noeviction` leave entries without a TTL alone).
  */
 final class CacheBook
 {
@@ -39,7 +43,7 @@ final class CacheBook
     {
         try {
             $value = $this->cache->get(self::key($key));
-            $this->degraded = false;
+            $this->recovered();
 
             return $value;
         } catch (Throwable $failure) {
@@ -53,7 +57,7 @@ final class CacheBook
     {
         try {
             $this->cache->forever(self::key($key), $value);
-            $this->degraded = false;
+            $this->recovered();
         } catch (Throwable $failure) {
             $this->degrade($failure);
         }
@@ -64,7 +68,7 @@ final class CacheBook
     {
         try {
             $first = $this->cache->add(self::key($key), true, max(1, $seconds));
-            $this->degraded = false;
+            $this->recovered();
 
             return $first;
         } catch (Throwable $failure) {
@@ -85,17 +89,21 @@ final class CacheBook
         try {
             $store = $this->cache->getStore();
             if (! $store instanceof LockProvider) {
-                $this->degraded = false;
+                $this->recovered();
 
                 return static function (): void {};
             }
 
             $lock = $store->lock(self::key($key), max(1, $seconds));
             $acquired = $lock->get() === true;
-            $this->degraded = false;
+            $this->recovered();
 
-            return $acquired ? static function () use ($lock): void {
-                $lock->release();
+            return $acquired ? function () use ($lock): void {
+                try {
+                    $lock->release();
+                } catch (Throwable $failure) {
+                    $this->degrade($failure); // the lock expires on its own; the refresh that held it stands
+                }
             } : null;
         } catch (Throwable $failure) {
             $this->degrade($failure);
@@ -113,6 +121,12 @@ final class CacheBook
     private static function key(string $key): string
     {
         return self::PREFIX.$key;
+    }
+
+    private function recovered(): void
+    {
+        $this->degraded = false;
+        $this->warned = false;
     }
 
     private function degrade(Throwable $failure): void

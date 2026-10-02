@@ -9,9 +9,11 @@ use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Event\FeatureFlagsChanged;
 use Firefly\FeatureFlags\Registry\CacheBook;
 use Firefly\FeatureFlags\Registry\FlagRegistry;
+use Firefly\FeatureFlags\Registry\SourceState;
 use Firefly\FeatureFlags\Source\FlagSourceUnavailable;
 use Firefly\FeatureFlags\Tests\Support\FixedClock;
 use Firefly\FeatureFlags\Tests\Support\FlakyCache;
+use Firefly\FeatureFlags\Tests\Support\HookedLockStore;
 use Firefly\FeatureFlags\Tests\Support\RecordingLogger;
 use Firefly\FeatureFlags\Tests\Support\StubFlagSource;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
@@ -319,6 +321,110 @@ it('loads a source on a forced refresh even while another worker holds its lock'
         ->and(featureFlagsChanges($events))->toBe([['startup', ['a']], ['store', ['a']]]);
     $held->release();
 });
+
+it('never lets a worker that composed an older document overwrite or revert a newer shared record', function (): void {
+    $store = new ArrayStore;
+    $cache = new Repository($store);
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true], failsStartup: true);
+    $remote = new StubFlagSource('store', 400, 5.0, ['s' => true]);
+    featureFlagsRegistry([$file, $remote], $cache, $events, $clock)->document();
+
+    // The file changes. At the interval boundary worker C holds the file's lock and loads it, so worker A serves the
+    // old file document and goes on to check the store; while A loads the store, C records the new set.
+    $file->flags = ['a' => false];
+    $file->revision = 'r2';
+    $clock->now += 5.0;
+    $held = $store->lock(CacheBook::PREFIX.'lock:file', 60);
+    $held->get();
+    $remote->beforeLoad = function () use ($held, $file, $remote, $cache, $events, $clock): void {
+        $held->release();
+        featureFlagsRegistry([$file, $remote], $cache, $events, $clock)->document();
+    };
+    $servedByA = featureFlagsRegistry([$file, $remote], $cache, $events, $clock)->document()->flag('a')?->defaultVariant();
+    $nextRequest = featureFlagsRegistry([$file, $remote], $cache, $events, $clock)->document()->flag('a')?->defaultVariant();
+
+    expect($servedByA)->toBe('on')
+        ->and($nextRequest)->toBe('off')
+        ->and($remote->loads)->toBe(2)
+        ->and(featureFlagsChanges($events))->toBe([['startup', ['a', 's']], ['file', ['a']]]);
+});
+
+it('loads a source once at its interval boundary when another worker checked it just before this one took the lock', function (): void {
+    $store = new HookedLockStore;
+    $cache = new Repository($store);
+    $clock = new FixedClock;
+    $http = new StubFlagSource('http', 300, 30.0, ['h' => true]);
+    featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document();
+
+    $http->flags = ['h' => false];
+    $http->revision = 'r2';
+    $clock->now += 30.0;
+    $store->beforeLock = function () use ($http, $cache, $clock): void {
+        featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document();
+    };
+    $late = featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock);
+
+    expect($late->document()->flag('h')?->defaultVariant())->toBe('off')
+        ->and($http->loads)->toBe(2);
+});
+
+it('writes the new state of a source before it lets go of the source lock', function (): void {
+    $store = new HookedLockStore;
+    $cache = new Repository($store);
+    $clock = new FixedClock;
+    $http = new StubFlagSource('http', 300, 30.0, ['h' => true]);
+    $seen = [];
+    $store->onRelease = function (string $lock) use ($cache, &$seen): void {
+        $seen[] = SourceState::fromArray($cache->get(CacheBook::PREFIX.'source:http'))?->revision;
+    };
+
+    featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document();
+    $http->revision = 'r2';
+    $clock->now += 30.0;
+    featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document();
+
+    expect($seen)->toBe(['r1', 'r2']);
+});
+
+it('keeps its own last good document when another worker re-creates an evicted entry without loading the source', function (): void {
+    $cache = new Repository(new ArrayStore);
+    $clock = new FixedClock;
+    $http = new StubFlagSource('http', 300, 30.0, ['h' => true]);
+    $longLived = featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock);
+    $longLived->document();
+
+    $cache->forget(CacheBook::PREFIX.'source:http'); // evicted under memory pressure
+    $http->failure = new FlagSourceUnavailable('connection refused');
+    $clock->now += 30.0;
+    $freshKeys = featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document()->keys();
+    $kept = $longLived->document()->flag('h');
+
+    expect($freshKeys)->toBe([])
+        ->and($kept)->not->toBeNull()
+        ->and($longLived->states()[0]->status())->toBe('STALE')
+        ->and(featureFlagsRegistry([$http], $cache, new RecordingApplicationEventPublisher, $clock)->document()->flag('h'))->not->toBeNull();
+});
+
+it('reloads a source whose cached document cannot be read', function (string $document): void {
+    $cache = new Repository(new ArrayStore);
+    $logger = new RecordingLogger;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true], failsStartup: true);
+    $cache->forever(CacheBook::PREFIX.'source:file', [
+        'name' => 'file', 'loaded' => true, 'document' => $document, 'revision' => 'r1',
+        'checkedAt' => 1790000000.0, 'lastRefresh' => '2026-09-21T14:13:20Z', 'error' => null, 'flags' => 1,
+    ]);
+    $registry = featureFlagsRegistry([$file], $cache, new RecordingApplicationEventPublisher, new FixedClock, $logger);
+
+    expect($registry->document()->flag('a')?->defaultVariant())->toBe('on')
+        ->and($file->loads)->toBe(1)
+        ->and(SourceState::fromArray($cache->get(CacheBook::PREFIX.'source:file'))?->document()->keys())->toBe(['a'])
+        ->and($logger->count('warning', 'cached document of feature flag source [file] cannot be read'))->toBe(1);
+})->with([
+    'not JSON' => ['{"flags": {'],
+    'another shape' => ['[["a", true]]'],
+]);
 
 it('puts test overrides on top without sharing them', function (): void {
     $registry = featureFlagsRegistry([new StubFlagSource('config', 100, 0.0, ['a' => true], failsStartup: true)], new Repository(new ArrayStore), new RecordingApplicationEventPublisher, new FixedClock);
