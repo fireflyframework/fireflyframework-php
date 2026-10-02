@@ -130,6 +130,7 @@ it('refuses a file it cannot parse as the whole document, naming the file', func
     'YAML with malformed UTF-8' => ['yml', "metadata:\n  owner: \xff\n", 'YAML'],
     'a PHP constant in YAML' => ['yaml', "metadata:\n  limit: !php/const PHP_INT_MAX\n", 'YAML'],
     'a date as a flow-mapping key in YAML' => ['yaml', "metadata: {2024-01-01: launch}\n", 'YAML'],
+    'a YAML block key starting with NUL, which Symfony Yaml fails on with an Error' => ['yaml', "metadata:\n  \"\\0a\": x\n", 'YAML'],
 ]);
 
 it('reads an absent document as no flags: JSON null, an empty or comment-only YAML file', function (string $extension, string $contents): void {
@@ -184,4 +185,38 @@ it('reads an unquoted YAML date as the YYYY-MM-DD text flagd expects, and a time
         ->and($flag?->metadata()['releasedAt'] ?? null)->toBe('2024-06-01T10:30:00+00:00')
         ->and($flag?->toArray()['notes'] ?? null)->toEqual(['2024-06-01', ['at' => '2024-06-01T08:00:00.500000+02:00']])
         ->and($document?->metadata)->toBe(['snapshot' => '2025-01-01']);
+});
+
+it('loads an impossible unquoted YAML date as the date PHP rolls it over to: a known YAML divergence, documented (quote dates)', function (): void {
+    $unquoted = TemporaryFlagFiles::write('yaml', "flags:\n  typo:\n    state: ENABLED\n    variants: {on: true, off: false}\n    defaultVariant: off\n    metadata: {expires: 2025-02-30, note: 2025-02-30}\n");
+    $quoted = TemporaryFlagFiles::write('yaml', "flags:\n  typo:\n    state: ENABLED\n    variants: {on: true, off: false}\n    defaultVariant: off\n    metadata: {expires: '2025-02-30'}\n");
+
+    $flag = featureFlagsFileSource($unquoted)->load(null)?->document->flag('typo');
+
+    expect($flag?->expires())->toBe('2025-03-02')
+        ->and($flag?->metadata()['note'] ?? null)->toBe('2025-03-02')
+        ->and(featureFlagsFileRefusal($quoted)?->reason())->toBe('expires must be a YYYY-MM-DD date');
+});
+
+it('sees a rewrite by another process that PHP\'s stat cache would hide', function (): void {
+    $before = '{"flags":{"a":{"state":"ENABLED","variants":{"on":true},"defaultVariant":"on"}}}';
+    $after = '{"flags":{"a":{"state":"DISABLED","variants":{"on":true},"defaultVariant":"on"}},"metadata":{"v":2}}';
+    $path = TemporaryFlagFiles::write('json', $before);
+    $source = featureFlagsFileSource($path);
+    $loaded = $source->load(null);
+
+    expect($source->load($loaded?->revision))->toBeNull() // an unchanged check leaves the stat of $path cached
+        ->and(filesize($path))->toBe(strlen($before));
+
+    TemporaryFlagFiles::rewriteFromAnotherProcess($path, $after);
+    $reloaded = $source->load($loaded?->revision);
+
+    expect($reloaded?->document->flag('a')?->isDisabled())->toBeTrue()
+        ->and($reloaded?->revision)->toEndWith('-'.strlen($after));
+});
+
+it('keeps a YAML flow-mapping key starting with NUL as Symfony Yaml reads it', function (): void {
+    $path = TemporaryFlagFiles::write('yaml', "metadata: {\"\\0a\": x}\n");
+
+    expect(featureFlagsFileSource($path)->load(null)?->document->metadata)->toBe(["\0a" => 'x']);
 });

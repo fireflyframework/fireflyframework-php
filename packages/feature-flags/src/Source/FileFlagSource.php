@@ -15,8 +15,8 @@ use Firefly\FeatureFlags\FeatureFlagsSettings;
 use JsonException;
 use OpenFeature\interfaces\provider\Provider;
 use stdClass;
-use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
+use Throwable;
 
 /**
  * A flagd document on disk (.json, .yaml, .yml), re-read when its mtime or size changes (checked at most once
@@ -28,15 +28,20 @@ use Symfony\Component\Yaml\Yaml;
  * refused as a whole with the key `<document>`, and the reason names the file.
  *
  * Symfony Yaml reads only `true`/`false` as booleans, as YAML 1.2 and flagd do, so `on`/`off` stay variant names.
- * Two more YAML readings are brought back to what the same JSON file would say. An unquoted date
- * (`expires: 2025-01-01`) is text, as flagd expects — Symfony Yaml would otherwise give an int timestamp — and a
- * timestamp is ISO-8601 text the way PyFly writes one (seconds, microseconds only when non-zero, the offset only
- * when the file wrote one). A PHP tag (`!php/const`, `!php/object`) is refused instead of read as null.
+ * An unquoted date value (`expires: 2025-01-01`) becomes the text flagd expects, not the int timestamp Symfony Yaml
+ * would give, and a timestamp becomes ISO-8601 text the way PyFly writes one (seconds, microseconds only when
+ * non-zero, the offset only when the file wrote one). A PHP tag (`!php/const`, `!php/object`) is refused instead of
+ * read as null.
  *
- * Known divergence from PyFly: an unquoted date as a block-mapping KEY (`2024-01-01: x`) reaches this class as the
- * int key 1704067200 — Symfony Yaml evaluates block keys without the parse flags, so nothing tells it apart from a
- * key written `1704067200:` — and is read as the text "1704067200" where PyFly refuses the key. As a flow-mapping
- * key (`{2024-01-01: x}`) it is refused as invalid YAML. Quote date keys.
+ * Known divergences from PyFly, all YAML-only (CONTRACT.md: quote dates in YAML; JSON cannot express them):
+ * - An impossible calendar date written unquoted as a value (`expires: 2025-02-30`) reaches this class already rolled
+ *   over by PHP's DateTimeImmutable (`2025-03-02`; `2025-00-00` gives `2024-11-30`), so it loads as that real date.
+ *   PyFly's YAML parser refuses the file, and the same text in JSON is a string that `expires` validation refuses.
+ *   Nothing after parsing can tell, so quote dates: `expires: '2025-02-30'` is refused as it should be.
+ * - An unquoted date as a block-mapping KEY (`2024-01-01: x`) reaches this class as the int key 1704067200 —
+ *   Symfony Yaml evaluates block keys without the parse flags, so nothing tells it apart from a key written
+ *   `1704067200:` — and is read as the text "1704067200" where PyFly refuses the key. As a flow-mapping key
+ *   (`{2024-01-01: x}`) it is refused as invalid YAML. Quote date keys.
  *
  * The revision is `mtime-size` at whole seconds (PHP's stat()): an edit that keeps the size and lands within the
  * same second as the previous one goes unseen until the mtime or the size moves again. The revision is read before
@@ -113,18 +118,28 @@ final class FileFlagSource implements FlagSource
      */
     private static function decode(string $path, string $extension, string $contents): mixed
     {
-        try {
-            return $extension === 'json'
-                ? Json::decode($contents)
-                : Json::normalize(self::datesAsText(Yaml::parse($contents, self::YAML_FLAGS)));
-        } catch (JsonException|ParseException $failure) {
-            throw new InvalidFlagDefinition('<document>', sprintf(
-                'the flag file [%s] is not valid %s (%s)',
-                $path,
-                $extension === 'json' ? 'JSON' : 'YAML',
-                rtrim($failure->getMessage(), '.'),
-            ));
+        if ($extension === 'json') {
+            try {
+                return Json::decode($contents);
+            } catch (JsonException $failure) {
+                throw self::unparsable($path, 'JSON', $failure);
+            }
         }
+
+        try {
+            $parsed = Yaml::parse($contents, self::YAML_FLAGS);
+        } catch (Throwable $failure) {
+            // Not only the documented ParseException: Symfony Yaml stores a block-mapping key as a stdClass property,
+            // and a key starting with "\0" throws an Error. Anything parsing throws means the file is not valid YAML.
+            throw self::unparsable($path, 'YAML', $failure);
+        }
+
+        return Json::normalize(self::datesAsText($parsed));
+    }
+
+    private static function unparsable(string $path, string $format, Throwable $failure): InvalidFlagDefinition
+    {
+        return new InvalidFlagDefinition('<document>', sprintf('the flag file [%s] is not valid %s (%s)', $path, $format, rtrim($failure->getMessage(), '.')));
     }
 
     /** Every YAML date or timestamp in $value replaced by its text, at any depth. */
@@ -135,12 +150,8 @@ final class FileFlagSource implements FlagSource
         }
 
         if ($value instanceof stdClass) {
-            $members = new stdClass;
-            foreach (get_object_vars($value) as $name => $member) {
-                $members->{$name} = self::datesAsText($member);
-            }
-
-            return $members;
+            // through an array: a member name starting with "\0" (a flow-mapping key) cannot be assigned as a property
+            return (object) array_map(self::datesAsText(...), get_object_vars($value));
         }
 
         return is_array($value) ? array_map(self::datesAsText(...), $value) : $value;
