@@ -12,6 +12,7 @@ use Firefly\FeatureFlags\Definition\Json;
 use LogicException;
 use stdClass;
 use Throwable;
+use WeakMap;
 
 /**
  * flagd's in-process evaluator (openfeature-flagd-core 1.0.0, FlagdCore._resolve), in PHP:
@@ -32,15 +33,20 @@ use Throwable;
  *   a value of another type          → caller default, ERROR / TYPE_MISMATCH (not checked for DISABLED, nor for a
  *                                      DEFAULT without a variant)
  *
- * Types are flagd's: a float request accepts an integer and a boolean (Python's bool is an int) and returns either
- * as a float — the caller's default too, whenever the result is not an error; an object request accepts an object
- * or a list. A targeting result names its variant the way the reference turns it into a key: a boolean is "true"
+ * Types are flagd's except that a boolean is never a number (CONTRACT.md; Python's bool is an int, so flagd-core
+ * answers float(True) for a float request): a float request accepts an integer variant and returns it as a float,
+ * and where no type is checked (DISABLED, DEFAULT without a variant) the caller's default is returned as
+ * float(default), as flagd-core and PyFly do; an object request accepts an object or a list. An object or list
+ * value is a copy, so changing it changes neither the document nor a later answer. A targeting result names its
+ * variant the way the reference turns it into a key: a boolean is "true"
  * or "false", text is itself, anything else is Python's str() of it (PythonText), so a `fractional` bucket written
  * as 1 selects the variant "1" and one written as 2.0 the variant "2.0".
  *
- * One departure from the reference, a contract ruling: `$ref`s resolve structurally and transitively within
- * RefResolver's limits (flagd substitutes them textually). A defaultVariant "" is no default variant, as in flagd,
- * even when a variant is named "" (R-default-empty).
+ * Two departures from the reference, both contract rulings: a boolean is never a number (above), and `$ref`s
+ * resolve structurally and transitively within RefResolver's limits (flagd substitutes them textually); each
+ * flag's expansion is worked out once per document and kept while the document lives (a WeakMap keyed by the
+ * document object, which is immutable). A defaultVariant "" is no default variant, as in flagd, even when a
+ * variant is named "" (R-default-empty).
  *
  * The JSON Logic data is the context attributes, then `$flagd` {flagKey, timestamp (Unix seconds)} and
  * `targetingKey`, which replace any attribute of those names. A DateTimeInterface in the attributes is evaluated
@@ -58,6 +64,14 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
     private readonly JsonLogic $logic;
 
     /**
+     * Per document, per flag key: [the flag's targeting with its references expanded], or null when it expands
+     * past RefResolver's limits.
+     *
+     * @var WeakMap<FlagDocument, array<array-key, array{0: mixed}|null>>
+     */
+    private readonly WeakMap $expansions;
+
+    /**
      * @param  (Closure(): int)|null  $clock  Unix seconds for `$flagd.timestamp`
      */
     public function __construct(private readonly ?Closure $clock = null)
@@ -67,6 +81,7 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
         }
 
         $this->logic = FlagdOperators::jsonLogic();
+        $this->expansions = new WeakMap;
     }
 
     public function evaluate(FlagDocument $document, string $flagKey, FlagType $type, mixed $default, ?string $targetingKey = null, array $attributes = []): Resolution
@@ -94,18 +109,16 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
             return self::typed(new Resolution($default, null, EvaluationReason::Disabled, metadata: $metadata), $type, $default);
         }
 
-        $targeting = $flag->targeting();
-        if ($targeting !== null) {
-            if (! RefResolver::withinLimits($targeting, $document->evaluators)) {
-                return Resolution::error($default, EvaluationError::ParseError, sprintf(
-                    'The targeting of flag [%s] expands past %d JSON values or %d levels.',
-                    $flagKey,
-                    RefResolver::MAX_VALUES,
-                    RefResolver::MAX_DEPTH,
-                ));
-            }
-            $targeting = RefResolver::expand($targeting, $document->evaluators);
+        $expansion = $this->expansion($document, $flag);
+        if ($expansion === null) {
+            return Resolution::error($default, EvaluationError::ParseError, sprintf(
+                'The targeting of flag [%s] expands past %d JSON values or %d levels.',
+                $flagKey,
+                RefResolver::MAX_VALUES,
+                RefResolver::MAX_DEPTH,
+            ));
         }
+        $targeting = $expansion[0];
 
         if (! self::pythonTruthy($targeting)) {
             return self::typed(self::fallThrough($flag, $default, $metadata, EvaluationReason::Static), $type, $default);
@@ -139,7 +152,59 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
             ));
         }
 
-        return self::typed(new Resolution($flag->variantValue($variant), $variant, EvaluationReason::TargetingMatch, metadata: $metadata), $type, $default);
+        return self::typed(new Resolution(self::copied($flag->variantValue($variant)), $variant, EvaluationReason::TargetingMatch, metadata: $metadata), $type, $default);
+    }
+
+    /**
+     * [the flag's targeting with its references expanded] ([null] for no targeting), or null when it expands past
+     * RefResolver's limits: worked out on the first evaluation of the flag in this document and kept with the
+     * document.
+     *
+     * @return array{0: mixed}|null
+     */
+    private function expansion(FlagDocument $document, FlagDefinition $flag): ?array
+    {
+        $targeting = $flag->targeting();
+        if ($targeting === null) {
+            return [null];
+        }
+
+        $expansions = $this->expansions[$document] ?? [];
+        if (! array_key_exists($flag->key, $expansions)) {
+            $expansions[$flag->key] = RefResolver::withinLimits($targeting, $document->evaluators)
+                ? [RefResolver::expand($targeting, $document->evaluators)]
+                : null;
+            $this->expansions[$document] = $expansions;
+        }
+
+        return $expansions[$flag->key];
+    }
+
+    /**
+     * $value with every array and stdClass inside it rebuilt, in the same faithful form (`{}` stays a stdClass):
+     * the document's own objects never leave the evaluator.
+     */
+    private static function copied(mixed $value): mixed
+    {
+        if ($value instanceof stdClass) {
+            $copy = new stdClass;
+            foreach (get_object_vars($value) as $member => $item) {
+                $copy->{$member} = self::copied($item);
+            }
+
+            return $copy;
+        }
+
+        if (is_array($value)) {
+            $copy = [];
+            foreach ($value as $key => $item) {
+                $copy[$key] = self::copied($item);
+            }
+
+            return $copy;
+        }
+
+        return $value;
     }
 
     /**
@@ -158,11 +223,14 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
             return Resolution::error($default, EvaluationError::General, "Flag [{$flag->key}] names default variant [{$variant}], which is not one of its variants.");
         }
 
-        return new Resolution($flag->variantValue($variant), $variant, $reason, metadata: $metadata);
+        return new Resolution(self::copied($flag->variantValue($variant)), $variant, $reason, metadata: $metadata);
     }
 
     /**
-     * flagd's type check, then a float request's number as a float. An error passes through unchanged.
+     * The type check (FlagType::accepts(): a boolean is never a number), then a float request's number as a float.
+     * DISABLED and a DEFAULT without a variant carry the caller's default unchecked, as flagd does, and a float
+     * request gets it as float(default) there — an integer or a boolean, as Python's float() reads them. An error
+     * passes through unchanged.
      */
     private static function typed(Resolution $resolution, FlagType $type, mixed $default): Resolution
     {
@@ -173,11 +241,13 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
         $checked = $resolution->reason !== EvaluationReason::Disabled
             && ($resolution->reason !== EvaluationReason::Default || $resolution->variant !== null);
         $value = $resolution->value;
-        if ($checked && ! $type->accepts($value) && ! ($type === FlagType::Float && is_bool($value))) {
+        if ($checked && ! $type->accepts($value)) {
             return Resolution::error($default, EvaluationError::TypeMismatch, sprintf('Flag resolved a %s value; a %s was requested.', get_debug_type($value), $type->value));
         }
 
-        return $type === FlagType::Float && (is_int($value) || is_bool($value)) ? $resolution->withValue((float) $value) : $resolution;
+        $numeric = is_int($value) || (! $checked && is_bool($value));
+
+        return $type === FlagType::Float && $numeric ? $resolution->withValue((float) $value) : $resolution;
     }
 
     /**

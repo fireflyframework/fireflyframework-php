@@ -156,14 +156,15 @@ it('returns an integer variant as a float for a float request and refuses it for
         ->and($evaluator->evaluate(featureFlagsEvaluatorDocument(), 'ints', FlagType::Boolean, false)->error)->toBe(EvaluationError::TypeMismatch);
 });
 
-it('checks the requested type exactly as flagd does (M6)', function (array $variants, FlagType $type, mixed $default, array $expected): void {
+it('checks the requested type as the contract does: a boolean is never a number', function (array $variants, FlagType $type, mixed $default, array $expected): void {
     $document = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => $variants, 'defaultVariant' => array_key_first($variants)]);
 
     expect(featureFlagsOutcome((new DefaultFlagdEvaluator)->evaluate($document, 'f', $type, $default)))->toBe($expected);
 })->with([
-    // Python's bool is an int, and a float request accepts an int: the reference returns float(True).
-    'a float request on a boolean variant reads it as 1.0' => [['on' => true, 'off' => false], FlagType::Float, 0.5, [1.0, 'on', EvaluationReason::Static, null]],
-    'a float request on a false variant reads it as 0.0' => [['off' => false, 'on' => true], FlagType::Float, 0.5, [0.0, 'off', EvaluationReason::Static, null]],
+    // The reference's Python reads a bool as an int (float(True) is 1.0); the contract refuses it.
+    'a float request refuses a boolean variant' => [['on' => true, 'off' => false], FlagType::Float, 0.5, [0.5, null, EvaluationReason::Error, EvaluationError::TypeMismatch]],
+    'a float request refuses a false variant' => [['off' => false, 'on' => true], FlagType::Float, 0.5, [0.5, null, EvaluationReason::Error, EvaluationError::TypeMismatch]],
+    'a float request reads an integer variant as a float' => [['ten' => 10], FlagType::Float, 0.5, [10.0, 'ten', EvaluationReason::Static, null]],
     'an integer request refuses a float variant' => [['low' => 0.5], FlagType::Integer, 3, [3, null, EvaluationReason::Error, EvaluationError::TypeMismatch]],
     'an integer request refuses a boolean variant' => [['on' => true], FlagType::Integer, 3, [3, null, EvaluationReason::Error, EvaluationError::TypeMismatch]],
     'a boolean request refuses an integer variant' => [['one' => 1], FlagType::Boolean, false, [false, null, EvaluationReason::Error, EvaluationError::TypeMismatch]],
@@ -177,7 +178,9 @@ it('converts the caller default of a float request and skips the type check wher
     $disabled = featureFlagsOneFlag(['state' => 'DISABLED', 'variants' => ['t' => 'text'], 'defaultVariant' => 't']);
     $noDefault = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ['t' => 'text']]);
 
+    // The unchecked paths answer float(default), as flagd-core and PyFly do (Python's float(True) is 1.0).
     expect(featureFlagsOutcome($evaluator->evaluate($disabled, 'f', FlagType::Float, 2)))->toBe([2.0, null, EvaluationReason::Disabled, null])
+        ->and(featureFlagsOutcome($evaluator->evaluate($disabled, 'f', FlagType::Float, true)))->toBe([1.0, null, EvaluationReason::Disabled, null])
         ->and(featureFlagsOutcome($evaluator->evaluate($noDefault, 'f', FlagType::Float, 2)))->toBe([2.0, null, EvaluationReason::Default, null])
         ->and(featureFlagsOutcome($evaluator->evaluate($noDefault, 'f', FlagType::Boolean, true)))->toBe([true, null, EvaluationReason::Default, null]);
 });
@@ -559,4 +562,101 @@ it('names a variant after a context object that contains itself as Python repr()
     $resolution = (new DefaultFlagdEvaluator)->evaluate($document, 'f', FlagType::String, '', 'u', ['a' => $a]);
 
     expect(featureFlagsOutcome($resolution))->toBe(['cyclic', "{'self': {...}, 'n': 1}", EvaluationReason::TargetingMatch, null]);
+});
+
+/*
+ | A Resolution's value is the caller's own: the document's objects never leave the evaluator, so changing a
+ | returned value — at the top or nested, whichever path chose it — changes neither the next answer nor the document.
+ */
+it('hands out a copy of an object value, never the stored definition\'s', function (string $flag, mixed $context, Closure $mutate): void {
+    $document = FlagDocument::fromJson('{"flags": {
+        "static": {"state": "ENABLED", "variants": {"empty": {}, "other": {"a": 1}}, "defaultVariant": "empty"},
+        "default": {"state": "ENABLED", "variants": {"nested": {"k": {}, "list": [{"0": 1}]}, "other": {"a": 1}}, "defaultVariant": "nested",
+                    "targeting": {"if": [{"==": [{"var": "x"}, 1]}, "other", null]}},
+        "matched": {"state": "ENABLED", "variants": {"a": {}, "b": {"0": "x"}}, "defaultVariant": "a", "targeting": {"if": [true, "b", null]}}
+    }}');
+    $evaluator = new DefaultFlagdEvaluator;
+    $before = $document->toJson();
+    $first = $evaluator->evaluate($document, $flag, FlagType::Object, [], 'u', Json::members($context));
+    $expected = Json::canonical($first->value);
+
+    $mutate($first->value);
+
+    expect(Json::canonical($evaluator->evaluate($document, $flag, FlagType::Object, [], 'u', Json::members($context))->value))->toBe($expected)
+        ->and($document->toJson())->toBe($before);
+})->with([
+    'STATIC, an empty object' => ['static', null, static function (mixed $value): void {
+        assert($value instanceof stdClass);
+        $value->injected = 'evil';
+    }],
+    'DEFAULT, an object nested in the value' => ['default', null, static function (mixed $value): void {
+        assert(is_array($value) && $value['k'] instanceof stdClass);
+        $value['k']->injected = 'evil';
+    }],
+    'DEFAULT, an object inside a list in the value' => ['default', null, static function (mixed $value): void {
+        assert(is_array($value) && is_array($value['list']) && $value['list'][0] instanceof stdClass);
+        $value['list'][0]->{'1'} = 'evil';
+    }],
+    'TARGETING_MATCH, a list-like object' => ['matched', null, static function (mixed $value): void {
+        assert($value instanceof stdClass);
+        $value->{'1'} = 'y';
+    }],
+]);
+
+/*
+ | The expanded targeting of each flag is kept per document (a WeakMap on the document object): a document's
+ | references are expanded once, another document instance never reads a stale expansion, and a document no one
+ | holds any more is released.
+ */
+
+/**
+ * @return WeakMap<FlagDocument, array<array-key, mixed>>
+ */
+function featureFlagsExpansionMemo(DefaultFlagdEvaluator $evaluator): WeakMap
+{
+    /** @var WeakMap<FlagDocument, array<array-key, mixed>> $memo */
+    $memo = (new ReflectionProperty(DefaultFlagdEvaluator::class, 'expansions'))->getValue($evaluator);
+
+    return $memo;
+}
+
+it('expands a document\'s targeting once and answers the same every time', function (): void {
+    $evaluator = new DefaultFlagdEvaluator;
+    $document = featureFlagsEvaluatorDocument();
+    $context = ['roles' => ['staff', 'beta']];
+
+    $answers = [];
+    for ($i = 0; $i < 3; $i++) {
+        foreach (['chained', 'chained-backwards', 'cyclic', 'dangling', '2024', 'ints'] as $flag) {
+            $answers[$i][$flag] = featureFlagsOutcome($evaluator->evaluate($document, $flag, FlagType::Boolean, false, 'u', $context));
+        }
+    }
+    $memo = featureFlagsExpansionMemo($evaluator);
+
+    expect($answers[1])->toBe($answers[0])
+        ->and($answers[2])->toBe($answers[0])
+        ->and(count($memo))->toBe(1)
+        ->and(array_map(static fn (int|string $key): string => (string) $key, array_keys($memo[$document])))->toBe(['chained', 'chained-backwards', 'cyclic', 'dangling', '2024']);
+});
+
+it('never serves one document\'s expansion to another document instance', function (): void {
+    $evaluator = new DefaultFlagdEvaluator;
+    $document = static fn (string $role): FlagDocument => FlagDocument::fromJsonValue([
+        'flags' => ['f' => ['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off', 'targeting' => ['if' => [['$ref' => 'segment'], 'on', null]]]],
+        '$evaluators' => ['segment' => ['in' => [$role, ['var' => 'roles']]]],
+    ]);
+    $staff = $document('staff');
+    $beta = $document('beta');
+
+    $forStaff = $evaluator->evaluate($staff, 'f', FlagType::Boolean, false, 'u', ['roles' => ['staff']]);
+    $forBeta = $evaluator->evaluate($beta, 'f', FlagType::Boolean, false, 'u', ['roles' => ['staff']]);
+
+    expect([$forStaff->value, $forStaff->reason])->toBe([true, EvaluationReason::TargetingMatch])
+        ->and([$forBeta->value, $forBeta->reason])->toBe([false, EvaluationReason::Default])
+        ->and(count(featureFlagsExpansionMemo($evaluator)))->toBe(2);
+
+    unset($staff);
+    gc_collect_cycles();
+
+    expect(count(featureFlagsExpansionMemo($evaluator)))->toBe(1);
 });
