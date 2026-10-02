@@ -150,7 +150,12 @@ it('evaluates with the ambient context, the caller\'s context over it, through t
 
     expect($renewed->format('Y-m-d\TH:i:s.uP'))->toBe('2025-06-30T23:59:59.999999-05:00')
         ->and($flags->getString('flow', 'z', [], 'grace'))->toBe('B')
-        ->and($evaluator->lastTargetingKey)->toBe('grace');
+        ->and($evaluator->lastTargetingKey)->toBe('grace')
+        // An int user id is the usual explicit key in Laravel: it is the key, as text, ambient or not.
+        ->and($flags->isEnabled('kill-switch', false, ['targetingKey' => 42]))->toBeTrue()
+        ->and($evaluator->lastTargetingKey)->toBe('42')
+        ->and($flags->details('kill-switch', false, ['targetingKey' => 7], ambient: false)->value)->toBeTrue()
+        ->and($evaluator->lastTargetingKey)->toBe('7');
 });
 
 it('previews without the caller: only the explicit context and the process attributes, marked for the hooks', function (): void {

@@ -19,10 +19,11 @@ use Throwable;
 
 /**
  * The application's door to its flags. Every call resolves the ambient evaluation context (principal, roles,
- * tenant, application, profiles, your contributors), lays the caller's explicit context over it and evaluates
- * through the OpenFeature client named `firefly`, which carries the metrics and exposure hooks — so a flag read
- * here is counted, exposed and evaluated exactly like one read by any OpenFeature client. Missing or broken
- * flags answer the caller's default.
+ * tenant, application, profiles, your contributors), lays the caller's explicit context over it (its `targetingKey`
+ * — a string, an int such as a user id, or a Stringable — replaces the principal's key) and evaluates through the
+ * OpenFeature client named `firefly`, which carries the metrics and exposure hooks — so a flag read here is
+ * counted, exposed and evaluated exactly like one read by any OpenFeature client. Missing or broken flags answer
+ * the caller's default.
  *
  * Each typed getter evaluates with its own type: getFloat($key, 1) is a float evaluation (PHP widens the int), and
  * a flag of another type is TYPE_MISMATCH, answered with the default — a boolean is never a number. details()

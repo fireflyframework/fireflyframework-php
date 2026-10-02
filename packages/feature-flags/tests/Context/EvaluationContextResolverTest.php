@@ -6,6 +6,7 @@ use Firefly\FeatureFlags\Context\ApplicationEvaluationContextContributor;
 use Firefly\FeatureFlags\Context\EvaluationContextBuilder;
 use Firefly\FeatureFlags\Context\EvaluationContextContributor;
 use Firefly\FeatureFlags\Context\EvaluationContextResolver;
+use Firefly\FeatureFlags\Evaluation\FlagType;
 use Firefly\FeatureFlags\Tests\Support\ProfileVariables;
 use Firefly\FeatureFlags\Tests\Support\RecordingLogger;
 use Illuminate\Config\Repository;
@@ -105,6 +106,88 @@ it('skips a contributor that throws and keeps the others', function (): void {
 
     expect($attributes)->toBe(['plan' => 'pro'])
         ->and($logger->count('debug', 'tenant service down'))->toBe(1);
+});
+
+it('reads an int or a Stringable explicit targeting key as text, and refuses any other type with a DEBUG line', function (): void {
+    $logger = new RecordingLogger;
+    $principal = new class implements EvaluationContextContributor
+    {
+        public function contribute(EvaluationContextBuilder $context): void
+        {
+            $context->setTargetingKey('ada');
+        }
+    };
+    $resolver = new EvaluationContextResolver([$principal], $logger);
+    $user = new class implements Stringable
+    {
+        public function __toString(): string
+        {
+            return 'grace';
+        }
+    };
+    $broken = new class implements Stringable
+    {
+        public function __toString(): string
+        {
+            throw new RuntimeException('no id yet');
+        }
+    };
+
+    expect($resolver->resolve(['targetingKey' => 42])->getTargetingKey())->toBe('42')
+        ->and($resolver->resolve(['targetingKey' => 42], ambient: false)->getTargetingKey())->toBe('42')
+        ->and($resolver->resolve(['targetingKey' => $user])->getTargetingKey())->toBe('grace')
+        ->and($resolver->resolve(['targetingKey' => $user], ambient: false)->getTargetingKey())->toBe('grace')
+        ->and($resolver->resolve(['targetingKey' => 42], 'linus')->getTargetingKey())->toBe('linus')
+        ->and($resolver->resolve(['targetingKey' => 42])->getAttributes()->toArray())->toBe([])
+        ->and($logger->lines)->toBe([]);
+
+    $float = $resolver->resolve(['targetingKey' => 4.2]);
+    $preview = $resolver->resolve(['targetingKey' => true], ambient: false);
+    $failing = $resolver->resolve(['targetingKey' => $broken]);
+
+    expect($float->getTargetingKey())->toBe('ada')
+        ->and($float->getAttributes()->toArray())->toBe([])
+        ->and($preview->getTargetingKey())->toBeNull()
+        ->and($failing->getTargetingKey())->toBe('ada')
+        ->and($logger->count('debug', 'targetingKey of type float was refused'))->toBe(1)
+        ->and($logger->count('debug', 'targetingKey of type bool was refused'))->toBe(1)
+        ->and($logger->count('debug', 'no id yet'))->toBe(1)
+        ->and($logger->lines)->toHaveCount(3);
+});
+
+it('logs one DEBUG line for each attribute it drops, naming it and why', function (): void {
+    $logger = new RecordingLogger;
+    $tier = new class implements Stringable
+    {
+        public function __toString(): string
+        {
+            return 'gold';
+        }
+    };
+    $nested = new stdClass;
+    $deep = [new stdClass, (object) ['x', 'y']];
+    $explicit = [
+        2024 => 'leap',
+        'type' => FlagType::Boolean,
+        'logger' => new RecordingLogger,
+        'empty' => new stdClass,
+        'listy' => (object) ['a', 'b'],
+        'tier' => $tier,
+        'address' => (object) ['city' => 'Madrid', 'tags' => $nested],
+        'deep' => $deep,
+    ];
+
+    $attributes = (new EvaluationContextResolver([], $logger))->resolve($explicit)->getAttributes()->toArray();
+
+    // A JSON object at the top level is kept in Json's faithful form (an array) when that form exists; `{}` and a
+    // list-like object have none there (as arrays they would read as lists). Below the top level nothing changes.
+    expect($attributes)->toBe(['tier' => 'gold', 'address' => ['city' => 'Madrid', 'tags' => $nested], 'deep' => $deep])
+        ->and($logger->lines)->toHaveCount(5)
+        ->and($logger->count('debug', 'attribute [2024] was dropped: its name is numeric-looking'))->toBe(1)
+        ->and($logger->count('debug', 'attribute [type] was dropped: an enum'))->toBe(1)
+        ->and($logger->count('debug', 'attribute [logger] was dropped: an object of class '.RecordingLogger::class))->toBe(1)
+        ->and($logger->count('debug', 'attribute [empty] was dropped: an empty or list-like JSON object'))->toBe(1)
+        ->and($logger->count('debug', 'attribute [listy] was dropped: an empty or list-like JSON object'))->toBe(1);
 });
 
 it('drops values OpenFeature cannot carry', function (): void {

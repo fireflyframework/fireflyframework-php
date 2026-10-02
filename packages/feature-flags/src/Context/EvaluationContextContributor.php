@@ -11,8 +11,9 @@ namespace Firefly\FeatureFlags\Context;
  * earlier one set. The caller's explicit context is laid over all of them. Collected through Container::getAll(),
  * so a #[Bean] returning a concrete contributor is NOT seen: use #[Component].
  *
- * Set JSON values (scalars, lists, maps) and date-times; a date-time is evaluated as epoch milliseconds. A value
- * OpenFeature cannot carry (any other object) and a numeric-looking name (an int key in PHP) are dropped.
+ * Set JSON values (scalars, lists, maps) and date-times; a date-time is evaluated as epoch milliseconds, and a
+ * Stringable is read as its string. A numeric-looking name (an int key in PHP), an enum and any other object
+ * OpenFeature cannot carry are dropped, each with a DEBUG line (EvaluationContextResolver lists the rules).
  */
 interface EvaluationContextContributor
 {
