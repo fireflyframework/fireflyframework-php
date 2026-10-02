@@ -80,19 +80,49 @@ it('refuses document-level rules, naming the section that broke one', function (
     expect($error?->flagKey())->toBe($key)
         ->and($error?->reason())->toBe($reason);
 })->with([
-    'document not an object' => [[1, 2], '', 'flag document must be an object'],
+    'document a list' => [[1, 2], '<document>', 'document must be an object'],
+    'document an empty list' => [[], '<document>', 'document must be an object'],
+    'document text' => ['flags', '<document>', 'document must be an object'],
     'flags a list' => [['flags' => [1, 2]], 'flags', 'flags must be an object'],
     'flags false' => [['flags' => false], 'flags', 'flags must be an object'],
     'flags text' => [['flags' => 'a'], 'flags', 'flags must be an object'],
     'a flag not an object' => [['flags' => ['x' => 42]], 'x', 'flag definition must be an object'],
     'evaluators a list' => [['$evaluators' => ['x']], '$evaluators', '$evaluators must be an object'],
     'evaluators zero' => [['$evaluators' => 0], '$evaluators', '$evaluators must be an object'],
-    'an evaluator not an object' => [['$evaluators' => ['beta' => 'yes']], '$evaluators.beta', 'an evaluator must be an object'],
+    'an evaluator not an object' => [['$evaluators' => ['beta' => 'yes']], '$evaluators', "targeting must be an object (evaluator 'beta')"],
+    'an evaluator a list' => [['$evaluators' => ['ok' => ['var' => 'a'], 'beta' => ['in']]], '$evaluators', "targeting must be an object (evaluator 'beta')"],
+    'an evaluator an empty list' => [['$evaluators' => ['beta' => []]], '$evaluators', "targeting must be an object (evaluator 'beta')"],
     'document metadata text' => [['metadata' => 'x'], 'metadata', 'metadata must be an object'],
     'document metadata a list' => [['metadata' => ['a']], 'metadata', 'metadata must be an object'],
     'document metadata not scalar' => [['flags' => new stdClass, 'metadata' => ['tags' => ['a']]], 'metadata', 'metadata values must be scalars'],
     'document metadata null value' => [['metadata' => ['owner' => null]], 'metadata', 'metadata values must be scalars'],
     'document metadata empty key' => [Json::decode('{"metadata":{"":"x"}}'), 'metadata', 'metadata keys must not be empty'],
+]);
+
+it('reads an empty list where the contract expects an object as {}, and hands it on as {}: no targeting downstream', function (): void {
+    $document = FlagDefinitions::parseDocument(['flags' => ['el' => featureFlagsBoolFlag(['targeting' => [], 'metadata' => []])], '$evaluators' => [], 'metadata' => []]);
+    $flag = $document->flag('el');
+
+    expect($flag?->toArray()['targeting'] ?? null)->toEqual(new stdClass)
+        ->and($flag?->toArray()['metadata'] ?? null)->toEqual(new stdClass)
+        ->and($flag?->targeting())->toBeNull()
+        ->and($flag?->metadata())->toBe([])
+        ->and($document->evaluators)->toBe([])
+        ->and($document->metadata)->toBe([])
+        ->and($document->toJson())->toBe('{"flags":{"el":{"state":"ENABLED","variants":{"on":true,"off":false},"defaultVariant":"off","targeting":{},"metadata":{}}},"$evaluators":{},"metadata":{}}');
+});
+
+it('reads empty sections as empty: absent, null or an empty list', function (array $sections): void {
+    $document = FlagDefinitions::parseDocument($sections);
+
+    expect($document->flags)->toBe([])
+        ->and($document->evaluators)->toBe([])
+        ->and($document->metadata)->toBe([]);
+})->with([
+    'flags []' => [['flags' => []]],
+    '$evaluators []' => [['$evaluators' => []]],
+    'metadata []' => [['metadata' => []]],
+    'all three []' => [['flags' => [], '$evaluators' => [], 'metadata' => []]],
 ]);
 
 it('reads an absent or null section as empty', function (string $section): void {
@@ -161,6 +191,7 @@ it('reports the first broken rule in the contract order PyFly checks', function 
     expect(featureFlagsRefusal(['flags' => ['k' => $definition]])?->reason())->toBe($reason);
 })->with([
     'object before state' => ['ENABLED', 'flag definition must be an object'],
+    'an empty list is not a definition' => [[], 'flag definition must be an object'],
     'state before variants' => [['state' => 'ON', 'variants' => []], 'state must be ENABLED or DISABLED'],
     'variants a scalar' => [['state' => 'ENABLED', 'variants' => 'on'], 'variants must be a non-empty object'],
     'defaultVariant before targeting' => [featureFlagsBoolFlag(['defaultVariant' => 'maybe', 'targeting' => 'x']), 'defaultVariant is not a variant'],

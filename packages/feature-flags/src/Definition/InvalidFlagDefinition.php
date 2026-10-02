@@ -10,8 +10,8 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  * A flag definition, or a flag document, broke a rule of the contract (spec §4.1, CONTRACT.md "Rules every
  * definition must satisfy"). The message always contains the contract's phrase for the rule, which both frameworks
  * emit and the vectors assert; a reason may add a hint after the phrase. flagKey() names the flag, or the document
- * part that broke a document-level rule (`flags`, `$evaluators`, `$evaluators.<name>`, `metadata`), or '' for the
- * document as a whole.
+ * part that broke a document-level rule (`flags`, `$evaluators`, `metadata`), or `<document>` for the document as a
+ * whole.
  */
 final class InvalidFlagDefinition extends ConfigurationException
 {

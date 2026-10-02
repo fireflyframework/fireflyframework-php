@@ -22,6 +22,11 @@ use stdClass;
  * wrote as text (RF3), so it is accepted as that text; Symfony Yaml refuses a boolean, null or float mapping key when
  * it parses, before a document reaches this class.
  *
+ * An empty list (`[]`) where an object is expected — a flag's `targeting` or `metadata`, or a document section — counts
+ * as an empty object (`{}`): PHP cannot tell the two apart in native configuration arrays. A non-empty list is still
+ * an error, and so is `[]` as the document itself, as a flag definition or as an evaluator rule. A flag's `[]`
+ * targeting or metadata is handed on as `{}`, so every reader sees the contract's "no targeting".
+ *
  * Validation never recurses: the finite-number rule walks a definition with a stack of its own, so a PHP-built
  * definition nested deeper than any decoder allows is still judged rather than exhausting the call stack. A JSON
  * document nested deeper than the decoder's 512 levels never gets here: decoding refuses it as a whole.
@@ -58,17 +63,18 @@ final class FlagDefinitions
     /**
      * Validate a flagd document (`flags`, `$evaluators`, `metadata`) as a whole and return it.
      *
-     * Each section is empty when absent or null; a present section that is not an object is refused with the
-     * section's name as the key. A single flag that breaks a rule is reported with its own key, an evaluator that is
-     * not an object as `$evaluators.<name>`. A `$ref` naming no evaluator is not a load error: evaluating that flag
-     * reports it.
+     * A document that is not an object is refused with the key `<document>`. Each section is empty when absent,
+     * null or `[]`; a present section that is not an object is refused with the section's name as the key. A single
+     * flag that breaks a rule is reported with its own key, an evaluator rule that is not an object with the key
+     * `$evaluators` (the reason names the evaluator). A `$ref` naming no evaluator is not a load error: evaluating
+     * that flag reports it.
      *
      * @throws InvalidFlagDefinition
      */
     public static function parseDocument(mixed $document): FlagDocument
     {
-        if (! Json::isObject($document) && $document !== []) {
-            throw new InvalidFlagDefinition('', 'flag document must be an object');
+        if (! Json::isObject($document)) {
+            throw new InvalidFlagDefinition('<document>', 'document must be an object');
         }
 
         $members = Json::members($document);
@@ -77,13 +83,13 @@ final class FlagDefinitions
         foreach (self::section($members, 'flags', 'flags must be an object') as $key => $definition) {
             $key = (string) $key;
             self::validate($key, $definition);
-            $definitions[$key] = FlagDefinition::fromJsonValue($key, $definition);
+            $definitions[$key] = FlagDefinition::fromJsonValue($key, self::emptyListsAsObjects(Json::members($definition)));
         }
 
         $evaluators = self::section($members, '$evaluators', '$evaluators must be an object');
         foreach ($evaluators as $name => $rule) {
             if (! Json::isObject($rule)) {
-                throw new InvalidFlagDefinition('$evaluators.'.$name, 'an evaluator must be an object');
+                throw new InvalidFlagDefinition('$evaluators', sprintf("targeting must be an object (evaluator '%s')", $name));
             }
             if (self::hasNonFiniteNumber($rule)) {
                 throw new InvalidFlagDefinition('$evaluators', sprintf("numbers must be finite (evaluator '%s')", $name));
@@ -111,7 +117,7 @@ final class FlagDefinitions
             throw new InvalidFlagDefinition($key, 'invalid flag key');
         }
 
-        if (! Json::isObject($definition) && $definition !== []) {
+        if (! Json::isObject($definition)) {
             throw new InvalidFlagDefinition($key, 'flag definition must be an object');
         }
 
@@ -173,7 +179,25 @@ final class FlagDefinitions
     }
 
     /**
-     * The members of a document section: none when absent or null.
+     * A validated flag's members with a `[]` targeting or metadata replaced by `{}`: the same JSON value, so the
+     * definition still encodes as written, and a reader of the raw definition meets the contract's "no targeting".
+     *
+     * @param  array<array-key, mixed>  $members
+     * @return array<array-key, mixed>
+     */
+    private static function emptyListsAsObjects(array $members): array
+    {
+        foreach (['targeting', 'metadata'] as $position) {
+            if (array_key_exists($position, $members) && $members[$position] === []) {
+                $members[$position] = new stdClass;
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * The members of a document section: none when absent, null or `[]`.
      *
      * @param  array<array-key, mixed>  $document
      * @return array<array-key, mixed>
