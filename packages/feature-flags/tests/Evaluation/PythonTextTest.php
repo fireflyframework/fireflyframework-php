@@ -56,3 +56,27 @@ it('writes a float as repr() does whatever PHP precision says', function (): voi
         ini_set('precision', (string) $precision);
     }
 });
+
+it('writes an object that contains itself as Python repr() does', function (): void {
+    $object = new stdClass;
+    $object->self = $object;
+    $object->n = 1;
+    $shared = (object) ['k' => 1];
+
+    expect(PythonText::str($object))->toBe("{'self': {...}, 'n': 1}")
+        ->and(PythonText::str([$object, [$object]]))->toBe("[{'self': {...}, 'n': 1}, [{'self': {...}, 'n': 1}]]")
+        ->and(PythonText::str([$shared, $shared]))->toBe("[{'k': 1}, {'k': 1}]");
+});
+
+it('has no text for a list that contains itself through a PHP reference, nor for one nested past its limit', function (): void {
+    $list = [1];
+    $list[] = &$list;
+    $deep = [];
+    for ($i = 0; $i < PythonText::MAX_DEPTH; $i++) {
+        $deep = [$deep];
+    }
+
+    expect(PythonText::str($list))->toBeNull()
+        ->and(PythonText::str($deep))->toBeNull()
+        ->and(PythonText::str($deep[0]))->toBe(str_repeat('[', PythonText::MAX_DEPTH).str_repeat(']', PythonText::MAX_DEPTH));
+});

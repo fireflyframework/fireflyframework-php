@@ -297,14 +297,14 @@ it('ignores a field flagd does not define beside state: the flag still evaluates
     expect([$resolution->value, $resolution->variant, $resolution->reason, $resolution->error])->toBe([true, 'on', EvaluationReason::Static, null]);
 });
 
-it('treats a defaultVariant "" as the variant named "" when there is one (contract ruling)', function (): void {
+it('reads a defaultVariant "" as no default variant, even when a variant is named "" (R-default-empty)', function (): void {
     $evaluator = new DefaultFlagdEvaluator;
     $named = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ['' => 'blank', 'x' => 'ex'], 'defaultVariant' => '']);
     $targeted = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ['' => 'blank', 'x' => 'ex'], 'defaultVariant' => '', 'targeting' => ['if' => [false, 'x', null]]]);
     $unnamed = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ['x' => 'ex'], 'defaultVariant' => '']);
 
-    expect(featureFlagsOutcome($evaluator->evaluate($named, 'f', FlagType::String, 'fallback')))->toBe(['blank', '', EvaluationReason::Static, null])
-        ->and(featureFlagsOutcome($evaluator->evaluate($targeted, 'f', FlagType::String, 'fallback')))->toBe(['blank', '', EvaluationReason::Default, null])
+    expect(featureFlagsOutcome($evaluator->evaluate($named, 'f', FlagType::String, 'fallback')))->toBe(['fallback', null, EvaluationReason::Default, null])
+        ->and(featureFlagsOutcome($evaluator->evaluate($targeted, 'f', FlagType::String, 'fallback')))->toBe(['fallback', null, EvaluationReason::Default, null])
         ->and(featureFlagsOutcome($evaluator->evaluate($unnamed, 'f', FlagType::String, 'fallback')))->toBe(['fallback', null, EvaluationReason::Default, null]);
 });
 
@@ -397,7 +397,7 @@ it('writes a context date-time as the float Python writes for it', function (): 
         ->and($evaluator->evaluate($document, 'f', FlagType::String, '', 'u', ['t' => new DateTimeImmutable('1969-12-31 23:59:59.999999+00:00')])->variant)->toBe('-0.001');
 });
 
-it('converts date-times nested in lists and objects at any depth', function (string $path, array $attributes): void {
+it('converts date-times nested in lists and objects', function (string $path, array $attributes): void {
     $document = featureFlagsOneFlag([
         'state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off',
         'targeting' => ['if' => [['>' => [['var' => $path], 1735689600000]], 'on', null]],
@@ -408,7 +408,6 @@ it('converts date-times nested in lists and objects at any depth', function (str
     'an object' => ['user.joined', ['user' => ['joined' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')]]],
     'a list' => ['events.1', ['events' => [new DateTimeImmutable('2024-01-01 00:00:00+00:00'), new DateTimeImmutable('2026-01-15 00:00:00+00:00')]]],
     'a stdClass in a list in an object' => ['a.b.0.c', ['a' => ['b' => [(object) ['c' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')]]]]],
-    'ten thousand levels down' => [implode('.', array_fill(0, 10_000, 'in')).'.when', ['in' => array_reduce(range(1, 9_999), static fn (array $inner): array => ['in' => $inner], ['when' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')])]],
 ]);
 
 it('leaves the caller context as it was', function (): void {
@@ -443,4 +442,121 @@ it('converts a date-time inside an object that contains itself', function (): vo
     expect([$resolution->value, $resolution->reason])->toBe([true, EvaluationReason::TargetingMatch])
         ->and($cycle->self)->toBe($cycle)
         ->and($cycle->when)->toBeInstanceOf(DateTimeImmutable::class);
+});
+
+/*
+ | The date-time walk is bounded as PyFly's is (R-L-T5-bounds; pyfly/feature_flags/provider.py
+ | _epoch_millis_context): containers deeper than 128 levels (the attributes are level 1) are not entered, and after
+ | 10 000 values the rest is left as it is. Every boundary below is what PyFly's own walk does with the same context.
+ */
+
+/**
+ * Attributes whose date-time sits in the container at nesting $level (the attributes are level 1).
+ *
+ * @return array<array-key, mixed>
+ */
+function featureFlagsDateTimeAtLevel(int $level): array
+{
+    $attributes = ['when' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')];
+    for ($i = 1; $i < $level; $i++) {
+        $attributes = ['in' => $attributes];
+    }
+
+    return $attributes;
+}
+
+/**
+ * "on" when the context value at $path is a number after 2025-01-01T00:00:00Z in epoch milliseconds: a converted
+ * date-time; one left as it is reads as no number at all.
+ */
+function featureFlagsAfter2025(string $path): FlagDocument
+{
+    return featureFlagsOneFlag([
+        'state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off',
+        'targeting' => ['if' => [['>' => [['var' => $path], 1735689600000]], 'on', null]],
+    ]);
+}
+
+it('enters containers down to 128 levels and no further', function (int $level, EvaluationReason $reason): void {
+    $path = str_repeat('in.', $level - 1).'when';
+
+    expect((new DefaultFlagdEvaluator)->evaluate(featureFlagsAfter2025($path), 'f', FlagType::Boolean, false, 'u', featureFlagsDateTimeAtLevel($level))->reason)->toBe($reason);
+})->with([
+    'level 127' => [127, EvaluationReason::TargetingMatch],
+    'level 128' => [128, EvaluationReason::TargetingMatch],
+    'level 129: not entered, the date-time stays one' => [129, EvaluationReason::Default],
+]);
+
+it('converts the first 10 000 values it reads and leaves the rest', function (int $filler, EvaluationReason $reason): void {
+    // The attributes, the list and its items come first: the date-time is value $filler + 3.
+    $attributes = ['filler' => array_fill(0, $filler, 0), 'when' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')];
+
+    expect((new DefaultFlagdEvaluator)->evaluate(featureFlagsAfter2025('when'), 'f', FlagType::Boolean, false, 'u', $attributes)->reason)->toBe($reason);
+})->with([
+    'value 10 000' => [9_997, EvaluationReason::TargetingMatch],
+    'value 10 001' => [9_998, EvaluationReason::Default],
+]);
+
+it('walks a ladder of shared arrays within the budget, whatever its paths number', function (int $rungs): void {
+    $ladder = ['when' => new DateTimeImmutable('2026-01-15 00:00:00+00:00')];
+    for ($i = 0; $i < $rungs; $i++) {
+        $ladder = ['l' => $ladder, 'r' => $ladder];
+    }
+    $evaluator = new DefaultFlagdEvaluator;
+
+    $started = hrtime(true);
+    $first = $evaluator->evaluate(featureFlagsAfter2025('ladder.'.str_repeat('l.', $rungs).'when'), 'f', FlagType::Boolean, false, 'u', ['ladder' => $ladder]);
+    $last = $evaluator->evaluate(featureFlagsAfter2025('ladder.'.str_repeat('r.', $rungs).'when'), 'f', FlagType::Boolean, false, 'u', ['ladder' => $ladder]);
+    $seconds = (hrtime(true) - $started) / 1e9;
+
+    expect([$first->reason, $last->reason])->toBe([EvaluationReason::TargetingMatch, EvaluationReason::Default])
+        ->and($seconds)->toBeLessThan(1.0);
+})->with([
+    '2^16 paths' => [16],
+    '2^60 paths' => [60],
+]);
+
+/*
+ | A context value that contains itself (R-L-T5-cycles). Python compares a container with itself by identity, so the
+ | same object is equal to itself at once; two distinct ones recurse until RecursionError, which the OpenFeature SDK
+ | reports as GENERAL — here a JsonLogicError at JsonLogic::MAX_DATA_DEPTH, never a PHP fatal. Every row is what the
+ | reference evaluator answers for the same data.
+ */
+it('answers a rule over a context value that contains itself as the reference does', function (array $targeting, EvaluationReason $reason, ?EvaluationError $error): void {
+    $a = new stdClass;
+    $a->self = $a;
+    $a->n = 1;
+    $b = new stdClass;
+    $b->self = $b;
+    $b->n = 1;
+    $list = [1];
+    $list[] = &$list;
+    $document = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off', 'targeting' => ['if' => [$targeting, 'on', null]]]);
+
+    $resolution = (new DefaultFlagdEvaluator)->evaluate($document, 'f', FlagType::Boolean, false, 'u', ['a' => $a, 'b' => $b, 'hay' => [$a], 'list' => $list]);
+
+    expect([$resolution->reason, $resolution->error])->toBe([$reason, $error])
+        ->and($resolution->value)->toBe($reason === EvaluationReason::TargetingMatch);
+})->with([
+    '=== of one object with itself' => [['===' => [['var' => 'a'], ['var' => 'a']]], EvaluationReason::TargetingMatch, null],
+    '=== of two distinct ones' => [['===' => [['var' => 'a'], ['var' => 'b']]], EvaluationReason::Error, EvaluationError::General],
+    '!== of two distinct ones' => [['!==' => [['var' => 'a'], ['var' => 'b']]], EvaluationReason::Error, EvaluationError::General],
+    '== of two distinct objects compares identity' => [['==' => [['var' => 'a'], ['var' => 'b']]], EvaluationReason::Default, null],
+    'in a list holding the same object' => [['in' => [['var' => 'a'], ['var' => 'hay']]], EvaluationReason::TargetingMatch, null],
+    'in a list holding a distinct one' => [['in' => [['var' => 'b'], ['var' => 'hay']]], EvaluationReason::Error, EvaluationError::General],
+    'cat of a list that contains itself' => [['cat' => [['var' => 'list']]], EvaluationReason::Error, EvaluationError::General],
+    'in text with such a list' => [['in' => [['var' => 'list'], 'abc']], EvaluationReason::Error, EvaluationError::General],
+    'cat of the object' => [['cat' => [['var' => 'a']]], EvaluationReason::TargetingMatch, null],
+    'a path through the object' => [['==' => [['var' => 'a.self.self.n'], 1]], EvaluationReason::TargetingMatch, null],
+]);
+
+it('names a variant after a context object that contains itself as Python repr() does', function (): void {
+    $a = new stdClass;
+    $a->self = $a;
+    $a->n = 1;
+    $document = featureFlagsOneFlag(['state' => 'ENABLED', 'variants' => ["{'self': {...}, 'n': 1}" => 'cyclic', 'x' => 'x'], 'defaultVariant' => 'x', 'targeting' => ['var' => 'a']]);
+
+    $resolution = (new DefaultFlagdEvaluator)->evaluate($document, 'f', FlagType::String, '', 'u', ['a' => $a]);
+
+    expect(featureFlagsOutcome($resolution))->toBe(['cyclic', "{'self': {...}, 'n': 1}", EvaluationReason::TargetingMatch, null]);
 });

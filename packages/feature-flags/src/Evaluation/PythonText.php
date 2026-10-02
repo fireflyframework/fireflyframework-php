@@ -18,6 +18,10 @@ use stdClass;
  * (`[1, 'a', None]`, `{'k': True}`), its text quoted and escaped as repr() does. A PHP object other than a
  * stdClass, and invalid UTF-8 inside a list or an object, have no Python counterpart: null.
  *
+ * An object that contains itself is written as repr() writes a dict that does: `{...}` where it recurs. A PHP array
+ * that holds a reference to itself, and anything nested deeper than MAX_DEPTH, has no text here (null): PHP arrays
+ * have no identity to recognise the recurrence by.
+ *
  * Python decides which characters repr() escapes from its Unicode database (16.0 in Python 3.14); this reads the
  * same categories through PCRE's, so a character assigned in one version and not the other may differ.
  */
@@ -29,6 +33,9 @@ final class PythonText
      */
     private const string NOT_PRINTABLE = '/^[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}]$/u';
 
+    /** The most lists and objects one value may nest; deeper (or a PHP array holding itself) has no text. */
+    public const int MAX_DEPTH = 1000;
+
     /** Python's str() of a JSON value; null when it has no Python counterpart. */
     public static function str(mixed $value): ?string
     {
@@ -37,6 +44,14 @@ final class PythonText
 
     /** Python's repr() of a JSON value (str() of a list or a dict writes its items this way); null as str(). */
     public static function repr(mixed $value): ?string
+    {
+        return self::written($value, [], 0);
+    }
+
+    /**
+     * @param  array<int, true>  $open  the ids of the objects being written on this path
+     */
+    private static function written(mixed $value, array $open, int $depth): ?string
     {
         if (is_string($value)) {
             return self::quote($value);
@@ -54,10 +69,14 @@ final class PythonText
             return self::float($value);
         }
 
+        if ((is_array($value) || $value instanceof stdClass) && $depth >= self::MAX_DEPTH) {
+            return null;
+        }
+
         if (Json::isList($value)) {
             $items = [];
             foreach ($value as $item) {
-                $text = self::repr($item);
+                $text = self::written($item, $open, $depth + 1);
                 if ($text === null) {
                     return null;
                 }
@@ -68,10 +87,16 @@ final class PythonText
         }
 
         if (is_array($value) || $value instanceof stdClass) {
+            if ($value instanceof stdClass) {
+                if (isset($open[spl_object_id($value)])) {
+                    return '{...}';
+                }
+                $open[spl_object_id($value)] = true;
+            }
             $items = [];
             foreach (Json::members($value) as $name => $member) {
                 $key = self::quote((string) $name);
-                $text = self::repr($member);
+                $text = self::written($member, $open, $depth + 1);
                 if ($key === null || $text === null) {
                     return null;
                 }

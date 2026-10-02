@@ -401,3 +401,49 @@ it('writes text the way the reference to_string() does', function (mixed $value,
     'object' => [['k' => 1], '[object Object]'],
     'empty object' => [new stdClass, '[object Object]'],
 ]);
+
+/*
+ | Data that contains itself (R-L-T5-cycles). Python compares a container with itself by identity first, so one
+ | self-containing object equals itself; comparing two, or writing or reading a list that contains itself, recurses
+ | until RecursionError (GENERAL). Here the recursion stops at MAX_DATA_DEPTH with a JsonLogicError, never a PHP fatal.
+ */
+function featureFlagsSelfContaining(): stdClass
+{
+    $object = new stdClass;
+    $object->self = $object;
+    $object->n = 1;
+
+    return $object;
+}
+
+it('compares an object that contains itself with itself by identity, as Python does', function (): void {
+    $object = featureFlagsSelfContaining();
+
+    expect(JsonLogic::strictEquals($object, $object))->toBeTrue()
+        ->and(JsonLogic::strictEquals([$object, 1], [$object, 1.0]))->toBeTrue()
+        ->and(JsonLogic::MAX_DATA_DEPTH)->toBe(1000);
+});
+
+it('stops comparing two objects that contain themselves with a JsonLogicError', function (): void {
+    JsonLogic::strictEquals(featureFlagsSelfContaining(), featureFlagsSelfContaining());
+})->throws(JsonLogicError::class, 'nests deeper than 1000 levels');
+
+it('stops writing or reading a list that contains itself with a JsonLogicError', function (string $conversion): void {
+    $list = [1];
+    $list[] = &$list;
+    $single = [];
+    $single[] = &$single;
+
+    $conversion === 'text' ? JsonLogic::toStr($list) : JsonLogic::toNumber($single);
+})->with(['text', 'number'])->throws(JsonLogicError::class, 'nests deeper than 1000 levels');
+
+it('still compares, writes and reads data nested just within the limit', function (): void {
+    $deep = 1;
+    for ($i = 0; $i < 999; $i++) {
+        $deep = [$deep];
+    }
+
+    expect(JsonLogic::strictEquals($deep, $deep))->toBeTrue()
+        ->and(JsonLogic::toStr($deep))->toBe('1')
+        ->and(JsonLogic::toNumber($deep))->toBe(1);
+});

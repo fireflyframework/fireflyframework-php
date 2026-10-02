@@ -10,7 +10,6 @@ use Firefly\FeatureFlags\Definition\FlagDefinition;
 use Firefly\FeatureFlags\Definition\FlagDocument;
 use Firefly\FeatureFlags\Definition\Json;
 use LogicException;
-use ReflectionReference;
 use stdClass;
 use Throwable;
 
@@ -39,17 +38,20 @@ use Throwable;
  * or "false", text is itself, anything else is Python's str() of it (PythonText), so a `fractional` bucket written
  * as 1 selects the variant "1" and one written as 2.0 the variant "2.0".
  *
- * Two departures from the reference, both contract rulings: `$ref`s resolve structurally and transitively within
- * RefResolver's limits (flagd substitutes them textually), and a defaultVariant "" names the variant "" when the
- * flag has one (flagd reads "" as no default variant).
+ * One departure from the reference, a contract ruling: `$ref`s resolve structurally and transitively within
+ * RefResolver's limits (flagd substitutes them textually). A defaultVariant "" is no default variant, as in flagd,
+ * even when a variant is named "" (R-default-empty).
  *
  * The JSON Logic data is the context attributes, then `$flagd` {flagKey, timestamp (Unix seconds)} and
- * `targetingKey`, which replace any attribute of those names. Every DateTimeInterface in the attributes, at any
- * depth, is evaluated as its Unix epoch time in milliseconds (CONTRACT.md "Evaluation context"); the caller's
- * attributes are never modified (a container holding a date-time is copied, one object copied once wherever it
- * appears, so an object that contains itself still does; arrays are values, read wherever they appear).
- * Successful results carry the document's scalar metadata with the flag's merged over it; errors carry none.
- * evaluate() never throws: every failure is a Resolution.
+ * `targetingKey`, which replace any attribute of those names. A DateTimeInterface in the attributes is evaluated
+ * as its Unix epoch time in milliseconds (CONTRACT.md "Evaluation context"), found by a walk bounded as PyFly's is
+ * (R-L-T5-bounds): containers more than RefResolver::MAX_DEPTH levels deep (the attributes are level 1) are not
+ * entered, and after RefResolver::MAX_VALUES values the rest is left as it is, so neither deep nesting, an object
+ * that contains itself, nor arrays shared over and over can exhaust time or memory; a date-time out there stays
+ * one (JSON Logic reads it as an object). The caller's attributes are never modified: a container holding a
+ * converted date-time is copied, one that holds none is passed as it is. Successful results carry the document's
+ * scalar metadata with the flag's merged over it; errors carry none. evaluate() never throws: every failure is a
+ * Resolution.
  */
 final class DefaultFlagdEvaluator implements FlagdEvaluator
 {
@@ -147,7 +149,7 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
      */
     private static function fallThrough(FlagDefinition $flag, mixed $default, array $metadata, EvaluationReason $reason): Resolution
     {
-        $variant = $flag->defaultVariant() ?? (($flag->raw['defaultVariant'] ?? null) === '' && $flag->hasVariant('') ? '' : null);
+        $variant = $flag->defaultVariant();
         if ($variant === null) {
             return new Resolution($default, null, EvaluationReason::Default, metadata: $metadata);
         }
@@ -204,9 +206,10 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
      */
     private function data(string $flagKey, ?string $targetingKey, array $attributes): array
     {
-        $read = [];
-        $copies = [];
-        $data = self::containsDateTime($attributes, $read, []) ? self::arrayWithEpochMillis($attributes, $copies, []) : $attributes;
+        $budget = RefResolver::MAX_VALUES;
+        $changed = false;
+        $data = self::withEpochMillis($attributes, 1, $budget, $changed);
+        $data = is_array($data) ? $data : $attributes;
         $data['$flagd'] = ['flagKey' => $flagKey, 'timestamp' => $this->clock !== null ? ($this->clock)() : time()];
         $data['targetingKey'] = $targetingKey;
 
@@ -214,91 +217,45 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
     }
 
     /**
-     * Whether a DateTimeInterface sits anywhere in $value. Each object is read once (one may contain itself, or
-     * be shared), and a PHP reference already open on this path (an array that contains itself) is not followed
-     * again; arrays are values, read wherever they appear.
+     * PyFly's _epoch_millis_context walk: every value read spends one unit of the budget (none left: the value
+     * stays as it is); a date-time becomes its epoch milliseconds; a container past the depth limit is not
+     * entered; a container is rebuilt only when something inside it changed ($changed), else handed back as is.
      *
-     * @param  array<int, true>  $read  the ids of the objects read so far
-     * @param  array<string, true>  $open  the ids of the PHP references open on this path
+     * @param  int  $level  the nesting level of $node (the attributes are level 1)
      */
-    private static function containsDateTime(mixed $value, array &$read, array $open): bool
+    private static function withEpochMillis(mixed $node, int $level, int &$budget, bool &$changed): mixed
     {
-        if ($value instanceof DateTimeInterface) {
-            return true;
+        if (--$budget < 0) {
+            return $node;
+        }
+        if ($node instanceof DateTimeInterface) {
+            $changed = true;
+
+            return self::epochMillis($node);
+        }
+        if ($level > RefResolver::MAX_DEPTH || (! is_array($node) && ! $node instanceof stdClass)) {
+            return $node;
         }
 
-        if ($value instanceof stdClass) {
-            if (isset($read[spl_object_id($value)])) {
-                return false;
-            }
-            $read[spl_object_id($value)] = true;
-            $value = get_object_vars($value);
+        $inside = false;
+        $members = [];
+        foreach (is_array($node) ? $node : get_object_vars($node) as $key => $item) {
+            $members[$key] = self::withEpochMillis($item, $level + 1, $budget, $inside);
+        }
+        if (! $inside) {
+            return $node;
         }
 
-        if (! is_array($value)) {
-            return false;
+        $changed = true;
+        if (is_array($node)) {
+            return $members;
+        }
+        $copy = new stdClass;
+        foreach ($members as $member => $item) {
+            $copy->{$member} = $item;
         }
 
-        foreach ($value as $key => $item) {
-            $reference = ReflectionReference::fromArrayElement($value, $key)?->getId();
-            if ($reference !== null && isset($open[$reference])) {
-                continue;
-            }
-            if (self::containsDateTime($item, $read, $reference === null ? $open : [...$open, $reference => true])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * $value with every DateTimeInterface replaced by its epoch milliseconds, the caller's own values untouched:
-     * arrays are rebuilt and every stdClass is copied — one copy per object, used wherever the object appears, so
-     * an object that contains itself still does. A PHP reference already open on this path is kept as it is.
-     *
-     * @param  array<int, stdClass>  $copies  the copy of each object, by object id
-     * @param  array<string, true>  $open  the ids of the PHP references open on this path
-     */
-    private static function withEpochMillis(mixed $value, array &$copies, array $open): mixed
-    {
-        if ($value instanceof DateTimeInterface) {
-            return self::epochMillis($value);
-        }
-
-        if ($value instanceof stdClass) {
-            $id = spl_object_id($value);
-            if (isset($copies[$id])) {
-                return $copies[$id];
-            }
-            $copy = $copies[$id] = new stdClass;
-            foreach (get_object_vars($value) as $member => $item) {
-                $copy->{$member} = self::withEpochMillis($item, $copies, $open);
-            }
-
-            return $copy;
-        }
-
-        return is_array($value) ? self::arrayWithEpochMillis($value, $copies, $open) : $value;
-    }
-
-    /**
-     * @param  array<array-key, mixed>  $value
-     * @param  array<int, stdClass>  $copies
-     * @param  array<string, true>  $open
-     * @return array<array-key, mixed>
-     */
-    private static function arrayWithEpochMillis(array $value, array &$copies, array $open): array
-    {
-        $converted = [];
-        foreach ($value as $key => $item) {
-            $reference = ReflectionReference::fromArrayElement($value, $key)?->getId();
-            $converted[$key] = $reference !== null && isset($open[$reference])
-                ? $item
-                : self::withEpochMillis($item, $copies, $reference === null ? $open : [...$open, $reference => true]);
-        }
-
-        return $converted;
+        return $copy;
     }
 
     /**

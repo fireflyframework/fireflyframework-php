@@ -38,17 +38,20 @@ use Throwable;
  *  - integers are 64-bit: `+`, `-` and `*` past PHP_INT_MAX turn into a float where Python stays exact, `/`
  *    rounds an integer beyond ±2^53 to a float before dividing (Python rounds the exact quotient, so the last
  *    bit can differ), and an integer literal beyond 64 bits is a float already when decoded;
- *  - data nested deeper than about 490 levels: the reference's recursive to_string() (`cat`, `==` or `<` between
- *    a list and text) raises RecursionError (GENERAL) there, and its to_number() of nested one-item lists past
- *    about 990 levels, while PHP answers (Python's own list `==`, behind `===` and `in`, has no such limit);
+ *  - deeply nested data: the reference's recursive to_string() (`cat`, `==` or `<` between a list and text)
+ *    raises RecursionError (GENERAL) past about 490 levels and its to_number() of nested one-item lists past about
+ *    990, while Python's own `==` (behind `===` and `in`) follows non-cyclic data further; here all three stop
+ *    at MAX_DATA_DEPTH (1000) levels with a JsonLogicError (GENERAL). Data that contains itself stops there too
+ *    (the reference's RecursionError), except that, as in Python, a container compared with itself is equal at
+ *    once by identity — PHP's objects have one, its arrays do not;
  *  - text that is not UTF-8 (which Python text cannot be) reads as NaN;
  *  - `log` returns its argument and writes nothing (spec §10: data is never code, no I/O).
  *
- * The data is JSON values. A date-time never reaches this class: the contract evaluates a context date-time as
- * its Unix epoch time in milliseconds, so the evaluator converts every DateTimeInterface in the context to that
- * number (a float) when it builds the evaluation data, as PyFly does for datetime and date. The reference's own
- * date arms in to_number() and to_string() are therefore not ported, and any PHP object other than a stdClass
- * is an object here ("[object Object]", NaN).
+ * The data is JSON values. The contract evaluates a context date-time as its Unix epoch time in milliseconds, so
+ * the evaluator converts each DateTimeInterface in the context to that number (a float) when it builds the
+ * evaluation data, within a walk bounded as PyFly's is (128 levels, 10 000 values). The reference's own date arms
+ * in to_number() and to_string() are not ported: a date-time past those bounds, like any PHP object other than a
+ * stdClass, is an object here ("[object Object]", NaN), where PyFly's leaves it to the reference's date arm.
  *
  * Every failure is a JsonLogicError, whatever the input: logic nested deeper than MAX_DEPTH stops with one
  * rather than exhausting the stack (the reference's RecursionError is GENERAL too), and a registered operator
@@ -61,6 +64,14 @@ final class JsonLogic
      * expanded targeting, about where the reference's own recursion limit stops it.
      */
     public const int MAX_DEPTH = 1000;
+
+    /**
+     * How deep a comparison (`===`, `in`) or a text or number conversion follows nested data before it gives up
+     * with a JsonLogicError: data that contains itself (a context object holding itself, a PHP array holding a
+     * reference to itself) would otherwise recurse until PHP runs out of memory, where the reference's
+     * RecursionError is GENERAL.
+     */
+    public const int MAX_DATA_DEPTH = 1000;
 
     /** The reference's operation table; if, ?:, and, or, filter, map, reduce, all, some and none are special forms. */
     private const array BUILTINS = [
@@ -115,6 +126,9 @@ final class JsonLogic
         };
     }
 
+    /**
+     * @throws JsonLogicError on data nested deeper than MAX_DATA_DEPTH
+     */
     public static function toNumber(mixed $value): int|float
     {
         $number = self::numeric($value);
@@ -122,7 +136,18 @@ final class JsonLogic
         return is_bool($number) ? (int) $number : $number;
     }
 
+    /**
+     * @throws JsonLogicError on data nested deeper than MAX_DATA_DEPTH
+     */
     public static function toStr(mixed $value): string
+    {
+        return self::text($value, 0);
+    }
+
+    /**
+     * @throws JsonLogicError
+     */
+    private static function text(mixed $value, int $depth): string
     {
         if (is_string($value)) {
             return $value;
@@ -140,9 +165,10 @@ final class JsonLogic
             return 'null';
         }
         if (Json::isList($value)) {
+            self::nested($depth);
             $parts = [];
             foreach ($value as $item) {
-                $parts[] = self::toStr($item);
+                $parts[] = self::text($item, $depth + 1);
             }
 
             return implode(',', $parts);
@@ -151,6 +177,9 @@ final class JsonLogic
         return '[object Object]';
     }
 
+    /**
+     * @throws JsonLogicError on data nested deeper than MAX_DATA_DEPTH
+     */
     public static function looseEquals(mixed $a, mixed $b): bool
     {
         $kindA = self::kind($a);
@@ -181,8 +210,27 @@ final class JsonLogic
         return false;
     }
 
+    /**
+     * Python's `==`. A container is compared with itself by identity first, as Python's own containers do, so an
+     * object (PHP's only containers with an identity) is equal to itself however it nests — even when it contains
+     * itself.
+     *
+     * @throws JsonLogicError on data nested deeper than MAX_DATA_DEPTH
+     */
     public static function strictEquals(mixed $a, mixed $b): bool
     {
+        return self::equal($a, $b, 0);
+    }
+
+    /**
+     * @throws JsonLogicError
+     */
+    private static function equal(mixed $a, mixed $b, int $depth): bool
+    {
+        if (is_object($a) && $a === $b) {
+            return true;
+        }
+
         if (self::isNumeric($a) && self::isNumeric($b)) {
             return self::compareNumbers(self::toNumber($a), self::toNumber($b)) === 0;
         }
@@ -191,8 +239,9 @@ final class JsonLogic
             if (count($a) !== count($b)) {
                 return false;
             }
+            self::nested($depth);
             foreach ($a as $index => $item) {
-                if (! self::strictEquals($item, $b[$index])) {
+                if (! self::equal($item, $b[$index], $depth + 1)) {
                     return false;
                 }
             }
@@ -206,8 +255,9 @@ final class JsonLogic
             if (count($left) !== count($right)) {
                 return false;
             }
+            self::nested($depth);
             foreach ($left as $key => $item) {
-                if (! array_key_exists($key, $right) || ! self::strictEquals($item, $right[$key])) {
+                if (! array_key_exists($key, $right) || ! self::equal($item, $right[$key], $depth + 1)) {
                     return false;
                 }
             }
@@ -468,6 +518,18 @@ final class JsonLogic
         return [(string) $name, Json::isList($args) ? $args : [$args]];
     }
 
+    /**
+     * Refuses to go below a container at $depth when that would pass MAX_DATA_DEPTH.
+     *
+     * @throws JsonLogicError
+     */
+    private static function nested(int $depth): void
+    {
+        if ($depth >= self::MAX_DATA_DEPTH) {
+            throw new JsonLogicError('Data nests deeper than '.self::MAX_DATA_DEPTH.' levels (or contains itself).');
+        }
+    }
+
     private static function kind(mixed $value): string
     {
         return match (true) {
@@ -491,8 +553,12 @@ final class JsonLogic
         return is_int($value) || is_float($value) || is_bool($value);
     }
 
-    /** The reference's to_number(), which hands a boolean back unchanged (it is already a Python number). */
-    private static function numeric(mixed $value): int|float|bool
+    /**
+     * The reference's to_number(), which hands a boolean back unchanged (it is already a Python number).
+     *
+     * @throws JsonLogicError on one-item lists nested deeper than MAX_DATA_DEPTH
+     */
+    private static function numeric(mixed $value, int $depth = 0): int|float|bool
     {
         if (self::isNumeric($value)) {
             return $value;
@@ -501,9 +567,13 @@ final class JsonLogic
             return 0;
         }
         if (Json::isList($value)) {
+            if (count($value) === 1) {
+                self::nested($depth);
+            }
+
             return match (count($value)) {
                 0 => 0,
-                1 => self::numeric($value[0] ?? null),
+                1 => self::numeric($value[0] ?? null, $depth + 1),
                 default => NAN,
             };
         }
