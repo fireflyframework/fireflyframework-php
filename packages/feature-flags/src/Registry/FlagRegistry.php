@@ -33,7 +33,8 @@ use Throwable;
  * change events pause until the store answers again.
  *
  * The process that observes a change of the effective set publishes FeatureFlagsChanged once across all workers (a
- * Cache::add guard per transition of the shared record); that class says which keys it names and which origin.
+ * Cache::add guard per transition of the shared record); that class says which keys it names and which origin. While
+ * test overrides are active, the keys are those whose flag changed in this process with the overrides on top.
  *
  * Refusals: a configuration that fails always refuses the boot (FPM boots on every request); a flag file refuses it
  * only until it has once loaded into the shared cache; remote and store sources never do (they report DOWN until they
@@ -188,6 +189,7 @@ final class FlagRegistry implements FlagDocumentSource
 
         $shared = $this->shared;
         if ($shared === null || $loaded !== $this->signature) {
+            $overridden = $this->testOverrides === null ? null : $this->effective;
             $layers = array_map(static fn (array $layer): array => [$layer[0], FlagDocument::fromJson($layer[1])], $loaded);
             $shared = Composer::compose($layers);
             $this->layers = $layers;
@@ -195,7 +197,7 @@ final class FlagRegistry implements FlagDocumentSource
             $this->shared = $shared;
             $this->effective = $this->testOverrides === null ? null : Composer::compose([...$layers, [self::TEST_LAYER, $this->testOverrides]]);
             $this->document = null;
-            $this->observe($shared, hash('sha256', implode("\0", array_merge(...$loaded))), $this->origin($moved, $loaded));
+            $this->observe($shared, hash('sha256', implode("\0", array_merge(...$loaded))), $this->origin($moved, $loaded), $overridden);
         }
 
         return $shared;
@@ -354,27 +356,59 @@ final class FlagRegistry implements FlagDocumentSource
     }
 
     /**
-     * Compare the composition with the last one the shared bookkeeping recorded, record it, and announce the change.
+     * Record the shared composition for every worker, then announce what changed for this process.
      *
-     * @param  string  $layers  sha256 of the layers' names and document JSON: the same layers compose the same set, so
-     *                          the common case (nothing moved since another worker recorded it) fingerprints no flag
+     * Without test overrides that is the shared transition, announced once across all workers. While test overrides
+     * are active the application sees the effective set, so the keys are those whose EFFECTIVE flag changed in this
+     * process: a source change to a key an override shadows is not announced (clearing the override announces it),
+     * and an overridden key whose targeting references a changed evaluator is.
+     *
+     * @param  string  $layers  sha256 of the layers' names and document JSON (see record())
+     * @param  Composition|null  $overridden  the effective composition before this refresh, while test overrides are active
      */
-    private function observe(Composition $composition, string $layers, string $origin): void
+    private function observe(Composition $shared, string $layers, string $origin, ?Composition $overridden): void
     {
-        $previous = self::composedRecord($this->book->get('composed'));
-        if ($this->book->degraded()) {
-            return; // no shared memory of the previous set: every process would announce a "change"
-        }
-        if ($previous !== null && $previous['layers'] === $layers) {
+        $transition = $this->record($shared, $layers);
+
+        if ($overridden !== null && $this->effective !== null) {
+            $changed = self::changedKeys($overridden->fingerprints(), $this->effective->fingerprints());
+            if ($changed !== []) {
+                $this->publish(new FeatureFlagsChanged($changed, $origin));
+            }
+
             return;
         }
 
-        $keys = $composition->fingerprints();
+        if ($transition !== null && $this->book->first($transition['guard'], self::CHANGE_WINDOW)) {
+            $this->publish(new FeatureFlagsChanged($transition['changed'], $transition['startup'] ? self::STARTUP_ORIGIN : $origin));
+        }
+    }
+
+    /**
+     * Compare the shared composition with the last one the shared bookkeeping recorded and record it: the transition
+     * to announce (its keys, whether it is the first record, the guard key that lets one worker announce it), or null
+     * when there is none or the store is down.
+     *
+     * @param  string  $layers  sha256 of the layers' names and document JSON: the same layers compose the same set, so
+     *                          the common case (nothing moved since another worker recorded it) fingerprints no flag
+     * @return array{changed: non-empty-list<string>, startup: bool, guard: string}|null
+     */
+    private function record(Composition $shared, string $layers): ?array
+    {
+        $previous = self::composedRecord($this->book->get('composed'));
+        if ($this->book->degraded()) {
+            return null; // no shared memory of the previous set: every process would announce a "change"
+        }
+        if ($previous !== null && $previous['layers'] === $layers) {
+            return null;
+        }
+
+        $keys = $shared->fingerprints();
         $fingerprint = hash('sha256', Json::canonical(Json::object($keys)));
         if ($previous !== null && $previous['fingerprint'] === $fingerprint) {
             $this->book->put('composed', [...$previous, 'layers' => $layers]); // other documents, the same effective flags
 
-            return;
+            return null;
         }
 
         // The generation makes each transition's guard key unique, so flipping back and forth is announced every time.
@@ -382,9 +416,8 @@ final class FlagRegistry implements FlagDocumentSource
         $this->book->put('composed', ['generation' => $generation, 'layers' => $layers, 'fingerprint' => $fingerprint, 'keys' => $keys]);
 
         $changed = self::changedKeys($previous['keys'] ?? [], $keys);
-        if ($changed !== [] && $this->book->first('changed:'.$generation.':'.$fingerprint, self::CHANGE_WINDOW)) {
-            $this->publish(new FeatureFlagsChanged($changed, $previous === null ? self::STARTUP_ORIGIN : $origin));
-        }
+
+        return $changed === [] ? null : ['changed' => $changed, 'startup' => $previous === null, 'guard' => 'changed:'.$generation.':'.$fingerprint];
     }
 
     /**

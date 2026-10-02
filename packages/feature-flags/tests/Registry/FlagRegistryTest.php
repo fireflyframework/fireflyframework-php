@@ -354,6 +354,76 @@ it('announces what test overrides change with origin test-overrides, and nothing
     ]);
 });
 
+it('announces nothing for a key an active test override shadows when its source changes it', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true, 'b' => true], failsStartup: true);
+    $registry = featureFlagsRegistry([$file], new Repository(new ArrayStore), $events, $clock);
+    $registry->overrideForTests(FlagDefinitions::parseDocument(['flags' => Json::object(FlagDefinitions::normalize(['a' => 'pinned']))]));
+
+    $file->flags = ['a' => false, 'b' => false];
+    $file->revision = 'r2';
+    $clock->now += 5.0;
+    $registry->document();
+    $file->flags = ['a' => 'v3', 'b' => false];
+    $file->revision = 'r3';
+    $clock->now += 5.0;
+    $registry->document();
+
+    expect($file->loads)->toBe(3)
+        ->and($registry->composition(false)->flag('a')?->definition->defaultVariant())->toBe('v3')
+        ->and($registry->document()->flag('a')?->defaultVariant())->toBe('pinned')
+        ->and(featureFlagsChanges($events))->toBe([
+            ['startup', ['a', 'b']],
+            [FlagRegistry::TEST_OVERRIDES_ORIGIN, ['a']],
+            ['file', ['b']],
+        ]);
+});
+
+it('announces a key a test override shadowed, with its source definition, once the override is cleared', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true], failsStartup: true);
+    $registry = featureFlagsRegistry([$file], new Repository(new ArrayStore), $events, $clock);
+    $registry->overrideForTests(FlagDefinitions::parseDocument(['flags' => Json::object(FlagDefinitions::normalize(['a' => 'pinned']))]));
+    $file->flags = ['a' => false];
+    $file->revision = 'r2';
+    $clock->now += 5.0;
+    $registry->document();
+
+    $registry->overrideForTests(null);
+
+    expect($registry->document()->flag('a')?->defaultVariant())->toBe('off')
+        ->and($registry->composition()->flag('a')?->origin)->toBe('file')
+        ->and(featureFlagsChanges($events))->toBe([
+            ['startup', ['a']],
+            [FlagRegistry::TEST_OVERRIDES_ORIGIN, ['a']],
+            [FlagRegistry::TEST_OVERRIDES_ORIGIN, ['a']],
+        ]);
+});
+
+it('announces a test-overridden key whose targeting references an evaluator its source changes', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['x' => true], failsStartup: true);
+    $file->evaluators = ['is-beta' => ['in' => [['var' => 'role'], ['beta']]]];
+    $registry = featureFlagsRegistry([$file], new Repository(new ArrayStore), $events, $clock);
+    $registry->overrideForTests(FlagDefinitions::parseDocument(['flags' => Json::object([
+        'a' => featureFlagsRegistryFlag('off', ['targeting' => ['if' => [['$ref' => 'is-beta'], 'on', 'off']]]),
+    ])]));
+
+    $file->evaluators = ['is-beta' => ['in' => [['var' => 'role'], ['beta', 'tester']]]];
+    $file->revision = 'r2';
+    $clock->now += 5.0;
+    $registry->document();
+
+    expect(featureFlagsChanges($events))->toBe([
+        ['startup', ['x']],
+        [FlagRegistry::TEST_OVERRIDES_ORIGIN, ['a']],
+        ['file', ['a']],
+    ]);
+});
+
 it('announces a key when any field of its composed definition changes, value types included', function (array $before, array $after): void {
     $events = new RecordingApplicationEventPublisher;
     $clock = new FixedClock;
