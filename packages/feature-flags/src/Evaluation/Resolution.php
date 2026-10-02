@@ -13,13 +13,17 @@ use OpenFeature\interfaces\provider\ResolutionDetails;
  * One evaluation, as the contract defines it. It carries the flag METADATA that open-feature/sdk 2.3's
  * ResolutionDetails has no slot for; toResolutionDetails() is the SDK's view of the same result.
  *
+ * The metadata is keyed by array-key: PHP stores a numeric-looking name (`"2024"`) as an int key. Read a name
+ * with `(string) $name`, and encode the map through Json::object(), which keeps a list-like map (`{"0": …}`) a
+ * JSON object.
+ *
  * `readonly` is shallow: an object value (a stdClass from the document) is shared with the document it came from.
  * Treat it as read-only; toResolutionDetails() hands the SDK a converted copy.
  */
 final readonly class Resolution
 {
     /**
-     * @param  array<string, bool|int|float|string>  $metadata
+     * @param  array<array-key, bool|int|float|string>  $metadata
      */
     public function __construct(
         public mixed $value,

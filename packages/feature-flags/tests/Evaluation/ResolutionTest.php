@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Evaluation\EvaluationError;
 use Firefly\FeatureFlags\Evaluation\EvaluationReason;
 use Firefly\FeatureFlags\Evaluation\FlagType;
@@ -24,6 +25,22 @@ it('carries an error code and message and never a variant on an error', function
         ->and($details->getReason())->toBe('ERROR')
         ->and($details->getError()?->getResolutionErrorCode()->getValue())->toBe('FLAG_NOT_FOUND')
         ->and($details->getError()?->getResolutionErrorMessage())->toBe('Flag [x] is not defined.');
+});
+
+it('carries numeric-looking metadata names as int keys whose (string) cast and JSON member names are the text', function (): void {
+    // open-feature/sdk 2.3's ResolutionDetails has no metadata slot, so the names leave PHP only as text read
+    // with (string) or as JSON member names; Json::object() keeps a list-like map ({"0": …}) an object.
+    $named = new Resolution(true, 'on', EvaluationReason::Static, metadata: ['1' => 'one', '2024' => 2024, 'owner' => 'web']);
+    $listLike = new Resolution(true, 'on', EvaluationReason::Static, metadata: ['0' => 'zero', '1' => 'one']);
+    $names = array_map(static fn (int|string $name): string => (string) $name, array_keys($named->metadata));
+
+    expect($named->metadata['1'] ?? null)->toBe('one')
+        ->and($named->metadata['2024'] ?? null)->toBe(2024)
+        ->and($names)->toBe(['1', '2024', 'owner'])
+        ->and(Json::encode(Json::object($named->metadata)))->toBe('{"1":"one","2024":2024,"owner":"web"}')
+        ->and(Json::encode(Json::object($listLike->metadata)))->toBe('{"0":"zero","1":"one"}')
+        ->and($named->toResolutionDetails()->getVariant())->toBe('on')
+        ->and($named->withValue(false)->metadata)->toBe($named->metadata);
 });
 
 it('hands OpenFeature arrays, never stdClass', function (): void {
