@@ -219,6 +219,51 @@ it('fails at run time as a JsonLogicError (GENERAL), never as an UnknownOperator
     'var with a third argument' => ['{"var":["a","b","c"]}'],
 ]);
 
+/*
+ | JsonLogic keeps the builtin names twice: the dispatch `match` in evaluate() and the BUILTINS list that
+ | unrecognized() reads to tell a dotted name under a builtin (`in.x`: GENERAL) from an unknown one (`a.b`:
+ | PARSE_ERROR). Both must be exactly the reference's operation table, so neither can drift from the other.
+ */
+dataset('reference operation table', [
+    '==', '!=', '===', '!==', '<', '>', '<=', '>=', '!', '!!', '+', '*', '-', '/', '%',
+    'in', 'min', 'max', 'cat', 'log', 'var', 'substr', 'merge', 'missing', 'missing_some',
+]);
+
+it('lists exactly the reference operation table in BUILTINS and in the dispatch match', function (): void {
+    $reference = ['==', '!=', '===', '!==', '<', '>', '<=', '>=', '!', '!!', '+', '*', '-', '/', '%',
+        'in', 'min', 'max', 'cat', 'log', 'var', 'substr', 'merge', 'missing', 'missing_some'];
+    $evaluate = new ReflectionMethod(JsonLogic::class, 'evaluate');
+    $file = $evaluate->getFileName();
+    $lines = is_string($file) ? file($file) : false;
+    $source = implode('', array_slice($lines === false ? [] : $lines, $evaluate->getStartLine() - 1, $evaluate->getEndLine() - $evaluate->getStartLine() + 1));
+    preg_match('/return match \(\$op\) \{(.*?)\n\s*default =>/s', $source, $dispatch);
+    preg_match_all("/^\\s*'([^']+)' =>/m", $dispatch[1] ?? '', $arms);
+
+    expect((new ReflectionClassConstant(JsonLogic::class, 'BUILTINS'))->getValue())->toEqualCanonicalizing($reference)
+        ->and($arms[1])->toEqualCanonicalizing($reference);
+});
+
+it('dispatches every builtin, and fails a dotted name under it as GENERAL', function (string $name): void {
+    $dispatched = true;
+    try {
+        (new JsonLogic)->apply(Json::decode(Json::encode([$name => []])), new stdClass);
+    } catch (UnknownOperator) {
+        $dispatched = false;
+    } catch (JsonLogicError) {
+        // `/` and `%` of nothing divide by zero: a run-time failure, so the name was recognized.
+    }
+    $dotted = null;
+    try {
+        (new JsonLogic)->apply(Json::decode(Json::encode([$name.'.x' => []])), new stdClass);
+    } catch (JsonLogicError $failure) {
+        $dotted = $failure;
+    }
+
+    expect($dispatched)->toBeTrue()
+        ->and($dotted)->toBeInstanceOf(JsonLogicError::class)
+        ->and($dotted)->not->toBeInstanceOf(UnknownOperator::class);
+})->with('reference operation table');
+
 it('runs a registered operator with its evaluated arguments and the data', function (): void {
     $logic = new JsonLogic(['twice' => static fn (mixed $data, array $args): mixed => [$args, Json::members($data)['n'] ?? null]]);
 
@@ -282,6 +327,16 @@ it('stops logic nested past its own depth limit with a JsonLogicError, never a P
 
     expect($caught)->toBeInstanceOf(JsonLogicError::class)
         ->and($caught)->not->toBeInstanceOf(UnknownOperator::class);
+});
+
+it('reads a stray DateTimeInterface as an object, since the evaluator turns date-times into epoch milliseconds first', function (): void {
+    $moment = new DateTimeImmutable('2026-01-01T00:00:00Z');
+    $number = JsonLogic::toNumber($moment);
+
+    expect(is_float($number) && is_nan($number))->toBeTrue()
+        ->and(JsonLogic::toStr($moment))->toBe('[object Object]')
+        ->and(JsonLogic::truthy($moment))->toBeTrue()
+        ->and((new JsonLogic)->apply(Json::decode('{">":[{"var":"signupAt"},1735689600000]}'), ['signupAt' => 1767225600000.0]))->toBeTrue();
 });
 
 it('answers truthiness the way the reference does', function (mixed $value, bool $truthy): void {

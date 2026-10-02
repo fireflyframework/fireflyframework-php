@@ -38,9 +38,17 @@ use Throwable;
  *  - integers are 64-bit: `+`, `-` and `*` past PHP_INT_MAX turn into a float where Python stays exact, `/`
  *    rounds an integer beyond ±2^53 to a float before dividing (Python rounds the exact quotient, so the last
  *    bit can differ), and an integer literal beyond 64 bits is a float already when decoded;
- *  - the reference's date/datetime support has no JSON form; a PHP object other than stdClass is an object
- *    ("[object Object]", NaN), and text that is not UTF-8 (which Python text cannot be) reads as NaN;
+ *  - data nested deeper than about 490 levels: the reference's recursive to_string() (`cat`, `==` or `<` between
+ *    a list and text) raises RecursionError (GENERAL) there, and its to_number() of nested one-item lists past
+ *    about 990 levels, while PHP answers (Python's own list `==`, behind `===` and `in`, has no such limit);
+ *  - text that is not UTF-8 (which Python text cannot be) reads as NaN;
  *  - `log` returns its argument and writes nothing (spec §10: data is never code, no I/O).
+ *
+ * The data is JSON values. A date-time never reaches this class: the contract evaluates a context date-time as
+ * its Unix epoch time in milliseconds, so the evaluator converts every DateTimeInterface in the context to that
+ * number (a float) when it builds the evaluation data, as PyFly does for datetime and date. The reference's own
+ * date arms in to_number() and to_string() are therefore not ported, and any PHP object other than a stdClass
+ * is an object here ("[object Object]", NaN).
  *
  * Every failure is a JsonLogicError, whatever the input: logic nested deeper than MAX_DEPTH stops with one
  * rather than exhausting the stack (the reference's RecursionError is GENERAL too), and a registered operator
