@@ -5,16 +5,22 @@ declare(strict_types=1);
 namespace Firefly\FeatureFlags;
 
 use Firefly\Config\Config;
+use Firefly\FeatureFlags\Settings\DurationReader;
 use Firefly\FeatureFlags\Settings\FileSourceSettings;
 use Firefly\FeatureFlags\Settings\HttpSourceSettings;
 use Firefly\FeatureFlags\Settings\ServerSettings;
 use Firefly\FeatureFlags\Settings\StoreSourceSettings;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
-use Firefly\Resilience\Duration;
 
 /**
  * firefly.feature-flags.*, read once. The `flags` and `evaluators` maps are kept verbatim: their keys are flag
- * and evaluator names, never settings. A malformed value refuses the boot here, naming the key.
+ * and evaluator names, never settings. A malformed value refuses the boot here, naming the key. Null is unset:
+ * every leaf set to null (`env('X')` with X unset) takes its default.
+ *
+ * Durations (DurationReader) take the framework grammar or a number of seconds; a negative one is refused. Zero
+ * is allowed only where it is safe: a `refresh-interval` of 0 re-checks that source on every registry refresh,
+ * that is on every request, while `sources.http.timeout` must be above zero, because Laravel's HTTP client reads 0
+ * as no timeout at all.
  */
 final readonly class FeatureFlagsSettings
 {
@@ -44,10 +50,12 @@ final readonly class FeatureFlagsSettings
 
     public static function fromConfig(Config $config): self
     {
+        $durations = new DurationReader($config);
+
         $file = new FileSourceSettings(
             enabled: $config->bool('firefly.feature-flags.sources.file.enabled', false),
             path: $config->string('firefly.feature-flags.sources.file.path', ''),
-            refreshInterval: self::seconds($config->get('firefly.feature-flags.sources.file.refresh-interval', '5s'), 'firefly.feature-flags.sources.file.refresh-interval'),
+            refreshInterval: $durations->get('firefly.feature-flags.sources.file.refresh-interval', 5.0),
         );
         if ($file->enabled && trim($file->path) === '') {
             throw new ConfigurationException('firefly.feature-flags.sources.file.enabled is on but firefly.feature-flags.sources.file.path is empty: name the flagd document (.json, .yaml or .yml) to watch.');
@@ -57,8 +65,8 @@ final readonly class FeatureFlagsSettings
             enabled: $config->bool('firefly.feature-flags.sources.http.enabled', false),
             url: $config->string('firefly.feature-flags.sources.http.url', ''),
             token: $config->string('firefly.feature-flags.sources.http.token', ''),
-            refreshInterval: self::seconds($config->get('firefly.feature-flags.sources.http.refresh-interval', '30s'), 'firefly.feature-flags.sources.http.refresh-interval'),
-            timeout: self::seconds($config->get('firefly.feature-flags.sources.http.timeout', '2s'), 'firefly.feature-flags.sources.http.timeout'),
+            refreshInterval: $durations->get('firefly.feature-flags.sources.http.refresh-interval', 30.0),
+            timeout: $durations->get('firefly.feature-flags.sources.http.timeout', 2.0, positive: true),
         );
         if ($http->enabled && trim($http->url) === '') {
             throw new ConfigurationException('firefly.feature-flags.sources.http.enabled is on but firefly.feature-flags.sources.http.url is empty: name the sync endpoint to poll.');
@@ -69,11 +77,14 @@ final readonly class FeatureFlagsSettings
             throw new ConfigurationException("firefly.feature-flags.sources.store.driver must be 'database' or 'memory', got [{$driver}].");
         }
         $connection = $config->get('firefly.feature-flags.sources.store.connection');
+        if ($connection !== null && ! is_string($connection)) {
+            throw new ConfigurationException('firefly.feature-flags.sources.store.connection must name a database connection (null or an empty string for the default one), got '.get_debug_type($connection).'.');
+        }
         $store = new StoreSourceSettings(
             enabled: $config->bool('firefly.feature-flags.sources.store.enabled', false),
             driver: $driver,
-            connection: is_string($connection) && $connection !== '' ? $connection : null,
-            refreshInterval: self::seconds($config->get('firefly.feature-flags.sources.store.refresh-interval', '5s'), 'firefly.feature-flags.sources.store.refresh-interval'),
+            connection: $connection === null || $connection === '' ? null : $connection,
+            refreshInterval: $durations->get('firefly.feature-flags.sources.store.refresh-interval', 5.0),
         );
 
         $server = new ServerSettings(
@@ -113,22 +124,5 @@ final readonly class FeatureFlagsSettings
         }
 
         return $status;
-    }
-
-    /** A duration in the framework grammar ('500ms', '5s', 'PT1M') or a number of seconds; a bad one names its key. */
-    private static function seconds(mixed $value, string $key): float
-    {
-        if (is_int($value) || is_float($value)) {
-            return max(0.0, (float) $value);
-        }
-        if (is_string($value) && trim($value) !== '') {
-            try {
-                return Duration::parse($value);
-            } catch (ConfigurationException $exception) {
-                throw new ConfigurationException("Configuration key [{$key}] is not a duration this framework can parse. {$exception->getMessage()}", previous: $exception);
-            }
-        }
-
-        throw new ConfigurationException("Configuration key [{$key}] must be a duration such as '5s', '500ms' or 'PT1M'.");
     }
 }
