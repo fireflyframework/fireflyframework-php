@@ -1,6 +1,6 @@
 {
-    "name": "firefly/cli",
-    "description": "LaraFly CLI: the developer-experience console — firefly:cache (compile all app manifests + emit #[Transactional] proxies to bootstrap/cache/firefly for a zero-reflection boot), firefly:clear, firefly:about + actuator-over-CLI (routes/health/metrics), the make:firefly-* generator family, and thin serve/schedule/db passthroughs.",
+    "name": "firefly/feature-flags",
+    "description": "LaraFly feature flags on OpenFeature: flagd documents evaluated in-process, layered config/file/http/store sources, #[FeatureFlag] gating, a writable store with an audit trail and a sync endpoint.",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
@@ -13,11 +13,13 @@
     "keywords": [
         "firefly",
         "laravel",
-        "cli"
+        "feature-flags",
+        "openfeature",
+        "flagd"
     ],
     "support": {
         "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
-        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/cli"
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/feature-flags"
     },
     "require": {
         "php": "^8.3",
@@ -26,29 +28,27 @@
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
-        "firefly/cqrs": "*@dev",
         "firefly/data": "*@dev",
-        "firefly/eda": "*@dev",
-        "firefly/feature-flags": "*@dev",
         "firefly/kernel": "*@dev",
-        "firefly/messaging": "*@dev",
-        "firefly/observability": "*@dev",
         "firefly/resilience": "*@dev",
-        "firefly/scheduling": "*@dev",
-        "firefly/security": "*@dev",
-        "firefly/security-oauth2-server": "*@dev",
-        "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
+        "illuminate/cache": "^13.0",
         "illuminate/console": "^13.0",
         "illuminate/container": "^13.0",
         "illuminate/contracts": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0",
+        "open-feature/sdk": "^2.3",
+        "psr/log": "^3.0",
+        "symfony/yaml": "^7.4|^8.0"
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Firefly\\Cli\\CliServiceProvider",
-                "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
+                "Firefly\\FeatureFlags\\FeatureFlagsServiceProvider",
+                "Firefly\\FeatureFlags\\FeatureFlagsWiringProvider"
             ]
         },
         "branch-alias": {
@@ -57,12 +57,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Firefly\\Cli\\": "src/"
+            "Firefly\\FeatureFlags\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Firefly\\Cli\\Tests\\": "tests/"
+            "Firefly\\FeatureFlags\\Tests\\": "tests/"
         }
     },
     "minimum-stability": "stable",

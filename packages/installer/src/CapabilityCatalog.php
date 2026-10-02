@@ -43,6 +43,7 @@ final class CapabilityCatalog
             new Capability('observability', 'firefly/observability', 'MeterRegistry with Prometheus text exposition'),
             new Capability('admin', 'firefly/admin', 'Server-rendered dashboard over the actuator (a Spring Boot Admin analog)'),
             new Capability('openapi', 'firefly/openapi', 'OpenAPI 3.1 document generated from the route and constraint manifests, plus a viewer'),
+            new Capability('feature-flags', 'firefly/feature-flags', 'Feature flags on OpenFeature: flagd documents, targeting and percentage rollouts, a writable store, admin and actuator controls'),
 
             new Capability('eda-kafka', 'firefly/eda-kafka', 'Kafka publisher/consumer over ext-rdkafka', requires: ['eda'], adapter: true),
             new Capability('eda-rabbitmq', 'firefly/eda-rabbitmq', 'RabbitMQ publisher/consumer over php-amqplib', requires: ['eda'], adapter: true),

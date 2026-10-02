@@ -98,6 +98,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/admin/src/.*
+    - name: FeatureFlags
+      collectors:
+        - type: directory
+          value: packages/feature-flags/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -334,6 +338,11 @@ deptrac:
     # is a `suggest`, not a require. The direction is Security -> OpenApi and NEVER the reverse: the
     # generator names no Security type, which is what keeps it generating a document in an app with no
     # security at all.
+    #
+    # The => FeatureFlags edge is two classes (src/FeatureFlags): firefly/feature-flags owns an
+    # EvaluationContextContributor port and a FlagActorSource port, and this package fills them from the
+    # session-held principal (targetingKey, roles, tenant; the actor of a flag write). Guarded by
+    # #[ConditionalOnClass]; firefly/feature-flags is a `suggest`. Security -> FeatureFlags, NEVER the reverse.
     Security:
       - Kernel
       - Container
@@ -346,6 +355,7 @@ deptrac:
       - Validation
       - Actuator
       - OpenApi
+      - FeatureFlags
 
     # SecurityOAuth2Client is the OAuth2 client / OIDC login capability over Security: it reuses Security's
     # principal model, session repository, entry point, login page ports, event publisher, JWKS providers and
@@ -422,6 +432,9 @@ deptrac:
     # generalised out of the transactional proxy in the first place. Observability CONSUMES those ports and adds
     # nothing to them; the direction is Observability -> Data and NEVER the reverse (Data names no meter, no span
     # and no tracer).
+    #
+    # The => FeatureFlags edge is one class (src/FeatureFlags): MeterRegistryFeatureFlagMetrics backs the
+    # FeatureFlagMetrics port with feature_flag_evaluations_total{flag, variant, reason} — the CqrsMetrics seam.
     Observability:
       - Kernel
       - Container
@@ -434,6 +447,7 @@ deptrac:
       - Eda
       - Resilience
       - Data
+      - FeatureFlags
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
     # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
@@ -459,6 +473,27 @@ deptrac:
       - Actuator
       - Data
 
+    # FeatureFlags is the feature-flag capability on OpenFeature (open-feature/sdk, unlayered): a flagd evaluator,
+    # layered flag sources, a cache-backed registry and a writable store. It reads Config, carries Container/Context
+    # attributes, extends AutoConfigure's base and reuses Kernel exceptions.
+    #
+    # The => Data edge is the #[FeatureFlag] attribute's half (src/Gating, src/Scanner): a FeatureFlagAdviceSource +
+    # FeatureFlagMethodInterceptor on the method-interceptor chain Data owns, and the compiled ProxyPlan the route
+    # gate reads. The => Web edge is the route gate (RouteManifest, the #[RestController] stereotype the scanner
+    # recognises). The => Actuator edge is the `flags` endpoint and the health indicator (the EdaRabbitmq
+    # precedent). The => Resilience edge is Duration::parse (the Scheduling precedent). Every edge points one way:
+    # Security (the principal contributor), Observability (the metrics adapter), Testing and Cli depend on it.
+    FeatureFlags:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Data
+      - Web
+      - Actuator
+      - Resilience
+
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/
     # RouteDescriptor (paths, verbs, statuses, binding plans) and Validation's ConstraintManifest + Rule
@@ -483,6 +518,9 @@ deptrac:
     # package's frozen ports, so it depends on ALL layers (and SecurityOAuth2Client, for actingAsOidcUser()).
     # It is depended on by NONE — consumers use it only from their tests/, which Deptrac's src-only
     # collectors never see (no cycle; dev-scoped dep).
+    #
+    # The => FeatureFlags edge is the test-override layer: FeatureFlagOverrides and withFeatureFlags() install it
+    # over the composed flag set, so a test pins a flag without touching config, a file or the store.
     Testing:
       - Kernel
       - Container
@@ -504,6 +542,7 @@ deptrac:
       - SecurityOAuth2Server
       - Actuator
       - Observability
+      - FeatureFlags
 
     # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 12
     # compile-producing packages' scanner/compiler pair directly (D4 DIRECT DEPENDENCY). UNLIKE Testing
@@ -515,6 +554,9 @@ deptrac:
     # beside the transactional, security and observability ones, so firefly:cache compiles #[Retry]/
     # #[CircuitBreaker]/… into the same plan — which is a genuine call into the package, and
     # packages/cli/composer.json requires it accordingly.
+    # FeatureFlags is listed for the same reason: ManifestCacheWriter's planner names FeatureFlagAdviceSource, so
+    # firefly:cache compiles #[FeatureFlag] into the same proxy plan; packages/cli/composer.json requires it
+    # accordingly.
     # It is depended on by NONE. It does NOT depend on Testing (dev-only).
     Cli:
       - Kernel
@@ -534,6 +576,7 @@ deptrac:
       - Actuator
       - Observability
       - Resilience
+      - FeatureFlags
 
     # The bundled installer reads the framework version for its local skeleton repository.
     Installer:

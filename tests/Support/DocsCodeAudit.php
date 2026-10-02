@@ -103,7 +103,7 @@ final class DocsCodeAudit
      * Repo-relative files and directories whose every fenced block is audited — and it is now every Markdown
      * file the repository tracks: the README anyone lands on first, the changelog, every page of the
      * documentation site, both editions of the book, the README Packagist prints as the front page of each
-     * of the twenty-nine packages, and the two READMEs that ship inside an application (`skeleton/`, which
+     * of the thirty packages, and the two READMEs that ship inside an application (`skeleton/`, which
      * `create-project` copies, and `samples/lumen/`).
      *
      * The list was staged while wave R ran, one surface per commit, and it is a directory list now precisely

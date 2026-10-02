@@ -7,7 +7,7 @@ cross-repository `ACCESS_TOKEN` are needed.
 
 ## Package identity and compatibility
 
-The root package replaces all 29 former component names, including `firefly/firefly`, with
+The root package replaces all 30 former component names, including `firefly/firefly`, with
 `self.version`. Packagist's `firefly` vendor namespace belongs to another publisher, so the public
 package uses the Firefly Framework organization's namespace. `firefly/lumen` is a sample, not a replacement;
 `firefly/skeleton` is a bundled project template, not a second published package.

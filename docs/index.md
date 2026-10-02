@@ -8,7 +8,7 @@ CQRS, event-driven architecture, first-party security including both halves of O
 directly onto Laravel's own runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a
 Laravel developer would recognize, still a Laravel app — it just boots like a Spring Boot one.
 
-The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 29 components,
+The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 30 components,
 wired together by a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
 request after that runs against plain PHP arrays — no runtime reflection on the hot path.
 
