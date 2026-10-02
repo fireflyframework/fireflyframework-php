@@ -37,4 +37,66 @@ return [
             ],
         ],
     ],
+    1 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                'args' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    2 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.sources.file.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            2 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                'args' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
 ];
