@@ -13,6 +13,7 @@ use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Event\FeatureFlagsChanged;
 use Firefly\FeatureFlags\Source\FlagSource;
 use Firefly\FeatureFlags\Source\FlagSourceUnavailable;
+use Firefly\FeatureFlags\Source\StoreFlagSource;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -187,10 +188,11 @@ final class FlagRegistry implements FlagDocumentSource
             $name = $source->name();
             $before = $this->state($name);
             $forced = $force && ($only === null || $only === $name);
-            $after = $forced || $this->due($source, $before, $now) ? $this->check($source, $before, $now, $forced) : $before;
+            $deferred = $source instanceof StoreFlagSource && $source->transactionActive();
+            $after = ! $deferred && ($forced || $this->due($source, $before, $now)) ? $this->check($source, $before, $now, $forced) : $before;
             $document = $after === null ? null : $this->decoded($after);
 
-            if ($after !== null && $after->loaded && $document === null) {
+            if (! $deferred && $after !== null && $after->loaded && $document === null) {
                 // A cached entry this process cannot read (corrupt, or written in another shape): unknown, so reload it.
                 $this->logger->warning('The cached document of feature flag source [{source}] cannot be read; reloading the source.', ['source' => $name]);
                 $after = $this->check($source, null, $now, forced: true, known: false);
