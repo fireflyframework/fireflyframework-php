@@ -8,8 +8,10 @@ use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionCommitting;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Events\Dispatcher;
+use Throwable;
 
 /**
  * Connection::afterCommit chooses the last transaction in the shared Laravel manager, even on another
@@ -24,6 +26,8 @@ final class StoreCommitCallbacks
     /** @var list<array{int, Closure(): void}> */
     private array $pending = [];
 
+    private ?Throwable $nativeAbort = null;
+
     public function __construct(private readonly Connection $connection)
     {
         $dispatcher = $connection->getEventDispatcher();
@@ -34,10 +38,23 @@ final class StoreCommitCallbacks
         $dispatcher->listen(TransactionBeginning::class, function (TransactionBeginning $event): void {
             if ($event->connection === $this->connection && $event->connection->transactionLevel() === 1) {
                 $this->pending = [];
+                $this->nativeAbort = null;
+            }
+        });
+        $dispatcher->listen(TransactionCommitting::class, function (TransactionCommitting $event): void {
+            if ($event->connection === $this->connection && $this->nativeAbort !== null) {
+                $cause = $this->nativeAbort;
+                // transaction(callback) decrements its level after a commit exception. End PDO's stale
+                // transaction first, while Laravel can still perform a root rollback; never report commit success.
+                try {
+                    $this->connection->rollBack(0);
+                } finally {
+                    throw new FlagStoreTransactionAborted($cause);
+                }
             }
         });
         $dispatcher->listen(TransactionCommitted::class, function (TransactionCommitted $event): void {
-            if ($event->connection !== $this->connection) {
+            if ($event->connection !== $this->connection || $this->nativeAbort !== null) {
                 return;
             }
             $level = $event->connection->transactionLevel();
@@ -60,9 +77,18 @@ final class StoreCommitCallbacks
         });
     }
 
+    public function nativeTransactionAborted(Throwable $cause): void
+    {
+        $this->nativeAbort = $cause;
+        $this->pending = [];
+    }
+
     /** @param Closure(): void $callback */
     public function afterCommit(Closure $callback): void
     {
+        if ($this->nativeAbort !== null) {
+            return;
+        }
         $level = $this->connection->transactionLevel();
         if ($level === 0) {
             $callback();
