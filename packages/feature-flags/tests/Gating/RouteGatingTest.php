@@ -35,6 +35,36 @@ it('binds a fallback route before selecting its fallback', function (): void {
     expect(BetaController::$calls)->toBe(0);
 });
 
+it('does not reuse an open routed decision for a nested closed action', function (): void {
+    /** @var GatedRoutesTestCase $this */
+    $this->getJson('/beta/open-calls-closed')->assertStatus(404);
+
+    expect(BetaController::$calls)->toBe(1);
+});
+
+it('evaluates a different nested action even when its gate settings match', function (): void {
+    /** @var GatedRoutesTestCase $this */
+    /** @var list<FeatureFlagEvaluated> $evaluations */
+    $evaluations = [];
+    Event::listen(FeatureFlagEvaluated::class, function (FeatureFlagEvaluated $event) use (&$evaluations): void {
+        $evaluations[] = $event;
+    });
+
+    $this->getJson('/beta/open-calls-open')->assertOk()->assertJson(['open' => true]);
+
+    expect(array_map(static fn (FeatureFlagEvaluated $event): string => $event->key, $evaluations))->toBe(['missing-nested-gate', 'missing-nested-gate'])
+        ->and(BetaController::$calls)->toBe(2);
+});
+
+it('does not reuse a route-file alias decision for a called annotated action', function (): void {
+    /** @var GatedRoutesTestCase $this */
+    Route::get('/alias-calls-closed', static fn (): array => app(BetaController::class)->closed())
+        ->middleware('feature-flag:missing-nested-gate,,true');
+
+    $this->getJson('/alias-calls-closed')->assertStatus(404);
+    expect(BetaController::$calls)->toBe(0);
+});
+
 it('gates on a variant and evaluates once per request', function (): void {
     /** @var GatedRoutesTestCase $this */
     /** @var list<FeatureFlagEvaluated> $evaluations */

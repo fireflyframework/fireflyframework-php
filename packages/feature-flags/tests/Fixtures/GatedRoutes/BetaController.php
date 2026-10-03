@@ -43,6 +43,46 @@ class BetaController
         return ['fallback' => $payload->sku];
     }
 
+    /** @return array<string, bool> */
+    #[FeatureFlag('missing-nested-gate', default: true)]
+    #[GetMapping('/open-calls-closed')]
+    public function openCallsClosed(): array
+    {
+        self::$calls++;
+
+        return $this->closed();
+    }
+
+    /** @return array<string, bool> */
+    #[FeatureFlag('missing-nested-gate')]
+    #[GetMapping('/closed')]
+    public function closed(): array
+    {
+        self::$calls++;
+
+        return ['closed' => true];
+    }
+
+    /** @return array<string, bool> */
+    #[FeatureFlag('missing-nested-gate', default: true)]
+    #[GetMapping('/open-calls-open')]
+    public function openCallsOpen(): array
+    {
+        self::$calls++;
+
+        return $this->nestedOpen();
+    }
+
+    /** @return array<string, bool> */
+    #[FeatureFlag('missing-nested-gate', default: true)]
+    #[GetMapping('/nested-open')]
+    public function nestedOpen(): array
+    {
+        self::$calls++;
+
+        return ['open' => true];
+    }
+
     /** @return array<string, string> */
     #[FeatureFlag('checkout-flow', variant: 'v2')]
     #[GetMapping('/v2')]

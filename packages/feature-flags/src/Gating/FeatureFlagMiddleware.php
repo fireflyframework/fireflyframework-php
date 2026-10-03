@@ -19,11 +19,12 @@ final class FeatureFlagMiddleware
     {
         $variantName = $variant === '' ? null : $variant;
 
-        if (! $this->gate->allows($key, $variantName, $default === 'true')) {
+        $defaultEnabled = $default === 'true';
+        if (! $this->gate->allows($key, $variantName, $defaultEnabled)) {
             throw $this->gate->disabled($key);
         }
 
-        $this->decisions->record($request, $key, $variantName);
+        $this->decisions->record($request, $key, $variantName, $defaultEnabled);
 
         return $next($request);
     }

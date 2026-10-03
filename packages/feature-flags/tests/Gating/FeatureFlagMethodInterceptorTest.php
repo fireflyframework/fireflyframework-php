@@ -11,6 +11,7 @@ use Firefly\FeatureFlags\Gating\RouteGateDecisions;
 use Firefly\FeatureFlags\Tests\Support\GateFixtures;
 use Illuminate\Container\Container;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 
 class FeatureFlagsPricing
 {
@@ -124,17 +125,23 @@ it('does not re-enter the gate when a class-level fallback is proxied and still 
 it('trusts the route decision only on matching route rows of the current request', function (): void {
     $app = new Container;
     $request = Request::create('/beta');
+    $route = new Route('GET', '/beta', static fn (): string => 'beta');
+    $request->setRouteResolver(static fn (): Route => $route);
     $app->instance('request', $request);
     $decisions = new RouteGateDecisions($app);
-    $decisions->record($request, 'off', null);
+    $rule = new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'price', 'off', route: true);
+    $decisions->register($route, $rule);
+    $decisions->record($request, 'off', null, false);
 
-    expect(featureFlagsInvoke(new FeatureFlagsPricing, new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'price', 'off', route: true), $decisions))->toBe('new:100')
+    expect(featureFlagsInvoke(new FeatureFlagsPricing, $rule, $decisions))->toBe('new:100')
         ->and(fn () => featureFlagsInvoke(new FeatureFlagsPricing, new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'price', 'off'), $decisions))->toThrow(FeatureFlagDisabledException::class)
-        ->and($decisions->passed('off', 'v2'))->toBeFalse()
-        ->and((new RouteGateDecisions(new Container))->passed('off', null))->toBeFalse();
+        ->and($decisions->passed(new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'price', 'off', 'v2', route: true)))->toBeFalse()
+        ->and($decisions->passed(new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'price', 'off', default: true, route: true)))->toBeFalse()
+        ->and($decisions->passed(new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'other', 'off', route: true)))->toBeFalse()
+        ->and((new RouteGateDecisions(new Container))->passed($rule))->toBeFalse();
 
     $app->instance('request', Request::create('/next'));
-    expect($decisions->passed('off', null))->toBeFalse();
+    expect($decisions->passed($rule))->toBeFalse();
 });
 
 it('round trips descriptor rows and spells route middleware', function (): void {

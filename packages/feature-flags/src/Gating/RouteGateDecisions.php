@@ -6,6 +6,8 @@ namespace Firefly\FeatureFlags\Gating;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
+use WeakMap;
 
 /**
  * A passed middleware decision belongs to the request, rather than this service instance.
@@ -15,25 +17,48 @@ final class RouteGateDecisions
 {
     public const string ATTRIBUTE = 'firefly.feature-flags.gated';
 
-    public function __construct(private readonly Container $app) {}
+    /** @var WeakMap<Route, FeatureFlagMethodDescriptor> */
+    private WeakMap $routes;
 
-    public function record(Request $request, string $key, ?string $variant): void
+    public function __construct(private readonly Container $app)
     {
-        $passed = $request->attributes->get(self::ATTRIBUTE);
-        $passed = is_array($passed) ? $passed : [];
-        $passed[$key.'|'.($variant ?? '')] = true;
-        $request->attributes->set(self::ATTRIBUTE, $passed);
+        $this->routes = new WeakMap;
     }
 
-    public function passed(string $key, ?string $variant): bool
+    public function register(Route $route, FeatureFlagMethodDescriptor $rule): void
+    {
+        $this->routes[$route] = $rule;
+    }
+
+    public function record(Request $request, string $key, ?string $variant, bool $default): void
+    {
+        $route = $request->route();
+        if (! $route instanceof Route) {
+            return;
+        }
+
+        $rule = $this->routes[$route] ?? null;
+        if ($rule !== null && $rule->key === $key && $rule->variant === $variant && $rule->default === $default) {
+            $request->attributes->set(self::ATTRIBUTE, $rule);
+        }
+    }
+
+    public function passed(FeatureFlagMethodDescriptor $rule): bool
     {
         if (! $this->app->bound('request')) {
             return false;
         }
 
         $request = $this->app->make('request');
-        $passed = $request->attributes->get(self::ATTRIBUTE);
+        $route = $request->route();
+        if (! $route instanceof Route) {
+            return false;
+        }
 
-        return is_array($passed) && isset($passed[$key.'|'.($variant ?? '')]);
+        $routedRule = $this->routes[$route] ?? null;
+
+        return $routedRule !== null
+            && $request->attributes->get(self::ATTRIBUTE) === $routedRule
+            && $routedRule->toArray() === $rule->toArray();
     }
 }

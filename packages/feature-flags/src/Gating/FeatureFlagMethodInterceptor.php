@@ -34,7 +34,7 @@ final class FeatureFlagMethodInterceptor implements MethodInterceptor
             return $invocation->proceed();
         }
 
-        if ($rule->route && $rule->fallback === null && $this->decisions->passed($rule->key, $rule->variant)) {
+        if ($rule->route && $rule->fallback === null && $this->decisions->passed($rule)) {
             return $invocation->proceed();
         }
 

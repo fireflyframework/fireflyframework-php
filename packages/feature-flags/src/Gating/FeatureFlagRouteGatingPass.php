@@ -55,6 +55,7 @@ final class FeatureFlagRouteGatingPass implements BootPass
             return;
         }
 
+        $decisions = $container->make(RouteGateDecisions::class);
         $routes = [];
         foreach ($router->getRoutes()->getRoutes() as $route) {
             foreach ($route->methods() as $verb) {
@@ -72,6 +73,7 @@ final class FeatureFlagRouteGatingPass implements BootPass
             $route = $routes[strtoupper($descriptor->httpMethod).' '.($uri === '' ? '/' : $uri)] ?? null;
 
             if ($rule !== null && $route !== null) {
+                $decisions->register($route, $rule);
                 $route->middleware($rule->middleware());
             }
         }
