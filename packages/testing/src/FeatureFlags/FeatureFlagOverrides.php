@@ -79,6 +79,13 @@ final class FeatureFlagOverrides
     /** @param array<array-key, mixed> $flags */
     private function apply(array $flags): self
     {
+        if ($flags !== []) {
+            // The contract's definition depth limit must reject invalid input before snapshot copying.
+            FlagDefinitions::parseDocument([
+                'flags' => Json::object(FlagDefinitions::normalize($flags)),
+            ]);
+        }
+
         /** @var array<array-key, mixed> $owned */
         $owned = ValueCopy::of($flags);
         $document = $owned === [] ? null : FlagDefinitions::parseDocument([

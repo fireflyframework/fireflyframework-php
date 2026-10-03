@@ -85,6 +85,35 @@ it('rejects invalid changes without losing the last valid override set', functio
     expect($overrides->flags())->toBe(['valid' => true]);
 });
 
+it('reports the contract error for definitions deeper than the snapshot limit without changing overrides', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true]);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+    $overrides = withFeatureFlags(['valid' => true]);
+    $before = $registry->testOverrides();
+
+    $nested = [];
+    for ($level = 0; $level < 520; $level++) {
+        $nested = ['child' => $nested];
+    }
+    $definition = ['state' => 'ENABLED', 'variants' => ['v' => $nested], 'defaultVariant' => 'v'];
+
+    $error = null;
+    try {
+        $overrides->set('deep', $definition);
+    } catch (InvalidFlagDefinition $caught) {
+        $error = $caught;
+    }
+
+    expect($error)->toBeInstanceOf(InvalidFlagDefinition::class)
+        ->and($error?->flagKey())->toBe('deep')
+        ->and($error?->reason())->toBe('definition nests too deeply')
+        ->and($overrides->flags())->toBe(['valid' => true])
+        ->and($registry->testOverrides())->toBe($before)
+        ->and($registry->document()->flag('valid'))->not->toBeNull()
+        ->and($registry->document()->flag('deep'))->toBeNull();
+});
+
 it('owns caller definitions and getter snapshots across unrelated merges', function (): void {
     $app = featureFlagsTestingApp(['enabled' => true]);
     /** @var FlagRegistry $registry */
