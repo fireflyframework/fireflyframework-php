@@ -17,6 +17,7 @@ use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
 use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
+use Firefly\FeatureFlags\Gating\FeatureFlagDisabledException;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
 use Firefly\Resilience\Method\ResilienceAdviceSource;
 use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
@@ -174,6 +175,7 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
                     'component_manifest' => $dir.'/'.FireflyCachePaths::COMPONENT,
                     'context_manifest' => $dir.'/'.FireflyCachePaths::CONTEXT,
                 ],
+                'feature-flags' => ['enabled' => true, 'flags' => ['demo-layered' => false]],
             ],
             // Seeds a value that DIFFERS from DemoConfigProperties's constructor default ('hello'), so
             // assertion (d) below can distinguish "the DTO was POPULATED FROM CONFIG" from "the DTO merely
@@ -252,6 +254,10 @@ function cachedBootAssertions(Application $app): void
     $timed = $context->get(DemoTimedService::class);
     expect($timed::class)->toBe(DemoTimedService::class.ProxyPlan::PROXY_SUFFIX)
         ->and($timed->measured())->toBe('measured');
+
+    /** @var DemoLayeredService $layered */
+    $layered = $context->get(DemoLayeredService::class);
+    expect(fn () => $layered->all('dark'))->toThrow(FeatureFlagDisabledException::class);
 
     // Category C: the compiled TransactionalManifest is populated (the #[Configuration] #[Bean] loaded it).
     /** @var TransactionalManifest $manifest */

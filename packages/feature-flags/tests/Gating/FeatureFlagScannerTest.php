@@ -3,14 +3,22 @@
 declare(strict_types=1);
 
 use Firefly\Data\Proxy\InterceptorRegistry;
+use Firefly\Data\Proxy\ProxyClassGenerator;
+use Firefly\Data\Proxy\ProxyFactory;
+use Firefly\Data\Proxy\ProxyPlanner;
+use Firefly\Data\Transaction\TransactionInterceptor;
+use Firefly\Data\Transaction\TransactionTemplate;
 use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
 use Firefly\FeatureFlags\Gating\FeatureFlagMethodDescriptor;
 use Firefly\FeatureFlags\Gating\FeatureFlagMethodInterceptor;
+use Firefly\FeatureFlags\Gating\RouteGateDecisions;
 use Firefly\FeatureFlags\Scanner\FeatureFlagScanner;
 use Firefly\FeatureFlags\Tests\Fixtures\GatedBeans\CheckoutService;
 use Firefly\FeatureFlags\Tests\Fixtures\GatedBeans\ReportService;
 use Firefly\FeatureFlags\Tests\Fixtures\GatedBeans\VirtualFallbackService;
 use Firefly\FeatureFlags\Tests\Fixtures\InheritedPlain\ServiceChild;
+use Firefly\FeatureFlags\Tests\Fixtures\Refused\CaseSelfFallback\CaseSelfFallback;
+use Firefly\FeatureFlags\Tests\Support\GateFixtures;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Container\Container;
 
@@ -60,6 +68,28 @@ it('keeps inherited method gates on a service and drops unenforced inherited row
 
     expect(array_keys($advice))->toBe([ServiceChild::class])
         ->and(array_keys($advice[ServiceChild::class]))->toBe(['run']);
+});
+
+it('refuses a case-only self fallback before its generated proxy can run the gated body', function (): void {
+    $planner = new ProxyPlanner([new FeatureFlagAdviceSource]);
+
+    try {
+        $plan = $planner->plan(featureFlagsFixtureRoot('Refused/CaseSelfFallback'));
+    } catch (ConfigurationException $exception) {
+        expect($exception->getMessage())->toContain('names the gated method itself as its fallback');
+
+        return;
+    }
+
+    $methods = $planner->proxyMethods($plan)[CaseSelfFallback::class];
+    $proxyClass = (new ProxyClassGenerator)->load(CaseSelfFallback::class, $methods);
+    $interceptor = new FeatureFlagMethodInterceptor(GateFixtures::gate(), new RouteGateDecisions(new Container));
+    $proxy = (new ProxyFactory)->wrap(new CaseSelfFallback, CaseSelfFallback::class, $proxyClass, new TransactionInterceptor(new TransactionTemplate), [FeatureFlagAdviceSource::ID => $interceptor]);
+    if (! $proxy instanceof CaseSelfFallback) {
+        throw new LogicException('Generated proxy is not a CaseSelfFallback');
+    }
+
+    expect($proxy->run())->not->toBe('GATED BODY RAN');
 });
 
 it('declares fail-closed advice order 80 and renders its row as a literal', function (): void {

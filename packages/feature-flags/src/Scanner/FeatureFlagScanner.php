@@ -133,7 +133,7 @@ final class FeatureFlagScanner
                 continue;
             }
 
-            $flag = $own ?? (isset($fallbacks[$method->getName()]) ? null : $classFlag);
+            $flag = $own ?? (isset($fallbacks[strtolower($method->getName())]) ? null : $classFlag);
             if ($flag === null) {
                 continue;
             }
@@ -173,7 +173,7 @@ final class FeatureFlagScanner
      */
     private function assertFallback(ReflectionClass $reflection, ReflectionMethod $gated, string $fallback, string $site): void
     {
-        if ($fallback === $gated->getName()) {
+        if (strcasecmp($fallback, $gated->getName()) === 0) {
             throw new ConfigurationException("#[FeatureFlag] on {$site} names the gated method itself as its fallback, which would answer by calling the gate again. Name a DIFFERENT method that returns the degraded answer.");
         }
 
@@ -201,13 +201,13 @@ final class FeatureFlagScanner
     {
         $targets = [];
         if ($classFlag?->fallback !== null) {
-            $targets[$classFlag->fallback] = true;
+            $targets[strtolower($classFlag->fallback)] = true;
         }
 
         foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
             $fallback = $this->first($method->getAttributes(FeatureFlag::class))?->fallback;
-            if ($fallback !== null && $fallback !== $method->getName()) {
-                $targets[$fallback] = true;
+            if ($fallback !== null && strcasecmp($fallback, $method->getName()) !== 0) {
+                $targets[strtolower($fallback)] = true;
             }
         }
 

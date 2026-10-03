@@ -21,7 +21,7 @@ class FallbackBase
 }
 
 #[Service]
-#[FeatureFlag('reports', fallback: 'recover')]
+#[FeatureFlag('reports', fallback: 'RECOVER')]
 class VirtualFallbackService extends FallbackBase
 {
     public function recover(string $value): string
