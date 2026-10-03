@@ -30,12 +30,12 @@ use WeakMap;
  * resolution's, or the thrown one's when it carries a code (ThrowableWithResolutionError), GENERAL otherwise —
  * the code the SDK answers the caller with. Its variant is null.
  *
- * The value is a deep copy (ValueCopy) of the value served: PHP shares objects, and a stdClass inside an object
- * flag's array (an application provider's value, or the caller's own default) would otherwise be the caller's to
- * change after the record was made.
+ * JSON values (arrays/stdClass/scalars/null) are isolated snapshots; stdClass aliases and cycles are preserved.
+ * Foreign objects, even nested ones, retain their identity. Unsupported array references or excessive depth
+ * omit the exposure, with best-effort DEBUG logging; no partially shared JSON snapshot is published.
  *
- * A preview (hook hint FeatureFlags::PREVIEW_HINT, CONTRACT.md I-3) publishes nothing. A listener that throws is
- * logged at DEBUG and never changes the value: the SDK runs `after` hooks unguarded, so this hook never throws.
+ * A preview (hook hint FeatureFlags::PREVIEW_HINT, CONTRACT.md I-3) publishes nothing. Copy, listener and logger
+ * failures never change the evaluation: the SDK runs `after` hooks unguarded, so this hook contains them.
  */
 final class ExposureEventHook implements Hook
 {
@@ -60,17 +60,22 @@ final class ExposureEventHook implements Hook
             return;
         }
 
-        $error = $details->getError();
-        $failed = $error !== null || $details->getReason() === 'ERROR';
+        unset($this->exposures[$context]);
+        try {
+            $error = $details->getError();
+            $failed = $error !== null || $details->getReason() === 'ERROR';
 
-        $this->exposures[$context] = new FeatureFlagEvaluated(
-            $context->getFlagKey(),
-            ValueCopy::of($details->getValue()),
-            $failed ? null : $details->getVariant(),
-            $failed ? 'ERROR' : ($details->getReason() ?? 'UNKNOWN'),
-            $error?->getResolutionErrorCode()->getValue(),
-            $context->getEvaluationContext()->getTargetingKey(),
-        );
+            $this->exposures[$context] = new FeatureFlagEvaluated(
+                $context->getFlagKey(),
+                ValueCopy::of($details->getValue()),
+                $failed ? null : $details->getVariant(),
+                $failed ? 'ERROR' : ($details->getReason() ?? 'UNKNOWN'),
+                $error?->getResolutionErrorCode()->getValue(),
+                $context->getEvaluationContext()->getTargetingKey(),
+            );
+        } catch (Throwable $failure) {
+            $this->logFailure($context->getFlagKey(), $failure);
+        }
     }
 
     public function error(HookContext $context, Throwable $error, HookHints $hints): void
@@ -79,14 +84,19 @@ final class ExposureEventHook implements Hook
             return;
         }
 
-        $this->exposures[$context] = new FeatureFlagEvaluated(
-            $context->getFlagKey(),
-            ValueCopy::of($context->getDefaultValue()),
-            null,
-            'ERROR',
-            self::errorCode($error),
-            $context->getEvaluationContext()->getTargetingKey(),
-        );
+        unset($this->exposures[$context]);
+        try {
+            $this->exposures[$context] = new FeatureFlagEvaluated(
+                $context->getFlagKey(),
+                ValueCopy::of($context->getDefaultValue()),
+                null,
+                'ERROR',
+                self::errorCode($error),
+                $context->getEvaluationContext()->getTargetingKey(),
+            );
+        } catch (Throwable $failure) {
+            $this->logFailure($context->getFlagKey(), $failure);
+        }
     }
 
     public function finally(HookContext $context, HookHints $hints): void
@@ -100,13 +110,22 @@ final class ExposureEventHook implements Hook
         try {
             $this->events->publish($event);
         } catch (Throwable $failure) {
-            $this->logger->debug('Publishing the exposure of feature flag [{flag}] failed: {error}', ['flag' => $event->key, 'error' => $failure->getMessage()]);
+            $this->logFailure($event->key, $failure);
         }
     }
 
     public function supportsFlagValueType(string $flagValueType): bool
     {
         return true;
+    }
+
+    private function logFailure(string $key, Throwable $failure): void
+    {
+        try {
+            $this->logger->debug('Publishing the exposure of feature flag [{flag}] failed: {error}', ['flag' => $key, 'error' => $failure->getMessage()]);
+        } catch (Throwable) {
+            // Logging is best effort too: telemetry must not change an evaluation.
+        }
     }
 
     /** The code the SDK answers a thrown failure with: the one it carries, else GENERAL. */

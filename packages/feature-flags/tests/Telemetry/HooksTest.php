@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\FeatureFlags\Context\EvaluationContextResolver;
+use Firefly\FeatureFlags\Definition\Json;
+use Firefly\FeatureFlags\Evaluation\FlagType;
 use Firefly\FeatureFlags\Event\FeatureFlagEvaluated;
 use Firefly\FeatureFlags\FeatureFlags;
 use Firefly\FeatureFlags\FlagEvaluation;
@@ -31,6 +33,8 @@ use OpenFeature\interfaces\provider\ResolutionDetails;
 use OpenFeature\interfaces\provider\ResolutionError;
 use OpenFeature\interfaces\provider\ThrowableWithResolutionError;
 use OpenFeature\isolated\OpenFeatureAPIFactory;
+use Psr\Log\AbstractLogger;
+use Symfony\Component\Process\Process;
 
 final class FeatureFlagsRecordingMetrics implements FeatureFlagMetrics
 {
@@ -327,4 +331,233 @@ it('exposes a copy of the served value, which the caller cannot change afterward
         ->and($exposures[0]->value)->toEqual(['style' => (object) ['color' => 'red']])
         ->and($exposures[1]->value)->toEqual(['style' => (object) ['color' => 'blue']])
         ->and([$exposures[1]->reason, $exposures[1]->errorCode])->toBe(['ERROR', 'GENERAL']);
+});
+
+it('copies shared and cyclic object graphs within bounded memory on both SDK paths', function (bool $failed): void {
+    $script = <<<'SCRIPT'
+require 'vendor/autoload.php';
+$leaf = (object) ['label' => 'original'];
+$leaf->self = $leaf;
+$graph = $leaf;
+for ($i = 0; $i < 20; $i++) {
+    $graph = (object) ['left' => $graph, 'right' => $graph];
+}
+$events = new Firefly\Testing\Double\RecordingApplicationEventPublisher;
+$hook = new Firefly\FeatureFlags\Telemetry\ExposureEventHook($events);
+$provider = new OpenFeature\implementation\provider\NoOpProvider;
+$flags = new Firefly\FeatureFlags\FeatureFlags($provider, new Firefly\FeatureFlags\Context\EvaluationContextResolver, [$hook], null, OpenFeature\isolated\OpenFeatureAPIFactory::createAPI());
+SCRIPT;
+    if ($failed) {
+        $script .= <<<'SCRIPT'
+$provider = new class extends OpenFeature\implementation\provider\NoOpProvider {
+    public function resolveObjectValue(string $flagKey, array $defaultValue, ?OpenFeature\interfaces\flags\EvaluationContext $context = null): OpenFeature\interfaces\provider\ResolutionDetails {
+        throw new RuntimeException('provider down');
+    }
+};
+$flags = new Firefly\FeatureFlags\FeatureFlags($provider, new Firefly\FeatureFlags\Context\EvaluationContextResolver, [$hook], null, OpenFeature\isolated\OpenFeatureAPIFactory::createAPI());
+SCRIPT;
+    }
+    $script .= <<<'SCRIPT'
+foreach ([1, 2] as $evaluation) {
+    $served = $flags->getObject('graph', ['tree' => $graph]);
+    if ($served['tree'] !== $graph) { throw new RuntimeException('changed caller value'); }
+}
+$first = $events->events[0]->value['tree'];
+$second = $events->events[1]->value['tree'];
+if ($first === $graph || $first === $second) { throw new RuntimeException('shared snapshot'); }
+for ($i = 0; $i < 20; $i++) {
+    if ($first->left !== $first->right) { throw new RuntimeException('lost alias'); }
+    $first = $first->left;
+}
+$leaf->label = 'changed';
+if ($first->self !== $first || $first === $leaf || $first->label !== 'original') { throw new RuntimeException('lost cycle or isolation'); }
+echo $events->events[0]->reason;
+SCRIPT;
+    $process = new Process([PHP_BINARY, '-d', 'memory_limit=32M', '-r', $script], dirname(__DIR__, 4));
+    $process->setTimeout(10);
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput())
+        ->and($process->getOutput())->toBe($failed ? 'ERROR' : 'UNKNOWN');
+})->with([false, true]);
+
+it('contains copy failures and drops stale successful exposures on an unsupported default', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $logger = new RecordingLogger;
+    $array = [];
+    $array['self'] = &$array;
+    $flags = featureFlagsWithProvider(new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue(['ok' => true])->withReason('STATIC')->build(),
+    ), [new FeatureFlagsFailingHook('after'), new ExposureEventHook($events, $logger)]);
+
+    $value = $flags->getObject('graph', $array);
+
+    expect(array_keys($value))->toBe(['self'])
+        ->and($events->events)->toBe([])
+        ->and($logger->count('debug', 'array references'))->toBe(1);
+});
+
+it('keeps successful evaluation unchanged when its array reference snapshot is unsupported', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $logger = new RecordingLogger;
+    $shared = ['ok' => true];
+    $value = ['left' => &$shared, 'right' => &$shared];
+    $flags = featureFlagsWithProvider(new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue($value)->withReason('STATIC')->build(),
+    ), [new ExposureEventHook($events, $logger)]);
+
+    expect($flags->getObject('graph'))->toBe($value)
+        ->and($events->events)->toBe([])
+        ->and($logger->count('debug', 'array references'))->toBe(1);
+});
+
+it('contains a broken debug logger in both hooks without SDK protection', function (): void {
+    $metrics = new FeatureFlagsRecordingMetrics;
+    $metrics->broken = true;
+    $publisher = new class implements ApplicationEventPublisher
+    {
+        public function publish(object $event): void
+        {
+            throw new RuntimeException('publisher down');
+        }
+    };
+    $logger = new class extends AbstractLogger
+    {
+        public int $calls = 0;
+
+        public function log($level, string|Stringable $message, array $context = []): void
+        {
+            $this->calls++;
+            throw new RuntimeException('logger down');
+        }
+    };
+    $context = (new HookContextBuilder)->withFlagKey('on')->withType(FlagValueType::BOOLEAN)->withDefaultValue(false)->withEvaluationContext(new FlagsEvaluationContext)->build();
+    $details = (new ResolutionDetailsBuilder)->withValue(true)->build();
+    $hints = new FlagsHookHints;
+    foreach ([new MetricsHook($metrics, $logger), new ExposureEventHook($publisher, $logger)] as $hook) {
+        expect($hook->before($context, $hints))->toBeNull();
+        $hook->after($context, $details, $hints);
+        $hook->finally($context, $hints);
+        $hook->error($context, new RuntimeException('provider down'), $hints);
+        $hook->finally($context, $hints);
+    }
+    expect($logger->calls)->toBe(4);
+});
+
+it('limits snapshot isolation to JSON values and keeps nested foreign objects by identity', function (): void {
+    $events = new RecordingApplicationEventPublisher;
+    $date = new DateTime('2026-01-01');
+    $flags = featureFlagsWithProvider(new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue(['nested' => (object) ['date' => $date]])->build(),
+    ), [new ExposureEventHook($events)]);
+    $flags->getObject('date');
+    /** @var FeatureFlagEvaluated $event */
+    $event = $events->events[0];
+    /** @var array{nested: stdClass} $snapshot */
+    $snapshot = $event->value;
+    expect($snapshot['nested']->date)->toBe($date);
+});
+
+it('copies wide valid stored values and ordinary defaults across every copy entry point', function (): void {
+    $wide = array_fill(0, 10001, (object) ['label' => 'original']);
+    $document = StaticDocument::json(Json::encode([
+        'flags' => ['wide' => ['state' => 'ENABLED', 'variants' => ['v' => $wide], 'defaultVariant' => 'v']],
+    ]));
+    $provider = new FireflyFlagProvider($document, new StaticFlagdEvaluator);
+    $events = new RecordingApplicationEventPublisher;
+    $flags = new FeatureFlags($provider, new EvaluationContextResolver, [new ExposureEventHook($events)], $document, OpenFeatureAPIFactory::createAPI());
+    $resolution = $provider->resolution('wide', FlagType::Object, []);
+    $details = $flags->details('wide', []);
+    $ownDetails = FlagEvaluation::fromResolution('wide', $resolution);
+    $default = ['nested' => (object) ['label' => 'default']];
+    $fallback = $flags->details('missing', $default);
+    $ownFallback = $provider->resolution('missing', FlagType::Object, $default);
+    /** @var FeatureFlagEvaluated $event */
+    $event = $events->events[0];
+    expect($resolution->value)->toHaveCount(10001)
+        ->and($details->value)->toHaveCount(10001)
+        ->and($ownDetails->value)->toHaveCount(10001)
+        ->and($event->value)->toHaveCount(10001)
+        ->and($fallback->value)->toBe(['nested' => ['label' => 'default']])
+        ->and($ownFallback->value)->toEqual($default);
+});
+
+it('omits excessively deep snapshots without replacing successful SDK values', function (): void {
+    $value = ['end' => (object) ['label' => 'original']];
+    for ($i = 0; $i < 513; $i++) {
+        $value = [$value];
+    }
+    $events = new RecordingApplicationEventPublisher;
+    $logger = new RecordingLogger;
+    $flags = featureFlagsWithProvider(new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue($value)->build(),
+    ), [new ExposureEventHook($events, $logger)]);
+    expect($flags->getObject('deep'))->toBe($value)
+        ->and($events->events)->toBe([])
+        ->and($logger->count('debug', 'depth limit'))->toBe(1);
+});
+
+it('copies repeated by-value arrays without expanding their COW tree', function (bool $failed): void {
+    $script = <<<'SCRIPT'
+require 'vendor/autoload.php';
+$leaf = (object) ['label' => 'original'];
+$value = [$leaf];
+for ($i = 0; $i < 20; $i++) { $value = [$value, $value]; }
+$events = new Firefly\Testing\Double\RecordingApplicationEventPublisher;
+$provider = new class extends OpenFeature\implementation\provider\NoOpProvider {
+    public bool $failed = false;
+    public function resolveObjectValue(string $flagKey, array $defaultValue, ?OpenFeature\interfaces\flags\EvaluationContext $context = null): OpenFeature\interfaces\provider\ResolutionDetails {
+        if ($this->failed) { throw new RuntimeException('provider down'); }
+        return parent::resolveObjectValue($flagKey, $defaultValue, $context);
+    }
+};
+SCRIPT;
+    $script .= '$provider->failed = '.($failed ? 'true' : 'false').';';
+    $script .= <<<'SCRIPT'
+$flags = new Firefly\FeatureFlags\FeatureFlags($provider, new Firefly\FeatureFlags\Context\EvaluationContextResolver, [new Firefly\FeatureFlags\Telemetry\ExposureEventHook($events)], null, OpenFeature\isolated\OpenFeatureAPIFactory::createAPI());
+$served = $flags->getObject('tree', $value);
+for ($i = 0; $i < 20; $i++) { $served = $served[0]; }
+if ($served[0] !== $leaf) { throw new RuntimeException('changed caller'); }
+$copy = $events->events[0]->value;
+$left = $copy;
+$right = $copy;
+for ($i = 0; $i < 20; $i++) { $left = $left[0]; $right = $right[1]; }
+$leaf->label = 'changed';
+if ($left[0] === $leaf || $left[0] !== $right[0] || $left[0]->label !== 'original') { throw new RuntimeException('lost isolation or alias'); }
+$copy[0] = ['replaced'];
+if ($events->events[0]->value[0] === ['replaced']) { throw new RuntimeException('lost COW isolation'); }
+echo $events->events[0]->reason;
+SCRIPT;
+    $process = new Process([PHP_BINARY, '-d', 'memory_limit=32M', '-r', $script], dirname(__DIR__, 4));
+    $process->setTimeout(10);
+    $process->run();
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput())
+        ->and($process->getOutput())->toBe($failed ? 'ERROR' : 'UNKNOWN');
+})->with([false, true]);
+
+it('keeps distinct nested arrays distinct without calling foreign serialization methods', function (): void {
+    $foreign = new class
+    {
+        public function __serialize(): array
+        {
+            throw new RuntimeException('foreign serialization must not run');
+        }
+    };
+    $first = (object) ['label' => 'first'];
+    $second = (object) ['label' => 'second'];
+    $value = [[['leaf' => $first]], [['leaf' => $second]], ['foreign' => $foreign]];
+    $events = new RecordingApplicationEventPublisher;
+    $flags = featureFlagsWithProvider(new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue($value)->build(),
+    ), [new ExposureEventHook($events)]);
+    $flags->getObject('distinct');
+    /** @var FeatureFlagEvaluated $event */
+    $event = $events->events[0];
+    /** @var array{array{array{leaf: stdClass}}, array{array{leaf: stdClass}}, array{foreign: object}} $copy */
+    $copy = $event->value;
+    expect($copy[0][0]['leaf']->label)->toBe('first')
+        ->and($copy[1][0]['leaf']->label)->toBe('second')
+        ->and($copy[0][0]['leaf'])->not->toBe($first)
+        ->and($copy[1][0]['leaf'])->not->toBe($second)
+        ->and($copy[2]['foreign'])->toBe($foreign);
 });

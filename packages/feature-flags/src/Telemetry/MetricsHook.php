@@ -81,7 +81,11 @@ final class MetricsHook implements Hook
         try {
             $this->metrics->recordEvaluation($context->getFlagKey(), $variant, $reason);
         } catch (Throwable $failure) {
-            $this->logger->debug('Recording the evaluation of feature flag [{flag}] failed: {error}', ['flag' => $context->getFlagKey(), 'error' => $failure->getMessage()]);
+            try {
+                $this->logger->debug('Recording the evaluation of feature flag [{flag}] failed: {error}', ['flag' => $context->getFlagKey(), 'error' => $failure->getMessage()]);
+            } catch (Throwable) {
+                // Logging is best effort too: telemetry must not change an evaluation.
+            }
         }
     }
 
