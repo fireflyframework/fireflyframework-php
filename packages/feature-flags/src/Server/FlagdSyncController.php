@@ -28,8 +28,12 @@ final class FlagdSyncController
         $etag = '"'.hash('sha256', $body).'"';
         $headers = ['ETag' => $etag, 'Cache-Control' => 'no-cache'];
 
-        $match = array_map('trim', explode(',', (string) $request->headers->get('If-None-Match', '')));
-        if (in_array($etag, $match, true)) {
+        $match = array_map(static function (string $value): string {
+            $value = trim($value);
+
+            return str_starts_with($value, 'W/') ? substr($value, 2) : $value;
+        }, explode(',', (string) $request->headers->get('If-None-Match', '')));
+        if (in_array($etag, $match, true) || in_array('*', $match, true)) {
             return new Response('', 304, $headers);
         }
 
