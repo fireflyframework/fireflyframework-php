@@ -11,14 +11,14 @@ use Firefly\FeatureFlags\Definition\FlagDefinition;
 use Firefly\FeatureFlags\Definition\Json;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
 
 /**
- * The `database` driver over any Laravel connection. Each write owns a transaction or a savepoint inside the caller's transaction: the flag row is read with
- * lockForUpdate (a no-op on SQLite), checked against
- * expectedVersion, then updated WHERE version = the version read — so a concurrent writer that slipped past
- * the read still loses — and one change row is appended. Definitions are stored as compact JSON with empty
+ * The database driver owns a transaction or a savepoint inside the caller's transaction. Create-only writes
+ * insert directly; unconditional puts read without locks and use a version CAS, retrying row races up to three
+ * times only in store-owned transactions. Other mutations lock their read row. One change row is appended per write. Definitions are stored as compact JSON with empty
  * objects kept as `{}` and times as UTC `Y-m-d H:i:s.u`; rows PyFly wrote (`json.dumps` spacing, microseconds)
  * read back the same.
  */
@@ -82,31 +82,67 @@ final class DatabaseFlagStore implements CommitAwareFlagStore, FlagStore, Transa
     {
         $definition = Json::members(Json::decode(self::encode($key, $definition)));
 
-        /** @var FlagChange */
-        return $this->connection->transaction(function () use ($key, $definition, $actor, $expectedVersion): FlagChange {
-            $current = $this->locked($key);
+        $attempts = $expectedVersion === null && ! $this->transactionActive() ? 3 : 1;
+        for ($attempt = 1; ; $attempt++) {
+            $rowRaced = false;
+            try {
+                return $this->putAttempt($key, $definition, $actor, $expectedVersion, $rowRaced);
+            } catch (FlagStoreConflict|QueryException $error) {
+                if ($expectedVersion === 0 && $rowRaced && $error instanceof FlagStoreConflict) {
+                    throw new FlagStoreConflict($key, $expectedVersion, $this->get($key)?->version);
+                }
+                if (! $rowRaced || $attempts === 1) {
+                    throw $error;
+                }
+                if ($attempt >= $attempts) {
+                    throw new FlagStoreConflict($key, $expectedVersion, null);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $definition
+     */
+    private function putAttempt(string $key, array $definition, ?string $actor, ?int $expectedVersion, bool &$rowRaced): FlagChange
+    {
+        return $this->connection->transaction(function () use ($key, $definition, $actor, $expectedVersion, &$rowRaced): FlagChange {
+            // Create-only writes let the primary key arbitrate absence without InnoDB gap locks.
+            $current = match ($expectedVersion) {
+                0 => null,
+                null => $this->get($key),
+                default => $this->locked($key),
+            };
             FlagStoreConflict::check($key, $expectedVersion, $current?->version);
 
             $now = ($this->clock)();
             $encoded = self::encode($key, $definition);
             $stamp = self::stamp($now);
 
-            if ($current === null) {
-                try {
-                    $this->connection->table(FeatureFlagSchema::FLAGS)->insert([
-                        'flag_key' => $key, 'definition' => $encoded, 'version' => 1, 'updated_at' => $stamp, 'updated_by' => $actor,
-                    ]);
-                } catch (UniqueConstraintViolationException) {
-                    throw new FlagStoreConflict($key, $expectedVersion, null);
+            try {
+                if ($current === null) {
+                    try {
+                        $this->connection->table(FeatureFlagSchema::FLAGS)->insert([
+                            'flag_key' => $key, 'definition' => $encoded, 'version' => 1, 'updated_at' => $stamp, 'updated_by' => $actor,
+                        ]);
+                    } catch (UniqueConstraintViolationException) {
+                        $rowRaced = true;
+                        throw new FlagStoreConflict($key, $expectedVersion, null);
+                    }
+                } else {
+                    $updated = $this->connection->table(FeatureFlagSchema::FLAGS)
+                        ->where('flag_key', $key)
+                        ->where('version', $current->version)
+                        ->update(['definition' => $encoded, 'version' => $current->version + 1, 'updated_at' => $stamp, 'updated_by' => $actor]);
+                    if ($updated !== 1) {
+                        $rowRaced = true;
+                        throw new FlagStoreConflict($key, $expectedVersion ?? $current->version, null);
+                    }
                 }
-            } else {
-                $updated = $this->connection->table(FeatureFlagSchema::FLAGS)
-                    ->where('flag_key', $key)
-                    ->where('version', $current->version)
-                    ->update(['definition' => $encoded, 'version' => $current->version + 1, 'updated_at' => $stamp, 'updated_by' => $actor]);
-                if ($updated !== 1) {
-                    throw new FlagStoreConflict($key, $expectedVersion ?? $current->version, null);
-                }
+            } catch (QueryException $error) {
+                // MariaDB snapshot isolation reports a changed row as ER_CHECKREAD, aborting the transaction.
+                $rowRaced = $this->connection->getDriverName() === 'mysql' && ($error->errorInfo[1] ?? null) === 1020;
+                throw $error;
             }
 
             return $this->record($key, FlagChange::PUT, $definition, $current?->definition, $actor, $now);
