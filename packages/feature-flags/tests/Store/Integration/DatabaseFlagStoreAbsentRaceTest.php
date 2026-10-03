@@ -12,7 +12,7 @@ use Symfony\Component\Process\Process;
 foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREFLY_MYSQL_DSN'], 'MariaDB' => ['mysql', 'FIREFLY_MARIADB_DSN']] as $backend => [$driver, $variable]) {
     foreach (['root', 'outer', 'outer-snapshot'] as $ownership) {
         foreach ([['0', 0], ['null', 0], ['null', 1]] as [$expected, $seed]) {
-            it("resolves simultaneous writes from version {$seed} atomically with expected {$expected} in {$ownership} transactions on {$backend}", function () use ($driver, $variable, $ownership, $expected, $backend, $seed): void {
+            it("resolves simultaneous writes from version {$seed} atomically with expected {$expected} in {$ownership} transactions on {$backend}", function (string $commitMode) use ($driver, $variable, $ownership, $expected, $backend, $seed): void {
                 $connection = DatabaseStoreIntegration::connection($driver, $variable);
                 FeatureFlagSchema::drop($connection->getSchemaBuilder());
                 FeatureFlagSchema::create($connection->getSchemaBuilder());
@@ -22,12 +22,15 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
                 if ($seed === 1) {
                     (new DatabaseFlagStore($connection))->put('absent-race', ['state' => 'ENABLED', 'variants' => ['on' => true], 'defaultVariant' => 'on'], 'initial', 0);
                 }
+                $connection->getSchemaBuilder()->create('recovery_markers', static function (Blueprint $table): void {
+                    $table->string('actor')->primary();
+                });
                 $snapshot = $backend === 'MariaDB' ? $connection->selectOne('SELECT @@innodb_snapshot_isolation AS enabled') : null;
                 $nativeAbort = (is_object($snapshot) && (bool) (get_object_vars($snapshot)['enabled'] ?? false)) && $ownership !== 'root' && ($expected === 'null' || $ownership === 'outer-snapshot');
                 $inputs = [new InputStream, new InputStream];
                 $processes = [];
                 foreach (['first', 'second'] as $index => $actor) {
-                    $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/Support/database-store-absent-racer.php', $driver, $variable, $actor, $ownership, $expected, $nativeAbort ? 'native-abort' : 'conflict'], timeout: 20);
+                    $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/Support/database-store-absent-racer.php', $driver, $variable, $actor, $ownership, $expected, $nativeAbort ? 'native-abort' : 'conflict', $commitMode], timeout: 20);
                     $process->setInput($inputs[$index]);
                     $processes[] = $process;
                 }
@@ -62,6 +65,7 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
                     $writes = $expected === 'null' && $ownership === 'root' ? 2 : 1;
                     $loser = $nativeAbort ? 'native-abort' : 'conflict';
                     expect($connection->table('caller_markers')->count())->toBe($ownership === 'root' ? 0 : ($nativeAbort ? 1 : 2));
+                    expect($connection->table('recovery_markers')->count())->toBe($nativeAbort ? 2 : 0);
                     $store = new DatabaseFlagStore($connection);
                     expect($outcomes)->toBe($writes === 2 ? ['success', 'success'] : [$loser, 'success'])
                         ->and($connection->table(FeatureFlagSchema::FLAGS)->count())->toBe(1)
@@ -91,9 +95,10 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
                         $process->stop();
                     }
                     $connection->getSchemaBuilder()->drop('caller_markers');
+                    $connection->getSchemaBuilder()->drop('recovery_markers');
                     FeatureFlagSchema::drop($connection->getSchemaBuilder());
                 }
-            })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+            })->with($ownership === 'root' ? ['direct'] : ['direct', 'callback'])->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
         }
     }
 }

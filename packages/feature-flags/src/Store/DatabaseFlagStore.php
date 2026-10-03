@@ -142,6 +142,9 @@ final class DatabaseFlagStore implements CommitAwareFlagStore, FlagStore, Transa
             } catch (QueryException $error) {
                 // MariaDB snapshot isolation reports a changed row as ER_CHECKREAD, aborting the transaction.
                 $rowRaced = $this->connection->getDriverName() === 'mysql' && ($error->errorInfo[1] ?? null) === 1020;
+                if ($rowRaced) {
+                    $this->callbacks->nativeTransactionAborted($error);
+                }
                 throw $error;
             }
 

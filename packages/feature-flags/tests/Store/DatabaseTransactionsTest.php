@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Firefly\FeatureFlags\Store\DatabaseFlagStore;
 use Firefly\FeatureFlags\Store\FeatureFlagSchema;
+use Firefly\FeatureFlags\Store\FlagStoreTransactionAborted;
+use Firefly\FeatureFlags\Store\StoreCommitCallbacks;
 use Firefly\FeatureFlags\Tests\Support\FlagStores;
 use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Database\QueryException;
@@ -121,4 +123,53 @@ it('never resurrects a callback when an identical replacement reuses its rolled 
     $connection->commit();
     expect($calls)->toBe(['replacement'])
         ->and($connection->table(FeatureFlagSchema::CHANGES)->count())->toBe(1);
+});
+
+it('retains native abort across child release and rollback until a new root starts', function (): void {
+    $connection = FlagStores::sqlite();
+    $callbacks = new StoreCommitCallbacks($connection);
+    $cause = new RuntimeException('native failure');
+    $calls = [];
+    $connection->beginTransaction();
+    $callbacks->afterCommit(static function () use (&$calls): void {
+        $calls[] = 'discarded';
+    });
+    $callbacks->nativeTransactionAborted($cause);
+    $connection->beginTransaction();
+    $connection->commit();
+    $connection->beginTransaction();
+    $connection->rollBack();
+    try {
+        $connection->commit();
+        Assert::fail('An aborted transaction cannot commit.');
+    } catch (FlagStoreTransactionAborted $error) {
+        expect($error->getPrevious())->toBe($cause);
+    }
+    expect($calls)->toBe([])->and($connection->transactionLevel())->toBe(0);
+    $callbacks->afterCommit(static function () use (&$calls): void {
+        $calls[] = 'still-aborted';
+    });
+    expect($calls)->toBe([]);
+    $connection->beginTransaction();
+    $callbacks->afterCommit(static function () use (&$calls): void {
+        $calls[] = 'recovered';
+    });
+    $connection->commit();
+    expect($calls)->toBe(['recovered']);
+});
+
+it('does not replay a callback transaction when its native-abort guard rejects commit', function (): void {
+    $connection = FlagStores::sqlite();
+    $callbacks = new StoreCommitCallbacks($connection);
+    $runs = 0;
+    expect(static function () use ($connection, $callbacks, &$runs): void {
+        $connection->transaction(static function () use ($callbacks, &$runs): void {
+            $runs++;
+            $callbacks->nativeTransactionAborted(new RuntimeException('native failure'));
+        }, 3);
+    })->toThrow(FlagStoreTransactionAborted::class);
+    expect($runs)->toBe(1)->and($connection->transactionLevel())->toBe(0);
+    $connection->rollBack(0);
+    $connection->transaction(static function (): void {});
+    expect($connection->transactionLevel())->toBe(0);
 });
