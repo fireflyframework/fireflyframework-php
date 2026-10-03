@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Firefly\Container\Container as FireflyContainer;
+use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\FeatureFlags\Boot\FeatureFlagsLifecycle;
 use Firefly\FeatureFlags\Definition\InvalidFlagDefinition;
 use Firefly\FeatureFlags\Evaluation\FlagdEvaluator;
 use Firefly\FeatureFlags\FeatureFlags;
@@ -14,9 +17,11 @@ use Firefly\FeatureFlags\Telemetry\FeatureFlagMetrics;
 use Firefly\FeatureFlags\Telemetry\NoOpFeatureFlagMetrics;
 use Firefly\FeatureFlags\Tests\Support\FixedProvider;
 use Firefly\FeatureFlags\Tests\Support\StaticFlagdEvaluator;
+use Illuminate\Container\Container as IlluminateContainer;
 use Illuminate\Foundation\Application;
 use OpenFeature\implementation\provider\NoOpProvider;
 use OpenFeature\interfaces\flags\Client;
+use OpenFeature\interfaces\provider\Provider;
 use OpenFeature\OpenFeatureAPI;
 
 beforeEach(fn () => OpenFeatureAPI::getInstance()->setProvider(new NoOpProvider));
@@ -85,6 +90,24 @@ it('does not restore a stopped application through a later overlapping boot', fu
     $second->close();
     expect(OpenFeatureAPI::getInstance()->getProvider())->toBe($prior);
 });
+
+it('keeps a shared external provider installed until the last overlapping lifecycle stops', function (bool $firstStopsFirst): void {
+    $prior = new NoOpProvider;
+    $shared = new FixedProvider;
+    $illuminate = new IlluminateContainer;
+    $illuminate->instance(Provider::class, $shared);
+    $beans = new FireflyContainer($illuminate, new ComponentManifest([]));
+    $first = new FeatureFlagsLifecycle($beans);
+    $second = new FeatureFlagsLifecycle($beans);
+    OpenFeatureAPI::getInstance()->setProvider($prior);
+
+    $first->start();
+    $second->start();
+    ($firstStopsFirst ? $first : $second)->stop();
+    expect(OpenFeatureAPI::getInstance()->getProvider())->toBe($shared);
+    ($firstStopsFirst ? $second : $first)->stop();
+    expect(OpenFeatureAPI::getInstance()->getProvider())->toBe($prior);
+})->with([true, false]);
 
 it('attaches hooks only to the firefly client without accumulating on reboot', function (): void {
     featureFlagsApp(['flags' => ['a' => true]]);

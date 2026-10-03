@@ -22,9 +22,13 @@ final class FeatureFlagsLifecycle implements Lifecycle
     /** @var WeakMap<self, bool>|null */
     private static ?WeakMap $active = null;
 
+    private static int $nextSequence = 0;
+
     private ?Provider $installed = null;
 
     private ?Provider $previous = null;
+
+    private int $sequence = 0;
 
     public function __construct(
         private readonly FireflyContainer $beans,
@@ -46,6 +50,7 @@ final class FeatureFlagsLifecycle implements Lifecycle
             $this->previous = $api->getProvider();
             $api->setProvider($provider);
             $this->installed = $provider;
+            $this->sequence = ++self::$nextSequence;
             self::$active ??= new WeakMap;
             self::$active[$this] = true;
         }
@@ -54,12 +59,12 @@ final class FeatureFlagsLifecycle implements Lifecycle
     public function stop(): void
     {
         if ($this->installed !== null) {
-            if ($this->api()->getProvider() === $this->installed && $this->previous !== null) {
+            if ($this->ownsCurrentProvider() && $this->previous !== null) {
                 $this->api()->setProvider($this->previous);
             } else {
                 // A later application may still be running. Redirect its restore target past this stopped one.
                 foreach (self::$active ?? [] as $lifecycle => $_) {
-                    if ($lifecycle !== $this && $lifecycle->previous === $this->installed) {
+                    if ($lifecycle !== $this && $lifecycle->api() === $this->api() && $lifecycle->previous === $this->installed) {
                         $lifecycle->previous = $this->previous;
                     }
                 }
@@ -76,5 +81,20 @@ final class FeatureFlagsLifecycle implements Lifecycle
     private function api(): API
     {
         return $this->api ?? OpenFeatureAPI::getInstance();
+    }
+
+    private function ownsCurrentProvider(): bool
+    {
+        if ($this->api()->getProvider() !== $this->installed) {
+            return false;
+        }
+
+        foreach (self::$active ?? [] as $lifecycle => $_) {
+            if ($lifecycle !== $this && $lifecycle->api() === $this->api() && $lifecycle->installed === $this->installed && $lifecycle->sequence > $this->sequence) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
