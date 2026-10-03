@@ -6,6 +6,33 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\FeatureFlags\\Evaluation\\FlagdEvaluatorConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 700,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'flagdEvaluator',
+                'returns' => 'Firefly\\FeatureFlags\\Evaluation\\FlagdEvaluator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\FeatureFlags\\FeatureFlagsAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
