@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
+use Firefly\FeatureFlags\Evaluation\FlagdEvaluator;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
 use Firefly\FeatureFlags\FeatureFlagsSettings;
 use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
+use Firefly\FeatureFlags\Tests\Support\StaticFlagdEvaluator;
 
 it('boots green when discovered alongside the bootstrap provider and stays dark while disabled', function (): void {
     $app = fireflyApplication(
@@ -22,6 +24,7 @@ it('binds the settings once firefly.feature-flags.enabled is on', function (): v
     $context = bootFireflyApp(
         ['firefly' => ['feature-flags' => ['enabled' => true]]],
         [FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
+        [FlagdEvaluator::class => new StaticFlagdEvaluator],
         needs: ['cache'],
     );
 
