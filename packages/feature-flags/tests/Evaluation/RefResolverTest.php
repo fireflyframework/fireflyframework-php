@@ -15,7 +15,7 @@ use Firefly\FeatureFlags\Evaluation\RefResolver;
 /**
  * $leaf wrapped in $lists one-item lists.
  */
-function featureFlagsNested(int $lists, mixed $leaf): mixed
+function featureFlagsRefNested(int $lists, mixed $leaf): mixed
 {
     for ($i = 0; $i < $lists; $i++) {
         $leaf = [$leaf];
@@ -47,18 +47,18 @@ it('counts a reference it cannot resolve as the object it is', function (): void
 
 it('allows 128 nesting levels, the targeting object being the first', function (): void {
     // {"!!": [[…[true]…]]}: the object is level 1 and k lists reach level k + 1.
-    expect(RefResolver::withinLimits(['!!' => featureFlagsNested(127, true)], []))->toBeTrue()
-        ->and(RefResolver::withinLimits(['!!' => featureFlagsNested(128, true)], []))->toBeFalse()
-        ->and(RefResolver::withinLimits(['!!' => featureFlagsNested(127, ['$ref' => 'nobody'])], []))->toBeFalse()
-        ->and(RefResolver::withinLimits(['!!' => featureFlagsNested(126, ['$ref' => 'nobody'])], []))->toBeTrue();
+    expect(RefResolver::withinLimits(['!!' => featureFlagsRefNested(127, true)], []))->toBeTrue()
+        ->and(RefResolver::withinLimits(['!!' => featureFlagsRefNested(128, true)], []))->toBeFalse()
+        ->and(RefResolver::withinLimits(['!!' => featureFlagsRefNested(127, ['$ref' => 'nobody'])], []))->toBeFalse()
+        ->and(RefResolver::withinLimits(['!!' => featureFlagsRefNested(126, ['$ref' => 'nobody'])], []))->toBeTrue();
 });
 
 it('puts a resolved reference in the place of its object without adding a level', function (): void {
     $evaluators = ['leaf' => ['!!' => [true]], 'alias' => ['$ref' => 'leaf']];
 
-    expect(RefResolver::withinLimits(['!!' => featureFlagsNested(125, ['$ref' => 'alias'])], $evaluators))->toBeTrue()
-        ->and(RefResolver::withinLimits(['!!' => featureFlagsNested(125, ['!!' => [true]])], $evaluators))->toBeTrue()
-        ->and(RefResolver::withinLimits(['!!' => featureFlagsNested(126, ['$ref' => 'alias'])], $evaluators))->toBeFalse();
+    expect(RefResolver::withinLimits(['!!' => featureFlagsRefNested(125, ['$ref' => 'alias'])], $evaluators))->toBeTrue()
+        ->and(RefResolver::withinLimits(['!!' => featureFlagsRefNested(125, ['!!' => [true]])], $evaluators))->toBeTrue()
+        ->and(RefResolver::withinLimits(['!!' => featureFlagsRefNested(126, ['$ref' => 'alias'])], $evaluators))->toBeFalse();
 });
 
 it('decides a fan-out or a chain of references within the budget, without building it', function (): void {

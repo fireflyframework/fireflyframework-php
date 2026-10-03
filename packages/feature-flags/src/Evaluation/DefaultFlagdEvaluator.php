@@ -45,7 +45,7 @@ use WeakMap;
  * Two departures from the reference, both contract rulings: a boolean is never a number (above), and `$ref`s
  * resolve structurally and transitively within RefResolver's limits (flagd substitutes them textually); each
  * flag's expansion is worked out once per document and kept while the document lives (a WeakMap keyed by the
- * document object, which is immutable). A defaultVariant "" is no default variant, as in flagd, even when a
+ * document object, which is shallowly immutable). A defaultVariant "" is no default variant, as in flagd, even when a
  * variant is named "" (R-default-empty).
  *
  * The JSON Logic data is the context attributes, then `$flagd` {flagKey, timestamp (Unix seconds)} and
@@ -109,7 +109,7 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
             return self::typed(new Resolution($default, null, EvaluationReason::Disabled, metadata: $metadata), $type, $default);
         }
 
-        $expansion = $this->expansion($document, $flag);
+        $expansion = $this->expansion($document, $flagKey, $flag);
         if ($expansion === null) {
             return Resolution::error($default, EvaluationError::ParseError, sprintf(
                 'The targeting of flag [%s] expands past %d JSON values or %d levels.',
@@ -162,7 +162,7 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
      *
      * @return array{0: mixed}|null
      */
-    private function expansion(FlagDocument $document, FlagDefinition $flag): ?array
+    private function expansion(FlagDocument $document, string $flagKey, FlagDefinition $flag): ?array
     {
         $targeting = $flag->targeting();
         if ($targeting === null) {
@@ -170,14 +170,14 @@ final class DefaultFlagdEvaluator implements FlagdEvaluator
         }
 
         $expansions = $this->expansions[$document] ?? [];
-        if (! array_key_exists($flag->key, $expansions)) {
-            $expansions[$flag->key] = RefResolver::withinLimits($targeting, $document->evaluators)
+        if (! array_key_exists($flagKey, $expansions)) {
+            $expansions[$flagKey] = RefResolver::withinLimits($targeting, $document->evaluators)
                 ? [RefResolver::expand($targeting, $document->evaluators)]
                 : null;
             $this->expansions[$document] = $expansions;
         }
 
-        return $expansions[$flag->key];
+        return $expansions[$flagKey];
     }
 
     /**

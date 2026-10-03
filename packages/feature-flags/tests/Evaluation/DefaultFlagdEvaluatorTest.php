@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\FeatureFlags\Definition\FlagDefinition;
 use Firefly\FeatureFlags\Definition\FlagDocument;
 use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Evaluation\DefaultFlagdEvaluator;
@@ -659,4 +660,14 @@ it('never serves one document\'s expansion to another document instance', functi
     gc_collect_cycles();
 
     expect(count(featureFlagsExpansionMemo($evaluator)))->toBe(1);
+});
+
+it('memoizes targeting by the looked-up document key', function (): void {
+    $first = FlagDefinition::fromJsonValue('same', ['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off', 'targeting' => ['if' => [true, 'on', 'off']]]);
+    $second = FlagDefinition::fromJsonValue('same', ['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'off', 'targeting' => ['if' => [false, 'on', 'off']]]);
+    $document = new FlagDocument(['first' => $first, 'second' => $second]);
+    $evaluator = new DefaultFlagdEvaluator;
+
+    expect($evaluator->evaluate($document, 'first', FlagType::Boolean, false)->value)->toBeTrue()
+        ->and($evaluator->evaluate($document, 'second', FlagType::Boolean, true)->value)->toBeFalse();
 });

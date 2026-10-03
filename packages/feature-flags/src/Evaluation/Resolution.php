@@ -17,8 +17,8 @@ use OpenFeature\interfaces\provider\ResolutionDetails;
  * with `(string) $name`, and encode the map through Json::object(), which keeps a list-like map (`{"0": …}`) a
  * JSON object.
  *
- * `readonly` is shallow: an object value (a stdClass from the document) is shared with the document it came from.
- * Treat it as read-only; toResolutionDetails() hands the SDK a converted copy.
+ * `readonly` is shallow: the constructor retains its value, while DefaultFlagdEvaluator copies document variants.
+ * toResolutionDetails() hands the SDK a converted copy.
  */
 final readonly class Resolution
 {

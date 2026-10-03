@@ -3,15 +3,17 @@
 declare(strict_types=1);
 
 use Firefly\Context\Boot\ApplicationContext;
-use Firefly\FeatureFlags\Evaluation\FlagdEvaluator;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
 use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
 use Firefly\FeatureFlags\Telemetry\FeatureFlagMetrics;
-use Firefly\FeatureFlags\Tests\Support\StaticFlagdEvaluator;
 use Firefly\Observability\FeatureFlags\MeterRegistryFeatureFlagMetrics;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\SimpleMeterRegistry;
 use Firefly\Observability\ObservabilityServiceProvider;
+use OpenFeature\implementation\provider\NoOpProvider;
+use OpenFeature\OpenFeatureAPI;
+
+afterEach(fn () => OpenFeatureAPI::getInstance()->setProvider(new NoOpProvider));
 
 it('counts evaluations as feature_flag_evaluations_total{flag, variant, reason}', function (): void {
     $recorder = new class implements MetricsRecorder
@@ -50,7 +52,6 @@ it('replaces the feature-flags NoOp when observability is installed', function (
     $context = bootFireflyApp(
         ['firefly' => ['feature-flags' => ['enabled' => true]]],
         [ObservabilityServiceProvider::class, FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
-        bindings: [FlagdEvaluator::class => new StaticFlagdEvaluator],
         needs: ['cache'],
     );
 
@@ -67,7 +68,6 @@ it('backs the port with no meter while feature flags are off or metrics are disa
     $metricsOff = bootFireflyApp(
         ['firefly' => ['feature-flags' => ['enabled' => true], 'observability' => ['metrics' => ['enabled' => false]]]],
         [ObservabilityServiceProvider::class, FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
-        bindings: [FlagdEvaluator::class => new StaticFlagdEvaluator],
         needs: ['cache'],
     );
 

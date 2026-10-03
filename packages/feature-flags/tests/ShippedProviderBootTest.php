@@ -9,7 +9,6 @@ use Firefly\Context\Event\ApplicationEventPublisher;
 use Firefly\FeatureFlags\Boot\FeatureFlagsLifecycle;
 use Firefly\FeatureFlags\Context\EvaluationContextResolver;
 use Firefly\FeatureFlags\Definition\InvalidFlagDefinition;
-use Firefly\FeatureFlags\Evaluation\FlagdEvaluator;
 use Firefly\FeatureFlags\Event\FeatureFlagsChanged;
 use Firefly\FeatureFlags\FeatureFlags;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
@@ -44,7 +43,6 @@ function featureFlagsApp(array $featureFlags, array $scan = []): Application
     return fireflyApplication(
         ['firefly' => ['feature-flags' => ['enabled' => true, ...$featureFlags], 'scan' => ['paths' => $scan]]],
         [FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
-        [FlagdEvaluator::class => new StaticFlagdEvaluator],
         needs: ['cache'],
     );
 }

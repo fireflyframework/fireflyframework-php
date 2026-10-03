@@ -77,7 +77,7 @@ final class FireflyFlagProvider extends AbstractProvider
         return $resolution->withValue(ValueCopy::of($resolution->value));
     }
 
-    /** The evaluator's answer, its value still shared with the document: callers copy or convert it. */
+    /** The evaluator's answer; callers defensively copy or convert values from custom evaluators too. */
     private function evaluate(string $flagKey, FlagType $type, mixed $default, ?EvaluationContext $context): Resolution
     {
         $resolution = $this->attempt($flagKey, $type, $default, $context);

@@ -10,10 +10,8 @@ use Firefly\FeatureFlags\Context\ApplicationEvaluationContextContributor;
 use Firefly\FeatureFlags\Context\EvaluationContextBuilder;
 use Firefly\FeatureFlags\Context\EvaluationContextContributor;
 use Firefly\FeatureFlags\Context\EvaluationContextResolver;
-use Firefly\FeatureFlags\Evaluation\FlagdEvaluator;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
 use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
-use Firefly\FeatureFlags\Tests\Support\StaticFlagdEvaluator;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContext;
 use Firefly\Security\Core\SecurityContextHolder;
@@ -22,11 +20,16 @@ use Firefly\Security\FeatureFlags\PrincipalEvaluationContextContributor;
 use Firefly\Security\SecurityServiceProvider;
 use Firefly\Security\SecurityWiringProvider;
 use Illuminate\Config\Repository;
+use OpenFeature\implementation\provider\NoOpProvider;
+use OpenFeature\OpenFeatureAPI;
 use Orchestra\Testbench\TestCase;
 
 uses(TestCase::class);
 
-afterEach(fn () => SecurityContextHolder::clearContext());
+afterEach(function (): void {
+    SecurityContextHolder::clearContext();
+    OpenFeatureAPI::getInstance()->setProvider(new NoOpProvider);
+});
 
 /** @param array<string, mixed> $flags */
 function featureFlagsSecurityContributor(array $flags = []): PrincipalEvaluationContextContributor
@@ -128,7 +131,6 @@ it('is collected after the process attributes only while security and feature fl
         $context = bootFireflyApp(
             ['firefly' => ['cqrs' => [], 'security' => ['enabled' => $security], 'feature-flags' => ['enabled' => $flags]]],
             [CqrsServiceProvider::class, CqrsWiringProvider::class, SecurityServiceProvider::class, SecurityWiringProvider::class, FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
-            [FlagdEvaluator::class => new StaticFlagdEvaluator],
             needs: ['cache'],
         );
 
