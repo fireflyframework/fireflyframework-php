@@ -252,6 +252,26 @@ return [
         ],
     ],
     6 => [
+        'class' => 'Firefly\\FeatureFlags\\Management\\FeatureFlagsHealthIndicator',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Health\\ConditionalHealthIndicator',
+            1 => 'Firefly\\Actuator\\Health\\HealthIndicator',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+            1 => 'Closure',
+        ],
+    ],
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Management\\FeatureFlagsManagementConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -282,7 +302,25 @@ return [
         'dependencies' => [
         ],
     ],
-    7 => [
+    8 => [
+        'class' => 'Firefly\\FeatureFlags\\Management\\FlagsEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+        ],
+    ],
+    9 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -300,7 +338,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    8 => [
+    10 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -318,7 +356,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    9 => [
+    11 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -337,7 +375,7 @@ return [
             1 => 'Illuminate\\Http\\Client\\Factory',
         ],
     ],
-    10 => [
+    12 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -356,7 +394,7 @@ return [
             1 => 'Firefly\\Container\\Container',
         ],
     ],
-    11 => [
+    13 => [
         'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
         'stereotype' => 'configuration',
         'name' => null,

@@ -1138,9 +1138,10 @@ still ahead, accurately:
   round-trip test (RabbitMQ, Postgres, Kafka) gated behind Docker + a live connection string — these run
   on demand, not in the default `vendor/bin/pest`/CI pass; wiring a scheduled/opt-in CI lane for them is
   still open.
-- **More actuator endpoints.** Fifteen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
+- **More actuator endpoints.** Sixteen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
   `/mappings`, `/loggers`, `/scheduledtasks`, `/caches`, `/configprops`, `/metrics`, `/prometheus`,
-  `/process`, `/httpexchanges`, and `/oauth2clients` when the authorization server is installed — and
+  `/process`, `/httpexchanges`, `/oauth2clients` when the authorization server is installed, and `/flags`
+  when feature flags are enabled — and
   `firefly.management.server.port` moves the whole surface onto a second listener, with `ManagementPortGuard`
   making the actuator refuse the application port and `php artisan firefly:management:serve` running that
   second listener in development. Spring Boot's `/refresh`, `/threaddump` and `/shutdown` are still not

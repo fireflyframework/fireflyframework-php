@@ -60,7 +60,7 @@ final class ActuatorDispatchAction
             /** @var array<string, mixed> $body */
             $body = $request->isJson() ? (array) $request->json()->all() : $request->request->all();
 
-            $result = $endpoint->handle(new EndpointRequest($request->getMethod(), $subPath, $query, $body));
+            $result = $endpoint->handle(new EndpointRequest($request->getMethod(), $subPath, $query, $body, $request->isJson() ? $request->getContent() : null));
             if ($result === null) {
                 return $this->problems->render($this->notFound(), $request);
             }

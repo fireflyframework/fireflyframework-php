@@ -61,7 +61,7 @@ taxonomy without acquiring a framework dependency — and it is the reason `dept
 ## Ports and adapters, enforced
 
 The rule that domain code depends only on ports is not a convention here; it is a build step.
-`deptrac.yaml` declares **one layer per package** — 28 of them, each collecting `packages/<name>/src/.*` —
+`deptrac.yaml` declares **one layer per package** — 29 of them, each collecting `packages/<name>/src/.*` —
 and then a `ruleset` that gives, for every layer, the *complete* list of layers it is allowed to reference.
 Anything not on that list is a violation, and `composer check` runs `deptrac analyse` as its fourth step, so
 a `use` statement pointing the wrong way fails the gate rather than a review.
@@ -268,10 +268,10 @@ onto every record beside the correlation and request ids, and `firefly.logging.s
 `json`, `ecs` or `logstash`, or empty for plain text — decides how a line is rendered, attached per channel
 at resolution time.
 
-Metrics and introspection are the actuator's. Fifteen `ActuatorEndpoint` implementations ship, discovered
+Metrics and introspection are the actuator's. Sixteen `ActuatorEndpoint` implementations ship, discovered
 into the `ActuatorRegistry` — health, info, env, beans, conditions, mappings, loggers, scheduledtasks, caches,
-configprops, metrics, prometheus, process, httpexchanges, and oauth2clients when the authorization server is
-installed — and the sensitive ones answer **404** until named in
+configprops, metrics, prometheus, process, httpexchanges, oauth2clients when the authorization server is
+installed, and flags when feature flags are enabled — and the sensitive ones answer **404** until named in
 `firefly.management.endpoints.web.exposure.include`. `firefly/admin` renders those same beans server-side by
 resolving them **in-process from that registry**, never by fetching its own HTTP surface: one data path, and
 pages the JSON surface deliberately keeps unexposed. That is also why the dashboard's own URL is its entire
