@@ -10,6 +10,7 @@ use Firefly\Container\Scanner\ComponentManifest;
 use Firefly\FeatureFlags\Context\EvaluationContextResolver;
 use Firefly\FeatureFlags\Evaluation\DefaultFlagdEvaluator;
 use Firefly\FeatureFlags\FeatureFlagsSettings;
+use Firefly\FeatureFlags\Management\FlagActorSource;
 use Firefly\FeatureFlags\Management\FlagManagement;
 use Firefly\FeatureFlags\Management\FlagsEndpoint;
 use Firefly\FeatureFlags\Provider\FireflyFlagProvider;
@@ -89,14 +90,30 @@ it('answers every refusal as {error, message} with its status', function (string
     ['bad-request', 400],
 ]);
 
-it('records `admin` for ?via=admin and `actuator` otherwise', function (): void {
+it('records admin only for a trusted in-process origin', function (): void {
     $fixtures = new ManagementFixtures(ManagementFixtures::flags());
     $endpoint = featureFlagsEndpoint($fixtures->management);
 
-    $endpoint->handle(new EndpointRequest('POST', ['kill-switch'], ['via' => 'admin'], ['action' => 'enable']));
-    $endpoint->handle(new EndpointRequest('POST', ['kill-switch'], ['via' => 'elsewhere'], ['action' => 'disable']));
+    $endpoint->handle(new EndpointRequest('POST', ['kill-switch'], [], ['action' => 'enable'], origin: 'admin'));
+    $endpoint->handle(new EndpointRequest('POST', ['kill-switch'], ['via' => 'admin'], ['action' => 'disable']));
 
     expect(array_column($fixtures->management->describe('kill-switch')['history'], 'actor'))->toBe(['actuator', 'admin']);
+});
+
+it('keeps the authenticated actor ahead of the trusted admin origin', function (): void {
+    $principal = new class implements FlagActorSource
+    {
+        public function actor(): string
+        {
+            return 'operator';
+        }
+    };
+    $fixtures = new ManagementFixtures(ManagementFixtures::flags(), actors: [$principal]);
+    $endpoint = featureFlagsEndpoint($fixtures->management);
+
+    $endpoint->handle(new EndpointRequest('POST', ['kill-switch'], [], ['action' => 'enable'], origin: 'admin'));
+
+    expect(array_column($fixtures->management->describe('kill-switch')['history'], 'actor'))->toBe(['operator']);
 });
 
 it('serves an external provider as read-only with an empty overview', function (): void {

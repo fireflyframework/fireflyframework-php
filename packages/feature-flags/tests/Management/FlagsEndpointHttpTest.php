@@ -7,6 +7,17 @@ use Illuminate\Config\Repository;
 
 uses(ManagementEndpointTestCase::class);
 
+it('does not let HTTP input claim the admin audit origin', function (): void {
+    /** @var ManagementEndpointTestCase $this */
+    $this->postJson('/actuator/flags/0?via=admin&origin=admin', [
+        'action' => 'enable',
+        'origin' => 'admin',
+        'via' => 'admin',
+    ], ['X-Origin' => 'admin'])->assertOk();
+
+    $this->getJson('/actuator/flags/0')->assertOk()->assertJsonPath('history.0.actor', 'actuator');
+});
+
 it('honors the per-endpoint enable switch', function (): void {
     /** @var ManagementEndpointTestCase $this */
     $this->getJson('/actuator/flags')->assertOk();

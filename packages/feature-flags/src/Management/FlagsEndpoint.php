@@ -19,8 +19,8 @@ use JsonException;
  * The body is encoded with Json::encode() and handed over as text: identical JSON in both frameworks means a
  * float variant stays `1.0` and an empty object stays `{}`, which the dispatcher's own json_encode() of an array
  * would not keep. For the same reason a POST is read from the raw JSON body when there is one (the dispatcher's
- * parsed array has already turned `{}` into `[]`). `?via=admin` is the admin page's in-process call: its actor
- * fallback is `admin`.
+ * parsed array has already turned `{}` into `[]`). Only the trusted in-process request origin selects the
+ * `admin` actor fallback; HTTP query parameters cannot select an audit actor.
  */
 #[Component]
 final class FlagsEndpoint implements ActuatorEndpoint
@@ -52,7 +52,7 @@ final class FlagsEndpoint implements ActuatorEndpoint
             }
 
             if ($request->method === 'POST' && $key !== null) {
-                return self::json($management->apply($key, self::body($request), ($request->query['via'] ?? null) === 'admin' ? 'admin' : 'actuator'));
+                return self::json($management->apply($key, self::body($request), $request->origin === 'admin' ? 'admin' : 'actuator'));
             }
         } catch (FlagManagementException $refused) {
             return self::json($refused->toArray(), $refused->error->status());
