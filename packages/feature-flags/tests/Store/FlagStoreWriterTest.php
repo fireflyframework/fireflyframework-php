@@ -13,6 +13,7 @@ use Firefly\FeatureFlags\Registry\FlagRegistry;
 use Firefly\FeatureFlags\Source\FlagSource;
 use Firefly\FeatureFlags\Source\SourceSnapshot;
 use Firefly\FeatureFlags\Store\CommitAwareFlagStore;
+use Firefly\FeatureFlags\Store\DatabaseFlagStore;
 use Firefly\FeatureFlags\Store\FlagChange;
 use Firefly\FeatureFlags\Store\FlagStore;
 use Firefly\FeatureFlags\Store\FlagStoreWriter;
@@ -332,3 +333,25 @@ it('rejects invalid definitions before writing and only publishes actual deletes
         ->and($registry->document()->flag('k'))->toBeNull()
         ->and(array_map(static fn (object $event): string => $event instanceof FeatureFlagUpdated ? $event->action : '', $events->ofType(FeatureFlagUpdated::class)))->toBe(['put', 'delete']);
 });
+
+it('refreshes and publishes SQL writes only at their root commit', function (bool $rollback, string $action): void {
+    $connection = FlagStores::sqlite();
+    $store = new DatabaseFlagStore($connection, FlagStores::clock());
+    $definition = ['state' => 'ENABLED', 'variants' => ['on' => true], 'defaultVariant' => 'on'];
+    if ($action === 'delete') {
+        $store->put('k', $definition, 'ada');
+    }
+    [$writer, $registry, $events] = featureFlagsWriterFixture($store);
+    $connection->beginTransaction();
+    $change = $action === 'put' ? $writer->put('k', $definition, 'ada') : $writer->delete('k', 'ada');
+    expect($change?->action)->toBe($action)
+        ->and($registry->document()->flag('k')?->defaultVariant())->toBe($action === 'delete' ? 'on' : null)
+        ->and($events->ofType(FeatureFlagUpdated::class))->toBe([]);
+    if ($rollback) {
+        $connection->rollBack();
+    } else {
+        $connection->commit();
+    }
+    expect($events->ofType(FeatureFlagUpdated::class))->toHaveCount($rollback ? 0 : 1)
+        ->and($registry->document()->flag('k')?->defaultVariant())->toBe(($action === 'put') !== $rollback ? 'on' : null);
+})->with([false, true])->with(['put', 'delete']);
