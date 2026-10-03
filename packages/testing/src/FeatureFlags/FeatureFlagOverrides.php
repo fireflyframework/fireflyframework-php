@@ -6,6 +6,7 @@ namespace Firefly\Testing\FeatureFlags;
 
 use Firefly\FeatureFlags\Definition\FlagDefinitions;
 use Firefly\FeatureFlags\Definition\Json;
+use Firefly\FeatureFlags\Provider\ValueCopy;
 use Firefly\FeatureFlags\Registry\FlagRegistry;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Container\Container as ContainerContract;
@@ -69,17 +70,22 @@ final class FeatureFlagOverrides
     /** @return array<array-key, mixed> */
     public function flags(): array
     {
-        return $this->flags;
+        /** @var array<array-key, mixed> $snapshot */
+        $snapshot = ValueCopy::of($this->flags);
+
+        return $snapshot;
     }
 
     /** @param array<array-key, mixed> $flags */
     private function apply(array $flags): self
     {
-        $document = $flags === [] ? null : FlagDefinitions::parseDocument([
-            'flags' => Json::object(FlagDefinitions::normalize($flags)),
+        /** @var array<array-key, mixed> $owned */
+        $owned = ValueCopy::of($flags);
+        $document = $owned === [] ? null : FlagDefinitions::parseDocument([
+            'flags' => Json::object(FlagDefinitions::normalize($owned)),
         ]);
         $this->registry->overrideForTests($document);
-        $this->flags = $flags;
+        $this->flags = $owned;
 
         return $this;
     }

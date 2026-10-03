@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\FeatureFlags\Definition\InvalidFlagDefinition;
+use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\FeatureFlags;
 use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
 use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
@@ -82,6 +83,53 @@ it('rejects invalid changes without losing the last valid override set', functio
 
     expect(fn () => $overrides->set('valid', 7))->toThrow(InvalidFlagDefinition::class);
     expect($overrides->flags())->toBe(['valid' => true]);
+});
+
+it('owns caller definitions and getter snapshots across unrelated merges', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true]);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+    $definition = (object) ['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => 'on'];
+    $overrides = withFeatureFlags(['a' => $definition]);
+
+    $definition->defaultVariant = 'off';
+    expect($registry->document()->flag('a')?->defaultVariant())->toBe('on');
+
+    $snapshot = $overrides->flags();
+    $returned = $snapshot['a'];
+    if (! $returned instanceof stdClass) {
+        throw new LogicException('Expected the full definition to remain an object.');
+    }
+    $returned->state = 'INVALID';
+    $overrides->set('b', true);
+
+    expect($registry->document()->flag('a')?->defaultVariant())->toBe('on')
+        ->and($registry->document()->flag('a')?->state())->toBe('ENABLED')
+        ->and(Json::members($overrides->flags()['a'])['state'])->toBe('ENABLED')
+        ->and($registry->document()->flag('b'))->not->toBeNull();
+});
+
+it('owns nested JSON objects without changing their object and list shapes', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true]);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+    $value = (object) ['empty' => (object) [], 'items' => []];
+    $overrides = withFeatureFlags(['object' => ['state' => 'ENABLED', 'variants' => ['v' => $value], 'defaultVariant' => 'v']]);
+
+    $value->empty->changed = true;
+    $value->items[] = 'changed';
+    expect(Json::encode($registry->document()->flag('object')?->variantValue('v')))->toBe('{"empty":{},"items":[]}');
+
+    $snapshot = $overrides->flags();
+    $returned = Json::members(Json::members($snapshot['object'])['variants'])['v'];
+    if (! $returned instanceof stdClass || ! $returned->empty instanceof stdClass) {
+        throw new LogicException('Expected the nested variant and empty member to remain objects.');
+    }
+    $returned->empty->changed = true;
+    $overrides->set('other', false);
+
+    expect(Json::encode($registry->document()->flag('object')?->variantValue('v')))->toBe('{"empty":{},"items":[]}')
+        ->and(Json::encode(Json::members(Json::members($overrides->flags()['object'])['variants'])['v']))->toBe('{"empty":{},"items":[]}');
 });
 
 it('isolates overrides between application registries', function (): void {
