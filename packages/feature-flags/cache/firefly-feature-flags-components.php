@@ -217,6 +217,25 @@ return [
         ],
     ],
     6 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Source\\FlagSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
+            1 => 'Illuminate\\Http\\Client\\Factory',
+        ],
+    ],
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -235,7 +254,7 @@ return [
             1 => 'Firefly\\Container\\Container',
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
         'stereotype' => 'configuration',
         'name' => null,

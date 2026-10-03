@@ -294,6 +294,41 @@ return [
         ],
     ],
     6 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.sources.http.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            2 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                'args' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
         'postConstruct' => [
         ],
@@ -328,7 +363,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
         'postConstruct' => [
         ],
