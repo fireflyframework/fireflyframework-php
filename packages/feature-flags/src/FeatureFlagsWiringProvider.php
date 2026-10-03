@@ -6,11 +6,12 @@ namespace Firefly\FeatureFlags;
 
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
+use Firefly\FeatureFlags\Gating\BladeDirectives;
+use Firefly\FeatureFlags\Gating\FeatureFlagRouteGatingPass;
+use Illuminate\View\Compilers\BladeCompiler;
 
 /**
- * The boot-pass half of firefly/feature-flags: route gating, the sync route, migrations, Blade directives and
- * the console command are added here by the lanes that own them. Nothing is bound here — every collaborator
- * is a #[Bean] or a #[Component] described by the package manifests.
+ * The boot-pass half of firefly/feature-flags. Beans are described by the package manifests.
  */
 final class FeatureFlagsWiringProvider extends FireflyServiceProvider
 {
@@ -19,8 +20,13 @@ final class FeatureFlagsWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [];
+        return [new FeatureFlagRouteGatingPass];
     }
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        $this->callAfterResolving('blade.compiler', static function (BladeCompiler $blade): void {
+            BladeDirectives::register($blade);
+        });
+    }
 }
