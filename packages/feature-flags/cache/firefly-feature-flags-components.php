@@ -181,6 +181,23 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagsGatingConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -234,7 +251,7 @@ return [
         'dependencies' => [
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -252,7 +269,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'stereotype' => 'component',
         'name' => null,

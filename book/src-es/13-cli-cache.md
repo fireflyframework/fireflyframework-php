@@ -185,6 +185,7 @@ final class ManifestCacheWriter
     {
         return new ProxyPlanner([
             new ObservabilityAdviceSource,
+            new FeatureFlagAdviceSource,
             new MethodSecurityAdviceSource,
             new ResilienceAdviceSource,
             new TransactionalAdviceSource,

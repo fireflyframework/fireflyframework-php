@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Data\Proxy\MethodInterceptor;
 use Firefly\Data\Proxy\MethodInvocation;
 use Firefly\FeatureFlags\Gating\FeatureFlagDisabledException;
 use Firefly\FeatureFlags\Gating\FeatureFlagMethodDescriptor;
@@ -66,17 +67,31 @@ it('calls a named fallback with the arguments on the actual receiver', function 
         ->and($target->calls)->toBe(0);
 });
 
-it('does not re-enter the gate when a class-level fallback is proxied', function (): void {
+it('does not re-enter the gate when a class-level fallback is proxied and still runs other advice', function (): void {
     $gate = GateFixtures::gate();
     $decisions = new RouteGateDecisions(new Container);
     $interceptor = new FeatureFlagMethodInterceptor($gate, $decisions);
-    $target = new class($interceptor) extends FeatureFlagsPricing
+    $other = new class implements MethodInterceptor
     {
-        public function __construct(private readonly FeatureFlagMethodInterceptor $interceptor) {}
+        public int $calls = 0;
+
+        public function invoke(MethodInvocation $invocation): mixed
+        {
+            $this->calls++;
+
+            return $invocation->proceed();
+        }
+    };
+    $target = new class($interceptor, $other) extends FeatureFlagsPricing
+    {
+        public function __construct(
+            private readonly FeatureFlagMethodInterceptor $interceptor,
+            private readonly MethodInterceptor $other,
+        ) {}
 
         public function legacy(int $cents): string
         {
-            $invocation = new MethodInvocation($this, FeatureFlagsPricing::class, 'legacy', [$cents], [$this->interceptor], [FeatureFlagMethodDescriptor::class => new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'legacy', 'off', fallback: 'legacy')], static function (array $arguments): string {
+            $invocation = new MethodInvocation($this, FeatureFlagsPricing::class, 'legacy', [$cents], [$this->interceptor, $this->other], [FeatureFlagMethodDescriptor::class => new FeatureFlagMethodDescriptor(FeatureFlagsPricing::class, 'legacy', 'off', fallback: 'legacy')], static function (array $arguments): string {
                 $value = $arguments[0] ?? null;
                 if (! is_int($value)) {
                     throw new LogicException('Expected a cent amount');
@@ -102,7 +117,8 @@ it('does not re-enter the gate when a class-level fallback is proxied', function
         return 'new:'.$value;
     });
 
-    expect($invocation->proceed())->toBe('fallback:100');
+    expect($invocation->proceed())->toBe('fallback:100')
+        ->and($other->calls)->toBe(1);
 });
 
 it('trusts the route decision only on matching route rows of the current request', function (): void {
