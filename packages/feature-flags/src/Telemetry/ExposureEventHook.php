@@ -32,7 +32,7 @@ use WeakMap;
  *
  * JSON values (arrays/stdClass/scalars/null) are isolated snapshots; stdClass aliases and cycles are preserved.
  * Foreign objects, even nested ones, retain their identity. Unsupported array references or excessive depth
- * omit the exposure, with best-effort DEBUG logging; no partially shared JSON snapshot is published.
+ * or more than 10000 value occurrences omit the exposure, with best-effort DEBUG logging; no partially shared JSON snapshot is published.
  *
  * A preview (hook hint FeatureFlags::PREVIEW_HINT, CONTRACT.md I-3) publishes nothing. Copy, listener and logger
  * failures never change the evaluation: the SDK runs `after` hooks unguarded, so this hook contains them.
@@ -67,7 +67,7 @@ final class ExposureEventHook implements Hook
 
             $this->exposures[$context] = new FeatureFlagEvaluated(
                 $context->getFlagKey(),
-                ValueCopy::of($details->getValue()),
+                ValueCopy::forExposure($details->getValue()),
                 $failed ? null : $details->getVariant(),
                 $failed ? 'ERROR' : ($details->getReason() ?? 'UNKNOWN'),
                 $error?->getResolutionErrorCode()->getValue(),
@@ -88,7 +88,7 @@ final class ExposureEventHook implements Hook
         try {
             $this->exposures[$context] = new FeatureFlagEvaluated(
                 $context->getFlagKey(),
-                ValueCopy::of($context->getDefaultValue()),
+                ValueCopy::forExposure($context->getDefaultValue()),
                 null,
                 'ERROR',
                 self::errorCode($error),

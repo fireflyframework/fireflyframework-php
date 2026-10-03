@@ -333,13 +333,12 @@ it('exposes a copy of the served value, which the caller cannot change afterward
         ->and([$exposures[1]->reason, $exposures[1]->errorCode])->toBe(['ERROR', 'GENERAL']);
 });
 
-it('copies shared and cyclic object graphs within bounded memory on both SDK paths', function (bool $failed): void {
+it('copies small shared object graphs within bounded memory on both SDK paths', function (bool $failed): void {
     $script = <<<'SCRIPT'
 require 'vendor/autoload.php';
 $leaf = (object) ['label' => 'original'];
-$leaf->self = $leaf;
 $graph = $leaf;
-for ($i = 0; $i < 20; $i++) {
+for ($i = 0; $i < 10; $i++) {
     $graph = (object) ['left' => $graph, 'right' => $graph];
 }
 $events = new Firefly\Testing\Double\RecordingApplicationEventPublisher;
@@ -365,12 +364,18 @@ foreach ([1, 2] as $evaluation) {
 $first = $events->events[0]->value['tree'];
 $second = $events->events[1]->value['tree'];
 if ($first === $graph || $first === $second) { throw new RuntimeException('shared snapshot'); }
-for ($i = 0; $i < 20; $i++) {
+for ($i = 0; $i < 10; $i++) {
     if ($first->left !== $first->right) { throw new RuntimeException('lost alias'); }
     $first = $first->left;
 }
 $leaf->label = 'changed';
-if ($first->self !== $first || $first === $leaf || $first->label !== 'original') { throw new RuntimeException('lost cycle or isolation'); }
+if ($first === $leaf || $first->label !== 'original') { throw new RuntimeException('lost cycle or isolation'); }
+$cycle = new stdClass;
+$cycle->self = $cycle;
+$cycleCopy = Firefly\FeatureFlags\Provider\ValueCopy::of($cycle);
+if ($cycleCopy === $cycle || $cycleCopy->self !== $cycleCopy) { throw new RuntimeException('lost helper cycle'); }
+$flags->getObject('cycle', ['cycle' => $cycle]);
+if (count($events->events) !== 2) { throw new RuntimeException('cyclic exposure was not omitted'); }
 echo $events->events[0]->reason;
 SCRIPT;
     $process = new Process([PHP_BINARY, '-d', 'memory_limit=32M', '-r', $script], dirname(__DIR__, 4));
@@ -394,7 +399,7 @@ it('contains copy failures and drops stale successful exposures on an unsupporte
 
     expect(array_keys($value))->toBe(['self'])
         ->and($events->events)->toBe([])
-        ->and($logger->count('debug', 'array references'))->toBe(1);
+        ->and($logger->count('debug', '10000'))->toBe(1);
 });
 
 it('keeps successful evaluation unchanged when its array reference snapshot is unsupported', function (): void {
@@ -477,7 +482,8 @@ it('copies wide valid stored values and ordinary defaults across every copy entr
     expect($resolution->value)->toHaveCount(10001)
         ->and($details->value)->toHaveCount(10001)
         ->and($ownDetails->value)->toHaveCount(10001)
-        ->and($event->value)->toHaveCount(10001)
+        ->and($events->events)->toHaveCount(1)
+        ->and($event->key)->toBe('missing')
         ->and($fallback->value)->toBe(['nested' => ['label' => 'default']])
         ->and($ownFallback->value)->toEqual($default);
 });
@@ -497,12 +503,12 @@ it('omits excessively deep snapshots without replacing successful SDK values', f
         ->and($logger->count('debug', 'depth limit'))->toBe(1);
 });
 
-it('copies repeated by-value arrays without expanding their COW tree', function (bool $failed): void {
+it('copies small repeated by-value arrays without expanding their COW tree', function (bool $failed): void {
     $script = <<<'SCRIPT'
 require 'vendor/autoload.php';
 $leaf = (object) ['label' => 'original'];
 $value = [$leaf];
-for ($i = 0; $i < 20; $i++) { $value = [$value, $value]; }
+for ($i = 0; $i < 8; $i++) { $value = [$value, $value]; }
 $events = new Firefly\Testing\Double\RecordingApplicationEventPublisher;
 $provider = new class extends OpenFeature\implementation\provider\NoOpProvider {
     public bool $failed = false;
@@ -516,12 +522,12 @@ SCRIPT;
     $script .= <<<'SCRIPT'
 $flags = new Firefly\FeatureFlags\FeatureFlags($provider, new Firefly\FeatureFlags\Context\EvaluationContextResolver, [new Firefly\FeatureFlags\Telemetry\ExposureEventHook($events)], null, OpenFeature\isolated\OpenFeatureAPIFactory::createAPI());
 $served = $flags->getObject('tree', $value);
-for ($i = 0; $i < 20; $i++) { $served = $served[0]; }
+for ($i = 0; $i < 8; $i++) { $served = $served[0]; }
 if ($served[0] !== $leaf) { throw new RuntimeException('changed caller'); }
 $copy = $events->events[0]->value;
 $left = $copy;
 $right = $copy;
-for ($i = 0; $i < 20; $i++) { $left = $left[0]; $right = $right[1]; }
+for ($i = 0; $i < 8; $i++) { $left = $left[0]; $right = $right[1]; }
 $leaf->label = 'changed';
 if ($left[0] === $leaf || $left[0] !== $right[0] || $left[0]->label !== 'original') { throw new RuntimeException('lost isolation or alias'); }
 $copy[0] = ['replaced'];
@@ -561,3 +567,77 @@ it('keeps distinct nested arrays distinct without calling foreign serialization 
         ->and($copy[1][0]['leaf'])->not->toBe($second)
         ->and($copy[2]['foreign'])->toBe($foreign);
 });
+
+it('consumes shared exposure boundary vectors without changing evaluations or metrics', function (array $case, bool $failed): void {
+    /** @var array{value: bool|array<array-key, mixed>, expose: bool} $case */
+    $value = $case['value'];
+    $events = new RecordingApplicationEventPublisher;
+    $logger = new RecordingLogger;
+    $metrics = new FeatureFlagsRecordingMetrics;
+    $provider = new FeatureFlagsScriptedProvider(
+        (new ResolutionDetailsBuilder)->withValue($value)->withReason('STATIC')->build(),
+        $failed ? new RuntimeException('provider down') : null,
+    );
+    $flags = featureFlagsWithProvider($provider, [new ExposureEventHook($events, $logger), new MetricsHook($metrics)]);
+    $served = is_bool($value) ? $flags->isEnabled('boundary', $value) : $flags->getObject('boundary', $value);
+    expect($served)->toBe($value)
+        ->and($events->events)->toHaveCount($case['expose'] ? 1 : 0)
+        ->and($metrics->rows)->toBe(['boundary|none|'.($failed ? 'ERROR' : 'STATIC')])
+        ->and($logger->count('debug', '10000'))->toBe($case['expose'] ? 0 : 1);
+    if ($case['expose']) {
+        /** @var FeatureFlagEvaluated $event */
+        $event = $events->events[0];
+        expect($event->value)->toEqual($value);
+    }
+})->with(function (): array {
+    $json = file_get_contents(__DIR__.'/../Conformance/exposure-vectors.json');
+    if ($json === false) {
+        throw new RuntimeException('Missing shared exposure vectors');
+    }
+    /** @var array{cases: list<array{name: string, value: bool|array<array-key, mixed>, occurrences: int, expose: bool}>} $vectors */
+    $vectors = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+    $cases = [];
+    foreach ($vectors['cases'] as $case) {
+        $cases[$case['name']] = [$case];
+    }
+
+    return $cases;
+})->with([false, true]);
+
+it('omits independent equal COW graphs before expensive copying on both SDK paths', function (bool $failed): void {
+    $script = <<<'SCRIPT'
+require 'vendor/autoload.php';
+$left = ['leaf'];
+$right = ['leaf'];
+for ($i = 0; $i < 28; $i++) { $left = [$left, $left]; $right = [$right, $right]; }
+$value = [$left, $right];
+$events = new Firefly\Testing\Double\RecordingApplicationEventPublisher;
+$logger = new Firefly\FeatureFlags\Tests\Support\RecordingLogger;
+$metrics = new class implements Firefly\FeatureFlags\Telemetry\FeatureFlagMetrics {
+    public int $count = 0;
+    public function recordEvaluation(string $flag, string $variant, string $reason): void { $this->count++; }
+};
+$provider = new class extends OpenFeature\implementation\provider\NoOpProvider {
+    public bool $failed = false;
+    public function resolveObjectValue(string $flagKey, array $defaultValue, ?OpenFeature\interfaces\flags\EvaluationContext $context = null): OpenFeature\interfaces\provider\ResolutionDetails {
+        if ($this->failed) { throw new RuntimeException('provider down'); }
+        return parent::resolveObjectValue($flagKey, $defaultValue, $context);
+    }
+};
+SCRIPT;
+    $script .= '$provider->failed = '.($failed ? 'true' : 'false').';';
+    $script .= <<<'SCRIPT'
+$flags = new Firefly\FeatureFlags\FeatureFlags($provider, new Firefly\FeatureFlags\Context\EvaluationContextResolver, [new Firefly\FeatureFlags\Telemetry\ExposureEventHook($events, $logger), new Firefly\FeatureFlags\Telemetry\MetricsHook($metrics)], null, OpenFeature\isolated\OpenFeatureAPIFactory::createAPI());
+$served = $flags->getObject('tree', $value);
+if (count($served) !== 2) { throw new RuntimeException('changed caller'); }
+$leaf = $served[0];
+for ($i = 0; $i < 28; $i++) { $leaf = $leaf[0]; }
+if ($leaf !== ['leaf'] || $events->events !== [] || $metrics->count !== 1 || $logger->count('debug', '10000') !== 1) { throw new RuntimeException('budget policy failed'); }
+echo 'bounded';
+SCRIPT;
+    $process = new Process([PHP_BINARY, '-d', 'memory_limit=32M', '-d', 'max_execution_time=2', '-r', $script], dirname(__DIR__, 4));
+    $process->setTimeout(5);
+    $process->run();
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput())
+        ->and($process->getOutput())->toBe('bounded');
+})->with([false, true]);

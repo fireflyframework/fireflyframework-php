@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\FeatureFlags\Provider;
 
+use Generator;
 use ReflectionReference;
 use SplObjectStorage;
 use stdClass;
@@ -38,11 +39,54 @@ final class ValueCopy
         return self::copy($value, 1, $objects, $arrays);
     }
 
+    /** Exposure-only budget: containers and scalars count once per occurrence, including repeated references. */
+    public static function forExposure(mixed $value): mixed
+    {
+        $remaining = 10000;
+        $stack = [self::members([$value])];
+        while ($stack !== []) {
+            $iterator = $stack[array_key_last($stack)];
+            if (! $iterator->valid()) {
+                array_pop($stack);
+
+                continue;
+            }
+            if ($remaining-- === 0) {
+                throw new UnexpectedValueException('Exposure snapshot exceeds 10000 value occurrences');
+            }
+            $member = $iterator->current();
+            $iterator->next();
+            if (is_array($member) || $member instanceof stdClass) {
+                $stack[] = self::members($member);
+            }
+        }
+
+        /** @var SplObjectStorage<stdClass, stdClass> $objects */
+        $objects = new SplObjectStorage;
+        $arrays = [];
+
+        // Native array equality can expand compact graphs again; the bounded snapshot needs no array memo.
+        return self::copy($value, 1, $objects, $arrays, false);
+    }
+
+    /** @return Generator<int, mixed> */
+    private static function members(mixed $value): Generator
+    {
+        if ($value instanceof stdClass) {
+            $value = get_object_vars($value);
+        }
+        if (is_array($value)) {
+            foreach ($value as $member) {
+                yield $member;
+            }
+        }
+    }
+
     /**
      * @param  SplObjectStorage<stdClass, stdClass>  $objects
      * @param  array<string, list<array{array<array-key, mixed>, array<array-key, mixed>}>>  $arrays
      */
-    private static function copy(mixed $value, int $depth, SplObjectStorage $objects, array &$arrays): mixed
+    private static function copy(mixed $value, int $depth, SplObjectStorage $objects, array &$arrays, bool $memoizeArrays = true): mixed
     {
         if ($value instanceof stdClass && $objects->offsetExists($value)) {
             return $objects[$value];
@@ -55,25 +99,32 @@ final class ValueCopy
             $copy = new stdClass;
             $objects[$value] = $copy;
             foreach (get_object_vars($value) as $name => $member) {
-                $copy->{$name} = self::copy($member, $depth + 1, $objects, $arrays);
+                $copy->{$name} = self::copy($member, $depth + 1, $objects, $arrays, $memoizeArrays);
             }
 
             return $copy;
         }
 
         if (is_array($value)) {
-            $signature = self::arraySignature($value);
-            foreach ($arrays[$signature] ?? [] as [$original, $snapshot]) {
-                if ($original === $value) {
-                    return $snapshot;
+            if ($memoizeArrays) {
+                $signature = self::arraySignature($value);
+                foreach ($arrays[$signature] ?? [] as [$original, $snapshot]) {
+                    if ($original === $value) {
+                        return $snapshot;
+                    }
                 }
             }
 
             $copy = [];
             foreach ($value as $key => $member) {
-                $copy[$key] = self::copy($member, $depth + 1, $objects, $arrays);
+                if (is_array($member) && ReflectionReference::fromArrayElement($value, $key) !== null) {
+                    throw new UnexpectedValueException('Flag value contains unsupported array references');
+                }
+                $copy[$key] = self::copy($member, $depth + 1, $objects, $arrays, $memoizeArrays);
             }
-            $arrays[$signature][] = [$value, $copy];
+            if ($memoizeArrays) {
+                $arrays[$signature][] = [$value, $copy];
+            }
 
             return $copy;
         }
