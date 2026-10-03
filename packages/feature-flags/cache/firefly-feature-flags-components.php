@@ -216,4 +216,86 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
+    6 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Source\\FlagSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
+            1 => 'Illuminate\\Http\\Client\\Factory',
+        ],
+    ],
+    7 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Source\\FlagSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
+            1 => 'Firefly\\Container\\Container',
+        ],
+    ],
+    8 => [
+        'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 700,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'flagStore',
+                'returns' => 'Firefly\\FeatureFlags\\Store\\FlagStore',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
+                    1 => 'Illuminate\\Contracts\\Container\\Container',
+                ],
+            ],
+            1 => [
+                'method' => 'flagStoreWriter',
+                'returns' => 'Firefly\\FeatureFlags\\Store\\FlagStoreWriter',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\FeatureFlags\\Store\\FlagStore',
+                    1 => 'Firefly\\FeatureFlags\\Registry\\FlagRegistry',
+                    2 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                    3 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
 ];

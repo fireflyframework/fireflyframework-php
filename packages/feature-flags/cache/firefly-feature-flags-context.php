@@ -293,4 +293,153 @@ return [
         'beanConditions' => [
         ],
     ],
+    6 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.sources.http.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            2 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                'args' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    7 => [
+        'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            1 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.feature-flags.sources.store.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+            2 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                'args' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    8 => [
+        'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'flagStore',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.sources.store.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Registry\\FlagRegistry',
+                        ],
+                    ],
+                    3 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Store\\FlagStore',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'flagStoreWriter',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.sources.store.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Registry\\FlagRegistry',
+                        ],
+                    ],
+                    3 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Store\\FlagStoreWriter',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
 ];
