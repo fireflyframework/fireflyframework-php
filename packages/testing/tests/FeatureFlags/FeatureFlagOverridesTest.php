@@ -1,0 +1,108 @@
+<?php
+
+declare(strict_types=1);
+
+use Firefly\FeatureFlags\Definition\InvalidFlagDefinition;
+use Firefly\FeatureFlags\FeatureFlags;
+use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
+use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
+use Firefly\FeatureFlags\Registry\FlagRegistry;
+use Firefly\Testing\FeatureFlags\FeatureFlagOverrides;
+use Illuminate\Foundation\Application;
+use OpenFeature\implementation\provider\NoOpProvider;
+use OpenFeature\OpenFeatureAPI;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+
+afterEach(fn () => OpenFeatureAPI::getInstance()->setProvider(new NoOpProvider));
+
+/** @param array<string, mixed> $featureFlags */
+function featureFlagsTestingApp(array $featureFlags): Application
+{
+    return fireflyApplication(
+        ['firefly' => ['feature-flags' => $featureFlags]],
+        [FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
+        [LoggerInterface::class => new NullLogger],
+        needs: ['cache'],
+    );
+}
+
+it('overrides the running application with shorthand and full definitions until cleared', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true, 'flags' => ['new-checkout' => false]]);
+    /** @var FeatureFlags $flags */
+    $flags = $app->make(FeatureFlags::class);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+
+    $overrides = withFeatureFlags(['new-checkout' => true, 'checkout-flow' => 'v2']);
+    expect($flags->isEnabled('new-checkout'))->toBeTrue()
+        ->and($flags->getString('checkout-flow', 'v1'))->toBe('v2');
+
+    $overrides->set('full', ['state' => 'ENABLED', 'variants' => ['ready' => 'ready'], 'defaultVariant' => 'ready']);
+    expect($flags->getString('full', 'missing'))->toBe('ready')
+        ->and($registry->composition()->flag('new-checkout')?->origin)->toBe('test')
+        ->and($registry->composition(false)->flag('new-checkout')?->origin)->toBe('config');
+
+    $overrides->forget('new-checkout');
+    expect($flags->isEnabled('new-checkout'))->toBeFalse()
+        ->and($overrides->flags())->toHaveKeys(['checkout-flow', 'full']);
+
+    $overrides->clear();
+    expect($flags->getString('checkout-flow', 'v1'))->toBe('v1')
+        ->and($registry->testOverrides())->toBeNull()
+        ->and($overrides->flags())->toBe([]);
+});
+
+it('keeps every override for the rest of the test across calls', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true]);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+
+    $first = withFeatureFlags(['first' => true]);
+    $second = withFeatureFlags(['second' => 'v2']);
+
+    expect($second)->toBe($first)
+        ->and($first->flags())->toBe(['first' => true, 'second' => 'v2'])
+        ->and($registry->document()->flag('first'))->not->toBeNull()
+        ->and($registry->document()->flag('second'))->not->toBeNull();
+});
+
+it('rejects invalid changes without losing the last valid override set', function (): void {
+    $app = featureFlagsTestingApp(['enabled' => true]);
+    /** @var FlagRegistry $registry */
+    $registry = $app->make(FlagRegistry::class);
+    $overrides = withFeatureFlags(['valid' => true]);
+    $before = $registry->testOverrides();
+
+    expect(fn () => $overrides->merge(['also-valid' => false, 'bad key' => true]))
+        ->toThrow(InvalidFlagDefinition::class, 'invalid flag key');
+    expect($overrides->flags())->toBe(['valid' => true])
+        ->and($registry->testOverrides())->toBe($before)
+        ->and($registry->document()->flag('also-valid'))->toBeNull();
+
+    expect(fn () => $overrides->set('valid', 7))->toThrow(InvalidFlagDefinition::class);
+    expect($overrides->flags())->toBe(['valid' => true]);
+});
+
+it('isolates overrides between application registries', function (): void {
+    $firstApp = featureFlagsTestingApp(['enabled' => true]);
+    $first = FeatureFlagOverrides::install(['first' => true], $firstApp);
+    $secondApp = featureFlagsTestingApp(['enabled' => true]);
+    $second = FeatureFlagOverrides::install(['second' => true], $secondApp);
+    /** @var FlagRegistry $firstRegistry */
+    $firstRegistry = $firstApp->make(FlagRegistry::class);
+    /** @var FlagRegistry $secondRegistry */
+    $secondRegistry = $secondApp->make(FlagRegistry::class);
+
+    expect($second)->not->toBe($first)
+        ->and($firstRegistry->document()->flag('first'))->not->toBeNull()
+        ->and($firstRegistry->document()->flag('second'))->toBeNull()
+        ->and($secondRegistry->document()->flag('second'))->not->toBeNull()
+        ->and($secondRegistry->document()->flag('first'))->toBeNull();
+});
+
+it('explains when the application has no flag registry', function (): void {
+    featureFlagsTestingApp(['enabled' => false]);
+
+    expect(fn () => withFeatureFlags(['a' => true]))->toThrow(LogicException::class, 'firefly.feature-flags.enabled');
+});

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\AutoConfigure\FireflyAutoConfigureServiceProvider;
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Testing\Double\RecordingEventPublisher;
+use Firefly\Testing\FeatureFlags\FeatureFlagOverrides;
 use Firefly\Validation\IlluminateValidator;
 use Firefly\Validation\Validator;
 use Illuminate\Cache\ArrayStore;
@@ -189,5 +190,13 @@ if (! function_exists('fireflyConfigFor')) {
         }
 
         return $config;
+    }
+}
+
+if (! function_exists('withFeatureFlags')) {
+    /** @param array<array-key, mixed> $flags */
+    function withFeatureFlags(array $flags): FeatureFlagOverrides
+    {
+        return FeatureFlagOverrides::install($flags);
     }
 }
