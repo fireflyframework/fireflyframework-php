@@ -11,6 +11,7 @@ use Firefly\FeatureFlags\Registry\CacheBook;
 use Firefly\FeatureFlags\Registry\FlagRegistry;
 use Firefly\FeatureFlags\Registry\SourceState;
 use Firefly\FeatureFlags\Source\FlagSourceUnavailable;
+use Firefly\FeatureFlags\Tests\Support\ConformanceFiles;
 use Firefly\FeatureFlags\Tests\Support\FixedClock;
 use Firefly\FeatureFlags\Tests\Support\FlakyCache;
 use Firefly\FeatureFlags\Tests\Support\HookedLockStore;
@@ -18,6 +19,7 @@ use Firefly\FeatureFlags\Tests\Support\RecordingLogger;
 use Firefly\FeatureFlags\Tests\Support\StubFlagSource;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Testing\Double\RecordingApplicationEventPublisher;
+use Firefly\Testing\FeatureFlags\FeatureFlagOverrides;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 
@@ -57,6 +59,18 @@ function featureFlagsChanges(RecordingApplicationEventPublisher $events): array
 function featureFlagsRegistryFlag(string $default = 'on', array $fields = []): array
 {
     return [...['state' => 'ENABLED', 'variants' => ['on' => true, 'off' => false], 'defaultVariant' => $default], ...$fields];
+}
+
+/** @return list<array{array<array-key, mixed>}> */
+function featureFlagsOverrideCases(): array
+{
+    $document = Json::decode((string) file_get_contents(ConformanceFiles::root().'/override-vectors.json'));
+    $cases = Json::members($document)['cases'] ?? null;
+    if (! is_array($cases)) {
+        throw new LogicException('Expected override conformance cases.');
+    }
+
+    return array_values(array_map(static fn (mixed $case): array => [Json::members($case)], $cases));
 }
 
 it('lets the highest layer supply a key and records what it shadows', function (): void {
@@ -537,6 +551,42 @@ it('puts test overrides on top without sharing them', function (): void {
         ->and($registry->document()->flag('a')?->defaultVariant())->toBe('on')
         ->and($registry->testOverrides())->toBeNull();
 });
+
+it('consumes the shared test override composition cases', function (array $case): void {
+    $key = $case['key'] ?? null;
+    if (! is_string($key)) {
+        throw new LogicException('Expected an override case key.');
+    }
+    $config = Json::members($case['config'] ?? null);
+    $overrides = Json::members($case['overrides'] ?? null);
+    $expected = Json::members($case['expect'] ?? null);
+    $expectedOverrides = $expected['overrides'] ?? null;
+    if (! is_array($expectedOverrides)) {
+        throw new LogicException('Expected overridden layers.');
+    }
+
+    $events = new RecordingApplicationEventPublisher;
+    $registry = featureFlagsRegistry([new StubFlagSource('config', 100, 0.0, $config, failsStartup: true)], new Repository(new ArrayStore), $events, new FixedClock);
+    $registry->composition(false);
+    $before = count(featureFlagsChanges($events));
+    (new FeatureFlagOverrides($registry))->merge($overrides);
+
+    $composed = $registry->composition()->flag($key);
+    if ($composed === null) {
+        throw new LogicException('Expected the override in the effective composition.');
+    }
+    $shared = $registry->composition(false)->flag($key);
+    $changes = featureFlagsChanges($events);
+
+    expect($composed->origin)->toBe($expected['origin'])
+        ->and($composed->overrides)->toBe($expectedOverrides)
+        ->and(array_column($composed->layers, 'source'))->toBe([...$expectedOverrides, $expected['origin']])
+        ->and(Json::canonical($composed->definition->toJsonValue()))->toBe(Json::canonical($expected['definition']))
+        ->and($registry->testOverrides()?->flag($key))->not->toBeNull()
+        ->and($shared?->definition->toJsonValue())->toBe($expected['sharedDefinition'])
+        ->and(count($changes))->toBe($before + 1)
+        ->and($changes[count($changes) - 1] ?? null)->toBe([$expected['eventOrigin'], $expected['changedKeys']]);
+})->with(featureFlagsOverrideCases());
 
 it('announces what test overrides change with origin test-overrides, and nothing when they change nothing', function (): void {
     $events = new RecordingApplicationEventPublisher;

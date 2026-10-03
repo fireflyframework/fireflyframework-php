@@ -181,6 +181,77 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagAdviceSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Data\\Proxy\\AdviceSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    5 => [
+        'class' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagsGatingConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 700,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'featureFlagGate',
+                'returns' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagGate',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Container\\Container',
+                    1 => 'Firefly\\Config\\Config',
+                ],
+            ],
+            1 => [
+                'method' => 'routeGateDecisions',
+                'returns' => 'Firefly\\FeatureFlags\\Gating\\RouteGateDecisions',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Illuminate\\Contracts\\Container\\Container',
+                ],
+            ],
+            2 => [
+                'method' => 'featureFlagMethodInterceptor',
+                'returns' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagMethodInterceptor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagGate',
+                    1 => 'Firefly\\FeatureFlags\\Gating\\RouteGateDecisions',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    6 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -198,7 +269,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    5 => [
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -216,7 +287,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    6 => [
+    8 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -235,7 +306,7 @@ return [
             1 => 'Illuminate\\Http\\Client\\Factory',
         ],
     ],
-    7 => [
+    9 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -254,7 +325,7 @@ return [
             1 => 'Firefly\\Container\\Container',
         ],
     ],
-    8 => [
+    10 => [
         'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
         'stereotype' => 'configuration',
         'name' => null,

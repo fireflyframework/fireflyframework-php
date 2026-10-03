@@ -17,6 +17,7 @@ use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifestCompiler;
 use Firefly\Eda\Listener\EventListenerManifestCompiler;
 use Firefly\Eda\Scanner\EventListenerScanner;
+use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
 use Firefly\Messaging\Listener\MessageListenerManifestCompiler;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
@@ -97,15 +98,16 @@ final class ManifestCacheWriter
     }
 
     /**
-     * The advice every proxy runs, in the order the plan will chain it: metrics (50) outside security (100)
-     * outside resilience (200) outside transactions (1000). D4 direct dependency like every other scanner
-     * here — the uncached boot collects the same four sources as #[Component]s through Container::getAll(),
+     * The advice every proxy runs, in the order the plan will chain it: metrics (50) outside feature flags (80)
+     * outside security (100) outside resilience (200) outside transactions (1000). D4 direct dependency like
+     * every other scanner here — the uncached boot collects the same five sources as #[Component]s through Container::getAll(),
      * so a cached app and a dev app enforce an identical plan.
      */
     private function planner(): ProxyPlanner
     {
         return new ProxyPlanner([
             new ObservabilityAdviceSource,
+            new FeatureFlagAdviceSource,
             new MethodSecurityAdviceSource,
             new ResilienceAdviceSource,
             new TransactionalAdviceSource,
