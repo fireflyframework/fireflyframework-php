@@ -67,6 +67,7 @@ it('backs the port with no meter while feature flags are off or metrics are disa
     $metricsOff = bootFireflyApp(
         ['firefly' => ['feature-flags' => ['enabled' => true], 'observability' => ['metrics' => ['enabled' => false]]]],
         [ObservabilityServiceProvider::class, FeatureFlagsServiceProvider::class, FeatureFlagsWiringProvider::class],
+        bindings: [FlagdEvaluator::class => new StaticFlagdEvaluator],
         needs: ['cache'],
     );
 

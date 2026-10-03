@@ -30,9 +30,10 @@ use WeakMap;
  * resolution's, or the thrown one's when it carries a code (ThrowableWithResolutionError), GENERAL otherwise —
  * the code the SDK answers the caller with. Its variant is null.
  *
- * JSON values (arrays/stdClass/scalars/null) are isolated snapshots; stdClass aliases and cycles are preserved.
+ * Eligible JSON values (arrays/stdClass/scalars/null) are isolated snapshots; stdClass aliases are preserved.
  * Foreign objects, even nested ones, retain their identity. Unsupported array references or excessive depth
- * or more than 10000 value occurrences omit the exposure, with best-effort DEBUG logging; no partially shared JSON snapshot is published.
+ * or more than 10000 value occurrences (including cycles) omit the exposure, with best-effort DEBUG logging;
+ * no partially shared JSON snapshot is published.
  *
  * A preview (hook hint FeatureFlags::PREVIEW_HINT, CONTRACT.md I-3) publishes nothing. Copy, listener and logger
  * failures never change the evaluation: the SDK runs `after` hooks unguarded, so this hook contains them.

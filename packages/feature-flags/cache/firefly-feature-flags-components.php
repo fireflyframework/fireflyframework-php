@@ -6,6 +6,25 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\FeatureFlags\\Boot\\FeatureFlagsLifecycle',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Kernel\\Lifecycle',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+            1 => 'OpenFeature\\interfaces\\flags\\API',
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\FeatureFlags\\Context\\ApplicationEvaluationContextContributor',
         'stereotype' => 'component',
         'name' => null,
@@ -23,7 +42,7 @@ return [
             0 => 'Illuminate\\Contracts\\Config\\Repository',
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\FeatureFlags\\FeatureFlagsAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -46,12 +65,95 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
+            1 => [
+                'method' => 'featureFlagMetrics',
+                'returns' => 'Firefly\\FeatureFlags\\Telemetry\\FeatureFlagMetrics',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            2 => [
+                'method' => 'flagRegistry',
+                'returns' => 'Firefly\\FeatureFlags\\Registry\\FlagRegistry',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Container\\Container',
+                    1 => 'Illuminate\\Contracts\\Cache\\Repository',
+                    2 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                    3 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            3 => [
+                'method' => 'openFeatureProvider',
+                'returns' => 'OpenFeature\\interfaces\\provider\\Provider',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\FeatureFlags\\Registry\\FlagRegistry',
+                    1 => 'Firefly\\FeatureFlags\\Evaluation\\FlagdEvaluator',
+                    2 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            4 => [
+                'method' => 'evaluationContextResolver',
+                'returns' => 'Firefly\\FeatureFlags\\Context\\EvaluationContextResolver',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Container\\Container',
+                    1 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            5 => [
+                'method' => 'featureFlags',
+                'returns' => 'Firefly\\FeatureFlags\\FeatureFlags',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'OpenFeature\\interfaces\\provider\\Provider',
+                    1 => 'Firefly\\FeatureFlags\\Context\\EvaluationContextResolver',
+                    2 => 'Firefly\\FeatureFlags\\Telemetry\\FeatureFlagMetrics',
+                    3 => 'Firefly\\Context\\Event\\ApplicationEventPublisher',
+                    4 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
+                    5 => 'Firefly\\Container\\Container',
+                    6 => 'Psr\\Log\\LoggerInterface',
+                ],
+            ],
+            6 => [
+                'method' => 'featureFlagsClient',
+                'returns' => 'OpenFeature\\interfaces\\flags\\Client',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\FeatureFlags\\FeatureFlags',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
         ],
     ],
-    2 => [
+    3 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'stereotype' => 'component',
         'name' => null,
@@ -69,7 +171,7 @@ return [
             0 => 'Firefly\\FeatureFlags\\FeatureFlagsSettings',
         ],
     ],
-    3 => [
+    4 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'stereotype' => 'component',
         'name' => null,
