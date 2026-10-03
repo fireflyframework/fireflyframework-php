@@ -232,6 +232,52 @@ return [
         ],
     ],
     4 => [
+        'class' => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagsGatingConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'featureFlagGate',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagGate',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'routeGateDecisions',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Gating\\RouteGateDecisions',
+                        ],
+                    ],
+                ],
+            ],
+            2 => [
+                'method' => 'featureFlagMethodInterceptor',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Gating\\FeatureFlagMethodInterceptor',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'postConstruct' => [
         ],
@@ -258,7 +304,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    5 => [
+    6 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'postConstruct' => [
         ],
