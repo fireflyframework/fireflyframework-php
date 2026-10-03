@@ -12,6 +12,7 @@ use Firefly\Kernel\Lifecycle;
 use OpenFeature\interfaces\flags\API;
 use OpenFeature\interfaces\provider\Provider;
 use OpenFeature\OpenFeatureAPI;
+use Throwable;
 use WeakMap;
 
 /** Starts the registry, installs this application's provider, and restores its predecessor on close. */
@@ -28,6 +29,8 @@ final class FeatureFlagsLifecycle implements Lifecycle
 
     private ?Provider $previous = null;
 
+    private ?self $previousOwner = null;
+
     private int $sequence = 0;
 
     public function __construct(
@@ -37,22 +40,31 @@ final class FeatureFlagsLifecycle implements Lifecycle
 
     public function start(): void
     {
-        if ($this->beans->has(FlagRegistry::class)) {
-            $registry = $this->beans->get(FlagRegistry::class);
-            if ($registry instanceof FlagRegistry) {
-                $registry->start();
-            }
-        }
-
         $provider = $this->beans->get(Provider::class);
         if ($provider instanceof Provider) {
             $api = $this->api();
             $this->previous = $api->getProvider();
-            $api->setProvider($provider);
+            $this->previousOwner = $this->activeOwner($this->previous);
             $this->installed = $provider;
             $this->sequence = ++self::$nextSequence;
             self::$active ??= new WeakMap;
             self::$active[$this] = true;
+        }
+
+        try {
+            if ($this->beans->has(FlagRegistry::class)) {
+                $registry = $this->beans->get(FlagRegistry::class);
+                if ($registry instanceof FlagRegistry) {
+                    $registry->start();
+                }
+            }
+
+            if ($provider instanceof Provider) {
+                $this->api()->setProvider($provider);
+            }
+        } catch (Throwable $failure) {
+            $this->stop();
+            throw $failure;
         }
     }
 
@@ -61,12 +73,13 @@ final class FeatureFlagsLifecycle implements Lifecycle
         if ($this->installed !== null) {
             if ($this->ownsCurrentProvider() && $this->previous !== null) {
                 $this->api()->setProvider($this->previous);
-            } else {
-                // A later application may still be running. Redirect its restore target past this stopped one.
-                foreach (self::$active ?? [] as $lifecycle => $_) {
-                    if ($lifecycle !== $this && $lifecycle->api() === $this->api() && $lifecycle->previous === $this->installed) {
-                        $lifecycle->previous = $this->previous;
-                    }
+            }
+
+            // A later application may still be running. Link its restoration past this stopped installation.
+            foreach (self::$active ?? [] as $lifecycle => $_) {
+                if ($lifecycle->previousOwner === $this) {
+                    $lifecycle->previous = $this->previous;
+                    $lifecycle->previousOwner = $this->previousOwner;
                 }
             }
         }
@@ -76,6 +89,7 @@ final class FeatureFlagsLifecycle implements Lifecycle
         }
         $this->installed = null;
         $this->previous = null;
+        $this->previousOwner = null;
     }
 
     private function api(): API
@@ -96,5 +110,17 @@ final class FeatureFlagsLifecycle implements Lifecycle
         }
 
         return true;
+    }
+
+    private function activeOwner(Provider $provider): ?self
+    {
+        $owner = null;
+        foreach (self::$active ?? [] as $lifecycle => $_) {
+            if ($lifecycle->api() === $this->api() && $lifecycle->installed === $provider && ($owner === null || $lifecycle->sequence > $owner->sequence)) {
+                $owner = $lifecycle;
+            }
+        }
+
+        return $owner;
     }
 }
