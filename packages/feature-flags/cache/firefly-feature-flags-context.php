@@ -278,6 +278,38 @@ return [
         ],
     ],
     5 => [
+        'class' => 'Firefly\\FeatureFlags\\Management\\FeatureFlagsManagementConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'flagManagement',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Management\\FlagManagement',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    6 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\ConfigFlagSource',
         'postConstruct' => [
         ],
@@ -304,7 +336,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    6 => [
+    7 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\FileFlagSource',
         'postConstruct' => [
         ],
@@ -339,7 +371,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    7 => [
+    8 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\HttpFlagSource',
         'postConstruct' => [
         ],
@@ -374,7 +406,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    8 => [
+    9 => [
         'class' => 'Firefly\\FeatureFlags\\Source\\StoreFlagSource',
         'postConstruct' => [
         ],
@@ -409,7 +441,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    9 => [
+    10 => [
         'class' => 'Firefly\\FeatureFlags\\Store\\FeatureFlagStoreConfiguration',
         'postConstruct' => [
         ],
