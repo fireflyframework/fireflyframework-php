@@ -44,7 +44,7 @@ use Throwable;
 final class FlagRegistry implements FlagDocumentSource
 {
     /** ComposedFlag::$origin of a flag test overrides supply. */
-    public const string TEST_LAYER = 'test';
+    public const string TEST_LAYER = 'test-overrides';
 
     /** FeatureFlagsChanged::$origin when test overrides change the effective set. */
     public const string TEST_OVERRIDES_ORIGIN = 'test-overrides';

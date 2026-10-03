@@ -41,7 +41,7 @@ it('overrides the running application with shorthand and full definitions until 
 
     $overrides->set('full', ['state' => 'ENABLED', 'variants' => ['ready' => 'ready'], 'defaultVariant' => 'ready']);
     expect($flags->getString('full', 'missing'))->toBe('ready')
-        ->and($registry->composition()->flag('new-checkout')?->origin)->toBe('test')
+        ->and($registry->composition()->flag('new-checkout')?->origin)->toBe('test-overrides')
         ->and($registry->composition(false)->flag('new-checkout')?->origin)->toBe('config');
 
     $overrides->forget('new-checkout');
