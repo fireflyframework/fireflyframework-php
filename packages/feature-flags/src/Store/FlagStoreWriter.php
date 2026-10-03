@@ -11,6 +11,8 @@ use Firefly\FeatureFlags\Definition\Json;
 use Firefly\FeatureFlags\Event\FeatureFlagUpdated;
 use Firefly\FeatureFlags\Registry\FlagRegistry;
 use Firefly\FeatureFlags\Source\FlagSource;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use Throwable;
 
@@ -20,6 +22,7 @@ final class FlagStoreWriter
         private readonly FlagStore $store,
         private readonly FlagRegistry $registry,
         private readonly ApplicationEventPublisher $events,
+        private readonly LoggerInterface $logger = new NullLogger,
     ) {}
 
     public function store(): FlagStore
@@ -60,28 +63,28 @@ final class FlagStoreWriter
         $previous = $change->previous === null ? null : Json::encode(Json::object($change->previous));
         $current = $change->definition === null ? null : Json::encode(Json::object($change->definition));
         $notify = function () use ($change, $previous, $current): void {
-            $failure = null;
             try {
                 $this->registry->refresh(force: true, only: FlagSource::STORE);
                 foreach ($this->registry->states() as $state) {
                     if ($state->name === FlagSource::STORE && $state->status() !== 'UP') {
-                        $failure = new RuntimeException(sprintf('Flag [%s] write committed, but the store source refresh failed: %s', $change->key, $state->error ?? $state->status()));
+                        $this->warn('Feature flag store refresh failed after commit ({error}).', $change, new RuntimeException($state->error ?? $state->status()));
                         break;
                     }
                 }
             } catch (Throwable $error) {
-                $failure = $error;
+                $this->warn('Feature flag store refresh failed after commit ({error}).', $change, $error);
             }
 
-            $this->events->publish(new FeatureFlagUpdated(
-                $change->key,
-                $change->action,
-                $change->actor,
-                $previous === null ? null : Json::members(Json::decode($previous)),
-                $current === null ? null : Json::members(Json::decode($current)),
-            ));
-            if ($failure !== null) {
-                throw new RuntimeException(sprintf('Flag [%s] write committed, but the registry refresh failed.', $change->key), previous: $failure);
+            try {
+                $this->events->publish(new FeatureFlagUpdated(
+                    $change->key,
+                    $change->action,
+                    $change->actor,
+                    $previous === null ? null : Json::members(Json::decode($previous)),
+                    $current === null ? null : Json::members(Json::decode($current)),
+                ));
+            } catch (Throwable $error) {
+                $this->warn('FeatureFlagUpdated listener failed after commit ({error}).', $change, $error);
             }
         };
 
@@ -89,6 +92,15 @@ final class FlagStoreWriter
             $this->store->afterCommit($notify);
         } else {
             $notify();
+        }
+    }
+
+    private function warn(string $message, FlagChange $change, Throwable $error): void
+    {
+        try {
+            $this->logger->warning($message, ['key' => $change->key, 'action' => $change->action, 'error' => $error->getMessage()]);
+        } catch (Throwable) {
+            // Logging is an observer too; the committed change must still return.
         }
     }
 }
