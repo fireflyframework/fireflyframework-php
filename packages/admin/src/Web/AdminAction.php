@@ -40,6 +40,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Router;
 use Illuminate\Session\Store;
+use stdClass;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
 
@@ -110,6 +111,10 @@ final readonly class AdminAction
 
         if ($slug === 'datasource') {
             return $this->datasourcePage($request, $current);
+        }
+
+        if ($slug === 'flags') {
+            return $request->isMethod('POST') ? $this->flagsWrite($request) : $this->flagsPage($request, $current);
         }
 
         if ($slug === 'settings') {
@@ -250,6 +255,152 @@ final readonly class AdminAction
         }
 
         return $this->redirect($back, $this->console->set($key, $request->input('value') === '1'));
+    }
+
+    private function flagsPage(Request $request, AdminPage $current): SymfonyResponse
+    {
+        $overview = $this->flagsOverview();
+        $writable = ($overview['writable'] ?? false) === true && ($overview['writesEnabled'] ?? false) === true;
+        $key = $request->query('flag');
+
+        if (! is_string($key) || $key === '') {
+            return $this->html($this->render('flags', [
+                'overview' => $overview,
+                'flags' => is_array($overview['flags'] ?? null) ? array_values($overview['flags']) : [],
+                'writable' => $writable,
+                'detail' => null,
+            ], $current), 200);
+        }
+
+        $response = $this->reader->call('GET', 'flags', [$key]);
+        if ($response === null || $response->status !== 200 || ! is_string($response->body)) {
+            return $this->html($this->render('flags', [
+                'overview' => $overview, 'flags' => [], 'writable' => $writable, 'detail' => null, 'missing' => $key,
+            ], $current), 404);
+        }
+
+        $detail = json_decode($response->body, true);
+        $objects = json_decode($response->body);
+        $definition = $objects instanceof stdClass && property_exists($objects, 'definition') ? $objects->definition : new stdClass;
+        $variants = $definition instanceof stdClass && property_exists($definition, 'variants') && $definition->variants instanceof stdClass
+            ? array_map(static fn (int|string $name): string => (string) $name, array_keys(get_object_vars($definition->variants)))
+            : [];
+
+        $layers = [];
+        if ($objects instanceof stdClass && property_exists($objects, 'layers') && is_array($objects->layers)) {
+            foreach ($objects->layers as $layer) {
+                if ($layer instanceof stdClass) {
+                    $layers[] = [
+                        'source' => is_string($layer->source ?? null) ? $layer->source : '',
+                        'definition' => (string) json_encode($layer->definition ?? null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
+                    ];
+                }
+            }
+        }
+
+        $context = $request->query('context');
+        $targetingKey = $request->query('targetingKey');
+
+        return $this->html($this->render('flags', [
+            'overview' => $overview,
+            'flags' => [],
+            'writable' => $writable,
+            'detail' => is_array($detail) ? $detail : [],
+            'definitionJson' => (string) json_encode($definition, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
+            'variants' => $variants,
+            'layerRows' => $layers,
+            'context' => is_string($context) ? $context : '',
+            'targetingKey' => is_string($targetingKey) ? $targetingKey : '',
+            'evaluation' => $request->query('evaluate') !== null
+                ? $this->flagsEvaluation($key, is_string($context) ? $context : '', is_string($targetingKey) ? $targetingKey : '')
+                : null,
+        ], $current), 200);
+    }
+
+    private function flagsWrite(Request $request): RedirectResponse
+    {
+        $list = $this->settings->url('flags');
+        $key = $request->input('flag');
+        $op = $request->input('op');
+
+        if (! is_string($key) || $key === '' || ! in_array($op, ['enable', 'disable', 'default-variant', 'put', 'delete'], true)) {
+            return $this->redirect($list, 'Refused: no flag or no operation was named.');
+        }
+
+        $back = $request->input('back') === 'list' ? $list : $list.'?flag='.rawurlencode($key);
+        $body = ['action' => $op];
+        $expected = $request->input('expectedVersion');
+        if (is_string($expected) && preg_match('/^\d+$/', $expected) === 1) {
+            $body['expectedVersion'] = (int) $expected;
+        }
+
+        $raw = null;
+        if ($op === 'default-variant') {
+            $variant = $request->input('variant');
+            $body['variant'] = is_string($variant) ? $variant : '';
+        }
+        if ($op === 'put') {
+            $definition = $request->input('definition');
+            if (! is_string($definition) || ! json_decode($definition) instanceof stdClass) {
+                return $this->redirect($back, 'Refused: the definition is not a JSON object.');
+            }
+            $raw = '{"action":"put","definition":'.trim($definition)
+                .(isset($body['expectedVersion']) ? ',"expectedVersion":'.$body['expectedVersion'] : '').'}';
+        }
+
+        $response = $this->reader->call('POST', 'flags', [$key], [], $body, $raw);
+        if ($response === null) {
+            return $this->redirect($back, 'Refused: the flags endpoint is unavailable.');
+        }
+
+        $answer = is_string($response->body) ? json_decode($response->body, true) : null;
+        if ($response->status >= 300) {
+            return $this->redirect($back, 'Refused: '.(is_array($answer) && is_string($answer['message'] ?? null) ? $answer['message'] : 'the write was not accepted.'));
+        }
+
+        if (is_array($answer) && ($answer['deleted'] ?? false) === true) {
+            return $this->redirect($list, "Deleted [{$key}].");
+        }
+
+        if (is_array($answer) && ($answer['refreshPending'] ?? false) === true) {
+            return $this->redirect($back, "Write accepted for [{$key}]. Refresh pending; check this page again for visibility.");
+        }
+
+        return $this->redirect($back, match ($op) {
+            'enable' => "Enabled [{$key}].",
+            'disable' => "Disabled [{$key}].",
+            'default-variant' => "Set the default variant of [{$key}].",
+            'put' => "Saved [{$key}].",
+            default => "Deleted the stored override of [{$key}].",
+        });
+    }
+
+    /** @return array<mixed> */
+    private function flagsOverview(): array
+    {
+        $response = $this->reader->call('GET', 'flags');
+        $body = $response !== null && $response->status === 200 && is_string($response->body) ? json_decode($response->body, true) : null;
+
+        return is_array($body) ? $body : [];
+    }
+
+    /** @return array{ok: bool, body: array<mixed>|null, error: string|null} */
+    private function flagsEvaluation(string $key, string $context, string $targetingKey): array
+    {
+        $context = trim($context) === '' ? '{}' : trim($context);
+        if (! json_decode($context) instanceof stdClass) {
+            return ['ok' => false, 'body' => null, 'error' => 'The context is not a JSON object.'];
+        }
+
+        $raw = '{"action":"evaluate","context":'.$context.',"targetingKey":'.($targetingKey === '' ? 'null' : (string) json_encode($targetingKey)).'}';
+        $response = $this->reader->call('POST', 'flags', [$key], [], [], $raw);
+        $body = $response !== null && is_string($response->body) ? json_decode($response->body, true) : null;
+
+        if ($response === null || $response->status !== 200 || ! is_array($body)) {
+            return ['ok' => false, 'body' => null, 'error' => is_array($body) && is_string($body['message'] ?? null) ? $body['message'] : 'The evaluation failed.'];
+        }
+
+        return ['ok' => true, 'body' => $body, 'error' => null];
     }
 
     /**

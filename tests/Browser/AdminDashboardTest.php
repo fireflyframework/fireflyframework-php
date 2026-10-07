@@ -27,6 +27,7 @@ $pages = [
     'configprops' => 'Config properties',
     'caches' => 'Caches',
     'loggers' => 'Loggers',
+    'flags' => 'Feature flags',
     'settings' => 'Feature switches',
     'datasource' => 'Datasource',
     'data' => 'Browse data',

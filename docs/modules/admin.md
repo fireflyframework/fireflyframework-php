@@ -25,7 +25,7 @@ component requirement above.
 
 Most pages are a view over one `ActuatorEndpoint`'s payload; four read the container instead. The menu groups
 them the way an operator thinks rather than the way the packages are laid out — *what is it doing right now*,
-*what did it wire at boot*, *what is its data*, *how is it configured* — because a flat list of eighteen links
+*what did it wire at boot*, *what is its data*, *how is it configured* — because a flat list of nineteen links
 is a worse menu than four short ones.
 
 | Group | Page | Path | Endpoint | Answers |
@@ -44,10 +44,17 @@ is a worse menu than four short ones.
 | Configuration | Config properties | `/firefly/configprops` | `configprops` | Every `#[ConfigProperties]` DTO the application bound, with the values it resolved |
 | Configuration | Caches | `/firefly/caches` | `caches` | The cache stores this application has configured |
 | Configuration | Loggers | `/firefly/loggers` | `loggers` | Log channels and their levels, with a control to change one |
+| Configuration | **Feature flags** | `/firefly/flags` | `flags` | Every feature flag, its defining layer and history, an evaluation preview, and controls to toggle, edit and delete when a flag store and `firefly.feature-flags.management.writes` are enabled |
 | Configuration | **Feature switches** | `/firefly/settings` | — | Every framework switch, where its value came from, and — outside production — a control. **Off by default**; see [below](#the-feature-switch-console) |
 | Data | **Datasource** | `/firefly/datasource` | — | Connections, connection reuse, and the compiled `#[Transactional]` contract |
 | Data | **Browse data** | `/firefly/data` | — | The records behind your repositories — see [Data Browser](data-browser.md). **Off by default** |
 | Data | **Entity map** | `/firefly/data-map` | — | The entities and the foreign keys between them, drawn |
+
+The Feature flags page shows the effective definition, each source layer and store change history. It offers
+controls only when a store is configured and `firefly.feature-flags.management.writes` is enabled. Its evaluation
+preview uses the context entered on the page and records no metric or exposure event. If a write is accepted but
+the new definition is not yet visible, the page asks you to check again after refresh; it does not report a
+deletion. Writes made by an authenticated principal retain that principal in history.
 
 The four pages with no endpoint read the container rather than the actuator, and each decides its own visibility:
 an entry that led to "there is nothing here" is worse than no entry.
@@ -469,7 +476,7 @@ container image, and a web form that edits the file holding your database passwo
 - **No instance registry.** Spring Boot Admin is a separate server that many applications register *with*, giving
   one console across a fleet. This is a per-instance dashboard, which is what makes the in-process read possible;
   a fleet view would need a different design and is not planned.
-- **No write operations besides the log level, the data browser and the feature switches.** `/caches` is read-only
+- **No write operations besides the log level, the data browser, the feature switches and feature flags.** `/caches` is read-only
   for the same reason it is read-only on the JSON surface — `firefly/actuator` carries no code edge to
   `firefly/security` and so cannot say who asked.
 - **The Health panel ignores `show-details` entirely**, reading the contributor registry rather than the JSON
