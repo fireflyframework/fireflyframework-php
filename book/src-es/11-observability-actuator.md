@@ -1102,6 +1102,8 @@ Es un *interruptor de funcionalidad*, no un endpoint de configuración remota: l
 
 ---
 
+El Capítulo 13A amplía esta superficie con el endpoint `flags`, la salud de las fuentes, las métricas de evaluación y los eventos de exposición opcionales; las vistas previas de gestión no emiten métricas ni exposiciones.
+
 ## Lo que aprendiste {.recap}
 
 | Concepto | Qué hace |

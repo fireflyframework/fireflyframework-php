@@ -18,6 +18,8 @@ Every chapter advances **Lumen**, a digital-wallet-and-ledger service: a `Wallet
 
 The journey starts gently. The **Quick Start** takes you from the bundled `firefly new` installer to a running, curl-able endpoint, previewing the stereotypes, the container, and the compiled boot path in miniature before any chapter asks you to reason about them. **Chapter 1** steps back and makes the case for the whole approach — what problem LaraFly solves and the pillars it stands on. **Chapter 2** opens the engine room: the dependency-injection container, the stereotype attributes, and the component scan that compiles your annotated classes into a cached, zero-reflection boot manifest. Later parts of this book — arriving in the chapters that follow — build outward from that foundation into configuration, HTTP, persistence, domain modelling, CQRS, event-driven architecture, security, and observability, always through the same `Lumen` codebase, always with code you can run.
 
+Chapter 13A closes the production loop with feature flags: Lumen keeps a wallet view dark, targets a shared cohort, and tests the route and override lifecycle against the real framework.
+
 By the time you have worked through the full book, you will have a mental model for every layer of a production LaraFly service, and a real, tested application to show for it.
 
 ### How to Use This Book

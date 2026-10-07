@@ -2,6 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+BREW_PREFIX="$(brew --prefix 2>/dev/null || echo /opt/homebrew)"
+export DYLD_FALLBACK_LIBRARY_PATH="${BREW_PREFIX}/lib:/usr/local/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
 book/.venv/bin/python -m pytest -q book/tests
 book/.venv/bin/python book/build/verify_code.py book/src --require-provenance
 book/.venv/bin/python book/build/verify_code.py book/src-es --require-provenance

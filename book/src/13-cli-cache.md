@@ -515,6 +515,8 @@ Every application `firefly new` scaffolds is therefore, from the very first `git
 
 ---
 
+Chapter 13A introduces `firefly:flags` for inspecting and changing runtime flags; its method gates also enter the compiled proxy plan rather than reflecting every request.
+
 ## What you learned {.recap}
 
 | Concept | What it does |

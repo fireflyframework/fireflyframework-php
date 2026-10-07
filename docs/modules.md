@@ -1,7 +1,7 @@
 # Modules
 
 LaraFly publishes one `fireflyframework/larafly` library containing the **30 component directories** under
-`packages/*`, each with its own tests or metadata. The **32 guides** below explain their public surfaces.
+`packages/*`, each with its own tests or metadata. The **33 guides** below explain their public surfaces.
 Several components carry more than one guide: `firefly/data` answers for *Data & Repositories*,
 *Relational Data* and *Transactions*. Laravel discovers the root library's providers, and configuration
 selects optional features. A bean you declare wins over the framework default.
@@ -64,8 +64,8 @@ each binding in `WebServiceProvider::register()` with a `bound()` check instead,
 <span class="lf-card-title">Operations</span>
 [Actuator](modules/actuator.md) · [Observability](modules/observability.md) ·
 [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) ·
-[Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md)
-<span class="lf-card-note">Health, info and metrics over an actuator surface, OpenTelemetry-shaped tracing with W3C propagation, structured JSON/ECS/Logstash logging, and a server-rendered dashboard with a drawn bean graph and a database browser.</span>
+[Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) · [Feature Flags](modules/feature-flags.md)
+<span class="lf-card-note">Health, info and metrics over an actuator surface, OpenTelemetry-shaped tracing with W3C propagation, structured JSON/ECS/Logstash logging, a server-rendered dashboard with a bean graph and database browser, and feature flags changed at runtime.</span>
 </div>
 
 <div class="lf-card" markdown>

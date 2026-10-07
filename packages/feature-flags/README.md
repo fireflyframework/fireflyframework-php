@@ -9,4 +9,6 @@ OpenFeature client, gates a bean method or a route with `#[FeatureFlag]`, and a 
 `@featureflag`. Operators change flags at runtime from the admin dashboard, the `flags` actuator endpoint
 and `php artisan firefly:flags`, with every change recorded.
 
+See [Feature Flags](../../docs/modules/feature-flags.md) for the full guide.
+
 Apache-2.0 © Firefly Software Solutions Inc.

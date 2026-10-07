@@ -172,6 +172,8 @@ final class DocsCodeAudit
      */
     public const array USER_KEY_PREFIXES = [
         'firefly.feature.',
+        'firefly.feature-flags.evaluators.',
+        'firefly.feature-flags.flags.',
         'firefly.management.endpoint.',
         'firefly.management.endpoint.health.group.',
         'firefly.security.oauth2.client.provider.',

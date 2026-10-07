@@ -156,6 +156,22 @@ between requests, so `actingAsPrincipal()` — a principal in the holder for one
 login redirect, exactly as an anonymous browser is. The token, introspection, revocation and userinfo helpers are
 machine endpoints and need no sign-in.
 
+## Feature flag overrides
+
+`withFeatureFlags(array $flags)` from `Firefly\Testing\functions.php` overlays definitions in the running
+application for the rest of the test. It accepts shorthand or full flagd definitions, stays in this process,
+and is neither stored nor served by the sync endpoint. The returned `FeatureFlagOverrides` supports `set()`,
+`forget()`, `merge()` and `clear()`. Enable `firefly.feature-flags.enabled` in the test configuration first.
+
+<!-- illustrative: a Pest test in an application's own suite -->
+```php
+it('hides the beta report while its flag is off', function (): void {
+    withFeatureFlags(['beta-reports' => false]);
+
+    $this->get('/reports/beta')->assertNotFound();
+});
+```
+
 ## Pest expectations
 
 Registered once, at monorepo boot, by `Firefly\Testing\Pest\FireflyExpectations::register()` — called from the

@@ -74,6 +74,7 @@ parts:
       - {id: ch11, file: 11-observability-actuator.md, num: 11, title: "Observability: Health, Metrics, and the Actuator"}
       - {id: ch12, file: 12-testing.md, num: 12, title: "Testing LaraFly Applications"}
       - {id: ch13, file: 13-cli-cache.md, num: 13, title: "The CLI and the Zero-Reflection Cache"}
+      - {id: ch13a, file: 13a-feature-flags.md, num: "13A", title: "Feature Flags Across LaraFly and PyFly"}
   - title: "Appendices"
     chapters:
       - {id: appa, file: 90-appendix-a-laravel.md, num: "A", title: "Laravel → LaraFly Cheat-Sheet"}

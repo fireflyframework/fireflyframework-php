@@ -556,6 +556,8 @@ La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corri�
 
 ---
 
+El Capítulo 13A utiliza la misma frontera transaccional para las escrituras versionadas del almacén de banderas y sus filas de auditoría, incluidas las reglas de commit y rollback del llamador.
+
 ## Lo que aprendiste {.recap}
 
 | Concepto | Qué hace |

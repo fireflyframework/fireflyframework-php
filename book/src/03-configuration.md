@@ -373,6 +373,8 @@ Everything this chapter has shown reads through `env()` at some point — `env('
 
 ---
 
+Chapter 13A applies these configuration rules to `firefly.feature-flags.enabled`, layered flag documents and secure sync tokens; keep flags in `config/firefly.php` and secrets in the environment.
+
 ## What you learned {.recap}
 
 | Concept | What it does |

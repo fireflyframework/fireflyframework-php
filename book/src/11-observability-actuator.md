@@ -1102,6 +1102,8 @@ It is a *feature switch*, not a remote configuration endpoint: the list is fixed
 
 ---
 
+Chapter 13A extends this surface with the `flags` endpoint, source health, evaluation metrics and opt-in exposure events; management previews suppress both metrics and exposures.
+
 ## What you learned {.recap}
 
 | Concept | What it does |

@@ -531,6 +531,8 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
             CqrsWiringProvider::class,
             EdaServiceProvider::class,
             EdaWiringProvider::class,
+            FeatureFlagsServiceProvider::class,
+            FeatureFlagsWiringProvider::class,
             SecurityServiceProvider::class,
             SecurityWiringProvider::class,
             ActuatorServiceProvider::class,
@@ -755,6 +757,8 @@ Y para la dirección contraria está `withoutSecurity()`:
 Lee dos veces la última frase, porque es la razón por la que este método existe en absoluto en vez de una sobrescritura de configuración: los indicadores se leen **en vivo**, en cada petición, así que cambiarlos a mitad de un test cambia las puertas de beans que ya estaban construidos. Un test que solo quiere ejercitar lo que hay *detrás* de la puerta no tiene que volver a arrancar la aplicación para pasarla.
 
 ---
+
+El Capítulo 13A prueba el `WalletRollout` incluido en Lumen con `withFeatureFlags()`, vectores de selección compartidos y una ruta protegida; después limpia los overrides para comprobar que vuelve el comportamiento anterior.
 
 ## Lo que aprendiste {.recap}
 
