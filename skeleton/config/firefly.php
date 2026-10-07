@@ -2493,4 +2493,65 @@ return [
         // ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Feature flags — firefly/feature-flags
+    |--------------------------------------------------------------------------
+    |
+    | Flags are flagd flag definitions evaluated in-process on OpenFeature, with the semantics PyFly uses.
+    | Layers, lowest precedence first: `flags` below → a watched file → another service's sync endpoint →
+    | the writable store. The highest layer that defines a key supplies its WHOLE definition. In `flags`
+    | (and only there, and in test overrides) a flag may be written as shorthand: `true`, `false`, or a
+    | string naming a single variant. An invalid definition here refuses the boot, naming the key.
+    | See docs/modules/feature-flags.md.
+    |
+    */
+
+    'feature-flags' => [
+        'enabled' => env('FIREFLY_FEATURE_FLAGS_ENABLED', false),
+
+        // 'flags' => [
+        //     'new-checkout' => false,
+        //     'checkout-flow' => [
+        //         'state' => 'ENABLED',
+        //         'variants' => ['control' => 'v1', 'treatment' => 'v2'],
+        //         'defaultVariant' => 'control',
+        //         'targeting' => ['fractional' => [['control', 50], ['treatment', 50]]],
+        //         'metadata' => ['owner' => 'payments', 'kind' => 'experiment', 'expires' => '2099-12-31'],
+        //     ],
+        // ],
+        // 'evaluators' => [
+        //     'is-beta' => ['in' => ['beta', ['var' => 'roles']]],
+        // ],
+
+        /*
+         | Sources beyond `flags`. `refresh-interval` is how often a request may re-check a source (a file's
+         | mtime and size, the store's latest change id, an HTTP conditional GET); the bookkeeping lives in the
+         | application cache so PHP-FPM workers share it. Durations: '500ms', '5s', 'PT1M' or seconds.
+         | The store driver is `database` (run the migration, `--tag=firefly-feature-flags-migrations` to
+         | publish it) or `memory` (per process — tests and demos only). `connection` null = the default.
+        */
+        // 'sources' => [
+        //     'file' => ['enabled' => false, 'path' => '', 'refresh-interval' => '5s'],
+        //     'http' => ['enabled' => false, 'url' => '', 'token' => env('FIREFLY_FEATURE_FLAGS_HTTP_TOKEN', ''), 'refresh-interval' => '30s', 'timeout' => '2s'],
+        //     'store' => ['enabled' => false, 'driver' => 'database', 'connection' => null, 'refresh-interval' => '5s'],
+        // ],
+
+        // The principal attribute that holds the tenant id (the `tenant` evaluation-context attribute).
+        // 'context' => ['tenant-attribute' => 'tenant'],
+
+        // Status of a #[FeatureFlag]-gated route or method when the flag is off: 404, 403 or 503.
+        // 'web' => ['disabled-status' => 404],
+
+        // Publish a FeatureFlagEvaluated event per evaluation (exposure records for experiments).
+        // 'events' => ['evaluations' => false],
+
+        // Allow writes from the admin page, POST /actuator/flags/{key} and php artisan firefly:flags.
+        // 'management' => ['writes' => false],
+
+        // Serve this application's effective flag set to other services (bearer token required unless
+        // allow-anonymous is true; enabling it without a token refuses the boot).
+        // 'server' => ['enabled' => false, 'path' => '/feature-flags/flagd.json', 'token' => env('FIREFLY_FEATURE_FLAGS_SERVER_TOKEN', ''), 'allow-anonymous' => false],
+    ],
+
 ];

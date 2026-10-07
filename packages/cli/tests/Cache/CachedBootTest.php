@@ -15,6 +15,9 @@ use Firefly\Data\DataServiceProvider;
 use Firefly\Data\Proxy\Advice;
 use Firefly\Data\Proxy\ProxyPlan;
 use Firefly\Data\Transaction\TransactionalManifest;
+use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
+use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
+use Firefly\FeatureFlags\Gating\FeatureFlagDisabledException;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
 use Firefly\Resilience\Method\ResilienceAdviceSource;
 use Firefly\Security\Access\Method\MethodSecurityAdviceSource;
@@ -73,7 +76,7 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
         ->and($plan->hasProxyFor(DemoSecuredService::class))->toBeTrue()
         ->and(array_keys($plan->adviceFor(DemoSecuredService::class)))->toBe([MethodSecurityAdviceSource::ID])
         ->and($plan->methodsFor(DemoSecuredService::class)['secret'][0]['row']['expression'])->toBe("hasRole('ADMIN')")
-        // …and the same for the metric-only #[Service]: the third source in planner(), which nothing else
+        // …and the same for the metric-only #[Service]: its source in planner(), which nothing else
         // in this package's suite exercises. Deleting `new ObservabilityAdviceSource` from planner() used to
         // leave the whole suite green while a cached app recorded no method meter at all.
         ->and($plan->hasProxyFor(DemoTimedService::class))->toBeTrue()
@@ -103,7 +106,7 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
  | The chain, on the compiled artifact. ObservabilityAdviceSource's order 50 is the constant every claim about
  | #[Timed] rests on — "a refusal is still counted", "the commit is inside the timer" — and a class carrying
  | ONE advice can never contradict it, which is what every other fixture here carries. DemoLayeredService
- | carries all four on one method, so ProxyPlanner's sort and ProxyPlan::adviceFor()'s sort both have to
+ | carries all five on one method, so ProxyPlanner's sort and ProxyPlan::adviceFor()'s sort both have to
  | agree on the whole sequence before this passes. Changing 50 to 150 leaves every other test in the
  | monorepo green and turns method metrics into a meter that goes quiet exactly when an operator needs it.
  |
@@ -114,7 +117,7 @@ it('emits proxy-plan.php naming the security-only and metric-only services besid
  | application lost all six resilience attributes — the proxies still generated, just with no resilience
  | advice in them at all.
  */
-it('chains metrics OUTSIDE security, security outside resilience and resilience outside the transaction', function () {
+it('chains metrics outside feature flags, feature flags outside security, security outside resilience and resilience outside the transaction', function () {
     $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
 
     (new ManifestCacheWriter)->write(cachedBootPsr4(), $dir);
@@ -123,17 +126,19 @@ it('chains metrics OUTSIDE security, security outside resilience and resilience 
     $advice = $plan->adviceFor(DemoLayeredService::class);
 
     // The advice set on the class, outermost first, and the orders that put it in that sequence.
-    expect(array_keys($advice))->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL])
+    expect(array_keys($advice))->toBe([ObservabilityAdviceSource::ID, FeatureFlagAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL])
         ->and($advice[ObservabilityAdviceSource::ID]->order)->toBe(50)
+        ->and($advice[FeatureFlagAdviceSource::ID]->order)->toBe(80)
         ->and($advice[ResilienceAdviceSource::ID]->order)->toBe(200)
-        ->and($advice[ObservabilityAdviceSource::ID]->order)->toBeLessThan($advice[MethodSecurityAdviceSource::ID]->order)
+        ->and($advice[ObservabilityAdviceSource::ID]->order)->toBeLessThan($advice[FeatureFlagAdviceSource::ID]->order)
+        ->and($advice[FeatureFlagAdviceSource::ID]->order)->toBeLessThan($advice[MethodSecurityAdviceSource::ID]->order)
         ->and($advice[MethodSecurityAdviceSource::ID]->order)->toBeLessThan($advice[ResilienceAdviceSource::ID]->order)
         ->and($advice[ResilienceAdviceSource::ID]->order)->toBeLessThan($advice[Advice::TRANSACTIONAL]->order);
 
     // …and the per-method rows, which are what ProxyPlanner::proxyMethods() turns into the generated chain:
     // the same sequence, so the emitted proceed() really does reach the metric link first.
     expect(array_column($plan->methodsFor(DemoLayeredService::class)['all'], 'advice'))
-        ->toBe([ObservabilityAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL]);
+        ->toBe([ObservabilityAdviceSource::ID, FeatureFlagAdviceSource::ID, MethodSecurityAdviceSource::ID, ResilienceAdviceSource::ID, Advice::TRANSACTIONAL]);
 
     // ResilienceAdviceSource::render() runs on the CACHED path alone — the resilience capstones take the
     // scan branch by design — so this is the only place the emitted descriptor literal is proved to parse
@@ -144,7 +149,8 @@ it('chains metrics OUTSIDE security, security outside resilience and resilience 
 
     expect($layeredProxy)->toContain('__fireflyResilienceInterceptor')
         ->and($layeredProxy)->toContain('\\Firefly\\Resilience\\Method\\ResilienceMethodDescriptor::fromArray(')
-        ->and($plan->methodsFor(DemoLayeredService::class)['all'][2]['row']['retry'])->toBe('demo');
+        ->and($layeredProxy)->toContain('\\Firefly\\FeatureFlags\\Gating\\FeatureFlagMethodDescriptor::fromArray(')
+        ->and($plan->methodsFor(DemoLayeredService::class)['all'][3]['row']['retry'])->toBe('demo');
 });
 
 it('boots the fixture app on the CACHED zero-reflection path with a working #[Transactional] proxy', function () {
@@ -169,6 +175,7 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
                     'component_manifest' => $dir.'/'.FireflyCachePaths::COMPONENT,
                     'context_manifest' => $dir.'/'.FireflyCachePaths::CONTEXT,
                 ],
+                'feature-flags' => ['enabled' => true, 'flags' => ['demo-layered' => false]],
             ],
             // Seeds a value that DIFFERS from DemoConfigProperties's constructor default ('hello'), so
             // assertion (d) below can distinguish "the DTO was POPULATED FROM CONFIG" from "the DTO merely
@@ -180,6 +187,7 @@ it('boots the fixture app on the CACHED zero-reflection path with a working #[Tr
             ValidationServiceProvider::class,
             WebServiceProvider::class,
             DataServiceProvider::class,
+            FeatureFlagsServiceProvider::class,
             FireflyCacheServiceProvider::class,
         ],
         // ValidationAutoConfiguration's validator() bean is an eager singleton needing the Illuminate validation
@@ -246,6 +254,10 @@ function cachedBootAssertions(Application $app): void
     $timed = $context->get(DemoTimedService::class);
     expect($timed::class)->toBe(DemoTimedService::class.ProxyPlan::PROXY_SUFFIX)
         ->and($timed->measured())->toBe('measured');
+
+    /** @var DemoLayeredService $layered */
+    $layered = $context->get(DemoLayeredService::class);
+    expect(fn () => $layered->all('dark'))->toThrow(FeatureFlagDisabledException::class);
 
     // Category C: the compiled TransactionalManifest is populated (the #[Configuration] #[Bean] loaded it).
     /** @var TransactionalManifest $manifest */

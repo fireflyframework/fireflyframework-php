@@ -44,6 +44,10 @@
 
 **EventListener** — Either of two distinct, deliberately unrelated surfaces: `#[AsEventListener]` for Laravel's own in-process event dispatch, and `#[EventListener]` for `firefly/eda`'s broker-backed bus, which subscribes to an event-type *pattern* rather than a PHP class (Chapter 8).
 
+**Exposure** — An optional `FeatureFlagEvaluated` event recording an ordinary evaluation for experiment analysis. A management preview emits none, and a value graph over 10,000 occurrences omits the event without changing the result (Chapter 13A).
+
+**Feature flag** — A versioned flagd definition that selects a typed variant using targeting rules and a caller default. LaraFly and PyFly share its evaluation contract and percentage buckets (Chapter 13A).
+
 **Granted authority** — A single permission or role string (`'ROLE_ADMIN'`, `'orders:read'`) carried by an `Authentication`. `hasRole('X')` normalises to a check against the granted authority `'ROLE_X'` (Chapter 10).
 
 **Health indicator** — A one-method SPI (`HealthIndicator::health(): Health`) that a `#[Component]` implements to report whether some dependency or resource is up. `HealthEndpoint` aggregates every registered indicator to the single most-severe `Status` (Chapter 11).

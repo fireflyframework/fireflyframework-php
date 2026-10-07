@@ -141,6 +141,33 @@ return [
                 ],
             ],
             6 => [
+                'method' => 'featureFlagMetrics',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\FeatureFlags\\Telemetry\\FeatureFlagMetrics',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.metrics.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.feature-flags.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
+            7 => [
                 'method' => 'observabilityMethodInterceptor',
                 'conditions' => [
                     0 => [
@@ -167,7 +194,7 @@ return [
                     ],
                 ],
             ],
-            7 => [
+            8 => [
                 'method' => 'cqrsTracing',
                 'conditions' => [
                     0 => [
@@ -194,7 +221,7 @@ return [
                     ],
                 ],
             ],
-            8 => [
+            9 => [
                 'method' => 'edaTracing',
                 'conditions' => [
                     0 => [

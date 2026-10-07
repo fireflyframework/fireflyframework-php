@@ -185,6 +185,7 @@ final class ManifestCacheWriter
     {
         return new ProxyPlanner([
             new ObservabilityAdviceSource,
+            new FeatureFlagAdviceSource,
             new MethodSecurityAdviceSource,
             new ResilienceAdviceSource,
             new TransactionalAdviceSource,
@@ -513,6 +514,8 @@ Cada aplicación que `firefly new` andamia es por tanto, desde el primerísimo `
     `composer create-project laravel/laravel` te da una app Laravel desnuda sin nada precableado; `firefly new` te da la misma app Laravel, más la familia Firefly ya requerida, más un par de estereotipos de ejemplo, más una caché de arranque ya calentada — el equivalente al "genera un proyecto de arranque funcional" de Spring Initializr, apuntado a `artisan` en lugar de a un formulario web. `make:firefly-*` refleja la propia familia `make:controller`/`make:model` de Laravel exactamente en espíritu — un `GeneratorCommand` de Artisan, un stub, un marcador de namespace — solo que un atributo de estereotipo más profundo.
 
 ---
+
+El Capítulo 13A presenta `firefly:flags` para inspeccionar y cambiar banderas en ejecución; sus puertas de método también entran en el plan de proxy compilado en vez de reflejarse en cada petición.
 
 ## Lo que aprendiste {.recap}
 

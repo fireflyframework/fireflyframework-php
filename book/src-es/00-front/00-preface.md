@@ -18,6 +18,8 @@ Cada capítulo hace avanzar **Lumen**, un servicio de monedero digital y libro m
 
 El recorrido empieza con suavidad. El **Inicio rápido** te lleva desde el instalador incluido `firefly new` hasta un endpoint en ejecución y consultable con curl, previendo en miniatura los estereotipos, el contenedor y la ruta de arranque compilada antes de que ningún capítulo te pida razonar sobre ellos. El **Capítulo 1** da un paso atrás y argumenta el enfoque completo — qué problema resuelve LaraFly y sobre qué pilares se sostiene. El **Capítulo 2** abre la sala de máquinas: el contenedor de inyección de dependencias, los atributos de estereotipo y el escaneo de componentes que compila tus clases anotadas en un manifiesto de arranque en caché, sin reflexión. Las partes posteriores de este libro — que llegarán en los capítulos siguientes — construyen hacia afuera desde esa base hacia la configuración, HTTP, la persistencia, el modelado de dominio, CQRS, la arquitectura orientada a eventos, la seguridad y la observabilidad, siempre a través de la misma base de código de `Lumen`, siempre con código que puedes ejecutar.
 
+El Capítulo 13A cierra el recorrido de producción con feature flags: Lumen mantiene apagada una vista de la wallet, selecciona una cohorte compartida y prueba la ruta y el ciclo del override contra el framework real.
+
 Cuando hayas terminado de trabajar todo el libro, tendrás un modelo mental de cada capa de un servicio LaraFly de producción, y una aplicación real y probada que lo demuestre.
 
 ### Cómo usar este libro

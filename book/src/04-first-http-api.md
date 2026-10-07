@@ -621,6 +621,8 @@ At boot, `RouteWiringPass` registers one **native Laravel route** per descriptor
 
 ---
 
+Chapter 13A adds `#[FeatureFlag]` to a controller action: its middleware refuses a dark route before request-body binding and keeps the flag key out of the problem response.
+
 ## What you built {.recap}
 
 Part I is complete. Lumen now **boots** (Chapter 1), is **wired** (Chapter 2's constructor injection with zero glue code), is **configured** (Chapter 3's typed, profile-aware settings), and **serves** — a validated REST API at `/api/v1/wallets` with:

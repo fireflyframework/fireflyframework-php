@@ -29,6 +29,7 @@
         "firefly/cqrs": "*@dev",
         "firefly/data": "*@dev",
         "firefly/eda": "*@dev",
+        "firefly/feature-flags": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/messaging": "*@dev",
         "firefly/observability": "*@dev",

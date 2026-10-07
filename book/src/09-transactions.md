@@ -556,6 +556,8 @@ The second test is the one that matters. `Wallet::withdraw()` on the source ran 
 
 ---
 
+Chapter 13A uses the same transaction boundary for versioned flag-store writes and their audit rows, including the caller-owned commit and rollback rules.
+
 ## What you learned {.recap}
 
 | Concept | What it does |

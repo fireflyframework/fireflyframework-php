@@ -155,6 +155,7 @@ nav:
           - Admin Dashboard: modules/admin.md
           - Bean Graph: modules/bean-graph.md
           - Data Browser: modules/data-browser.md
+          - Feature Flags: modules/feature-flags.md
       - Testing:
           - Testing: modules/testing.md
           - Integration Testing: modules/integration-testing.md
@@ -162,6 +163,7 @@ nav:
           - Installer: modules/installer.md
   - Reference:
       - CLI Reference: cli.md
+      - Feature Flag Contract: feature-flags-contract.md
       - Versioning: versioning.md
   - Contributing:
       - Contributing: contributing.md

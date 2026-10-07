@@ -28,11 +28,11 @@
 ## Module Guides
 
 Every module guide lives under [`modules/`](modules/), in the ten groups `mkdocs.yml`'s navigation and the
-site's own [Modules](modules.md) landing page use. All 32 are listed here, and neither the list nor the
+site's own [Modules](modules.md) landing page use. All 33 are listed here, and neither the list nor the
 number is maintained on trust: `tests/ModuleDocumentationTest.php` fails the build if a guide is missing
 from the navigation, from the table below, from the root `README.md`'s table, from `docs/index.md` or from
 the landing page, and `tests/SiteNavigationTest.php` reads that number off `docs/modules/*.md` itself, so a
-thirty-third guide turns this page red rather than quietly making it wrong.
+thirty-fourth guide turns this page red rather than quietly making it wrong.
 
 ### Foundation
 
@@ -102,6 +102,7 @@ thirty-third guide turns this page red rather than quietly making it wrong.
 | [Admin Dashboard](modules/admin.md) | `firefly/admin` — the browser dashboard over the actuator; reads its endpoints in-process, so its own URL is the security boundary |
 | [Bean Graph](modules/bean-graph.md) | The dashboard's drawn dependency graph — components, `#[Bean]` products and `#[ConfigProperties]` DTOs as nodes, interface-resolved edges, longest-path layering, cycle reporting |
 | [Data Browser](modules/data-browser.md) | A Django-style database browser over `CrudRepository` beans — **off by default**, writes behind a second gate, with filtering, paging, relations you can walk, and an entity map |
+| [Feature Flags](modules/feature-flags.md) | `firefly/feature-flags` — flagd flags on OpenFeature, gates, layered sources, writable store and audit trail |
 
 ### Testing
 
@@ -122,7 +123,7 @@ thirty-third guide turns this page red rather than quietly making it wrong.
 
 | Document | Description |
 |----------|-------------|
-| [Modules](modules.md) | The grouped index of all 32 module guides, and how a package wires itself |
+| [Modules](modules.md) | The grouped index of all 33 module guides, and how a package wires itself |
 | [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the four contributed by capability packages |
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |

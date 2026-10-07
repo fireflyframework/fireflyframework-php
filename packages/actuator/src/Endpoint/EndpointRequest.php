@@ -8,6 +8,8 @@ namespace Firefly\Actuator\Endpoint;
  * The request an ActuatorEndpoint receives — the HTTP method, the path segments AFTER the endpoint id (e.g.
  * /actuator/health/liveness → subPath ['liveness']), the parsed query, and the parsed JSON/form body. Built by
  * ActuatorDispatchAction from the illuminate Request; scalar-only so endpoints stay trivially testable.
+ * The optional raw JSON body preserves object and number shapes lost by PHP's parsed array.
+ * The origin is trusted in-process metadata; HTTP dispatch never derives it from request input.
  */
 final readonly class EndpointRequest
 {
@@ -21,5 +23,7 @@ final readonly class EndpointRequest
         public array $subPath,
         public array $query = [],
         public array $body = [],
+        public ?string $rawBody = null,
+        public string $origin = 'actuator',
     ) {}
 }

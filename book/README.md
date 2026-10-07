@@ -111,7 +111,7 @@ book/
   src/                         # EN manuscript (Markdown)
     00-front/                   # title/copyright/dedication/preface/conventions
     00-quickstart.md             # "Build Lumen step by step" quick start
-    01..13-*.md                  # the fifteen chapters, 4A and 10A included (Parts I-IV)
+    01..13a-*.md                 # the sixteen chapters, 4A, 10A and 13A included (Parts I-IV)
     90-appendix-a-laravel.md      # Laravel -> LaraFly cheat-sheet
     94-glossary.md                # glossary
   src-es/                        # ES manuscript, same structure/filenames
@@ -137,7 +137,7 @@ book/
 ## Manuscript status
 
 The manuscript is **structurally complete** in both languages: a five-file front
-matter, a "Build Lumen step by step" quick start, fifteen chapters across four
+matter, a "Build Lumen step by step" quick start, sixteen chapters across four
 parts —
 
 - **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
@@ -148,7 +148,7 @@ parts —
   Architecture & the Transactional Outbox, Transactions & the `#[Transactional]`
   proxy, Security, OAuth2 and OpenID Connect
 - **Part IV — Observability, Testing & Delivery**: Observability/Actuator,
-  Testing, the CLI & the Zero-Reflection Cache
+  Testing, the CLI & the Zero-Reflection Cache, Feature Flags
 
 — plus **Appendix A** (Laravel → LaraFly cheat-sheet) and a **Glossary**. Every
 chapter walks the real `samples/lumen` project. Every fenced ` ```php ` listing

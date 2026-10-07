@@ -621,6 +621,8 @@ En el arranque, `RouteWiringPass` registra una **ruta nativa de Laravel** por ca
 
 ---
 
+El Capítulo 13A añade `#[FeatureFlag]` a una acción de controlador: su middleware rechaza la ruta apagada antes de vincular el cuerpo y no revela la clave en la respuesta de problema.
+
 ## Lo que construiste {.recap}
 
 La Parte I está completa. Lumen ahora **arranca** (Capítulo 1), está **conectado** (la inyección por constructor del Capítulo 2 sin código de cableado), está **configurado** (los ajustes tipados y conscientes de perfil del Capítulo 3), y **sirve** — una API REST validada en `/api/v1/wallets` con:

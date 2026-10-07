@@ -70,6 +70,8 @@ final readonly class AdminPage
                 'The cache stores this application has configured.'),
             new self('loggers', 'Loggers', 'loggers', self::GROUP_CONFIG,
                 'Log channels and their levels.'),
+            new self('flags', 'Feature flags', 'flags', self::GROUP_CONFIG,
+                'Every feature flag, its source and history, with controls when writes are enabled.'),
             // `requires` is null and its own settings decide whether it appears — see AdminAction::nav().
             // It is the only page that CHANGES the application rather than describing it, which is why it is
             // off by default and refused outright in production.

@@ -6,6 +6,7 @@ namespace Firefly\Admin;
 
 use Firefly\Actuator\Endpoint\ActuatorRegistry;
 use Firefly\Actuator\Endpoint\EndpointRequest;
+use Firefly\Actuator\Endpoint\EndpointResponse;
 use Firefly\Actuator\Health\HealthContributorRegistry;
 use Firefly\Config\Config;
 use Illuminate\Contracts\Container\Container;
@@ -150,5 +151,24 @@ final readonly class AdminEndpointReader
         }
 
         return $response !== null && $response->status >= 200 && $response->status < 300;
+    }
+
+    /**
+     * @param  list<string>  $subPath
+     * @param  array<string, mixed>  $query
+     * @param  array<string, mixed>  $body
+     */
+    public function call(string $method, string $id, array $subPath = [], array $query = [], array $body = [], ?string $rawBody = null): ?EndpointResponse
+    {
+        $endpoint = $this->registry->get($id);
+        if ($endpoint === null || ! $this->has($id)) {
+            return null;
+        }
+
+        try {
+            return $endpoint->handle(new EndpointRequest($method, $subPath, $query, $body, $rawBody, origin: 'admin'));
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

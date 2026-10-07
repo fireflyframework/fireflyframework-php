@@ -373,6 +373,8 @@ Todo lo que ha mostrado este capítulo lee, en algún punto, a través de `env()
 
 ---
 
+El Capítulo 13A aplica estas reglas de configuración a `firefly.feature-flags.enabled`, los documentos de banderas por capas y los tokens de sincronización; deja las banderas en `config/firefly.php` y los secretos en el entorno.
+
 ## Lo que aprendiste {.recap}
 
 | Concepto | Qué hace |

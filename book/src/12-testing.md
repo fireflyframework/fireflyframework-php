@@ -531,6 +531,8 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
             CqrsWiringProvider::class,
             EdaServiceProvider::class,
             EdaWiringProvider::class,
+            FeatureFlagsServiceProvider::class,
+            FeatureFlagsWiringProvider::class,
             SecurityServiceProvider::class,
             SecurityWiringProvider::class,
             ActuatorServiceProvider::class,
@@ -755,6 +757,8 @@ And for the other direction there is `withoutSecurity()`:
 Read the last sentence twice, because it is the reason this method exists at all rather than a config override: the flags are read **live**, on every request, so flipping them mid-test changes the gates on beans that were already built. A test that only wants to exercise the thing *behind* the gate does not have to re-boot the application to get past it.
 
 ---
+
+Chapter 13A exercises Lumen’s checked-in `WalletRollout` with `withFeatureFlags()`, shared targeting vectors and a gated route, then clears overrides to prove the old behavior returns.
 
 ## What you learned {.recap}
 

@@ -53,6 +53,41 @@ return [
         ],
     ],
     2 => [
+        'class' => 'Firefly\\Security\\FeatureFlags\\PrincipalEvaluationContextContributor',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => -100,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Context\\EvaluationContextContributor',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Config\\Config',
+        ],
+    ],
+    3 => [
+        'class' => 'Firefly\\Security\\FeatureFlags\\PrincipalFlagActorSource',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\FeatureFlags\\Management\\FlagActorSource',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    4 => [
         'class' => 'Firefly\\Security\\OAuth2\\OAuth2ResourceServerFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -71,7 +106,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    3 => [
+    5 => [
         'class' => 'Firefly\\Security\\OpenApi\\MethodSecurityRequirementContributor',
         'stereotype' => 'component',
         'name' => null,
@@ -90,7 +125,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    4 => [
+    6 => [
         'class' => 'Firefly\\Security\\SecurityAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -435,7 +470,7 @@ return [
         'dependencies' => [
         ],
     ],
-    5 => [
+    7 => [
         'class' => 'Firefly\\Security\\Session\\SecurityContextPersistenceFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -455,7 +490,7 @@ return [
             2 => 'Firefly\\Config\\Config',
         ],
     ],
-    6 => [
+    8 => [
         'class' => 'Firefly\\Security\\Web\\Basic\\HttpBasicFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -479,7 +514,7 @@ return [
             6 => 'Firefly\\Config\\Config',
         ],
     ],
-    7 => [
+    9 => [
         'class' => 'Firefly\\Security\\Web\\CsrfFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -498,7 +533,7 @@ return [
             1 => 'Firefly\\Security\\Web\\Csrf\\SessionCsrf',
         ],
     ],
-    8 => [
+    10 => [
         'class' => 'Firefly\\Security\\Web\\HttpSecurityFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -523,7 +558,7 @@ return [
             7 => 'Firefly\\Security\\Event\\AuthenticationEventPublisher',
         ],
     ],
-    9 => [
+    11 => [
         'class' => 'Firefly\\Security\\Web\\JwtAuthenticationFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -542,7 +577,7 @@ return [
             1 => 'Firefly\\Config\\Config',
         ],
     ],
-    10 => [
+    12 => [
         'class' => 'Firefly\\Security\\Web\\Login\\FormLoginFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -568,7 +603,7 @@ return [
             8 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
         ],
     ],
-    11 => [
+    13 => [
         'class' => 'Firefly\\Security\\Web\\Logout\\LogoutFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -591,7 +626,7 @@ return [
             5 => 'Firefly\\Security\\Web\\Logout\\LogoutSuccessHandler',
         ],
     ],
-    12 => [
+    14 => [
         'class' => 'Firefly\\Security\\Web\\Logout\\LogoutHandler',
         'stereotype' => 'component',
         'name' => null,
@@ -611,7 +646,7 @@ return [
             3 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
         ],
     ],
-    13 => [
+    15 => [
         'class' => 'Firefly\\Security\\Web\\RememberMe\\RememberMeAuthenticationFilter',
         'stereotype' => 'component',
         'name' => null,
@@ -633,7 +668,7 @@ return [
             4 => 'Firefly\\Security\\Web\\RememberMe\\RememberMeServices',
         ],
     ],
-    14 => [
+    16 => [
         'class' => 'Firefly\\Security\\Web\\SecurityHeadersFilter',
         'stereotype' => 'component',
         'name' => null,

@@ -1,7 +1,7 @@
 # LaraFly by Example
 
 Learn LaraFly by building **Lumen**, the wallet-and-ledger service included in the framework.
-Both editions cover the same application: a quick start, fifteen chapters, a Laravel cheat-sheet,
+Both editions cover the same application: a quick start, sixteen chapters, a Laravel cheat-sheet,
 and a glossary. Every PHP listing is checked against the repository or linted by PHP.
 
 ## Download the book
@@ -27,7 +27,7 @@ composer global require fireflyframework/larafly
 firefly new my-app
 ```
 
-All 29 components are included in that package. An existing application starts with
+All 30 components are included in that package. An existing application starts with
 `composer require fireflyframework/larafly`; compatible legacy `firefly/*` requirements are then
 satisfied by the framework's `replace` declarations. See [Installation](installation.md) for details.
 

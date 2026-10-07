@@ -8,7 +8,7 @@ CQRS, event-driven architecture, first-party security including both halves of O
 directly onto Laravel's own runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a
 Laravel developer would recognize, still a Laravel app — it just boots like a Spring Boot one.
 
-The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 29 components,
+The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 30 components,
 wired together by a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
 request after that runs against plain PHP arrays — no runtime reflection on the hot path.
 
@@ -103,7 +103,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 
 ## The modules
 
-Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 32
+Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 33
 guides out by concern, with a line on each saying what it is for, and the same grouping is the site's
 **Modules** tab.
 
@@ -116,7 +116,7 @@ guides out by concern, with a line on each saying what it is for, and the same g
 | **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
 | **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) · [OAuth2 Authorization Server](modules/security-oauth2-server.md) |
-| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) |
+| **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) · [Feature Flags](modules/feature-flags.md) |
 | **Testing** | [Testing](modules/testing.md) · [Integration Testing](modules/integration-testing.md) |
 | **Tooling** | [Installer](modules/installer.md) |
 
@@ -126,7 +126,7 @@ Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *LaraFly by Example*
-book — 15 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
+book — 16 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 as [PDF and EPUB downloads in English and Spanish](book.md).
 
 ## Quick Links

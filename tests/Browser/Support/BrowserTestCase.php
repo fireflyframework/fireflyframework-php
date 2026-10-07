@@ -64,6 +64,26 @@ abstract class BrowserTestCase extends SkeletonExampleTestCase
             'firefly.management.enabled' => true,
             'firefly.openapi.enabled' => true,
             'firefly.openapi.viewer.enabled' => true,
+            'firefly.feature-flags.enabled' => true,
+            'firefly.feature-flags.flags' => [
+                'beta-banner' => true,
+                'checkout-flow' => [
+                    'state' => 'ENABLED',
+                    'variants' => ['v1' => 'v1', 'v2' => 'v2'],
+                    'defaultVariant' => 'v1',
+                    'targeting' => ['if' => [['==' => [['var' => 'plan'], 'pro']], 'v2', null]],
+                    'metadata' => ['owner' => 'payments', 'expires' => '2099-12-31'],
+                ],
+                'legacy-export' => [
+                    'state' => 'ENABLED',
+                    'variants' => ['on' => true, 'off' => false],
+                    'defaultVariant' => 'on',
+                    'metadata' => ['expires' => '2025-01-01'],
+                ],
+            ],
+            'firefly.feature-flags.sources.store.enabled' => true,
+            'firefly.feature-flags.sources.store.driver' => 'memory',
+            'firefly.feature-flags.management.writes' => true,
             ...$this->securityOverrides(),
         ];
     }

@@ -21,14 +21,14 @@ The single place the current version *is* asserted in code is:
 ```php
 final class Version
 {
-    public const string VERSION = '26.09.11';
+    public const string VERSION = '26.10.1';
 }
 ```
 
-`Firefly\Kernel\Version::VERSION` has exactly two readers in the shipped packages, and `grep -rn
-'Version::VERSION' packages` is the whole list: `AboutCommand`, which prints `LaraFly <version>` as the first
-line of `php artisan firefly:about`, and `RuntimeInfoContributor`, which puts it at
-`runtime.firefly.version` in `/actuator/info`.
+`Firefly\Kernel\Version::VERSION` is the shipped runtime version source. `AboutCommand` prints it in
+`php artisan firefly:about`, `RuntimeInfoContributor` exposes it at `runtime.firefly.version` in `/actuator/info`,
+the installer's `NewCommand` uses it when creating applications, and `FeatureFlags::client()` supplies it to
+OpenFeature client metadata.
 
 Consistency across the three human-visible surfaces that *should* always agree with it — the
 `Version::VERSION` constant, the CHANGELOG's latest `## [x.y.z]` heading, and the README version badge — is

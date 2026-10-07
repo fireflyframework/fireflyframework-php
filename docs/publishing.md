@@ -7,7 +7,7 @@ cross-repository `ACCESS_TOKEN` are needed.
 
 ## Package identity and compatibility
 
-The root package replaces all 29 former component names, including `firefly/firefly`, with
+The root package replaces all 30 former component names, including `firefly/firefly`, with
 `self.version`. Packagist's `firefly` vendor namespace belongs to another publisher, so the public
 package uses the Firefly Framework organization's namespace. `firefly/lumen` is a sample, not a replacement;
 `firefly/skeleton` is a bundled project template, not a second published package.
@@ -81,7 +81,7 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
 To repeat the public install check locally:
 
 ```bash
-RELEASE_TAG=v26.09.11 RELEASE_SHA="$(git rev-parse 'v26.09.11^{commit}')" php scripts/check-package-install.php --published
+RELEASE_TAG=v26.10.1 RELEASE_SHA="$(git rev-parse 'v26.10.1^{commit}')" php scripts/check-package-install.php --published
 ```
 
 An unmerged branch or a local consumer check is not a published release.

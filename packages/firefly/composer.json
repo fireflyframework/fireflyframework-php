@@ -33,6 +33,7 @@
         "firefly/data": "*@dev",
         "firefly/domain": "*@dev",
         "firefly/eda": "*@dev",
+        "firefly/feature-flags": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/messaging": "*@dev",
         "firefly/observability": "*@dev",
