@@ -8,10 +8,10 @@ framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own `
 commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). Its own Deptrac `Cli` layer — depends on the rest of
 the framework, depended on by nothing.
 
-Four more `firefly:*` commands ship with the capability they belong to rather than with the console:
+Five more `firefly:*` commands ship with the capability they belong to rather than with the console:
 `firefly:management:serve` (`firefly/actuator`), `firefly:openapi` (`firefly/openapi`),
-`firefly:eda:consume` (`firefly/eda`) and `firefly:outbox:relay` (`firefly/eda-postgres`). They are all
-listed at the end of this page.
+`firefly:eda:consume` (`firefly/eda`), `firefly:outbox:relay` (`firefly/eda-postgres`) and `firefly:flags`
+(`firefly/feature-flags`). They are all listed at the end of this page.
 
 ## `firefly:cache`
 
@@ -329,3 +329,4 @@ command is part of that capability rather than of the console.
 | `firefly:management:serve` | `firefly/actuator` | Runs a second dev listener for the actuator on the management port. `--host=`, `--port=`. See [`firefly:management:serve`](#fireflymanagementserve) above. |
 | `firefly:eda:consume` | `firefly/eda` | Runs the configured broker `EventConsumer`, dispatching to `#[EventListener]` handlers until stopped. `--destination=*` (repeatable; overrides `firefly.eda.destinations`), `--max-messages=`, `--time-limit=`, `--sleep=0` (idle ms between empty polls), `--poll-timeout=5000` (block ms per poll). The bound destinations are echoed at startup, so a worker subscribed to nothing is visible on line one. Errors out when no broker `EventConsumer` is bound — the `memory` and `queue` providers have no consumer loop, and `queue` uses `php artisan queue:work`. See [EDA](modules/eda.md). |
 | `firefly:outbox:relay` | `firefly/eda-postgres` | **Optional.** Forwards committed `firefly_eda_outbox` rows to the downstream broker named by `firefly.eda.postgres.relay.downstream_provider` (claim → publish → mark `PUBLISHED`/`FAILED`). `--max-messages=`, `--time-limit=`, `--sleep=1` (seconds between empty batches), `--batch-size=50`. In-process delivery is `firefly:eda:consume`'s job, not this command's, so an app that only needs `#[EventListener]` handlers never runs it; an unset or misconfigured `downstream_provider` fails loudly before a single row is claimed. See [EDA Brokers](modules/eda-brokers.md). |
+| `firefly:flags` | `firefly/feature-flags` | Runs the `flags` management operations in-process: `list`, `show {key}`, `evaluate {key}` (`--context=<json>`, `--targeting-key=`), and the writes `enable`, `disable`, `default-variant {key} {variant}`, `put {key} --file=<definition.json>`, `delete {key}` (each with `--expected-version=`). `--json` prints the management JSON, including `{error,message}` on a refusal. Writes need `firefly.feature-flags.management.writes` and a flag store; the actor is the principal, else `cli:<os-user>`. An accepted write with pending local refresh exits successfully and asks the operator to check visibility again. |

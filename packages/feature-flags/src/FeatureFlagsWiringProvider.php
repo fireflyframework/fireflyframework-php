@@ -7,6 +7,7 @@ namespace Firefly\FeatureFlags;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
+use Firefly\FeatureFlags\Console\FlagsCommand;
 use Firefly\FeatureFlags\Gating\BladeDirectives;
 use Firefly\FeatureFlags\Gating\FeatureFlagRouteGatingPass;
 use Firefly\FeatureFlags\Server\FlagdSyncRouteRegistrar;
@@ -30,6 +31,10 @@ final class FeatureFlagsWiringProvider extends FireflyServiceProvider
 
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            $this->commands([FlagsCommand::class]);
+        }
+
         $migrations = dirname(__DIR__).'/database/migrations';
         $this->publishes([$migrations.'/'.self::MIGRATION => $this->app->databasePath('migrations/'.self::MIGRATION)], 'firefly-feature-flags-migrations');
 
