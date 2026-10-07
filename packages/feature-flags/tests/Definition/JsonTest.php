@@ -45,3 +45,30 @@ it('converts to plain PHP arrays for OpenFeature and forces object positions', f
         ->and(Json::object(['0' => 'v']))->toBeInstanceOf(stdClass::class)
         ->and(Json::object(['on' => true]))->toBe(['on' => true]);
 });
+
+it('preserves every JSON member through decoding and canonical encoding', function (): void {
+    $json = <<<'JSON'
+        {"\u0000name":{"0":{},"nested":[[],{},1.0,{"\u0000inner":"value"}]},"_name":"ordinary","\u005fname":"last","quote\"slash\\":"text", "duplicate":1,"duplicate":2}
+        JSON;
+    $decoded = Json::decode($json);
+    $members = Json::members($decoded);
+    expect($members["\0name"] ?? null)->not->toBeNull()
+        ->and($members['_name'] ?? null)->toBe('last')
+        ->and($members['duplicate'] ?? null)->toBe(2)
+        ->and(Json::canonical(Json::decode(Json::encode($decoded))))->toBe(Json::canonical($decoded))
+        ->and(Json::canonical(["\0name" => 1]))->toBe('{"\\u0000name":1}')
+        ->and(Json::canonical(["\0name" => 1]))->not->toBe(Json::canonical(["\0name" => 2]));
+});
+
+it('retains native malformed JSON refusals with unusual member names', function (string $json): void {
+    expect(fn () => Json::decode($json))->toThrow(JsonException::class);
+})->with(['{"\\u0000a":}', '{"\\u0000a":1,}', '{"\\u0000a":"\\x"}']);
+
+it('keeps native decoding limits for large text and nesting with NUL names', function (): void {
+    $text = str_repeat("text\\\"\n", 20000);
+    $json = Json::encode(["\0name" => $text, 'deep' => [[new stdClass]], 'number' => 1.0]);
+    expect(Json::members(Json::decode($json))["\0name"] ?? null)->toBe($text)
+        ->and(Json::encode(Json::decode($json)))->toBe($json);
+    $tooDeep = '{"\\u0000name":'.str_repeat('[', 512).'0'.str_repeat(']', 512).'}';
+    expect(fn () => Json::decode($tooDeep))->toThrow(JsonException::class);
+});

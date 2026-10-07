@@ -104,3 +104,14 @@ it('never retries an unrelated conflict exception from the clock', function (): 
     expect(fn () => $store->put('race', ['state' => 'ENABLED', 'variants' => ['on' => true], 'defaultVariant' => 'on'], null))->toThrow(FlagStoreConflict::class);
     expect($calls)->toBe(1)->and($store->revision())->toBe(0);
 });
+
+it('round trips leading NUL members through relational rows and audit history', function (): void {
+    $connection = FlagStores::sqlite();
+    $store = new DatabaseFlagStore($connection, FlagStores::clock());
+    $definition = Json::members(Json::decode('{"state":"ENABLED","variants":{"v":{"\\u0000nested":{"0":{},"list":[],"float":1.0}}},"defaultVariant":"v","metadata":{"\\u0000owner":"ops"}}'));
+    $store->put('portable', $definition, 'ops');
+    $canonical = Json::canonical($definition);
+    expect($connection->table(FeatureFlagSchema::FLAGS)->where('flag_key', 'portable')->value('definition'))->toBe($canonical)
+        ->and(Json::canonical($store->get('portable')?->definition))->toBe($canonical)
+        ->and(Json::canonical($store->history('portable')[0]->definition))->toBe($canonical);
+});

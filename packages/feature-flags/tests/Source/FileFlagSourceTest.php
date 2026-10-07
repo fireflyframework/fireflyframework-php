@@ -5,11 +5,17 @@ declare(strict_types=1);
 use Firefly\Config\Config;
 use Firefly\FeatureFlags\Definition\InvalidFlagDefinition;
 use Firefly\FeatureFlags\FeatureFlagsSettings;
+use Firefly\FeatureFlags\Registry\CacheBook;
+use Firefly\FeatureFlags\Registry\FlagRegistry;
 use Firefly\FeatureFlags\Source\FileFlagSource;
 use Firefly\FeatureFlags\Source\FlagSource;
 use Firefly\FeatureFlags\Source\FlagSourceUnavailable;
+use Firefly\FeatureFlags\Tests\Support\FixedClock;
 use Firefly\FeatureFlags\Tests\Support\TemporaryFlagFiles;
+use Firefly\Testing\Double\RecordingApplicationEventPublisher;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Config\Repository;
+use Psr\Log\NullLogger;
 
 function featureFlagsFileSource(string $path): FileFlagSource
 {
@@ -219,4 +225,32 @@ it('keeps a YAML flow-mapping key starting with NUL as Symfony Yaml reads it', f
     $path = TemporaryFlagFiles::write('yaml', "metadata: {\"\\0a\": x}\n");
 
     expect(featureFlagsFileSource($path)->load(null)?->document->metadata)->toBe(["\0a" => 'x']);
+});
+
+it('retains a good YAML cache across invalid binary refresh and fresh worker boot then accepts NUL names', function (): void {
+    $good = "flags:\n  a:\n    state: ENABLED\n    variants: {on: true, off: false}\n    defaultVariant: on\n";
+    $path = TemporaryFlagFiles::write('yaml', $good);
+    $cache = new Illuminate\Cache\Repository(new ArrayStore);
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $make = static fn (): FlagRegistry => new FlagRegistry(
+        [featureFlagsFileSource($path)], new CacheBook($cache, new NullLogger), $events, clock: $clock(...),
+    );
+    $registry = $make();
+    $registry->start();
+    $revision = $registry->states()[0]->revision;
+    TemporaryFlagFiles::rewrite($path, $good."    metadata: {binary: !!binary /w==}\n", TemporaryFlagFiles::MTIME + 10);
+    $clock->now += 6;
+    $registry->refresh();
+    $fresh = $make();
+    $fresh->start();
+    expect($fresh->document()->flag('a'))->not->toBeNull()
+        ->and($fresh->states()[0]->status())->toBe('STALE')
+        ->and($fresh->states()[0]->revision)->toBe($revision)
+        ->and($events->events)->toHaveCount(1);
+    TemporaryFlagFiles::rewrite($path, $good."    metadata: {\"\\0name\": value}\n", TemporaryFlagFiles::MTIME + 20);
+    $fresh->refresh(force: true);
+    expect($fresh->document()->flag('a')?->metadata())->toBe(["\0name" => 'value'])
+        ->and($fresh->states()[0]->status())->toBe('UP')
+        ->and($events->events)->toHaveCount(2);
 });

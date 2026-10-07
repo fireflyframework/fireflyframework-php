@@ -16,13 +16,22 @@
         <p class="tip" role="status">{{ session('data-message') }}</p>
     @endif
 
-    @if (! ($overview['writable'] ?? false))
+    @if ($unavailable ?? false)
+        <p class="tip warnbox" role="status">Feature flag data is unavailable. Retry after the flags endpoint recovers.</p>
+    @elseif (! ($overview['writable'] ?? false))
         <p class="tip">Read-only: no flag store is configured. Enable <code>firefly.feature-flags.sources.store</code> to change flags at runtime.</p>
     @elseif (! ($overview['writesEnabled'] ?? false))
         <p class="tip">Read-only: enable <code>firefly.feature-flags.management.writes</code> to change flags.</p>
     @endif
 
-    @if (isset($missing))
+    @if ($unavailable ?? false)
+    @elseif (isset($rawDetail))
+        <div class="panel">
+            @include('firefly-admin::_panel-head', ['title' => 'Complete flag detail JSON', 'count' => ''])
+            <p class="note">These JSON member names require the complete response to preserve their shape. Use the CLI or actuator to edit this definition.</p>
+            <pre>{{ $rawDetail }}</pre>
+        </div>
+    @elseif (isset($missing))
         @include('firefly-admin::_empty', ['title' => 'No such flag', 'body' => 'No layer defines <code>'.e($missing).'</code>. <a href="'.e($settings->url('flags')).'">Back to every flag</a>.'])
     @elseif ($detail === null)
         <div class="panel">
@@ -154,7 +163,7 @@
             @if ($evaluation !== null)
                 @if ($evaluation['ok'])
                     <table><tbody>
-                        <tr><th>Value</th><td class="mono" data-evaluation="value">{{ json_encode($evaluation['body']['value'] ?? null, JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION) }}</td></tr>
+                        <tr><th>{{ $evaluation['valueLabel'] }}</th><td class="mono" data-evaluation="value">{{ $evaluation['valueJson'] }}</td></tr>
                         <tr><th>Variant</th><td class="mono">{{ $evaluation['body']['variant'] ?? '—' }}</td></tr>
                         <tr><th>Reason</th><td class="mono" data-evaluation="reason">{{ $evaluation['body']['reason'] ?? '' }}</td></tr>
                         <tr><th>Error</th><td class="mono">{{ $evaluation['body']['errorCode'] ?? '—' }}</td></tr>

@@ -2,9 +2,18 @@
 
 declare(strict_types=1);
 
+use Firefly\Config\Config;
+use Firefly\Config\Profile\Profiles;
+use Firefly\Context\Boot\BootContext;
+use Firefly\Context\Condition\ConditionEvaluationReport;
+use Firefly\Context\Condition\ConditionEvaluator;
+use Firefly\Context\Definition\BeanDefinitionRegistry;
 use Firefly\FeatureFlags\Event\FeatureFlagEvaluated;
+use Firefly\FeatureFlags\Gating\FeatureFlagRouteGatingPass;
 use Firefly\FeatureFlags\Tests\Fixtures\GatedRoutes\BetaController;
 use Firefly\FeatureFlags\Tests\Support\GatedRoutesTestCase;
+use Illuminate\Config\Repository;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -109,4 +118,34 @@ it('honors the route-file default for missing flags and variants', function (): 
 it('registers the Blade directives with the view layer', function (): void {
     /** @var GatedRoutesTestCase $this */
     expect(trim(Blade::render("@featureflag('beta-api') yes @else no @endfeatureflag")))->toBe('no');
+});
+
+it('keeps a domain route with the same path outside the compiled attribute gate', function (): void {
+    /** @var GatedRoutesTestCase $this */
+    /** @var Router $router */
+    $router = $this->app()->make('router');
+    $plain = null;
+    foreach ($router->getRoutes()->getRoutes() as $route) {
+        if ($route->uri() === 'beta' && $route->getDomain() === null) {
+            $plain = $route;
+            $action = $route->getAction();
+            if (! is_array($action)) {
+                throw new LogicException('Expected a route action array.');
+            }
+            $action['middleware'] = [];
+            $route->setAction($action);
+        }
+    }
+    $domain = $router->post('/other', static fn (): array => ['unrelated' => true])->domain('other.example')->setUri('beta');
+    $config = new Config(new Repository);
+    $context = new BootContext(
+        $this->app(), new BeanDefinitionRegistry, $config,
+        new Profiles([]), new ConditionEvaluator($config, new Profiles([])),
+        new ConditionEvaluationReport,
+    );
+    (new FeatureFlagRouteGatingPass)->run($context);
+    expect($plain?->middleware())->toContain('feature-flag:beta-api,,false')
+        ->and($domain->middleware())->toBe([]);
+    $this->postJson('/beta', ['not' => 'a payload'])->assertStatus(404);
+    expect(BetaController::$calls)->toBe(0);
 });

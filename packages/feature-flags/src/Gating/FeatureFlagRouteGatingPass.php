@@ -58,6 +58,9 @@ final class FeatureFlagRouteGatingPass implements BootPass
         $decisions = $container->make(RouteGateDecisions::class);
         $routes = [];
         foreach ($router->getRoutes()->getRoutes() as $route) {
+            if ($route->getDomain() !== null) {
+                continue;
+            }
             foreach ($route->methods() as $verb) {
                 if (! is_string($verb)) {
                     continue;

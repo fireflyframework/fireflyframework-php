@@ -311,6 +311,15 @@ worker fetches; the others serve the last good document meanwhile) — and the r
 `FeatureFlagsChanged`. A long-lived process (Octane, a queue worker) re-checks on the same schedule. When the cache
 store is down, sources are read in-process and flags keep evaluating.
 
+Give each application its own application-cache prefix and retain source entries without eviction; a fresh worker
+needs those entries to recover the last good file or remote document. A file revision uses whole-second mtime and
+size: same-size edits within the same timestamp can remain unseen indefinitely, even after atomic rename. Publish
+atomically **and** advance the file's mtime to a distinct second (or change its size); do not rely on rename alone.
+
+Change events are best effort, not durable or exactly once. Rolling workers with different configuration can
+alternate shared change announcements. Cache outages suspend shared announcements; recovery with no composed
+record reports `startup`. Use the store audit history when you need a durable record of operator writes.
+
 ## The store
 
 The store is the writable layer behind the admin page, the actuator endpoint and the CLI. A write replaces the
@@ -541,6 +550,10 @@ Every key, as the configuration reference documents it:
 - **The boot rejects a source or sync server setting.** An enabled file source needs a path. An enabled HTTP source
   needs a URL and a positive `refresh-interval`; zero is allowed for the cheaper file and store checks. An enabled
   sync server needs a token unless `allow-anonymous` is true, and its path cannot be empty or `/`.
+- **Sync returns 401/403 before the controller.** The sync controller's bearer token does not bypass application
+  Security HTTP/JWT filters. Configure the sync path explicitly in the application's security rules so its intended
+  machine client can reach the controller, and retain the controller's own token check. Inspect both filter and
+  controller responses before changing credentials.
 - **`writes-disabled` / `not-writable`.** Set `firefly.feature-flags.management.writes`, and enable the store.
 - **A percentage rollout ignores anonymous users.** They have no targeting key; contribute a stable anonymous id
   as `targetingKey` from a context contributor, or target on another attribute.

@@ -414,6 +414,8 @@ final class FlagRegistry implements FlagDocumentSource
 
         try {
             $snapshot = $source->load($before->loaded ? $before->revision : null);
+
+            return $snapshot === null ? $before->withUnchanged($now) : $before->withLoaded($snapshot->document, $snapshot->revision, $now);
         } catch (Throwable $failure) {
             if ($source->failsStartup() && ($name === FlagSource::CONFIG || ! $before->loaded)) {
                 throw $failure instanceof InvalidFlagDefinition ? $failure->fromSource($name) : $failure;
@@ -431,7 +433,6 @@ final class FlagRegistry implements FlagDocumentSource
             return $before->withFailure($error, $now);
         }
 
-        return $snapshot === null ? $before->withUnchanged($now) : $before->withLoaded($snapshot->document, $snapshot->revision, $now);
     }
 
     /**

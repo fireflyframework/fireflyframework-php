@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\FeatureFlags\Definition;
 
+use JsonException;
 use stdClass;
 
 /**
@@ -25,10 +26,27 @@ final class Json
 {
     public const int ENCODE_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
 
-    /** @throws \JsonException */
+    /** @throws JsonException */
     public static function decode(string $json): mixed
     {
-        return self::normalize(json_decode($json, false, 512, JSON_THROW_ON_ERROR));
+        try {
+            return self::normalize(json_decode($json, false, 512, JSON_THROW_ON_ERROR));
+        } catch (JsonException $failure) {
+            if ($failure->getCode() !== JSON_ERROR_INVALID_PROPERTY_NAME) {
+                throw $failure;
+            }
+        }
+
+        // Native validation keeps syntax, depth and number semantics. PHP objects alone cannot hold leading
+        // NUL names. Prefix every member token (not values), decode natively, then remove exactly one prefix.
+        json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        $prefixed = preg_replace_callback('/"[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"(\s*:)?/s',
+            static fn (array $token): string => isset($token[1]) ? '"_'.substr($token[0], 1) : $token[0], $json);
+        if ($prefixed === null) {
+            throw new JsonException('Cannot tokenize validated JSON: '.preg_last_error_msg());
+        }
+
+        return self::normalizeValue(json_decode($prefixed, false, 512, JSON_THROW_ON_ERROR), true);
     }
 
     /**
@@ -36,23 +54,28 @@ final class Json
      */
     public static function normalize(mixed $value): mixed
     {
+        return self::normalizeValue($value, false);
+    }
+
+    private static function normalizeValue(mixed $value, bool $prefixed): mixed
+    {
         if ($value instanceof stdClass) {
             $members = [];
             foreach (get_object_vars($value) as $key => $member) {
-                $members[$key] = self::normalize($member);
+                $members[$prefixed ? substr((string) $key, 1) : $key] = self::normalizeValue($member, $prefixed);
             }
 
             return $members === [] || array_is_list($members) ? (object) $members : $members;
         }
 
         if (is_array($value)) {
-            return array_map(self::normalize(...), $value);
+            return array_map(static fn (mixed $member): mixed => self::normalizeValue($member, $prefixed), $value);
         }
 
         return $value;
     }
 
-    /** @throws \JsonException on INF or NAN, malformed UTF-8, or nesting deeper than 512 levels */
+    /** @throws JsonException on INF or NAN, malformed UTF-8, or nesting deeper than 512 levels */
     public static function encode(mixed $value): string
     {
         return json_encode($value, self::ENCODE_FLAGS | JSON_THROW_ON_ERROR);
@@ -61,7 +84,7 @@ final class Json
     /**
      * The encoding with object members sorted by name, recursively; `[]` and `{}` stay distinct.
      *
-     * @throws \JsonException as encode()
+     * @throws JsonException as encode()
      */
     public static function canonical(mixed $value): string
     {
@@ -136,7 +159,7 @@ final class Json
             }
             ksort($members, SORT_STRING);
 
-            return (object) $members;
+            return self::object($members);
         }
 
         return is_array($value) ? array_map(self::sorted(...), $value) : $value;

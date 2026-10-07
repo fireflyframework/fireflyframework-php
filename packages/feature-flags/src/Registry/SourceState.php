@@ -72,10 +72,13 @@ final readonly class SourceState
         ];
     }
 
-    /** @throws \JsonException as FlagDocument::toJson() (never for a validated document) */
+    /** @throws \JsonException if the document cannot be serialized and read back */
     public function withLoaded(FlagDocument $document, ?string $revision, float $now): self
     {
-        return new self($this->name, true, $document->toJson(), $revision, $now, self::timestamp($now), null, count($document->flags));
+        $json = $document->toJson();
+        FlagDocument::fromJson($json);
+
+        return new self($this->name, true, $json, $revision, $now, self::timestamp($now), null, count($document->flags));
     }
 
     /** A successful check that found nothing new: it refreshed, and any earlier error is over. */

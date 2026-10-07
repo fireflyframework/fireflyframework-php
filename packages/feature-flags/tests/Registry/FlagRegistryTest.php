@@ -883,3 +883,38 @@ it('warns about an expired flag once a day across every worker', function (): vo
     expect($logger->count('warning', 'Feature flag [old] expired on 2025-01-01'))->toBe(1)
         ->and($logger->count('warning', 'still defined by [config]'))->toBe(1);
 });
+
+it('contains serialization failures before publishing a source snapshot', function (): void {
+    $cache = new Repository(new ArrayStore);
+    $events = new RecordingApplicationEventPublisher;
+    $clock = new FixedClock;
+    $file = new StubFlagSource('file', 200, 5.0, ['a' => true], failsStartup: true);
+    $registry = featureFlagsRegistry([$file], $cache, $events, $clock);
+    $registry->document();
+    $file->metadata = ['binary' => "\xff"];
+    $file->revision = 'bad';
+    $clock->now += 6;
+    $registry->refresh();
+    expect($registry->states()[0]->status())->toBe('STALE')
+        ->and($registry->states()[0]->revision)->toBe('r1')
+        ->and($registry->document()->flag('a'))->not->toBeNull();
+    $fresh = featureFlagsRegistry([$file], $cache, $events, $clock);
+    expect($fresh->document()->flag('a'))->not->toBeNull()
+        ->and($fresh->states()[0]->status())->toBe('STALE')
+        ->and(featureFlagsChanges($events))->toBe([['startup', ['a']]]);
+});
+
+it('keeps never loaded remote serialization failures DOWN', function (string $name): void {
+    $source = new StubFlagSource($name, 300, 5.0, ['a' => true]);
+    $source->metadata = ['binary' => "\xff"];
+    $registry = featureFlagsRegistry([$source], new Repository(new ArrayStore), new RecordingApplicationEventPublisher, new FixedClock);
+    expect($registry->document()->keys())->toBe([])
+        ->and($registry->states()[0]->status())->toBe('DOWN');
+})->with(['http', 'store']);
+
+it('refuses initial local serialization failures', function (string $name): void {
+    $source = new StubFlagSource($name, 100, 5.0, ['a' => true], failsStartup: true);
+    $source->metadata = ['binary' => "\xff"];
+    $registry = featureFlagsRegistry([$source], new Repository(new ArrayStore), new RecordingApplicationEventPublisher, new FixedClock);
+    expect(fn () => $registry->start())->toThrow(JsonException::class);
+})->with(['config', 'file']);

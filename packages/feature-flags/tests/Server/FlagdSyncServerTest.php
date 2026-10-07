@@ -92,3 +92,18 @@ it('feeds an http source in another application', function (): void {
         ->and($resolution->reason->value)->toBe('TARGETING_MATCH')
         ->and(in_array($resolution->value, ['v1', 'v2'], true))->toBeTrue();
 });
+
+it('preserves leading NUL object members across store sync and HTTP source adoption', function (): void {
+    /** @var SyncServerTestCase $this */
+    /** @var FlagStoreWriter $writer */
+    $writer = $this->fireflyContext()->get(FlagStoreWriter::class);
+    $definition = Json::decode('{"state":"ENABLED","variants":{"v":{"\\u0000nested":{"0":{},"list":[],"float":1.0}}},"defaultVariant":"v","metadata":{"\\u0000owner":"ops"}}');
+    $writer->put('portable', $definition, 'ops');
+    $served = $this->get('/feature-flags/flagd.json', ['Authorization' => 'Bearer s3cret'])->assertOk();
+    $http = new Factory;
+    $http->fake(['*' => Factory::response((string) $served->getContent(), 200)]);
+    $settings = FeatureFlagsSettings::fromConfig(new Config(new ConfigRepository(['firefly' => ['feature-flags' => ['sources' => ['http' => ['enabled' => true, 'url' => 'https://flags.test/sync']]]]])));
+    $client = new FlagRegistry([new HttpFlagSource($settings, $http)], new CacheBook(new Repository(new ArrayStore), new RecordingLogger), new RecordingApplicationEventPublisher);
+    expect(Json::canonical($client->document()->flag('portable')?->toJsonValue()))->toBe(Json::canonical($definition))
+        ->and($client->states()[0]->status())->toBe('UP');
+});

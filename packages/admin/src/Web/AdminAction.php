@@ -260,6 +260,9 @@ final readonly class AdminAction
     private function flagsPage(Request $request, AdminPage $current): SymfonyResponse
     {
         $overview = $this->flagsOverview();
+        if ($overview === null) {
+            return $this->flagsUnavailable($current);
+        }
         $writable = ($overview['writable'] ?? false) === true && ($overview['writesEnabled'] ?? false) === true;
         $key = $request->query('flag');
 
@@ -273,21 +276,34 @@ final readonly class AdminAction
         }
 
         $response = $this->reader->call('GET', 'flags', [$key]);
-        if ($response === null || $response->status !== 200 || ! is_string($response->body)) {
+        if ($response !== null && $response->status === 404) {
             return $this->html($this->render('flags', [
                 'overview' => $overview, 'flags' => [], 'writable' => $writable, 'detail' => null, 'missing' => $key,
             ], $current), 404);
         }
 
+        if ($response === null || $response->status !== 200 || ! is_string($response->body)) {
+            return $this->flagsUnavailable($current);
+        }
         $detail = json_decode($response->body, true);
+        if (! is_array($detail) || ! is_string($detail['key'] ?? null) || ! is_array($detail['definition'] ?? null)
+            || ! is_array($detail['layers'] ?? null) || ! is_array($detail['history'] ?? null)) {
+            return $this->flagsUnavailable($current);
+        }
         $objects = json_decode($response->body);
-        $definition = $objects instanceof stdClass && property_exists($objects, 'definition') ? $objects->definition : new stdClass;
+        if (! $objects instanceof stdClass) {
+            return $this->html($this->render('flags', [
+                'overview' => $overview, 'flags' => [], 'writable' => false, 'detail' => null,
+                'rawDetail' => $response->body,
+            ], $current), 200);
+        }
+        $definition = property_exists($objects, 'definition') ? $objects->definition : new stdClass;
         $variants = $definition instanceof stdClass && property_exists($definition, 'variants') && $definition->variants instanceof stdClass
             ? array_map(static fn (int|string $name): string => (string) $name, array_keys(get_object_vars($definition->variants)))
             : [];
 
         $layers = [];
-        if ($objects instanceof stdClass && property_exists($objects, 'layers') && is_array($objects->layers)) {
+        if (property_exists($objects, 'layers') && is_array($objects->layers)) {
             foreach ($objects->layers as $layer) {
                 if ($layer instanceof stdClass) {
                     $layers[] = [
@@ -305,7 +321,7 @@ final readonly class AdminAction
             'overview' => $overview,
             'flags' => [],
             'writable' => $writable,
-            'detail' => is_array($detail) ? $detail : [],
+            'detail' => $detail,
             'definitionJson' => (string) json_encode($definition, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
             'variants' => $variants,
             'layerRows' => $layers,
@@ -330,8 +346,17 @@ final readonly class AdminAction
         $back = $request->input('back') === 'list' ? $list : $list.'?flag='.rawurlencode($key);
         $body = ['action' => $op];
         $expected = $request->input('expectedVersion');
-        if (is_string($expected) && preg_match('/^\d+$/', $expected) === 1) {
-            $body['expectedVersion'] = (int) $expected;
+        if ($request->exists('expectedVersion')) {
+            $digits = is_int($expected) && $expected >= 0 ? (string) $expected : $expected;
+            if (! is_string($digits) || preg_match('/^[0-9]+$/D', $digits) !== 1) {
+                return $this->redirect($back, 'Refused: expectedVersion must be a nonnegative integer within the supported range.');
+            }
+            $digits = ltrim($digits, '0');
+            $limit = (string) PHP_INT_MAX;
+            if (strlen($digits) > strlen($limit) || (strlen($digits) === strlen($limit) && strcmp($digits, $limit) > 0)) {
+                return $this->redirect($back, 'Refused: expectedVersion must be a nonnegative integer within the supported range.');
+            }
+            $body['expectedVersion'] = (int) $digits;
         }
 
         $raw = null;
@@ -341,7 +366,7 @@ final readonly class AdminAction
         }
         if ($op === 'put') {
             $definition = $request->input('definition');
-            if (! is_string($definition) || ! json_decode($definition) instanceof stdClass) {
+            if (! is_string($definition) || ! str_starts_with(ltrim($definition), '{') || ! json_validate($definition)) {
                 return $this->redirect($back, 'Refused: the definition is not a JSON object.');
             }
             $raw = '{"action":"put","definition":'.trim($definition)
@@ -375,20 +400,29 @@ final readonly class AdminAction
         });
     }
 
-    /** @return array<mixed> */
-    private function flagsOverview(): array
+    private function flagsUnavailable(AdminPage $current): SymfonyResponse
+    {
+        return $this->html($this->render('flags', [
+            'overview' => [], 'flags' => [], 'detail' => null, 'writable' => false, 'unavailable' => true,
+        ], $current), 503);
+    }
+
+    /** @return array<mixed>|null */
+    private function flagsOverview(): ?array
     {
         $response = $this->reader->call('GET', 'flags');
         $body = $response !== null && $response->status === 200 && is_string($response->body) ? json_decode($response->body, true) : null;
 
-        return is_array($body) ? $body : [];
+        return is_array($body) && is_array($body['flags'] ?? null) && array_is_list($body['flags'])
+            && is_array($body['sources'] ?? null) && is_array($body['provider'] ?? null)
+            && is_bool($body['writable'] ?? null) && is_bool($body['writesEnabled'] ?? null) ? $body : null;
     }
 
-    /** @return array{ok: bool, body: array<mixed>|null, error: string|null} */
+    /** @return array{ok: bool, body: array<mixed>|null, error: string|null, valueJson?: string, valueLabel?: string} */
     private function flagsEvaluation(string $key, string $context, string $targetingKey): array
     {
         $context = trim($context) === '' ? '{}' : trim($context);
-        if (! json_decode($context) instanceof stdClass) {
+        if (! str_starts_with($context, '{') || ! json_validate($context)) {
             return ['ok' => false, 'body' => null, 'error' => 'The context is not a JSON object.'];
         }
 
@@ -400,7 +434,13 @@ final readonly class AdminAction
             return ['ok' => false, 'body' => null, 'error' => is_array($body) && is_string($body['message'] ?? null) ? $body['message'] : 'The evaluation failed.'];
         }
 
-        return ['ok' => true, 'body' => $body, 'error' => null];
+        $objects = json_decode($response->body);
+
+        return ['ok' => true, 'body' => $body, 'error' => null,
+            'valueJson' => $objects instanceof stdClass
+                ? (string) json_encode($objects->value ?? null, JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION)
+                : $response->body,
+            'valueLabel' => $objects instanceof stdClass ? 'Value' : 'Complete evaluation JSON'];
     }
 
     /**

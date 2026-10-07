@@ -29,6 +29,14 @@ final class AdminFlagsScriptedEndpoint implements ActuatorEndpoint
 
     public bool $external = false;
 
+    public ?EndpointResponse $overviewResponse = null;
+
+    public ?EndpointResponse $detailResponse = null;
+
+    public bool $throwOnRead = false;
+
+    public string $previewValue = '{"t":"x","w":1.0}';
+
     public function endpointId(): string
     {
         return 'flags';
@@ -43,6 +51,15 @@ final class AdminFlagsScriptedEndpoint implements ActuatorEndpoint
     {
         $this->requests[] = $request;
         $key = $request->subPath[0] ?? null;
+        if ($request->method === 'GET' && $this->throwOnRead) {
+            throw new RuntimeException('Read unavailable');
+        }
+        if ($request->method === 'GET' && $key === null && $this->overviewResponse !== null) {
+            return $this->overviewResponse;
+        }
+        if ($request->method === 'GET' && $key !== null && $this->detailResponse !== null) {
+            return $this->detailResponse;
+        }
 
         if ($request->method === 'GET' && $key === null) {
             return EndpointResponse::text('{"provider":{"name":"firefly","status":"READY"},"writable":'.($this->writable ? 'true' : 'false').',"writesEnabled":'.($this->writesEnabled ? 'true' : 'false').','
@@ -58,7 +75,7 @@ final class AdminFlagsScriptedEndpoint implements ActuatorEndpoint
         }
 
         if ($request->method === 'POST' && $request->rawBody !== null && str_contains($request->rawBody, '"evaluate"')) {
-            return EndpointResponse::text('{"key":"banner","value":{"t":"x","w":1.0},"variant":"promo","reason":"TARGETING_MATCH","errorCode":null,"metadata":{}}', 200, 'application/json');
+            return EndpointResponse::text('{"key":"banner","value":'.$this->previewValue.',"variant":"promo","reason":"TARGETING_MATCH","errorCode":null,"metadata":{}}', 200, 'application/json');
         }
 
         if ($request->method === 'POST') {
@@ -197,4 +214,73 @@ it('rejects a tokenless POST through the real CSRF middleware', function (): voi
     $this->post('/firefly/flags', ['flag' => 'banner', 'op' => 'disable'])->assertStatus(419);
 
     expect(featureFlagsAdminScripted()->requests)->toBe([]);
+});
+
+it('refuses a malformed submitted version before endpoint dispatch', function (mixed $version): void {
+    /** @var AdminCapstoneTestCase $this */
+    $this->post('/firefly/flags', ['flag' => 'banner', 'op' => 'disable', 'expectedVersion' => $version])
+        ->assertSessionHas('data-message', 'Refused: expectedVersion must be a nonnegative integer within the supported range.');
+    expect(featureFlagsAdminScripted()->requests)->toBe([]);
+})->with(['text' => ['oops'], 'negative' => ['-1'], 'array' => [['3']], 'overflow' => [(string) PHP_INT_MAX.'0'], 'empty' => [''], 'null' => [null]]);
+
+it('preserves an explicit zero optimistic version', function (): void {
+    /** @var AdminCapstoneTestCase $this */
+    $this->post('/firefly/flags', ['flag' => 'banner', 'op' => 'enable', 'expectedVersion' => '0'])->assertRedirect();
+    expect(featureFlagsAdminLastRequest()->body['expectedVersion'] ?? null)->toBe(0);
+});
+
+it('reports unavailable reads without inventing empty or missing flags', function (bool $detail, string $failure): void {
+    /** @var AdminCapstoneTestCase $this */
+    $endpoint = featureFlagsAdminScripted();
+    if ($failure === 'throw') {
+        $endpoint->throwOnRead = true;
+    } else {
+        $response = EndpointResponse::text($failure === 'malformed' ? '{broken' : ($failure === 'shape' ? '{}' : 'unavailable'), $failure === 'failed' ? 503 : 200);
+        if ($detail) {
+            $endpoint->detailResponse = $response;
+        } else {
+            $endpoint->overviewResponse = $response;
+        }
+    }
+    $this->get('/firefly/flags'.($detail ? '?flag=banner' : ''))->assertStatus(503)
+        ->assertSee('Feature flag data is unavailable')->assertDontSee('No flags defined')->assertDontSee('No such flag')
+        ->assertDontSee('no flag store is configured')->assertDontSee('Save definition')->assertDontSee('Disable');
+})->with([false, true])->with(['throw', 'failed', 'malformed', 'shape']);
+
+it('renders a genuinely empty overview as empty', function (): void {
+    /** @var AdminCapstoneTestCase $this */
+    featureFlagsAdminScripted()->overviewResponse = EndpointResponse::text('{"flags":[],"sources":[],"provider":{},"writable":false,"writesEnabled":false}', 200);
+    $this->get('/firefly/flags')->assertOk()->assertSee('No flags defined')->assertDontSee('Feature flag data is unavailable');
+});
+
+it('renders the exact JSON shape of preview values', function (string $value): void {
+    /** @var AdminCapstoneTestCase $this */
+    featureFlagsAdminScripted()->previewValue = $value;
+    $this->get('/firefly/flags?flag=banner&evaluate=1')->assertOk()
+        ->assertSee('data-evaluation="value">'.e($value).'</td>', false);
+})->with(['{}', '[]', '{"0":{},"1":[{},[],1.0]}', '1.0']);
+
+it('shows a complete faithful preview when PHP cannot represent a member as an object property', function (): void {
+    /** @var AdminCapstoneTestCase $this */
+    featureFlagsAdminScripted()->previewValue = '{"\\u0000nested":{"0":{},"list":[],"float":1.0}}';
+    $this->get('/firefly/flags?flag=banner&evaluate=1')->assertOk()->assertSee('Complete evaluation JSON')
+        ->assertSee(featureFlagsAdminScripted()->previewValue)->assertDontSee('data-evaluation="value">null', false);
+});
+
+it('shows faithful complete details without offering a lossy definition editor', function (): void {
+    /** @var AdminCapstoneTestCase $this */
+    $definition = '{"state":"ENABLED","variants":{"v":{"\\u0000nested":{"0":{},"list":[],"float":1.0}}},"defaultVariant":"v"}';
+    featureFlagsAdminScripted()->detailResponse = EndpointResponse::text('{"key":"banner","definition":'.$definition.',"layers":[],"history":[],"origin":"store","version":3}', 200);
+    $this->get('/firefly/flags?flag=banner')->assertOk()->assertSee('Complete flag detail JSON')->assertSee($definition)
+        ->assertDontSee('Save definition')->assertDontSee('name="definition"', false)->assertDontSee('Feature flag data is unavailable');
+});
+
+it('forwards valid NUL members in raw definition and preview context without object decoding', function (): void {
+    /** @var AdminCapstoneTestCase $this */
+    $definition = '{"state":"ENABLED","variants":{"v":{"\\u0000name":{}}},"defaultVariant":"v"}';
+    $this->post('/firefly/flags', ['flag' => 'banner', 'op' => 'put', 'definition' => $definition])
+        ->assertSessionHas('data-message', 'Saved [banner].');
+    expect(featureFlagsAdminLastRequest()->rawBody)->toBe('{"action":"put","definition":'.$definition.'}');
+    $this->get('/firefly/flags?flag=banner&evaluate=1&context='.rawurlencode('{"\\u0000name":1.0}'))->assertOk()->assertSee('TARGETING_MATCH');
+    expect(featureFlagsAdminLastRequest()->rawBody)->toContain('"context":{"\\u0000name":1.0}');
 });

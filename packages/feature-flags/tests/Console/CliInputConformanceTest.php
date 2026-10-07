@@ -10,7 +10,7 @@ class CliInputConformanceTestCase extends FlagsCommandTestCase
 {
     protected function configOverrides(): array
     {
-        $vectors = cliInputVectors();
+        $vectors = featureFlagsCliInputVectors();
 
         return [
             ...parent::configOverrides(),
@@ -24,7 +24,7 @@ uses(CliInputConformanceTestCase::class);
 /**
  * @return array{flags: array<string, mixed>, action: string, key: string, cases: list<array{name: string, options: array<string, mixed>, expect: array{exit: int, error?: string, value?: mixed}}>}
  */
-function cliInputVectors(): array
+function featureFlagsCliInputVectors(): array
 {
     $contents = file_get_contents(__DIR__.'/../Conformance/cli-input-vectors.json');
     if ($contents === false) {
@@ -37,16 +37,16 @@ function cliInputVectors(): array
     return $vectors;
 }
 
-$vectors = cliInputVectors();
+$vectors = featureFlagsCliInputVectors();
 $cases = [];
 foreach ($vectors['cases'] as $case) {
     $cases[$case['name']] = [$case];
 }
 
 /** @param array<array-key, mixed> $case */
-function runCliInputVector(array $case): void
+function featureFlagsRunCliInputVector(array $case): void
 {
-    $vectors = cliInputVectors();
+    $vectors = featureFlagsCliInputVectors();
     $options = $case['options'] ?? null;
     $expected = $case['expect'] ?? null;
     if (! Json::isObject($options) || ! is_array($expected) || ! is_int($expected['exit'] ?? null)) {
@@ -78,5 +78,5 @@ function runCliInputVector(array $case): void
 }
 
 it('consumes the CLI input vector through the Artisan command', function (array $case): void {
-    runCliInputVector($case);
+    featureFlagsRunCliInputVector($case);
 })->with($cases);

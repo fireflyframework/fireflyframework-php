@@ -22,6 +22,11 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   The guide and both book editions include a tested Lumen rollout example.
 - **Actuator:** `EndpointRequest::$rawBody` carries the original JSON request text beside its parsed body.
 
+### Changed
+
+- **Runtime dependencies:** added `open-feature/sdk: ^2.3` and moved `symfony/yaml: ^7.4|^8.0`
+  from development to runtime requirements for JSON/YAML feature-flag sources.
+
 ### Fixed
 
 - **Release workflow:** the publication job waits for the tag on Composer's metadata endpoint
