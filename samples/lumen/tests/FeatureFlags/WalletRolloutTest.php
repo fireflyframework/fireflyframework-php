@@ -4,22 +4,19 @@ declare(strict_types=1);
 
 namespace Lumen\Tests\FeatureFlags;
 
-use Firefly\FeatureFlags\Context\EvaluationContextResolver;
 use Firefly\FeatureFlags\Event\FeatureFlagEvaluated;
 use Firefly\FeatureFlags\FeatureFlags;
 use Firefly\FeatureFlags\Management\FlagManagement;
 use Firefly\FeatureFlags\Store\DatabaseFlagStore;
 use Firefly\FeatureFlags\Store\FeatureFlagSchema;
 use Firefly\FeatureFlags\Store\FlagStoreConflict;
-use Firefly\FeatureFlags\Telemetry\ExposureEventHook;
-use Firefly\Testing\Double\RecordingApplicationEventPublisher;
 use Firefly\Testing\FeatureFlags\FeatureFlagOverrides;
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Support\Facades\Event;
 use LogicException;
 use Lumen\Application\WalletRollout;
 use Lumen\Application\WalletRolloutGate;
 use Lumen\Tests\LumenTestCase;
-use OpenFeature\isolated\OpenFeatureAPIFactory;
 
 uses(LumenTestCase::class);
 
@@ -130,24 +127,23 @@ it('keeps flag and audit writes inside the caller transaction and rejects stale 
 
 it('records ordinary exposure but suppresses it for a management preview', function (): void {
     /** @var LumenTestCase $this */
-    $running = $this->fireflyContext()->get(FeatureFlags::class);
-    if (! $running instanceof FeatureFlags) {
+    $flags = $this->fireflyContext()->get(FeatureFlags::class);
+    if (! $flags instanceof FeatureFlags) {
         throw new LogicException('The Lumen sample did not boot feature flags.');
     }
-    $events = new RecordingApplicationEventPublisher;
-    $flags = new FeatureFlags(
-        $running->provider(),
-        new EvaluationContextResolver,
-        [new ExposureEventHook($events)],
-        api: OpenFeatureAPIFactory::createAPI(),
-    );
+    $exposures = [];
+    Event::listen(FeatureFlagEvaluated::class, static function (FeatureFlagEvaluated $event) use (&$exposures): void {
+        $exposures[] = $event;
+    });
 
     expect($flags->details('wallet-balance-v2', false)->value)->toBeFalse()
-        ->and($events->ofType(FeatureFlagEvaluated::class))->toHaveCount(1);
+        ->and($exposures)->toHaveCount(1)
+        ->and($exposures[0]->key)->toBe('wallet-balance-v2');
     $management = $this->fireflyContext()->get(FlagManagement::class);
     if (! $management instanceof FlagManagement) {
         throw new LogicException('The Lumen sample did not boot flag management.');
     }
-    expect($management->evaluate('wallet-balance-v2')['value'])->toBeFalse()
-        ->and($events->ofType(FeatureFlagEvaluated::class))->toHaveCount(1);
+    $preview = $management->evaluate('wallet-balance-v2');
+    expect($preview['value'])->toBeFalse()
+        ->and($exposures)->toHaveCount(1);
 })->group('lumen');

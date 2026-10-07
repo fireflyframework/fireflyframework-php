@@ -235,8 +235,10 @@ like a page that does not exist), 403 or 503 — as problem+json, and never name
 @endfeaturevariant
 ```
 
-Every gate fails **closed**: a missing flag, a failing source, a type mismatch or a switched-off subsystem answers
-the gate's default, which is "off" unless the gate says `default: true`. A flag never decides which beans exist:
+Every gate fails **closed** on a missing flag, an evaluation failure, a type mismatch or a switched-off subsystem:
+it answers the gate's default, which is "off" unless the gate says `default: true`. A source failure after a
+successful load retains the last-good document, so a previously enabled gate can remain open during an outage.
+A flag never decides which beans exist:
 bean conditions are evaluated once at boot, so a boot-time switch is a property — use `#[ConditionalOnProperty]`.
 
 ## Evaluation context
@@ -420,8 +422,10 @@ overrides are never served.
 ## Observability
 
 - **Metric:** `feature_flag_evaluations_total{flag, variant, reason}` on the meter registry when
-  [Observability](observability.md) is installed; `variant` is `none` when there is none, and a failed evaluation
-  counts with `reason="ERROR"`.
+  [Observability](observability.md) is installed and `firefly.observability.metrics.enabled` is on (the default).
+  When metrics are disabled or no meter is available, feature flags use `NoOpFeatureFlagMetrics`; evaluation still
+  works but no counter is recorded. `variant` is `none` when there is none, and a failed evaluation counts with
+  `reason="ERROR"` when the meter is active.
 - **Health:** the `featureflags` component is UP while every source has loaded at least once, DOWN while one never
   has, and lists each source's status, the flag count and the expired flags.
 - **Events:** `FeatureFlagsChanged(changedKeys, origin)` when the effective set changes, `FeatureFlagUpdated` after a

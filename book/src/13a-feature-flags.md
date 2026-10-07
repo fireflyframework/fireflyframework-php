@@ -94,7 +94,7 @@ The `flags` actuator and admin dashboard provide list, details, preview, history
 
 ## Observe, clean up and test
 
-Each ordinary evaluation increments `feature_flag_evaluations_total` when a meter is available, labeled by flag, variant and reason. Set `events.evaluations` to publish `FeatureFlagEvaluated` exposure records. A value graph with more than 10,000 occurrences omits that event while preserving the evaluation and metric. The `featureflags` health component reports source state and expired flag debt. An expired flag still evaluates; remove it after the experiment or rollout ends.
+Each ordinary evaluation increments `feature_flag_evaluations_total` when a meter is available and `firefly.observability.metrics.enabled` is on (the default), labeled by flag, variant and reason. With metrics disabled or no meter available, `NoOpFeatureFlagMetrics` preserves evaluation without recording a counter. Set `events.evaluations` to publish `FeatureFlagEvaluated` exposure records. A value graph with more than 10,000 occurrences omits that event while preserving the evaluation and metric. The `featureflags` health component reports source state and expired flag debt. An expired flag still evaluates; remove it after the experiment or rollout ends.
 
 Chapter 12's `withFeatureFlags()` sets an in-process layer above every source and returns an object with `set()`, `forget()`, `merge()` and `clear()`. Always clear an override when a test shares a running app. Lumen's focused tests exercise dark/on/default behavior and the exact shared targeting fixture, so this chapter's listing is executable evidence. For the full validation and wire rules, read the site’s Feature Flag Contract reference.
 

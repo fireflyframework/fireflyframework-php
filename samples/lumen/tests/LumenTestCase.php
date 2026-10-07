@@ -98,6 +98,7 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
             'firefly.management.enabled' => true,
             'firefly.management.endpoints.web.exposure.include' => 'health,info',
             'firefly.feature-flags.enabled' => true,
+            'firefly.feature-flags.events.evaluations' => true,
             'firefly.feature-flags.flags' => [
                 'wallet-balance-v2' => false,
                 'wallet-checkout-view' => 'legacy',
