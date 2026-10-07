@@ -57,6 +57,13 @@ it('evaluates over HTTP and answers 404 with the contract body for an unknown ke
     $this->getJson('/actuator/flags/nope')->assertStatus(404)->assertJson(['error' => 'unknown-flag']);
 });
 
+it('refuses an explicit empty-array preview context through the HTTP route', function (): void {
+    /** @var ManagementEndpointTestCase $this */
+    $this->postJson('/actuator/flags/2024', ['action' => 'evaluate', 'context' => []])
+        ->assertStatus(400)
+        ->assertJson(['error' => 'bad-request']);
+});
+
 it('rejects malformed JSON and preserves the portable error body', function (): void {
     /** @var ManagementEndpointTestCase $this */
     $response = $this->call('POST', '/actuator/flags/banner', [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], '{bad');

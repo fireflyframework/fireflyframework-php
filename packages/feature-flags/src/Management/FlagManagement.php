@@ -371,7 +371,7 @@ final class FlagManagement
      */
     private static function context(mixed $context): array
     {
-        if ($context === null || $context === []) {
+        if ($context === null) {
             return [];
         }
 

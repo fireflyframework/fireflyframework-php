@@ -34,7 +34,7 @@ $contents = file_get_contents(__DIR__.'/../Conformance/management-transport-vect
 if ($contents === false) {
     throw new RuntimeException('management transport vectors could not be read');
 }
-/** @var array{cases: list<array{name: string, method: string, path: string, headers?: array<string, string>, rawBody?: string, body?: array<string, mixed>, expect: array{error?: string, actor?: string, status: array{larafly: int}}}>} $vectors */
+/** @var array{cases: list<array{name: string, method: string, path: string, headers?: array<string, string>, rawBody?: string, body?: array<string, mixed>, expect: array{error?: string, actor?: string, value?: mixed, status: array{larafly: int}}}>} $vectors */
 $vectors = Json::members(Json::decode($contents));
 $cases = [];
 foreach ($vectors['cases'] as $case) {
@@ -79,6 +79,9 @@ function featureFlagsManagementTransportRequest(ManagementTransportConformanceTe
     }
     if (isset($expected['actor'])) {
         $test->getJson('/actuator/flags/kill')->assertOk()->assertJsonPath('history.0.actor', $expected['actor']);
+    }
+    if (array_key_exists('value', $expected)) {
+        expect($decoded['value'] ?? null)->toBe($expected['value']);
     }
 }
 
