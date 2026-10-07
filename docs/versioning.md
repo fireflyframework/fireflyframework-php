@@ -21,7 +21,7 @@ The single place the current version *is* asserted in code is:
 ```php
 final class Version
 {
-    public const string VERSION = '26.09.11';
+    public const string VERSION = '26.10.1';
 }
 ```
 

@@ -81,7 +81,7 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
 To repeat the public install check locally:
 
 ```bash
-RELEASE_TAG=v26.09.11 RELEASE_SHA="$(git rev-parse 'v26.09.11^{commit}')" php scripts/check-package-install.php --published
+RELEASE_TAG=v26.10.1 RELEASE_SHA="$(git rev-parse 'v26.10.1^{commit}')" php scripts/check-package-install.php --published
 ```
 
 An unmerged branch or a local consumer check is not a published release.

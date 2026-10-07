@@ -4,6 +4,24 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.10.1] - 2026-10-06
+
+### Added
+
+- **Feature flags (`firefly/feature-flags`):** in-process flagd evaluation on OpenFeature, with shared
+  cross-framework validation, evaluation and percentage-bucket conformance vectors. Definitions come from
+  config (including shorthand), a watched JSON/YAML file, an HTTP sync endpoint or a writable database store
+  with audit history and optimistic concurrency; PHP-FPM workers share refresh state through the cache.
+- **Feature flag gates:** `#[FeatureFlag]` on beans and controllers, the `feature-flag` route middleware,
+  `@featureflag` / `@featurevariant` in Blade, and the `FeatureFlags` facade. Missing or erroring flags use
+  the caller's default, which is closed unless explicitly enabled; source refresh failures retain the last
+  good definitions. Bean gates support fallbacks and compile through `firefly:cache`.
+- **Feature flag management:** the `flags` actuator endpoint, admin **Feature flags** page,
+  `php artisan firefly:flags`, `featureflags` health component, `feature_flag_evaluations_total`, change and
+  optional exposure events, bearer-token flagd sync server, and `withFeatureFlags()` test overrides.
+  The guide and both book editions include a tested Lumen rollout example.
+- **Actuator:** `EndpointRequest::$rawBody` carries the original JSON request text beside its parsed body.
+
 ### Fixed
 
 - **Release workflow:** the publication job waits for the tag on Composer's metadata endpoint
