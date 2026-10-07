@@ -515,6 +515,8 @@ Cada aplicación que `firefly new` andamia es por tanto, desde el primerísimo `
 
 ---
 
+El Capítulo 13A presenta `firefly:flags` para inspeccionar y cambiar banderas en ejecución; sus puertas de método también entran en el plan de proxy compilado en vez de reflejarse en cada petición.
+
 ## Lo que aprendiste {.recap}
 
 | Concepto | Qué hace |

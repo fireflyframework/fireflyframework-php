@@ -23,6 +23,9 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
   **per-process** on the default `memory` authorizations driver — a map rebuilt in every PHP worker — which is
   why the payload states its own storage model in `authorizations.processLocal`; `authorizations.driver =
   eloquent` is what makes them describe the deployment
+- `/actuator/flags` (+ `/actuator/flags/{key}`, GET/POST) — supplied by [`firefly/feature-flags`](feature-flags.md)
+  when enabled: flags with origins and expiry, layers and history, previews, and writes when management writes
+  and a store are enabled
 
 !!! tip "A browser view over all of this"
     `firefly/admin` renders these same endpoints as a server-side dashboard, reading them **in-process** rather

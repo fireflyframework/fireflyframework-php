@@ -76,6 +76,7 @@ parts:
       - {id: ch11, file: 11-observability-actuator.md, num: 11, title: "Observabilidad: Salud, Métricas y el Actuator"}
       - {id: ch12, file: 12-testing.md, num: 12, title: "Probar Aplicaciones LaraFly"}
       - {id: ch13, file: 13-cli-cache.md, num: 13, title: "La CLI y la Caché Sin Reflexión"}
+      - {id: ch13a, file: 13a-feature-flags.md, num: "13A", title: "Feature Flags entre LaraFly y PyFly"}
   - title: "Apéndices"
     chapters:
       - {id: appa, file: 90-appendix-a-laravel.md, num: "A", title: "Hoja de Referencia Laravel → LaraFly"}

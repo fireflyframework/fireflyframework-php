@@ -68,6 +68,7 @@ HTTP endpoints — none of which contain business logic of their own.
 | POST   | `/api/v1/wallets/transfers`               | Transfer funds between two wallets        |
 | GET    | `/api/v1/wallets/{id}/balance`            | Fetch just the balance                    |
 | GET    | `/api/v1/wallets/{id}/ledger`             | Fetch the wallet's projected ledger rows  |
+| GET    | `/api/v1/wallet-rollout`                  | Gated rollout probe; 404 while dark       |
 
 Amounts are in **minor units** (cents): `1500` means €15.00 for an EUR
 wallet. The withdraw endpoint requires an authenticated principal carrying
@@ -76,6 +77,14 @@ principal at all it renders a 401 `application/problem+json` response
 (`AUTHENTICATION_FAILED`: authenticate first), and with a principal that is
 signed in but lacks the role a 403 (`ACCESS_DENIED`). The endpoint is
 secured, not broken.
+
+The optional feature-flag example keeps `wallet-balance-v2` off and `wallet-checkout-view` at `legacy` in the
+test harness. `WalletRollout` reads both through the real `FeatureFlags` client; a separate route carries
+`#[FeatureFlag('wallet-rollout-route')]` and fails closed; `WalletRolloutGate` demonstrates a proxied
+method fallback. The focused tests flip overrides, consume the shared
+LaraFly/PyFly `pro-reports` targeting vectors, prove a database store's version conflict and outer transaction
+rollback/commit, and check that a preview emits no exposure event. See the feature-flags chapter in both book
+editions and the [module guide](../../docs/modules/feature-flags.md).
 
 ## Run it
 

@@ -71,10 +71,11 @@ event-driven, actuator-observed microservice, chapter by chapter — every listi
 **[Download the book in English or Spanish, as PDF or EPUB](https://fireflyframework.github.io/fireflyframework-php/book/).**
 The published editions include the single-package installation and bundled installer.
 
-The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **fifteen chapters**
+The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **sixteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
 Coordinating & Securing the App (CQRS, EDA + transactional outbox, `#[Transactional]`, security, OAuth2 and
-OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache)
+OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache,
+feature flags)
 — plus a Laravel→LaraFly cheat-sheet and a glossary. The two editions are line-for-line the same book: every
 chapter file has the same sections, in the same order, at the same line numbers, and every `php` listing and
 every `source:`-marked excerpt in the Spanish edition is the English one character for character — the only
@@ -157,7 +158,7 @@ LaraFly is not a fork of Laravel and does not hide it — every package layers c
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
 know about Laravel keeps working underneath.
 
-Three capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
+Four capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
 will have — that they are worth naming outright:
 
 - **Both halves of OAuth2, as two packages you install.**
@@ -188,6 +189,10 @@ will have — that they are worth naming outright:
   becomes a `DuplicateKeyException` carrying a 409 and a fixed sentence, with the driver's message — which
   has the statement and its bindings interpolated into it — left on `previous`, for the log and never for
   the wire.
+- **Feature flags shared with PyFly.** [`firefly/feature-flags`](docs/modules/feature-flags.md) evaluates
+  [flagd](https://flagd.dev) definitions in-process on OpenFeature with the same semantics and percentage buckets
+  as PyFly. Gate a bean method or route with `#[FeatureFlag]` and a view with `@featureflag`; change flags at runtime
+  from the admin dashboard, `/actuator/flags` or `php artisan firefly:flags`, with an audit trail.
 
 ### Who is LaraFly for?
 
@@ -1061,7 +1066,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
-component names remain useful module boundaries, with their own test suites. The 32
+component names remain useful module boundaries, with their own test suites. The 33
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1095,6 +1100,7 @@ component names remain useful module boundaries, with their own test suites. The
 | Operations | [Admin Dashboard](docs/modules/admin.md) — the browser dashboard over the actuator, read in-process | `firefly/admin` |
 | Operations | [Bean Graph](docs/modules/bean-graph.md) — the dashboard's drawn dependency graph, with cycle reporting | `firefly/admin` |
 | Operations | [Data Browser](docs/modules/data-browser.md) — the dashboard's database browser over `CrudRepository` beans, off by default | `firefly/admin` |
+| Operations | [Feature Flags](docs/modules/feature-flags.md) — flagd flags on OpenFeature, gates, layered sources, a writable store and audit trail | `firefly/feature-flags` |
 | Testing | [Testing](docs/modules/testing.md) — `FireflyTestCase`, recording doubles, Pest expectations | `firefly/testing` |
 | Testing | [Integration Testing](docs/modules/integration-testing.md) — `@group integration`, testcontainers | `firefly/testing` |
 | Tooling | [Installer](docs/modules/installer.md) — the global `firefly new` scaffolding tool | `firefly/installer` |
@@ -1116,7 +1122,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*LaraFly by Example*](book/README.md) — the complete bilingual book (15 chapters + appendices, PDF + EPUB).
+- [*LaraFly by Example*](book/README.md) — the complete bilingual book (16 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -1156,7 +1162,7 @@ still ahead, accurately:
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
-  [book](book/README.md) (15 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [book](book/README.md) (16 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 

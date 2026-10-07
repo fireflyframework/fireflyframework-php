@@ -34,6 +34,7 @@ p{ orphans:3; widows:3; }
    (the latter is what all real chapters use — previously unconstrained -> overflowed). */
 img,svg,table,pre.code,div.code{ max-width:100%; }
 pre.code, div.code > pre{ white-space:pre-wrap; overflow-wrap:anywhere; }
+section#ch13a div.code{ break-inside:avoid; }
 /* Long PHP type names must not set a table's minimum width beyond the page. */
 table{ table-layout:fixed; }
 th,td,th code,td code{ overflow-wrap:anywhere; }

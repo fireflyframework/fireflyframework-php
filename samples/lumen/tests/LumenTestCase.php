@@ -18,6 +18,8 @@ use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
 use Firefly\Eda\Listener\EventListenerManifest;
 use Firefly\Eda\Scanner\EventListenerScanner;
+use Firefly\FeatureFlags\FeatureFlagsServiceProvider;
+use Firefly\FeatureFlags\FeatureFlagsWiringProvider;
 use Firefly\Security\Access\Method\SecurityMethodManifest;
 use Firefly\Security\Scanner\MethodSecurityScanner;
 use Firefly\Security\SecurityServiceProvider;
@@ -72,6 +74,8 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
             CqrsWiringProvider::class,
             EdaServiceProvider::class,
             EdaWiringProvider::class,
+            FeatureFlagsServiceProvider::class,
+            FeatureFlagsWiringProvider::class,
             SecurityServiceProvider::class,
             SecurityWiringProvider::class,
             ActuatorServiceProvider::class,
@@ -93,6 +97,11 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
             // Actuator master gate (default true) — expose health,info for later S-tasks' endpoint assertions.
             'firefly.management.enabled' => true,
             'firefly.management.endpoints.web.exposure.include' => 'health,info',
+            'firefly.feature-flags.enabled' => true,
+            'firefly.feature-flags.flags' => [
+                'wallet-balance-v2' => false,
+                'wallet-checkout-view' => 'legacy',
+            ],
             // firefly.eda.provider is left UNSET on purpose -> EdaAutoConfiguration binds the REAL InMemoryEventBus
             // as EventPublisher (the memory default). Never a RecordingEventPublisher double.
         ];
