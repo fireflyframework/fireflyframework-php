@@ -1,4 +1,4 @@
-site_name: LaraFly — Firefly Framework for PHP
+site_name: larafly — Firefly Framework for PHP
 site_description: Spring Boot's cohesion, native to Laravel.
 # The published site (GitHub Pages, deployed by CI after all checks pass). site_url is what
 # gives every page a canonical link and the search index its absolute paths; without it Material emits

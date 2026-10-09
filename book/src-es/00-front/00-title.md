@@ -1,5 +1,5 @@
-# LaraFly by Example {.chtitle}
+# larafly by example {.chtitle}
 
-### Microservicios PHP Hexagonales en Laravel 13 con el Firefly Framework
+### Arquitectura de negocio y políticas de aplicación sobre Laravel
 
 **Firefly Software Solutions Inc.**

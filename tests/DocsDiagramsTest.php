@@ -601,7 +601,7 @@ it('routes every front-channel leg of the authorization-code figure through the 
     $lanes = [];
     foreach ($xml->rect as $rect) {
         $fill = $rect['fill'];
-        if ($fill === null || (string) $fill !== '#f8fafc') {
+        if ($fill === null || (string) $fill !== '#faf9f6') {
             continue;
         }
 

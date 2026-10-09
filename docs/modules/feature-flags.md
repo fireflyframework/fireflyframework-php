@@ -11,7 +11,7 @@ the same percentage bucket in both: the two frameworks share [one contract](../f
 same conformance files in their test suites.
 
 The checked-in [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) exercises the facade, a gated route, shared targeting
-vectors, test overrides, store transactions and preview exposure behavior. Both editions of *LaraFly by Example*
+vectors, test overrides, store transactions and preview exposure behavior. Both editions of *larafly by example*
 develop that sample in Chapter 13A.
 
 ## Quick start

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/larafly-banner.svg" alt="LaraFly — Firefly Framework for PHP" width="100%">
+  <img src="docs/assets/larafly-banner.svg" alt="larafly — Firefly Framework for PHP" width="100%">
 </p>
 
-<h1 align="center">LaraFly</h1>
+<h1 align="center">larafly</h1>
 
 <p align="center">
   <strong>Spring Boot's cohesion, native to Laravel 13.</strong>
@@ -40,7 +40,7 @@
 <details>
 <summary><b>Table of contents</b></summary>
 
-- [📘 The Book — *LaraFly by Example*](#-the-book--larafly-by-example)
+- [📘 The Book — *larafly by example*](#-the-book--larafly-by-example)
 - [Why LaraFly?](#why-larafly)
 - [Quickstart](#quickstart)
 - [Philosophy](#philosophy)
@@ -60,10 +60,10 @@
 
 ---
 
-## 📘 The Book — *LaraFly by Example*
+## 📘 The Book — *larafly by example*
 
-**LaraFly by Example** is the official, project-driven book for the framework — a PHP sibling to
-[*PyFly by Example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
+**larafly by example** is the official, project-driven book for the framework — a PHP sibling to
+[*pyfly by example*](https://github.com/fireflyframework/fireflyframework-pyfly). It builds **Lumen**, the
 wallet-and-ledger service in [`samples/lumen/`](samples/lumen/), from an empty directory into a secured,
 event-driven, actuator-observed microservice, chapter by chapter — every listing drawn from that real project
 (its boot and test suite are verified in CI against the same framework source).
@@ -1122,7 +1122,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*LaraFly by Example*](book/README.md) — the complete bilingual book (16 chapters + appendices, PDF + EPUB).
+- [*larafly by example*](book/README.md) — the complete bilingual book (16 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -1161,7 +1161,7 @@ still ahead, accurately:
 - **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
-- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *LaraFly by Example*
+- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *larafly by example*
   [book](book/README.md) (16 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.

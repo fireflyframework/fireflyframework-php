@@ -1,57 +1,20 @@
-## Banner
+## Official family identity
 
-`larafly-banner.svg` is the project banner embedded at the top of `README.md` and `docs/index.md`. It is a
-brand-clean, **placeholder-quality** design — a "LaraFly" wordmark, tagline, and a tasteful firefly/spark
-motif built from SVG primitives (circles/ellipses/gradients), not the official Firefly logo. The official
-mark (`Group 91.svg`) was not available on this machine at authoring time.
+`larafly-banner.svg` is the official family banner used by the repository README
+and documentation landing page. `larafly-logo.svg` is the dark-surface wordmark
+configured as the MkDocs header logo. Both come from the shared 2026-10-08 Firefly
+Framework brand kit, `Framework-Brand-Kit/12-Frameworks/php/`.
 
-The banner carries an explicit swap point: the `<g id="glyph">` element (marked with an SVG comment
-`<!-- SWAP POINT: ... -->` right above it) is where the official `Group 91.svg` mark should be dropped in
-once available, in place of the hand-drawn spark glyph. The wordmark, tagline, and background can stay as-is
-or be adjusted once the real brand asset is in hand. Like the diagrams below, the banner is self-contained
-(no external fonts/images/scripts, generic `font-family`) and theme-neutral (its own background, not reliant
-on the surrounding page).
+`larafly-logo-light.svg` and `larafly-logo-dark.svg` retain the canonical variants
+for other surfaces. Their typography is outlined and all artwork is self-contained:
+no fonts, scripts, linked images or external resources are needed to render it.
+The favicon uses the shared kit’s `02-Icons/favicon.svg`. The 1280×640 social
+preview embeds the official dark-surface family lockup; its technical captions
+and feature chips remain unchanged. Its PNG is rendered from that checked-in SVG.
 
-## Logo and favicon
-
-`larafly-logo.svg` (48×48, `theme.logo`) and `larafly-favicon.svg` (32×32, `theme.favicon`) are the banner's
-firefly glyph — `<g id="glyph">`, `larafly-banner.svg:35-59` — **redrawn at their own scale, not cropped out
-of it**. A crop would have dragged the banner's `viewBox`, its three gradients and its wordmark along with it;
-each of these two carries only the gradients it actually uses — one spark for the logo, the spark plus the
-tile for the favicon — under its own id prefix (`lfl-`, `lff-`) so that two inlined SVGs on one page cannot
-collide. The glyph's geometry is the banner's, scaled: the spark disc, the two wings, the dark body, the
-amber tail segment and the three-dot spark trail, in the same proportions.
-
-Where the two differ, they differ because the surface they are drawn on differs:
-
-- **The logo has no background.** Material draws it inside the header, on `--md-primary-fg-color` — the
-  banner's own slate — so a ground of its own would show as a tile floating on the header. Its dark body still
-  reads because it sits on the opaque centre of the spark disc rather than on the header itself.
-- **The favicon carries the slate tile** (`#0f172a → #1e293b`, the banner's background gradient, `rx="7"`),
-  because a browser tab has no background of its own: the same transparent glyph would sit on whatever colour
-  the browser happens to use and lose the dark body entirely on a dark tab strip.
-
-The logo's wings keep the banner's own `opacity="0.55"` and sit at a slightly wider spread than the banner's;
-that spread is what keeps them reading as *two wings* rather than one pale cap at 24px, the size Material
-actually renders the header logo at. The favicon's are a shade stronger (`0.6`) because they are competing
-with the slate tile behind them rather than with a page.
-
-Both are self-contained on the same terms as the banner and the diagrams: no `<script>`, no `<image>`, no
-`@font-face`, no external reference of any kind. `tests/BannerAssetTest.php` holds all three brand assets to
-exactly that: each file exists, parses as XML, contains none of those three things, and carries no URL other
-than the SVG namespace itself. It also checks that whatever consumes each asset still names it — `mkdocs.yml`
-for the logo, the favicon and the stylesheet, `README.md` and `docs/index.md` for the banner, which
-`mkdocs.yml` never refers to at all. That second half is the one that earns its keep over time, because the
-way an asset like this rots is that a theme key is renamed and the file is orphaned without anything going
-red.
-
-Which is why the `mkdocs.yml` side of it is read off the **parsed** document — `theme.logo`, `theme.favicon`
-and the `extra_css` list — and not out of the file's text. A whole-file substring match would be satisfied by
-any line that happens to spell the path, and this is a config written in a comment-heavy voice: the note above
-its `palette:` block already spells `docs/assets/stylesheets/larafly.css` while explaining where the custom
-colours live. Matched as text, that comment alone keeps the check green on a site whose `extra_css` key has
-been deleted outright — the stylesheet fully unwired, every page rendered unstyled, nothing red. Matched as a
-key, a rename or a deletion is not something the test can miss.
+The public consumers retain their established filenames. `tests/BannerAssetTest.php`
+checks that the banner and header logo still exist, parse correctly, remain
+self-contained and are connected to their actual README/MkDocs consumers.
 
 ## Stylesheet
 
@@ -60,23 +23,12 @@ palette behind Material's `primary: custom` / `accent: custom` hooks, the `.lf-c
 use, the frame that keeps a white-panelled diagram from glaring on the dark scheme, and the density of the
 wide configuration tables.
 
-Its palette is read out of `larafly-banner.svg`: the slate background gradient (`#0f172a` → `#1e293b`), the
-spark's three ambers (`#fde68a`, `#fbbf24`, `#f59e0b`) and the greys the wordmark, tagline and credit line sit
-in (`#f8fafc`, `#e2e8f0`, `#94a3b8`, `#64748b`). Three values are *chosen* rather than read, and the file
-marks each one where it is defined. The `--lf-*` tokens are numbered by where each colour falls on the slate
-and amber ramps it belongs to, which is why the mid-slate is `--lf-slate-500` (`#64748b`) and not a `-600`:
-`#475569` is the 600 step, and the banner does not contain it.
-
-Two of the three are the link inks. `--lf-amber-deep` `#f59e0b` — the outer stop of the banner's spark
-gradient — is `hsl(38, 92%, 50%)` and carries 2.15:1 against white, which cannot be a link in a paragraph, so
-link text is that same hue and saturation at the lightness where it clears WCAG AA: `#a26907` (4.6:1) resting
-and `#845606` (6.3:1) on hover. The banner itself is never asked to clear that bar — its amber sits on slate,
-and the one it actually paints opaque is the lighter `#fbbf24`, `hsl(43, 96%, 56%)`. On the slate scheme the
-readable direction is the other one, and links are that spark colour itself (9.6:1 on Material's slate page).
-
-The third is `#0b1220`, one step under the banner's darkest slate, for the single thing Material paints with
-`--md-primary-fg-color--dark`: the repository block the navigation drawer puts directly under its title,
-which is `--md-primary-fg-color` and would otherwise be the same colour.
+The documentation now uses the shared Firefly identity: ink `#10110f`, warm
+neutrals `#f3f1eb` / `#dedbd2` and amber `#ffb34a`. The legacy `--lf-slate-*`
+token names are preserved as a stable theme interface. Body links on light
+surfaces use dark amber `#8a5714`, with `#69410d` on hover; dark surfaces use
+canonical amber and its pale `#ffd69a` highlight. Layout and table density are
+unchanged. Semantic warning, error and third-party colors retain their meaning.
 
 `tests/BannerAssetTest.php` also holds the palette closed over itself: every `--lf-*` token the stylesheet
 reads with `var()` must be a token the stylesheet declares. A custom property is the one CSS reference that
@@ -91,9 +43,13 @@ markup with `viewBox` scaling, `font-family="sans-serif"` (no external font/scri
 renderer such as Mermaid or PlantUML involved). Each one is self-contained and safe to view directly on
 GitHub/Packagist, not only through the built MkDocs site.
 
-Palette (theme-neutral — chosen to read on both a light and a dark surrounding page, since the SVG carries
-its own white card background rather than inheriting the page's theme): strokes `#4b5563`, process fills
-`#eef2ff` / `#ecfdf5`, neutral chip fills `#f3f4f6`, text `#1f2937`.
+The self-contained white card uses ink `#10110f`, neutral strokes `#62645b`,
+warm process fills `#fff0d8` / `#edf1e8`, and paper chips `#f3f1eb`. An outlined
+larafly lockup occupies a small footer below the original viewBox. All technical
+labels, paths and coordinates are preserved. The inventory and non-paint
+structure hashes are in `book/art/diagram-branding.json`; maintenance commands
+and canonical asset provenance are in `book/art/PROVENANCE.md`. Book mirrors
+remain byte-identical. Source-derived diagram tests still validate the claims.
 
 Each diagram was drawn directly from the shipped source, not invented — the class/file set it depicts is
 noted in its own `<desc>` element and below:

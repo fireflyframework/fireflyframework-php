@@ -160,7 +160,7 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 
 ---
 
-*The guided, book-style [*LaraFly by Example*](../book/README.md) — bilingual (English + Spanish), rendered
+*The guided, book-style [*larafly by example*](../book/README.md) — bilingual (English + Spanish), rendered
 to PDF + EPUB, its chapter list held in `book/book.yaml` and `book/book.es.yaml` — is available now, alongside
 the step-by-step [Tutorial](tutorial.md).*
 

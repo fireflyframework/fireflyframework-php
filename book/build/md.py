@@ -1,4 +1,4 @@
-"""Markdown -> HTML for *LaraFly by Example*.
+"""Markdown -> HTML for *larafly by example*.
 
 Custom block directives on top of python-markdown:
   ::: figure <svg-path> | <caption>          (single line; inlines the SVG)
