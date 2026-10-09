@@ -1,0 +1,87 @@
+{
+  "version": "2026-10-08",
+  "logo": "docs/assets/larafly-logo-light.svg",
+  "mark": "docs/assets/larafly-favicon.svg",
+  "palette": {
+    "#4b5563": "#62645b",
+    "#1f2937": "#10110f",
+    "#374151": "#46483f",
+    "#6b7280": "#62645b",
+    "#9ca3af": "#a6a295",
+    "#d1d5db": "#dedbd2",
+    "#f3f4f6": "#f3f1eb",
+    "#f8fafc": "#faf9f6",
+    "#eef2ff": "#fff0d8",
+    "#ecfdf5": "#edf1e8"
+  },
+  "diagrams": {
+    "docs/assets/diagrams/boot-pipeline.svg": {
+      "structure": "77a2180ee41aa084e582f8cbc1bc8ddbc18024c55eb9e37ac5fb6e1aea06919b",
+      "originalViewBox": "0 0 1120 1000",
+      "mirrors": [
+        "book/art/figures/boot-pipeline.svg"
+      ]
+    },
+    "docs/assets/diagrams/cqrs-eda-bridge.svg": {
+      "structure": "679ecd3e23e10c0dd19c97d6000e0bc927bc68f655645538ae9572d396452079",
+      "originalViewBox": "0 0 1200 820",
+      "mirrors": [
+        "book/art/figures/cqrs-eda-bridge.svg"
+      ]
+    },
+    "docs/assets/diagrams/di-autoconfig.svg": {
+      "structure": "61e54779e19b086c6fb735e45b2d8f84eab4766159d58e18e5b4974b8590cb3e",
+      "originalViewBox": "0 0 1120 970",
+      "mirrors": [
+        "book/art/figures/di-autoconfig.svg"
+      ]
+    },
+    "docs/assets/diagrams/method-interceptor-chain.svg": {
+      "structure": "44bab250ce3d89df314405594787ffaf4fe701f3ed7df342c5df9daabccc8017",
+      "originalViewBox": "0 0 1240 920",
+      "mirrors": [
+        "book/art/figures/method-interceptor-chain.svg"
+      ]
+    },
+    "docs/assets/diagrams/oauth2-authorization-code.svg": {
+      "structure": "68be371c70f2779811347000a211902cb2d4d000dddedfcf214f008ab7343651",
+      "originalViewBox": "0 0 1240 1070",
+      "mirrors": [
+        "book/art/figures/oauth2-authorization-code.svg"
+      ]
+    },
+    "docs/assets/diagrams/outbox-flow.svg": {
+      "structure": "56c906d58240aa387b8a663e6ecdae9ffe067e4a6f0d0c14e97044f9dae07a03",
+      "originalViewBox": "0 0 1200 1080",
+      "mirrors": [
+        "book/art/figures/outbox-flow.svg"
+      ],
+      "previousStructure": "a5ae1cf023bf1d432a6038abcc4348e3d030938859098316469a4792c4af1d77",
+      "layoutRevision": {
+        "date": "2026-10-08",
+        "reason": "Move commit bar below both pre-commit branches and pg_notify label; extend transaction frame 70 units, shift consumer section 70 units into existing bottom whitespace. No text, topology, width or overall viewBox changes."
+      }
+    },
+    "docs/assets/diagrams/request-lifecycle.svg": {
+      "structure": "a8dbb676a409939f39e9fc76b0828304b4d5f400de870f304c755402cf637db0",
+      "originalViewBox": "0 0 1300 900",
+      "mirrors": [
+        "book/art/figures/request-lifecycle.svg"
+      ]
+    },
+    "docs/assets/diagrams/security-filter-chain.svg": {
+      "structure": "7eee7837fdc8566d9718653cd3b97ed10ca41f4eaf9cc61f90ae781edb0d6a72",
+      "originalViewBox": "0 0 1240 900",
+      "mirrors": [
+        "book/art/figures/security-filter-chain.svg"
+      ]
+    },
+    "docs/assets/diagrams/tracing-propagation.svg": {
+      "structure": "8ac1bb2eefe84685714c9ecbcd402f72aed4f6fa20a5b9659c1612f0997ec5ed",
+      "originalViewBox": "0 0 1400 940",
+      "mirrors": [
+        "book/art/figures/tracing-propagation.svg"
+      ]
+    }
+  }
+}

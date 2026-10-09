@@ -1,102 +1,104 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 920" font-family="sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1016.72" font-family="sans-serif" data-original-view-box="0 0 1240 920">
   <title>Method interceptor chain</title>
   <desc>How every AdviceSource contributes rows to one compiled ProxyPlan, how ProxyClassGenerator emits a single proxy class per bean carrying one interceptor property and one baked descriptor factory per advice kind, and how a call then runs security at advice order 100 before transaction at order 1000 through MethodInvocation::proceed().</desc>
   <defs>
     <marker id="mic-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+      <path d="M0,0 L10,5 L0,10 z" fill="#62645b"/>
     </marker>
   </defs>
 
-  <rect x="1" y="1" width="1238" height="918" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1238" height="918" rx="12" fill="#ffffff" stroke="#dedbd2" stroke-width="1.5"/>
 
-  <text x="620" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2937">One proxy per bean: how an advice becomes a link in the chain</text>
-  <text x="620" y="48" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/data/src/Proxy/{Advice.php, AdviceSource.php, ProxyPlanner.php, ProxyPlanCompiler.php, ProxyClassGenerator.php, ProxyFactory.php, InterceptorRegistry.php, MethodInvocation.php}</text>
-  <text x="620" y="61" text-anchor="middle" font-size="10.5" fill="#6b7280">packages/security/src/Access/Method/{MethodSecurityAdviceSource.php, MethodSecurityInterceptor.php} · packages/data/src/{Proxy/TransactionalAdviceSource.php, Transaction/TransactionInterceptor.php}</text>
+  <text x="620" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#10110f">One proxy per bean: how an advice becomes a link in the chain</text>
+  <text x="620" y="48" text-anchor="middle" font-size="10.5" fill="#62645b">packages/data/src/Proxy/{Advice.php, AdviceSource.php, ProxyPlanner.php, ProxyPlanCompiler.php, ProxyClassGenerator.php, ProxyFactory.php, InterceptorRegistry.php, MethodInvocation.php}</text>
+  <text x="620" y="61" text-anchor="middle" font-size="10.5" fill="#62645b">packages/security/src/Access/Method/{MethodSecurityAdviceSource.php, MethodSecurityInterceptor.php} · packages/data/src/{Proxy/TransactionalAdviceSource.php, Transaction/TransactionInterceptor.php}</text>
 
-  <rect x="36" y="78" width="1168" height="24" rx="6" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="95" text-anchor="middle" font-size="12" fill="#1f2937">Scan and compile — php artisan firefly:cache (or an in-process scan of firefly.scan.paths when there is no cache)</text>
+  <rect x="36" y="78" width="1168" height="24" rx="6" fill="#faf9f6" stroke="#62645b" stroke-width="1.25"/>
+  <text x="620" y="95" text-anchor="middle" font-size="12" fill="#10110f">Scan and compile — php artisan firefly:cache (or an in-process scan of firefly.scan.paths when there is no cache)</text>
 
-  <rect x="36" y="114" width="376" height="86" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="224" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">MethodSecurityAdviceSource</text>
-  <text x="48" y="154" font-size="10.8" fill="#374151">#[Component] in firefly/security</text>
-  <text x="48" y="170" font-size="10.8" fill="#374151">advice(): Advice('security', MethodSecurityInterceptor,</text>
-  <text x="48" y="185" font-size="10.8" fill="#374151">SecurityMethodDescriptor, order 100, inertWhenUnbound: true)</text>
+  <rect x="36" y="114" width="376" height="86" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="224" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#10110f">MethodSecurityAdviceSource</text>
+  <text x="48" y="154" font-size="10.8" fill="#46483f">#[Component] in firefly/security</text>
+  <text x="48" y="170" font-size="10.8" fill="#46483f">advice(): Advice('security', MethodSecurityInterceptor,</text>
+  <text x="48" y="185" font-size="10.8" fill="#46483f">SecurityMethodDescriptor, order 100, inertWhenUnbound: true)</text>
 
-  <rect x="432" y="114" width="376" height="86" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">TransactionalAdviceSource</text>
-  <text x="444" y="154" font-size="10.8" fill="#374151">#[Component] in firefly/data</text>
-  <text x="444" y="170" font-size="10.8" fill="#374151">advice(): Advice::transactional() — Advice('tx',</text>
-  <text x="444" y="185" font-size="10.8" fill="#374151">TransactionInterceptor, TransactionalDescriptor, order 1000)</text>
+  <rect x="432" y="114" width="376" height="86" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="620" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#10110f">TransactionalAdviceSource</text>
+  <text x="444" y="154" font-size="10.8" fill="#46483f">#[Component] in firefly/data</text>
+  <text x="444" y="170" font-size="10.8" fill="#46483f">advice(): Advice::transactional() — Advice('tx',</text>
+  <text x="444" y="185" font-size="10.8" fill="#46483f">TransactionInterceptor, TransactionalDescriptor, order 1000)</text>
 
-  <rect x="828" y="114" width="376" height="86" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.25"/>
-  <text x="1016" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">…any other AdviceSource</text>
-  <text x="840" y="154" font-size="10.8" fill="#374151">The port is open: a package contributes a kind of advice</text>
-  <text x="840" y="170" font-size="10.8" fill="#374151">by shipping one #[Component] that implements</text>
-  <text x="840" y="185" font-size="10.8" fill="#374151">AdviceSource — advice(), scan($psr4), render($row).</text>
+  <rect x="828" y="114" width="376" height="86" rx="8" fill="#f3f1eb" stroke="#a6a295" stroke-width="1.25"/>
+  <text x="1016" y="134" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#10110f">…any other AdviceSource</text>
+  <text x="840" y="154" font-size="10.8" fill="#46483f">The port is open: a package contributes a kind of advice</text>
+  <text x="840" y="170" font-size="10.8" fill="#46483f">by shipping one #[Component] that implements</text>
+  <text x="840" y="185" font-size="10.8" fill="#46483f">AdviceSource — advice(), scan($psr4), render($row).</text>
 
-  <line x1="224" y1="200" x2="500" y2="222" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
-  <line x1="620" y1="200" x2="620" y2="222" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
-  <line x1="1016" y1="200" x2="740" y2="222" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="224" y1="200" x2="500" y2="222" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="200" x2="620" y2="222" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="1016" y1="200" x2="740" y2="222" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="200" y="224" width="840" height="56" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="245" text-anchor="middle" font-size="12.5" fill="#1f2937">ProxyPlanner merges every source's scan() rows into one ProxyPlan:</text>
-  <text x="620" y="264" text-anchor="middle" font-size="12" fill="#374151">class → method → the ordered (advice id, descriptor row) pairs — sources merge in Advice::order, so each list is outermost-first</text>
+  <rect x="200" y="224" width="840" height="56" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="620" y="245" text-anchor="middle" font-size="12.5" fill="#10110f">ProxyPlanner merges every source's scan() rows into one ProxyPlan:</text>
+  <text x="620" y="264" text-anchor="middle" font-size="12" fill="#46483f">class → method → the ordered (advice id, descriptor row) pairs — sources merge in Advice::order, so each list is outermost-first</text>
 
-  <line x1="620" y1="280" x2="620" y2="296" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="280" x2="620" y2="296" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="200" y="298" width="840" height="52" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="318" text-anchor="middle" font-size="12" fill="#1f2937">ProxyPlanCompiler var_exports the plan into proxy-plan.php — a literal the cached boot requires without reflecting</text>
-  <text x="620" y="336" text-anchor="middle" font-size="12" fill="#374151">ProxyClassGenerator writes ONE class per bean: final class Foo__FireflyTransactionalProxy extends Foo</text>
+  <rect x="200" y="298" width="840" height="52" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="620" y="318" text-anchor="middle" font-size="12" fill="#10110f">ProxyPlanCompiler var_exports the plan into proxy-plan.php — a literal the cached boot requires without reflecting</text>
+  <text x="620" y="336" text-anchor="middle" font-size="12" fill="#46483f">ProxyClassGenerator writes ONE class per bean: final class Foo__FireflyTransactionalProxy extends Foo</text>
 
-  <line x1="620" y1="350" x2="620" y2="366" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="350" x2="620" y2="366" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="200" y="368" width="840" height="74" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="620" y="388" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1f2937">The generated proxy — one member pair PER ADVICE KIND the class uses</text>
-  <text x="620" y="408" text-anchor="middle" font-size="11.5" fill="#374151">private MethodInterceptor $__fireflySecurityInterceptor; · private MethodInterceptor $__fireflyTxInterceptor;</text>
-  <text x="620" y="425" text-anchor="middle" font-size="11.5" fill="#374151">static __fireflySecurityDescriptor('m') / __fireflyTxDescriptor('m') — the descriptors baked as literals, no lookup, no reflection</text>
+  <rect x="200" y="368" width="840" height="74" rx="8" fill="#edf1e8" stroke="#62645b" stroke-width="1.5"/>
+  <text x="620" y="388" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#10110f">The generated proxy — one member pair PER ADVICE KIND the class uses</text>
+  <text x="620" y="408" text-anchor="middle" font-size="11.5" fill="#46483f">private MethodInterceptor $__fireflySecurityInterceptor; · private MethodInterceptor $__fireflyTxInterceptor;</text>
+  <text x="620" y="425" text-anchor="middle" font-size="11.5" fill="#46483f">static __fireflySecurityDescriptor('m') / __fireflyTxDescriptor('m') — the descriptors baked as literals, no lookup, no reflection</text>
 
-  <rect x="36" y="462" width="1168" height="24" rx="6" fill="#f8fafc" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="620" y="479" text-anchor="middle" font-size="12" fill="#1f2937">Runtime — one call, resolved from the container as the proxy, wrapped by ProxyFactory with the interceptors InterceptorRegistry hands it</text>
+  <rect x="36" y="462" width="1168" height="24" rx="6" fill="#faf9f6" stroke="#62645b" stroke-width="1.25"/>
+  <text x="620" y="479" text-anchor="middle" font-size="12" fill="#10110f">Runtime — one call, resolved from the container as the proxy, wrapped by ProxyFactory with the interceptors InterceptorRegistry hands it</text>
 
-  <rect x="36" y="508" width="300" height="46" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="186" y="529" text-anchor="middle" font-size="12" fill="#1f2937">$accounts-&gt;transfer($amount)</text>
-  <text x="186" y="545" text-anchor="middle" font-size="10.5" fill="#6b7280">the caller holds the proxy, not the bean</text>
+  <rect x="36" y="508" width="300" height="46" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="186" y="529" text-anchor="middle" font-size="12" fill="#10110f">$accounts-&gt;transfer($amount)</text>
+  <text x="186" y="545" text-anchor="middle" font-size="10.5" fill="#62645b">the caller holds the proxy, not the bean</text>
 
-  <line x1="336" y1="531" x2="356" y2="531" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="336" y1="531" x2="356" y2="531" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="358" y="498" width="846" height="82" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <text x="372" y="518" font-size="11.5" fill="#1f2937">(new MethodInvocation($this, AccountService::class, 'transfer', [$amount],</text>
-  <text x="396" y="535" font-size="11.5" fill="#374151">[$this-&gt;__fireflySecurityInterceptor, $this-&gt;__fireflyTxInterceptor],</text>
-  <text x="396" y="552" font-size="11.5" fill="#374151">[SecurityMethodDescriptor::class =&gt; self::__fireflySecurityDescriptor('transfer'), TransactionalDescriptor::class =&gt; …],</text>
-  <text x="396" y="569" font-size="11.5" fill="#374151">fn (array $__fireflyArgs) =&gt; parent::transfer(...$__fireflyArgs)))-&gt;proceed()</text>
+  <rect x="358" y="498" width="846" height="82" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <text x="372" y="518" font-size="11.5" fill="#10110f">(new MethodInvocation($this, AccountService::class, 'transfer', [$amount],</text>
+  <text x="396" y="535" font-size="11.5" fill="#46483f">[$this-&gt;__fireflySecurityInterceptor, $this-&gt;__fireflyTxInterceptor],</text>
+  <text x="396" y="552" font-size="11.5" fill="#46483f">[SecurityMethodDescriptor::class =&gt; self::__fireflySecurityDescriptor('transfer'), TransactionalDescriptor::class =&gt; …],</text>
+  <text x="396" y="569" font-size="11.5" fill="#46483f">fn (array $__fireflyArgs) =&gt; parent::transfer(...$__fireflyArgs)))-&gt;proceed()</text>
 
-  <rect x="140" y="600" width="960" height="44" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <rect x="152" y="610" width="70" height="24" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
-  <text x="187" y="627" text-anchor="middle" font-size="11" fill="#1f2937">order 100</text>
-  <text x="236" y="619" font-size="12" fill="#1f2937">MethodSecurityInterceptor — reads SecurityMethodDescriptor, evaluates #[PreAuthorize] and #[PreFilter],</text>
-  <text x="236" y="636" font-size="12" fill="#374151">writes a narrowed argument back with setArguments(), then proceed(). A refusal throws HERE — before any transaction exists.</text>
+  <rect x="140" y="600" width="960" height="44" rx="8" fill="#edf1e8" stroke="#62645b" stroke-width="1.5"/>
+  <rect x="152" y="610" width="70" height="24" rx="4" fill="#f3f1eb" stroke="#a6a295"/>
+  <text x="187" y="627" text-anchor="middle" font-size="11" fill="#10110f">order 100</text>
+  <text x="236" y="619" font-size="12" fill="#10110f">MethodSecurityInterceptor — reads SecurityMethodDescriptor, evaluates #[PreAuthorize] and #[PreFilter],</text>
+  <text x="236" y="636" font-size="12" fill="#46483f">writes a narrowed argument back with setArguments(), then proceed(). A refusal throws HERE — before any transaction exists.</text>
 
-  <line x1="620" y1="644" x2="620" y2="658" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="644" x2="620" y2="658" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="140" y="660" width="960" height="44" rx="8" fill="#eef2ff" stroke="#4b5563" stroke-width="1.25"/>
-  <rect x="152" y="670" width="70" height="24" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
-  <text x="187" y="687" text-anchor="middle" font-size="11" fill="#1f2937">order 1000</text>
-  <text x="236" y="679" font-size="12" fill="#1f2937">TransactionInterceptor — reads TransactionalDescriptor: propagation, isolation, readOnly, the enforced timeout,</text>
-  <text x="236" y="696" font-size="12" fill="#374151">the rollback rules. Opens or joins the transaction through TransactionTemplate::execute(), then proceed().</text>
+  <rect x="140" y="660" width="960" height="44" rx="8" fill="#fff0d8" stroke="#62645b" stroke-width="1.25"/>
+  <rect x="152" y="670" width="70" height="24" rx="4" fill="#f3f1eb" stroke="#a6a295"/>
+  <text x="187" y="687" text-anchor="middle" font-size="11" fill="#10110f">order 1000</text>
+  <text x="236" y="679" font-size="12" fill="#10110f">TransactionInterceptor — reads TransactionalDescriptor: propagation, isolation, readOnly, the enforced timeout,</text>
+  <text x="236" y="696" font-size="12" fill="#46483f">the rollback rules. Opens or joins the transaction through TransactionTemplate::execute(), then proceed().</text>
 
-  <line x1="620" y1="704" x2="620" y2="718" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="704" x2="620" y2="718" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="140" y="720" width="960" height="36" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.25"/>
-  <text x="620" y="743" text-anchor="middle" font-size="12" fill="#1f2937">terminal: parent::transfer(...$args) — the real method, receiving whatever the list holds when it is finally reached</text>
+  <rect x="140" y="720" width="960" height="36" rx="8" fill="#f3f1eb" stroke="#a6a295" stroke-width="1.25"/>
+  <text x="620" y="743" text-anchor="middle" font-size="12" fill="#10110f">terminal: parent::transfer(...$args) — the real method, receiving whatever the list holds when it is finally reached</text>
 
-  <line x1="620" y1="756" x2="620" y2="770" stroke="#4b5563" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
+  <line x1="620" y1="756" x2="620" y2="770" stroke="#62645b" stroke-width="1.5" marker-end="url(#mic-arrow)"/>
 
-  <rect x="140" y="772" width="960" height="46" rx="8" fill="#ecfdf5" stroke="#4b5563" stroke-width="1.5"/>
-  <text x="620" y="792" text-anchor="middle" font-size="12" fill="#1f2937">Unwinding, outermost LAST: TransactionInterceptor commits or rolls back, then MethodSecurityInterceptor's after()</text>
-  <text x="620" y="809" text-anchor="middle" font-size="12" fill="#374151">applies #[PostAuthorize] and #[PostFilter] to the value the method returned.</text>
+  <rect x="140" y="772" width="960" height="46" rx="8" fill="#edf1e8" stroke="#62645b" stroke-width="1.5"/>
+  <text x="620" y="792" text-anchor="middle" font-size="12" fill="#10110f">Unwinding, outermost LAST: TransactionInterceptor commits or rolls back, then MethodSecurityInterceptor's after()</text>
+  <text x="620" y="809" text-anchor="middle" font-size="12" fill="#46483f">applies #[PostAuthorize] and #[PostFilter] to the value the method returned.</text>
 
-  <text x="620" y="845" text-anchor="middle" font-size="11.5" fill="#374151">Lower advice order runs OUTER — the same ordering Spring documents for @EnableMethodSecurity against @EnableTransactionManagement. It is what makes</text>
-  <text x="620" y="862" text-anchor="middle" font-size="11.5" fill="#374151">"a refusal never opens a transaction" a property of the compiled plan rather than a convention anyone has to remember.</text>
-  <text x="620" y="886" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">An advice whose interceptor bean is absent is refused at boot (ConfigurationException) unless it declared inertWhenUnbound — security does, because</text>
-  <text x="620" y="901" text-anchor="middle" font-size="10.5" fill="#6b7280" font-style="italic">"annotations are inert until firefly.security.enabled is on" is its documented state — and InterceptorRegistry then hands the proxy a PassThroughInterceptor.</text>
+  <text x="620" y="845" text-anchor="middle" font-size="11.5" fill="#46483f">Lower advice order runs OUTER — the same ordering Spring documents for @EnableMethodSecurity against @EnableTransactionManagement. It is what makes</text>
+  <text x="620" y="862" text-anchor="middle" font-size="11.5" fill="#46483f">"a refusal never opens a transaction" a property of the compiled plan rather than a convention anyone has to remember.</text>
+  <text x="620" y="886" text-anchor="middle" font-size="10.5" fill="#62645b" font-style="italic">An advice whose interceptor bean is absent is refused at boot (ConfigurationException) unless it declared inertWhenUnbound — security does, because</text>
+  <text x="620" y="901" text-anchor="middle" font-size="10.5" fill="#62645b" font-style="italic">"annotations are inert until firefly.security.enabled is on" is its documented state — and InterceptorRegistry then hands the proxy a PassThroughInterceptor.</text>
+
+<g data-framework-brand="2026-10-08" aria-hidden="true"><rect x="0" y="920" width="1240" height="96.72" fill="#ffffff"/><path d="M12 922H1228" stroke="#dedbd2" stroke-width="1"/><path d="M12 922H124" stroke="#ffb34a" stroke-width="2"/><!-- framework-logo:start --><svg xmlns="http://www.w3.org/2000/svg" width="158.17" height="84.32" viewBox="0 0 453.96 242" x="1069.83" y="926.2" aria-hidden="true"><g fill="#10110f" transform="translate(20 130) scale(0.07 -0.07)"><g transform="translate(0 0)"><path d="M160 0L160 1470L338 1470L338 0Z" /></g><g transform="translate(498 0)"><path d="M447 -30Q326 -30 244.5 14.5Q163 59 121.5 132Q80 205 80 292Q80 377 112.5 439.5Q145 502 204 543.5Q263 585 345 609Q422 630 517.5 645.5Q613 661 711 674Q773 682 830 690Q827 813 773 875Q712 944 564 944Q466 944 392.5 899.5Q319 855 289 755L120 806Q159 948 271 1029Q383 1110 566 1110Q713 1110 818.5 1057.5Q924 1005 970 899Q993 849 999 790.5Q1005 732 1005 668L1005 0L847 0L847 168Q793 86 714 37Q604 -30 447 -30ZM474 119Q570 119 640.5 153.5Q711 188 754 244.5Q797 301 810 368Q825 418 827 480Q827 513 828 538Q773 531 719 524Q635 513 560 500.5Q485 488 425 471Q381 457 342.5 435Q304 413 280.5 378.5Q257 344 257 293Q257 249 279.5 209Q302 169 349.5 144Q397 119 474 119Z" /></g><g transform="translate(1623 0)"><path d="M140 0L140 1080L299 1080L299 908Q310 927 323 945Q353 987 391 1014Q433 1048 486 1066Q539 1084 594 1087.5Q649 1091 697 1080L697 913Q641 928 574 921Q507 914 450 872Q398 835 369.5 782Q341 729 330 667.5Q319 606 319 542L319 0Z" /></g><g transform="translate(2335 0)"><path d="M447 -30Q326 -30 244.5 14.5Q163 59 121.5 132Q80 205 80 292Q80 377 112.5 439.5Q145 502 204 543.5Q263 585 345 609Q422 630 517.5 645.5Q613 661 711 674Q773 682 830 690Q827 813 773 875Q712 944 564 944Q466 944 392.5 899.5Q319 855 289 755L120 806Q159 948 271 1029Q383 1110 566 1110Q713 1110 818.5 1057.5Q924 1005 970 899Q993 849 999 790.5Q1005 732 1005 668L1005 0L847 0L847 168Q793 86 714 37Q604 -30 447 -30ZM474 119Q570 119 640.5 153.5Q711 188 754 244.5Q797 301 810 368Q825 418 827 480Q827 513 828 538Q773 531 719 524Q635 513 560 500.5Q485 488 425 471Q381 457 342.5 435Q304 413 280.5 378.5Q257 344 257 293Q257 249 279.5 209Q302 169 349.5 144Q397 119 474 119Z" /></g><g transform="translate(3460 0)"><path d="M243 0L243 933L60 933L60 1080L243 1080L243 1139Q243 1181 247 1224.5Q251 1268 265 1309.5Q279 1351 311 1386Q348 1427 392 1444.5Q436 1462 481.5 1466Q527 1470 568 1470L705 1470L705 1322L578 1322Q499 1322 460 1283.5Q421 1245 421 1167L421 1080L954 1080L954 1470L1132 1470L1132 0L954 0L954 933L421 933L421 0Z" /></g><g transform="translate(4752 0)"><g data-family-terminal="trail-y"><defs><linearGradient id="brand-38128555f0-logo-family-larafly-20-130-140" gradientUnits="userSpaceOnUse" x1="30" y1="1080" x2="554" y2="230"><stop offset="0" stop-color="#ffb34a" stop-opacity="0.2" /><stop offset="0.8" stop-color="#ffb34a" stop-opacity="1" /></linearGradient></defs><path d="M290 -480L468 4L30 1080L217 1080L554 230L870 1080L1051 1080L463 -480Z" fill="url(#brand-38128555f0-logo-family-larafly-20-130-140)" /></g></g></g><g fill="#62645b" transform="translate(25 210) scale(0.0155 -0.0155)"><path d="M625 -30Q476 -30 373 46Q314 89 271 150L271 0L139 0L139 1440L287 1440L287 953Q325 1001 375 1036Q479 1110 631 1110Q779 1110 885 1035Q991 960 1047.5 831Q1104 702 1104 541Q1104 379 1047 250Q990 121 883 45.5Q776 -30 625 -30ZM610 107Q723 107 798 164Q873 221 910.5 319.5Q948 418 948 541Q948 663 911 761Q874 859 798.5 916Q723 973 607 973Q494 973 419.5 918Q345 863 308 765.5Q271 668 271 541Q271 416 308 317.5Q345 219 420 163Q495 107 610 107Z" transform="translate(0 0)" /><path d="M294 -480L472 3L33 1080L189 1080L544 192L871 1080L1021 1080L441 -480Z" transform="translate(1131 0)" /></g><svg x="76" y="183" width="143" height="45.48" viewBox="5 -148 619.4 197"><defs><linearGradient id="brand-38128555f0-logo-firefly-trail" gradientUnits="userSpaceOnUse" x1="567.4" y1="-108" x2="623.4" y2="-54"><stop offset="0" stop-color="#ffb34a" stop-opacity="0.2" /><stop offset="0.8" stop-color="#ffb34a" stop-opacity="1" /></linearGradient></defs><path d="M24.3 0L24.3 -93.3L6 -93.3L6 -108L24.3 -108L24.3 -113.9Q24.3 -118.1 24.7 -122.45Q25.1 -126.8 26.5 -130.95Q27.9 -135.1 31.1 -138.6Q34.8 -142.7 39.2 -144.45Q43.6 -146.2 48.15 -146.6Q52.7 -147 56.8 -147L70.5 -147L70.5 -132.2L57.8 -132.2Q49.9 -132.2 46 -128.35Q42.1 -124.5 42.1 -116.7L42.1 -108L70.5 -108L70.5 -93.3L42.1 -93.3L42.1 0ZM91.5 0L91.5 -108L109.3 -108L109.3 0ZM134.8 0L134.8 -108L150.7 -108L150.7 -90.8Q151.8 -92.7 153.1 -94.5Q156.1 -98.7 159.9 -101.4Q164.1 -104.8 169.4 -106.6Q174.7 -108.4 180.2 -108.75Q185.7 -109.1 190.5 -108L190.5 -91.3Q184.9 -92.8 178.2 -92.1Q171.5 -91.4 165.8 -87.2Q160.6 -83.5 157.75 -78.2Q154.9 -72.9 153.8 -66.75Q152.7 -60.6 152.7 -54.2L152.7 0ZM247.3 3Q231.4 3 219.55 -4.05Q207.7 -11.1 201.1 -23.75Q194.5 -36.4 194.5 -53.3Q194.5 -71 201 -83.95Q207.5 -96.9 219.15 -103.95Q230.8 -111 246.5 -111Q262.8 -111 274.25 -103.5Q285.7 -96 291.45 -82.1Q297.2 -68.2 296.4 -49L213.6 -49Q214.6 -33.5 222 -24.4Q230.6 -13.9 246.5 -13.9Q257.2 -13.9 265.1 -18.8Q273 -23.7 277.5 -32.9L294.6 -27Q288.3 -12.7 275.65 -4.85Q263 3 247.3 3ZM277.9 -63.3Q276.5 -77.4 270.3 -85.2Q262.5 -95 247.1 -95Q230.6 -95 222 -84.4Q215.5 -76.4 213.9 -63.3ZM324.4 0L324.4 -93.3L306.1 -93.3L306.1 -108L324.4 -108L324.4 -113.9Q324.4 -118.1 324.8 -122.45Q325.2 -126.8 326.6 -130.95Q328 -135.1 331.2 -138.6Q334.9 -142.7 339.3 -144.45Q343.7 -146.2 348.25 -146.6Q352.8 -147 356.9 -147L370.6 -147L370.6 -132.2L357.9 -132.2Q350 -132.2 346.1 -128.35Q342.2 -124.5 342.2 -116.7L342.2 -108L395.5 -108L395.5 -147L413.3 -147L413.3 0L395.5 0L395.5 -93.3L342.2 -93.3L342.2 0ZM452.8 48L470.6 -0.4L426.8 -108L445.5 -108L479.2 -23L510.8 -108L528.9 -108L470.1 48Z" fill="#10110f" /><circle cx="100.4" cy="-136.3" r="9.97" fill="#ffb34a" /><path d="M567.4 -108L623.4 -54L603.4 -54L547.4 -108Z" fill="url(#brand-38128555f0-logo-firefly-trail)" /><path d="M623.4 -54L567.4 0L547.4 0L603.4 -54Z" fill="#ffb34a" /></svg></svg><!-- framework-logo:end --></g>
 </svg>

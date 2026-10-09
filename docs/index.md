@@ -1,6 +1,6 @@
-![LaraFly](assets/larafly-banner.svg)
+![larafly — Firefly Framework for PHP](assets/larafly-banner.svg)
 
-# LaraFly
+# larafly
 
 **LaraFly** is the PHP edition of the Firefly Framework — Spring Boot's cohesion, native to Laravel 13. It
 layers dependency injection with stereotypes, conditional auto-configuration, hexagonal ports & adapters,
@@ -125,7 +125,7 @@ guides out by concern, with a line on each saying what it is for, and the same g
 Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
-method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *LaraFly by Example*
+method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *larafly by example*
 book — 16 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 as [PDF and EPUB downloads in English and Spanish](book.md).
 
