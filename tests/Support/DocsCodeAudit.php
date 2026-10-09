@@ -125,6 +125,7 @@ final class DocsCodeAudit
         'CHANGELOG.md',
         'README.md',
         'book/README.md',
+        'book/art',
         'book/src',
         'book/src-es',
         'docs',
