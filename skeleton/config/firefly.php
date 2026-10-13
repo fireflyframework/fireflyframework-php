@@ -2315,13 +2315,24 @@ return [
         'event_failure_strategy' => 'log',
 
         /*
-         | Default TTL in seconds for #[Cacheable] query results that do not declare their own. UNSET
-         | means "no default TTL" — not zero — so leave it commented out unless you want one.
+         | The query cache.
          |
-         | Default: unset.
+         | `provider` 'none' (the default) keeps every query uncached; 'cache' stores the results of queries
+         | marked #[CachedQuery] (and of Cacheable queries) on the Laravel cache store `store` names ('' = the
+         | default store), under `prefix`. Any other provider refuses the boot. A #[CachedQuery] query's key is
+         | derived from its public properties, so equal value objects share an entry; `ttl:` on the attribute
+         | is its lifetime, falling back to `cache_ttl` (UNSET means "no TTL" — not zero — so leave it
+         | commented out unless you want one).
+         |
+         | Defaults: provider 'none', store '', prefix 'firefly:cqrs:', cache_ttl unset.
         */
         // 'query' => [
         //     'cache_ttl' => 60,
+        //     'cache' => [
+        //         'provider' => env('FIREFLY_CQRS_QUERY_CACHE', 'none'),
+        //         'store' => env('FIREFLY_CQRS_QUERY_CACHE_STORE', ''),
+        //         'prefix' => 'firefly:cqrs:',
+        //     ],
         // ],
     ],
 
