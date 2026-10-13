@@ -324,8 +324,8 @@ connection is the one exception: it runs the job inside `start()`, and the start
 execution. Redelivery is safe. A job delivered a second time, for example by a worker that died before it
 acknowledged the job, finds the execution no longer `PENDING` and returns it unchanged, so no step runs twice.
 The capstone in `packages/orchestration/tests/Capstone/CapstoneQueuedWorkflowTest.php` covers this path on
-the `database` queue. Its integration twin covers it on PostgreSQL, MySQL and MariaDB. A SQL Server case is
-written but has not yet run against a real server.
+the `database` queue. Its integration twin covers it on PostgreSQL, MySQL, MariaDB, SQL Server and a SQLite
+file, one CI integration lane each.
 
 ## Persistence, recovery and the dead-letter queue
 
@@ -335,7 +335,7 @@ written but has not yet run against a real server.
 |---|---|
 | `memory` (default) | Tests and single-request flows. Nothing survives the process. |
 | `cache` | Any Laravel cache store (`persistence.cache-store`), keys under `persistence.key-prefix`. |
-| `database` | The `firefly_orchestration_*` tables on `persistence.connection`. Proven on PostgreSQL, MySQL, MariaDB and SQLite. SQL Server takes the same `upsert()` path (`MERGE`) and has integration tests behind `FIREFLY_SQLSRV_DSN`, but they have not yet run against a real server. |
+| `database` | The `firefly_orchestration_*` tables on `persistence.connection`. Proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite by the CI integration lanes (see the [database support matrix](../database-support.md)). |
 
 Publish the migration with `php artisan vendor:publish --tag=firefly-orchestration-migrations`; the package also
 loads it while `persistence.provider` or `dlq.store` is `database`.

@@ -20,6 +20,8 @@ on a temporary file.
 | `#[Transactional(timeout:)]` at the server | `SET LOCAL statement_timeout` | `max_execution_time` (reads) + `innodb_lock_wait_timeout` | `max_statement_time` + `innodb_lock_wait_timeout` | `SET LOCK_TIMEOUT` (lock waits) | busy timeout |
 | `#[Lock(PESSIMISTIC_WRITE / READ)]` | ✓ `FOR UPDATE` / `FOR SHARE` | ✓ `FOR UPDATE` / `LOCK IN SHARE MODE` | ✓ | ✓ `UPDLOCK` / `HOLDLOCK` hints | — (compiles to a plain read) |
 | Optimistic locking (`HasOptimisticLock`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Orchestration checkpoints, search attributes, recovery and dead letters (`firefly.orchestration.persistence.provider=database`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ASYNC workflows on the `database` queue | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 How the outbox claim is chosen, and why every strategy is safe with any number of workers, is explained in
 [EDA Database Outbox](modules/eda-database.md#claim-strategies). Servers older than the versions above fall back to
