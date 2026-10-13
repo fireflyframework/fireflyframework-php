@@ -16,6 +16,8 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionNamedType;
+use ReflectionParameter;
+use ReflectionProperty;
 use SplFileInfo;
 
 /**
@@ -23,6 +25,12 @@ use SplFileInfo;
  * #[EventType] class: its type, version and whether it maps itself. For a convention-mapped class it also compiles
  * each constructor parameter's name, declared type, nullability and optionality, which EventMapper needs to build it
  * back without reflection. A class that is not a DomainEvent, and a type named twice, refuse the scan.
+ *
+ * The convention mapper WRITES an event's public properties and READS it back through its constructor, so a
+ * convention-mapped class must have the two match by name (eventId and occurredAt aside, which travel in the
+ * envelope). A constructor parameter with no public property of its name would be missing from every stored payload,
+ * and a public property no constructor parameter takes would be stored and then silently dropped on reload. Either
+ * refuses the scan here, rather than surfacing as an unreadable stream at replay time.
  */
 final class EventSourcingScanner
 {
@@ -47,6 +55,7 @@ final class EventSourcingScanner
             $serializable = $reflection->implementsInterface(SerializableEvent::class);
             $parameters = [];
             if (! $serializable) {
+                $this->assertRoundTrips($reflection);
                 foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
                     $declared = $parameter->getType();
                     $name = $declared instanceof ReflectionNamedType ? $declared->getName() : null;
@@ -62,6 +71,41 @@ final class EventSourcingScanner
         new EventTypeRegistry($descriptors);
 
         return new EventSourcingManifest($descriptors);
+    }
+
+    /**
+     * A convention-mapped event stores its public instance properties and is rebuilt from its constructor parameters,
+     * so both sets must name the same fields, or what is appended cannot be read back as it was written.
+     *
+     * @param  ReflectionClass<object>  $reflection
+     */
+    private function assertRoundTrips(ReflectionClass $reflection): void
+    {
+        $envelope = ['eventId', 'occurredAt'];
+        $parameters = array_values(array_diff(array_map(
+            static fn (ReflectionParameter $parameter): string => $parameter->getName(),
+            $reflection->getConstructor()?->getParameters() ?? [],
+        ), $envelope));
+        $properties = array_values(array_diff(array_map(
+            static fn (ReflectionProperty $property): string => $property->getName(),
+            array_filter($reflection->getProperties(ReflectionProperty::IS_PUBLIC), static fn (ReflectionProperty $property): bool => ! $property->isStatic()),
+        ), $envelope));
+
+        $unstored = array_values(array_diff($parameters, $properties));
+        $unread = array_values(array_diff($properties, $parameters));
+        if ($unstored === [] && $unread === []) {
+            return;
+        }
+
+        $problems = [];
+        if ($unstored !== []) {
+            $problems[] = 'the constructor parameter(s) $'.implode(', $', $unstored).' have no public property of the same name, so they would never be stored';
+        }
+        if ($unread !== []) {
+            $problems[] = 'the public property(ies) $'.implode(', $', $unread).' are not constructor parameters, so they would be stored and lost on reload';
+        }
+
+        throw new ConfigurationException("#[EventType] on {$reflection->getName()}: ".implode('; ', $problems).'. The convention mapper stores public properties and rebuilds the event through its constructor, so the two must match by name; rename them, or implement Firefly\\EventSourcing\\Event\\SerializableEvent to map the payload yourself.');
     }
 
     /**

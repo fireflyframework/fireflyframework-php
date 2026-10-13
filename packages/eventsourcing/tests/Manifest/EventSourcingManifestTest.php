@@ -55,3 +55,13 @@ it('refuses #[EventType] on a class that is not a DomainEvent, and one type name
     'not a domain event' => ['InvalidFixtures/NotADomainEvent', 'InvalidFixtures\\NotADomainEvent', 'must extend Firefly\\Domain\\DomainEvent'],
     'duplicate type' => ['InvalidFixtures/DuplicateType', 'InvalidFixtures\\DuplicateType', 'twice.named'],
 ]);
+
+it('refuses a convention-mapped event whose constructor parameters and public properties do not match, pointing to SerializableEvent', function (string $dir, string $namespace, string $message): void {
+    expect(fn () => (new EventSourcingScanner)->scan(eventFixtures($dir, $namespace)))
+        ->toThrow(ConfigurationException::class, $message)
+        ->and(fn () => (new EventSourcingScanner)->scan(eventFixtures($dir, $namespace)))
+        ->toThrow(ConfigurationException::class, 'implement Firefly\\EventSourcing\\Event\\SerializableEvent');
+})->with([
+    'a parameter with no public property' => ['InvalidFixtures/UnstoredParameter', 'InvalidFixtures\\UnstoredParameter', 'the constructor parameter(s) $id have no public property of the same name'],
+    'a public property no parameter takes' => ['InvalidFixtures/UnreadProperty', 'InvalidFixtures\\UnreadProperty', 'the public property(ies) $qty are not constructor parameters'],
+]);
