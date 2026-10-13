@@ -53,6 +53,10 @@ labels:
 # the order comes from THIS list, so Chapters 9-13A keep their numbers and every "Chapter N" cross-reference in both
 # manuscripts and in book/README.md stays true. Webhooks and callbacks share one chapter because they are the two
 # directions of one contract — LaraFly's callback signature is exactly what the webhooks `hmac` validator checks.
+# Task D2: firefly/eventsourcing added as Chapter 9B, immediately after Chapter 9A, whose executions it can store as
+# event streams, and after the transactions chapter whose single boundary it appends inside. Slotted exactly the way
+# 4A, 8A, 9A and 10A were: `num` is a free-form label and the order comes from THIS list, so Chapters 10-13A keep their
+# numbers and every "Chapter N" cross-reference in both manuscripts and in book/README.md stays true.
 front:
   - {id: title,       file: 00-front/00-title.md,       nav: false}
   - {id: copyright,   file: 00-front/00-copyright.md,   nav: false}
@@ -81,6 +85,7 @@ parts:
       - {id: ch08a, file: 08a-webhooks-callbacks.md, num: "8A", title: "Webhooks and Callbacks: Receiving and Sending Signed Events"}
       - {id: ch09, file: 09-transactions.md, num: 9, title: "Transactions and the #[Transactional] Proxy"}
       - {id: ch09a, file: 09a-orchestration.md, num: "9A", title: "Sagas, TCC and Durable Workflows"}
+      - {id: ch09b, file: 09b-eventsourcing.md, num: "9B", title: "Event Sourcing: Storing What Happened"}
       - {id: ch10, file: 10-security.md, num: 10, title: "Security: Authentication and Authorization"}
       - {id: ch10a, file: 10a-oauth2.md, num: "10A", title: "OAuth2 and OpenID Connect: Signing In, and Being the Provider"}
   - title: "Part IV — Observability, Testing & Delivery"

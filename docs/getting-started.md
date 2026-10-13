@@ -94,6 +94,10 @@ each off until its key is set:
 - **Sagas, TCC and durable workflows.** `firefly/orchestration` coordinates work that spans more than one
   transaction, with compensation, checkpoints, recovery and a dead-letter queue —
   [Tutorial Step 13](tutorial.md#step-13-a-saga-with-compensation-saga), [Orchestration](modules/orchestration.md).
+- **Event sourcing.** `FIREFLY_EVENTSOURCING_STORE=database` keeps event-sourced aggregates in a portable event
+  store with snapshots, upcasters and checkpointed projections, and can publish every appended event through the
+  outbox in the same transaction — [Tutorial Step 14](tutorial.md#step-14-event-sourced-greetings-eventtype),
+  [Event Sourcing](modules/eventsourcing.md).
 - **Webhooks in, callbacks out.** `firefly/webhooks` verifies and deduplicates inbound webhooks and publishes them
   to the event bus; `firefly/callbacks` sends signed, retried callbacks to subscribers —
   [Webhooks](modules/webhooks.md), [Callbacks](modules/callbacks.md).
@@ -101,7 +105,7 @@ each off until its key is set:
   RabbitMQ for `firefly/messaging` ([Messaging](modules/messaging.md)), and scheduler locks on any database
   ([Scheduling Database Locks](modules/scheduling-database.md)).
 
-The [book](book.md) walks all of them on the Lumen sample, in Chapters 7, 8, 8A and 9A.
+The [book](book.md) walks all of them on the Lumen sample, in Chapters 7, 8, 8A, 9A and 9B.
 
 ## Where to next
 

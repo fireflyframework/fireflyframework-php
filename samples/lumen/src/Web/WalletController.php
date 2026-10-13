@@ -31,7 +31,7 @@ use Lumen\Web\Dto\TransferRequest;
  * command/query, dispatches it through the bus, and shapes the return array — the same rule the sample's
  * CQRS handlers already enforce for the domain layer. A domain/business fault raised by the bus (e.g. an
  * unknown wallet's ResourceNotFoundException, an overdraw's ConflictException, or a denied #[PreAuthorize]
- * on withdraw) surfaces as CommandProcessingException/QueryProcessingException and renders RFC-7807
+ * on withdraw or transfer) surfaces as CommandProcessingException/QueryProcessingException and renders RFC-7807
  * problem-details via the framework's global ProblemDetailsRenderer — no local #[ExceptionHandler] needed.
  */
 #[RestController]
@@ -65,11 +65,12 @@ final class WalletController
 
     /**
      * Debits `amount_minor` from the wallet. Guarded upstream at the bus: WithdrawHandler carries
-     * #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-     * SecurityCommandAuthorizer BEFORE the handler runs. With no principal in the SecurityContextHolder
-     * the bus refuses the command with an AuthenticationException that renders as a 401 problem-details
-     * response (authenticate first); with a principal that is signed in but carries neither role it is an
-     * AuthorizationException rendered as 403 — this endpoint is secured, not broken.
+     * #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")],
+     * enforced by SecurityCommandAuthorizer BEFORE the handler runs. With no principal in the
+     * SecurityContextHolder the bus refuses the command with an AuthenticationException that renders as a 401
+     * problem-details response (authenticate first); with a principal that is signed in but is neither an ADMIN
+     * nor the WALLET_OWNER who owns this wallet it is an AuthorizationException rendered as 403 — this endpoint
+     * is secured, not broken.
      *
      * @return array{wallet_id: string, balance_minor: int}
      */

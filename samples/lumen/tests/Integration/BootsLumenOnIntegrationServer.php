@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lumen\Tests\Integration;
 
+use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Facades\Artisan;
@@ -39,6 +40,22 @@ trait BootsLumenOnIntegrationServer
         $config = $app->make('config');
         $config->set('database.connections.lumen-it', IntegrationDsn::connectionConfig($lane, $overrides));
         $config->set('database.default', 'lumen-it');
+    }
+
+    /**
+     * Closes the lane connection before the application is flushed. On the sqlite lane the next test's migrate:fresh
+     * truncates the database FILE (SQLiteBuilder::refreshDatabaseFile); a WAL connection the previous application
+     * left open over it would then answer "database is locked" on the next boot's journal_mode pragma.
+     */
+    protected function tearDown(): void
+    {
+        if ($this->app !== null) {
+            // Only a booted application has a Context to clear; a skipped lane never booted one.
+            SecurityContextHolder::clearContext();
+            $this->app->make('db')->disconnect('lumen-it');
+        }
+
+        parent::tearDown();
     }
 
     /** A server database keeps the last run's rows, so every test starts from freshly migrated sample tables. */

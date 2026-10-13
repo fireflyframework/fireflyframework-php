@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Lumen\Tests\Application;
 
 use Firefly\Cqrs\Command\CommandBus;
+use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
+use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Core\SimpleGrantedAuthority;
 use Lumen\Application\Command\Deposit;
 use Lumen\Application\Command\OpenWallet;
 use Lumen\Application\Command\Transfer;
@@ -13,6 +17,8 @@ use Lumen\Domain\LedgerEntry;
 use Lumen\Tests\LumenTestCase;
 
 uses(LumenTestCase::class);
+
+afterEach(fn () => SecurityContextHolder::clearContext());
 
 it('projects committed wallet events into ledger entries', function () {
     /** @var LumenTestCase $this */
@@ -43,6 +49,10 @@ it('projects a completed transfer as a TransferCompleted ledger row keyed to the
     $destination = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($source, 10000));
 
+    // TransferHandler is guarded: the source wallet's owner may move money out of it.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-A', 'owner-A', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
     $commands->send(new Transfer($source, $destination, 4000));
 
     // A completed transfer raises TransferCompleted on the source AFTER both legs commit; the projector keys the row

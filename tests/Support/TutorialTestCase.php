@@ -6,6 +6,10 @@ namespace Firefly\Tests\Support;
 
 use Firefly\Eda\EdaServiceProvider;
 use Firefly\Eda\EdaWiringProvider;
+use Firefly\EventSourcing\EventSourcingServiceProvider;
+use Firefly\EventSourcing\EventSourcingWiringProvider;
+use Firefly\EventSourcing\Manifest\EventSourcingManifest;
+use Firefly\EventSourcing\Scanner\EventSourcingScanner;
 use Firefly\Orchestration\Manifest\OrchestrationManifest;
 use Firefly\Orchestration\OrchestrationServiceProvider;
 use Firefly\Orchestration\OrchestrationWiringProvider;
@@ -23,8 +27,9 @@ use Illuminate\Foundation\Application;
 /**
  * Boots the tutorial's own app/ tree — tests/Fixtures/Tutorial/app, in the reader's `App\` namespace — through the
  * real pipeline a created application gets: the dev scan path (firefly.scan.paths) for its beans, the route scanner
- * for its #[RestController], the orchestration scanner for its #[Saga] (what firefly:cache would compile), and the
- * memory defaults for orchestration persistence and the event bus, exactly as the skeleton ships them.
+ * for its #[RestController], the orchestration scanner for its #[Saga] and the event-sourcing scanner for its
+ * #[EventType] events (what firefly:cache would compile), and the memory defaults for orchestration persistence, the
+ * event store and the event bus, exactly as the skeleton ships them.
  *
  * The fixture classes are not under any Composer PSR-4 root (they declare `App\…`, not `Firefly\Tests\…`), so this
  * harness registers a test-only autoloader for them before the application boots.
@@ -57,6 +62,8 @@ abstract class TutorialTestCase extends FireflyTestCase
             EdaWiringProvider::class,
             OrchestrationServiceProvider::class,
             OrchestrationWiringProvider::class,
+            EventSourcingServiceProvider::class,
+            EventSourcingWiringProvider::class,
         ];
     }
 
@@ -74,6 +81,7 @@ abstract class TutorialTestCase extends FireflyTestCase
     {
         $app->instance(RouteManifest::class, new RouteManifest((new RouteScanner)->scan(self::psr4())));
         $app->instance(OrchestrationManifest::class, (new OrchestrationScanner)->scan(self::psr4()));
+        $app->instance(EventSourcingManifest::class, (new EventSourcingScanner)->scan(self::psr4()));
     }
 
     protected function setUp(): void

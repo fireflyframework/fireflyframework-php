@@ -9,7 +9,9 @@ appended under optimistic concurrency and read back two ways:
 
 Snapshots shorten replays, upcasters move old event versions forward on read, and appended events can be
 published to `firefly/eda` in the same transaction through the database outbox. The package is shaped after
-the Java `fireflyframework-eventsourcing` library and PyFly's `pyfly.eventsourcing`.
+the Java `fireflyframework-eventsourcing` library and PyFly's `pyfly.eventsourcing`. Chapter 9B of the
+[book](../book.md) walks it on the Lumen sample — an event-sourced loan, its loan book and its outbox
+publication — and [Tutorial Step 14](../tutorial.md#step-14-event-sourced-greetings-eventtype) on the greeting app.
 
 ## Choosing a store
 

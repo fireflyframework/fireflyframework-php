@@ -11,7 +11,8 @@ use Throwable;
 
 /**
  * The query-side twin of CommandProcessingException: DefaultQueryBus wraps any handler/stage throwable in this
- * (unless already one), preserving a FireflyException cause's httpStatus/category/severity, else internal/500.
+ * (unless already one), preserving a FireflyException cause's code/httpStatus/category/severity and its RFC 9457
+ * extension members and title, else internal/500.
  */
 final class QueryProcessingException extends CqrsException
 {
@@ -32,6 +33,15 @@ final class QueryProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
             $cause,
+            /*
+             | And the cause's RFC 9457 extension members and title, for the same reason: they are what the
+             | problem document carries beside the code. ErrorResponse::fromException() reads them off the
+             | exception it is handed, which over the bus is this wrapper, so a refused rule's
+             | `requiredAuthorities` (or a fault's `field`, `allowed`, own title) was dropped from every
+             | query while the same fault thrown from a controller published it.
+             */
+            $cause instanceof FireflyException ? $cause->extensions() : [],
+            $cause instanceof FireflyException ? $cause->title() : null,
         );
     }
 }

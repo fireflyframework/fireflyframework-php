@@ -77,6 +77,9 @@ See [Installation](installation.md) for requirements and manual setup, and
 - **Work that spans systems** — [sagas with compensation, TCC and durable workflows](modules/orchestration.md)
   with checkpoints, recovery and a dead-letter queue, signed inbound [webhooks](modules/webhooks.md) and
   outbound [callbacks](modules/callbacks.md), all on the same event bus.
+- **Event sourcing** — [an event store](modules/eventsourcing.md) on any database with optimistic concurrency, a
+  commit-ordered global stream, snapshots, upcasters and leased, rebuildable projections, publishing through the
+  same-transaction outbox.
 - **Secure by default** — a session-persisted `SecurityContext`, form login on the framework's own page, HTTP
   Basic, remember-me, logout, deny-by-default [`HttpSecurity`](modules/security.md) URL rules, and method
   security (`#[PreAuthorize]`, `#[PostAuthorize]`, `#[PreFilter]`, `#[PostFilter]`) enforced on **any**
@@ -129,7 +132,7 @@ Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *larafly by example*
-book — 18 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
+book — 19 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 as [PDF and EPUB downloads in English and Spanish](book.md).
 
 ## Quick Links

@@ -112,6 +112,22 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   endpoint; partner callbacks through `firefly/callbacks`; `GetBalance` as a `#[CachedQuery]` evicted per wallet by
   `#[InvalidatesQuery]` on `FundsDeposited`/`FundsWithdrawn`; and the portable outbox, proven on PostgreSQL, MySQL,
   MariaDB, SQL Server and SQLite by `OutboxDatabaseRoundTripTest`.
+- **Book: Chapter 9B, in English and Spanish.** *Event Sourcing: Storing What Happened* walks Lumen's event-sourced
+  loans — `#[EventType]` events, an `EventSourcedAggregateRoot` replayed from history and from snapshots, the 409 a
+  stale writer gets, one transaction with the wallet, a checkpointed `loan_book` projection run, listed and rebuilt by
+  the projection commands, an upcaster for a renamed field, publication through the outbox in the append's own
+  transaction, and the payout saga on `firefly.orchestration.persistence.provider=event-sourced` — slotted after
+  Chapter 9A without renumbering. The preface, Chapter 9A, Appendix A and the glossary (checkpoint, event sourcing,
+  event store, snapshot, upcaster) follow. The book now has nineteen chapters.
+- **Tutorial Step 14, in English and Spanish.** The greeting app records every greeting as a `greeting.said` event
+  in the database event store and projects the counts into a `greeting_counts` read model at
+  `POST`/`GET /journal/{name}`; the step's files are quoted from `tests/Fixtures/Tutorial`, which
+  `tests/TutorialGreetingJournalTest.php` boots through the real web and eventsourcing pipeline. "What's Next" is now
+  Step 15.
+- **`samples/lumen` exercises W3.** An event-sourced `Loan` with `GrantLoan`/`RepayLoan` handlers that move the money
+  through the wallet in the same transaction, `LoanRepository`, `LoanBookProjection`, `LoanRepaidV1Upcaster` and the
+  payout saga on the event-sourced orchestration store, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite
+  by `LoanLedgerRoundTripTest` and `EventSourcedPayoutRoundTripTest`.
 
 ### Changed
 
@@ -133,6 +149,23 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Fixed
 
+- **The Lumen sample let any wallet owner debit any wallet.** `WithdrawHandler` and `RepayLoanHandler` were guarded
+  by `hasRole('ADMIN') or hasRole('WALLET_OWNER')`, so every customer could withdraw from, pay out of or repay a
+  loan against someone else's wallet. Both now require `hasRole('ADMIN') or (hasRole('WALLET_OWNER') and
+  hasPermission(#command, 'debit'))`, answered by the sample's `WalletPermissionEvaluator`, which grants the debit
+  only to the wallet's owner and refuses unknown targets and permissions; Chapters 4, 6, 9A, 9B and 10 of the book
+  follow, in both editions.
+- **The Lumen sample let anyone, even an anonymous caller, transfer money out of any wallet.** `TransferHandler`
+  (`POST /api/v1/wallets/transfers`) had no `#[PreAuthorize]`. It now carries the same rule as `WithdrawHandler`,
+  and `WalletPermissionEvaluator` grants `debit` on a `Transfer` only to the owner of its source wallet: an
+  anonymous transfer is a 401, a non-owner's a 403, and neither moves money on either wallet. Chapters 6, 9 and 10
+  and the README follow in both editions, and Chapter 10's exercise 2, which asked the reader to add this guard, now
+  asks them to guard a read.
+- **A refused command or query lost its `requiredAuthorities`.** `CommandProcessingException` and
+  `QueryProcessingException` copied the cause's code, status, category and severity but not its RFC 9457 extension
+  members or title, so the problem document of a `#[PreAuthorize]` refused at the bus dropped the
+  `requiredAuthorities` the same refusal publishes from a controller (and any handler fault lost its `field`,
+  `allowed` or own title). Both wrappers now carry them; only `detail`, which names the message class, differs.
 - **`firefly:callbacks:replay` honors deactivation and endpoint changes.** The deliverer refuses an inactive
   subscription on every path (replay needs `--include-inactive`, which the output reports), and every delivery goes
   to the subscription's current URL — checked against `http.require-https` / `http.allowed-hosts` — instead of the

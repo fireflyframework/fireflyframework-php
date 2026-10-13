@@ -71,9 +71,9 @@ event-driven, actuator-observed microservice, chapter by chapter — every listi
 **[Download the book in English or Spanish, as PDF or EPUB](https://fireflyframework.github.io/fireflyframework-php/book/).**
 The published editions include the single-package installation and bundled installer.
 
-The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **eighteen chapters**
+The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **nineteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
-Coordinating & Securing the App (CQRS, EDA + transactional outbox, webhooks and callbacks, `#[Transactional]`, sagas/TCC/durable workflows, security, OAuth2 and
+Coordinating & Securing the App (CQRS, EDA + transactional outbox, webhooks and callbacks, `#[Transactional]`, sagas/TCC/durable workflows, event sourcing, security, OAuth2 and
 OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache,
 feature flags)
 — plus a Laravel→LaraFly cheat-sheet and a glossary. The two editions are line-for-line the same book: every
@@ -158,7 +158,7 @@ LaraFly is not a fork of Laravel and does not hide it — every package layers c
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
 know about Laravel keeps working underneath.
 
-Five capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
+Six capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
 will have — that they are worth naming outright:
 
 - **Both halves of OAuth2, as two packages you install.**
@@ -196,11 +196,17 @@ will have — that they are worth naming outright:
 - **Work that spans systems.** [`firefly/orchestration`](docs/modules/orchestration.md) runs sagas whose
   completed steps are compensated newest first when a later one fails, TCC transactions that reserve with every
   participant before confirming any, and durable workflows that wait for signals and timers across processes —
-  every step checkpointed (memory, cache or a portable database store), stale executions recovered, failures
+  every step checkpointed (memory, cache, a portable database store or the event store), stale executions recovered, failures
   dead-lettered. [`firefly/webhooks`](docs/modules/webhooks.md) verifies Stripe, GitHub, Twilio or HMAC
   signatures, refuses replays and duplicates and publishes the rest to the event bus;
   [`firefly/callbacks`](docs/modules/callbacks.md) sends the bus's events to subscribers as signed, retried POSTs
   behind a circuit breaker per endpoint.
+- **Event sourcing, on any database.** [`firefly/eventsourcing`](docs/modules/eventsourcing.md) stores an
+  aggregate as its events — appended under optimistic concurrency to a portable event store, read back from the
+  newest snapshot, moved forward by upcasters when an event's shape changes — and keeps read models current from a
+  global stream numbered in commit order, so a projection's checkpoint never skips an event that committed late.
+  Appended events can be published through the database outbox in the append's own transaction, and sagas,
+  TCCs and workflows can store their executions as event streams.
 
 ### Who is LaraFly for?
 
@@ -774,6 +780,7 @@ class TransferHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional(propagation: Propagation::REQUIRED)]
     public function handle(Transfer $command): void
     {
@@ -812,7 +819,7 @@ class WithdrawHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(Withdraw $command): int
     {
@@ -828,7 +835,10 @@ class WithdrawHandler
 ```
 
 `SecurityCommandAuthorizer` enforces this **before** the handler runs, at the bus — a denied withdraw surfaces
-as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The same
+as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The role
+alone is not ownership: `hasPermission(#command, 'debit')` hands the `Withdraw` to the application's
+`PermissionEvaluator` bean (Lumen's `WalletPermissionEvaluator`), which grants the debit only when the
+principal owns that wallet, so one customer cannot debit another's. The same
 rules hold on the controller dispatcher and on **any stereotyped bean**, through the one compiled proxy chain
 `#[Transactional]` already used — so a `#[Service]` method carrying `#[PreAuthorize]`, `#[PostAuthorize]`,
 `#[PreFilter]` or `#[PostFilter]` is guarded wherever it is called from, and a refusal never opens a
@@ -1142,7 +1152,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*larafly by example*](book/README.md) — the complete bilingual book (18 chapters + appendices, PDF + EPUB).
+- [*larafly by example*](book/README.md) — the complete bilingual book (19 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -1175,13 +1185,8 @@ accurately:
   credentials, refresh rotation, introspection, revocation, userinfo and RP-initiated logout). IdP adapters
   beyond those presets (Cognito, internal-db) and MFA are deferred to their own future packages, matching the
   Java Firefly Framework's module topology.
-- **Event sourcing in the tutorial and the book.** Event stores, aggregates, snapshots, upcasters and
-  checkpointed, rebuildable projections ship in [`firefly/eventsourcing`](docs/modules/eventsourcing.md),
-  shaped after the Java library and PyFly's `pyfly.eventsourcing`. What remains is the walkthrough: the
-  sample's `LedgerProjector` still builds its read model from a plain `#[EventListener]`, and neither the
-  tutorial nor the book has a chapter on the package.
-- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox and a saga), the *larafly by example*
-  [book](book/README.md) (18 chapters + appendices, EN + ES, PDF + EPUB), and a
+- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox, a saga and an event-sourced journal), the *larafly by example*
+  [book](book/README.md) (19 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 

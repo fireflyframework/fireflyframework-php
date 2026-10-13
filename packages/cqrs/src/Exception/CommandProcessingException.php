@@ -13,7 +13,8 @@ use Throwable;
  * The wrapper DefaultCommandBus re-throws any handler/stage throwable in (unless it is already a
  * CommandProcessingException, in which case the bus re-throws as-is). IDENTITY-PRESERVING: when the cause is a
  * FireflyException, its errorCode/httpStatus/category/severity are copied so an expected client/domain fault (validation,
- * not-found) keeps its own kernel category and is NOT masked into a generic 500; a plain Throwable becomes
+ * not-found) keeps its own kernel category and is NOT masked into a generic 500, and its RFC 9457 extension members and
+ * title are copied so the problem document says what the cause would have said on its own; a plain Throwable becomes
  * internal/500. Carries the command class + the cause as `previous` (design §2.3 / pyfly command/bus.py:153-164).
  */
 final class CommandProcessingException extends CqrsException
@@ -35,6 +36,15 @@ final class CommandProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
             $cause,
+            /*
+             | And the cause's RFC 9457 extension members and title, for the same reason: they are what the
+             | problem document carries beside the code. ErrorResponse::fromException() reads them off the
+             | exception it is handed, which over the bus is this wrapper, so a refused rule's
+             | `requiredAuthorities` (or a fault's `field`, `allowed`, own title) was dropped from every
+             | command while the same fault thrown from a controller published it.
+             */
+            $cause instanceof FireflyException ? $cause->extensions() : [],
+            $cause instanceof FireflyException ? $cause->title() : null,
         );
     }
 }

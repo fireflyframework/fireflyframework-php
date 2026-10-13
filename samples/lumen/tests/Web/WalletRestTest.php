@@ -87,8 +87,8 @@ it('returns 422 problem+json when the deposit amount is not positive', function 
 
 it('denies an unauthenticated withdraw as 401 problem+json (the endpoint IS secured)', function () {
     /** @var LumenTestCase $this */
-    // WithdrawHandler carries #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")] (S6), enforced by
-    // SecurityCommandAuthorizer at the bus. LumenTestCase's HTTP security filters (jwt/http/csrf) are OFF, so a
+    // WithdrawHandler carries #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command,
+    // 'debit'))")], enforced by SecurityCommandAuthorizer at the bus. LumenTestCase's HTTP security filters (jwt/http/csrf) are OFF, so a
     // plain HTTP POST carries NO principal -> SecurityContextHolder::getContext() is anonymous -> the bus refuses
     // the command with "authenticate first": MethodSecurityEvaluator answers an ANONYMOUS caller with an
     // AuthenticationException (401 AUTHENTICATION_FAILED), the same answer the controller guard and the proxy
@@ -138,6 +138,24 @@ it('denies an authenticated withdraw without the owner role as 403 problem+json'
     $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
 })->group('lumen');
 
+it('names the authorities the rule asked for on a refused withdraw, as a refused controller method does', function () {
+    /** @var LumenTestCase $this */
+    // MethodSecurityRefusal puts the rule's authorities on the AuthorizationException as the `requiredAuthorities`
+    // extension member, and CommandProcessingException carries the cause's extension members, so the document a
+    // refused command renders names them too. hasPermission() is not an authority: only the two roles appear.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('mallory', 'mallory', [new SimpleGrantedAuthority('ROLE_USER')])
+    ));
+
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3c', 'currency' => 'EUR'])->json('wallet_id');
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('requiredAuthorities', ['ROLE_ADMIN', 'ROLE_WALLET_OWNER']);
+})->group('lumen');
+
 it('allows an authorized withdraw and renders an overdraw as 409 problem+json', function () {
     /** @var LumenTestCase $this */
     // SecurityContextHolder is a request-scoped holder backed by Laravel's Context facade (packages/security/src
@@ -172,6 +190,48 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
     $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 2000]);
 })->group('lumen');
 
+it('denies a withdraw from a WALLET_OWNER who does not own the wallet as 403 problem+json', function () {
+    /** @var LumenTestCase $this */
+    // The role is necessary, not sufficient: #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and
+    // hasPermission(#command, 'debit'))")] asks WalletPermissionEvaluator whether THIS principal owns THIS wallet.
+    // 'owner-7b' holds ROLE_WALLET_OWNER but the wallet is owner-7a's, so the bus refuses before the handler runs.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-7b', 'owner-7b', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-7a', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(403)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('category', 'security');
+
+    // Nothing was debited, and the ledger never saw a withdrawal.
+    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
+    /** @var list<array<string,mixed>> $entries */
+    $entries = $this->getJson("/api/v1/wallets/{$id}/ledger")->assertStatus(200)->json('entries');
+    expect(array_column($entries, 'event_type'))->not->toContain('FundsWithdrawn');
+})->group('lumen');
+
+it('allows an ADMIN to withdraw from a wallet it does not own', function () {
+    /** @var LumenTestCase $this */
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('teller', 'teller', [new SimpleGrantedAuthority('ROLE_ADMIN')])
+    ));
+
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-8', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 3000]);
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(200)
+        ->assertJson(['wallet_id' => $id, 'balance_minor' => 2000]);
+})->group('lumen');
+
 it('transfers between two wallets over REST and reflects both fresh balances', function () {
     /** @var LumenTestCase $this */
     /** @var string $src */
@@ -179,6 +239,11 @@ it('transfers between two wallets over REST and reflects both fresh balances', f
     /** @var string $dst */
     $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-5b', 'currency' => 'EUR'])->json('wallet_id');
     $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 10000]);
+
+    // The transfer is guarded like the withdraw: signed in as the source wallet's owner, it goes through.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-5a', 'owner-5a', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
 
     $this->postJson('/api/v1/wallets/transfers', [
         'source_wallet_id' => $src,
@@ -193,6 +258,79 @@ it('transfers between two wallets over REST and reflects both fresh balances', f
 
     $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 6000]);
     $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 4000]);
+})->group('lumen');
+
+it('denies an unauthenticated transfer as 401 problem+json and moves no money', function () {
+    /** @var LumenTestCase $this */
+    // TransferHandler carries the same #[PreAuthorize] as WithdrawHandler, with the Transfer bound to #command and
+    // WalletPermissionEvaluator asking who owns its SOURCE wallet. No principal -> "authenticate first".
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-9a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-9b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(401)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 401)
+        ->assertJsonPath('code', 'AUTHENTICATION_FAILED')
+        ->assertJsonPath('category', 'security');
+
+    $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 5000]);
+    $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 0]);
+})->group('lumen');
+
+it('denies a transfer out of a wallet the WALLET_OWNER does not own as 403 problem+json and moves no money', function () {
+    /** @var LumenTestCase $this */
+    // owner-10b owns the destination and holds the role; a transfer debits its source, which is owner-10a's.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-10b', 'owner-10b', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(403)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('category', 'security');
+
+    $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 5000]);
+    $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 0]);
+})->group('lumen');
+
+it('allows an ADMIN to transfer between wallets it does not own', function () {
+    /** @var LumenTestCase $this */
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('teller', 'teller', [new SimpleGrantedAuthority('ROLE_ADMIN')])
+    ));
+
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-11a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-11b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(200)->assertJson([
+        'source_balance_minor' => 4000,
+        'destination_balance_minor' => 1000,
+    ]);
 })->group('lumen');
 
 it('reads the projected ledger for a wallet over REST', function () {

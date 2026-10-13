@@ -78,7 +78,7 @@ final class PayoutSaga
 }
 ```
 
-Read it as three local transactions and two undos. `debit` sends the same `Withdraw` command the REST endpoint sends, so it runs in its own `#[Transactional]` boundary and under its own `#[PreAuthorize]` — a saga step is not a back door around method security. `compensate: 'refund'` names the method that undoes it; `dependsOn` orders the steps into topology layers, and `#[Input('…')]` reads a key of the execution's input, `#[FromStep('submit')]` the result an earlier step returned. A compensation receives the forward step's result as its implicit argument (`cancel()` gets the bank reference `submit()` returned) and may also ask for `#[Input]` values, which is how `refund()` knows how much to give back. `confirm` has no compensation because nothing runs after it.
+Read it as three local transactions and two undos. `debit` sends the same `Withdraw` command the REST endpoint sends, so it runs in its own `#[Transactional]` boundary and under its own `#[PreAuthorize]` — a saga step is not a back door around method security: a customer can pay out only from a wallet they own (Chapter 10), and anyone else's payout is refused with the withdraw's own 403 before the bank is called. `compensate: 'refund'` names the method that undoes it; `dependsOn` orders the steps into topology layers, and `#[Input('…')]` reads a key of the execution's input, `#[FromStep('submit')]` the result an earlier step returned. A compensation receives the forward step's result as its implicit argument (`cancel()` gets the bank reference `submit()` returned) and may also ask for `#[Input]` values, which is how `refund()` knows how much to give back. `confirm` has no compensation because nothing runs after it.
 
 ---
 
@@ -177,7 +177,7 @@ Three kinds of failure, three answers. When a compensation did not finish — th
 
 ## Checkpoints, recovery and the dead-letter queue
 
-Every step boundary writes an `ExecutionState` checkpoint through the `ExecutionPersistenceProvider` port. `memory` is the default and survives nothing; `cache` uses any Laravel cache store; `database` uses three portable tables, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite. Lumen's harness runs the payout saga on `database`, which is why the test above can read `firefly_orchestration_executions`:
+Every step boundary writes an `ExecutionState` checkpoint through the `ExecutionPersistenceProvider` port. `memory` is the default and survives nothing; `cache` uses any Laravel cache store; `database` uses three portable tables, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite. A fourth, `event-sourced`, keeps every execution as an event stream in the event store (Chapter 9B). Lumen's harness runs the payout saga on `database`, which is why the test above can read `firefly_orchestration_executions`:
 
 <!-- source: skeleton/config/firefly.php -->
 ```php
@@ -380,7 +380,7 @@ Steps of one topology layer run one after another, in declaration order: a layer
 | `SagaEngine::execute()` / `SagaResult` | Runs a saga in process; `success`, `status`, `firstErrorStepId()`, `compensatedSteps()` |
 | TCC | `#[TryMethod]` everywhere first, then `#[ConfirmMethod]` everywhere, or `#[CancelMethod]` for every participant that tried |
 | Durable workflow | `#[WaitForSignal]` / `#[WaitForTimer]` park it `WAITING`; a signal or the tick resumes it from its checkpoint |
-| `firefly.orchestration.persistence.provider` | `memory`, `cache` or `database` checkpoints; recovery reports, resumes or compensates stale executions |
+| `firefly.orchestration.persistence.provider` | `memory`, `cache`, `database` or `event-sourced` checkpoints; recovery reports, resumes or compensates stale executions |
 | Dead-letter queue | One entry per failed step; `firefly:orchestration:dlq` lists, `firefly:orchestration:dlq:retry` starts it again |
 | `firefly.scheduling.lock.provider` | `none`, `cache`, `database`, `mysql` or `postgres` — keeps a scheduled tick on one node |
 

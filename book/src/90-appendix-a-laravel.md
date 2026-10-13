@@ -28,6 +28,7 @@ LaraFly is **additive**: it layers a Spring-Boot-shaped application model on top
 | Outbound webhooks | A queued job per event calling `Http::post()` | `firefly/callbacks`: subscriptions, signed deliveries, retries, a breaker per endpoint, a replayable log | 8A |
 | Long-running processes | `Bus::chain()` / `Bus::batch()` — no undo for the jobs that succeeded | `firefly/orchestration`: sagas with compensation, TCC, durable workflows with checkpoints | 9A |
 | One node per scheduled task | `->onOneServer()` on a cache lock | `#[Scheduled(lock: …)]` over `firefly.scheduling.lock.provider` (`cache`, `database`, `mysql`, `postgres`) | 9A |
+| Event sourcing | No event store — Eloquent keeps the latest row; history is an audit table kept in step by hand | `firefly/eventsourcing`: event-sourced aggregates over a database event store, snapshots, upcasters, checkpointed projections, outbox publication | 9B |
 
 ---
 

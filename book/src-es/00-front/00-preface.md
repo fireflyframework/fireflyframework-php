@@ -20,6 +20,8 @@ El recorrido empieza con suavidad. El **Inicio rápido** te lleva desde el insta
 
 Los Capítulos 8A y 9A llevan a Lumen más allá de una sola base de datos: un procesador de tarjetas recarga wallets mediante un webhook firmado, un socio se entera de cada movimiento de dinero mediante callbacks firmados, y un pago saliente a un banco se ejecuta como una saga que se deshace sola, paso a paso, cuando el banco dice que no.
 
+El Capítulo 9B guarda otro tipo de registro: los préstamos de Lumen se almacenan como los eventos que les ocurrieron — concedido, amortizado, liquidado —, se reconstruyen desde esa historia y desde instantáneas, se proyectan en una cartera de préstamos y se publican por el outbox en la misma transacción que el monedero a través del que mueven el dinero.
+
 El Capítulo 13A cierra el recorrido de producción con feature flags: Lumen mantiene apagada una vista de la wallet, selecciona una cohorte compartida y prueba la ruta y el ciclo del override contra el framework real.
 
 Cuando hayas terminado de trabajar todo el libro, tendrás un modelo mental de cada capa de un servicio LaraFly de producción, y una aplicación real y probada que lo demuestre.
