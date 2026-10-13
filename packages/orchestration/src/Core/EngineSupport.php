@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Firefly\Orchestration\Core\Callback\CallbackInvoker;
 use Firefly\Orchestration\Dlq\DeadLetterEntry;
 use Firefly\Orchestration\Dlq\DeadLetterService;
+use Firefly\Orchestration\Event\OrchestrationEvent;
 use Firefly\Orchestration\Event\OrchestrationEventPublisher;
 use Firefly\Orchestration\Event\OrchestrationEvents;
 use Firefly\Orchestration\Event\OrchestrationTracing;
@@ -79,6 +80,22 @@ final class EngineSupport
             $this->logger->warning("Orchestration [{$context->executionName}] could not be dead-lettered: {$failure->getMessage()}", [
                 'exception' => $failure,
                 'correlationId' => $context->correlationId,
+            ]);
+        }
+    }
+
+    /**
+     * Publishes an event without letting the transport fail the execution it describes: a broker that is down
+     * costs a log line, not a compensated saga.
+     */
+    public function publish(OrchestrationEventPublisher $publisher, OrchestrationEvent $event): void
+    {
+        try {
+            $publisher->publish($event);
+        } catch (Throwable $error) {
+            $this->logger->warning("Orchestration event {$event->eventType} for [{$event->executionName}] could not be published: {$error->getMessage()}", [
+                'exception' => $error,
+                'correlationId' => $event->correlationId,
             ]);
         }
     }
