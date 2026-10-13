@@ -88,7 +88,9 @@ it with the `hmac` validator and `timestamp-header: X-Firefly-Timestamp`.
   `circuit-breaker.wait-duration-in-open`, and deliveries to that endpoint fail at once with `circuit open`
   instead of waiting on a partner that is down.
 - URLs must be https unless `http.require-https` is false, and on a host in `http.allowed-hosts` (or a subdomain
-  of one) when that list is not empty.
+  of one) when that list is not empty. The URL checked and sent to is always the subscription's current one.
+- An inactive subscription is never delivered to: it does not match events, and the deliverer refuses it on any
+  path that reaches it (see `--include-inactive` below for the one explicit exception).
 - Attempts run where the event is consumed. On `firefly.eda.provider=memory` that is the request that published
   the event — choose `queue` or a broker so deliveries run in workers.
 - An event the broker redelivers maps to the same execution: one already delivered is not sent again, one that
@@ -105,10 +107,18 @@ php artisan firefly:callbacks:list
 php artisan firefly:callbacks:list --executions --status=failed --limit=50
 php artisan firefly:callbacks:replay --failed
 php artisan firefly:callbacks:replay 9f2c4e…
+php artisan firefly:callbacks:replay 9f2c4e… --include-inactive
 ```
 
 `replay` re-sends the logged body re-signed with a fresh timestamp; its attempts keep counting, and it exits 1 if
 any replay did not end delivered — schedule it and the scheduler's output says so.
+
+- It sends to the subscription's **current** URL, not the one stored on the execution, and runs the
+  `http.require-https` / `http.allowed-hosts` checks on that URL. When the endpoint changed since the execution was
+  logged, the output says `destination changed from <old> to <new>` and the execution records the new URL.
+- A deactivated subscription (`active` false) is refused — `subscription [<id>] is inactive`, nothing sent, the
+  execution left as logged — like every other delivery. `--include-inactive` replays to it anyway, and the output
+  announces that the option is on.
 
 <!-- illustrative: the commands that create the two tables for the database stores -->
 

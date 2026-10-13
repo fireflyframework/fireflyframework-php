@@ -35,6 +35,13 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   `CacheResilienceStore` constructed by hand over such a store throws from `withLock()` unless built with
   `allowLockless: true`.
 
+### Fixed
+
+- **`firefly:callbacks:replay` honors deactivation and endpoint changes.** The deliverer refuses an inactive
+  subscription on every path (replay needs `--include-inactive`, which the output reports), and every delivery goes
+  to the subscription's current URL — checked against `http.require-https` / `http.allowed-hosts` — instead of the
+  URL stored on the execution, recording the change.
+
 ## [26.10.1] - 2026-10-06
 
 ### Added
