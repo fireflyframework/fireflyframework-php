@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lumen\Tests\Integration;
 
+use Firefly\Eda\EdaConsumerServiceProvider;
 use Firefly\Eda\Postgres\EdaPostgresServiceProvider;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Illuminate\Contracts\Config\Repository;
@@ -32,10 +33,16 @@ abstract class OutboxPostgresIntegrationTestCase extends LumenTestCase
         return extension_loaded('pdo_pgsql') && getenv('FIREFLY_PG_DSN') !== false;
     }
 
-    /** @return list<class-string<ServiceProvider>> */
+    /**
+     * Adds the postgres outbox provider plus EdaConsumerServiceProvider, which registers firefly:eda:consume. A real
+     * app gets the latter through package auto-discovery; Testbench does not discover the root package's providers,
+     * so the harness lists it explicitly or the round-trip's consumer step finds no such command.
+     *
+     * @return list<class-string<ServiceProvider>>
+     */
     protected function fireflyProviders(): array
     {
-        return [...parent::fireflyProviders(), EdaPostgresServiceProvider::class];
+        return [...parent::fireflyProviders(), EdaPostgresServiceProvider::class, EdaConsumerServiceProvider::class];
     }
 
     /** @return array<string, mixed> */
