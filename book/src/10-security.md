@@ -1165,10 +1165,11 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
     $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 999999])
         ->assertStatus(409)
         // …
-        ->assertJsonPath('category', 'business');
+        ->assertJsonPath('category', 'business')
+        ->assertJsonPath('detail', 'cannot withdraw 9999.99 EUR; balance is 20.00 EUR');
 ```
 
-The granted authority is `'ROLE_WALLET_OWNER'` — already carrying the `ROLE_` prefix — and `WithdrawHandler`'s expression calls `hasRole('WALLET_OWNER')`, which `SecurityExpressionRoot::hasRole()` normalises to the identical `'ROLE_WALLET_OWNER'` string before checking membership; the two spellings meet in the middle. The principal is `owner-4` and the wallet is opened for `owner-4`, which is what lets `hasPermission(#command, 'debit')` grant the debit. The `409` in the second call is the important contrast: authorization and domain validation are two genuinely independent layers — being *allowed* to withdraw says nothing about whether the withdrawal itself is *valid*, and `Wallet::withdraw()`'s own no-overdraw invariant (Chapter 6) still applies exactly as before.
+The granted authority is `'ROLE_WALLET_OWNER'` — already carrying the `ROLE_` prefix — and `WithdrawHandler`'s expression calls `hasRole('WALLET_OWNER')`, which `SecurityExpressionRoot::hasRole()` normalises to the identical `'ROLE_WALLET_OWNER'` string before checking membership; the two spellings meet in the middle. The principal is `owner-4` and the wallet is opened for `owner-4`, which is what lets `hasPermission(#command, 'debit')` grant the debit. The `409` in the second call is the important contrast: authorization and domain validation are two genuinely independent layers — being *allowed* to withdraw says nothing about whether the withdrawal itself is *valid*, and `Wallet::withdraw()`'s own no-overdraw invariant (Chapter 6) still applies exactly as before. Its `detail` is the domain's sentence word for word: the bus's wrapper keeps the command class for the log and publishes the cause's own sentence.
 
 `samples/lumen/tests/Application/TransferSecurityTest.php` proves the same guard directly against the `CommandBus`, with the `getPrevious()` unwrap pattern Chapter 7 introduced:
 

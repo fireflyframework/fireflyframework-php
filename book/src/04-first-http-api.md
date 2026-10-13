@@ -480,6 +480,7 @@ What `render()` deliberately does **not** decide is which `FireflyException` an 
     public static function toFireflyException(Throwable $e, bool $disclose = true, ?string $reference = null): FireflyException
     {
         return match (true) {
+            $e instanceof FireflyException && $e->detail() === null => self::withheld($e, $disclose, $reference),
             $e instanceof FireflyException => $e,
             self::isExecutionTimeLimit($e) => self::executionTimeExceeded($e, $reference),
             $e instanceof MethodNotAllowedHttpException => self::methodNotAllowed($e),
@@ -503,9 +504,9 @@ What `render()` deliberately does **not** decide is which `FireflyException` an 
     }
 ```
 
-Five arms covering four cases — the `405` has an arm of its own only so the verbs it permits can be lifted out of the router's sentence and into an `allowed` member and the `Allow` header — and every one of them ends back at the same `ErrorResponse::fromException(...)->toArray()` call, so the payload's shape never depends on which arm produced it.
+Six arms covering five cases — the `405` has an arm of its own only so the verbs it permits can be lifted out of the router's sentence and into an `allowed` member and the `Allow` header — and every one of them ends back at the same `ErrorResponse::fromException(...)->toArray()` call, so the payload's shape never depends on which arm produced it.
 
-A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the same reference the document's `traceId` carries, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
+A `FireflyException` — or one of its typed subclasses, like `ResourceNotFoundException` — is returned untouched and renders at its own `httpStatus()`, because its message was written by your application *for* the client; that is the whole point of the taxonomy. What reaches the wire is the exception's `detail()`, which is that message unless the exception said otherwise — and the first arm is for the one that did: a `FireflyException` whose `detail()` is `null` holds no sentence for a client (the CQRS bus's wrapper of a `QueryException` is one, Chapter 7), so it keeps its own code, status, category and extension members but takes its sentence exactly as the last arm would give it to the throwable it wraps. PHP's own execution-time limit is named separately and answers `503` with a `Retry-After` header, because "the server stopped this request after N seconds" is something a caller can act on and a bare `500` is not. A Laravel/Symfony HTTP exception — a URL matching no route, a verb a route does not accept — keeps its **real status code**, so an unmatched route still answers `404` and never a misleading `500`; only the router's own wording is replaced with a sentence written for a person, and a `405`'s permitted verbs move into an `allowed` member and the `Allow` header where a client can read them without parsing English. Anything else is an accident, and `$disclose` — `firefly.web.problem.disclose`, default `false` — decides whether its message may be published at all: with it off the body carries a fixed sentence naming the same reference the document's `traceId` carries, and the real message stays in the log, which is where a `QueryException`'s SQL and its bindings belong.
 
 Requesting a wallet that was never opened renders like this. Note `instance`: RFC 9457 §3.1.5 makes it a URI **reference**, and a relative reference resolves against the document's base URI — so the bare `api/v1/wallets/wlt-999` that `$request->path()` answers, served from `/api/v1/wallets/wlt-999`, would identify `/api/v1/api/v1/wallets/wlt-999`. LaraFly publishes the root-relative form, `ProblemMapper::instanceFor()`'s one job, and a client may compare it to the path it asked for. Note `type` too: RFC 9457 §3.1.1 says an absent `type` *is* `about:blank`, and LaraFly writes it out rather than leaving the reader to know that — point `firefly.web.problem.type-uri` at a base URI instead and the stable `code` derives a real, openable one.
 
@@ -557,7 +558,7 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "code": "AUTHENTICATION_FAILED",
   "category": "security",
   "severity": "warning",
-  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
+  "detail": "Authentication is required.",
   "type": "about:blank",
   "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -575,7 +576,7 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
   "code": "ACCESS_DENIED",
   "category": "security",
   "severity": "warning",
-  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
+  "detail": "You do not have permission to do this.",
   "type": "about:blank",
   "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -585,7 +586,7 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
 }
 ```
 
-Both are produced with no code change to `WalletController::withdraw()` at all: the bus wraps whichever security exception the evaluator raised in a `CommandProcessingException` that copies the cause's code, status, category and extension members, so the wire carries the cause's identity rather than a generic bus error, and the 403 names the same `requiredAuthorities` a refused controller method would. Only `detail` says it came through the bus: the wrapper prefixes the cause's sentence with the command it was processing. Chapter 10 returns to this pair — and to the two shipped tests that pin it — in full.
+Both are produced with no code change to `WalletController::withdraw()` at all: the bus wraps whichever security exception the evaluator raised in a `CommandProcessingException` that copies the cause's code, status, category and extension members, so the wire carries the cause's identity rather than a generic bus error, and the 403 names the same `requiredAuthorities` a refused controller method would. Not even `detail` says it came through the bus: it is the cause's own sentence, word for word. The wrapper's *message* still names the command it was processing — `Processing command [Lumen\Application\Command\Withdraw] failed: …` — but that line is for the log, and Chapter 7 shows why the two are kept apart. Chapter 10 returns to this pair — and to the two shipped tests that pin it — in full.
 
 ### Handling an exception yourself
 

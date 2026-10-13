@@ -480,6 +480,7 @@ Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se
     public static function toFireflyException(Throwable $e, bool $disclose = true, ?string $reference = null): FireflyException
     {
         return match (true) {
+            $e instanceof FireflyException && $e->detail() === null => self::withheld($e, $disclose, $reference),
             $e instanceof FireflyException => $e,
             self::isExecutionTimeLimit($e) => self::executionTimeExceeded($e, $reference),
             $e instanceof MethodNotAllowedHttpException => self::methodNotAllowed($e),
@@ -503,9 +504,9 @@ Lo que `render()` deliberadamente **no** decide es en qué `FireflyException` se
     }
 ```
 
-Cinco brazos que cubren cuatro casos — el `405` tiene un brazo propio solo para que los verbos que permite puedan sacarse de la frase del enrutador y llevarse a un miembro `allowed` y a la cabecera `Allow` — y todos ellos terminan de vuelta en la misma llamada `ErrorResponse::fromException(...)->toArray()`, así que la forma de la carga útil nunca depende de qué brazo la produjo.
+Seis brazos que cubren cinco casos — el `405` tiene un brazo propio solo para que los verbos que permite puedan sacarse de la frase del enrutador y llevarse a un miembro `allowed` y a la cabecera `Allow` — y todos ellos terminan de vuelta en la misma llamada `ErrorResponse::fromException(...)->toArray()`, así que la forma de la carga útil nunca depende de qué brazo la produjo.
 
-Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra la misma referencia que lleva el `traceId` del documento, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
+Una `FireflyException` — o una de sus subclases tipadas, como `ResourceNotFoundException` — se devuelve intacta y se renderiza con su propio `httpStatus()`, porque su mensaje lo escribió tu aplicación *para* el cliente; ese es justamente el sentido de la taxonomía. Lo que llega al cable es el `detail()` de la excepción, que es ese mensaje salvo que la excepción diga otra cosa — y el primer brazo es para la que lo dice: una `FireflyException` cuyo `detail()` es `null` no lleva ninguna frase para el cliente (el envoltorio del bus CQRS sobre una `QueryException` es una, Capítulo 7), así que conserva su propio código, estado, categoría y miembros de extensión, pero toma su frase exactamente como el último brazo se la daría al throwable que envuelve. El propio límite de tiempo de ejecución de PHP se nombra aparte y responde `503` con una cabecera `Retry-After`, porque «el servidor detuvo esta petición a los N segundos» es algo sobre lo que quien llama puede actuar y un `500` desnudo no lo es. Una excepción HTTP de Laravel/Symfony — una URL que no coincide con ninguna ruta, un verbo que una ruta no acepta — conserva su **código de estado real**, así que una ruta no coincidente sigue respondiendo `404` y nunca un `500` engañoso; solo se reemplaza la redacción del propio enrutador por una frase escrita para una persona, y los verbos permitidos de un `405` pasan a un miembro `allowed` y a la cabecera `Allow`, donde un cliente puede leerlos sin analizar inglés. Cualquier otra cosa es un accidente, y `$disclose` — `firefly.web.problem.disclose`, por defecto `false` — decide si su mensaje puede publicarse siquiera: con él apagado el cuerpo lleva una frase fija que nombra la misma referencia que lleva el `traceId` del documento, y el mensaje real se queda en el log, que es donde el SQL de una `QueryException` y sus enlaces deben estar.
 
 Pedir un monedero que nunca se abrió se renderiza así. Fíjate en `instance`: el RFC 9457 §3.1.5 lo define como una **referencia** URI, y una referencia relativa se resuelve contra la URI base del documento — así que el `api/v1/wallets/wlt-999` pelado que devuelve `$request->path()`, servido desde `/api/v1/wallets/wlt-999`, identificaría `/api/v1/api/v1/wallets/wlt-999`. LaraFly publica la forma relativa a la raíz, que es el único trabajo de `ProblemMapper::instanceFor()`, y un cliente puede compararla con la ruta que pidió. Fíjate también en `type`: el RFC 9457 §3.1.1 dice que un `type` ausente *es* `about:blank`, y LaraFly lo escribe en vez de dejar que el lector tenga que saberlo — apunta `firefly.web.problem.type-uri` a una URI base y el `code` estable deriva uno real y abrible.
 
@@ -557,7 +558,7 @@ Un intento de retiro se rechaza por dos vías distintas, y las dos **no dan el m
   "code": "AUTHENTICATION_FAILED",
   "category": "security",
   "severity": "warning",
-  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: Authentication is required.",
+  "detail": "Authentication is required.",
   "type": "about:blank",
   "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -575,7 +576,7 @@ El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun
   "code": "ACCESS_DENIED",
   "category": "security",
   "severity": "warning",
-  "detail": "Processing command [Lumen\\Application\\Command\\Withdraw] failed: You do not have permission to do this.",
+  "detail": "You do not have permission to do this.",
   "type": "about:blank",
   "instance": "/api/v1/wallets/wlt-1/withdraw",
   "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -585,7 +586,7 @@ El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun
 }
 ```
 
-Los dos se producen sin ningún cambio de código en `WalletController::withdraw()`: el bus envuelve la excepción de seguridad que haya levantado el evaluador en una `CommandProcessingException` que copia el código, el estado, la categoría y los miembros de extensión de la causa, así que el cable lleva la identidad de la causa y no un error genérico del bus, y el 403 nombra las mismas `requiredAuthorities` que nombraría un método de controlador rechazado. Solo `detail` delata que pasó por el bus: el envoltorio antepone a la frase de la causa el comando que estaba procesando. El Capítulo 10 vuelve sobre este par — y sobre las dos pruebas distribuidas que lo fijan — en detalle.
+Los dos se producen sin ningún cambio de código en `WalletController::withdraw()`: el bus envuelve la excepción de seguridad que haya levantado el evaluador en una `CommandProcessingException` que copia el código, el estado, la categoría y los miembros de extensión de la causa, así que el cable lleva la identidad de la causa y no un error genérico del bus, y el 403 nombra las mismas `requiredAuthorities` que nombraría un método de controlador rechazado. Ni siquiera `detail` delata que pasó por el bus: es la propia frase de la causa, palabra por palabra. El *mensaje* del envoltorio sigue nombrando el comando que estaba procesando — `Processing command [Lumen\Application\Command\Withdraw] failed: …` — pero esa línea es para el log, y el Capítulo 7 explica por qué se mantienen separados. El Capítulo 10 vuelve sobre este par — y sobre las dos pruebas distribuidas que lo fijan — en detalle.
 
 ### Manejar una excepción tú mismo
 

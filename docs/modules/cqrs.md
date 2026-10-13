@@ -25,8 +25,19 @@ Any handler/stage throwable is re-thrown **wrapped** in a category-preserving
 means a `ValidationException` (422) or a not-found (500 framework) keeps its own error code / HTTP status /
 category / severity for RFC-7807 rendering — the wrapper never masks an expected fault to a generic 500 — and
 its RFC 9457 extension members and title too, so a refused `#[PreAuthorize]` publishes the same
-`requiredAuthorities` through the bus as it does from a controller. Only `detail` differs: the wrapper prefixes
-the cause's message with the message class it was processing.
+`requiredAuthorities` through the bus as it does from a controller.
+
+The wrapper's **message** and its published **detail** are two different sentences. The message —
+`Processing command [App\Withdraw] failed: <the cause's message>` — names the message class and quotes the
+cause verbatim, for the log and the `previous` chain. The problem document publishes `detail()` instead, which
+the wrapper sets to the cause's own: an authored `FireflyException` cause reaches the client word for word,
+exactly as if a controller had thrown it. A cause that is **not** a `FireflyException` — a `QueryException`
+carrying its SQL and bindings, a `TypeError` naming a server path — has no sentence for a client, so the
+wrapper's detail is `null` and the web layer answers it the way it answers that throwable thrown from a
+controller: the opaque `An unexpected error occurred. It has been logged; quote reference <traceId> if you
+report it.` with `firefly.web.problem.disclose` off (the default), and the cause's own message, without the
+prefix, with it on. The wrapper keeps its own `500 COMMAND_PROCESSING_ERROR` / `QUERY_PROCESSING_ERROR` code
+either way; only the sentence is withheld.
 
 ## Handlers
 

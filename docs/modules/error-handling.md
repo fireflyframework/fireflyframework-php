@@ -96,6 +96,21 @@ for a subclass that wants to fix them. An extension can never override a standar
 writes `status`, `title`, `code` and the rest *over* the extensions, so `['status' => 999]` is harmless.
 The generated OpenAPI problem schema declares `additionalProperties: true` for the same reason.
 
+## The published sentence: `detail()`
+
+`ErrorResponse::fromException()` publishes `detail()` as `detail`, not `getMessage()`. By default the two are
+the same, because a message in this taxonomy is written for the client. A **wrapper** is where they part:
+`withDetail(?string)` replaces the published sentence on the instance — and returns it, like
+`withExtensions()` — without touching the message, so the log and the `previous` chain keep every word.
+`withDetail(null)` says the exception holds **no** sentence written for a client. The web layer then treats
+it like an unhandled throwable for the sentence only (see the table below), while keeping its code, status,
+category, severity, title and extension members. The CQRS wrappers use it: their message is
+`Processing command [App\…] failed: <cause>`, and their detail is the cause's own `detail()`, or `null` when
+the cause is not a `FireflyException` ([CQRS](cqrs.md)). So are the event-sourcing mapper's
+`EventSerializationException` for an event constructor that threw, and the orchestration engine's
+`ORCHESTRATION_CONDITION_FAILED`; the orchestration REST surface answers a withheld refusal with
+`An unexpected error occurred.`
+
 ## Field-level validation errors
 
 `ValidationException` additionally carries `Firefly\Kernel\Error\FieldError` instances — the shape of Spring's
@@ -185,11 +200,13 @@ the member can never name a different origin however the request target was spel
 
 `Firefly\Web\Error\ProblemMapper` owns the rule for turning *any* throwable into that shape, in one place,
 because the HTML page below needs the same answer and two copies of it would eventually tell a browser and a
-client different things about one failure. It has **three** cases, and only the third is a disclosure:
+client different things about one failure. It has **four** cases, and the disclosure gate below decides two
+of them:
 
 | Throwable | Status | Whose message is it? |
 |---|---|---|
-| A `FireflyException` | its own `httpStatus()` | the application's, written **for** the client |
+| A `FireflyException` | its own `httpStatus()` | its `detail()`: the application's, written **for** the client |
+| A `FireflyException` whose `detail()` is `null` (a CQRS wrapper of a `QueryException`) | its own `httpStatus()` | nobody's: withheld exactly like the last row, from the throwable it wraps |
 | An `HttpExceptionInterface` (the router's own 404, `abort(409, '…')`) | its real status | the author's, via `abort()` |
 | Anything else | 500 `INTERNAL_ERROR` | **an accident**, and withheld — see below |
 
