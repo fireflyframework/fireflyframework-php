@@ -15,7 +15,9 @@ use Firefly\Orchestration\Event\EventGateway;
  * Subscribes every trigger event type the gateway knows on the application's EventPublisher (WiringPasses,
  * order 30 — after the registry pass filled the gateway). It runs in every process, web and worker alike, so a
  * queue-driven EDA transport delivers triggers to whichever process consumes the event (the
- * EventListenerWiringPass rule). A delivered envelope's payload is the execution input.
+ * EventListenerWiringPass rule). A delivered envelope's payload is the execution input; its headers, plus the
+ * envelope's `eventId` and `eventType`, are the execution headers (what #[Header] and #[Headers] inject); and its
+ * correlation id is EventGateway::correlationIdFor() the event, so a redelivery is acknowledged, not re-run.
  */
 final class EventGatewayWiringPass implements BootPass
 {
@@ -50,7 +52,10 @@ final class EventGatewayWiringPass implements BootPass
                 foreach ($envelope->payload as $key => $value) {
                     $payload[(string) $key] = $value;
                 }
-                $gateway->route($eventType, $payload);
+                $headers = $envelope->headers;
+                $headers['eventId'] = $envelope->eventId;
+                $headers['eventType'] = $envelope->eventType;
+                $gateway->route($eventType, $payload, $headers, EventGateway::correlationIdFor($envelope->eventType, $envelope->eventId));
             });
         }
     }

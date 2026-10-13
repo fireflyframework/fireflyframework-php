@@ -2662,7 +2662,10 @@ return [
             'default-topic' => env('FIREFLY_ORCHESTRATION_EVENTS_TOPIC', ''),
         ],
 
-        // Start the definition whose triggerEventType matches an EDA event, with the event payload as input.
+        // Start the definition whose triggerEventType matches an EDA event, with the event payload as input and its
+        // headers (plus eventId and eventType) as headers. Delivery is at least once, so the execution's correlation id
+        // is derived from the event id: a redelivered event finds its execution already there and is acknowledged as a
+        // no-op instead of starting it again.
         'event-gateway' => ['enabled' => true],
 
         // The REST surface (start, list, show, signal, suspend/resume/cancel, query, DLQ). Off by default; protect `path`

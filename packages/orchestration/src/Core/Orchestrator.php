@@ -21,15 +21,19 @@ final class Orchestrator
     ) {}
 
     /**
+     * A null $correlationId lets the engine mint a fresh one. A caller that needs a start to be idempotent (the
+     * event gateway under at-least-once delivery) passes a stable id instead: every engine refuses an id that
+     * already exists, under the execution lock, with an InvalidExecutionStateException.
+     *
      * @param  array<string, mixed>  $input
      * @param  array<string, string>  $headers
      */
-    public function start(ExecutionPattern $pattern, string $name, array $input = [], array $headers = []): ExecutionOutcome
+    public function start(ExecutionPattern $pattern, string $name, array $input = [], array $headers = [], ?string $correlationId = null): ExecutionOutcome
     {
         return match ($pattern) {
-            ExecutionPattern::Saga => ExecutionOutcome::fromSaga($this->sagas->execute($name, $input, $headers)),
-            ExecutionPattern::Tcc => ExecutionOutcome::fromTcc($this->tccs->execute($name, $input, $headers)),
-            ExecutionPattern::Workflow => ExecutionOutcome::fromWorkflow($this->workflows->start($name, $input, $headers)),
+            ExecutionPattern::Saga => ExecutionOutcome::fromSaga($this->sagas->execute($name, $input, $headers, $correlationId)),
+            ExecutionPattern::Tcc => ExecutionOutcome::fromTcc($this->tccs->execute($name, $input, $headers, $correlationId)),
+            ExecutionPattern::Workflow => ExecutionOutcome::fromWorkflow($this->workflows->start($name, $input, $headers, $correlationId)),
         };
     }
 

@@ -9,6 +9,8 @@ use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
 use Firefly\Orchestration\Core\Condition\ConditionEvaluator;
+use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
+use Firefly\Orchestration\Core\ExecutionOutcome;
 use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Core\Orchestrator;
 use Firefly\Orchestration\Event\EventGateway;
@@ -114,17 +116,41 @@ final class OrchestrationRegistryPass implements BootPass
      *
      * @return Closure(array<string, mixed>): mixed
      */
+    /**
+     * The executor the gateway calls for one delivered trigger. The gateway hands it a correlation id derived
+     * from the triggering event, so a redelivery of that event (every EDA transport delivers at least once)
+     * names an execution that already exists: the start is skipped before it runs, or, when two deliveries
+     * race, the engine refuses the loser under the execution lock. Either way the redelivery is acknowledged as
+     * a no-op (null) instead of starting the definition again or failing the delivery into a retry loop.
+     */
     private static function starter(Container $container, ExecutionPattern $pattern, string $name): Closure
     {
-        return static function (array $payload) use ($container, $pattern, $name): mixed {
+        return static function (array $payload, array $headers = [], ?string $correlationId = null) use ($container, $pattern, $name): ?ExecutionOutcome {
             $input = [];
             foreach ($payload as $key => $value) {
                 $input[(string) $key] = $value;
             }
+            $carried = [];
+            foreach ($headers as $key => $value) {
+                if (is_string($value)) {
+                    $carried[(string) $key] = $value;
+                }
+            }
             /** @var Orchestrator $orchestrator */
             $orchestrator = $container->make(Orchestrator::class);
+            if ($correlationId !== null && $orchestrator->find($correlationId) !== null) {
+                return null;
+            }
 
-            return $orchestrator->start($pattern, $name, $input);
+            try {
+                return $orchestrator->start($pattern, $name, $input, $carried, $correlationId);
+            } catch (InvalidExecutionStateException $refused) {
+                if ($correlationId !== null && $orchestrator->find($correlationId) !== null) {
+                    return null;
+                }
+
+                throw $refused;
+            }
         };
     }
 }
