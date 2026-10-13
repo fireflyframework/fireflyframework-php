@@ -18,9 +18,20 @@ use Throwable;
  * same transaction. Joining the caller's transaction is deliberate: a step that writes business rows inside
  * a #[Transactional] service commits or rolls back its checkpoint with them. Every value bound for a
  * width-limited column is checked (OrchestrationSchema::fit()) before the first statement runs.
+ *
+ * Search attributes are rewritten without a range DELETE: under InnoDB's REPEATABLE READ a DELETE that matches
+ * nothing (every first save) takes a gap lock, and two workers saving new executions whose ids share an index
+ * gap then deadlock on each other's INSERT (MySQL and MariaDB error 1213). save() instead reads the stored
+ * keys with a plain select, deletes only the obsolete ones by exact primary key (record locks, no gap
+ * locks) and upserts the new set on [correlation_id, attribute_key]. A top-level save() also retries a
+ * deadlock or serialization failure up to ATTEMPTS times; inside a caller's transaction Laravel cannot
+ * retry a nested block, so the error reaches the caller, whose own transaction decides what to do.
  */
 final class DatabaseExecutionPersistenceProvider implements ExecutionPersistenceProvider
 {
+    /** How many times a top-level save() runs when the database reports a deadlock or serialization failure. */
+    private const int ATTEMPTS = 3;
+
     private const array UPDATED = ['execution_name', 'pattern', 'status', 'parent_correlation_id', 'updated_at', 'completed_at', 'wake_at', 'payload'];
 
     public function __construct(private readonly ConnectionInterface $connection) {}
@@ -55,12 +66,35 @@ final class DatabaseExecutionPersistenceProvider implements ExecutionPersistence
 
         $this->connection->transaction(function () use ($row, $state, $attributes): void {
             $this->connection->table(OrchestrationSchema::EXECUTIONS)->upsert([$row], ['correlation_id'], self::UPDATED);
-            $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->where('correlation_id', $state->correlationId)->delete();
+
+            $obsolete = array_values(array_diff($this->attributeKeys($state->correlationId), array_column($attributes, 'attribute_key')));
+            if ($obsolete !== []) {
+                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)
+                    ->where('correlation_id', $state->correlationId)
+                    ->whereIn('attribute_key', $obsolete)
+                    ->delete();
+            }
 
             if ($attributes !== []) {
-                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->insert($attributes);
+                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->upsert($attributes, ['correlation_id', 'attribute_key'], ['attribute_value']);
             }
-        });
+        }, self::ATTEMPTS);
+    }
+
+    /**
+     * The search-attribute keys stored for one execution, read with a plain (non-locking) select. The
+     * execution row's upsert above already holds that row's lock, so no other save of the same execution
+     * can change these keys before this transaction ends; the engine's execution lock already keeps two
+     * saves of one execution apart, so the read never needs to lock the attribute rows themselves.
+     *
+     * @return list<string>
+     */
+    private function attributeKeys(string $correlationId): array
+    {
+        return array_values(array_filter($this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)
+            ->where('correlation_id', $correlationId)
+            ->pluck('attribute_key')
+            ->all(), 'is_string'));
     }
 
     public function findById(string $correlationId): ?ExecutionState
