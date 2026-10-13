@@ -688,7 +688,7 @@ deptrac:
       - Observability
       - FeatureFlags
 
-    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 13
+    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 14
     # compile-producing packages' scanner/compiler pair directly (D4 DIRECT DEPENDENCY). UNLIKE Testing
     # (whose composer.json genuinely requires the full runtime family, so it legitimately lists all 18
     # layers), firefly/cli's composer.json requires exactly the packages ManifestCacheWriter/CacheCommand/
@@ -703,6 +703,7 @@ deptrac:
     # accordingly.
     # Orchestration is listed for the same reason: ManifestCacheWriter compiles #[Saga]/#[Tcc]/#[Workflow] through
     # OrchestrationScanner into orchestration.php, and packages/cli/composer.json requires it accordingly.
+    # EventSourcing is listed for the same reason: ManifestCacheWriter compiles #[EventType] events through EventSourcingScanner into eventsourcing.php.
     # It is depended on by NONE. It does NOT depend on Testing (dev-only).
     Cli:
       - Kernel
@@ -724,6 +725,7 @@ deptrac:
       - Resilience
       - FeatureFlags
       - Orchestration
+      - EventSourcing
 
     # The bundled installer reads the framework version for its local skeleton repository.
     Installer:

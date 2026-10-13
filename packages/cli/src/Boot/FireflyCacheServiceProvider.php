@@ -10,6 +10,7 @@ use Firefly\Config\Registrar\ConfigRegistrar;
 use Firefly\Config\Scanner\ConfigPropertiesManifest;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Eda\Listener\EventListenerManifest;
+use Firefly\EventSourcing\Manifest\EventSourcingManifest;
 use Firefly\Messaging\Listener\MessageListenerManifest;
 use Firefly\Orchestration\Manifest\OrchestrationManifest;
 use Firefly\Scheduling\Schedule\ScheduledManifest;
@@ -58,6 +59,9 @@ final class FireflyCacheServiceProvider extends ServiceProvider
         }
         if (is_file($path = $dir.'/'.FireflyCachePaths::ORCHESTRATION)) {
             $this->app->instance(OrchestrationManifest::class, OrchestrationManifest::load($path));
+        }
+        if (is_file($path = $dir.'/'.FireflyCachePaths::EVENTSOURCING)) {
+            $this->app->instance(EventSourcingManifest::class, EventSourcingManifest::load($path));
         }
         if (is_file($path = $dir.'/'.FireflyCachePaths::SECURITY_METHODS)) {
             $this->app->instance(SecurityMethodManifest::class, SecurityMethodManifest::load($path));

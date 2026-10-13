@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use Firefly\Cli\Boot\FireflyCacheServiceProvider;
 use Firefly\Cli\Cache\FireflyCachePaths;
 use Firefly\Cli\Cache\ManifestCacheWriter;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Eda\Listener\EventListenerManifest;
+use Firefly\EventSourcing\Manifest\EventSourcingManifest;
 use Firefly\Web\Route\RouteManifest;
 
 /** @return array<string,string> */
@@ -23,6 +25,7 @@ it('emits every app manifest data file with a var_export array shape', function 
         FireflyCachePaths::COMPONENT, FireflyCachePaths::CONTEXT, FireflyCachePaths::CONFIG_PROPERTIES,
         FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS,
         FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::SCHEDULED, FireflyCachePaths::ORCHESTRATION,
+        FireflyCachePaths::EVENTSOURCING,
         FireflyCachePaths::SECURITY_METHODS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_PLAN,
     ] as $basename) {
         $path = $dir.'/'.$basename;
@@ -44,4 +47,26 @@ it('round-trips the emitted manifests back into populated objects', function () 
     expect($routes)->toBeInstanceOf(RouteManifest::class)
         ->and($handlers)->toBeInstanceOf(HandlerManifest::class)
         ->and($listeners)->toBeInstanceOf(EventListenerManifest::class);
+});
+
+it('compiles the event-sourcing manifest beside the orchestration one', function () {
+    $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
+    (new ManifestCacheWriter)->writeManifests(['Firefly\\EventSourcing\\Tests\\Fixtures\\Events\\' => dirname(__DIR__, 3).'/eventsourcing/tests/Fixtures/Events'], $dir);
+
+    $manifest = EventSourcingManifest::load($dir.'/'.FireflyCachePaths::EVENTSOURCING);
+
+    expect(array_map(static fn ($descriptor): string => $descriptor->type, $manifest->eventTypes()))->toBe(['order.paid', 'order.placed']);
+});
+
+it('binds the compiled event-sourcing manifest on the cached boot path', function () {
+    $dir = sys_get_temp_dir().'/firefly-cache-'.bin2hex(random_bytes(6));
+    (new ManifestCacheWriter)->writeManifests(['Firefly\\EventSourcing\\Tests\\Fixtures\\Events\\' => dirname(__DIR__, 3).'/eventsourcing/tests/Fixtures/Events'], $dir);
+
+    // No firefly.scan.paths and no EventSourcingWiringProvider: the only thing that can bind the manifest here is
+    // FireflyCacheServiceProvider loading eventsourcing.php.
+    $app = fireflyApplication(['firefly' => ['cache' => ['path' => $dir]]], [FireflyCacheServiceProvider::class]);
+
+    expect($app->bound(EventSourcingManifest::class))->toBeTrue()
+        ->and(array_map(static fn ($descriptor): string => $descriptor->type, $app->make(EventSourcingManifest::class)->eventTypes()))
+        ->toBe(['order.paid', 'order.placed']);
 });

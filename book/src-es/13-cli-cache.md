@@ -2,7 +2,7 @@
 
 # La CLI y la Caché Sin Reflexión {.chtitle}
 
-Al terminar este capítulo sabrás exactamente qué hace `php artisan firefly:cache` — los catorce pasos de escáner-y-compilador que ejecuta, en orden, sobre las propias raíces PSR-4 de tu aplicación, y los manifiestos de `bootstrap/cache/firefly/` y las clases proxy generadas (una por cada clase que nombra el plan de proxies) que escribe — cómo `FireflyCacheServiceProvider` vuelve a cargar esa caché en el arranque con cero reflexión, el inverso exacto de `firefly:clear`, los comandos de actuator-sobre-CLI (`firefly:about`/`:routes`/`:health`/`:metrics`) que reutilizan los endpoints del Capítulo 11 en-proceso sin ida y vuelta HTTP, los ocho generadores `make:firefly-*`, y cómo el `firefly new` de `firefly/installer` te lleva de la nada a una aplicación cacheada y en funcionamiento en un solo comando.
+Al terminar este capítulo sabrás exactamente qué hace `php artisan firefly:cache` — los quince pasos de escáner-y-compilador que ejecuta, en orden, sobre las propias raíces PSR-4 de tu aplicación, y los manifiestos de `bootstrap/cache/firefly/` y las clases proxy generadas (una por cada clase que nombra el plan de proxies) que escribe — cómo `FireflyCacheServiceProvider` vuelve a cargar esa caché en el arranque con cero reflexión, el inverso exacto de `firefly:clear`, los comandos de actuator-sobre-CLI (`firefly:about`/`:routes`/`:health`/`:metrics`) que reutilizan los endpoints del Capítulo 11 en-proceso sin ida y vuelta HTTP, los ocho generadores `make:firefly-*`, y cómo el `firefly new` de `firefly/installer` te lleva de la nada a una aplicación cacheada y en funcionamiento en un solo comando.
 
 !!! note "Término nuevo: arranque sin reflexión"
     Cada capítulo anterior a este ha mencionado, de pasada, que un manifiesto compilado reemplaza a "escanea el sistema de archivos con reflexión de PHP en cada arranque". Un **arranque sin reflexión** es lo que obtienes una vez que `firefly:cache` ha ejecutado realmente: `FireflyCacheServiceProvider` carga manifiestos precomputados directamente desde archivos PHP bajo `bootstrap/cache/firefly/`, de modo que ningún atributo, ninguna clase y ningún método se somete jamás a reflexión en tiempo de petición — el escaneo ocurrió una vez, en tiempo de despliegue, no en cada petición.
@@ -133,6 +133,12 @@ final class ManifestCacheWriter
             $files[] = $dir.'/'.FireflyCachePaths::ORCHESTRATION,
         );
 
+        // eventsourcing — #[EventType] events and the constructor parameters their mapper needs.
+        (new EventSourcingManifestCompiler)->write(
+            (new EventSourcingScanner)->scan($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::EVENTSOURCING,
+        );
+
         // security
         (new SecurityMethodManifestCompiler)->write(
             (new MethodSecurityScanner)->scan($psr4),
@@ -154,7 +160,7 @@ final class ManifestCacheWriter
 }
 ```
 
-Eso son trece llamadas `scan()`-luego-`write()` — cada capacidad desde el escaneo de componentes del Capítulo 2 hasta el manifiesto de seguridad de método del Capítulo 10, más el manifiesto de orquestación con las definiciones `#[Saga]`, `#[Tcc]` y `#[Workflow]`, cada una ya presentada en un capítulo anterior como un escaneo en-proceso — más un paso más, `writeProxies()`, que genera las clases proxy que te enseñó el Capítulo 9, usando el mismísimo `ProxyClassGenerator` sin reflexión que usa el propio runtime cuando aún no existe caché:
+Eso son catorce llamadas `scan()`-luego-`write()` — cada capacidad desde el escaneo de componentes del Capítulo 2 hasta el manifiesto de seguridad de método del Capítulo 10, más el manifiesto de orquestación con las definiciones `#[Saga]`, `#[Tcc]` y `#[Workflow]` y el manifiesto de event sourcing con los eventos `#[EventType]`, cada una ya presentada en un capítulo anterior como un escaneo en-proceso — más un paso más, `writeProxies()`, que genera las clases proxy que te enseñó el Capítulo 9, usando el mismísimo `ProxyClassGenerator` sin reflexión que usa el propio runtime cuando aún no existe caché:
 
 <!-- source: packages/cli/src/Cache/ManifestCacheWriter.php -->
 ```php
@@ -203,7 +209,7 @@ final class ManifestCacheWriter
 }
 ```
 
-Catorce pasos en total dejan quince artefactos bajo `bootstrap/cache/firefly/`:
+Quince pasos en total dejan dieciséis artefactos bajo `bootstrap/cache/firefly/`:
 
 ```
 bootstrap/cache/firefly/
@@ -218,6 +224,7 @@ bootstrap/cache/firefly/
 ├── message-listeners.php  # #[MessageListener] manifest
 ├── scheduled.php          # #[Scheduled] manifest
 ├── orchestration.php      # #[Saga]/#[Tcc]/#[Workflow] definitions and their schedules
+├── eventsourcing.php      # #[EventType] events and their constructor parameters
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
 ├── proxy-plan.php         # qué beans reciben un proxy, y qué advice ejecuta cada método
@@ -322,7 +329,7 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 15 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — wrote 16 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
 firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
 ```
 
@@ -530,7 +537,7 @@ El Capítulo 13A presenta `firefly:flags` para inspeccionar y cambiar banderas e
 
 | Concepto | Qué hace |
 |---|---|
-| `firefly:cache` | Ejecuta el par escáner→compilador propio de cada capacidad (14 pasos, 15 artefactos) sobre `firefly.scan.paths`; escribe manifiestos + un archivo de clase proxy generado por cada clase que nombra el plan de proxies a `bootstrap/cache/firefly/` |
+| `firefly:cache` | Ejecuta el par escáner→compilador propio de cada capacidad (15 pasos, 16 artefactos) sobre `firefly.scan.paths`; escribe manifiestos + un archivo de clase proxy generado por cada clase que nombra el plan de proxies a `bootstrap/cache/firefly/` |
 | `FireflyCacheServiceProvider` | Enlaza cada manifiesto cacheado incondicionalmente (gana sobre todo valor por defecto vacío) + instala el autoloader de classmap de proxies — antes de que se ejecute cualquier resolución de bean |
 | `firefly:clear` | Borra recursivamente solo el directorio de caché; el siguiente arranque recurre al escaneo en-proceso |
 | `firefly:about` / `:routes` / `:health` / `:metrics` | Renderiza los endpoints de actuator del Capítulo 11 en el terminal, en-proceso, sin ida y vuelta HTTP |

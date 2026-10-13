@@ -21,10 +21,10 @@ php artisan firefly:cache
 ```
 
 The zero-reflection payoff: it runs every settled package's existing scanner → compiler pair over
-`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes fifteen compiled
+`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes sixteen compiled
 artifacts — every manifest below, unconditionally, whether or not the application has anything to put in it —
 plus one generated proxy class per planned bean, into `bootstrap/cache/firefly/`. It prints what it wrote:
-`firefly:cache — wrote 15 manifest(s) + N proxy(ies) to <dir>`.
+`firefly:cache — wrote 16 manifest(s) + N proxy(ies) to <dir>`.
 
 ```
 bootstrap/cache/firefly/
@@ -39,6 +39,7 @@ bootstrap/cache/firefly/
 ├── message-listeners.php  # #[MessageListener] manifest
 ├── scheduled.php          # #[Scheduled] manifest
 ├── orchestration.php      # #[Saga]/#[Tcc]/#[Workflow] definitions and their schedules
+├── eventsourcing.php      # #[EventType] events and their constructor parameters
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
 ├── proxy-plan.php         # the compiled ProxyPlan: which beans get a proxy, and the advice each method runs
@@ -112,7 +113,7 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 15 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — wrote 16 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
 firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
 ```
 
