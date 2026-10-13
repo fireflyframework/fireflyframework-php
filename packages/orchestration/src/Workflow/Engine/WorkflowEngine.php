@@ -27,6 +27,7 @@ use Firefly\Orchestration\Workflow\Registry\WorkflowDefinition;
 use Firefly\Orchestration\Workflow\Registry\WorkflowRegistry;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Runs durable workflows (jafly WorkflowEngine plus its Signal/Timer/ChildWorkflow/ContinueAsNew/Query/Search
@@ -36,14 +37,19 @@ use Illuminate\Support\Str;
  * A SYNC start drives inline; an ASYNC start persists PENDING and dispatches a RunWorkflowJob. A WAITING
  * workflow is re-driven by signal(), by the tick (resumeDue()) once a timer or its deadline is due, and by a
  * child's completion. A child that finishes while its parent is being driven in THIS process is completed
- * inline by that drive; one that finishes elsewhere (a queue worker) wakes the parent itself.
+ * inline by that drive; one that finishes elsewhere (a queue worker) wakes the parent itself. A parent that is
+ * being cancelled or compensated cascades to its children, and those children do not wake it back up: the
+ * parent is settling, so it is not re-driven from inside its own cancel()/compensate().
  */
 final class WorkflowEngine
 {
     public const string CONTINUED_FROM_HEADER = 'x-firefly-continued-from';
 
-    /** @var array<string, true> */
+    /** @var array<string, true> the executions this process is driving right now */
     private array $driving = [];
+
+    /** @var array<string, true> the executions this process is cancelling or compensating right now */
+    private array $settling = [];
 
     public function __construct(
         private readonly WorkflowRegistry $registry,
@@ -150,6 +156,13 @@ final class WorkflowEngine
                 });
             } catch (ExecutionLockedException) {
                 // Another process is advancing it right now; the next tick sees whatever it left.
+            } catch (Throwable $error) {
+                // One execution that cannot be driven (its definition was removed in a deploy, a handler blew up
+                // outside a step) must not stop the rest of the batch: report it and move on to the next row.
+                $this->support->logger->warning("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick: {$error->getMessage()}", [
+                    'exception' => $error,
+                    'correlationId' => $due->correlationId,
+                ]);
             }
         }
 
@@ -200,10 +213,14 @@ final class WorkflowEngine
             }
 
             $context = ExecutionContext::fromState($state);
-            $this->cancelChildren($context);
-            $cancelled = $this->support->checkpoint($context, ExecutionStatus::Cancelled, 'cancelled');
-            $this->support->publish($this->support->lifecycle, OrchestrationEvent::executionCompleted($state->executionName, $correlationId, ExecutionPattern::Workflow, ExecutionStatus::Cancelled, $this->support->now()));
-            $this->support->events->onCompleted($state->executionName, $correlationId, ExecutionPattern::Workflow, false, $this->support->elapsedMs($context));
+            $cancelled = $this->settle($correlationId, function () use ($context, $state, $correlationId): ExecutionState {
+                $this->cancelChildren($context);
+                $cancelled = $this->support->checkpoint($context, ExecutionStatus::Cancelled, 'cancelled');
+                $this->support->publish($this->support->lifecycle, OrchestrationEvent::executionCompleted($state->executionName, $correlationId, ExecutionPattern::Workflow, ExecutionStatus::Cancelled, $this->support->now()));
+                $this->support->events->onCompleted($state->executionName, $correlationId, ExecutionPattern::Workflow, false, $this->support->elapsedMs($context));
+
+                return $cancelled;
+            });
             $this->notifyParent($cancelled);
 
             return $cancelled;
@@ -220,8 +237,10 @@ final class WorkflowEngine
 
             $definition = $this->registry->get($state->executionName);
             $context = ExecutionContext::fromState($state);
-            $this->cancelChildren($context);
-            $this->executor->compensate($definition, $context);
+            $this->settle($correlationId, function () use ($definition, $context): void {
+                $this->cancelChildren($context);
+                $this->executor->compensate($definition, $context);
+            });
 
             return $this->finish($definition, $context, ExecutionStatus::Cancelled, 'compensated on request');
         });
@@ -429,7 +448,7 @@ final class WorkflowEngine
     private function notifyParent(ExecutionState $child): void
     {
         $parentId = $child->parentCorrelationId;
-        if ($parentId === null || isset($this->driving[$parentId])) {
+        if ($parentId === null || isset($this->driving[$parentId]) || isset($this->settling[$parentId])) {
             return;
         }
 
@@ -450,6 +469,26 @@ final class WorkflowEngine
             $this->executor->completeChild($definition, $context, $stepId, $child);
             $this->drive($definition, $context);
         });
+    }
+
+    /**
+     * Runs `$work` with `$correlationId` marked as settling, so a child it cancels does not wake it back up
+     * through notifyParent(): the lock is reentrant, and the parent is still WAITING on that child until
+     * `$work` has moved it on.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $work
+     * @return T
+     */
+    private function settle(string $correlationId, callable $work): mixed
+    {
+        $this->settling[$correlationId] = true;
+        try {
+            return $work();
+        } finally {
+            unset($this->settling[$correlationId]);
+        }
     }
 
     private function cancelChildren(ExecutionContext $context): void

@@ -94,3 +94,28 @@ it('waits for all of a set, and for any of a set', function (): void {
         ->and($full->status)->toBe(ExecutionStatus::Completed)
         ->and($byTimer?->stepResults['first'] ?? null)->toBe('by auto');
 });
+
+it('keeps advancing the other due executions when one of them cannot be driven', function (): void {
+    $timer = static fn (string $id) => WorkflowBuilder::workflow($id)
+        ->step('pause')->waitForTimer(60_000)->add()
+        ->step('go')->dependsOn('pause')->handler(static fn (): string => 'went')->add()
+        ->build();
+    $before = TestEngines::create();
+    $before->workflowRegistry->register($timer('retired'));
+    $before->workflowRegistry->register($timer('kept'));
+    $before->workflows->start('retired', correlationId: 'a-retired');
+    $before->workflows->start('kept', correlationId: 'b-kept');
+
+    // A deploy drops [retired] while its execution still waits on a timer that is due first.
+    $after = TestEngines::create(persistence: $before->persistence);
+    $after->workflowRegistry->register($timer('kept'));
+    $after->clock->advance(61.0);
+    $advanced = $after->workflows->resumeDue();
+    $warnings = $after->logger->messages('warning');
+
+    expect(array_map(static fn ($state): string => $state->correlationId, $advanced))->toBe(['b-kept'])
+        ->and($after->workflows->find('b-kept')?->status)->toBe(ExecutionStatus::Completed)
+        ->and($after->workflows->find('a-retired')?->status)->toBe(ExecutionStatus::Waiting)
+        ->and($warnings)->toHaveCount(1)
+        ->and($warnings[0] ?? '')->toContain('a-retired');
+});

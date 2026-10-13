@@ -58,3 +58,55 @@ it('fails the parent step when the child fails', function (): void {
     expect($parent->status)->toBe(ExecutionStatus::Failed)
         ->and($parent->failureReason)->toContain('ended FAILED: check failed');
 });
+
+/**
+ * @param  list<string>  $log
+ */
+function orchestrationPayingParentEngines(array &$log): TestEngines
+{
+    $engines = TestEngines::create();
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('slow-check')->triggerMode(TriggerMode::Async)
+        ->step('run')->handler(static fn (): string => 'checked')->add()->build());
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('paying-parent')
+        ->step('pay')->handler(static fn (): string => 'paid')->compensation(static function () use (&$log): void {
+            $log[] = 'refund';
+        })->add()
+        ->step('spawn')->dependsOn('pay')->childWorkflow('slow-check')->handler(static fn (): array => [])->add()
+        ->build());
+
+    return $engines;
+}
+
+it('cancels a parent waiting on an ASYNC child without re-driving the parent from the child', function (): void {
+    $log = [];
+    $engines = orchestrationPayingParentEngines($log);
+
+    $waiting = $engines->workflows->start('paying-parent', correlationId: 'pp-1');
+    $childId = $waiting->children['spawn'] ?? '';
+    $cancelled = $engines->workflows->cancel('pp-1');
+
+    expect($waiting->status)->toBe(ExecutionStatus::Waiting)
+        ->and($cancelled->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($engines->workflows->find('pp-1')?->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($engines->workflows->find($childId)?->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($log)->toBe([])
+        ->and($engines->deadLetterStore->findByCorrelationId('pp-1'))->toBe([])
+        ->and($engines->events->count('onCompleted'))->toBe(2);
+});
+
+it('compensates a parent waiting on an ASYNC child exactly once and does not dead-letter it', function (): void {
+    $log = [];
+    $engines = orchestrationPayingParentEngines($log);
+
+    $waiting = $engines->workflows->start('paying-parent', correlationId: 'pp-2');
+    $childId = $waiting->children['spawn'] ?? '';
+    $compensated = $engines->workflows->compensate('pp-2');
+
+    expect($compensated->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($compensated->failureReason)->toBe('compensated on request')
+        ->and($engines->workflows->find('pp-2')?->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($engines->workflows->find($childId)?->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($log)->toBe(['refund'])
+        ->and($engines->deadLetterStore->findByCorrelationId('pp-2'))->toBe([])
+        ->and($engines->events->count('onCompleted'))->toBe(2);
+});
