@@ -16,9 +16,9 @@ sensitive command, and a thin REST layer with RFC-7807 problem-details.
 ```
 samples/lumen/
 ├── src/
-│   ├── Domain/            # Wallet aggregate + Money value object + domain events
-│   ├── Application/       # CQRS: Command/Query + Handler pairs, listeners, the payout saga + bank port
-│   ├── Infrastructure/     # WalletRepository + EloquentWalletRepository, the simulated bank, migrations
+│   ├── Domain/            # Wallet aggregate + Money value object + domain events; the event-sourced Loan
+│   ├── Application/       # CQRS: Command/Query + Handler pairs, listeners, the payout saga + bank port, loans + loan book
+│   ├── Infrastructure/     # WalletRepository + EloquentWalletRepository, LoanRepository + upcaster, the simulated bank, migrations
 │   └── Web/                # WalletController, PayoutController (#[RestController]) + validated DTOs
 ├── tests/                  # Pest coverage: domain, infrastructure, application, security, web, integration
 └── config/firefly.php      # Framework configuration (scan paths)
@@ -72,6 +72,18 @@ HTTP endpoints — none of which contain business logic of their own.
 - **The portable outbox** — under `firefly.eda.provider=database` the same
   domain events are written to `firefly_eda_outbox` in the wallet's own
   transaction and delivered by `php artisan firefly:eda:consume`, proven on
+  PostgreSQL, MySQL, MariaDB, SQL Server and SQLite.
+- **An event-sourced loan** — `Loan` (`firefly/eventsourcing`) keeps no balance
+  row: its `loan.granted`, `loan.repaid` and `loan.settled` events are its state,
+  appended to the database event store under optimistic concurrency and
+  replayed — from a snapshot every third event in the tests — by
+  `LoanRepository`. `GrantLoan`/`RepayLoan` move the money through the wallet in
+  the same `#[Transactional]` command, so an overdrawn wallet rolls the
+  repayment's event back; `LoanBookProjection` keeps the `loan_book` read model
+  from a checkpoint; `LoanRepaidV1Upcaster` reads the first loans' `amount` as
+  `amountMinor`; with publishing on, each event is written to the outbox in the
+  append's transaction; and the payout saga runs on
+  `firefly.orchestration.persistence.provider=event-sourced` — all proven on
   PostgreSQL, MySQL, MariaDB, SQL Server and SQLite.
 
 ## REST API
