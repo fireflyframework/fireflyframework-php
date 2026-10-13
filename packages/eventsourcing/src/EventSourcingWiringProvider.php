@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\EventSourcing;
 
+use Firefly\Config\Config;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
 use Firefly\EventSourcing\Manifest\EventSourcingManifest;
@@ -14,8 +15,9 @@ use Illuminate\Contracts\Container\Container;
  * The boot half of firefly/eventsourcing, a plain FireflyServiceProvider because an AutoConfiguration records
  * candidacy only (the OrchestrationWiringProvider shape). It binds the EventSourcingManifest behind a bound() guard:
  * the compiled `eventsourcing.php` first, then an in-process scan of `firefly.scan.paths`, then an empty manifest
- * (the AppScan convention), lazily, so a cached application pays nothing. Later tasks add the commands and the
- * migrations.
+ * (the AppScan convention), lazily, so a cached application pays nothing. It publishes the migrations
+ * (`--tag=firefly-eventsourcing-migrations`) and loads them while any eventsourcing store is `database`. Later tasks
+ * add the commands.
  */
 final class EventSourcingWiringProvider extends FireflyServiceProvider
 {
@@ -36,5 +38,14 @@ final class EventSourcingWiringProvider extends FireflyServiceProvider
         }
 
         parent::register();
+    }
+
+    public function boot(): void
+    {
+        $this->publishes([self::MIGRATIONS => $this->app->databasePath('migrations')], 'firefly-eventsourcing-migrations');
+
+        if (EventSourcingSettings::fromConfig(new Config($this->app->make('config')))->usesDatabase()) {
+            $this->loadMigrationsFrom(self::MIGRATIONS);
+        }
     }
 }
