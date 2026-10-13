@@ -12,7 +12,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   wait-for-all/any, child workflows, continue-as-new, queries, suspend/resume, search attributes and queued
   execution. Definitions are attribute-discovered, compiled by `firefly:cache` and validated at boot.
 - **Orchestration persistence and recovery:** checkpoints at every step through a `memory`, `cache` or
-  `database` store (PostgreSQL, MySQL, MariaDB, SQLite and SQL Server), a per-execution distributed lock, a
+  `database` store (proven on PostgreSQL, MySQL, MariaDB and SQLite; SQL Server is written for and has
+  integration tests that have not yet run against a real server), a per-execution distributed lock, a
   scheduled recovery sweep that reports, resumes or compensates stale executions, retention cleanup, and a
   dead-letter queue with retry.
 - **Orchestration operations:** lifecycle and step events through `firefly/eda`, event-type triggers, cron and

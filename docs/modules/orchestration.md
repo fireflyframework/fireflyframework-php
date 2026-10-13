@@ -235,7 +235,7 @@ one with new input, linked through the `x-firefly-continued-from` header.
 |---|---|
 | `memory` (default) | Tests and single-request flows. Nothing survives the process. |
 | `cache` | Any Laravel cache store (`persistence.cache-store`), keys under `persistence.key-prefix`. |
-| `database` | The `firefly_orchestration_*` tables on `persistence.connection`. Proven on PostgreSQL, MySQL, MariaDB and SQLite, and on SQL Server in CI. |
+| `database` | The `firefly_orchestration_*` tables on `persistence.connection`. Proven on PostgreSQL, MySQL, MariaDB and SQLite. SQL Server takes the same `upsert()` path (`MERGE`) and has integration tests behind `FIREFLY_SQLSRV_DSN`, but they have not yet run against a real server. |
 
 Publish the migration with `php artisan vendor:publish --tag=firefly-orchestration-migrations`; the package also
 loads it while `persistence.provider` or `dlq.store` is `database`.
