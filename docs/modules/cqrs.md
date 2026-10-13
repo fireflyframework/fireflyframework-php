@@ -116,8 +116,9 @@ work raises no `DomainEvent` at all (Laravel discards `afterCommit` callbacks on
 ever published for it.
 
 **Non-atomic caveat:** the DB commit and the broker publish are two steps with a gap — an honest
-at-least-once-ish, non-atomic guarantee. True exactly-once durability is the SP-4 transactional outbox
-(`firefly/eda-postgres`), which hangs off the same `DB::afterCommit` hook + a Postgres advisory lock.
+at-least-once-ish, non-atomic guarantee. Atomic durability is the same-transaction outbox
+(`firefly.eda.provider=database`, or `postgres`), which writes the event inside the aggregate's transaction
+through `firefly/data`'s `PreCommitEventHook`.
 
 When no firefly/eda `EventPublisher` is bound, the bridge falls back to `NoOpEventPublisher` (drops
 silently), so cqrs installed without eda still boots and simply emits no integration events.
@@ -147,8 +148,7 @@ edge): the bridge listens for `DomainEvent`s on the in-process `Context` dispatc
 
 Read-model / projection scaffolding (→ `firefly/eventsourcing`), real authorization (→ M11), real query
 cache (→ firefly/cache), CQRS metrics + health (→ M12), attribute-driven command validation, the fluent
-builder / distributed-tracing ergonomics, and exactly-once outbox durability (→ SP-4) are deferred and
-documented honestly. The `HandlerManifest` needs no hand-wiring: like every other
+builder / distributed-tracing ergonomics are deferred and documented honestly. The `HandlerManifest` needs no hand-wiring: like every other
 compiled manifest it resolves to the `firefly:cache` artifact if present, otherwise an in-process scan of
 `firefly.scan.paths`, otherwise empty — so an uncached app registers the same handlers a cached one does. A
 handler outside `firefly.scan.paths` still never registers. Under Octane, `CorrelationContext` is

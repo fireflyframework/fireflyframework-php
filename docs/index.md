@@ -72,8 +72,8 @@ See [Installation](installation.md) for requirements and manual setup, and
   proxy per bean runs the whole advice chain, security *before* transaction (`Advice` order 100 against
   1000), so a refusal is thrown before a transaction is ever opened. A `CommandBus`/`QueryBus` mediator
   dispatches commands and queries, with domain events bridged onto the event-transport bus after commit.
-- **Event-driven, with real brokers** — an in-memory default plus RabbitMQ, Postgres LISTEN/NOTIFY, and Kafka
-  adapters behind one `EventPublisher` port.
+- **Event-driven, with real brokers** — an in-memory default plus a same-transaction outbox on every SQL database
+  (with LISTEN/NOTIFY on PostgreSQL), RabbitMQ and Kafka adapters behind one `EventPublisher` port.
 - **Secure by default** — a session-persisted `SecurityContext`, form login on the framework's own page, HTTP
   Basic, remember-me, logout, deny-by-default [`HttpSecurity`](modules/security.md) URL rules, and method
   security (`#[PreAuthorize]`, `#[PostAuthorize]`, `#[PreFilter]`, `#[PostFilter]`) enforced on **any**

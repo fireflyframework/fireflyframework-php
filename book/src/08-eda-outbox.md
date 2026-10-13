@@ -473,7 +473,7 @@ Because `publish()` runs on **whatever connection it was constructed with**, and
 
 The whole of that body sits inside `EdaTracing::tracePublish()` — the single port all three broker publishers now route through, `eda-rabbitmq` and `eda-kafka` alongside this one. Because propagation means *writing* something on the envelope, the port hands the send closure the headers to carry and the adapter builds the row out of those, so the `traceparent` the producer span stamps is on the row that commits with the aggregate — this is the one adapter where the producer span and the durable record are genuinely atomic, rather than a span that ends the moment a socket accepted the message. With tracing off the bound `EdaTracing` is `NoOpEdaTracing`, which calls the closure with the caller's headers unchanged, so the path is byte-for-byte what it was; and `transaction_id` is still read from `x-correlation-id`, never from a traceparent, so the relay's idempotency key does not change just because a request happened to be traced.
 
-The outbox table (`firefly_eda_outbox`, one schema shared by the migration, the publisher, the consumer, and the relay) carries: `id, destination, channel, event_type, payload, headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at`, with `status` one of `PENDING` / `PUBLISHED` / `FAILED`.
+The outbox table (`firefly_eda_outbox`, one schema shared by the migration, the publisher, the consumer, and the relay) carries: `id, destination, channel, event_type, payload, headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at, claimed_by, claimed_until` — the last two are the claim's lease — with `status` one of `PENDING` / `PUBLISHED` / `FAILED`.
 
 A genuine, shipped test proves both halves of the guarantee directly against a real transaction:
 
@@ -511,12 +511,12 @@ No amount of prose substitutes for that second test: the outbox row from the fai
 
 ### Double-publish avoidance
 
-With `provider=postgres` bound, both `OutboxPreCommitHook` (in-tx) *and* the ordinary after-commit `DomainEventBridge` could, in principle, both try to write the same event to the outbox. `PostgresOutboxAutoConfiguration` prevents that at `#[Order(900)]` — ahead of `firefly/data`'s and `firefly/cqrs`'s `#[Order(1000)]` defaults — by binding, together, as one package:
+With `provider=postgres` bound, both `OutboxPreCommitHook` (in-tx) *and* the ordinary after-commit `DomainEventBridge` could, in principle, both try to write the same event to the outbox. `PostgresOutboxAutoConfiguration` prevents that at `#[Order(900)]` (and `DatabaseOutboxAutoConfiguration` does the same under `provider=database`) — ahead of `firefly/data`'s and `firefly/cqrs`'s `#[Order(1000)]` defaults — by binding, together, as one package:
 
 - its **own** `DomainEventDispatcher`, carrying the `OutboxPreCommitHook`, which wins `DataAutoConfiguration`'s `#[ConditionalOnMissingBean(DomainEventDispatcher::class)]`, and
 - a `NoOpEventPublisher` as the `CommandEventPublisher`, which wins `CqrsAutoConfiguration`'s `#[ConditionalOnMissingBean(CommandEventPublisher::class)]` — silencing **only** the after-commit eda leg.
 
-The result: a domain event is written to the outbox **exactly once**, in-tx, atomically with the aggregate. The generic (non-eda) `#[AsEventListener]` after-commit dispatch this chapter opened with is completely untouched — those in-process listeners keep firing exactly as before. All four beans are additionally gated `#[ConditionalOnProperty('firefly.eda.provider', 'postgres')]`, so installing the package without selecting it as the active provider is fully inert.
+The result: a domain event is written to the outbox **exactly once**, in-tx, atomically with the aggregate. The generic (non-eda) `#[AsEventListener]` after-commit dispatch this chapter opened with is completely untouched — those in-process listeners keep firing exactly as before. All four beans are additionally gated on their provider value (`#[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]`, or `'database'`), so installing the package without selecting it as the active provider is fully inert.
 
 ### Claiming rows: `DatabaseEventConsumer`
 

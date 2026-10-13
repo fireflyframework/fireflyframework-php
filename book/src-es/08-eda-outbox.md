@@ -473,7 +473,7 @@ Como `publish()` se ejecuta sobre **cualquiera que sea la conexión con la que s
 
 Ese cuerpo entero vive dentro de `EdaTracing::tracePublish()` — el puerto único por el que pasan ahora los tres publicadores de broker, `eda-rabbitmq` y `eda-kafka` junto a este. Como propagar significa *escribir* algo en el sobre, el puerto le entrega al closure de envío las cabeceras que debe llevar y el adaptador construye la fila a partir de ellas, así que el `traceparent` que estampa el span productor va en la fila que confirma con el agregado — este es el único adaptador donde el span productor y el registro duradero son genuinamente atómicos, en lugar de un span que termina en cuanto un socket aceptó el mensaje. Con el trazado apagado, el `EdaTracing` vinculado es `NoOpEdaTracing`, que llama al closure con las cabeceras del llamador sin cambios, así que el camino es byte a byte el que ya era; y `transaction_id` se sigue leyendo de `x-correlation-id`, nunca de un traceparent, así que la clave de idempotencia del relay no cambia solo porque una petición resultara estar trazada.
 
-La tabla del outbox (`firefly_eda_outbox`, un único esquema compartido por la migración, el publicador, el consumidor y el relay) lleva: `id, destination, channel, event_type, payload, headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at`, con `status` siendo uno de `PENDING` / `PUBLISHED` / `FAILED`.
+La tabla del outbox (`firefly_eda_outbox`, un único esquema compartido por la migración, el publicador, el consumidor y el relay) lleva: `id, destination, channel, event_type, payload, headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at, claimed_by, claimed_until` — las dos últimas son el arrendamiento de la reclamación —, con `status` siendo uno de `PENDING` / `PUBLISHED` / `FAILED`.
 
 Una prueba genuina y distribuida demuestra ambas mitades de la garantía directamente contra una transacción real:
 
@@ -511,12 +511,12 @@ Ninguna cantidad de prosa sustituye a esa segunda prueba: la fila del outbox de 
 
 ### Evitar la doble publicación
 
-Con `provider=postgres` vinculado, tanto `OutboxPreCommitHook` (en-tx) *como* el `DomainEventBridge` post-confirmación ordinario podrían, en principio, intentar escribir el mismo evento en el outbox. `PostgresOutboxAutoConfiguration` lo evita en `#[Order(900)]` — por delante de los valores por defecto `#[Order(1000)]` de `firefly/data` y `firefly/cqrs` — vinculando, en conjunto, como un único paquete:
+Con `provider=postgres` vinculado, tanto `OutboxPreCommitHook` (en-tx) *como* el `DomainEventBridge` post-confirmación ordinario podrían, en principio, intentar escribir el mismo evento en el outbox. `PostgresOutboxAutoConfiguration` lo evita en `#[Order(900)]` (y `DatabaseOutboxAutoConfiguration` hace lo mismo con `provider=database`) — por delante de los valores por defecto `#[Order(1000)]` de `firefly/data` y `firefly/cqrs` — vinculando, en conjunto, como un único paquete:
 
 - su **propio** `DomainEventDispatcher`, portando el `OutboxPreCommitHook`, que gana el `#[ConditionalOnMissingBean(DomainEventDispatcher::class)]` de `DataAutoConfiguration`, y
 - un `NoOpEventPublisher` como el `CommandEventPublisher`, que gana el `#[ConditionalOnMissingBean(CommandEventPublisher::class)]` de `CqrsAutoConfiguration` — silenciando **solo** el tramo post-confirmación de eda.
 
-El resultado: un evento de dominio se escribe en el outbox **exactamente una vez**, en-tx, de forma atómica junto con el agregado. El despacho post-confirmación genérico (no de eda) `#[AsEventListener]` con el que abrió este capítulo queda completamente intacto — esos listeners en proceso siguen disparándose exactamente como antes. Los cuatro beans están además protegidos por `#[ConditionalOnProperty('firefly.eda.provider', 'postgres')]`, así que instalar el paquete sin seleccionarlo como proveedor activo es totalmente inerte.
+El resultado: un evento de dominio se escribe en el outbox **exactamente una vez**, en-tx, de forma atómica junto con el agregado. El despacho post-confirmación genérico (no de eda) `#[AsEventListener]` con el que abrió este capítulo queda completamente intacto — esos listeners en proceso siguen disparándose exactamente como antes. Los cuatro beans están además protegidos por el valor de su proveedor (`#[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]`, o `'database'`), así que instalar el paquete sin seleccionarlo como proveedor activo es totalmente inerte.
 
 ### Reclamar filas: `DatabaseEventConsumer`
 

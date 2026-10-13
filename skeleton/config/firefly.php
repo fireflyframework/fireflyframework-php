@@ -2511,13 +2511,13 @@ return [
         // ],
 
         /*
-         | Broker publishers and the trace. The rabbitmq, kafka and postgres adapters route publish()
+         | Broker publishers and the trace. The rabbitmq, kafka, database and postgres adapters route publish()
          | through the same EdaTracing seam the in-memory and queue buses use, so the envelope that reaches
          | the wire carries a `traceparent` (and `tracestate`) and the consumer on the far side — ours or a
          | third party's — continues the trace instead of starting a new one. The consume side was already
-         | traced; this is the other half. On Postgres it covers BOTH writers of an outbox row: the
-         | EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path a domain
-         | event takes under provider=postgres — so the traced row is the one that commits with the
+         | traced; this is the other half. On the outbox (provider=database or postgres) it covers BOTH writers
+         | of a row: the EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path
+         | a domain event takes under those providers — so the traced row is the one that commits with the
          | aggregate. `firefly:outbox:relay` forwards a claimed row under that row's own trace rather than
          | starting a new one.
          |
@@ -2525,7 +2525,7 @@ return [
          | `firefly.observability.tracing.eda.enabled` are on, because with them off the bound EdaTracing is
          | the no-op. Set this to false to keep in-process spans while refusing to put trace identifiers on
          | a wire someone else reads: it is read in ONE place (Firefly\Eda\Tracing\BrokerTracing), by the
-         | three publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
+         | four publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
          | applies it whether you name the adapter by its alias (`rabbitmq`) or by its own class-string.
          | A downstream of your OWN, bound under `firefly.eda.relay.downstream` or named by a publisher
          | class this framework ships no adapter for, is yours to construct and therefore yours to gate:

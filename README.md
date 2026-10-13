@@ -404,16 +404,18 @@ domain → integration-event loop with no glue code in application handlers:
 ### The genuine same-transaction outbox
 
 The default `memory`/`queue` `firefly/eda` providers publish only *after* the aggregate's transaction commits —
-never atomically with it. `firefly/eda-postgres` closes that gap: with `firefly.eda.provider=postgres`, the
-outbox row is written **inside** the aggregate's own open transaction, on the aggregate's own connection, so it
-commits or rolls back atomically with the aggregate — no dual-write, no "commit then hope the publish
-succeeds":
+never atomically with it. `firefly/eda-database` closes that gap on every database Laravel speaks: with
+`firefly.eda.provider=database`, the outbox row is written **inside** the aggregate's own open transaction, on the
+aggregate's own connection, on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite — no dual-write, no "commit then
+hope the publish succeeds" — and committed rows are claimed by leases, so any number of consumers can drain them.
+`firefly.eda.provider=postgres` is the same outbox plus a `pg_notify` raised in that transaction, which wakes a
+`LISTEN`-ing consumer the moment the row commits:
 
 <p align="center">
   <img src="docs/assets/diagrams/outbox-flow.svg" alt="The genuine same-transaction outbox: an aggregate's transaction begins, the domain write and the outbox INSERT + pg_notify happen on the same connection inside the same transaction, and only on commit does Postgres deliver the NOTIFY to a LISTEN-ing consumer that drains the row to subscribed #[EventListener] handlers." width="100%">
 </p>
 
-See the [same-tx outbox showcase](#same-transaction-outbox--fireflyedaproviderpostgres) below for the config
+See the [same-tx outbox showcase](#same-transaction-outbox--fireflyedaproviderdatabase-or-postgres) below for the config
 and the seam that makes this possible.
 
 ### The security filter chain
@@ -709,11 +711,11 @@ model. **Highlights:** the in-memory/queue adapters, retry + `DeadLetterStore`, 
 (in-process) and `#[EventListener]` (the broker bus) are two distinct surfaces — see
 [Event-Driven Architecture](docs/modules/eda.md).
 
-### Same-transaction outbox — `firefly.eda.provider=postgres`
+### Same-transaction outbox — `firefly.eda.provider=database` or `postgres`
 
 The reference configuration ships both halves already: the `provider` switch and, commented out, the outbox
-block it turns on. Point the switch at `postgres` (`FIREFLY_EDA_PROVIDER=postgres`, or the literal string) and
-uncomment the `postgres` section:
+block it turns on. Point the switch at `database` (`FIREFLY_EDA_PROVIDER=database`) — or at `postgres` on
+PostgreSQL, which reads the same block — and uncomment the `database` section:
 
 <!-- source: skeleton/config/firefly.php -->
 
@@ -724,12 +726,15 @@ uncomment the `postgres` section:
 
     // …
 
-    // 'postgres' => [
-    //     'connection' => 'pgsql',
+    // 'database' => [
+    //     'connection' => 'mysql',
     //     'channel' => 'firefly_eda_events',
-    //     'max_attempts' => 3,
+    //     'max-attempts' => 3,
+    //     'claim-strategy' => env('FIREFLY_EDA_CLAIM_STRATEGY', 'auto'),
+    //     'lease-seconds' => 300,
+    //     'poll-interval-ms' => 500,
     //     'relay' => [
-    //         'downstream_provider' => 'rabbitmq',
+    //         'downstream-provider' => 'rabbitmq',
     //     ],
     // ],
 
@@ -738,17 +743,18 @@ uncomment the `postgres` section:
 ```
 
 ```bash
-composer require firefly/eda-postgres
 php artisan migrate                 # creates firefly_eda_outbox
-php artisan firefly:eda:consume     # terminal in-process delivery, run as a long-lived worker
+php artisan firefly:eda:consume     # terminal in-process delivery; run as many workers as you like
 ```
 
 No application code changes — the same `#[EventListener]` handlers and the same `EventPublisher::publish()`
 call sites now run against a durable, same-transaction outbox instead of memory/queue. The seam is a small
 `PreCommitEventHook` interface `firefly/data`'s `DomainEventDispatcher` calls (if bound) *before* the ordinary
-after-commit dispatch — null by default, so installing the package without selecting `provider=postgres` is
-fully inert. **Highlights:** `pg_notify`/`LISTEN` low-latency wake, `FOR UPDATE SKIP LOCKED` claiming, the
-optional `firefly:outbox:relay` to a distinct downstream broker — see [EDA Brokers](docs/modules/eda-brokers.md).
+after-commit dispatch — null by default, so selecting any other provider leaves it fully inert. **Highlights:** leased
+claims chosen from the server's capabilities (SKIP LOCKED, READPAST or a portable conditional UPDATE) that keep
+any number of workers from delivering a row twice, `pg_notify`/`LISTEN` on PostgreSQL, the optional
+`firefly:outbox:relay` to a distinct downstream broker — see [EDA Database Outbox](docs/modules/eda-database.md)
+and the [database support matrix](docs/database-support.md).
 
 ### Transactions — `#[Transactional]` money-can't-vanish transfer
 
@@ -1081,14 +1087,14 @@ component names remain useful module boundaries, with their own test suites. The
 | Web & API | [Web Filters](docs/modules/web-filters.md) — the ordered filter chain onto Laravel middleware | `firefly/web` |
 | Web & API | [OpenAPI](docs/modules/openapi.md) — OpenAPI 3.1 generated from the compiled manifests, `firefly:openapi`, official Swagger UI from your own origin | `firefly/openapi` |
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
-| Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |
+| Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache, database lease, MySQL named, Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres`, `firefly/scheduling-database` |
 | Resilience & Scheduling | [Scheduling Database Locks](docs/modules/scheduling-database.md) — lease-table and MySQL named-lock `DistributedLock` providers | `firefly/scheduling-database` |
 | Data & Domain | [Domain (DDD)](docs/modules/domain.md) — `Entity`, `ValueObject`, `AggregateRoot`, `DomainEvent` | `firefly/domain` |
 | Data & Domain | [Data & Repositories](docs/modules/data.md) — CRUD/paging ports, derived queries, query by example, `#[Modifying]`/`#[Projection]`/`#[Lock]`/`#[EntityGraph]`, slices, exception translation | `firefly/data` |
 | Data & Domain | [Relational Data](docs/modules/data-relational.md) — `EloquentRepository`, soft-delete, auditing, optimistic and pessimistic locking | `firefly/data` |
 | Data & Domain | [Transactions](docs/modules/transactional.md) — `#[Transactional]`, propagation, isolation, timeouts, `#[TransactionalEventListener]` | `firefly/data` |
 | Eventing & Messaging | [Event-Driven Architecture](docs/modules/eda.md) — `EventPublisher`, `#[EventListener]`, retry/DLQ | `firefly/eda` |
-| Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters, the same-tx outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
+| Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters; Postgres adds `LISTEN`/`NOTIFY` to the database outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
 | Eventing & Messaging | [EDA Database Outbox](docs/modules/eda-database.md) — the portable same-transaction outbox on every database, concurrent consumers | `firefly/eda-database` |
 | Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
@@ -1139,13 +1145,10 @@ HTTP endpoint to CQRS, the transactional outbox, method security, and the zero-r
 LaraFly's Foundation milestones (M1 through M14 — kernel, container, config, context, autoconfigure,
 validation, web, resilience, scheduling, data/domain, eda/messaging, cqrs, security, actuator/observability,
 testing, and the CLI/metapackage/skeleton) are complete, followed by real message-broker adapters and the
-genuine same-transaction outbox (RabbitMQ, Postgres, Kafka) and the global `firefly new` installer. What's
-still ahead, accurately:
+genuine same-transaction outbox (RabbitMQ, Postgres, Kafka, and the portable database outbox on every SQL
+server, with integration lanes per server in CI) and the global `firefly new` installer. What's still ahead,
+accurately:
 
-- **Broker integration spot-runs in CI.** Each broker adapter ships a genuine `@group('integration')`
-  round-trip test (RabbitMQ, Postgres, Kafka) gated behind Docker + a live connection string — these run
-  on demand, not in the default `vendor/bin/pest`/CI pass; wiring a scheduled/opt-in CI lane for them is
-  still open.
 - **More actuator endpoints.** Sixteen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
   `/mappings`, `/loggers`, `/scheduledtasks`, `/caches`, `/configprops`, `/metrics`, `/prometheus`,
   `/process`, `/httpexchanges`, `/oauth2clients` when the authorization server is installed, and `/flags`
