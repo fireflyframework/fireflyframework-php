@@ -7,6 +7,7 @@ namespace Firefly\EventSourcing\Tests\Support;
 use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
+use Firefly\EventSourcing\Exception\CheckpointConflictException;
 use Firefly\EventSourcing\Exception\EventSourcingException;
 use Firefly\EventSourcing\Projection\CheckpointStore;
 use RuntimeException;
@@ -75,5 +76,50 @@ final class CheckpointStoreContract
                     ->and($store->isHealthy())->toBeTrue();
             },
         ];
+    }
+
+    /**
+     * The fence under a real race: `$store` reads inside transactional(), `$rival` (a second connection on a server,
+     * the same store where there is one writer) advances and commits, then `$store` advances late, the way the
+     * ProjectionRunner does. The late advance is fenced, as `false` or as a CheckpointConflictException where the
+     * database itself aborted the transaction, and either way nothing of the late batch survives.
+     *
+     * @return array<string, Closure(CheckpointStore, CheckpointStore): void>
+     */
+    public static function races(): array
+    {
+        return [
+            'fences a late first advance after a rival created the row' => static function (CheckpointStore $store, CheckpointStore $rival): void {
+                expect(self::raceLate($store, $rival, 'p', 3, 4))->toBe('fenced')
+                    ->and($rival->get('p')->position)->toBe(3)
+                    ->and($store->advance('p', 3, 5))->toBeTrue()
+                    ->and($rival->get('p')->position)->toBe(5);
+            },
+            'fences a late advance after a rival moved an existing row' => static function (CheckpointStore $store, CheckpointStore $rival): void {
+                expect($store->advance('p', 0, 5))->toBeTrue()
+                    ->and(self::raceLate($store, $rival, 'p', 7, 6))->toBe('fenced')
+                    ->and($rival->get('p')->position)->toBe(7)
+                    ->and($store->advance('p', 7, 9))->toBeTrue()
+                    ->and($rival->get('p')->position)->toBe(9);
+            },
+        ];
+    }
+
+    /** Reads `$projection` in a transaction, lets `$rival` move it to `$rivalTo` and commit, then advances it to `$lateTo`. */
+    private static function raceLate(CheckpointStore $store, CheckpointStore $rival, string $projection, int $rivalTo, int $lateTo): string
+    {
+        try {
+            $store->transactional(static function () use ($store, $rival, $projection, $rivalTo, $lateTo): void {
+                $read = $store->get($projection)->position;
+                expect($rival->advance($projection, $read, $rivalTo))->toBeTrue();
+                if (! $store->advance($projection, $read, $lateTo)) {
+                    throw CheckpointConflictException::of($projection, $read);
+                }
+            });
+
+            return 'committed';
+        } catch (CheckpointConflictException) {
+            return 'fenced';
+        }
     }
 }

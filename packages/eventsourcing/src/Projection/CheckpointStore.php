@@ -6,13 +6,17 @@ namespace Firefly\EventSourcing\Projection;
 
 use Closure;
 use DateTimeImmutable;
+use Firefly\EventSourcing\Exception\CheckpointConflictException;
 
 /**
  * Where projections keep their position. Selected by firefly.eventsourcing.projection.checkpoint-store (`memory` |
  * `database`, null follows store.provider). Every adapter passes CheckpointStoreContract.
  *
  * advance() is the FENCE: it moves a checkpoint only from the position the caller read, so when a lease expired
- * mid-batch and a second runner moved first, the late runner's advance() is false and its batch rolls back.
+ * mid-batch and a second runner moved first, the late runner's advance() is false and its batch rolls back. Where
+ * the database itself aborts the caller's transaction on that race (MariaDB's snapshot isolation reports the
+ * changed row as an error), advance() throws CheckpointConflictException instead: the same fenced answer, and the
+ * caller must let transactional() roll back rather than write anything more.
  */
 interface CheckpointStore
 {
@@ -21,7 +25,11 @@ interface CheckpointStore
     /** @return array<string, Checkpoint> by projection name */
     public function all(): array;
 
-    /** Moves `$projection` from `$from` to `$to` and clears its failure; false when its position is no longer `$from`. */
+    /**
+     * Moves `$projection` from `$from` to `$to` and clears its failure; false when its position is no longer `$from`.
+     *
+     * @throws CheckpointConflictException when another runner moved first and the database aborted the transaction
+     */
     public function advance(string $projection, int $from, int $to): bool;
 
     public function reset(string $projection, int $position = 0): void;

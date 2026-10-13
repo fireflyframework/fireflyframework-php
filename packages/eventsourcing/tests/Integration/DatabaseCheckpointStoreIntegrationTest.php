@@ -18,6 +18,20 @@ foreach (EventSourcingDatabase::lanes() as $lane) {
         })->group('integration')->skip(EventSourcingDatabase::skipReason($lane) !== null, (string) EventSourcingDatabase::skipReason($lane));
     }
 
+    foreach ($lane === 'sqlite' ? [] : CheckpointStoreContract::races() as $case => $race) {
+        it("{$lane} checkpoint store {$case}", function () use ($race, $lane): void {
+            $connection = EventSourcingDatabase::fresh(EventSourcingDatabase::connection($lane));
+            $rival = EventSourcingDatabase::connection($lane);
+            try {
+                $race(new DatabaseCheckpointStore($connection), new DatabaseCheckpointStore($rival));
+                expect($connection->transactionLevel())->toBe(0);
+            } finally {
+                $rival->disconnect();
+                $connection->disconnect();
+            }
+        })->group('integration')->skip(EventSourcingDatabase::skipReason($lane) !== null, (string) EventSourcingDatabase::skipReason($lane));
+    }
+
     it("keeps a full-width projection name and case-distinct names apart on {$lane}", function () use ($lane): void {
         $connection = EventSourcingDatabase::fresh(EventSourcingDatabase::connection($lane));
         try {
