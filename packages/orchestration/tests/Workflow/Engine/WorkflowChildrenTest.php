@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use Firefly\Orchestration\Core\Exception\ExecutionLockedException;
 use Firefly\Orchestration\Core\ExecutionLock;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Core\StepStatus;
 use Firefly\Orchestration\Core\TriggerMode;
+use Firefly\Orchestration\Persistence\ExecutionState;
 use Firefly\Orchestration\Tests\Support\ScriptedLock;
 use Firefly\Orchestration\Tests\Support\TestEngines;
 use Firefly\Orchestration\Workflow\Builder\WorkflowBuilder;
@@ -288,4 +290,37 @@ it('wakes a parent whose child continued as new inline and then waited, and canc
         ->and(data_get($parent?->stepResults, 'spawn.correlationId'))->toBe($lastRunId)
         ->and(data_get($parent?->stepResults, 'spawn.results'))->toBe(['tick' => 'ticked', 'approve' => 'approved'])
         ->and($engines->workflows->find(is_string($cancelLastRun) ? $cancelLastRun : '')?->status)->toBe(ExecutionStatus::Cancelled);
+});
+
+it('replays the completion of a child a failed cancel already cancelled, so the parent does not stay WAITING on it', function (): void {
+    $lock = new ScriptedLock;
+    $engines = TestEngines::create(['lock' => ['wait' => 0]], lock: $lock);
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('check')->triggerMode(TriggerMode::Async)
+        ->step('run')->handler(static fn (): string => 'checked')->add()->build());
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('parent')
+        ->step('fire')->childWorkflow('check', waitForCompletion: false)->handler(static fn (): array => [])->add()
+        ->step('wait')->dependsOn('fire')->childWorkflow('check')->handler(static fn (): array => [])->add()
+        ->build());
+    $waiting = $engines->workflows->start('parent', correlationId: 'p-g');
+    $fired = $waiting->children['fire'] ?? '';
+    $awaited = $waiting->children['wait'] ?? '';
+
+    // The awaited child is cancelled first (a store need not keep the children in start order), then the
+    // cancel of the fired one fails because another process holds it.
+    $data = $waiting->toArray();
+    $data['children'] = ['wait' => $awaited, 'fire' => $fired];
+    $engines->persistence->save(ExecutionState::fromArray($data));
+    $lock->holdElsewhere(ExecutionLock::name($fired));
+
+    expect(fn () => $engines->workflows->cancel('p-g'))->toThrow(ExecutionLockedException::class);
+    $afterFailedCancel = $engines->workflows->find('p-g');
+
+    $lock->releaseElsewhere(ExecutionLock::name($fired));
+    $recovered = $engines->workflows->recover('p-g');
+
+    expect($engines->workflows->find($awaited)?->status)->toBe(ExecutionStatus::Cancelled)
+        ->and($afterFailedCancel?->status)->not->toBe(ExecutionStatus::Waiting)
+        ->and($afterFailedCancel?->status->isRecoverable())->toBeTrue()
+        ->and($recovered->status)->toBe(ExecutionStatus::Failed)
+        ->and($engines->workflows->find($fired)?->status)->toBe(ExecutionStatus::Cancelled);
 });

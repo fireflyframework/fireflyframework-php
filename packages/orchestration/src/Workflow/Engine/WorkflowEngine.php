@@ -70,6 +70,12 @@ final class WorkflowEngine
     /** @var array<string, int> the executions this process is cancelling or compensating right now, by nesting depth */
     private array $settling = [];
 
+    /**
+     * @var array<string, array<string, ExecutionState>> by settling parent, the finished children whose wake-up
+     *                                                   notifyParent() held back while that parent was settling
+     */
+    private array $heldBack = [];
+
     public function __construct(
         private readonly WorkflowRegistry $registry,
         private readonly WorkflowExecutor $executor,
@@ -624,7 +630,13 @@ final class WorkflowEngine
     private function notifyParent(ExecutionState $child): void
     {
         $parentId = $child->parentCorrelationId;
-        if ($parentId === null || isset($this->driving[$parentId]) || isset($this->settling[$parentId])) {
+        if ($parentId === null || isset($this->driving[$parentId])) {
+            return;
+        }
+        if (isset($this->settling[$parentId])) {
+            // Held back, not dropped: if the settlement fails before it moves the parent on, settle() replays it.
+            $this->heldBack[$parentId][$child->correlationId] = $child;
+
             return;
         }
 
@@ -672,6 +684,13 @@ final class WorkflowEngine
      * through notifyParent(): the lock is reentrant, and the parent is still WAITING on that child until
      * `$work` has moved it on.
      *
+     * When `$work` throws before it got there (the cancel of a later child failed, say), the children it
+     * already finished would leave the parent WAITING on a child that is gone, with nothing left to wake it.
+     * Their held-back wake-ups are replayed once the outermost settlement of the parent has ended, so the
+     * parent sees them like any other child completion; then the original error is rethrown. A replay that
+     * fails itself is logged and leaves the parent where the replay stopped (a COMPENSATING parent is
+     * recoverable).
+     *
      * @template T
      *
      * @param  callable(): T  $work
@@ -681,9 +700,40 @@ final class WorkflowEngine
     {
         self::enter($this->settling, $correlationId);
         try {
-            return $work();
-        } finally {
+            $result = $work();
+        } catch (Throwable $error) {
             self::leave($this->settling, $correlationId);
+            $this->replayHeldBack($correlationId);
+
+            throw $error;
+        }
+
+        self::leave($this->settling, $correlationId);
+        if (! isset($this->settling[$correlationId])) {
+            unset($this->heldBack[$correlationId]);
+        }
+
+        return $result;
+    }
+
+    private function replayHeldBack(string $parentId): void
+    {
+        if (isset($this->settling[$parentId])) {
+            return; // an outer settlement of the same parent is still under way; it decides
+        }
+
+        $children = $this->heldBack[$parentId] ?? [];
+        unset($this->heldBack[$parentId]);
+        foreach ($children as $child) {
+            try {
+                $this->notifyParent($child);
+            } catch (Throwable $error) {
+                $this->support->logger->warning("Workflow execution [{$child->correlationId}] finished while its parent [{$parentId}] was settling, and the parent could not be woken after that settlement failed (".$error::class.').', [
+                    'correlationId' => $child->correlationId,
+                    'parentCorrelationId' => $parentId,
+                    'exceptionClass' => $error::class,
+                ]);
+            }
         }
     }
 
