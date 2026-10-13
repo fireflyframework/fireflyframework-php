@@ -87,6 +87,35 @@ it('evicts a whole group by starting a new generation, and leaves other groups a
     expect($cache->lookup('balances', 'k1'))->toBe(10);
 })->with('w4 query cache stores');
 
+it('drops a store that looked the group up before an eviction, so the stale result is never cached', function (string $store) {
+    $cache = new CacheQueryCache(w4QueryCacheRepository($store));
+
+    // A handler misses and reads the database; a commit evicts the group; the handler then stores what it read.
+    expect($cache->lookup('balances', 'k1'))->toBeNull();
+    $cache->evictGroup('balances');
+    $cache->store('balances', 'k1', 'STALE', 60);
+
+    expect($cache->lookup('balances', 'k1'))->toBeNull();
+
+    // The lookup above started a fresh generation, so the next miss-then-store caches normally again.
+    $cache->store('balances', 'k1', 'FRESH', 60);
+
+    expect($cache->lookup('balances', 'k1'))->toBe('FRESH');
+})->with('w4 query cache stores');
+
+it('keeps a group evicted across stores until a lookup starts its next generation', function (string $store) {
+    $cache = new CacheQueryCache(w4QueryCacheRepository($store));
+    $cache->store('balances', 'k1', 1, 60);
+    $cache->evictGroup('balances');
+
+    $cache->store('balances', 'k1', 'STALE', 60);
+    $cache->store('balances', 'k2', 'STALE', 60);
+    $cache->evictKey('balances', 'k1');
+
+    expect($cache->lookup('balances', 'k1'))->toBeNull()
+        ->and($cache->lookup('balances', 'k2'))->toBeNull();
+})->with('w4 query cache stores');
+
 it('expires an entry after its TTL', function (string $store) {
     Carbon::setTestNow('2026-10-12 10:00:00');
     $cache = new CacheQueryCache(w4QueryCacheRepository($store));

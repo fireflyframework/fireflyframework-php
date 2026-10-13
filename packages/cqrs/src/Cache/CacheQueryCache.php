@@ -18,14 +18,21 @@ use Throwable;
  *     <prefix>g:<sha256(group)>                       => the group's current generation
  *     <prefix>q:<sha256(group ␟ generation ␟ key)>    => one cached result
  *
- * evictGroup() forgets the generation; the next lookup starts a fresh random one, and no entry written under an
- * older generation is reachable again — they expire on their own TTL (which is why the module guide tells you to
- * set one). That also settles the classic read/evict race in the group's favour: a handler that read the database
- * before a commit stores its result under the generation it looked up, which the commit's eviction has just made
- * unreachable. A single-key eviction (evictKey) does not have that property; it is the cheaper, narrower tool.
+ * evictGroup() replaces the generation with an eviction marker; the next lookup starts a fresh random one, and no
+ * entry written under an older generation is reachable again — they expire on their own TTL (which is why the module
+ * guide tells you to set one). The marker is what narrows the classic read/evict race: a handler that looked the
+ * group up before a commit and stores after the commit's eviction finds the marker, not a generation, and its store
+ * is dropped, so the stale result it read is never cached. Only store() is held back by the marker; a store into a
+ * group that never had a generation (a put() with no get() before it) starts one, as it always has. What remains is
+ * the window in which ANOTHER lookup starts a new generation between the eviction and the late store: the store
+ * then writes its stale result under the new generation. Closing that fully needs a token handed from lookup() to
+ * store(), which the QueryCache contract does not carry. A single-key eviction (evictKey) has none of this; it is
+ * the cheaper, narrower tool.
  *
- * A generation is created with add() and a fixed TTL: Laravel's Repository::add() is only atomic when it is given a
- * TTL, and two processes starting a generation at once must agree on one. Keys are hashed, so a group or key of any
+ * A first generation is created with add() and a fixed TTL: Laravel's Repository::add() is only atomic when it is
+ * given a TTL, and two processes starting a generation at once must agree on one. A generation that replaces an
+ * eviction marker is put() and then read back, so concurrent lookups settle on whichever write landed last; a
+ * lookup that lost that race only costs a miss. Keys are hashed, so a group or key of any
  * length fits every store's key limit (memcached: 250 bytes; the database store: 255).
  *
  * A CACHE FAILURE NEVER FAILS A QUERY: every operation catches, logs a warning and answers a miss — the handler
@@ -38,6 +45,15 @@ final class CacheQueryCache implements GroupedQueryCache
 
     /** Thirty days: long enough to outlive any entry TTL worth using; a generation that expires only costs misses. */
     public const int GENERATION_TTL = 2_592_000;
+
+    /** The value evictGroup() leaves in place of a generation; never a valid generation (those are 16 hex digits). */
+    private const string EVICTED = '-';
+
+    private const int EXISTING = 0;
+
+    private const int FOR_STORE = 1;
+
+    private const int FOR_LOOKUP = 2;
 
     public function __construct(
         private readonly Repository $cache,
@@ -63,7 +79,7 @@ final class CacheQueryCache implements GroupedQueryCache
     public function lookup(string $group, string $key): mixed
     {
         try {
-            $generation = $this->generation($group, true);
+            $generation = $this->generation($group, self::FOR_LOOKUP);
 
             return $generation === null ? null : $this->cache->get($this->entryKey($group, $generation, $key));
         } catch (Throwable $e) {
@@ -80,7 +96,7 @@ final class CacheQueryCache implements GroupedQueryCache
         }
 
         try {
-            $generation = $this->generation($group, true);
+            $generation = $this->generation($group, self::FOR_STORE);
             if ($generation === null) {
                 return;
             }
@@ -99,7 +115,7 @@ final class CacheQueryCache implements GroupedQueryCache
     public function evictKey(string $group, string $key): void
     {
         try {
-            $generation = $this->generation($group, false);
+            $generation = $this->generation($group, self::EXISTING);
             if ($generation !== null) {
                 $this->cache->forget($this->entryKey($group, $generation, $key));
             }
@@ -111,34 +127,45 @@ final class CacheQueryCache implements GroupedQueryCache
     public function evictGroup(string $group): void
     {
         try {
-            $this->cache->forget($this->generationKey($group));
+            $this->cache->put($this->generationKey($group), self::EVICTED, self::GENERATION_TTL);
         } catch (Throwable $e) {
             $this->report('evictGroup', $group, $e);
         }
     }
 
-    /** The group's generation; with $create, started now when it has none. null when none could be started. */
-    private function generation(string $group, bool $create): ?string
+    /**
+     * The group's current generation, or null when there is none to use.
+     *
+     * EXISTING never starts one. FOR_STORE starts one only for a group that never had one, and answers null while
+     * an eviction marker stands. FOR_LOOKUP starts one in either case.
+     *
+     * @param  self::EXISTING|self::FOR_STORE|self::FOR_LOOKUP  $mode
+     */
+    private function generation(string $group, int $mode): ?string
     {
         $key = $this->generationKey($group);
         $current = $this->cache->get($key);
-        if (is_string($current) && $current !== '') {
+        if (is_string($current) && $current !== '' && $current !== self::EVICTED) {
             return $current;
         }
 
-        if (! $create) {
+        $evicted = $current === self::EVICTED;
+        if ($mode === self::EXISTING || ($evicted && $mode === self::FOR_STORE)) {
             return null;
         }
 
         $fresh = bin2hex(random_bytes(8));
-        if ($this->cache->add($key, $fresh, self::GENERATION_TTL)) {
+        if ($evicted) {
+            $this->cache->put($key, $fresh, self::GENERATION_TTL);
+        } elseif ($this->cache->add($key, $fresh, self::GENERATION_TTL)) {
             return $fresh;
         }
 
-        // Another process started one in between — use it; anything else means the store refused the write.
+        // Read back what landed: another process may have started a generation in between, or evicted again, or the
+        // store refused the write. Only a real generation is usable.
         $current = $this->cache->get($key);
 
-        return is_string($current) && $current !== '' ? $current : null;
+        return is_string($current) && $current !== '' && $current !== self::EVICTED ? $current : null;
     }
 
     private function generationKey(string $group): string
