@@ -3674,3 +3674,52 @@ it('pins the contributing guide\'s account of this file to the surface it really
         ->and(array_values(array_diff($prose, $listing)))->toBe([], 'this file walks a page the listing guard does not audit, which makes the guide\'s account of the two surfaces wrong in the other direction')
         ->and($unreached)->not->toBe([], 'the prose guard now walks everything the listing guard does, so the paragraph should say that instead of naming exceptions');
 });
+
+it('refuses any page that still calls event sourcing future work while firefly/eventsourcing ships', function () {
+    // The twenty-ninth. W3 shipped `packages/eventsourcing` — event store, aggregates, snapshots, upcasters,
+    // projections and outbox publishing — and README.md's module table learned to list it, while the same
+    // README's roadmap, under "What's still ahead, accurately", went on saying that a dedicated
+    // `firefly/eventsourcing`-style package for event sourcing/snapshots/projections "is future work". One page,
+    // two answers to the same question, and the wrong one sitting under a heading that promises accuracy.
+    //
+    // DERIVED FROM THE TREE. The rule holds only while `packages/eventsourcing/composer.json` exists, so the day
+    // the package moves or is withdrawn the sentence that says it is ahead becomes allowed again by itself. It
+    // reads sentences one at a time — a roadmap is one Markdown paragraph of bullets, and docs/modules/cqrs.md's
+    // "Known-latent" paragraph listed projection scaffolding (→ `firefly/eventsourcing`) in the same sentence as
+    // the things that really are deferred, so the "future work" of a neighbour must not condemn a sentence that
+    // only points at the shipped package — and judges any sentence that names event sourcing or the package and
+    // also calls it future, deferred or not yet shipped, in either language the project publishes in.
+    $root = dirname(__DIR__);
+    $ships = is_file($root.'/packages/eventsourcing/composer.json');
+
+    $subject = '/firefly\/eventsourcing|event[\s-]+sourc|event[\s-]+store|abastecimiento de eventos/i';
+    $future = '/future work|is deferred|are deferred|not yet (?:shipped|available)|still ahead|trabajo futuro|queda pendiente|todav[ií]a no/i';
+
+    $judged = 0;
+    $failures = [];
+
+    foreach (fireflyProsePages() as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $flatParagraph = (string) preg_replace('/\s+/', ' ', trim($paragraph));
+            // A sentence ends at terminal punctuation followed by the start of the next one, and a list item
+            // ends where the next bullet begins (the paragraph is flattened, so that is " - " or " * ").
+            $sentences = preg_split('/(?<=[.!?])\s+(?=[A-Z`*\[(¿¡])|\s(?=[-*] \*\*)/u', $flatParagraph);
+
+            foreach ($sentences === false ? [] : $sentences as $flat) {
+
+                if (preg_match($subject, $flat) !== 1) {
+                    continue;
+                }
+
+                $judged++;
+
+                if ($ships && preg_match($future, $flat) === 1) {
+                    $failures[] = $page.': '.mb_substr($flat, 0, 160);
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page names event sourcing any more, so this canary holds nothing');
+});

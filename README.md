@@ -1167,9 +1167,11 @@ accurately:
   credentials, refresh rotation, introspection, revocation, userinfo and RP-initiated logout). IdP adapters
   beyond those presets (Cognito, internal-db) and MFA are deferred to their own future packages, matching the
   Java Firefly Framework's module topology.
-- **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
-  today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
-  sourcing/snapshots/projections is future work, as it is in PyFly.
+- **Event sourcing in the tutorial and the book.** Event stores, aggregates, snapshots, upcasters and
+  checkpointed, rebuildable projections ship in [`firefly/eventsourcing`](docs/modules/eventsourcing.md),
+  shaped after the Java library and PyFly's `pyfly.eventsourcing`. What remains is the walkthrough: the
+  sample's `LedgerProjector` still builds its read model from a plain `#[EventListener]`, and neither the
+  tutorial nor the book has a chapter on the package.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *larafly by example*
   [book](book/README.md) (16 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
