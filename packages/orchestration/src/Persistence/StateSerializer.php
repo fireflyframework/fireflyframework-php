@@ -24,16 +24,34 @@ use UnitEnum;
  * and any other object its PUBLIC properties. A closure or a resource cannot be represented at all and is
  * refused with the path it sat at (`stepResults.charge.callback`) — a checkpoint that silently dropped it
  * would resume into a different execution than the one that ran. So is a cyclic object graph, or one nested
- * deeper than json_decode() reads back, which would otherwise exhaust memory and kill the worker mid-checkpoint.
+ * deeper than the checkpoint envelope leaves room for, which would otherwise exhaust memory mid-checkpoint or
+ * write a row json_decode() cannot read back. So, finally, is a scalar JSON has no form for: a NAN or INF
+ * float, or a string (or array key) that is not valid UTF-8 — binary data, a mis-encoded column. Refusing
+ * them here, on the normalized value every provider stores, is what keeps `memory` and `cache` from accepting
+ * a value the `database` provider would then fail to write.
  */
 final class StateSerializer
 {
     private const int FLAGS = JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 
     /**
-     * The nesting depth a checkpoint may reach, matching the depth json_decode() reads back by default.
+     * The depth decodeArray() hands json_decode(): a payload of N nested arrays needs N + 1 levels, the
+     * innermost scalar counting as one, so at most JSON_DEPTH - 1 arrays read back.
      */
-    private const int MAX_DEPTH = 512;
+    private const int JSON_DEPTH = 512;
+
+    /**
+     * The arrays the checkpoint envelope wraps around every normalized field: the ExecutionState root
+     * object. A field (`stepResults`, `variables`, ...) is itself the next array down.
+     */
+    private const int ENVELOPE_DEPTH = 1;
+
+    /**
+     * How many arrays a normalized field may nest, counting the field's own map (`stepResults`) as the
+     * first: what json_decode() reads back once the envelope has taken its share, so a value that passes
+     * normalize() is a checkpoint that resumes.
+     */
+    public const int MAX_DEPTH = self::JSON_DEPTH - 1 - self::ENVELOPE_DEPTH;
 
     public static function normalize(mixed $value, string $path = 'value'): mixed
     {
@@ -50,6 +68,16 @@ final class StateSerializer
      */
     private static function normalizeAt(mixed $value, string $path, array $ancestors, int $depth): mixed
     {
+        if (is_float($value) && ! is_finite($value)) {
+            $kind = is_nan($value) ? 'NAN' : ($value > 0 ? 'INF' : '-INF');
+
+            throw new OrchestrationException("{$path} holds a non-finite float ({$kind}), which JSON cannot represent and an orchestration checkpoint cannot persist.", 'ORCHESTRATION_UNSERIALIZABLE');
+        }
+
+        if (is_string($value) && ! mb_check_encoding($value, 'UTF-8')) {
+            throw new OrchestrationException("{$path} holds a string that is not valid UTF-8, which an orchestration checkpoint cannot persist. Encode binary data (base64) before returning it from the step.", 'ORCHESTRATION_UNSERIALIZABLE');
+        }
+
         if ($value === null || is_scalar($value)) {
             return $value;
         }
@@ -61,6 +89,9 @@ final class StateSerializer
         if (is_array($value)) {
             $normalized = [];
             foreach ($value as $key => $item) {
+                if (is_string($key) && ! mb_check_encoding($key, 'UTF-8')) {
+                    throw new OrchestrationException("{$path} holds a key that is not valid UTF-8, which an orchestration checkpoint cannot persist.", 'ORCHESTRATION_UNSERIALIZABLE');
+                }
                 $normalized[$key] = self::normalizeAt($item, $path.'.'.$key, $ancestors, $depth + 1);
             }
 
@@ -98,11 +129,19 @@ final class StateSerializer
     }
 
     /**
+     * Encodes a checkpoint. A value normalize() let through always encodes; a field that never went through
+     * it (a header, a search attribute) and still holds what JSON cannot represent is refused with the same
+     * code rather than escaping as a bare JsonException.
+     *
      * @param  array<string, mixed>  $data
      */
     public static function encodeArray(array $data): string
     {
-        return json_encode($data, self::FLAGS);
+        try {
+            return json_encode($data, self::FLAGS, self::JSON_DEPTH);
+        } catch (JsonException $error) {
+            throw new OrchestrationException("An orchestration checkpoint cannot be encoded as JSON: {$error->getMessage()}", 'ORCHESTRATION_UNSERIALIZABLE', 500, $error);
+        }
     }
 
     /**
@@ -111,7 +150,7 @@ final class StateSerializer
     public static function decodeArray(string $payload): array
     {
         try {
-            $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+            $data = json_decode($payload, true, self::JSON_DEPTH, JSON_THROW_ON_ERROR);
         } catch (JsonException $error) {
             throw new OrchestrationException("A persisted orchestration payload is not valid JSON: {$error->getMessage()}", 'ORCHESTRATION_CORRUPT_STATE', 500, $error);
         }
