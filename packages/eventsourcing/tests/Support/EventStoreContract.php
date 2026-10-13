@@ -159,6 +159,14 @@ final class EventStoreContract
                     ->and(self::ids($store->readAll(0, 100, EventFilter::between(new DateTimeImmutable('2026-10-13 09:30:00', new DateTimeZone('UTC')), new DateTimeImmutable('2026-10-13 11:00:00', new DateTimeZone('UTC'))))))->toBe(['i-1'])
                     ->and(self::ids($store->readAll(0, 100, new EventFilter(tenantId: 'acme'))))->toBe(['o-1', 'o-2']);
             },
+            'keeps tenants that differ only in case apart, as a tenant filter must be exact' => static function (Closure $make): void {
+                $store = self::store($make);
+                $store->append('o-1', 'order', [self::event(metadata: new EventMetadata(tenantId: 'Acme'))], 0);
+                $store->append('o-2', 'order', [self::event(metadata: new EventMetadata(tenantId: 'acme'))], 0);
+
+                expect(self::ids($store->readAll(0, 100, new EventFilter(tenantId: 'acme'))))->toBe(['o-2'])
+                    ->and(self::ids($store->readAll(0, 100, new EventFilter(tenantId: 'Acme'))))->toBe(['o-1']);
+            },
             'hands every read through the upcasters' => static function (Closure $make): void {
                 $store = self::store($make, new UpcasterChain([new CallbackEventUpcaster('order.placed', 1, static fn (array $p): array => [...$p, 'currency' => 'EUR'])]));
                 $store->append('order-1', 'order', [self::event('order.placed', ['total' => 5])], 0);
